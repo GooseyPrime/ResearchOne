@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // Test the frontend config logic for split deployment
 // We test the URL resolution logic extracted from api.ts and socket.ts
