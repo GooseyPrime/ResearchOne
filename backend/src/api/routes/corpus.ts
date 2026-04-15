@@ -3,6 +3,21 @@ import { query } from '../../db/pool';
 
 const router = Router();
 
+// GET /api/corpus/tier-distribution - Evidence tier counts from claims
+router.get('/tier-distribution', async (_req, res, next) => {
+  try {
+    const rows = await query(
+      `SELECT evidence_tier, COUNT(*)::int AS count
+       FROM claims
+       GROUP BY evidence_tier
+       ORDER BY count DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/corpus/stats - Live corpus metrics
 router.get('/stats', async (_req, res, next) => {
   try {

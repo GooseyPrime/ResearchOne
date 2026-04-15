@@ -69,7 +69,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   const points: AtlasPoint[] = rows.map(row => {
     let vector: number[] = [];
     try {
-      vector = JSON.parse(row.vector_str.replace('[', '[').replace(']', ']')) as number[];
+      // pgvector returns vectors in '[0.1,0.2,...]' format — parse directly
+      vector = JSON.parse(row.vector_str) as number[];
     } catch {
       // Skip malformed vectors
     }

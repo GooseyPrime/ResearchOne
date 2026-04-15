@@ -119,7 +119,7 @@ export default function Layout() {
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
             <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-research-green animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               <span className="text-xs text-slate-500">System online</span>
             </div>
           </div>

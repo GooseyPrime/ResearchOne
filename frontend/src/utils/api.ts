@@ -170,5 +170,13 @@ export const triggerAtlasExport = (data: { label: string; description?: string; 
 export const getClaims = (params?: { tier?: string; search?: string }) =>
   api.get<Claim[]>('/corpus/claims', { params }).then(r => r.data);
 
+export interface TierCount {
+  evidence_tier: string;
+  count: number;
+}
+
+export const getClaimTierDistribution = () =>
+  api.get<TierCount[]>('/corpus/tier-distribution').then(r => r.data);
+
 export const getContradictions = (params?: { resolved?: boolean }) =>
   api.get<Contradiction[]>('/corpus/contradictions', { params }).then(r => r.data);

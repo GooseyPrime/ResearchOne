@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Database, BarChart2, AlertTriangle, Tag, Layers } from 'lucide-react';
-import { getStats, getClaims, getContradictions } from '../utils/api';
+import { getStats, getClaims, getContradictions, getClaimTierDistribution } from '../utils/api';
 import {
   ResponsiveContainer,
   Tooltip,
@@ -39,6 +39,12 @@ export default function CorpusPage() {
     refetchInterval: 15000,
   });
 
+  const { data: tierDistribution = [] } = useQuery({
+    queryKey: ['tier-distribution'],
+    queryFn: getClaimTierDistribution,
+    refetchInterval: 30000,
+  });
+
   const { data: claims = [] } = useQuery({
     queryKey: ['claims', tierFilter, claimSearch],
     queryFn: () => getClaims({ tier: tierFilter || undefined, search: claimSearch || undefined }),
@@ -51,16 +57,12 @@ export default function CorpusPage() {
     enabled: tab === 'contradictions',
   });
 
-  // Build pie chart data
-  const tierData = stats
-    ? [
-        { name: 'Fact', value: Math.round(stats.claim_count * 0.3), tier: 'established_fact' },
-        { name: 'Strong', value: Math.round(stats.claim_count * 0.25), tier: 'strong_evidence' },
-        { name: 'Testimony', value: Math.round(stats.claim_count * 0.2), tier: 'testimony' },
-        { name: 'Inference', value: Math.round(stats.claim_count * 0.15), tier: 'inference' },
-        { name: 'Speculation', value: Math.round(stats.claim_count * 0.1), tier: 'speculation' },
-      ]
-    : [];
+  // Build pie chart data from actual API data
+  const tierData = tierDistribution.map(t => ({
+    name: TIER_LABELS[t.evidence_tier] ?? t.evidence_tier,
+    value: t.count,
+    tier: t.evidence_tier,
+  }));
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
