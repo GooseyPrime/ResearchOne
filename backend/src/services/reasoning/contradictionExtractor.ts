@@ -80,7 +80,7 @@ export async function extractAndPersistContradictions(args: {
         { role: 'system', content: CONTRADICTION_EXTRACTOR_PROMPT },
         {
           role: 'user',
-          content: `Claims:\n${claimsContext}\n\nSceptic Analysis:\n${skepticOutput.slice(0, 2000)}\n\nEvidence Chunks:\n${chunkContext}\n\nIdentify all contradictions. Output JSON array only.`,
+          content: `Claims:\n${claimsContext}\n\nSkeptic Analysis:\n${skepticOutput.slice(0, 2000)}\n\nEvidence Chunks:\n${chunkContext}\n\nIdentify all contradictions. Output JSON array only.`,
         },
       ],
       maxTokens: 4096,

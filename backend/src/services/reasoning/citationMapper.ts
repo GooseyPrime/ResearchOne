@@ -31,14 +31,14 @@ export interface CitationMapResult {
 }
 
 const CITATION_MAPPER_PROMPT = `You are a citation mapping agent for ResearchOne.
-Map report sections to specific evidence chunks.
+Map report sections to specific evidence chunks, source IDs, and claim IDs where applicable.
 
 CRITICAL RULES:
 - Do not hallucinate citations — only map chunks that genuinely support the section text
 - If no chunk adequately supports a section, omit it and note it as uncited
 - Provide a short chunk_quote (max 100 chars) showing which part of the chunk is cited
 - Confidence must be 0.0–1.0; only include citations with confidence >= 0.3
-- Each citation maps one section_type to one chunk_id
+- Each citation maps one section_type to one chunk_id, with optional source_id and claim_id
 
 Output JSON with this exact schema:
 {

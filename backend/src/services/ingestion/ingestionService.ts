@@ -274,15 +274,24 @@ async function fetchUrl(url: string): Promise<FetchResult> {
     .replace(/<footer[\s\S]*?<\/footer\s*>/gi, ' ')
     .replace(/<aside[\s\S]*?<\/aside\s*>/gi, ' ');
 
-  // Strip remaining HTML tags and clean whitespace
+  // Strip remaining HTML tags and clean whitespace.
+  // Decode HTML entities in a single regex pass to avoid double-unescaping
+  // (e.g. &amp;lt; should become &lt;, not <).
   const content = withoutBoilerplate
     .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/&(nbsp|amp|lt|gt|quot|#39|#x27|apos);/gi, (_match, entity: string) => {
+      const entityMap: Record<string, string> = {
+        nbsp: ' ',
+        amp: '&',
+        lt: '<',
+        gt: '>',
+        quot: '"',
+        '#39': "'",
+        '#x27': "'",
+        apos: "'",
+      };
+      return entityMap[entity.toLowerCase()] ?? _match;
+    })
     .replace(/\s+/g, ' ')
     .trim();
 

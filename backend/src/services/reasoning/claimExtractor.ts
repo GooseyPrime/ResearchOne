@@ -21,6 +21,10 @@ export interface ExtractedClaim {
   stance_summary?: string;
 }
 
+/** Maximum characters of model output to include in claim extraction context */
+const MAX_REASONER_CONTEXT_CHARS = 2000;
+const MAX_SYNTHESIZER_CONTEXT_CHARS = 3000;
+
 const CLAIM_EXTRACTOR_PROMPT = `You are a claim extraction agent for ResearchOne.
 Extract discrete factual assertions from research outputs.
 
@@ -72,7 +76,7 @@ export async function extractAndPersistClaims(args: {
         { role: 'system', content: CLAIM_EXTRACTOR_PROMPT },
         {
           role: 'user',
-          content: `Research Query: ${researchQuery}\n\nEvidence Chunks:\n${chunkContext}\n\nReasoner Output:\n${reasonerOutput.slice(0, 2000)}\n\nSynthesizer Output:\n${synthesizerOutput.slice(0, 3000)}\n\nExtract all discrete claims. Output JSON array only.`,
+          content: `Research Query: ${researchQuery}\n\nEvidence Chunks:\n${chunkContext}\n\nReasoner Output:\n${reasonerOutput.slice(0, MAX_REASONER_CONTEXT_CHARS)}\n\nSynthesizer Output:\n${synthesizerOutput.slice(0, MAX_SYNTHESIZER_CONTEXT_CHARS)}\n\nExtract all discrete claims. Output JSON array only.`,
         },
       ],
       maxTokens: 4096,

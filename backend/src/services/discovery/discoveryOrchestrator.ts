@@ -146,7 +146,7 @@ export async function runDiscoveryOrchestrator(args: {
   const seenUrls = new Set<string>();
   const queriesExecuted: string[] = [];
 
-  for (const searchQuery of discoveryPlan.discovery_queries.slice(0, 5)) {
+  for (const searchQuery of discoveryPlan.discovery_queries.slice(0, config.discovery.maxQueriesPerRun)) {
     queriesExecuted.push(searchQuery);
 
     for (const provider of providers) {
@@ -266,7 +266,7 @@ export async function runDiscoveryOrchestrator(args: {
     logger.info(`[discovery:${runId}] Waiting for ${selected.length} ingestion jobs to complete...`);
     await waitForIngestionJobs(
       selected.map(s => s.ingestionJobId!).filter(Boolean),
-      90_000 // 90 second timeout
+      config.discovery.ingestionWaitTimeoutMs
     );
   }
 
