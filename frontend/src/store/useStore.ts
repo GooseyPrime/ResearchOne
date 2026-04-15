@@ -29,7 +29,7 @@ export const useStore = create<AppStore>((set) => ({
 
   notifications: [],
   addNotification: (type, message) => {
-    const id = Math.random().toString(36).slice(2);
+    const id = crypto.randomUUID();
     set(state => ({
       notifications: [...state.notifications, { id, type, message }],
     }));

@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
-
 export interface AtlasExportJobData {
   exportId: string;
   label: string;
@@ -71,8 +70,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     try {
       // pgvector returns vectors in '[0.1,0.2,...]' format — parse directly
       vector = JSON.parse(row.vector_str) as number[];
-    } catch {
-      // Skip malformed vectors
+    } catch (parseErr) {
+      logger.warn(`Failed to parse vector for chunk ${row.id}:`, parseErr);
     }
     return {
       id: row.id,

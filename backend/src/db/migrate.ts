@@ -55,6 +55,7 @@ async function migrate() {
   }
 
   logger.info('All migrations complete.');
+  await getPool().end();
   process.exit(0);
 }
 

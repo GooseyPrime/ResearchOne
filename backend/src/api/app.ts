@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { rateLimit } from 'express-rate-limit';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
 import ingestionRoutes from './routes/ingestion';
 import researchRoutes from './routes/research';
@@ -48,7 +49,7 @@ app.use((_req, res) => {
 
 // Error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
+  logger.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 

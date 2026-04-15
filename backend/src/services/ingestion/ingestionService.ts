@@ -168,9 +168,10 @@ async function fetchUrl(url: string): Promise<{ content: string; title: string }
 
   const html: string = response.data;
 
-  // Remove entire script/style blocks including their content first
-  const withoutScripts = html.replace(/<script[\s\S]*?<\/script>/gi, ' ');
-  const withoutStyles = withoutScripts.replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  // Remove entire script/style blocks including their content first.
+  // Use a permissive end-tag pattern that handles attributes or spaces before '>'
+  const withoutScripts = html.replace(/<script[\s\S]*?<\/script\s*>/gi, ' ');
+  const withoutStyles = withoutScripts.replace(/<style[\s\S]*?<\/style\s*>/gi, ' ');
 
   // Strip remaining HTML tags (any tag that starts with < and ends with >)
   const content = withoutStyles
