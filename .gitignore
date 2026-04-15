@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build artifacts
+dist/
+**/dist/
+
+# Environment files (never commit secrets)
+.env
+**/.env
+*.local
+
+# Logs
+logs/
+**/logs/
+*.log
+
+# PM2
+.pm2/
+
+# Atlas exports
+backend/exports/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Temporary files
+/tmp/
+*.tmp
