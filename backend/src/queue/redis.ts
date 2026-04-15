@@ -37,6 +37,6 @@ export function getRedis(): IORedis {
 
 export function createRedisConnection(): IORedis {
   const opts = buildRedisOptions();
-  // createRedisConnection is used by BullMQ which manages its own lifecycle — don't lazyConnect
+  // createRedisConnection is used by BullMQ which manages its own lifecycle -- don't lazyConnect
   return new IORedis({ ...opts, lazyConnect: false });
 }

@@ -175,9 +175,9 @@ function labelClusterHints(points: AtlasPoint[]): void {
   const p25 = sorted[Math.floor(sorted.length * 0.25)];
   const p75 = sorted[Math.floor(sorted.length * 0.75)];
   const iqr = p75 - p25;
-  // 1.5 × IQR is the standard Tukey's fences threshold for mild outliers
-  const IQR_OUTLIER_MULTIPLIER = 1.5;
-  const outlierThreshold = p75 + IQR_OUTLIER_MULTIPLIER * iqr;
+  // 1.5 x IQR is the standard Tukey's fences threshold for mild outliers
+  const iqrOutlierMultiplier = 1.5;
+  const outlierThreshold = p75 + iqrOutlierMultiplier * iqr;
   const bridgeThreshold = p75;
 
   for (let i = 0; i < points.length; i++) {

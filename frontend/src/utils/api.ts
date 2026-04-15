@@ -187,7 +187,7 @@ export const getContradictions = (params?: { resolved?: boolean }) =>
  */
 export function resolveExportUrl(exportPath: string): string {
   const base = import.meta.env.VITE_EXPORTS_BASE_URL || '';
-  // exportPath may be an absolute filesystem path or just a filename
+  // exportPath comes from the Linux backend (POSIX paths only) -- forward-slash split is correct
   const filename = exportPath.split('/').pop() ?? exportPath;
   return base ? `${base}/exports/${filename}` : `/exports/${filename}`;
 }
