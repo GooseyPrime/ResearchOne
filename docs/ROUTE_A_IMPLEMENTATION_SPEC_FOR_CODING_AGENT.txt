@@ -1,0 +1,767 @@
+RESEARCHONE ROUTE A IMPLEMENTATION SPEC FOR CODING AGENT
+
+Purpose
+Create the next working version of ResearchOne so it actually fulfills the Route A handoff and current deployment intent:
+- frontend/UI stays on Vercel
+- backend/orchestrator stays on Emma runtime VM
+- Postgres stays on Emma postgres VM
+- Redis stays on Emma redis VM
+- OpenRouter remains the server-side model layer
+- system must support disciplined autonomous research discovery, ingestion, retrieval, contradiction preservation, and report generation
+- system must not become a generic hallucination chatbot
+
+This document is implementation-first. Do not redesign the whole product. Patch the current repo into the correct shape.
+
+Repository baseline
+Current repo already has:
+- Express backend
+- BullMQ queues/workers
+- Postgres schema with corpus/report tables
+- OpenRouter role orchestration
+- hybrid retrieval (vector + FTS)
+- Atlas export pipeline
+- Vite frontend
+
+Confirmed current gaps to fix
+1. Split deployment gap
+   - frontend assumes same-origin /api and same-origin socket.io
+   - that works only when frontend is served from runtime VM
+   - it does not cleanly support Vercel frontend + Emma backend
+
+2. PDF ingestion gap
+   - file upload route accepts PDFs
+   - ingestion service only handles web_url and raw text
+   - PDF uploads do not actually become text/chunks/embeddings
+
+3. Markdown and richer text ingestion gap
+   - no first-class handling for markdown/plain structured text imports beyond raw text field
+
+4. Research discovery gap
+   - research pipeline retrieves only from existing corpus
+   - it does not perform self-led external discovery when corpus is sparse or insufficient
+   - user explicitly wants normal research behavior, not only PDF/MD uploads
+
+5. Epistemic persistence gap
+   - claims, contradictions, and report citations exist in schema
+   - current pipeline does not materially persist extracted claims, explicit contradictions, or section-level citations after report generation
+
+6. Atlas export path mismatch
+   - app writes exports to process cwd exports directory
+   - runtime nginx script points /exports at /opt/researchone/backend/exports/
+   - these paths must be unified
+
+7. Redis auth readiness gap
+   - setup script can enable requirepass
+   - backend Redis client does not support password env/config
+
+8. Fallback coverage gap
+   - only some OpenRouter roles have fallbacks
+   - retriever, skeptic, verifier do not
+
+Non-negotiables
+- Keep the UI on Vercel
+- Do not move the UI to the laptop
+- Do not self-host giant frontier models on the three current Emma VMs
+- Keep OpenRouter on the server side only
+- Preserve the research philosophy:
+  - dense centers are context, not truth
+  - outliers are leads, not verdicts
+  - bridges are high-value
+  - contradictions are first-class
+  - every major claim must preserve epistemic tier distinctions
+- Do not flatten this into generic RAG boilerplate
+- Do not store OpenRouter keys or backend secrets in Vercel client env
+
+Target deployment topology
+1. Vercel project
+   - serves only the frontend build
+   - frontend uses configurable backend URLs
+   - no model calls from browser
+
+2. Emma runtime VM
+   - Express API
+   - Socket.IO
+   - BullMQ workers
+   - search/discovery orchestration
+   - ingestion/fetch/chunk/embed/report pipeline
+   - exports directory served via backend and/or nginx
+
+3. Emma Postgres VM
+   - corpus store
+   - pgvector
+   - claims/contradictions/reports/report citations
+
+4. Emma Redis VM
+   - queues/job state/cache
+
+Implementation goals
+A. Make split deployment real
+B. Make ingestion actually support PDF, markdown, txt, html, URL discovery
+C. Add autonomous external research discovery controlled by the planner/reasoner loop
+D. Persist claims, contradictions, citations, and discovery provenance
+E. Keep Atlas useful for investigation, not just pretty export files
+F. Update README/env/deployment docs to match the real deployment path
+
+SECTION 1 - SPLIT DEPLOYMENT CHANGES (VERCEL UI + EMMA BACKEND)
+
+Objective
+Allow the Vercel-hosted frontend to talk to the Emma backend without assuming same-origin hosting.
+
+Required frontend changes
+1. Modify frontend/src/utils/api.ts
+   - replace hardcoded baseURL '/api' with:
+     - import.meta.env.VITE_API_BASE_URL if defined
+     - otherwise default to '/api'
+   - ensure production builds can point directly at Emma backend domain
+
+2. Modify frontend/src/utils/socket.ts
+   - replace io('/') with:
+     - import.meta.env.VITE_SOCKET_URL if defined
+     - otherwise default to current origin
+   - include websocket transport support for cross-origin backend
+   - make sure credentials are not assumed unless needed
+
+3. Optional but recommended: add frontend/.env.example
+   Include:
+   - VITE_API_BASE_URL=
+   - VITE_SOCKET_URL=
+   - VITE_EXPORTS_BASE_URL=
+
+4. Optional but recommended: support export download URLs via VITE_EXPORTS_BASE_URL if frontend currently assumes same-origin export path
+
+Required backend changes
+5. Ensure CORS supports explicit comma-separated frontend origins
+   - keep current CORS_ORIGINS parsing
+   - verify Socket.IO origin config also uses these origins
+   - no wildcard secrets policy
+
+6. Ensure health endpoints remain simple and public for ops validation
+
+Optional Vercel convenience
+7. Add vercel.json at repo root or frontend root only if needed for rewrites
+   - If using direct API base URL envs, rewrites are optional
+   - Do not require rewrites if env-based direct backend URLs are enough
+
+Required frontend envs for Vercel
+- VITE_API_BASE_URL=https://<emma-backend-domain>
+- VITE_SOCKET_URL=https://<emma-backend-domain>
+- VITE_EXPORTS_BASE_URL=https://<emma-backend-domain>
+
+Do not place these secrets in Vercel
+- OPENROUTER_API_KEY
+- JWT_SECRET
+- DATABASE_URL
+- DB_PASSWORD
+- REDIS_PASSWORD
+
+Acceptance criteria
+- frontend builds on Vercel without backend secrets
+- frontend can list corpus stats from Emma backend
+- websocket job progress updates work from Vercel UI to Emma backend
+- report downloads/export downloads resolve correctly from Vercel UI
+
+SECTION 2 - INGESTION FIXES AND EXPANSION
+
+Objective
+Ingestion must support the real research workflow:
+- manual URL ingestion
+- raw text ingestion
+- txt upload
+- markdown upload/paste
+- PDF upload
+- discovered external sources gathered during autonomous research
+
+Required code changes
+1. Update backend/src/services/ingestion/ingestionService.ts
+   - extend runIngestionJob to support:
+     - pdf
+     - markdown
+     - html/text fetched from discovered URLs
+   - add branch handling for sourceType values beyond current web_url/text
+   - do not silently accept unsupported file types
+
+2. Update backend/src/api/routes/ingestion.ts
+   - allow markdown file uploads (.md, text/markdown)
+   - store enough metadata to preserve original filename, mime type, and import mode
+   - if PDF file is uploaded, pass binary buffer or stored temp file path in a way the ingestion service actually reads
+
+3. Add PDF text extraction service
+   Suggested path:
+   - backend/src/services/ingestion/pdfExtractor.ts
+   Responsibilities:
+   - accept a Buffer
+   - extract text with current pdf parsing library already in package.json
+   - normalize whitespace
+   - return extracted text + extraction metadata
+
+4. Add markdown normalization service
+   Suggested path:
+   - backend/src/services/ingestion/markdownNormalizer.ts
+   Responsibilities:
+   - strip or transform markdown syntax into clean text for chunking
+   - preserve headings/structure in metadata where possible
+
+5. Improve HTML/url fetch extraction
+   Current fetchUrl is primitive regex stripping.
+   Replace with a more disciplined extractor:
+   - remove scripts/styles/nav/boilerplate where feasible
+   - preserve title
+   - preserve canonical URL if found
+   - preserve meta description if present
+   - store fetch metadata and retrieval timestamp
+   Keep implementation lightweight; do not overbuild a headless browser unless absolutely necessary.
+
+6. Persist ingestion provenance
+   Add metadata fields that preserve:
+   - discovered_by_run_id
+   - discovery_query
+   - source_rank
+   - fetch_method
+   - original_mime_type
+   - original_filename
+   - imported_via (manual_upload | manual_url | autonomous_discovery | corpus_sync)
+
+Acceptance criteria
+- txt upload creates source/document/chunks/embedding job
+- md upload creates source/document/chunks/embedding job
+- PDF upload creates source/document/chunks/embedding job using extracted text
+- URL ingestion stores cleaned content and source metadata
+- all ingestion paths preserve provenance metadata
+
+SECTION 3 - AUTONOMOUS EXTERNAL RESEARCH DISCOVERY
+
+Objective
+When the user starts a research run, the system should not only search the existing corpus. It should be able to decide that more evidence is needed, perform external discovery, ingest high-value sources, and then continue disciplined retrieval/reasoning.
+
+Important design rule
+This is not open-ended autonomous browsing chaos.
+The model may propose discovery targets, but the backend executes bounded, auditable search/discovery actions.
+
+Required pipeline change
+Insert a discovery stage between planning and internal retrieval.
+New research flow:
+1. planner creates plan
+2. discovery planner decides whether external discovery is needed
+3. external discovery adapters fetch candidate sources/snippets/metadata
+4. source selector ranks which candidates to ingest
+5. ingestion jobs bring selected sources into corpus
+6. embeddings complete for new chunks
+7. retrieval runs across enriched corpus
+8. retriever/reasoner/skeptic/synthesizer/verifier continue
+9. claims/contradictions/citations are persisted
+10. report saved
+
+Required new services
+1. backend/src/services/discovery/discoveryOrchestrator.ts
+   Responsibilities:
+   - accept runId, plan, query, optional tags
+   - ask model whether discovery is needed
+   - execute bounded search adapters
+   - merge/dedupe candidate sources
+   - score/rank candidates
+   - enqueue ingestion for selected sources
+   - wait for ingestion/embedding completion before continuing (bounded timeout)
+
+2. backend/src/services/discovery/providerTypes.ts
+   Define normalized types:
+   - SearchQuery
+   - SearchResultCandidate
+   - DiscoverySource
+   - DiscoveryRunSummary
+
+3. backend/src/services/discovery/providers/
+   Add provider abstraction.
+   Initial implementation must support at least:
+   - generic web search provider interface
+   - URL fetch provider (already partly present through URL ingestion)
+   Optional adapters can be added later for scholarly or structured corpora.
+
+Important implementation note
+Do not hardwire business logic to any single provider. Use a provider interface and env-configured provider selection.
+
+Discovery behavior requirements
+- bounded result count
+- dedupe by normalized URL/content hash
+- log which search queries were executed
+- log why a candidate was ingested or skipped
+- never treat search ranking as truth ranking
+- preserve candidate metadata even when skipped if useful for audit
+
+New role/prompt behavior
+Add a discovery-planning sub-step in the planner or create a dedicated discovery role.
+The discovery planner should output structured JSON like:
+- need_external_discovery: boolean
+- rationale
+- discovery_queries[]
+- target_source_types[]
+- preferred evidence tiers
+- max_sources_to_ingest
+- exclusion patterns
+- what would count as disconfirming evidence
+
+Search provider env strategy
+Add backend env variables such as:
+- SEARCH_PROVIDER=generic
+- SEARCH_PROVIDER_API_KEY=
+- SEARCH_PROVIDER_BASE_URL=
+- MAX_EXTERNAL_DISCOVERY_RESULTS=25
+- MAX_EXTERNAL_INGEST_PER_RUN=10
+- DISCOVERY_ENABLED=true
+
+Do not block implementation on one specific commercial provider.
+Build the abstraction so one adapter can be used now and others later.
+
+Acceptance criteria
+- a research run with sparse corpus can trigger external discovery
+- discovered URLs are auditable per run
+- selected discovery results are ingested automatically
+- retrieval after discovery uses newly ingested material
+- report metadata shows discovery happened and which sources were pulled in
+
+SECTION 4 - SCHEMA CHANGES FOR DISCOVERY, CLAIMS, CONTRADICTIONS, CITATIONS
+
+Objective
+Make the schema match the intended epistemic behavior, not just the current partial pipeline.
+
+Required migration changes
+Add a new migration file rather than rewriting the initial schema.
+Suggested file:
+- backend/src/db/migrations/002_research_governance_and_discovery.sql
+
+Add/adjust tables/columns as follows.
+
+1. research_runs
+Add columns:
+- discovery_summary JSONB DEFAULT '{}'
+- report_id UUID NULL
+- corpus_before JSONB DEFAULT '{}'
+- corpus_after JSONB DEFAULT '{}'
+
+2. sources
+Add columns:
+- discovered_by_run_id UUID NULL REFERENCES research_runs(id) ON DELETE SET NULL
+- discovery_query TEXT NULL
+- source_rank INTEGER NULL
+- imported_via TEXT NULL
+- original_mime_type TEXT NULL
+- original_filename TEXT NULL
+- fetch_method TEXT NULL
+- canonical_url TEXT NULL
+- retrieval_timestamp TIMESTAMPTZ NULL
+
+3. documents
+Add columns if useful:
+- parse_method TEXT NULL
+- extraction_metadata JSONB DEFAULT '{}'
+
+4. claims
+Add columns:
+- run_id UUID NULL REFERENCES research_runs(id) ON DELETE SET NULL
+- report_id UUID NULL REFERENCES reports(id) ON DELETE SET NULL
+- stance_summary TEXT NULL
+- supporting_chunk_ids UUID[] NULL
+- contradicting_chunk_ids UUID[] NULL
+
+5. contradictions
+Add columns:
+- run_id UUID NULL REFERENCES research_runs(id) ON DELETE SET NULL
+- report_id UUID NULL REFERENCES reports(id) ON DELETE SET NULL
+- contradiction_type TEXT NULL
+- severity_score FLOAT NULL
+
+6. report_sections
+Add columns if needed:
+- verifier_notes JSONB DEFAULT '{}'
+
+7. report_citations
+Ensure this table is actually usable in flow.
+Add columns if needed:
+- chunk_quote TEXT NULL
+- citation_order INTEGER NULL
+- discovery_origin JSONB DEFAULT '{}'
+
+8. Add new discovery audit table
+Suggested table:
+- discovery_events
+Columns:
+  - id UUID PK
+  - run_id UUID FK
+  - phase TEXT
+  - provider TEXT
+  - query_text TEXT
+  - result_count INTEGER
+  - selected_count INTEGER
+  - payload JSONB
+  - created_at TIMESTAMPTZ
+
+9. Optional ingestion audit table
+If useful, add:
+- ingestion_artifacts
+to preserve original file hashes, extraction method, parse warnings
+
+Acceptance criteria
+- migrations apply cleanly to existing db
+- discovery provenance is queryable
+- claims/contradictions/citations can be attached to runs and reports
+
+SECTION 5 - PERSIST CLAIMS, CONTRADICTIONS, AND REPORT CITATIONS
+
+Objective
+The report pipeline must leave behind machine-queryable epistemic artifacts, not just prose.
+
+Required orchestration changes
+Modify backend/src/services/reasoning/researchOrchestrator.ts
+
+After synthesizer/verifier but before final report completion:
+1. run claim extraction step
+2. run contradiction extraction step
+3. run citation mapping step
+4. persist all outputs inside same report save phase or coordinated transaction boundaries
+
+Add new services
+1. backend/src/services/reasoning/claimExtractor.ts
+   Input:
+   - query
+   - retrieved chunks
+   - reasoner output
+   - synthesizer output
+   Output:
+   - normalized claim records
+   Each claim record should contain:
+   - claim_text
+   - evidence_tier
+   - confidence
+   - supporting_chunk_ids
+   - source_ids
+   - tags
+   - whether the claim is conclusion-critical
+
+2. backend/src/services/reasoning/contradictionExtractor.ts
+   Input:
+   - retrieved chunks
+   - claim set
+   - skeptic output
+   Output:
+   - contradiction pairs with descriptions and severity
+
+3. backend/src/services/reasoning/citationMapper.ts
+   Input:
+   - parsed report sections
+   - retrieved chunks
+   - extracted claims
+   Output:
+   - section-level citations linked to chunks/sources/claims
+
+Implementation rules
+- do not hallucinate citations
+- if no direct citation mapping confidence is high enough, leave section partially uncited and note it in verifier metadata
+- preserve uncertainty explicitly
+
+Acceptance criteria
+- new finalized report creates rows in claims, contradictions, and report_citations
+- corpus views for contradictions and claims are meaningfully populated
+- reports can be inspected later without reparsing prose
+
+SECTION 6 - IMPROVE OPENROUTER ROLE CONTROL AND FALLBACKS
+
+Objective
+Make role behavior more reliable and less brittle.
+
+Required changes
+1. Extend fallback coverage in backend/src/services/openrouter/openrouterService.ts
+   Add fallbacks for:
+   - retriever
+   - skeptic
+   - verifier
+
+2. Externalize role config more cleanly
+   Add env vars for all role fallbacks, not only some of them
+   Suggested:
+   - RETRIEVER_FALLBACK=
+   - SKEPTIC_FALLBACK=
+   - VERIFIER_FALLBACK=
+
+3. Add timeout/error classification to model log
+   Store for each model call:
+   - role
+   - primary model
+   - actual model used
+   - used_fallback boolean
+   - prompt tokens
+   - completion tokens
+   - duration ms
+   - error classification if retry happened
+
+4. Strengthen synthesizer guardrails
+   Modify synthesis prompt builder to explicitly include:
+   - maximum evidentiary bounds
+   - requirement to mark unsupported conjecture
+   - requirement to acknowledge when corpus is still incomplete even after discovery
+
+5. Verifier must check citations too
+   Expand verifier criteria to include:
+   - claims have evidence tiers
+   - contradiction analysis exists
+   - report sections are not materially uncited if they assert nontrivial conclusions
+
+Acceptance criteria
+- each role can fall back if primary fails
+- model log becomes operationally useful for debugging
+- verifier can reject weak reports more consistently
+
+SECTION 7 - ATLAS INTEGRATION FIXES
+
+Objective
+Keep Atlas export aligned with the investigative workflow.
+
+Required changes
+1. Unify export path behavior
+   Pick one canonical exports path. Recommended:
+   - /opt/researchone/exports on runtime VM
+
+2. Update backend and deployment scripts to use same path
+   Files likely affected:
+   - backend/src/services/embedding/atlasExport.ts
+   - backend/src/api/app.ts
+   - scripts/setup-runtime.sh
+   - any nginx config template or instructions
+
+3. Improve atlas point metadata
+   Add to exported point payload if available:
+   - source_type
+   - imported_via
+   - discovered_by_run_id
+   - discovery_query
+   - evidence_tier
+   - source_rank
+   - tags
+
+4. Optional but recommended
+   Create a small backend helper that can label likely outliers/bridges using distance/ranking metadata for later UI display.
+   Do not call anything truth. Use terms like:
+   - dense_cluster_candidate
+   - outlier_candidate
+   - bridge_candidate
+
+Acceptance criteria
+- atlas export file downloads correctly from deployed system
+- exported points include rich provenance metadata
+- Atlas remains an investigation map, not a truth oracle
+
+SECTION 8 - REDIS AUTH READINESS
+
+Objective
+Allow Redis security hardening later without breaking the app.
+
+Required changes
+1. Update backend/src/config/index.ts to support:
+   - REDIS_PASSWORD
+   - REDIS_USERNAME optional if needed later
+
+2. Update backend/src/queue/redis.ts to use password when provided
+
+3. Update README and env example to document this
+
+Acceptance criteria
+- app still works without Redis password
+- app also works when Redis password is enabled
+
+SECTION 9 - README / ENV / DEPLOYMENT DOCUMENTATION
+
+Objective
+The repo docs must match the real system, not the earlier same-origin assumption.
+
+Update README.md
+Document two supported deployment modes:
+Mode A: all-in-one on runtime VM (legacy fallback)
+Mode B: recommended split mode
+- Vercel frontend
+- Emma backend runtime
+- Emma postgres
+- Emma redis
+
+README must include exact required env groups.
+
+Backend required envs
+- NODE_ENV
+- PORT
+- DATABASE_URL or DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD
+- REDIS_URL or REDIS_HOST/REDIS_PORT/REDIS_PASSWORD
+- OPENROUTER_API_KEY
+- OPENROUTER_BASE_URL
+- JWT_SECRET
+- CORS_ORIGINS
+- PLANNER_MODEL
+- RETRIEVER_MODEL
+- REASONER_MODEL
+- SKEPTIC_MODEL
+- SYNTHESIZER_MODEL
+- VERIFIER_MODEL
+- EMBEDDING_MODEL
+- PLANNER_FALLBACK
+- RETRIEVER_FALLBACK
+- REASONER_FALLBACK
+- SKEPTIC_FALLBACK
+- SYNTHESIZER_FALLBACK
+- VERIFIER_FALLBACK
+- EMBEDDING_DIMENSIONS
+- EMBEDDING_BATCH_SIZE
+- MAX_CHUNK_SIZE
+- CHUNK_OVERLAP
+- MAX_FILE_SIZE_MB
+- DISCOVERY_ENABLED
+- SEARCH_PROVIDER
+- SEARCH_PROVIDER_API_KEY
+- SEARCH_PROVIDER_BASE_URL
+- MAX_EXTERNAL_DISCOVERY_RESULTS
+- MAX_EXTERNAL_INGEST_PER_RUN
+
+Frontend envs for Vercel
+- VITE_API_BASE_URL
+- VITE_SOCKET_URL
+- VITE_EXPORTS_BASE_URL
+
+Deployment doc updates
+- scripts/setup-runtime.sh must reflect backend/api role even when frontend is on Vercel
+- fix export alias path
+- do not imply frontend must be copied to runtime VM for recommended mode
+
+SECTION 10 - IMPLEMENTATION ORDER
+
+Do the work in this order.
+
+PHASE 1 - Correctness and deployment reality
+1. Implement frontend env-based API/socket URLs
+2. Fix atlas export path mismatch
+3. Add Redis password support
+4. Update README and env examples
+
+PHASE 2 - Ingestion correctness
+5. Implement PDF extraction and PDF ingestion flow
+6. Implement markdown ingestion flow
+7. Improve URL/html extraction and provenance metadata
+
+PHASE 3 - Autonomous discovery
+8. Add discovery provider abstraction
+9. Add discovery orchestration stage into research run
+10. Add discovery audit persistence
+11. Allow bounded auto-ingest during research
+
+PHASE 4 - Epistemic persistence
+12. Add migration for discovery/governance fields
+13. Persist extracted claims
+14. Persist contradictions
+15. Persist report citations
+16. Expand verifier to check citations and epistemic completeness
+
+PHASE 5 - Hardening and validation
+17. Add tests for split deployment assumptions
+18. Add tests for PDF upload and markdown upload
+19. Add integration test for sparse-corpus research run triggering discovery
+20. Add integration test for finalized report producing claims/contradictions/citations
+
+SECTION 11 - REQUIRED TESTS
+
+Add or expand automated tests for at least the following.
+
+1. Frontend config tests
+- VITE_API_BASE_URL overrides default /api
+- VITE_SOCKET_URL overrides default socket origin
+
+2. Ingestion tests
+- text ingestion succeeds
+- markdown ingestion succeeds
+- PDF ingestion succeeds using fixture PDF
+- URL ingestion stores provenance metadata
+
+3. Discovery tests
+- planner can request external discovery
+- discovery layer dedupes candidate URLs
+- discovery honors max_sources_to_ingest
+
+4. Research pipeline tests
+- sparse corpus run triggers discovery before retrieval
+- report save persists sections, claims, contradictions, citations
+- verifier failure path is handled cleanly
+
+5. Deployment validation tests or scripts
+- backend health endpoint works
+- exports path is correct
+- Redis auth optional path works
+
+SECTION 12 - FILES MOST LIKELY TO CHANGE
+
+Frontend
+- frontend/src/utils/api.ts
+- frontend/src/utils/socket.ts
+- frontend/.env.example (new)
+- vercel.json (optional)
+
+Backend config/runtime
+- backend/.env.example
+- backend/src/config/index.ts
+- backend/src/index.ts
+- backend/src/api/app.ts
+- scripts/setup-runtime.sh
+- ecosystem.config.js
+
+Ingestion
+- backend/src/api/routes/ingestion.ts
+- backend/src/services/ingestion/ingestionService.ts
+- backend/src/services/ingestion/pdfExtractor.ts (new)
+- backend/src/services/ingestion/markdownNormalizer.ts (new)
+- backend/src/services/ingestion/urlExtractor.ts (new or refactor)
+
+Discovery
+- backend/src/services/discovery/discoveryOrchestrator.ts (new)
+- backend/src/services/discovery/providerTypes.ts (new)
+- backend/src/services/discovery/providers/* (new)
+- backend/src/services/reasoning/researchOrchestrator.ts
+
+Epistemic persistence
+- backend/src/services/reasoning/claimExtractor.ts (new)
+- backend/src/services/reasoning/contradictionExtractor.ts (new)
+- backend/src/services/reasoning/citationMapper.ts (new)
+- backend/src/api/routes/reports.ts
+- backend/src/api/routes/corpus.ts
+
+DB
+- backend/src/db/migrations/002_research_governance_and_discovery.sql (new)
+
+Atlas
+- backend/src/services/embedding/atlasExport.ts
+
+Redis
+- backend/src/queue/redis.ts
+
+SECTION 13 - DEFINITION OF DONE
+
+The work is complete only when all of the following are true:
+1. Frontend remains on Vercel and successfully talks to Emma backend using env-configured URLs
+2. Backend secrets remain only on Emma runtime env
+3. PDF and markdown ingestion are functional
+4. Research runs can trigger bounded external discovery when corpus is insufficient
+5. Discovered sources are ingested with provenance metadata
+6. Finalized reports persist claims, contradictions, and citations
+7. Atlas exports download correctly from deployed system
+8. Redis auth can be enabled later without code breakage
+9. README tells the truth about the deployment model and required envs
+10. Tests cover the new critical paths
+
+Output expected from coding agent
+- code changes
+- new migration(s)
+- updated env examples
+- updated README
+- any new config files needed for Vercel/runtime deployment
+- concise implementation notes summarizing what changed and any remaining optional follow-ups
+
+Final instruction to coding agent
+Do not merely patch around symptoms. Make the repo truly support the intended Route A workflow:
+- Vercel UI
+- Emma backend/control plane
+- disciplined autonomous research discovery
+- robust ingestion
+- evidence-tiered retrieval and reasoning
+- explicit contradiction preservation
+- durable report artifacts
