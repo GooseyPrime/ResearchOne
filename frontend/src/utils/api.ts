@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api',
   timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -180,3 +180,14 @@ export const getClaimTierDistribution = () =>
 
 export const getContradictions = (params?: { resolved?: boolean }) =>
   api.get<Contradiction[]>('/corpus/contradictions', { params }).then(r => r.data);
+
+/**
+ * Resolve an export file download URL, supporting cross-origin Vercel + Emma deployments.
+ * Falls back to same-origin /exports path if VITE_EXPORTS_BASE_URL is not set.
+ */
+export function resolveExportUrl(exportPath: string): string {
+  const base = import.meta.env.VITE_EXPORTS_BASE_URL || '';
+  // exportPath comes from the Linux backend (POSIX paths only) -- forward-slash split is correct
+  const filename = exportPath.split('/').pop() ?? exportPath;
+  return base ? `${base}/exports/${filename}` : `/exports/${filename}`;
+}

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
+import { config } from '../../config';
 export interface AtlasExportJobData {
   exportId: string;
   label: string;
@@ -17,8 +18,17 @@ export interface AtlasPoint {
   tags: string[];
   chunk_index: number;
   evidence_tier: string | null;
+  source_type: string | null;
+  imported_via: string | null;
+  discovered_by_run_id: string | null;
+  discovery_query: string | null;
+  source_rank: number | null;
+  cluster_hint: 'dense_cluster_candidate' | 'outlier_candidate' | 'bridge_candidate' | null;
   vector: number[];
 }
+
+/** Canonical exports directory — must match nginx /exports alias on Emma runtime VM */
+export const EXPORTS_DIR = config.exports.dir;
 
 export async function runAtlasExport(data: AtlasExportJobData): Promise<{ exportId: string; count: number; path: string }> {
   const { exportId, filterTags } = data;
@@ -35,6 +45,11 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
       s.url AS source_url,
       s.title AS source_title,
       s.tags,
+      s.source_type,
+      s.imported_via,
+      s.discovered_by_run_id,
+      s.discovery_query,
+      s.source_rank,
       e.vector::text AS vector_str,
       cl.evidence_tier
     FROM chunks c
@@ -60,6 +75,11 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     source_url: string;
     source_title: string;
     tags: string[];
+    source_type: string | null;
+    imported_via: string | null;
+    discovered_by_run_id: string | null;
+    discovery_query: string | null;
+    source_rank: number | null;
     vector_str: string;
     evidence_tier: string | null;
   }>(sql, params.length > 0 ? params : undefined);
@@ -81,17 +101,25 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
       tags: row.tags ?? [],
       chunk_index: row.chunk_index,
       evidence_tier: row.evidence_tier,
+      source_type: row.source_type,
+      imported_via: row.imported_via,
+      discovered_by_run_id: row.discovered_by_run_id,
+      discovery_query: row.discovery_query,
+      source_rank: row.source_rank,
+      cluster_hint: null, // populated below if distance metadata is available
       vector,
     };
   }).filter(p => p.vector.length > 0);
 
-  // Write JSONL file for Atlas
-  const exportDir = path.join(process.cwd(), 'exports');
-  if (!fs.existsSync(exportDir)) {
-    fs.mkdirSync(exportDir, { recursive: true });
+  // Label outlier/bridge/dense candidates using vector norm variance heuristic
+  labelClusterHints(points);
+
+  // Write JSONL file for Atlas using the canonical exports directory
+  if (!fs.existsSync(EXPORTS_DIR)) {
+    fs.mkdirSync(EXPORTS_DIR, { recursive: true });
   }
 
-  const exportPath = path.join(exportDir, `atlas_${exportId}.jsonl`);
+  const exportPath = path.join(EXPORTS_DIR, `atlas_${exportId}.jsonl`);
   const stream = fs.createWriteStream(exportPath);
 
   for (const point of points) {
@@ -105,7 +133,7 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     });
   });
 
-  // Update export record
+  // Update export record with the canonical path
   await query(
     `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
     [points.length, exportPath, exportId]
@@ -114,4 +142,51 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   logger.info(`Atlas export complete: ${points.length} points -> ${exportPath}`);
 
   return { exportId, count: points.length, path: exportPath };
+}
+
+/**
+ * Heuristic cluster hint labeling.
+ * Uses cosine similarity mean deviation to flag outliers and bridges.
+ * Does not imply truth — these are investigation signals only.
+ */
+function labelClusterHints(points: AtlasPoint[]): void {
+  if (points.length < 10) return;
+
+  // Compute mean vector
+  const dim = points[0].vector.length;
+  const mean = new Array<number>(dim).fill(0);
+  for (const p of points) {
+    for (let i = 0; i < dim; i++) mean[i] += p.vector[i] / points.length;
+  }
+
+  // Compute each point's distance from mean
+  const dists = points.map(p => {
+    let dot = 0, normP = 0, normM = 0;
+    for (let i = 0; i < dim; i++) {
+      dot += p.vector[i] * mean[i];
+      normP += p.vector[i] ** 2;
+      normM += mean[i] ** 2;
+    }
+    const cosSim = dot / (Math.sqrt(normP) * Math.sqrt(normM) + 1e-10);
+    return 1 - cosSim; // cosine distance
+  });
+
+  const sorted = [...dists].sort((a, b) => a - b);
+  const p25 = sorted[Math.floor(sorted.length * 0.25)];
+  const p75 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = p75 - p25;
+  // 1.5 x IQR is the standard Tukey's fences threshold for mild outliers
+  const iqrOutlierMultiplier = 1.5;
+  const outlierThreshold = p75 + iqrOutlierMultiplier * iqr;
+  const bridgeThreshold = p75;
+
+  for (let i = 0; i < points.length; i++) {
+    if (dists[i] > outlierThreshold) {
+      points[i].cluster_hint = 'outlier_candidate';
+    } else if (dists[i] > bridgeThreshold) {
+      points[i].cluster_hint = 'bridge_candidate';
+    } else {
+      points[i].cluster_hint = 'dense_cluster_candidate';
+    }
+  }
 }

@@ -24,6 +24,9 @@ export interface ModelCallResult {
   promptTokens: number;
   completionTokens: number;
   durationMs: number;
+  usedFallback: boolean;
+  primaryModel: string;
+  errorClassification?: string;
 }
 
 const MODEL_MAP: Record<ModelRole, string> = {
@@ -35,10 +38,13 @@ const MODEL_MAP: Record<ModelRole, string> = {
   verifier: config.models.verifier,
 };
 
-const FALLBACK_MAP: Partial<Record<ModelRole, string>> = {
+const FALLBACK_MAP: Record<ModelRole, string | undefined> = {
   planner: config.models.fallbacks.planner,
+  retriever: config.models.fallbacks.retriever,
   reasoner: config.models.fallbacks.reasoner,
+  skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
+  verifier: config.models.fallbacks.verifier,
 };
 
 const TEMPERATURE_MAP: Record<ModelRole, number> = {
@@ -94,6 +100,8 @@ async function callModel(
     promptTokens: response.data.usage?.prompt_tokens ?? 0,
     completionTokens: response.data.usage?.completion_tokens ?? 0,
     durationMs: Date.now() - start,
+    usedFallback: false,
+    primaryModel: model,
   };
 }
 
@@ -108,22 +116,42 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   try {
     const result = await callModel(primaryModel, options);
     logger.debug(`OpenRouter [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-    return result;
+    return { ...result, usedFallback: false, primaryModel };
   } catch (err) {
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;
+    const errorClassification = classifyModelError(axiosErr);
 
-    logger.warn(`OpenRouter primary model failed for [${options.role}]: ${primaryModel} - status ${status}`);
+    logger.warn(`OpenRouter primary model failed for [${options.role}]: ${primaryModel} - status ${status} (${errorClassification})`);
 
     if (fallbackModel) {
       logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
-      const result = await callModel(fallbackModel, options);
-      logger.debug(`OpenRouter fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-      return result;
+      try {
+        const result = await callModel(fallbackModel, options);
+        logger.debug(`OpenRouter fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
+        return { ...result, usedFallback: true, primaryModel, errorClassification };
+      } catch (fallbackErr) {
+        const fallbackAxiosErr = fallbackErr as AxiosError;
+        const fallbackClassification = classifyModelError(fallbackAxiosErr);
+        logger.error(`OpenRouter fallback also failed for [${options.role}]: ${fallbackModel} (${fallbackClassification})`);
+        throw fallbackErr;
+      }
     }
 
     throw err;
   }
+}
+
+function classifyModelError(err: AxiosError): string {
+  const status = err.response?.status;
+  if (!status) return 'network_error';
+  if (status === 429) return 'rate_limited';
+  if (status === 402) return 'quota_exceeded';
+  if (status === 503 || status === 502) return 'provider_unavailable';
+  if (status >= 500) return 'server_error';
+  if (status === 401 || status === 403) return 'auth_error';
+  if (status === 400) return 'bad_request';
+  return `http_${status}`;
 }
 
 /**
@@ -205,12 +233,15 @@ Your role is to write professional, structured research reports.
 
 CRITICAL RULES:
 - Never exceed the evidence. Mark inferences as inferences.
+- You are bounded by the evidence provided. Do not introduce facts, figures, or citations not present in the evidence base.
+- If the corpus is incomplete even after discovery, say so explicitly in the report — do not paper over evidential gaps with confident prose.
 - Include an Evidence Ledger section tagging all major claims with evidence tiers
 - Include a Contradiction Analysis section — do not suppress contradictions
 - Include a Challenges section that presents the skeptic's attacks
 - Include an Unresolved Questions section
 - Include a Falsification Criteria section: what would prove this wrong?
 - Include Recommended Next Queries
+- Mark any conjecture that is unsupported by evidence as UNSUPPORTED CONJECTURE
 - Use academic prose. Do not sensationalize.
 
 You are writing for researchers who can distinguish evidence quality.`,
@@ -224,7 +255,11 @@ CRITICAL RULES:
 - Check that the report includes falsification criteria
 - Check that inferences are not presented as facts
 - Check that the challenge section is substantive
+- Check that citations exist: report sections asserting nontrivial conclusions must reference evidence
+- Check that the contradiction analysis is non-trivial (not just "no contradictions found")
 - Flag any places where the report overstates the evidence
+- Flag any section that makes nontrivial claims without any evidential basis
+- Flag if the corpus was incomplete but the report fails to acknowledge this
 
 Output a structured verification report with PASS/FAIL for each criterion.`,
 };

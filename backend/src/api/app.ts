@@ -39,8 +39,8 @@ app.use('/api/corpus', corpusRoutes);
 app.use('/api/atlas', atlasRoutes);
 app.use('/api/sources', sourcesRoutes);
 
-// Serve exported Atlas files
-app.use('/exports', express.static('exports'));
+// Serve exported Atlas files from canonical exports directory
+app.use('/exports', express.static(config.exports.dir));
 
 // 404 handler
 app.use((_req, res) => {

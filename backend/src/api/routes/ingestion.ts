@@ -9,6 +9,24 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'text/plain',
+      'text/markdown',
+      'text/x-markdown',
+      'application/octet-stream', // fallback for .md files uploaded without MIME detection
+    ];
+    const isAllowed = allowed.includes(file.mimetype)
+      || file.originalname.endsWith('.md')
+      || file.originalname.endsWith('.txt')
+      || file.originalname.endsWith('.pdf');
+    if (isAllowed) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype} (${file.originalname})`));
+    }
+  },
 });
 
 // POST /api/ingestion/url - Ingest a URL
@@ -38,6 +56,7 @@ router.post('/url', async (req, res, next) => {
       sourceType: 'web_url',
       tags: tags ?? [],
       metadata: metadata ?? {},
+      importedVia: 'manual_url',
     });
 
     res.status(202).json({ jobId: id, status: 'queued' });
@@ -75,6 +94,7 @@ router.post('/text', async (req, res, next) => {
       sourceType: 'text',
       tags: tags ?? [],
       metadata: metadata ?? {},
+      importedVia: 'manual_upload',
     });
 
     res.status(202).json({ jobId: id, status: 'queued' });
@@ -83,7 +103,7 @@ router.post('/text', async (req, res, next) => {
   }
 });
 
-// POST /api/ingestion/file - Ingest a file (PDF, text)
+// POST /api/ingestion/file - Ingest a file (PDF, markdown, txt)
 router.post('/file', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
@@ -96,9 +116,27 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
     const parsedMetadata = metadata ? (JSON.parse(metadata) as Record<string, unknown>) : {};
 
     const id = uuidv4();
-    const isTxt = req.file.mimetype === 'text/plain';
-    const sourceType = isTxt ? 'text' : 'pdf';
-    const text = isTxt ? req.file.buffer.toString('utf8') : req.file.buffer.toString('base64');
+    const mime = req.file.mimetype;
+    const filename = req.file.originalname.toLowerCase();
+
+    let sourceType: 'text' | 'pdf' | 'markdown';
+    let fileData: { text?: string; fileBuffer?: string };
+
+    if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
+      sourceType = 'pdf';
+      fileData = { fileBuffer: req.file.buffer.toString('base64') };
+    } else if (
+      mime === 'text/markdown' ||
+      mime === 'text/x-markdown' ||
+      filename.endsWith('.md')
+    ) {
+      sourceType = 'markdown';
+      fileData = { text: req.file.buffer.toString('utf8') };
+    } else {
+      // plain text
+      sourceType = 'text';
+      fileData = { text: req.file.buffer.toString('utf8') };
+    }
 
     await query(
       `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
@@ -108,12 +146,13 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
 
     await ingestionQueue.add('ingest-file', {
       ingestionJobId: id,
-      text: isTxt ? text : undefined,
-      fileBuffer: isTxt ? undefined : text,
+      ...fileData,
       fileName: req.file.originalname,
       sourceType,
+      originalMimeType: req.file.mimetype,
       tags: parsedTags,
       metadata: parsedMetadata,
+      importedVia: 'manual_upload',
     });
 
     res.status(202).json({ jobId: id, status: 'queued' });
