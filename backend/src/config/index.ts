@@ -16,6 +16,8 @@ export const config = {
     host: process.env.REDIS_HOST || '10.0.101.3',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     url: process.env.REDIS_URL,
+    password: process.env.REDIS_PASSWORD || undefined,
+    username: process.env.REDIS_USERNAME || undefined,
   },
 
   openrouter: {
@@ -34,8 +36,11 @@ export const config = {
 
     fallbacks: {
       planner: process.env.PLANNER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      retriever: process.env.RETRIEVER_FALLBACK || 'anthropic/claude-3.5-sonnet',
       reasoner: process.env.REASONER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-3.5-sonnet',
       synthesizer: process.env.SYNTHESIZER_FALLBACK || 'qwen/qwen-2.5-72b-instruct',
+      verifier: process.env.VERIFIER_FALLBACK || 'anthropic/claude-3.5-sonnet',
     },
   },
 
@@ -48,6 +53,19 @@ export const config = {
     maxChunkSize: parseInt(process.env.MAX_CHUNK_SIZE || '1000', 10),
     chunkOverlap: parseInt(process.env.CHUNK_OVERLAP || '200', 10),
     maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
+  },
+
+  discovery: {
+    enabled: process.env.DISCOVERY_ENABLED !== 'false',
+    provider: process.env.SEARCH_PROVIDER || 'generic',
+    providerApiKey: process.env.SEARCH_PROVIDER_API_KEY || '',
+    providerBaseUrl: process.env.SEARCH_PROVIDER_BASE_URL || '',
+    maxResults: parseInt(process.env.MAX_EXTERNAL_DISCOVERY_RESULTS || '25', 10),
+    maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
+  },
+
+  exports: {
+    dir: process.env.EXPORTS_DIR || '/opt/researchone/exports',
   },
 
   jwtSecret: (() => {

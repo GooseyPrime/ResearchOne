@@ -1,6 +1,10 @@
 import { query, queryOne, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS, ModelCallResult } from '../openrouter/openrouterService';
 import { retrieveChunks, RetrievedChunk } from '../retrieval/retrievalService';
+import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
+import { extractAndPersistClaims } from './claimExtractor';
+import { extractAndPersistContradictions } from './contradictionExtractor';
+import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 
 export interface ResearchJobData {
@@ -89,7 +93,26 @@ export async function runResearchJob(
     );
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 2: RETRIEVAL — gather evidence
+    // STAGE 2: DISCOVERY — autonomous external research if needed
+    // ────────────────────────────────────────────────────────────────
+    progress('discovery', 15, 'Running autonomous external discovery...');
+
+    const discoverySummary = await runDiscoveryOrchestrator({
+      runId,
+      researchQuery,
+      plan: plan as unknown as Record<string, unknown>,
+      filterTags,
+    });
+
+    await query(
+      `UPDATE research_runs SET discovery_summary=$1 WHERE id=$2`,
+      [JSON.stringify(discoverySummary), runId]
+    );
+
+    logger.info(`[${runId}] Discovery: ingested=${discoverySummary.sourcesIngested}, skipped=${discoverySummary.sourcesSkipped}`);
+
+    // ────────────────────────────────────────────────────────────────
+    // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
     progress('retrieval', 20, 'Retrieving evidence from corpus...');
 
@@ -120,7 +143,7 @@ export async function runResearchJob(
     );
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 3: RETRIEVER ANALYSIS — evaluate evidence quality
+    // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
     progress('retriever_analysis', 35, 'Analyzing retrieved evidence...');
 
@@ -139,7 +162,7 @@ export async function runResearchJob(
     modelLog.push(retrieverResult);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 4: REASONER — build structured arguments
+    // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
     progress('reasoning', 50, 'Reasoning over evidence...');
 
@@ -156,7 +179,7 @@ export async function runResearchJob(
     modelLog.push(reasonerResult);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 5: SKEPTIC — challenge conclusions
+    // STAGE 6: SKEPTIC — challenge conclusions
     // ────────────────────────────────────────────────────────────────
     progress('challenge', 65, 'Challenging conclusions with skeptic...');
 
@@ -173,7 +196,7 @@ export async function runResearchJob(
     modelLog.push(skepticResult);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 6: SYNTHESIZER — write the full report
+    // STAGE 7: SYNTHESIZER — write the full report
     // ────────────────────────────────────────────────────────────────
     progress('synthesis', 80, 'Synthesizing long-form research report...');
 
@@ -197,7 +220,7 @@ export async function runResearchJob(
     modelLog.push(synthesizerResult);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 7: VERIFIER — epistemic quality gate
+    // STAGE 8: VERIFIER — epistemic quality gate
     // ────────────────────────────────────────────────────────────────
     progress('verification', 92, 'Verifying epistemic standards...');
 
@@ -224,10 +247,11 @@ export async function runResearchJob(
     }
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 8: SAVE REPORT
+    // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
-    progress('saving', 96, 'Saving report to corpus...');
+    progress('saving', 94, 'Saving report to corpus...');
 
+    const reportSections = parseReportSections(synthesizerResult.content);
     const reportId = await saveReport({
       runId,
       query: researchQuery,
@@ -235,12 +259,49 @@ export async function runResearchJob(
       allChunks,
       synthesizerContent: synthesizerResult.content,
       verification,
+      discoverySummary: discoverySummary as unknown as Record<string, unknown>,
     });
 
-    // Update run with model log and completion
+    // ────────────────────────────────────────────────────────────────
+    // STAGE 10: EPISTEMIC PERSISTENCE — claims, contradictions, citations
+    // ────────────────────────────────────────────────────────────────
+    progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
+
+    try {
+      const claims = await extractAndPersistClaims({
+        runId,
+        reportId,
+        researchQuery,
+        chunks: allChunks,
+        reasonerOutput: reasonerResult.content,
+        synthesizerOutput: synthesizerResult.content,
+      });
+
+      await extractAndPersistContradictions({
+        runId,
+        reportId,
+        chunks: allChunks,
+        claims,
+        skepticOutput: skepticResult.content,
+      });
+
+      await mapAndPersistCitations({
+        runId,
+        reportId,
+        chunks: allChunks,
+        claims,
+        reportSections,
+        discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+      });
+    } catch (epistemicErr) {
+      // Do not fail the run if epistemic persistence fails — log and continue
+      logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+    }
+
+    // Update run with model log, report_id, and completion
     await query(
-      `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1 WHERE id=$2`,
-      [JSON.stringify(modelLog), runId]
+      `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1, report_id=$2 WHERE id=$3`,
+      [JSON.stringify(modelLog), reportId, runId]
     );
 
     progress('done', 100, 'Research complete');
@@ -317,8 +378,9 @@ async function saveReport(args: {
   allChunks: RetrievedChunk[];
   synthesizerContent: string;
   verification: VerificationResult;
+  discoverySummary?: Record<string, unknown>;
 }): Promise<string> {
-  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification } = args;
+  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary } = args;
 
   // Parse sections from synthesizer output
   const sections = parseReportSections(synthesizerContent);
@@ -355,7 +417,7 @@ async function saveReport(args: {
     // Store verification metadata
     await client.query(
       `UPDATE reports SET metadata=$1 WHERE id=$2`,
-      [JSON.stringify({ verification, plan }), reportId]
+      [JSON.stringify({ verification, plan, discovery: discoverySummary ?? null }), reportId]
     );
   });
 
