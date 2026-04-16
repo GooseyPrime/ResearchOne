@@ -68,6 +68,9 @@ export interface SystemHealth {
 
 export interface Report {
   id: string;
+  root_report_id?: string;
+  parent_report_id?: string;
+  version_number?: number;
   run_id?: string;
   title: string;
   query: string;
@@ -84,6 +87,38 @@ export interface Report {
   created_at: string;
   sections?: ReportSection[];
   metadata?: Record<string, unknown>;
+}
+
+export interface ReportRevision {
+  id: string;
+  report_id: string;
+  base_report_id: string;
+  revised_report_id: string;
+  revision_number: number;
+  rationale?: string;
+  initiated_by: string;
+  initiated_by_type: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ReportRevisionDetail extends ReportRevision {
+  change_plan?: Record<string, unknown>;
+  sections: Array<{
+    id: string;
+    section_type: string;
+    section_title: string;
+    before_content: string;
+    after_content: string;
+    change_type: string;
+  }>;
+  diffs: Array<{
+    id: string;
+    section_type: string;
+    before_content: string;
+    after_content: string;
+    diff_metadata: Record<string, unknown>;
+  }>;
 }
 
 export interface ReportSection {
@@ -151,6 +186,19 @@ export const getReports = (params?: { status?: string; search?: string }) =>
   api.get<Report[]>('/reports', { params }).then(r => r.data);
 
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
+
+export const createReportRevision = (id: string, data: {
+  requestText: string;
+  rationale?: string;
+  initiatedBy?: string;
+  initiatedByType?: string;
+}) => api.post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data).then(r => r.data);
+
+export const getReportRevisions = (id: string) =>
+  api.get<ReportRevision[]>(`/reports/${id}/revisions`).then(r => r.data);
+
+export const getReportRevision = (id: string, revisionId: string) =>
+  api.get<ReportRevisionDetail>(`/reports/${id}/revisions/${revisionId}`).then(r => r.data);
 
 export const startResearch = (data: { query: string; supplemental?: string; filterTags?: string[] }) =>
   api.post<{ runId: string; status: string }>('/research', data).then(r => r.data);

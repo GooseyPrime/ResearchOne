@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { getReport } from '../utils/api';
+import { getReport, getReportRevision, getReportRevisions } from '../utils/api';
 import {
   ArrowLeft,
   FileText,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
+import { useState } from 'react';
 
 const SECTION_ICONS: Record<string, React.ElementType> = {
   executive_summary: BookOpen,
@@ -43,11 +44,24 @@ const SECTION_COLORS: Record<string, string> = {
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
     queryFn: () => getReport(id!),
     enabled: !!id,
+  });
+
+  const { data: revisions = [] } = useQuery({
+    queryKey: ['report-revisions', id],
+    queryFn: () => getReportRevisions(id!),
+    enabled: !!id,
+  });
+
+  const { data: revisionDetail } = useQuery({
+    queryKey: ['report-revision', id, selectedRevisionId],
+    queryFn: () => getReportRevision(id!, selectedRevisionId!),
+    enabled: !!id && !!selectedRevisionId,
   });
 
   if (isLoading) {
@@ -92,6 +106,8 @@ export default function ReportDetailPage() {
 
         <div className="flex flex-wrap gap-4 text-xs text-slate-500">
           <span>{formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}</span>
+          <span>•</span>
+          <span>version v{report.version_number ?? 1}</span>
           <span>•</span>
           <span>{report.source_count} sources</span>
           <span>•</span>
@@ -189,6 +205,55 @@ export default function ReportDetailPage() {
           </ul>
         </div>
       )}
+
+      {/* Revision history */}
+      <div className="card p-5 space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Revision History</h2>
+        {revisions.length === 0 ? (
+          <p className="text-xs text-slate-500">No post-publication revisions yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {revisions.map((revision) => (
+              <button
+                key={revision.id}
+                className={clsx(
+                  'w-full text-left p-3 rounded border text-xs transition-colors',
+                  selectedRevisionId === revision.id
+                    ? 'border-accent/50 bg-accent/10 text-slate-100'
+                    : 'border-indigo-900/30 bg-surface-900 text-slate-400 hover:border-accent/30'
+                )}
+                onClick={() => setSelectedRevisionId(revision.id)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span>v{revision.revision_number}</span>
+                  <span>{formatDistanceToNow(new Date(revision.created_at), { addSuffix: true })}</span>
+                </div>
+                {revision.rationale && <p className="mt-1 line-clamp-2">{revision.rationale}</p>}
+              </button>
+            ))}
+          </div>
+        )}
+        {revisionDetail && (
+          <div className="space-y-3 pt-3 border-t border-indigo-900/20">
+            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Changed Sections</h3>
+            {revisionDetail.sections.map((section) => (
+              <div key={section.id} className="rounded border border-indigo-900/30 p-3 space-y-2">
+                <div className="text-xs text-slate-300">{section.section_title}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <div className="text-slate-500 mb-1">Before</div>
+                    <div className="bg-surface-900 rounded p-2 text-slate-400 max-h-48 overflow-auto">{section.before_content}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500 mb-1">After</div>
+                    <div className="bg-surface-900 rounded p-2 text-slate-300 max-h-48 overflow-auto">{section.after_content}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

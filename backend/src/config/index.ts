@@ -1,3 +1,8 @@
+import {
+  validateReasoningModelPolicy,
+  type ReasoningModelRole,
+} from '../services/reasoning/reasoningModelPolicy';
+
 const ALLOWED_NODE_ENVS = new Set(['development', 'test', 'production']);
 const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
 
@@ -91,8 +96,18 @@ const config = {
     retriever: process.env.RETRIEVER_MODEL || 'deepseek/deepseek-r1',
     reasoner: process.env.REASONER_MODEL || 'deepseek/deepseek-r1',
     skeptic: process.env.SKEPTIC_MODEL || 'deepseek/deepseek-r1',
-    synthesizer: process.env.SYNTHESIZER_MODEL || 'qwen/qwen-2.5-72b-instruct',
+    synthesizer: process.env.SYNTHESIZER_MODEL || 'deepseek/deepseek-r1',
     verifier: process.env.VERIFIER_MODEL || 'deepseek/deepseek-r1',
+    outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || 'deepseek/deepseek-r1',
+    sectionDrafter: process.env.SECTION_DRAFTER_MODEL || 'deepseek/deepseek-r1',
+    internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || 'deepseek/deepseek-r1',
+    coherenceRefiner: process.env.COHERENCE_REFINER_MODEL || 'deepseek/deepseek-r1',
+    revisionIntake: process.env.REVISION_INTAKE_MODEL || 'deepseek/deepseek-r1',
+    reportLocator: process.env.REPORT_LOCATOR_MODEL || 'deepseek/deepseek-r1',
+    changePlanner: process.env.CHANGE_PLANNER_MODEL || 'deepseek/deepseek-r1',
+    sectionRewriter: process.env.SECTION_REWRITER_MODEL || 'deepseek/deepseek-r1',
+    citationIntegrityChecker: process.env.CITATION_INTEGRITY_CHECKER_MODEL || 'deepseek/deepseek-r1',
+    finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || 'deepseek/deepseek-r1',
     embedding: process.env.EMBEDDING_MODEL || 'openai/text-embedding-3-small',
 
     fallbacks: {
@@ -100,8 +115,18 @@ const config = {
       retriever: process.env.RETRIEVER_FALLBACK || 'anthropic/claude-3.5-sonnet',
       reasoner: process.env.REASONER_FALLBACK || 'anthropic/claude-3.5-sonnet',
       skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      synthesizer: process.env.SYNTHESIZER_FALLBACK || 'qwen/qwen-2.5-72b-instruct',
+      synthesizer: process.env.SYNTHESIZER_FALLBACK || 'anthropic/claude-3.5-sonnet',
       verifier: process.env.VERIFIER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      coherenceRefiner: process.env.COHERENCE_REFINER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      revisionIntake: process.env.REVISION_INTAKE_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      reportLocator: process.env.REPORT_LOCATOR_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      changePlanner: process.env.CHANGE_PLANNER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      citationIntegrityChecker: process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || 'anthropic/claude-3.5-sonnet',
     },
   },
 
@@ -213,5 +238,44 @@ if (config.discovery.enabled) {
     assertHttpUrl(config.discovery.providerBaseUrl, 'SEARCH_PROVIDER_BASE_URL');
   }
 }
+
+validateReasoningModelPolicy({
+  models: {
+    planner: config.models.planner,
+    retriever: config.models.retriever,
+    reasoner: config.models.reasoner,
+    skeptic: config.models.skeptic,
+    synthesizer: config.models.synthesizer,
+    verifier: config.models.verifier,
+    outline_architect: config.models.outlineArchitect,
+    section_drafter: config.models.sectionDrafter,
+    internal_challenger: config.models.internalChallenger,
+    coherence_refiner: config.models.coherenceRefiner,
+    revision_intake: config.models.revisionIntake,
+    report_locator: config.models.reportLocator,
+    change_planner: config.models.changePlanner,
+    section_rewriter: config.models.sectionRewriter,
+    citation_integrity_checker: config.models.citationIntegrityChecker,
+    final_revision_verifier: config.models.finalRevisionVerifier,
+  } as Record<ReasoningModelRole, string>,
+  fallbacks: {
+    planner: config.models.fallbacks.planner,
+    retriever: config.models.fallbacks.retriever,
+    reasoner: config.models.fallbacks.reasoner,
+    skeptic: config.models.fallbacks.skeptic,
+    synthesizer: config.models.fallbacks.synthesizer,
+    verifier: config.models.fallbacks.verifier,
+    outline_architect: config.models.fallbacks.outlineArchitect,
+    section_drafter: config.models.fallbacks.sectionDrafter,
+    internal_challenger: config.models.fallbacks.internalChallenger,
+    coherence_refiner: config.models.fallbacks.coherenceRefiner,
+    revision_intake: config.models.fallbacks.revisionIntake,
+    report_locator: config.models.fallbacks.reportLocator,
+    change_planner: config.models.fallbacks.changePlanner,
+    section_rewriter: config.models.fallbacks.sectionRewriter,
+    citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+    final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
+  } as Record<ReasoningModelRole, string>,
+});
 
 export { config };

@@ -38,7 +38,7 @@
 │  ├── Retriever: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)     │
 │  ├── Reasoner: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
 │  ├── Skeptic: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)       │
-│  ├── Synthesizer: Qwen-2.5-72B → Qwen-2.5-72B (fallback)       │
+│  ├── Synthesizer: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)   │
 │  └── Verifier: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -77,6 +77,32 @@ To use this mode: do not set `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, or `VITE_EX
 | 9 | Report save | Stores report, sections, and verification metadata |
 | 10 | Epistemic persistence | Extracts and persists claims, contradictions, and section citations |
 
+## Post-publication Report Revision Workflow
+
+Revision API endpoints:
+
+- `POST /api/reports/:id/revisions`
+- `GET /api/reports/:id/revisions`
+- `GET /api/reports/:id/revisions/:revisionId`
+
+Revision pipeline agents/services:
+
+1. Revision Intake Agent
+2. Report Locator / Impact Mapper
+3. Change Planner
+4. Section Rewriter
+5. Citation Integrity Checker
+6. Diff / Patch Assembler
+7. Final Revision Verifier
+
+Behavior:
+
+- Produces a structured change plan before rewriting.
+- Supports corrections, additions, removals, replacements, reframing, global terminology changes, and multi-section edits.
+- Persists versioned report lineage (`root_report_id`, `parent_report_id`, `version_number`) and never overwrites finalized reports.
+- Stores revision request, revision metadata, changed sections, and structured diff metadata.
+- Emits revision progress events over socket (`revision:progress`, `revision:completed`).
+
 ## Database Schema
 
 Key tables:
@@ -90,12 +116,17 @@ Key tables:
 - `research_runs` — Full workflow execution records with model logs and discovery summary
 - `reports` + `report_sections` — Structured long-form research reports
 - `report_citations` — Evidence → section links (with `chunk_quote`, `citation_order`, `discovery_origin`)
+- `report_revision_requests` — post-publication revision requests
+- `report_revisions` — revision metadata + version linkage
+- `report_revision_sections` — before/after section snapshots
+- `report_revision_diffs` — structured diff records
+- `report_revision_comments` / `report_revision_citations` — optional review and citation annotations
 - `atlas_exports` — Embedding Atlas export snapshots
 - `discovery_events` — Audit log for all autonomous discovery activity
 - `ingestion_artifacts` — Optional ingestion audit (hashes, parse warnings)
 - `error_log` — Structured error tracking
 
-Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.sql`
+Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.sql` → `003_runtime_health_checkpoints.sql` → `004_report_revisions_and_model_policy.sql`
 
 ## Environment Variables
 
@@ -128,8 +159,18 @@ PLANNER_MODEL=deepseek/deepseek-r1
 RETRIEVER_MODEL=deepseek/deepseek-r1
 REASONER_MODEL=deepseek/deepseek-r1
 SKEPTIC_MODEL=deepseek/deepseek-r1
-SYNTHESIZER_MODEL=qwen/qwen-2.5-72b-instruct
+SYNTHESIZER_MODEL=deepseek/deepseek-r1
 VERIFIER_MODEL=deepseek/deepseek-r1
+OUTLINE_ARCHITECT_MODEL=deepseek/deepseek-r1
+SECTION_DRAFTER_MODEL=deepseek/deepseek-r1
+INTERNAL_CHALLENGER_MODEL=deepseek/deepseek-r1
+COHERENCE_REFINER_MODEL=deepseek/deepseek-r1
+REVISION_INTAKE_MODEL=deepseek/deepseek-r1
+REPORT_LOCATOR_MODEL=deepseek/deepseek-r1
+CHANGE_PLANNER_MODEL=deepseek/deepseek-r1
+SECTION_REWRITER_MODEL=deepseek/deepseek-r1
+CITATION_INTEGRITY_CHECKER_MODEL=deepseek/deepseek-r1
+FINAL_REVISION_VERIFIER_MODEL=deepseek/deepseek-r1
 EMBEDDING_MODEL=openai/text-embedding-3-small
 
 # Fallbacks (all roles now supported)
@@ -137,8 +178,18 @@ PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
 RETRIEVER_FALLBACK=anthropic/claude-3.5-sonnet
 REASONER_FALLBACK=anthropic/claude-3.5-sonnet
 SKEPTIC_FALLBACK=anthropic/claude-3.5-sonnet
-SYNTHESIZER_FALLBACK=qwen/qwen-2.5-72b-instruct
+SYNTHESIZER_FALLBACK=anthropic/claude-3.5-sonnet
 VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
+OUTLINE_ARCHITECT_FALLBACK=anthropic/claude-3.5-sonnet
+SECTION_DRAFTER_FALLBACK=anthropic/claude-3.5-sonnet
+INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-3.5-sonnet
+COHERENCE_REFINER_FALLBACK=anthropic/claude-3.5-sonnet
+REVISION_INTAKE_FALLBACK=anthropic/claude-3.5-sonnet
+REPORT_LOCATOR_FALLBACK=anthropic/claude-3.5-sonnet
+CHANGE_PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
+SECTION_REWRITER_FALLBACK=anthropic/claude-3.5-sonnet
+CITATION_INTEGRITY_CHECKER_FALLBACK=anthropic/claude-3.5-sonnet
+FINAL_REVISION_VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
 
 # Embedding
 EMBEDDING_DIMENSIONS=1536
@@ -222,7 +273,7 @@ cp backend/.env.production.example backend/.env
 
 cd backend && npm install
 npm run build
-npm run migrate   # applies 001 and 002 migrations
+npm run migrate   # applies all migrations (001-004)
 
 pm2 start ecosystem.config.js
 # after env changes:
@@ -307,20 +358,47 @@ ResearchOne/
 └── ecosystem.config.js             # PM2 config
 ```
 
-## OpenRouter Model Strategy
+## Reasoning-first Model Policy
 
-All six roles now have automatic fallback:
+Research direction and paper-building are restricted to reasoning-class models only, including all fallbacks.
 
-| Role | Primary | Fallback |
-|------|---------|---------|
-| Planner | DeepSeek-R1 | Claude 3.5 Sonnet |
-| Retriever | DeepSeek-R1 | Claude 3.5 Sonnet |
-| Reasoner | DeepSeek-R1 | Claude 3.5 Sonnet |
-| Skeptic | DeepSeek-R1 | Claude 3.5 Sonnet |
-| Synthesizer | Qwen-2.5-72B | Qwen-2.5-72B |
-| Verifier | DeepSeek-R1 | Claude 3.5 Sonnet |
+- Startup validates every required role and fallback.
+- Startup fails if any required role is missing.
+- Startup fails if any fallback is missing.
+- Startup fails if any configured model is outside the approved reasoning allowlist.
 
-Model log entries now include `usedFallback`, `primaryModel`, and `errorClassification` for operational debugging.
+Approved reasoning allowlist (role-specific policy module):
+
+- `deepseek/deepseek-r1`
+- `anthropic/claude-3.5-sonnet`
+- `anthropic/claude-3.7-sonnet`
+- `openai/o3-mini`
+- `openai/o3`
+- `openai/o1`
+
+Role separation for report generation now uses:
+
+- Outline Architect
+- Section Drafter
+- Internal Challenger
+- Coherence Refiner
+
+Revision roles also enforce reasoning-only routing:
+
+- Revision Intake
+- Report Locator
+- Change Planner
+- Section Rewriter
+- Citation Integrity Checker
+- Final Revision Verifier
+
+All prompts inject a shared reasoning-first epistemic preamble:
+
+- reason from structure/mechanism first
+- use corpus recall as support, not master constraint
+- avoid premature collapse due debunked-status recall
+- preserve contradictions and unresolved tensions
+- investigate dismissed theories via alternate framing, hidden assumptions, adversarial counter-models, and falsification branching
 
 ## Autonomous External Research Discovery
 
