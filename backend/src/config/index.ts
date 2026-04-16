@@ -70,6 +70,11 @@ export const config = {
     dir: process.env.EXPORTS_DIR || '/opt/researchone/exports',
   },
 
+  admin: {
+    token: process.env.ADMIN_RUNTIME_TOKEN || '',
+    restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart ecosystem.config.js',
+  },
+
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;
     if (!secret && process.env.NODE_ENV === 'production') {
@@ -78,3 +83,7 @@ export const config = {
     return secret || 'dev-secret-change-in-production';
   })(),
 };
+
+if (config.nodeEnv === 'production' && !config.openrouter.apiKey.trim()) {
+  throw new Error('OPENROUTER_API_KEY must be set in production environment');
+}

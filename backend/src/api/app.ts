@@ -13,6 +13,7 @@ import corpusRoutes from './routes/corpus';
 import atlasRoutes from './routes/atlas';
 import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
+import adminRoutes from './routes/admin';
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/corpus', corpusRoutes);
 app.use('/api/atlas', atlasRoutes);
 app.use('/api/sources', sourcesRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Serve exported Atlas files from canonical exports directory
 app.use('/exports', express.static(config.exports.dir));

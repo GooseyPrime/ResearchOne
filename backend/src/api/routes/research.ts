@@ -45,7 +45,7 @@ router.post('/', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query as { status?: string };
-    let sql = `SELECT id, title, query, status, error_message, started_at, completed_at, created_at
+    let sql = `SELECT id, title, query, status, error_message, failed_stage, failure_meta, started_at, completed_at, created_at
                FROM research_runs`;
     const params: string[] = [];
     if (status) {

@@ -7,8 +7,38 @@ import { runIngestionJob } from '../services/ingestion/ingestionService';
 import { runEmbeddingJob } from '../services/embedding/embeddingService';
 import { runResearchJob } from '../services/reasoning/researchOrchestrator';
 import { runAtlasExport } from '../services/embedding/atlasExport';
+import { query } from '../db/pool';
+import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
+
+async function markInterruptedResearchRuns(): Promise<void> {
+  const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
+  for (const row of rows) {
+    const latestCheckpoint = await getLatestRunCheckpoint(row.id);
+    await query(
+      `UPDATE research_runs
+       SET status='failed',
+           error_message='Run interrupted by restart before completion',
+           failed_stage=COALESCE($2, 'unknown'),
+           failure_meta=$3,
+           completed_at=NOW()
+       WHERE id=$1`,
+      [
+        row.id,
+        latestCheckpoint?.stage ?? null,
+        JSON.stringify({
+          reason: 'interrupted_by_restart',
+          latestCheckpoint: latestCheckpoint?.checkpoint_key ?? null,
+        }),
+      ]
+    );
+  }
+  if (rows.length > 0) {
+    logger.warn(`Marked ${rows.length} orphaned running runs as interrupted_by_restart`);
+  }
+}
 
 export async function startWorkers(io: SocketIOServer): Promise<void> {
+  await markInterruptedResearchRuns();
   const emit = (room: string, event: string, data: unknown) => {
     io.to(room).emit(event, data);
     io.emit(event, data); // also broadcast to all for dashboard updates
@@ -51,13 +81,36 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     async (job: Job) => {
       logger.info(`Research job started: ${job.id}`);
       emit(`job:${job.data.runId}`, 'research:progress', { stage: 'started', runId: job.data.runId });
-      const result = await runResearchJob(job.data, (update) => {
-        job.updateProgress(update);
-        emit(`job:${job.data.runId}`, 'research:progress', update);
-      });
-      emit(`job:${job.data.runId}`, 'research:completed', result);
-      io.emit('reports:updated', {});
-      return result;
+      try {
+        const result = await runResearchJob(job.data, (update) => {
+          job.updateProgress(update);
+          emit(`job:${job.data.runId}`, 'research:progress', update);
+        });
+        emit(`job:${job.data.runId}`, 'research:completed', result);
+        io.emit('reports:updated', {});
+        io.emit('runs:updated', {});
+        return result;
+      } catch (err) {
+        const e = err as Error & {
+          runId?: string;
+          stage?: string;
+          percent?: number;
+          message?: string;
+          retryable?: boolean;
+        };
+        const failedPayload = {
+          runId: e.runId ?? job.data.runId,
+          stage: e.stage ?? 'unknown',
+          percent: e.percent ?? 0,
+          message: e.message ?? 'Research run failed',
+          error: e.message,
+          retryable: Boolean(e.retryable),
+        };
+        emit(`job:${job.data.runId}`, 'research:failed', failedPayload);
+        io.emit('reports:updated', {});
+        io.emit('runs:updated', {});
+        throw err;
+      }
     },
     { connection: createRedisConnection(), concurrency: 1 }
   );

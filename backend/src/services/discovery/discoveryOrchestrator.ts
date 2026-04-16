@@ -16,8 +16,8 @@
  * - Preserve candidate metadata even when a candidate is skipped
  */
 
-import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
@@ -31,6 +31,7 @@ import {
 } from './providerTypes';
 import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
+import { BraveSearchProvider } from './providers/braveSearch';
 
 /** Discovery planner system prompt */
 const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for ResearchOne, a disciplined research system.
@@ -58,11 +59,23 @@ Output JSON with this exact schema:
 /** Get the configured search provider(s) */
 function getSearchProviders(): SearchProvider[] {
   const providerName = config.discovery.provider;
+  if (providerName === 'cascade') {
+    return [new BraveSearchProvider(), new GenericWebSearchProvider()];
+  }
+  if (providerName === 'brave') {
+    return [new BraveSearchProvider()];
+  }
   switch (providerName) {
     case 'generic':
     default:
       return [new GenericWebSearchProvider()];
   }
+}
+
+function isSensitiveTopic(text: string): boolean {
+  const lowered = text.toLowerCase();
+  return ['censorship', 'suppressed', 'classified', 'geopolit', 'military', 'whistleblower', 'intelligence']
+    .some((token) => lowered.includes(token));
 }
 
 /** Normalise a URL for deduplication (remove fragment, trailing slash, lowercase scheme+host) */
@@ -142,6 +155,9 @@ export async function runDiscoveryOrchestrator(args: {
 
   // ─── Step 2: Execute search queries ─────────────────────────────────────────
   const providers = getSearchProviders();
+  const orderedProviders = isSensitiveTopic(researchQuery)
+    ? [...providers].sort((a, b) => (a.name === 'brave' ? -1 : b.name === 'brave' ? 1 : 0))
+    : providers;
   const allCandidates: SearchResultCandidate[] = [];
   const seenUrls = new Set<string>();
   const queriesExecuted: string[] = [];
@@ -149,7 +165,7 @@ export async function runDiscoveryOrchestrator(args: {
   for (const searchQuery of discoveryPlan.discovery_queries.slice(0, config.discovery.maxQueriesPerRun)) {
     queriesExecuted.push(searchQuery);
 
-    for (const provider of providers) {
+    for (const provider of orderedProviders) {
       try {
         const results = await provider.search({
           text: searchQuery,
@@ -219,9 +235,10 @@ export async function runDiscoveryOrchestrator(args: {
         [jobId, candidate.url, JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery })]
       );
 
+      const finalUrl = await ensureReachableUrl(candidate.url);
       await ingestionQueue.add('ingest-url', {
         ingestionJobId: jobId,
-        url: candidate.url,
+        url: finalUrl,
         sourceType: 'web_url',
         tags: [],
         metadata: { discovery_run_id: runId },
@@ -239,7 +256,7 @@ export async function runDiscoveryOrchestrator(args: {
         ingestionJobId: jobId,
       });
 
-      logger.info(`[discovery:${runId}] Queued ingestion for: ${candidate.url} (job ${jobId})`);
+      logger.info(`[discovery:${runId}] Queued ingestion for: ${finalUrl} (job ${jobId})`);
     } catch (err) {
       logger.error(`[discovery:${runId}] Failed to queue ingestion for ${candidate.url}:`, err);
       skipped.push({
@@ -288,6 +305,18 @@ export async function runDiscoveryOrchestrator(args: {
   logger.info(`[discovery:${runId}] Discovery complete. Ingested: ${selected.length}, Skipped: ${skipped.length}`);
 
   return summary;
+}
+
+async function ensureReachableUrl(url: string): Promise<string> {
+  try {
+    const response = await axios.head(url, { timeout: 6000, validateStatus: () => true });
+    if (response.status >= 200 && response.status < 400) {
+      return url;
+    }
+    return `https://web.archive.org/web/*/${url}`;
+  } catch {
+    return `https://web.archive.org/web/*/${url}`;
+  }
 }
 
 /** Wait for ingestion jobs to complete or timeout */
