@@ -77,6 +77,15 @@ export default function Layout() {
     setRestartBusy(true);
     try {
       await restartRuntime(token);
+      for (let i = 0; i < 12; i++) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        try {
+          const nextHealth = await getSystemHealth();
+          if (nextHealth.status !== 'down') break;
+        } catch {
+          // continue polling while runtime restarts
+        }
+      }
     } finally {
       setRestartBusy(false);
     }

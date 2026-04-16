@@ -276,7 +276,7 @@ export async function runResearchJob(
 
     const generatedReport = await generateIterativeReport({
       query: researchQuery,
-      plan,
+      plan: plan as unknown as Record<string, unknown>,
       evidenceContext,
       retrieverAnalysis: retrieverResult.content,
       reasoningChains: reasonerResult.content,
