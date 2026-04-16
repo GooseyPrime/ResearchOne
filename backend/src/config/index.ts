@@ -1,7 +1,62 @@
-export const config = {
+const ALLOWED_NODE_ENVS = new Set(['development', 'test', 'production']);
+const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
+
+const rawNodeEnv = (process.env.NODE_ENV || 'development').trim();
+if (!ALLOWED_NODE_ENVS.has(rawNodeEnv)) {
+  throw new Error(
+    `Invalid NODE_ENV="${rawNodeEnv}". Allowed values: development, test, production`
+  );
+}
+
+function parseCsv(value: string, fallback: string): string[] {
+  return (value || fallback)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function isLocalhostUrl(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function assertHttpUrl(value: string, envName: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${envName} must be a valid absolute URL (e.g. https://example.com/path)`);
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(`${envName} must use http or https`);
+  }
+}
+
+function validateOpenRouterBaseUrl(baseUrl: string): void {
+  assertHttpUrl(baseUrl, 'OPENROUTER_BASE_URL');
+
+  let parsed: URL;
+  parsed = new URL(baseUrl);
+
+  const normalizedPath = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+  const endpointPaths = new Set(['/chat/completions', '/v1/chat/completions', '/responses', '/embeddings']);
+  if (endpointPaths.has(normalizedPath)) {
+    throw new Error(
+      'OPENROUTER_BASE_URL must be a base URL (for example https://openrouter.ai/api/v1), not a full endpoint path like /chat/completions'
+    );
+  }
+}
+
+const config = {
   port: parseInt(process.env.PORT || '3001', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173').split(','),
+  nodeEnv: rawNodeEnv,
+  corsOrigins: parseCsv(process.env.CORS_ORIGINS || '', 'http://localhost:5173'),
 
   db: {
     host: process.env.DB_HOST || '10.0.101.2',
@@ -74,23 +129,38 @@ export const config = {
 
   admin: {
     token: process.env.ADMIN_RUNTIME_TOKEN || '',
-    restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart ecosystem.config.js',
+    restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart researchone-api',
   },
 
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
+    if (!secret && rawNodeEnv === 'production') {
       throw new Error('JWT_SECRET must be set in production environment');
     }
     return secret || 'dev-secret-change-in-production';
   })(),
 };
 
+validateOpenRouterBaseUrl(config.openrouter.baseUrl);
+
 if (config.nodeEnv === 'production' && !config.openrouter.apiKey.trim()) {
   throw new Error('OPENROUTER_API_KEY must be set in production environment');
 }
 
-const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
+if (config.nodeEnv === 'production') {
+  if (config.corsOrigins.length === 0) {
+    throw new Error(
+      'CORS_ORIGINS must include at least one frontend origin in production (e.g. https://your-app.vercel.app)'
+    );
+  }
+
+  const hasNonLocalOrigin = config.corsOrigins.some((origin) => !isLocalhostUrl(origin));
+  if (!hasNonLocalOrigin) {
+    throw new Error(
+      'CORS_ORIGINS cannot be localhost-only in production. Include your Vercel/custom frontend domain.'
+    );
+  }
+}
 
 if (config.discovery.enabled) {
   if (!ALLOWED_SEARCH_PROVIDERS.has(config.discovery.provider)) {
@@ -98,7 +168,44 @@ if (config.discovery.enabled) {
       `Invalid SEARCH_PROVIDER="${config.discovery.provider}". Allowed providers: tavily, generic, brave, cascade`
     );
   }
+
   if (config.discovery.provider === 'tavily' && !config.discovery.tavilyApiKey.trim()) {
-    throw new Error('TAVILY_API_KEY must be set when SEARCH_PROVIDER=tavily and discovery is enabled');
+    throw new Error('TAVILY_API_KEY must be set when SEARCH_PROVIDER=tavily and DISCOVERY_ENABLED=true');
+  }
+
+  if (config.discovery.provider === 'brave' && !config.discovery.providerApiKey.trim()) {
+    throw new Error(
+      'SEARCH_PROVIDER_API_KEY must be set when SEARCH_PROVIDER=brave and DISCOVERY_ENABLED=true'
+    );
+  }
+
+  if (config.discovery.provider === 'generic') {
+    if (!config.discovery.providerBaseUrl.trim()) {
+      throw new Error(
+        'SEARCH_PROVIDER_BASE_URL must be set when SEARCH_PROVIDER=generic and DISCOVERY_ENABLED=true'
+      );
+    }
+    assertHttpUrl(config.discovery.providerBaseUrl, 'SEARCH_PROVIDER_BASE_URL');
+  }
+
+  if (config.discovery.provider === 'cascade') {
+    if (!config.discovery.tavilyApiKey.trim()) {
+      throw new Error(
+        'TAVILY_API_KEY must be set when SEARCH_PROVIDER=cascade and DISCOVERY_ENABLED=true'
+      );
+    }
+    if (!config.discovery.providerApiKey.trim()) {
+      throw new Error(
+        'SEARCH_PROVIDER_API_KEY must be set when SEARCH_PROVIDER=cascade to enable Brave in the cascade'
+      );
+    }
+    if (!config.discovery.providerBaseUrl.trim()) {
+      throw new Error(
+        'SEARCH_PROVIDER_BASE_URL must be set when SEARCH_PROVIDER=cascade to enable Generic provider in the cascade'
+      );
+    }
+    assertHttpUrl(config.discovery.providerBaseUrl, 'SEARCH_PROVIDER_BASE_URL');
   }
 }
+
+export { config };
