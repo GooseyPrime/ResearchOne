@@ -239,43 +239,47 @@ if (config.discovery.enabled) {
   }
 }
 
+const reasoningModelsForPolicy = {
+  planner: config.models.planner,
+  retriever: config.models.retriever,
+  reasoner: config.models.reasoner,
+  skeptic: config.models.skeptic,
+  synthesizer: config.models.synthesizer,
+  verifier: config.models.verifier,
+  outline_architect: config.models.outlineArchitect,
+  section_drafter: config.models.sectionDrafter,
+  internal_challenger: config.models.internalChallenger,
+  coherence_refiner: config.models.coherenceRefiner,
+  revision_intake: config.models.revisionIntake,
+  report_locator: config.models.reportLocator,
+  change_planner: config.models.changePlanner,
+  section_rewriter: config.models.sectionRewriter,
+  citation_integrity_checker: config.models.citationIntegrityChecker,
+  final_revision_verifier: config.models.finalRevisionVerifier,
+} satisfies Record<ReasoningModelRole, string | undefined>;
+
+const reasoningFallbacksForPolicy = {
+  planner: config.models.fallbacks.planner,
+  retriever: config.models.fallbacks.retriever,
+  reasoner: config.models.fallbacks.reasoner,
+  skeptic: config.models.fallbacks.skeptic,
+  synthesizer: config.models.fallbacks.synthesizer,
+  verifier: config.models.fallbacks.verifier,
+  outline_architect: config.models.fallbacks.outlineArchitect,
+  section_drafter: config.models.fallbacks.sectionDrafter,
+  internal_challenger: config.models.fallbacks.internalChallenger,
+  coherence_refiner: config.models.fallbacks.coherenceRefiner,
+  revision_intake: config.models.fallbacks.revisionIntake,
+  report_locator: config.models.fallbacks.reportLocator,
+  change_planner: config.models.fallbacks.changePlanner,
+  section_rewriter: config.models.fallbacks.sectionRewriter,
+  citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+  final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
+} satisfies Record<ReasoningModelRole, string | undefined>;
+
 validateReasoningModelPolicy({
-  models: {
-    planner: config.models.planner,
-    retriever: config.models.retriever,
-    reasoner: config.models.reasoner,
-    skeptic: config.models.skeptic,
-    synthesizer: config.models.synthesizer,
-    verifier: config.models.verifier,
-    outline_architect: config.models.outlineArchitect,
-    section_drafter: config.models.sectionDrafter,
-    internal_challenger: config.models.internalChallenger,
-    coherence_refiner: config.models.coherenceRefiner,
-    revision_intake: config.models.revisionIntake,
-    report_locator: config.models.reportLocator,
-    change_planner: config.models.changePlanner,
-    section_rewriter: config.models.sectionRewriter,
-    citation_integrity_checker: config.models.citationIntegrityChecker,
-    final_revision_verifier: config.models.finalRevisionVerifier,
-  } as Record<ReasoningModelRole, string>,
-  fallbacks: {
-    planner: config.models.fallbacks.planner,
-    retriever: config.models.fallbacks.retriever,
-    reasoner: config.models.fallbacks.reasoner,
-    skeptic: config.models.fallbacks.skeptic,
-    synthesizer: config.models.fallbacks.synthesizer,
-    verifier: config.models.fallbacks.verifier,
-    outline_architect: config.models.fallbacks.outlineArchitect,
-    section_drafter: config.models.fallbacks.sectionDrafter,
-    internal_challenger: config.models.fallbacks.internalChallenger,
-    coherence_refiner: config.models.fallbacks.coherenceRefiner,
-    revision_intake: config.models.fallbacks.revisionIntake,
-    report_locator: config.models.fallbacks.reportLocator,
-    change_planner: config.models.fallbacks.changePlanner,
-    section_rewriter: config.models.fallbacks.sectionRewriter,
-    citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
-    final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
-  } as Record<ReasoningModelRole, string>,
+  models: reasoningModelsForPolicy,
+  fallbacks: reasoningFallbacksForPolicy,
 });
 
 export { config };

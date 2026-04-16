@@ -12,6 +12,15 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   SYSTEM_PROMPTS: {},
 }));
 
+vi.mock('../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 describe('report revision helpers', () => {
   beforeEach(() => {
     queryMock.mockReset();
@@ -72,7 +81,9 @@ describe('report revision history queries', () => {
   });
 
   it('returns revision history for a report', async () => {
-    queryMock.mockResolvedValueOnce([{ id: 'rev-1', revision_number: 2 }]);
+    queryMock
+      .mockResolvedValueOnce([{ root_id: 'root-1' }])
+      .mockResolvedValueOnce([{ id: 'rev-1', revision_number: 2 }]);
     const { listReportRevisions } = await import('../services/reasoning/reportRevisionService');
     const rows = await listReportRevisions('report-1');
     expect(rows).toHaveLength(1);

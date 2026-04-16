@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { logger } from '../../utils/logger';
 
 export interface RevisionProgress {
   reportId: string;
@@ -237,10 +238,12 @@ Return strict JSON.`,
 
   emit('rewriting', 56, 'Rewriting impacted sections');
   let revisedSections = baseSections.map((section) => ({ ...section }));
-  if (changePlan.global_or_local === 'global_terminology' && targetTerms.length >= 2) {
+  const fromTerm = targetTerms[0]?.trim();
+  const toTerm = targetTerms[1]?.trim();
+  if (changePlan.global_or_local === 'global_terminology' && fromTerm && toTerm) {
     revisedSections = revisedSections.map((section) => ({
       ...section,
-      content: applyGlobalTerminologyChange(section.content, targetTerms[0], targetTerms[1]),
+      content: applyGlobalTerminologyChange(section.content, fromTerm, toTerm),
     }));
   } else {
     for (const rewrite of changePlan.required_rewrites) {
@@ -262,19 +265,27 @@ Return revised section body only.`,
           },
         ],
       });
-      revisedSections[idx] = { ...section, content: rewriteResult.content.trim() || section.content };
+      const rewrittenContent = rewriteResult.content.trim();
+      if (!rewrittenContent) {
+        logger.warn(`Revision rewrite returned empty content; keeping original`, {
+          reportId: args.reportId,
+          sectionType: section.section_type,
+        });
+      }
+      revisedSections[idx] = { ...section, content: rewrittenContent || section.content };
     }
   }
 
   if (changePlan.required_insertions.length > 0) {
     let sectionTypes = revisedSections.map((s) => s.section_type);
-    for (const insertion of changePlan.required_insertions) {
+    for (const [insertNumber, insertion] of changePlan.required_insertions.entries()) {
       const insertAt = inferInsertionIndex(sectionTypes, insertion);
-      const sectionType = insertion.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const normalized = insertion.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const sectionType = normalized || `inserted_section_${insertNumber + 1}`;
       revisedSections.splice(insertAt, 0, {
-        id: `inserted-${sectionType}`,
+        id: `inserted-${sectionType}-${insertNumber + 1}`,
         report_id: args.reportId,
-        section_type: sectionType || 'inserted_section',
+        section_type: sectionType,
         title: insertion.title,
         content: insertion.content,
         section_order: insertAt + 1,
@@ -286,25 +297,33 @@ Return revised section body only.`,
 
   emit('citation_integrity', 70, 'Running citation integrity checks');
   const citationChecks: Record<string, unknown> = {};
-  for (const section of revisedSections) {
-    const checkerResult = await callRoleModel({
-      role: 'citation_integrity_checker',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.citation_integrity_checker },
-        {
-          role: 'user',
-          content: `Section type: ${section.section_type}
+  const citationEntries = await Promise.all(
+    revisedSections.map(async (section) => {
+      const checkerResult = await callRoleModel({
+        role: 'citation_integrity_checker',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.citation_integrity_checker },
+          {
+            role: 'user',
+            content: `Section type: ${section.section_type}
 Title: ${section.title}
 Content:\n${section.content}
 Return JSON only.`,
+          },
+        ],
+      });
+      return [
+        section.section_type,
+        parseJson<Record<string, unknown>>(checkerResult.content) ?? {
+          status: 'unknown',
+          issues: [],
+          required_citation_updates: [],
         },
-      ],
-    });
-    citationChecks[section.section_type] = parseJson<Record<string, unknown>>(checkerResult.content) ?? {
-      status: 'unknown',
-      issues: [],
-      required_citation_updates: [],
-    };
+      ] as const;
+    })
+  );
+  for (const [sectionType, check] of citationEntries) {
+    citationChecks[sectionType] = check;
   }
 
   emit('verification', 82, 'Running final revision verifier');
@@ -431,7 +450,7 @@ Return strict JSON.`,
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'applied', $11, $12, $13)
        RETURNING id`,
       [
-        rootReportId,
+        baseReport.id,
         baseReport.id,
         revisedReportId,
         baseReport.id,
@@ -448,8 +467,9 @@ Return strict JSON.`,
     );
     revisionId = revision.rows[0].id;
 
+    const baseByType = new Map(baseSections.map((section) => [section.section_type, section]));
     for (const section of revisedSections) {
-      const before = baseSections.find((s) => s.section_type === section.section_type);
+      const before = baseByType.get(section.section_type);
       const changed = !before || before.content !== section.content;
       if (!changed) continue;
       await client.query(
@@ -496,13 +516,21 @@ Return strict JSON.`,
 }
 
 export async function listReportRevisions(reportId: string): Promise<Record<string, unknown>[]> {
+  const roots = await query<{ root_id: string }>(
+    `SELECT COALESCE(root_report_id, id) AS root_id FROM reports WHERE id=$1`,
+    [reportId]
+  );
+  const rootId = roots[0]?.root_id ?? reportId;
   return query(
     `SELECT id, report_id, base_report_id, revised_report_id, revision_number, rationale, initiated_by,
             initiated_by_type, status, created_at
      FROM report_revisions
-     WHERE report_id=$1
+     WHERE root_report_id=$1
+        OR report_id=$2
+        OR base_report_id=$2
+        OR revised_report_id=$2
      ORDER BY revision_number DESC, created_at DESC`,
-    [reportId]
+    [rootId, reportId]
   );
 }
 

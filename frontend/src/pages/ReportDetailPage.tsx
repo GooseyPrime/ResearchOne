@@ -107,7 +107,7 @@ export default function ReportDetailPage() {
         <div className="flex flex-wrap gap-4 text-xs text-slate-500">
           <span>{formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}</span>
           <span>•</span>
-          <span>version v{report.version_number ?? 1}</span>
+          <span>v{report.version_number ?? 1}</span>
           <span>•</span>
           <span>{report.source_count} sources</span>
           <span>•</span>

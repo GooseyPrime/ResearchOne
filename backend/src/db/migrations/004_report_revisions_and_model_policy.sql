@@ -7,6 +7,7 @@ ALTER TABLE reports
   ADD COLUMN IF NOT EXISTS revision_rationale TEXT,
   ADD COLUMN IF NOT EXISTS revised_by TEXT;
 
+-- Backfill assumes no pre-existing external revision lineage before this migration.
 UPDATE reports
 SET root_report_id = id
 WHERE root_report_id IS NULL;
