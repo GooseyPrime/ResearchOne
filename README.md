@@ -99,7 +99,7 @@ Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.
 
 ## Environment Variables
 
-### Backend (Emma runtime VM) — Required
+### Backend (Emma runtime VM) — Production
 
 ```env
 NODE_ENV=production
@@ -121,7 +121,7 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 # Security (server-side only — never in Vercel)
 JWT_SECRET=
-CORS_ORIGINS=https://<your-vercel-frontend-domain>,http://localhost:5173
+CORS_ORIGINS=https://<your-vercel-project>.vercel.app,https://<your-custom-frontend-domain>
 
 # Model routing
 PLANNER_MODEL=deepseek/deepseek-r1
@@ -152,10 +152,15 @@ MAX_FILE_SIZE_MB=50
 # Exports — canonical path must match nginx /exports alias
 EXPORTS_DIR=/opt/researchone/exports
 
+# Admin runtime control
+ADMIN_RUNTIME_TOKEN=
+RUNTIME_RESTART_COMMAND=pm2 restart researchone-api
+
 # Autonomous discovery
 DISCOVERY_ENABLED=true
 SEARCH_PROVIDER=tavily
 TAVILY_API_KEY=
+TAVILY_BASE_URL=https://api.tavily.com/search
 # Optional/legacy providers only:
 # SEARCH_PROVIDER=brave   -> requires SEARCH_PROVIDER_API_KEY
 # SEARCH_PROVIDER=generic -> requires SEARCH_PROVIDER_BASE_URL (SearXNG, Serper, or compatible endpoint)
@@ -164,6 +169,12 @@ SEARCH_PROVIDER_API_KEY=
 SEARCH_PROVIDER_BASE_URL=
 MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
+```
+
+Use `backend/.env.production.example` as the source of truth for Emma runtime production config:
+
+```bash
+cp backend/.env.production.example backend/.env
 ```
 
 ### Frontend (Vercel) — Required for split deployment
@@ -175,6 +186,14 @@ VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
 ```
 
 **Never put these in Vercel:** `OPENROUTER_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, `DB_PASSWORD`, `REDIS_PASSWORD`
+
+### Backend (Local development)
+
+Use the explicit development template for local backend work:
+
+```bash
+cp backend/.env.development.example backend/.env
+```
 
 ## Quick Start
 
@@ -198,15 +217,16 @@ chmod +x scripts/setup-runtime.sh
 ./scripts/setup-runtime.sh
 
 # Configure environment
-cp backend/.env.example backend/.env
-# Edit backend/.env — set DATABASE_URL, REDIS_URL, OPENROUTER_API_KEY, JWT_SECRET, CORS_ORIGINS, EXPORTS_DIR
-# Set CORS_ORIGINS to include your Vercel frontend domain
+cp backend/.env.production.example backend/.env
+# Edit backend/.env — set Emma Postgres/Redis hosts, OPENROUTER_API_KEY, JWT_SECRET, CORS_ORIGINS, TAVILY_API_KEY, ADMIN_RUNTIME_TOKEN
 
 cd backend && npm install
 npm run build
 npm run migrate   # applies 001 and 002 migrations
 
 pm2 start ecosystem.config.js
+# after env changes:
+pm2 restart researchone-api --update-env
 ```
 
 #### 4. Frontend (Vercel)
@@ -226,7 +246,7 @@ docker-compose up postgres redis
 
 # Backend
 cd backend
-cp .env.example .env   # edit with dev settings (leave VITE_* vars unset)
+cp .env.development.example .env   # local dev backend defaults
 npm run dev
 
 # Frontend (separate terminal)
@@ -239,6 +259,8 @@ npm run dev
 ```
 ResearchOne/
 ├── backend/
+│   ├── .env.production.example     # Emma runtime production template
+│   ├── .env.development.example    # Local backend development template
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── app.ts              # Express application
