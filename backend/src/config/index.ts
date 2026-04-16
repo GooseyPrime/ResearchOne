@@ -8,8 +8,8 @@ if (!ALLOWED_NODE_ENVS.has(rawNodeEnv)) {
   );
 }
 
-function parseCsv(value: string, fallback: string): string[] {
-  return (value || fallback)
+function parseCsv(value: string | undefined, fallback: string): string[] {
+  return (value === undefined ? fallback : value)
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
@@ -41,11 +41,17 @@ function assertHttpUrl(value: string, envName: string): void {
 function validateOpenRouterBaseUrl(baseUrl: string): void {
   assertHttpUrl(baseUrl, 'OPENROUTER_BASE_URL');
 
-  let parsed: URL;
-  parsed = new URL(baseUrl);
+  const parsed = new URL(baseUrl);
 
   const normalizedPath = parsed.pathname.replace(/\/+$/, '').toLowerCase();
-  const endpointPaths = new Set(['/chat/completions', '/v1/chat/completions', '/responses', '/embeddings']);
+  const endpointPaths = new Set([
+    '/chat/completions',
+    '/v1/chat/completions',
+    '/responses',
+    '/v1/responses',
+    '/embeddings',
+    '/v1/embeddings',
+  ]);
   if (endpointPaths.has(normalizedPath)) {
     throw new Error(
       'OPENROUTER_BASE_URL must be a base URL (for example https://openrouter.ai/api/v1), not a full endpoint path like /chat/completions'
@@ -56,7 +62,7 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: rawNodeEnv,
-  corsOrigins: parseCsv(process.env.CORS_ORIGINS || '', 'http://localhost:5173'),
+  corsOrigins: parseCsv(process.env.CORS_ORIGINS, 'http://localhost:5173'),
 
   db: {
     host: process.env.DB_HOST || '10.0.101.2',
