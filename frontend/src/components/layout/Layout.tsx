@@ -26,6 +26,8 @@ const NAV_ITEMS = [
   { to: '/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
   { to: '/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
 ];
+const MAX_RESTART_POLL_ATTEMPTS = 12;
+const RESTART_POLL_INTERVAL_MS = 2500;
 
 export default function Layout() {
   const location = useLocation();
@@ -77,8 +79,8 @@ export default function Layout() {
     setRestartBusy(true);
     try {
       await restartRuntime(token);
-      for (let i = 0; i < 12; i++) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
+      for (let i = 0; i < MAX_RESTART_POLL_ATTEMPTS; i++) {
+        await new Promise(resolve => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
         try {
           const nextHealth = await getSystemHealth();
           if (nextHealth.status !== 'down') break;

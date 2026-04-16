@@ -44,6 +44,15 @@ interface ResearchFailureEvent {
   retryable?: boolean;
 }
 
+function formatTraceMeta(evt: ResearchProgressEvent): string {
+  const parts: string[] = [];
+  if (evt.detail) parts.push(evt.detail);
+  if (evt.substep) parts.push(evt.substep);
+  if (typeof evt.chunkCount === 'number') parts.push(`${evt.chunkCount} chunks`);
+  if (typeof evt.sourceCount === 'number') parts.push(`${evt.sourceCount} sources`);
+  return parts.join(' · ');
+}
+
 const WORKFLOW_STAGES = [
   { id: 'planning', icon: Brain, label: 'Planner', desc: 'Decomposes research query' },
   { id: 'retrieval', icon: FileSearch, label: 'Retriever', desc: 'Gathers evidence' },
@@ -279,7 +288,7 @@ export default function ResearchPage() {
                   <p className="text-xs text-slate-500">No trace events yet.</p>
                 )}
                 {traceEvents.map((evt, idx) => (
-                  <div key={`${evt.timestamp ?? idx}-${evt.stage}`} className="text-xs border-b border-surface-100/50 pb-2">
+                  <div key={`${evt.timestamp ?? 'no-ts'}-${evt.stage}-${evt.substep ?? 'none'}-${idx}`} className="text-xs border-b border-surface-100/50 pb-2">
                     <div className="flex items-center justify-between text-slate-300">
                       <span>{evt.stage}</span>
                       <span>{evt.percent}%</span>
@@ -287,7 +296,7 @@ export default function ResearchPage() {
                     <p className="text-slate-400 mt-1">{evt.message}</p>
                     {(evt.detail || evt.substep || evt.chunkCount || evt.sourceCount) && (
                       <p className="text-slate-500 mt-1">
-                        {evt.detail ? `${evt.detail} · ` : ''}{evt.substep ? `${evt.substep} · ` : ''}{typeof evt.chunkCount === 'number' ? `${evt.chunkCount} chunks ` : ''}{typeof evt.sourceCount === 'number' ? `· ${evt.sourceCount} sources` : ''}
+                        {formatTraceMeta(evt)}
                       </p>
                     )}
                   </div>

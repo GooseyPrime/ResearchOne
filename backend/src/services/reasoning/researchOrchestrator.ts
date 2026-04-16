@@ -50,6 +50,8 @@ interface VerificationResult {
   criteria: Array<{ criterion: string; status: 'PASS' | 'FAIL'; note: string }>;
   overall: string;
 }
+const RETRIEVAL_PROGRESS_BASE = 22;
+const RETRIEVAL_PROGRESS_CAP = 34;
 
 export async function runResearchJob(
   data: ResearchJobData,
@@ -174,7 +176,7 @@ export async function runResearchJob(
           allChunks.push(c);
         }
       }
-      progress('retrieval', Math.min(34, 22 + allChunks.length), `Retrieval query complete: ${rq}`, {
+      progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rq}`, {
         substep: 'query_done',
         chunkCount: allChunks.length,
       });
@@ -276,7 +278,7 @@ export async function runResearchJob(
 
     const generatedReport = await generateIterativeReport({
       query: researchQuery,
-      plan: plan as unknown as Record<string, unknown>,
+      plan,
       evidenceContext,
       retrieverAnalysis: retrieverResult.content,
       reasoningChains: reasonerResult.content,

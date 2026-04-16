@@ -11,7 +11,7 @@ import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
 
 async function markInterruptedResearchRuns(): Promise<void> {
-  const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running'`);
+  const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
   for (const row of rows) {
     const latestCheckpoint = await getLatestRunCheckpoint(row.id);
     await query(

@@ -20,6 +20,8 @@ const SECTION_PLAN = [
   { title: 'Unresolved Questions', key: 'unresolved_questions' },
   { title: 'Recommended Next Queries', key: 'recommended_next_queries' },
 ];
+const MAX_SECTION_SUMMARY_CHARS = 1200;
+const MAX_ROLLING_SUMMARY_CHARS = 6000;
 
 function getTextContent(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -40,7 +42,7 @@ function getTextContent(content: unknown): string {
 
 export async function generateIterativeReport(args: {
   query: string;
-  plan: Record<string, unknown>;
+  plan: unknown;
   evidenceContext: string;
   retrieverAnalysis: string;
   reasoningChains: string;
@@ -97,7 +99,7 @@ Return only section body text.`
     const sectionText = getTextContent(sectionResult.content).trim();
     sections.push({ title: section.title, key: section.key, content: sectionText });
 
-    rollingSummary = `${rollingSummary}\n\n[${section.title}]\n${sectionText.slice(0, 1200)}`.slice(-6000);
+    rollingSummary = `${rollingSummary}\n\n[${section.title}]\n${sectionText.slice(0, MAX_SECTION_SUMMARY_CHARS)}`.slice(-MAX_ROLLING_SUMMARY_CHARS);
   }
 
   const skepticReview = await model.invoke([

@@ -309,8 +309,11 @@ export async function runDiscoveryOrchestrator(args: {
 
 async function ensureReachableUrl(url: string): Promise<string> {
   try {
-    await axios.head(url, { timeout: 6000, validateStatus: () => true });
-    return url;
+    const response = await axios.head(url, { timeout: 6000, validateStatus: () => true });
+    if (response.status >= 200 && response.status < 400) {
+      return url;
+    }
+    return `https://web.archive.org/web/*/${url}`;
   } catch {
     return `https://web.archive.org/web/*/${url}`;
   }
