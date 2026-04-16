@@ -29,6 +29,44 @@ export interface ModelCallResult {
   errorClassification?: string;
 }
 
+export type ModelErrorClassification =
+  | 'auth_error'
+  | 'quota_exceeded'
+  | 'rate_limited'
+  | 'provider_unavailable'
+  | 'bad_request'
+  | 'network_error'
+  | 'unknown';
+
+export interface NormalizedModelErrorShape {
+  classification: ModelErrorClassification;
+  status?: number;
+  providerMessage?: string;
+  model: string;
+  fallbackTried: boolean;
+  role: ModelRole;
+}
+
+export class NormalizedModelError extends Error implements NormalizedModelErrorShape {
+  classification: ModelErrorClassification;
+  status?: number;
+  providerMessage?: string;
+  model: string;
+  fallbackTried: boolean;
+  role: ModelRole;
+
+  constructor(payload: NormalizedModelErrorShape) {
+    super(payload.providerMessage || `Model call failed (${payload.classification})`);
+    this.name = 'NormalizedModelError';
+    this.classification = payload.classification;
+    this.status = payload.status;
+    this.providerMessage = payload.providerMessage;
+    this.model = payload.model;
+    this.fallbackTried = payload.fallbackTried;
+    this.role = payload.role;
+  }
+}
+
 const MODEL_MAP: Record<ModelRole, string> = {
   planner: config.models.planner,
   retriever: config.models.retriever,
@@ -121,8 +159,16 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;
     const errorClassification = classifyModelError(axiosErr);
+    const providerBody = axiosErr.response?.data;
 
-    logger.warn(`OpenRouter primary model failed for [${options.role}]: ${primaryModel} - status ${status} (${errorClassification})`);
+    logger.warn(`OpenRouter primary model failed for [${options.role}]`, {
+      role: options.role,
+      model: primaryModel,
+      status,
+      classification: errorClassification,
+      fallbackAttempted: Boolean(fallbackModel),
+      providerBody,
+    });
 
     if (fallbackModel) {
       logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
@@ -133,25 +179,57 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       } catch (fallbackErr) {
         const fallbackAxiosErr = fallbackErr as AxiosError;
         const fallbackClassification = classifyModelError(fallbackAxiosErr);
-        logger.error(`OpenRouter fallback also failed for [${options.role}]: ${fallbackModel} (${fallbackClassification})`);
-        throw fallbackErr;
+        const fallbackBody = fallbackAxiosErr.response?.data;
+        logger.error(`OpenRouter fallback also failed for [${options.role}]`, {
+          role: options.role,
+          model: fallbackModel,
+          status: fallbackAxiosErr.response?.status,
+          classification: fallbackClassification,
+          fallbackAttempted: true,
+          providerBody: fallbackBody,
+        });
+        throw new NormalizedModelError({
+          classification: fallbackClassification,
+          status: fallbackAxiosErr.response?.status,
+          providerMessage: extractProviderMessage(fallbackAxiosErr),
+          model: fallbackModel,
+          fallbackTried: true,
+          role: options.role,
+        });
       }
     }
 
-    throw err;
+    throw new NormalizedModelError({
+      classification: errorClassification,
+      status,
+      providerMessage: extractProviderMessage(axiosErr),
+      model: primaryModel,
+      fallbackTried: false,
+      role: options.role,
+    });
   }
 }
 
-function classifyModelError(err: AxiosError): string {
+function classifyModelError(err: AxiosError): ModelErrorClassification {
   const status = err.response?.status;
   if (!status) return 'network_error';
   if (status === 429) return 'rate_limited';
   if (status === 402) return 'quota_exceeded';
   if (status === 503 || status === 502) return 'provider_unavailable';
-  if (status >= 500) return 'server_error';
+  if (status >= 500) return 'provider_unavailable';
   if (status === 401 || status === 403) return 'auth_error';
   if (status === 400) return 'bad_request';
-  return `http_${status}`;
+  return 'unknown';
+}
+
+function extractProviderMessage(err: AxiosError): string {
+  const data = err.response?.data as unknown;
+  if (typeof data === 'string') return data;
+  if (data && typeof data === 'object') {
+    const maybe = data as { error?: { message?: string }; message?: string };
+    return maybe.error?.message || maybe.message || JSON.stringify(data);
+  }
+  return err.message;
 }
 
 /**

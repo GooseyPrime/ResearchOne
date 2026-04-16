@@ -1,11 +1,18 @@
 import { query, queryOne, withTransaction } from '../../db/pool';
-import { callRoleModel, SYSTEM_PROMPTS, ModelCallResult } from '../openrouter/openrouterService';
+import {
+  callRoleModel,
+  SYSTEM_PROMPTS,
+  ModelCallResult,
+  NormalizedModelError,
+} from '../openrouter/openrouterService';
 import { retrieveChunks, RetrievedChunk } from '../retrieval/retrievalService';
 import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
+import { saveRunCheckpoint } from './checkpointService';
+import { generateIterativeReport } from './reportGenerator';
 
 export interface ResearchJobData {
   runId: string;
@@ -19,6 +26,13 @@ export interface ResearchProgress {
   percent: number;
   message: string;
   runId: string;
+  detail?: string;
+  substep?: string;
+  timestamp: string;
+  model?: string;
+  tokenUsage?: { prompt: number; completion: number };
+  sourceCount?: number;
+  chunkCount?: number;
 }
 
 type ProgressCallback = (update: ResearchProgress) => void;
@@ -43,9 +57,20 @@ export async function runResearchJob(
 ): Promise<{ runId: string; reportId: string }> {
   const { runId, query: researchQuery, supplemental, filterTags } = data;
   const modelLog: ModelCallResult[] = [];
+  let currentStage = 'queued';
+  let currentPercent = 0;
+  let currentMessage = 'Queued';
 
-  const progress = (stage: string, percent: number, message: string) => {
-    onProgress({ stage, percent, message, runId });
+  const progress = (
+    stage: string,
+    percent: number,
+    message: string,
+    extra?: Omit<ResearchProgress, 'stage' | 'percent' | 'message' | 'runId' | 'timestamp'>
+  ) => {
+    currentStage = stage;
+    currentPercent = percent;
+    currentMessage = message;
+    onProgress({ stage, percent, message, runId, timestamp: new Date().toISOString(), ...extra });
     logger.info(`[${runId}] ${stage}: ${message}`);
   };
 
@@ -59,7 +84,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 1: PLANNER — decompose the research query
     // ────────────────────────────────────────────────────────────────
-    progress('planning', 5, 'Decomposing research query with planner...');
+    progress('planning', 5, 'Decomposing research query with planner...', { substep: 'request_started' });
 
     const plannerResult = await callRoleModel({
       role: 'planner',
@@ -72,6 +97,11 @@ export async function runResearchJob(
       ],
     });
     modelLog.push(plannerResult);
+    progress('planning', 8, 'Planner response parsed', {
+      substep: 'response_parsed',
+      model: plannerResult.model,
+      tokenUsage: { prompt: plannerResult.promptTokens, completion: plannerResult.completionTokens },
+    });
 
     let plan: ResearchPlan;
     try {
@@ -91,11 +121,17 @@ export async function runResearchJob(
       `UPDATE research_runs SET plan=$1 WHERE id=$2`,
       [JSON.stringify(plan), runId]
     );
+    await saveRunCheckpoint({
+      runId,
+      stage: 'planning',
+      checkpointKey: 'plan',
+      snapshot: { plan },
+    });
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
-    progress('discovery', 15, 'Running autonomous external discovery...');
+    progress('discovery', 15, 'Running autonomous external discovery...', { substep: 'queries_generating' });
 
     const discoverySummary = await runDiscoveryOrchestrator({
       runId,
@@ -108,13 +144,19 @@ export async function runResearchJob(
       `UPDATE research_runs SET discovery_summary=$1 WHERE id=$2`,
       [JSON.stringify(discoverySummary), runId]
     );
+    await saveRunCheckpoint({
+      runId,
+      stage: 'discovery',
+      checkpointKey: 'discovery_summary',
+      snapshot: { discoverySummary },
+    });
 
     logger.info(`[${runId}] Discovery: ingested=${discoverySummary.sourcesIngested}, skipped=${discoverySummary.sourcesSkipped}`);
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
-    progress('retrieval', 20, 'Retrieving evidence from corpus...');
+    progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
     const allChunks: RetrievedChunk[] = [];
     const seenIds = new Set<string>();
@@ -132,6 +174,10 @@ export async function runResearchJob(
           allChunks.push(c);
         }
       }
+      progress('retrieval', Math.min(34, 22 + allChunks.length), `Retrieval query complete: ${rq}`, {
+        substep: 'query_done',
+        chunkCount: allChunks.length,
+      });
     }
 
     logger.info(`[${runId}] Retrieved ${allChunks.length} unique chunks`);
@@ -141,11 +187,21 @@ export async function runResearchJob(
       `UPDATE research_runs SET retrieval_ids=$1 WHERE id=$2`,
       [retrievalIds, runId]
     );
+    await saveRunCheckpoint({
+      runId,
+      stage: 'retrieval',
+      checkpointKey: 'retrieval_ids',
+      snapshot: { retrievalIds, chunkCount: allChunks.length },
+    });
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
-    progress('retriever_analysis', 35, 'Analyzing retrieved evidence...');
+    progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
+      substep: 'analysis_started',
+      chunkCount: allChunks.length,
+      sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+    });
 
     const evidenceContext = formatEvidenceContext(allChunks);
 
@@ -160,11 +216,17 @@ export async function runResearchJob(
       ],
     });
     modelLog.push(retrieverResult);
+    await saveRunCheckpoint({
+      runId,
+      stage: 'retriever_analysis',
+      checkpointKey: 'retriever_analysis',
+      snapshot: { output: retrieverResult.content },
+    });
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
-    progress('reasoning', 50, 'Reasoning over evidence...');
+    progress('reasoning', 50, 'Reasoning over evidence...', { substep: 'reasoner_started' });
 
     const reasonerResult = await callRoleModel({
       role: 'reasoner',
@@ -177,11 +239,17 @@ export async function runResearchJob(
       ],
     });
     modelLog.push(reasonerResult);
+    await saveRunCheckpoint({
+      runId,
+      stage: 'reasoning',
+      checkpointKey: 'reasoner_output',
+      snapshot: { output: reasonerResult.content },
+    });
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 6: SKEPTIC — challenge conclusions
     // ────────────────────────────────────────────────────────────────
-    progress('challenge', 65, 'Challenging conclusions with skeptic...');
+    progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
 
     const skepticResult = await callRoleModel({
       role: 'skeptic',
@@ -194,30 +262,38 @@ export async function runResearchJob(
       ],
     });
     modelLog.push(skepticResult);
+    await saveRunCheckpoint({
+      runId,
+      stage: 'challenge',
+      checkpointKey: 'skeptic_output',
+      snapshot: { output: skepticResult.content },
+    });
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 7: SYNTHESIZER — write the full report
     // ────────────────────────────────────────────────────────────────
-    progress('synthesis', 80, 'Synthesizing long-form research report...');
+    progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
-    const synthesizerResult = await callRoleModel({
-      role: 'synthesizer',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.synthesizer },
-        {
-          role: 'user',
-          content: buildSynthesisPrompt({
-            query: researchQuery,
-            plan,
-            evidenceContext,
-            retrieverAnalysis: retrieverResult.content,
-            reasoningChains: reasonerResult.content,
-            challenges: skepticResult.content,
-          }),
-        },
-      ],
+    const generatedReport = await generateIterativeReport({
+      query: researchQuery,
+      plan,
+      evidenceContext,
+      retrieverAnalysis: retrieverResult.content,
+      reasoningChains: reasonerResult.content,
+      challenges: skepticResult.content,
+      onSectionProgress: async ({ title, index, total }) => {
+        progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
+          substep: 'section_generated',
+          detail: title,
+        });
+        await saveRunCheckpoint({
+          runId,
+          stage: 'synthesis',
+          checkpointKey: `section_${index}`,
+          snapshot: { sectionTitle: title, index, total },
+        });
+      },
     });
-    modelLog.push(synthesizerResult);
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 8: VERIFIER — epistemic quality gate
@@ -230,7 +306,7 @@ export async function runResearchJob(
         { role: 'system', content: SYSTEM_PROMPTS.verifier },
         {
           role: 'user',
-          content: `Verify this research report meets epistemic standards:\n\n${synthesizerResult.content}`,
+          content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
         },
       ],
     });
@@ -251,15 +327,21 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     progress('saving', 94, 'Saving report to corpus...');
 
-    const reportSections = parseReportSections(synthesizerResult.content);
+    const reportSections = parseReportSections(generatedReport.markdown);
     const reportId = await saveReport({
       runId,
       query: researchQuery,
       plan,
       allChunks,
-      synthesizerContent: synthesizerResult.content,
+      synthesizerContent: generatedReport.markdown,
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+    });
+    await saveRunCheckpoint({
+      runId,
+      stage: 'saving',
+      checkpointKey: 'report_saved',
+      snapshot: { reportId, sectionCount: reportSections.length },
     });
 
     // ────────────────────────────────────────────────────────────────
@@ -274,7 +356,7 @@ export async function runResearchJob(
         researchQuery,
         chunks: allChunks,
         reasonerOutput: reasonerResult.content,
-        synthesizerOutput: synthesizerResult.content,
+        synthesizerOutput: generatedReport.markdown,
       });
 
       await extractAndPersistContradictions({
@@ -300,7 +382,7 @@ export async function runResearchJob(
 
     // Update run with model log, report_id, and completion
     await query(
-      `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1, report_id=$2 WHERE id=$3`,
+      `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1, report_id=$2, failed_stage=NULL, failure_meta='{}'::jsonb WHERE id=$3`,
       [JSON.stringify(modelLog), reportId, runId]
     );
 
@@ -309,12 +391,29 @@ export async function runResearchJob(
     return { runId, reportId };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    const failureMeta = err instanceof NormalizedModelError
+      ? {
+        classification: err.classification,
+        status: err.status,
+        providerMessage: err.providerMessage,
+        model: err.model,
+        fallbackTried: err.fallbackTried,
+        role: err.role,
+      }
+      : {};
     await query(
-      `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
-      [errMsg, runId]
+      `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW() WHERE id=$4`,
+      [errMsg, currentStage, JSON.stringify(failureMeta), runId]
     );
     logger.error(`Research run ${runId} failed:`, err);
-    throw err;
+    const enrichedError = Object.assign(new Error(errMsg), {
+      runId,
+      stage: currentStage,
+      percent: currentPercent,
+      message: currentMessage,
+      retryable: err instanceof NormalizedModelError ? err.classification === 'rate_limited' || err.classification === 'provider_unavailable' : false,
+    });
+    throw enrichedError;
   }
 }
 
@@ -329,46 +428,6 @@ function formatEvidenceContext(chunks: RetrievedChunk[]): string {
       '---',
     ].filter(Boolean).join('\n'))
     .join('\n\n');
-}
-
-function buildSynthesisPrompt(args: {
-  query: string;
-  plan: ResearchPlan;
-  evidenceContext: string;
-  retrieverAnalysis: string;
-  reasoningChains: string;
-  challenges: string;
-}): string {
-  return `Research Query: ${args.query}
-
-Investigation Plan:
-${JSON.stringify(args.plan, null, 2)}
-
-Evidence Analysis:
-${args.retrieverAnalysis}
-
-Reasoning Chains:
-${args.reasoningChains}
-
-Challenges and Counterarguments:
-${args.challenges}
-
-Evidence Base (${args.evidenceContext.split('---').length} chunks retrieved):
-${args.evidenceContext}
-
-Write a complete professional research report with ALL of the following sections:
-1. Executive Summary
-2. Research Question and Scope
-3. Evidence Ledger (all major claims tagged with evidence tiers)
-4. Reasoning and Analysis
-5. Contradiction Analysis (do not suppress contradictions)
-6. Challenges and Alternative Explanations
-7. Synthesis and Conclusions
-8. Falsification Criteria (what would prove this wrong)
-9. Unresolved Questions
-10. Recommended Next Queries
-
-DO NOT exceed the evidence. Mark inferences clearly. This is a research report, not an opinion piece.`;
 }
 
 async function saveReport(args: {

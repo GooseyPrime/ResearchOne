@@ -6,6 +6,9 @@ interface ResearchProgress {
   stage: string;
   percent: number;
   message: string;
+  detail?: string;
+  substep?: string;
+  timestamp?: string;
 }
 
 interface AppStore {

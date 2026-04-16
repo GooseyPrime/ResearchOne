@@ -10,9 +10,9 @@ import {
   Cpu,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { getStats } from '../../utils/api';
+import { getStats, getSystemHealth, restartRuntime } from '../../utils/api';
 import { useStore } from '../../store/useStore';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
 import ActiveRunBadge from '../research/ActiveRunBadge';
@@ -30,6 +30,8 @@ const NAV_ITEMS = [
 export default function Layout() {
   const location = useLocation();
   const { setStats, stats } = useStore();
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [restartBusy, setRestartBusy] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['stats'],
@@ -40,6 +42,12 @@ export default function Layout() {
   useEffect(() => {
     if (data) setStats(data);
   }, [data, setStats]);
+
+  const { data: health } = useQuery({
+    queryKey: ['system-health'],
+    queryFn: getSystemHealth,
+    refetchInterval: 10000,
+  });
 
   // Connect WebSocket
   useEffect(() => {
@@ -55,6 +63,24 @@ export default function Layout() {
       socket.off('corpus:updated');
     };
   }, []);
+
+  const overallColor = health?.status === 'ok'
+    ? 'bg-green-400'
+    : health?.status === 'degraded'
+      ? 'bg-amber-400'
+      : 'bg-red-400';
+
+  const handleRestart = async () => {
+    const token = window.prompt('Enter admin runtime token to restart the system');
+    if (!token) return;
+    if (!window.confirm('Restart runtime now? Active jobs may be interrupted.')) return;
+    setRestartBusy(true);
+    try {
+      await restartRuntime(token);
+    } finally {
+      setRestartBusy(false);
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
@@ -118,12 +144,39 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-xs text-slate-500">System online</span>
-            </div>
+            <button
+              type="button"
+              className="flex items-center gap-1.5"
+              onClick={() => setHealthOpen(v => !v)}
+            >
+              <div className={clsx('w-1.5 h-1.5 rounded-full animate-pulse', overallColor)} />
+              <span className="text-xs text-slate-500">System {health?.status ?? 'checking'}</span>
+            </button>
           </div>
         </header>
+
+        {healthOpen && health && (
+          <div className="border-b border-indigo-900/20 px-6 py-3 bg-surface-300/30">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Object.entries(health.checks).map(([name, check]) => (
+                <div key={name} className="bg-surface-200 rounded-md px-2 py-1.5 text-xs">
+                  <div className="text-slate-500">{name}</div>
+                  <div className={check.ok ? 'text-green-400' : 'text-red-400'}>{check.ok ? 'ok' : 'down'}</div>
+                </div>
+              ))}
+            </div>
+            {health.restartAvailable && (
+              <button
+                type="button"
+                className="btn-ghost mt-3 text-xs"
+                disabled={restartBusy}
+                onClick={handleRestart}
+              >
+                {restartBusy ? 'Restarting...' : 'Restart runtime'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto grid-bg">

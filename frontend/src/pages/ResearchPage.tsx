@@ -21,6 +21,28 @@ import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
+interface ResearchProgressEvent {
+  runId?: string;
+  stage: string;
+  percent: number;
+  message: string;
+  detail?: string;
+  substep?: string;
+  timestamp?: string;
+  model?: string;
+  tokenUsage?: { prompt: number; completion: number };
+  sourceCount?: number;
+  chunkCount?: number;
+}
+
+interface ResearchFailureEvent {
+  runId: string;
+  stage: string;
+  percent: number;
+  message: string;
+  error?: string;
+  retryable?: boolean;
+}
 
 const WORKFLOW_STAGES = [
   { id: 'planning', icon: Brain, label: 'Planner', desc: 'Decomposes research query' },
@@ -41,7 +63,10 @@ export default function ResearchPage() {
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ stage: string; percent: number; message: string } | null>(null);
+  const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
+  const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
 
   const { data: runs = [] } = useQuery<ResearchRun[]>({
     queryKey: ['research-runs'],
@@ -54,6 +79,8 @@ export default function ResearchPage() {
     onSuccess: (data) => {
       setTrackingRunId(data.runId);
       setProgress({ stage: 'queued', percent: 0, message: 'Research queued...' });
+      setFailure(null);
+      setTraceEvents([]);
       subscribeToJob(data.runId);
       addNotification('info', 'Research started — tracking progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
@@ -67,10 +94,11 @@ export default function ResearchPage() {
   useEffect(() => {
     const socket = getSocket();
 
-    socket.on('research:progress', (update: { runId: string; stage: string; percent: number; message: string }) => {
+    socket.on('research:progress', (update: ResearchProgressEvent) => {
       if (update.runId === trackingRunId) {
         setProgress(update);
         setActiveRun({ ...update, runId: update.runId });
+        setTraceEvents(prev => [update, ...prev].slice(0, 100));
       }
     });
 
@@ -78,6 +106,7 @@ export default function ResearchPage() {
       if (result.runId === trackingRunId) {
         setProgress({ stage: 'done', percent: 100, message: 'Report ready!' });
         setActiveRun(null);
+        setTrackingRunId(null);
         addNotification('success', 'Research complete — report generated!');
         qc.invalidateQueries({ queryKey: ['research-runs'] });
         qc.invalidateQueries({ queryKey: ['reports'] });
@@ -85,9 +114,21 @@ export default function ResearchPage() {
       }
     });
 
+    socket.on('research:failed', (failed: ResearchFailureEvent) => {
+      if (failed.runId === trackingRunId) {
+        setFailure(failed);
+        setProgress(null);
+        setTrackingRunId(null);
+        setActiveRun(null);
+        addNotification('error', failed.error || failed.message || 'Research failed.');
+        qc.invalidateQueries({ queryKey: ['research-runs'] });
+      }
+    });
+
     return () => {
       socket.off('research:progress');
       socket.off('research:completed');
+      socket.off('research:failed');
     };
   }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
 
@@ -222,6 +263,48 @@ export default function ResearchPage() {
             </div>
 
             <p className="text-sm text-slate-400">{progress?.message ?? 'Processing...'}</p>
+
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => setTraceOpen(v => !v)}
+            >
+              {traceOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              Live research trace ({traceEvents.length})
+            </button>
+
+            {traceOpen && (
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-surface-100 bg-surface-200/60 p-3 space-y-2">
+                {traceEvents.length === 0 && (
+                  <p className="text-xs text-slate-500">No trace events yet.</p>
+                )}
+                {traceEvents.map((evt, idx) => (
+                  <div key={`${evt.timestamp ?? idx}-${evt.stage}`} className="text-xs border-b border-surface-100/50 pb-2">
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span>{evt.stage}</span>
+                      <span>{evt.percent}%</span>
+                    </div>
+                    <p className="text-slate-400 mt-1">{evt.message}</p>
+                    {(evt.detail || evt.substep || evt.chunkCount || evt.sourceCount) && (
+                      <p className="text-slate-500 mt-1">
+                        {evt.detail ? `${evt.detail} · ` : ''}{evt.substep ? `${evt.substep} · ` : ''}{typeof evt.chunkCount === 'number' ? `${evt.chunkCount} chunks ` : ''}{typeof evt.sourceCount === 'number' ? `· ${evt.sourceCount} sources` : ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {failure && (
+          <div className="border border-red-900/40 bg-red-950/30 rounded-lg p-4 space-y-1">
+            <p className="text-sm text-red-300 font-medium">Run failed</p>
+            <p className="text-xs text-red-200">Stage: {failure.stage || 'unknown'}</p>
+            <p className="text-xs text-red-200">Reason: {failure.error || failure.message}</p>
+            {failure.retryable && (
+              <p className="text-xs text-amber-300">Retry hint: this failure appears retryable.</p>
+            )}
           </div>
         )}
       </div>
@@ -259,6 +342,7 @@ export default function ResearchPage() {
 
 function RunRow({ run }: { run: ResearchRun }) {
   const navigate = useNavigate();
+  const [showError, setShowError] = useState(false);
 
   const STATUS_CONFIG = {
     queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
@@ -272,20 +356,40 @@ function RunRow({ run }: { run: ResearchRun }) {
   const Icon = cfg.icon;
 
   return (
-    <div
-      className="card p-3 flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all"
-      onClick={() => run.status === 'completed' && navigate(`/reports`)}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <Icon size={14} className={cfg.color} />
-        <div className="min-w-0">
-          <p className="text-sm text-white truncate">{run.title}</p>
-          <p className="text-xs text-slate-500">
-            {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
-          </p>
+    <div className="card p-3 space-y-2">
+      <div
+        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all"
+        onClick={() => run.status === 'completed' && navigate(`/reports`)}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon size={14} className={cfg.color} />
+          <div className="min-w-0">
+            <p className="text-sm text-white truncate">{run.title}</p>
+            <p className="text-xs text-slate-500">
+              {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+            </p>
+          </div>
         </div>
+        <span className={clsx('text-xs font-medium flex-shrink-0', cfg.color)}>{cfg.label}</span>
       </div>
-      <span className={clsx('text-xs font-medium flex-shrink-0', cfg.color)}>{cfg.label}</span>
+
+      {run.status === 'failed' && (run.error_message || run.failed_stage) && (
+        <div>
+          <button
+            type="button"
+            className="text-xs text-red-300 hover:text-red-200"
+            onClick={() => setShowError(v => !v)}
+          >
+            {showError ? 'Hide error details' : 'Show error details'}
+          </button>
+          {showError && (
+            <p className="text-xs text-red-200 mt-1">
+              {run.failed_stage ? `Stage: ${run.failed_stage} · ` : ''}
+              {run.error_message || 'Unknown failure'}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

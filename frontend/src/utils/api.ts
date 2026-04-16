@@ -41,11 +41,28 @@ export interface ResearchRun {
   query: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   error_message?: string;
+  failed_stage?: string;
+  failure_meta?: Record<string, unknown>;
   started_at?: string;
   completed_at?: string;
   created_at: string;
   plan?: Record<string, unknown>;
   model_log?: unknown[];
+}
+
+export interface SystemHealth {
+  status: 'ok' | 'degraded' | 'down';
+  timestamp: string;
+  checks: {
+    api: { ok: boolean; latencyMs?: number };
+    db: { ok: boolean; latencyMs?: number };
+    redis: { ok: boolean; latencyMs?: number };
+    queue: { ok: boolean; latencyMs?: number };
+    openrouter: { ok: boolean; latencyMs?: number; modelProbe?: string };
+    exports: { ok: boolean; writable?: boolean };
+    websocket: { ok: boolean };
+  };
+  restartAvailable: boolean;
 }
 
 export interface Report {
@@ -142,6 +159,16 @@ export const getResearchRuns = (params?: { status?: string }) =>
 
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
+
+export const getSystemHealth = () =>
+  api.get<SystemHealth>('/health').then(r => r.data);
+
+export const restartRuntime = (adminToken: string) =>
+  api.post('/admin/runtime/restart', {}, {
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+    },
+  }).then(r => r.data);
 
 export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);
