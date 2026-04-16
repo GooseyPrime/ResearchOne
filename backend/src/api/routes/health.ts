@@ -9,7 +9,53 @@ import { config } from '../../config';
 
 const router = Router();
 
-type Check = { ok: boolean; latencyMs?: number; writable?: boolean; modelProbe?: string };
+type Check = {
+  ok: boolean;
+  latencyMs?: number;
+  writable?: boolean;
+  modelProbe?: string;
+  provider?: string;
+  ready?: boolean;
+  reason?: string;
+};
+
+function getDiscoveryReadinessCheck(): Check {
+  if (!config.discovery.enabled) {
+    return {
+      ok: true,
+      provider: 'disabled',
+      ready: false,
+      reason: 'DISCOVERY_ENABLED=false',
+    };
+  }
+
+  const provider = config.discovery.provider;
+  if (provider === 'tavily') {
+    const ready = Boolean(config.discovery.tavilyApiKey.trim());
+    return { ok: ready, provider, ready, reason: ready ? undefined : 'TAVILY_API_KEY missing' };
+  }
+  if (provider === 'brave') {
+    const ready = Boolean(config.discovery.providerApiKey.trim());
+    return { ok: ready, provider, ready, reason: ready ? undefined : 'SEARCH_PROVIDER_API_KEY missing' };
+  }
+  if (provider === 'generic') {
+    const ready = Boolean(config.discovery.providerBaseUrl.trim());
+    return { ok: ready, provider, ready, reason: ready ? undefined : 'SEARCH_PROVIDER_BASE_URL missing' };
+  }
+  if (provider === 'cascade') {
+    const tavilyReady = Boolean(config.discovery.tavilyApiKey.trim());
+    const braveReady = Boolean(config.discovery.providerApiKey.trim());
+    const genericReady = Boolean(config.discovery.providerBaseUrl.trim());
+    const ready = tavilyReady || braveReady || genericReady;
+    return {
+      ok: ready,
+      provider,
+      ready,
+      reason: ready ? undefined : 'No cascade providers configured (need Tavily, Brave, or Generic credentials)',
+    };
+  }
+  return { ok: false, provider, ready: false, reason: 'Invalid discovery provider' };
+}
 
 async function timedCheck<T>(fn: () => Promise<T>): Promise<{ ok: boolean; latencyMs?: number; value?: T }> {
   const started = Date.now();
@@ -55,6 +101,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   });
 
   const websocketCheck: Check = { ok: Boolean(req.app.get('io')) };
+  const discoveryCheck = getDiscoveryReadinessCheck();
 
   const checks = {
     api: apiCheck,
@@ -66,6 +113,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
       latencyMs: openrouterProbe.latencyMs,
       modelProbe: openrouterProbe.value,
     },
+    discovery: discoveryCheck,
     exports: { ok: exportsProbe.ok, writable: exportsProbe.ok },
     websocket: websocketCheck,
   };

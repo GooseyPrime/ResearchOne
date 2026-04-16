@@ -57,9 +57,11 @@ export const config = {
 
   discovery: {
     enabled: process.env.DISCOVERY_ENABLED !== 'false',
-    provider: process.env.SEARCH_PROVIDER || 'generic',
+    provider: process.env.SEARCH_PROVIDER || 'tavily',
     providerApiKey: process.env.SEARCH_PROVIDER_API_KEY || '',
     providerBaseUrl: process.env.SEARCH_PROVIDER_BASE_URL || '',
+    tavilyApiKey: process.env.TAVILY_API_KEY || '',
+    tavilyBaseUrl: process.env.TAVILY_BASE_URL || 'https://api.tavily.com/search',
     maxResults: parseInt(process.env.MAX_EXTERNAL_DISCOVERY_RESULTS || '25', 10),
     maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
     maxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '5', 10),
@@ -86,4 +88,17 @@ export const config = {
 
 if (config.nodeEnv === 'production' && !config.openrouter.apiKey.trim()) {
   throw new Error('OPENROUTER_API_KEY must be set in production environment');
+}
+
+const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
+
+if (config.discovery.enabled) {
+  if (!ALLOWED_SEARCH_PROVIDERS.has(config.discovery.provider)) {
+    throw new Error(
+      `Invalid SEARCH_PROVIDER="${config.discovery.provider}". Allowed providers: tavily, generic, brave, cascade`
+    );
+  }
+  if (config.discovery.provider === 'tavily' && !config.discovery.tavilyApiKey.trim()) {
+    throw new Error('TAVILY_API_KEY must be set when SEARCH_PROVIDER=tavily and discovery is enabled');
+  }
 }

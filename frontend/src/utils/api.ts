@@ -59,6 +59,7 @@ export interface SystemHealth {
     redis: { ok: boolean; latencyMs?: number };
     queue: { ok: boolean; latencyMs?: number };
     openrouter: { ok: boolean; latencyMs?: number; modelProbe?: string };
+    discovery: { ok: boolean; provider?: string; ready?: boolean; reason?: string };
     exports: { ok: boolean; writable?: boolean };
     websocket: { ok: boolean };
   };

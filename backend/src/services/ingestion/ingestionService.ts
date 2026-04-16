@@ -51,7 +51,7 @@ export async function runIngestionJob(
 
     let rawContent = '';
     let title = '';
-    let url = data.url ?? '';
+    const url = data.url ?? '';
     let fetchMetadata: Record<string, unknown> = {};
     let parseMethod = 'raw';
 

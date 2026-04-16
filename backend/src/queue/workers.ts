@@ -97,6 +97,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           percent?: number;
           message?: string;
           retryable?: boolean;
+          failureMeta?: Record<string, unknown>;
         };
         const failedPayload = {
           runId: e.runId ?? job.data.runId,
@@ -105,6 +106,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           message: e.message ?? 'Research run failed',
           error: e.message,
           retryable: Boolean(e.retryable),
+          failureMeta: e.failureMeta ?? {},
         };
         emit(`job:${job.data.runId}`, 'research:failed', failedPayload);
         io.emit('reports:updated', {});

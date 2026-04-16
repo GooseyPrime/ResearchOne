@@ -38,6 +38,13 @@ vi.mock('../config', () => ({
   config: {
     openrouter: { apiKey: 'token', baseUrl: 'https://openrouter.ai/api/v1' },
     models: { planner: 'planner-model' },
+    discovery: {
+      enabled: true,
+      provider: 'tavily',
+      tavilyApiKey: 'tavily-token',
+      providerApiKey: '',
+      providerBaseUrl: '',
+    },
     exports: { dir: '/tmp/exports' },
     admin: { token: 'admintoken' },
   },
@@ -68,6 +75,8 @@ describe('health route payload', () => {
     expect(result.checks.db.ok).toBe(true);
     expect(result.checks.redis.ok).toBe(true);
     expect(result.checks.openrouter.modelProbe).toBe('planner-model');
+    expect(result.checks.discovery.provider).toBe('tavily');
+    expect(result.checks.discovery.ready).toBe(true);
     expect(result.restartAvailable).toBe(true);
   });
 

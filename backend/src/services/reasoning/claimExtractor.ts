@@ -5,7 +5,7 @@
  * and chunk linkage for later querying without reparsing prose.
  */
 
-import { query, withTransaction } from '../../db/pool';
+import { withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { logger } from '../../utils/logger';

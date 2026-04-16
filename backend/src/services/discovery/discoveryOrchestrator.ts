@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
-import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { callRoleModel } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
 import {
@@ -32,6 +32,7 @@ import {
 import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
 import { BraveSearchProvider } from './providers/braveSearch';
+import { TavilySearchProvider } from './providers/tavilySearch';
 
 /** Discovery planner system prompt */
 const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for ResearchOne, a disciplined research system.
@@ -59,16 +60,17 @@ Output JSON with this exact schema:
 /** Get the configured search provider(s) */
 function getSearchProviders(): SearchProvider[] {
   const providerName = config.discovery.provider;
-  if (providerName === 'cascade') {
-    return [new BraveSearchProvider(), new GenericWebSearchProvider()];
-  }
-  if (providerName === 'brave') {
-    return [new BraveSearchProvider()];
-  }
   switch (providerName) {
+    case 'cascade':
+      return [new TavilySearchProvider(), new BraveSearchProvider(), new GenericWebSearchProvider()];
+    case 'brave':
+      return [new BraveSearchProvider()];
     case 'generic':
-    default:
       return [new GenericWebSearchProvider()];
+    case 'tavily':
+      return [new TavilySearchProvider()];
+    default:
+      return [new TavilySearchProvider()];
   }
 }
 
