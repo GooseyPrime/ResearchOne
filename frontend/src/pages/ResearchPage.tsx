@@ -42,6 +42,7 @@ interface ResearchFailureEvent {
   message: string;
   error?: string;
   retryable?: boolean;
+  failureMeta?: Record<string, unknown>;
 }
 
 function formatTraceMeta(evt: ResearchProgressEvent): string {
@@ -125,11 +126,12 @@ export default function ResearchPage() {
 
     socket.on('research:failed', (failed: ResearchFailureEvent) => {
       if (failed.runId === trackingRunId) {
+        const failureReason = formatFailureReason(failed.error || failed.message, failed.failureMeta);
         setFailure(failed);
         setProgress(null);
         setTrackingRunId(null);
         setActiveRun(null);
-        addNotification('error', failed.error || failed.message || 'Research failed.');
+        addNotification('error', failureReason || 'Research failed.');
         qc.invalidateQueries({ queryKey: ['research-runs'] });
       }
     });
@@ -310,7 +312,7 @@ export default function ResearchPage() {
           <div className="border border-red-900/40 bg-red-950/30 rounded-lg p-4 space-y-1">
             <p className="text-sm text-red-300 font-medium">Run failed</p>
             <p className="text-xs text-red-200">Stage: {failure.stage || 'unknown'}</p>
-            <p className="text-xs text-red-200">Reason: {failure.error || failure.message}</p>
+            <p className="text-xs text-red-200">Reason: {formatFailureReason(failure.error || failure.message, failure.failureMeta)}</p>
             {failure.retryable && (
               <p className="text-xs text-amber-300">Retry hint: this failure appears retryable.</p>
             )}
@@ -394,11 +396,28 @@ function RunRow({ run }: { run: ResearchRun }) {
           {showError && (
             <p className="text-xs text-red-200 mt-1">
               {run.failed_stage ? `Stage: ${run.failed_stage} · ` : ''}
-              {run.error_message || 'Unknown failure'}
+              {formatFailureReason(run.error_message || 'Unknown failure', run.failure_meta)}
             </p>
           )}
         </div>
       )}
     </div>
   );
+}
+
+function formatFailureReason(message: string, failureMeta?: Record<string, unknown>): string {
+  if (!failureMeta) return message;
+  const providerMessage = typeof failureMeta.providerMessage === 'string' ? failureMeta.providerMessage : undefined;
+  const status = typeof failureMeta.status === 'number' ? String(failureMeta.status) : undefined;
+  const classification = typeof failureMeta.classification === 'string' ? failureMeta.classification : undefined;
+  const endpoint = typeof failureMeta.endpoint === 'string' ? failureMeta.endpoint : undefined;
+
+  const details = [
+    classification ? `classification=${classification}` : '',
+    status ? `status=${status}` : '',
+    endpoint ? `endpoint=${endpoint}` : '',
+  ].filter(Boolean).join(', ');
+
+  if (!providerMessage && !details) return message;
+  return [message, providerMessage, details].filter(Boolean).join(' | ');
 }

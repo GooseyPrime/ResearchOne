@@ -154,9 +154,14 @@ EXPORTS_DIR=/opt/researchone/exports
 
 # Autonomous discovery
 DISCOVERY_ENABLED=true
-SEARCH_PROVIDER=generic
+SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=
+# Optional/legacy providers only:
+# SEARCH_PROVIDER=brave   -> requires SEARCH_PROVIDER_API_KEY
+# SEARCH_PROVIDER=generic -> requires SEARCH_PROVIDER_BASE_URL (SearXNG, Serper, or compatible endpoint)
+# SEARCH_PROVIDER=cascade -> optional architecture path (not recommended default)
 SEARCH_PROVIDER_API_KEY=
-SEARCH_PROVIDER_BASE_URL=    # SearXNG, Serper, or compatible JSON search endpoint
+SEARCH_PROVIDER_BASE_URL=
 MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
 ```
@@ -305,7 +310,19 @@ When a research run starts, a discovery planner stage evaluates whether external
 4. Discovery events are persisted to `discovery_events` for full auditability
 5. Retrieval runs across the enriched corpus
 
-To enable: set `DISCOVERY_ENABLED=true` and configure `SEARCH_PROVIDER_BASE_URL` with a compatible JSON search endpoint (SearXNG, Serper, or custom).
+Recommended production setup:
+
+- `DISCOVERY_ENABLED=true`
+- `SEARCH_PROVIDER=tavily`
+- `TAVILY_API_KEY=...`
+- `OPENROUTER_API_KEY=...`
+- `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+
+Optional/legacy alternatives:
+
+- `SEARCH_PROVIDER=brave` (legacy optional provider; requires `SEARCH_PROVIDER_API_KEY`)
+- `SEARCH_PROVIDER=generic` (legacy optional provider; requires `SEARCH_PROVIDER_BASE_URL`)
+- `SEARCH_PROVIDER=cascade` (optional architecture path; not the recommended default)
 
 ## Ingestion Support
 

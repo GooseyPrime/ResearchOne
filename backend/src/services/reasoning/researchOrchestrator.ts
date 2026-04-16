@@ -13,6 +13,7 @@ import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { generateIterativeReport } from './reportGenerator';
+import { config } from '../../config';
 
 export interface ResearchJobData {
   runId: string;
@@ -49,6 +50,12 @@ interface VerificationResult {
   passed: boolean;
   criteria: Array<{ criterion: string; status: 'PASS' | 'FAIL'; note: string }>;
   overall: string;
+}
+
+interface ResearchFailureDetails {
+  errorMessage: string;
+  failureMeta: Record<string, unknown>;
+  retryable: boolean;
 }
 const RETRIEVAL_PROGRESS_BASE = 22;
 const RETRIEVAL_PROGRESS_CAP = 34;
@@ -392,31 +399,50 @@ export async function runResearchJob(
 
     return { runId, reportId };
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    const failureMeta = err instanceof NormalizedModelError
-      ? {
-        classification: err.classification,
-        status: err.status,
-        providerMessage: err.providerMessage,
-        model: err.model,
-        fallbackTried: err.fallbackTried,
-        role: err.role,
-      }
-      : {};
+    const failureDetails = buildResearchFailureDetails(err, currentStage);
     await query(
       `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW() WHERE id=$4`,
-      [errMsg, currentStage, JSON.stringify(failureMeta), runId]
+      [failureDetails.errorMessage, currentStage, JSON.stringify(failureDetails.failureMeta), runId]
     );
     logger.error(`Research run ${runId} failed:`, err);
-    const enrichedError = Object.assign(new Error(errMsg), {
+    const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
       runId,
       stage: currentStage,
       percent: currentPercent,
       message: currentMessage,
-      retryable: err instanceof NormalizedModelError ? err.classification === 'rate_limited' || err.classification === 'provider_unavailable' : false,
+      retryable: failureDetails.retryable,
+      failureMeta: failureDetails.failureMeta,
     });
     throw enrichedError;
   }
+}
+
+function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
+  if (err instanceof NormalizedModelError) {
+    const endpoint = `${config.openrouter.baseUrl}/chat/completions`;
+    const providerMessage = err.providerMessage || 'No provider message returned';
+    const status = err.status ?? 'unknown';
+    const retryable = err.classification === 'rate_limited' || err.classification === 'provider_unavailable';
+    return {
+      errorMessage: `Model provider request failed at ${stage} (role=${err.role}, model=${err.model}, status=${status}, classification=${err.classification}): ${providerMessage}`,
+      failureMeta: {
+        classification: err.classification,
+        status: err.status,
+        providerMessage,
+        model: err.model,
+        fallbackTried: err.fallbackTried,
+        role: err.role,
+        endpoint,
+      },
+      retryable,
+    };
+  }
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  return {
+    errorMessage,
+    failureMeta: {},
+    retryable: false,
+  };
 }
 
 function formatEvidenceContext(chunks: RetrievedChunk[]): string {
