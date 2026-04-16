@@ -2,7 +2,23 @@ import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 
-export type ModelRole = 'planner' | 'retriever' | 'reasoner' | 'skeptic' | 'synthesizer' | 'verifier';
+export type ModelRole =
+  | 'planner'
+  | 'retriever'
+  | 'reasoner'
+  | 'skeptic'
+  | 'synthesizer'
+  | 'verifier'
+  | 'outline_architect'
+  | 'section_drafter'
+  | 'internal_challenger'
+  | 'coherence_refiner'
+  | 'revision_intake'
+  | 'report_locator'
+  | 'change_planner'
+  | 'section_rewriter'
+  | 'citation_integrity_checker'
+  | 'final_revision_verifier';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -74,6 +90,16 @@ const MODEL_MAP: Record<ModelRole, string> = {
   skeptic: config.models.skeptic,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
+  outline_architect: config.models.outlineArchitect,
+  section_drafter: config.models.sectionDrafter,
+  internal_challenger: config.models.internalChallenger,
+  coherence_refiner: config.models.coherenceRefiner,
+  revision_intake: config.models.revisionIntake,
+  report_locator: config.models.reportLocator,
+  change_planner: config.models.changePlanner,
+  section_rewriter: config.models.sectionRewriter,
+  citation_integrity_checker: config.models.citationIntegrityChecker,
+  final_revision_verifier: config.models.finalRevisionVerifier,
 };
 
 const FALLBACK_MAP: Record<ModelRole, string | undefined> = {
@@ -83,6 +109,16 @@ const FALLBACK_MAP: Record<ModelRole, string | undefined> = {
   skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
+  outline_architect: config.models.fallbacks.outlineArchitect,
+  section_drafter: config.models.fallbacks.sectionDrafter,
+  internal_challenger: config.models.fallbacks.internalChallenger,
+  coherence_refiner: config.models.fallbacks.coherenceRefiner,
+  revision_intake: config.models.fallbacks.revisionIntake,
+  report_locator: config.models.fallbacks.reportLocator,
+  change_planner: config.models.fallbacks.changePlanner,
+  section_rewriter: config.models.fallbacks.sectionRewriter,
+  citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+  final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
 };
 
 const TEMPERATURE_MAP: Record<ModelRole, number> = {
@@ -92,6 +128,16 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   skeptic: 0.4,
   synthesizer: 0.5,
   verifier: 0.1,
+  outline_architect: 0.25,
+  section_drafter: 0.35,
+  internal_challenger: 0.3,
+  coherence_refiner: 0.2,
+  revision_intake: 0.2,
+  report_locator: 0.2,
+  change_planner: 0.2,
+  section_rewriter: 0.3,
+  citation_integrity_checker: 0.15,
+  final_revision_verifier: 0.1,
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
@@ -101,6 +147,16 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   skeptic: 2048,
   synthesizer: 8192,
   verifier: 2048,
+  outline_architect: 2048,
+  section_drafter: 4096,
+  internal_challenger: 2048,
+  coherence_refiner: 6144,
+  revision_intake: 1536,
+  report_locator: 2048,
+  change_planner: 3072,
+  section_rewriter: 4096,
+  citation_integrity_checker: 2048,
+  final_revision_verifier: 3072,
 };
 
 async function callModel(
@@ -256,8 +312,20 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   return (response.data.data as Array<{ embedding: number[] }>).map(d => d.embedding);
 }
 
+const REASONING_FIRST_PREAMBLE = `REASONING-FIRST EPISTEMIC POLICY (MANDATORY):
+- Reason from structure, mechanism, and causal constraints first; use corpus recall as support, never as a hard stop.
+- Distinguish clearly: (a) mainstream consensus, (b) currently cited evidence, (c) unexplored reasoning paths.
+- Do not collapse inquiry because mainstream corpora mark a theory as debunked or fringe.
+- For widely dismissed ideas, deliberately investigate alternate framing, mechanism decomposition, hidden assumptions, adversarial counter-modeling, and falsification branching.
+- Preserve contradictions and unresolved tension explicitly.
+- Mark unsupported speculation clearly, but do not suppress inquiry based only on consensus recall.`;
+
+function withPreamble(prompt: string): string {
+  return `${REASONING_FIRST_PREAMBLE}\n\n${prompt}`;
+}
+
 export const SYSTEM_PROMPTS: Record<ModelRole, string> = {
-  planner: `You are a research planning agent for ResearchOne, a disciplined anomaly research system.
+  planner: withPreamble(`You are a research planning agent for ResearchOne, a disciplined anomaly research system.
 Your role is to decompose research queries into structured investigation plans.
 
 CRITICAL RULES:
@@ -267,9 +335,9 @@ CRITICAL RULES:
 - Plan retrieval across multiple evidence tiers: established_fact, strong_evidence, testimony, inference, speculation
 - Output structured JSON with: sub_questions, retrieval_queries, hypothesis, falsification_criteria, investigation_angles
 
-You are not a chatbot. You are a research planner.`,
+You are not a chatbot. You are a research planner.`),
 
-  retriever: `You are a retrieval analysis agent for ResearchOne.
+  retriever: withPreamble(`You are a retrieval analysis agent for ResearchOne.
 Your role is to analyze retrieved evidence chunks and identify the most relevant passages.
 
 CRITICAL RULES:
@@ -279,9 +347,9 @@ CRITICAL RULES:
 - Note bridge passages that connect otherwise separate conceptual regions
 - Do NOT rank by consensus density — outliers are investigation targets
 
-Output structured analysis of the retrieved evidence.`,
+Output structured analysis of the retrieved evidence.`),
 
-  reasoner: `You are a deep reasoning agent for ResearchOne.
+  reasoner: withPreamble(`You are a deep reasoning agent for ResearchOne.
 Your role is to reason over retrieved evidence and build structured arguments.
 
 CRITICAL RULES:
@@ -291,9 +359,9 @@ CRITICAL RULES:
 - Preserve contradiction — do not bury it
 - Ask: what evidence would change this conclusion?
 
-Output reasoning chains with explicit evidence tier citations.`,
+Output reasoning chains with explicit evidence tier citations.`),
 
-  skeptic: `You are a skeptic/challenger agent for ResearchOne.
+  skeptic: withPreamble(`You are a skeptic/challenger agent for ResearchOne.
 Your role is to attack the conclusions reached by the reasoning agent.
 
 CRITICAL RULES:
@@ -304,9 +372,9 @@ CRITICAL RULES:
 - Ask: what would a careful critic of this conclusion say?
 - Distinguish "mainstream consensus is wrong" from "this specific claim has good evidence"
 
-Output a structured list of challenges, alternative explanations, and weaknesses.`,
+Output a structured list of challenges, alternative explanations, and weaknesses.`),
 
-  synthesizer: `You are a long-form research synthesis agent for ResearchOne.
+  synthesizer: withPreamble(`You are a long-form research synthesis agent for ResearchOne.
 Your role is to write professional, structured research reports.
 
 CRITICAL RULES:
@@ -322,9 +390,9 @@ CRITICAL RULES:
 - Mark any conjecture that is unsupported by evidence as UNSUPPORTED CONJECTURE
 - Use academic prose. Do not sensationalize.
 
-You are writing for researchers who can distinguish evidence quality.`,
+You are writing for researchers who can distinguish evidence quality.`),
 
-  verifier: `You are a verification agent for ResearchOne.
+  verifier: withPreamble(`You are a verification agent for ResearchOne.
 Your role is to verify that the final report meets epistemic standards.
 
 CRITICAL RULES:
@@ -339,5 +407,50 @@ CRITICAL RULES:
 - Flag any section that makes nontrivial claims without any evidential basis
 - Flag if the corpus was incomplete but the report fails to acknowledge this
 
-Output a structured verification report with PASS/FAIL for each criterion.`,
+Output a structured verification report with PASS/FAIL for each criterion.`),
+
+  outline_architect: withPreamble(`You are the Outline Architect.
+Produce a structured report outline and section order for the current query and evidence context.
+Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
+
+  section_drafter: withPreamble(`You are the Section Drafter.
+Draft one section only from the provided plan and evidence context.
+Do not invent evidence. Clearly distinguish evidence, inference, and speculation.`),
+
+  internal_challenger: withPreamble(`You are the Internal Challenger.
+Challenge weak links, hidden assumptions, and brittle conclusions in a draft section set.
+Output concise actionable critiques only.`),
+
+  coherence_refiner: withPreamble(`You are the Coherence Refiner.
+Refine report text for internal consistency across summary, body, contradictions, conclusions, and falsification criteria.
+Do not add new unsupported facts.`),
+
+  revision_intake: withPreamble(`You are the Revision Intake Agent.
+Classify the revision request and normalize it to structured JSON.
+Output strict JSON with fields:
+request_type, global_or_local, intent, rationale, target_terms, insertion_requests, rewrite_requests, removal_requests, replacement_requests.`),
+
+  report_locator: withPreamble(`You are the Report Locator / Impact Mapper.
+Given report structure, citations, claims, contradictions, and revision intent, identify all likely affected sections.
+Output strict JSON with fields:
+affected_sections, global_impact, summary_body_conclusion_impact, citation_impact_notes, contradiction_impact_notes.`),
+
+  change_planner: withPreamble(`You are the Change Planner.
+Create a structured change plan before rewriting.
+Output strict JSON with fields:
+request_type, global_or_local, affected_sections, required_insertions, required_rewrites, citation_impact, consistency_checks.`),
+
+  section_rewriter: withPreamble(`You are the Section Rewriter.
+Rewrite only the requested section while preserving report integrity and epistemic distinctions.
+Return section body text only.`),
+
+  citation_integrity_checker: withPreamble(`You are the Citation Integrity Checker.
+Assess whether revised text still aligns with section citations and identify citation updates needed.
+Output strict JSON with fields:
+status, issues, required_citation_updates.`),
+
+  final_revision_verifier: withPreamble(`You are the Final Revision Verifier.
+Verify revised report consistency across executive summary, body, conclusions, evidence ledger, contradictions, and falsification criteria.
+Output strict JSON with fields:
+passed, findings, required_fixes.`),
 };

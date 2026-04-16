@@ -1,30 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const invokeMock = vi.fn();
+const callRoleModelMock = vi.fn();
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: class {
-    invoke = invokeMock;
-  },
-}));
-
-vi.mock('../config', () => ({
-  config: {
-    models: { synthesizer: 'test-model' },
-    openrouter: { apiKey: 'token', baseUrl: 'https://openrouter.ai/api/v1' },
+vi.mock('../services/openrouter/openrouterService', () => ({
+  callRoleModel: callRoleModelMock,
+  SYSTEM_PROMPTS: {
+    outline_architect: 'outline',
+    section_drafter: 'draft',
+    internal_challenger: 'challenge',
+    coherence_refiner: 'refine',
   },
 }));
 
 describe('iterative report generator', () => {
   beforeEach(() => {
-    invokeMock.mockReset();
+    callRoleModelMock.mockReset();
   });
 
   it('emits per-section progress and returns markdown', async () => {
-    const sectionText = { content: 'Section body text' };
-    invokeMock
-      .mockResolvedValueOnce({ content: JSON.stringify(['Executive Summary']) }) // outline
-      .mockResolvedValue(sectionText);
+    callRoleModelMock
+      .mockResolvedValueOnce({ content: JSON.stringify({ outline: [{ title: 'Executive Summary' }] }) }) // outline
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: 'Section body text' })
+      .mockResolvedValueOnce({ content: '- challenge points' })
+      .mockResolvedValueOnce({ content: '## Final Report\nRefined content' });
 
     const progress = vi.fn();
     const { generateIterativeReport } = await import('../services/reasoning/reportGenerator');
@@ -42,5 +49,6 @@ describe('iterative report generator', () => {
     expect(progress).toHaveBeenCalledTimes(10);
     expect(result.sections).toHaveLength(10);
     expect(result.markdown.length).toBeGreaterThan(0);
+    expect(callRoleModelMock).toHaveBeenCalled();
   });
 });
