@@ -52,15 +52,18 @@ export class TavilySearchProvider implements SearchProvider {
       return results
         .filter((r): r is Required<Pick<TavilyResult, 'url'>> & TavilyResult => Boolean(r.url))
         .slice(0, maxResults)
-        .map((r, idx) => ({
-          url: r.url!,
-          title: r.title ?? r.url!,
+        .map((r, idx) => {
+          const url = r.url;
+          return {
+            url,
+            title: r.title ?? url,
           snippet: r.content ?? '',
           score: typeof r.score === 'number' ? r.score : Math.max(0, 1 - idx / Math.max(1, results.length)),
           rank: idx + 1,
           provider: this.name,
           sourceQuery: searchQuery.text,
-        }));
+          };
+        });
     } catch (err) {
       logger.error('[discovery] Tavily search failed:', err);
       return [];
