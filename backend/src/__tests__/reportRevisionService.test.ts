@@ -7,6 +7,11 @@ vi.mock('../db/pool', () => ({
   withTransaction: vi.fn(),
 }));
 
+vi.mock('../services/openrouter/openrouterService', () => ({
+  callRoleModel: vi.fn(),
+  SYSTEM_PROMPTS: {},
+}));
+
 describe('report revision helpers', () => {
   beforeEach(() => {
     queryMock.mockReset();
