@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
-import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { callRoleModel } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
 import {

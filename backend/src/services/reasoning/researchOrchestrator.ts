@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction } from '../../db/pool';
+import { query, withTransaction } from '../../db/pool';
 import {
   callRoleModel,
   SYSTEM_PROMPTS,
