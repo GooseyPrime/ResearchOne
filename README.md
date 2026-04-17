@@ -236,6 +236,21 @@ VITE_SOCKET_URL=https://<emma-runtime-vm-domain>
 VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
 ```
 
+Use the **API hostname** your nginx serves (for example `https://research-api.intellmeai.com`), not the Vercel app URL. Omit the `/api` suffix unless you already use a base that ends with `/api` (see `resolveApiBaseUrl` in `frontend/src/utils/api.ts`). **Redeploy after changing `VITE_*` values** so Vite embeds them.
+
+**Diagnosing “404” on research:** In the browser Network tab, check the host of `POST .../research`. If it is your Vercel domain, `VITE_API_BASE_URL` was missing at build time. If the host is correct but the path is `/api/api/...`, remove the extra `/api` or trailing slash from `VITE_API_BASE_URL`. If research starts but fails later, open “Show error details” on the run and read `failure_meta.endpoint`: an OpenRouter URL means fix `OPENROUTER_BASE_URL` on the Emma VM, not Vercel.
+
+**Smoke test from your machine (Emma edge):**
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://<emma-api-host>/api/health
+curl -sS -i -X POST "https://<emma-api-host>/api/research" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"smoke test"}'
+```
+
+Expect `200` on health and `202` on research. On the VM, confirm `OPENROUTER_BASE_URL` is a **base** URL only (for example `https://openrouter.ai/api/v1`), not a full `/chat/completions` path — see `backend/src/config/index.ts`.
+
 **Never put these in Vercel:** `OPENROUTER_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, `DB_PASSWORD`, `REDIS_PASSWORD`
 
 ### Backend (Local development)
