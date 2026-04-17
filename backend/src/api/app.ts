@@ -31,15 +31,26 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// Routes
-app.use('/api/health', healthRoutes);
-app.use('/api/ingestion', ingestionRoutes);
-app.use('/api/research', researchRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/corpus', corpusRoutes);
-app.use('/api/atlas', atlasRoutes);
-app.use('/api/sources', sourcesRoutes);
-app.use('/api/admin', adminRoutes);
+const routes: Array<[string, express.Router]> = [
+  ['/health', healthRoutes],
+  ['/ingestion', ingestionRoutes],
+  ['/research', researchRoutes],
+  ['/reports', reportsRoutes],
+  ['/corpus', corpusRoutes],
+  ['/atlas', atlasRoutes],
+  ['/sources', sourcesRoutes],
+  ['/admin', adminRoutes],
+];
+
+// Primary API prefix
+for (const [path, router] of routes) {
+  app.use(`/api${path}`, router);
+}
+
+// Compatibility prefix for reverse proxies that strip /api
+for (const [path, router] of routes) {
+  app.use(path, router);
+}
 
 // Serve exported Atlas files from canonical exports directory
 app.use('/exports', express.static(config.exports.dir));

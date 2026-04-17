@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { resolveApiBaseUrl } from '../utils/api';
 
 // Test the frontend config logic for split deployment
-// We test the URL resolution logic extracted from api.ts and socket.ts
-
-function resolveApiBaseUrl(viteApiBaseUrl?: string): string {
-  return viteApiBaseUrl ? `${viteApiBaseUrl}/api` : '/api';
-}
+// We test the URL resolution logic from api.ts and socket.ts
 
 function resolveSocketUrl(viteSocketUrl?: string, origin = 'http://localhost:5173'): string {
   return viteSocketUrl || origin;
@@ -29,9 +26,13 @@ describe('frontend config — VITE_API_BASE_URL', () => {
   });
 
   it('does not double-add /api if already present in base', () => {
-    // The spec says VITE_API_BASE_URL should be the backend domain, not include /api
-    const url = resolveApiBaseUrl('https://api.example.com');
-    expect(url).not.toContain('/api/api');
+    const url = resolveApiBaseUrl('https://api.example.com/api');
+    expect(url).toBe('https://api.example.com/api');
+  });
+
+  it('handles trailing slash in VITE_API_BASE_URL', () => {
+    const url = resolveApiBaseUrl('https://api.example.com/');
+    expect(url).toBe('https://api.example.com/api');
   });
 });
 
