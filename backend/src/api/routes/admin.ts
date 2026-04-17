@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs/promises';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import { query } from '../../db/pool';
@@ -8,15 +9,71 @@ import { query } from '../../db/pool';
 const router = Router();
 const execAsync = promisify(exec);
 
+const LOG_TAIL_MAX_BYTES = 512 * 1024;
+const LOG_TAIL_MAX_LINES = 2000;
+
 function getProvidedToken(header?: string): string {
   if (!header) return '';
   if (header.startsWith('Bearer ')) return header.slice('Bearer '.length).trim();
   return header.trim();
 }
 
-router.post('/runtime/restart', async (req, res) => {
+function adminTokenOk(req: { header: (name: string) => string | undefined }): boolean {
   const token = getProvidedToken(req.header('authorization') || req.header('x-admin-token'));
-  const ok = Boolean(config.admin.token) && token === config.admin.token;
+  return Boolean(config.admin.token) && token === config.admin.token;
+}
+
+async function readLogTail(filePath: string, lineCount: number): Promise<{ content: string; truncated: boolean }> {
+  const stat = await fs.stat(filePath);
+  const start = stat.size > LOG_TAIL_MAX_BYTES ? stat.size - LOG_TAIL_MAX_BYTES : 0;
+  const fh = await fs.open(filePath, 'r');
+  try {
+    const byteLen = stat.size - start;
+    const buf = Buffer.alloc(byteLen);
+    await fh.read(buf, 0, byteLen, start);
+    let text = buf.toString('utf8');
+    const truncated = start > 0;
+    if (start > 0) {
+      const firstNl = text.indexOf('\n');
+      if (firstNl !== -1) text = text.slice(firstNl + 1);
+    }
+    const parts = text.split('\n');
+    const tail = parts.slice(-lineCount).join('\n');
+    return { content: tail, truncated };
+  } finally {
+    await fh.close();
+  }
+}
+
+router.get('/runtime/logs', async (req, res) => {
+  if (!adminTokenOk(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const stream = (req.query.stream as string) === 'err' ? 'err' : 'out';
+  const rawLines = parseInt(String(req.query.lines || '500'), 10);
+  const lines = Number.isFinite(rawLines)
+    ? Math.min(Math.max(rawLines, 1), LOG_TAIL_MAX_LINES)
+    : 500;
+  const filePath = stream === 'err' ? config.admin.runtimeLogErr : config.admin.runtimeLogOut;
+
+  try {
+    const { content, truncated } = await readLogTail(filePath, lines);
+    res.json({ stream, lines, content, truncated });
+  } catch (err) {
+    const code = err && typeof err === 'object' && 'code' in err ? (err as NodeJS.ErrnoException).code : '';
+    if (code === 'ENOENT') {
+      res.status(404).json({ error: 'Log file not found', stream });
+      return;
+    }
+    logger.error('Runtime log read failed', err);
+    res.status(500).json({ error: 'Failed to read log file' });
+  }
+});
+
+router.post('/runtime/restart', async (req, res) => {
+  const ok = adminTokenOk(req);
 
   await query(
     `INSERT INTO error_log (service, error_code, message, context)

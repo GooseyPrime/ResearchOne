@@ -1,3 +1,4 @@
+import path from 'path';
 import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
@@ -161,6 +162,12 @@ const config = {
   admin: {
     token: process.env.ADMIN_RUNTIME_TOKEN || '',
     restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart researchone-api',
+    /** PM2 stdout log (default matches ecosystem.config.js cwd + paths) */
+    runtimeLogOut:
+      process.env.RUNTIME_LOG_OUT || path.join(process.cwd(), 'backend/logs/pm2-out.log'),
+    /** PM2 stderr log */
+    runtimeLogErr:
+      process.env.RUNTIME_LOG_ERR || path.join(process.cwd(), 'backend/logs/pm2-error.log'),
   },
 
   jwtSecret: (() => {
