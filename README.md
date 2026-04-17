@@ -310,6 +310,24 @@ cd frontend && npx vercel --prod
 
 If the Vercel project **Root Directory** is the monorepo root, the root [`vercel.json`](vercel.json) applies. If the root is **`frontend/`**, use [`frontend/vercel.json`](frontend/vercel.json) so client-side routes like `/research` rewrite to `index.html`.
 
+### GitHub Actions: backend deploy to Emma (on `main` push)
+
+Merging to `main` triggers Vercel for the **frontend**. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) runs on the **same** `push` to `main` (in parallel) when `backend/**`, `ecosystem.config.js`, or the workflow file changes. It builds `backend/dist` in Actions, **rsync**s `dist/`, `package.json`, and `package-lock.json` to the Emma VM, runs `npm ci --omit=dev` on the server, and **`pm2 restart researchone-api --update-env`**.
+
+**Repository secrets** (GitHub → Settings → Secrets and variables → Actions):
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `EMMA_HOST` | Yes | SSH hostname or IP of the Emma **runtime** API VM |
+| `EMMA_USER` | Yes | SSH user with write access to `${EMMA_DEPLOY_PATH}/backend` and permission to run `pm2` |
+| `EMMA_SSH_KEY` | Yes | Private key (full PEM) for that user |
+| `EMMA_DEPLOY_PATH` | No | App root on the server; default **`/opt/researchone`** (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`) |
+| `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended instead of relying on runtime `ssh-keyscan`) |
+
+**Emma VM:** Node and PM2 already installed; `backend/.env` present on the server (not supplied by CI). The deploy user must be able to run `pm2 restart researchone-api` for the app defined in `ecosystem.config.js`.
+
+**Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
+
 ### Mode A: All-in-one (development/legacy)
 ```bash
 docker-compose up postgres redis
