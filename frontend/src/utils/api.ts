@@ -227,6 +227,31 @@ export const restartRuntime = (adminToken: string) =>
     },
   }).then(r => r.data);
 
+export const ADMIN_SESSION_TOKEN_KEY = 'researchone_admin_token';
+
+export interface RuntimeLogResponse {
+  stream: 'out' | 'err';
+  lines: number;
+  content: string;
+  truncated: boolean;
+}
+
+export const getRuntimeLogs = (
+  adminToken: string,
+  opts?: { stream?: 'out' | 'err'; lines?: number }
+) =>
+  api
+    .get<RuntimeLogResponse>('/admin/runtime/logs', {
+      params: {
+        stream: opts?.stream === 'err' ? 'err' : 'out',
+        lines: opts?.lines ?? 500,
+      },
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+    })
+    .then(r => r.data);
+
 export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);
 

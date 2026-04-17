@@ -306,6 +306,8 @@ pm2 restart researchone-api --update-env
 cd frontend && npx vercel --prod
 ```
 
+If the Vercel project **Root Directory** is the monorepo root, the root [`vercel.json`](vercel.json) applies. If the root is **`frontend/`**, use [`frontend/vercel.json`](frontend/vercel.json) so client-side routes like `/research` rewrite to `index.html`.
+
 ### Mode A: All-in-one (development/legacy)
 ```bash
 docker-compose up postgres redis

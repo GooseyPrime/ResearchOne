@@ -9,13 +9,14 @@ import {
   Activity,
   Cpu,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getStats, getSystemHealth, restartRuntime } from '../../utils/api';
 import { useStore } from '../../store/useStore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
 import ActiveRunBadge from '../research/ActiveRunBadge';
+import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
 
 const NAV_ITEMS = [
@@ -31,6 +32,7 @@ const RESTART_POLL_INTERVAL_MS = 2500;
 
 export default function Layout() {
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { setStats, stats } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
@@ -45,11 +47,23 @@ export default function Layout() {
     if (data) setStats(data);
   }, [data, setStats]);
 
-  const { data: health } = useQuery({
+  const {
+    data: health,
+    isPending: healthPending,
+    isFetching: healthFetching,
+    isError: healthIsError,
+    error: healthError,
+    refetch: refetchHealth,
+  } = useQuery({
     queryKey: ['system-health'],
     queryFn: getSystemHealth,
     refetchInterval: 10000,
   });
+
+  const refreshHealth = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['system-health'] });
+    void refetchHealth();
+  }, [queryClient, refetchHealth]);
 
   // Connect WebSocket
   useEffect(() => {
@@ -57,7 +71,6 @@ export default function Layout() {
     subscribeToCorpus();
 
     socket.on('corpus:updated', () => {
-      // Trigger refetch via invalidation
       window.dispatchEvent(new CustomEvent('corpus:updated'));
     });
 
@@ -66,11 +79,21 @@ export default function Layout() {
     };
   }, []);
 
-  const overallColor = health?.status === 'ok'
-    ? 'bg-green-400'
-    : health?.status === 'degraded'
-      ? 'bg-amber-400'
-      : 'bg-red-400';
+  const overallColor = healthIsError
+    ? 'bg-red-400'
+    : health?.status === 'ok'
+      ? 'bg-green-400'
+      : health?.status === 'degraded'
+        ? 'bg-amber-400'
+        : health?.status === 'down'
+          ? 'bg-red-400'
+          : 'bg-slate-500';
+
+  const statusLabel = healthIsError
+    ? 'unreachable'
+    : healthPending && !health
+      ? 'checking'
+      : health?.status ?? 'checking';
 
   const handleRestart = async () => {
     const token = window.prompt('Enter admin runtime token to restart the system');
@@ -88,6 +111,7 @@ export default function Layout() {
           // continue polling while runtime restarts
         }
       }
+      refreshHealth();
     } finally {
       setRestartBusy(false);
     }
@@ -95,9 +119,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
-      {/* ── Sidebar ────────────────────────────────────────────────────── */}
       <aside className="w-60 flex-shrink-0 border-r border-indigo-900/20 flex flex-col bg-surface-300">
-        {/* Logo */}
         <div className="p-5 border-b border-indigo-900/20">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-research-teal flex items-center justify-center glow-accent">
@@ -110,7 +132,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map(item => (
             <NavLink
@@ -126,7 +147,6 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Corpus mini-stats */}
         {stats && (
           <div className="p-3 border-t border-indigo-900/20 space-y-2">
             <div className="section-title mb-2">Corpus</div>
@@ -146,9 +166,7 @@ export default function Layout() {
         )}
       </aside>
 
-      {/* ── Main content ────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
         <header className="h-12 border-b border-indigo-900/20 flex items-center justify-between px-6 bg-surface-300/50 glass flex-shrink-0">
           <div className="text-sm text-slate-400">
             {NAV_ITEMS.find(n => location.pathname.startsWith(n.to))?.desc ?? 'ResearchOne'}
@@ -157,43 +175,38 @@ export default function Layout() {
             <ActiveRunBadge />
             <button
               type="button"
-              className="flex items-center gap-1.5"
-              onClick={() => setHealthOpen(v => !v)}
+              className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"
+              onClick={() => setHealthOpen(true)}
+              aria-expanded={healthOpen}
+              aria-haspopup="dialog"
             >
-              <div className={clsx('w-1.5 h-1.5 rounded-full animate-pulse', overallColor)} />
-              <span className="text-xs text-slate-500">System {health?.status ?? 'checking'}</span>
+              <div
+                className={clsx(
+                  'w-1.5 h-1.5 rounded-full',
+                  healthFetching && 'animate-pulse',
+                  overallColor
+                )}
+              />
+              <span className="text-xs text-slate-500">System {statusLabel}</span>
             </button>
           </div>
         </header>
 
-        {healthOpen && health && (
-          <div className="border-b border-indigo-900/20 px-6 py-3 bg-surface-300/30">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {Object.entries(health.checks).map(([name, check]) => (
-                <div key={name} className="bg-surface-200 rounded-md px-2 py-1.5 text-xs">
-                  <div className="text-slate-500">{name}</div>
-                  <div className={check.ok ? 'text-green-400' : 'text-red-400'}>{check.ok ? 'ok' : 'down'}</div>
-                </div>
-              ))}
-            </div>
-            {health.restartAvailable && (
-              <button
-                type="button"
-                className="btn-ghost mt-3 text-xs"
-                disabled={restartBusy}
-                onClick={handleRestart}
-              >
-                {restartBusy ? 'Restarting...' : 'Restart runtime'}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto grid-bg">
           <Outlet />
         </main>
       </div>
+
+      <SystemStatusModal
+        open={healthOpen}
+        onClose={() => setHealthOpen(false)}
+        health={health}
+        healthLoading={healthPending}
+        healthError={healthIsError ? (healthError instanceof Error ? healthError : new Error(String(healthError))) : null}
+        onRefreshHealth={refreshHealth}
+        onRestart={handleRestart}
+        restartBusy={restartBusy}
+      />
 
       <Notifications />
     </div>
