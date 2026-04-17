@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -95,8 +96,8 @@ export default function ResearchPage() {
       addNotification('info', 'Research started — tracking progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
     },
-    onError: () => {
-      addNotification('error', 'Failed to start research. Check API connection.');
+    onError: (error) => {
+      addNotification('error', extractStartResearchErrorMessage(error));
     },
   });
 
@@ -420,4 +421,23 @@ function formatFailureReason(message: string, failureMeta?: Record<string, unkno
 
   if (!providerMessage && !details) return message;
   return [message, providerMessage, details].filter(Boolean).join(' | ');
+}
+
+function extractStartResearchErrorMessage(error: unknown): string {
+  if (!axios.isAxiosError(error)) {
+    return 'Failed to start research. Check API connection.';
+  }
+
+  const status = error.response?.status;
+  const data = error.response?.data as unknown;
+  let message: string | undefined;
+  if (typeof data === 'string') {
+    message = data;
+  } else if (data && typeof data === 'object') {
+    const payload = data as { error?: string; message?: string; detail?: string };
+    message = payload.error || payload.message || payload.detail;
+  }
+
+  const fallback = status ? `Failed to start research (HTTP ${status}).` : 'Failed to start research. Check API connection.';
+  return message ? `${fallback} ${message}` : fallback;
 }

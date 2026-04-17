@@ -1,4 +1,5 @@
 import { query, withTransaction } from '../../db/pool';
+import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
   SYSTEM_PROMPTS,
@@ -437,12 +438,61 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
       retryable,
     };
   }
+  if (axios.isAxiosError(err)) {
+    return buildAxiosFailureDetails(err, stage);
+  }
   const errorMessage = err instanceof Error ? err.message : String(err);
   return {
     errorMessage,
     failureMeta: {},
     retryable: false,
   };
+}
+
+function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailureDetails {
+  const status = err.response?.status;
+  const endpoint = err.config?.url;
+  const method = err.config?.method ? err.config.method.toUpperCase() : 'GET';
+  const providerMessage = extractAxiosProviderMessage(err);
+  const classification = classifyAxiosError(status);
+  const statusLabel = status ?? 'network_error';
+  const retryable =
+    classification === 'rate_limited'
+    || classification === 'provider_unavailable'
+    || classification === 'network_error';
+
+  return {
+    errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}`,
+    failureMeta: {
+      classification,
+      status,
+      providerMessage,
+      endpoint,
+      method,
+      code: err.code,
+    },
+    retryable,
+  };
+}
+
+function classifyAxiosError(status?: number): string {
+  if (!status) return 'network_error';
+  if (status === 404) return 'endpoint_not_found';
+  if (status === 429) return 'rate_limited';
+  if (status === 401 || status === 403) return 'auth_error';
+  if (status === 400) return 'bad_request';
+  if (status >= 500) return 'provider_unavailable';
+  return 'unknown';
+}
+
+function extractAxiosProviderMessage(err: AxiosError): string {
+  const data = err.response?.data as unknown;
+  if (typeof data === 'string') return data;
+  if (data && typeof data === 'object') {
+    const maybe = data as { error?: { message?: string }; message?: string; detail?: string };
+    return maybe.error?.message || maybe.message || maybe.detail || JSON.stringify(data);
+  }
+  return err.message;
 }
 
 function formatEvidenceContext(chunks: RetrievedChunk[]): string {
