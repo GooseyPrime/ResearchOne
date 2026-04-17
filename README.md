@@ -251,6 +251,8 @@ curl -sS -i -X POST "https://<emma-api-host>/api/research" \
 
 Expect `200` on health and `202` on research. On the VM, confirm `OPENROUTER_BASE_URL` is a **base** URL only (for example `https://openrouter.ai/api/v1`), not a full `/chat/completions` path — see `backend/src/config/index.ts`.
 
+**Windows (PowerShell):** use `-o NUL` instead of `-o /dev/null` for the health curl line; `/dev/null` can trigger `curl: (23) client returned ERROR on write` even when the HTTP status is 200.
+
 **Never put these in Vercel:** `OPENROUTER_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, `DB_PASSWORD`, `REDIS_PASSWORD`
 
 ### Backend (Local development)

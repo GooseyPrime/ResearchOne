@@ -401,10 +401,22 @@ export async function runResearchJob(
     return { runId, reportId };
   } catch (err) {
     const failureDetails = buildResearchFailureDetails(err, currentStage);
-    await query(
-      `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW() WHERE id=$4`,
-      [failureDetails.errorMessage, currentStage, JSON.stringify(failureDetails.failureMeta), runId]
-    );
+    try {
+      await query(
+        `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW() WHERE id=$4`,
+        [failureDetails.errorMessage, currentStage, JSON.stringify(failureDetails.failureMeta), runId]
+      );
+    } catch (dbErr) {
+      logger.error(`Research run ${runId}: failed to persist failure row`, dbErr);
+      try {
+        await query(
+          `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
+          [failureDetails.errorMessage.slice(0, 2000), runId]
+        );
+      } catch (fallbackErr) {
+        logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
+      }
+    }
     logger.error(`Research run ${runId} failed:`, err);
     const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
       runId,
@@ -461,8 +473,15 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
     || classification === 'provider_unavailable'
     || classification === 'network_error';
 
+  const openrouterBase = config.openrouter.baseUrl.replace(/\/+$/, '');
+  const isOpenRouterCall = typeof endpoint === 'string' && endpoint.startsWith(openrouterBase);
+  const openrouter404Hint =
+    status === 404 && isOpenRouterCall
+      ? ' If this URL is OpenRouter, check OPENROUTER_BASE_URL on the server (must be base only, e.g. https://openrouter.ai/api/v1 — not .../chat/completions).'
+      : '';
+
   return {
-    errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}`,
+    errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}${openrouter404Hint}`,
     failureMeta: {
       classification,
       status,
@@ -470,6 +489,7 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
       endpoint,
       method,
       code: err.code,
+      ...(isOpenRouterCall ? { upstream: 'openrouter' } : {}),
     },
     retryable,
   };
