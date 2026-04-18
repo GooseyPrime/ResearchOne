@@ -2,6 +2,8 @@
 # Runs in parallel with Vercel frontend deploys; not coupled to Vercel success.
 #
 # Required secrets: EMMA_HOST, EMMA_USER, EMMA_SSH_KEY
+# If those live under Settings → Environments → production, the job must set
+# `environment: production` below (or duplicate secrets at repository level).
 # Optional: EMMA_DEPLOY_PATH (default /opt/researchone), EMMA_KNOWN_HOSTS,
 #           EMMA_WRITE_BACKEND_ENV (opt-in: multiline content written to backend/.env on VM),
 #           EMMA_PUBLIC_HEALTH_URL (opt-in: full URL for public health, http or https)
@@ -25,6 +27,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4

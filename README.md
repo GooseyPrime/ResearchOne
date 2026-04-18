@@ -348,7 +348,12 @@ If the Vercel project **Root Directory** is the monorepo root, the root [`vercel
 
 Merging to `main` triggers Vercel for the **frontend** independently. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) SSHs to the Emma VM and runs [`scripts/deploy-runtime.sh`](scripts/deploy-runtime.sh): the VM **fetches and resets to `origin/main`**, runs **`npm ci`** (full install, including devDependencies required for migrations), **`npm run build`**, **`npm run migrate`**, then starts or reloads PM2 from **`ecosystem.config.js`**. The backend is **not** built in Actions and rsynced anymore; the VM always runs the current tree from git.
 
-**Repository secrets** (GitHub → Settings → Secrets and variables → **Actions** — repository or organization secrets for this repo). These are **not** listed in `backend/.env.production.example` because Actions reads them only at workflow runtime:
+**Secrets for this workflow** can live in either place — **not** both required:
+
+- **Repository secrets:** GitHub → repo → Settings → Secrets and variables → **Actions** (tab “Repository secrets”).
+- **Environment secrets:** Settings → **Environments** → e.g. `production` → **Environment secrets**. If you use these, the workflow job must declare `environment: production` (see [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml)); otherwise `secrets.EMMA_SSH_KEY` is **empty** and `webfactory/ssh-agent` fails with “ssh-private-key argument is empty”.
+
+These are **not** listed in `backend/.env.production.example` because Actions reads them only at workflow runtime:
 
 | Secret | Required | Description |
 |--------|----------|-------------|
