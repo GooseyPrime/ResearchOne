@@ -222,10 +222,20 @@ MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
 ```
 
-Use `backend/.env.production.example` as the source of truth for Emma runtime production config:
+**Which `.env` file is which (do not confuse these):**
+
+| File | Role |
+|------|------|
+| `backend/.env.example` | Pointer only — tells you to copy a real template |
+| `backend/.env.production.example` | **Committed template** for Emma/production — copy to `backend/.env` and edit |
+| `backend/.env.development.example` | **Committed template** for local backend dev — copy to `backend/.env` for laptop work |
+| `backend/.env` | **Real runtime secrets** — gitignored; this is what Node and PM2 use on the VM and locally |
+
+Emma runtime production setup:
 
 ```bash
 cp backend/.env.production.example backend/.env
+# edit backend/.env — never commit it
 ```
 
 ### Frontend (Vercel) — Required for split deployment
@@ -236,17 +246,25 @@ VITE_SOCKET_URL=https://<emma-runtime-vm-domain>
 VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
 ```
 
-Use the **API hostname** your nginx serves (for example `https://research-api.intellmeai.com`), not the Vercel app URL. Omit the `/api` suffix unless you already use a base that ends with `/api` (see `resolveApiBaseUrl` in `frontend/src/utils/api.ts`). **Redeploy after changing `VITE_*` values** so Vite embeds them.
+Set each `VITE_*` value to the **origin only** (scheme + host, no path): correct `https://api.example.com`, wrong `https://api.example.com/api`. The client code appends `/api` itself (`resolveApiBaseUrl` in `frontend/src/utils/api.ts`). Use the hostname nginx serves on the Emma VM, not the Vercel URL. **Redeploy the frontend after changing `VITE_*`** so Vite embeds them.
+
+If your VM only exposes **HTTP on port 80** (no TLS / no listener on 443), use `http://` in `VITE_*` until TLS is configured. Public `https://` smoke tests only work when HTTPS is actually terminated (443).
 
 **Diagnosing “404” on research:** In the browser Network tab, check the host of `POST .../research`. If it is your Vercel domain, `VITE_API_BASE_URL` was missing at build time. If the host is correct but the path is `/api/api/...`, remove the extra `/api` or trailing slash from `VITE_API_BASE_URL`. If research starts but fails later, open “Show error details” on the run and read `failure_meta.endpoint`: an OpenRouter URL means fix `OPENROUTER_BASE_URL` on the Emma VM, not Vercel.
 
-**Smoke test from your machine (Emma edge):**
+**Smoke test from your machine (Emma edge):** use `https://` only if TLS is configured; otherwise `http://` on port 80.
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" https://<emma-api-host>/api/health
+curl -sS -o /dev/null -w "%{http_code}\n" "https://<emma-api-host>/api/health"
 curl -sS -i -X POST "https://<emma-api-host>/api/research" \
   -H "Content-Type: application/json" \
   -d '{"query":"smoke test"}'
+```
+
+On the **VM**, localhost always works for the API process:
+
+```bash
+curl -sS "http://127.0.0.1:3001/api/health"
 ```
 
 Expect `200` on health and `202` on research. On the VM, confirm `OPENROUTER_BASE_URL` is a **base** URL only (for example `https://openrouter.ai/api/v1`), not a full `/chat/completions` path — see `backend/src/config/index.ts`.
@@ -280,20 +298,27 @@ chmod +x scripts/setup-redis.sh
 ```
 
 #### 3. Backend (Emma runtime VM)
+
+One-time: clone this repo to `/opt/researchone`, configure `backend/.env`, run `scripts/setup-runtime.sh` for nginx/user/exports.
+
+**Canonical app root:** `/opt/researchone` (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`). **All PM2 commands that use `ecosystem.config.js` must be run from that directory**, not from `backend/`:
+
 ```bash
-chmod +x scripts/setup-runtime.sh
-./scripts/setup-runtime.sh
+cd /opt/researchone
+```
 
-# Configure environment
-cp backend/.env.production.example backend/.env
-# Edit backend/.env — set Emma Postgres/Redis hosts, OPENROUTER_API_KEY, JWT_SECRET, CORS_ORIGINS, TAVILY_API_KEY, ADMIN_RUNTIME_TOKEN
+**Deploy / update (idempotent):** runs `git fetch` + `reset` to `origin/main`, full `npm ci`, `build`, `migrate`, PM2 from the ecosystem file, and a localhost health smoke test:
 
-cd backend && npm install
-npm run build
-npm run migrate   # applies all migrations (001-004)
+```bash
+cd /opt/researchone
+cp backend/.env.production.example backend/.env   # first time only; then edit backend/.env
+./scripts/deploy-runtime.sh
+```
 
-pm2 start ecosystem.config.js
-# after env changes:
+After changing only `backend/.env` (no git pull):
+
+```bash
+cd /opt/researchone
 pm2 restart researchone-api --update-env
 ```
 
@@ -312,19 +337,21 @@ If the Vercel project **Root Directory** is the monorepo root, the root [`vercel
 
 ### GitHub Actions: backend deploy to Emma (on `main` push)
 
-Merging to `main` triggers Vercel for the **frontend**. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) runs on the **same** `push` to `main` (in parallel) when `backend/**`, `ecosystem.config.js`, or the workflow file changes. It builds `backend/dist` in Actions, **rsync**s `dist/`, `package.json`, and `package-lock.json` to the Emma VM, runs `npm ci --omit=dev` on the server, and **`pm2 restart researchone-api --update-env`**.
+Merging to `main` triggers Vercel for the **frontend** independently. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) SSHs to the Emma VM and runs [`scripts/deploy-runtime.sh`](scripts/deploy-runtime.sh): the VM **fetches and resets to `origin/main`**, runs **`npm ci`** (full install, including devDependencies required for migrations), **`npm run build`**, **`npm run migrate`**, then starts or reloads PM2 from **`ecosystem.config.js`**. The backend is **not** built in Actions and rsynced anymore; the VM always runs the current tree from git.
 
 **Repository secrets** (GitHub → Settings → Secrets and variables → Actions):
 
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `EMMA_HOST` | Yes | SSH hostname or IP of the Emma **runtime** API VM |
-| `EMMA_USER` | Yes | SSH user with write access to `${EMMA_DEPLOY_PATH}/backend` and permission to run `pm2` |
+| `EMMA_USER` | Yes | SSH user with write access to the deploy path and permission to run `git`, `npm`, and `pm2` |
 | `EMMA_SSH_KEY` | Yes | Private key (full PEM) for that user |
 | `EMMA_DEPLOY_PATH` | No | App root on the server; default **`/opt/researchone`** (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`) |
-| `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended instead of relying on runtime `ssh-keyscan`) |
+| `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended) |
+| `EMMA_WRITE_BACKEND_ENV` | No | **Opt-in:** multiline contents written to `backend/.env` on the VM before deploy (only if you choose CI-managed secrets) |
+| `EMMA_PUBLIC_HEALTH_URL` | No | **Opt-in:** full URL for an extra curl after deploy (use `http://` or `https://` to match your TLS setup) |
 
-**Emma VM:** Node and PM2 already installed; `backend/.env` present on the server (not supplied by CI). The deploy user must be able to run `pm2 restart researchone-api` for the app defined in `ecosystem.config.js`.
+**Emma VM:** must be a **git clone** of this repo with `origin` reachable; `backend/.env` must exist on the server unless you use `EMMA_WRITE_BACKEND_ENV`.
 
 **Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
 
@@ -347,8 +374,9 @@ npm run dev
 ```
 ResearchOne/
 ├── backend/
-│   ├── .env.production.example     # Emma runtime production template
-│   ├── .env.development.example    # Local backend development template
+│   ├── .env.production.example     # Emma runtime production template (copy → .env)
+│   ├── .env.development.example    # Local backend development template (copy → .env)
+│   ├── .env.example                # Pointer — use one of the templates above
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── app.ts              # Express application

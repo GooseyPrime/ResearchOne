@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import app from './api/app';
@@ -8,11 +5,15 @@ import { logger } from './utils/logger';
 import { initDb } from './db/pool';
 import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
+import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { config } from './config';
 
 async function main() {
   try {
-    logger.info('ResearchOne backend starting...');
+    const envFile = getLoadedEnvFilePath();
+    logger.info('ResearchOne backend starting...', {
+      envFile: envFile ?? '(dotenv not loaded — no file)',
+    });
 
     await initDb();
     logger.info('PostgreSQL connected');

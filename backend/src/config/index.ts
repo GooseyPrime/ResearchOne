@@ -1,8 +1,11 @@
 import path from 'path';
+import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
 } from '../services/reasoning/reasoningModelPolicy';
+
+loadEnv();
 
 const ALLOWED_NODE_ENVS = new Set(['development', 'test', 'production']);
 const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
@@ -164,10 +167,12 @@ const config = {
     restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart researchone-api',
     /** PM2 stdout log (default matches ecosystem.config.js cwd + paths) */
     runtimeLogOut:
-      process.env.RUNTIME_LOG_OUT || path.join(process.cwd(), 'backend/logs/pm2-out.log'),
+      process.env.RUNTIME_LOG_OUT ||
+      path.join(getRepoRoot(), 'backend/logs/pm2-out.log'),
     /** PM2 stderr log */
     runtimeLogErr:
-      process.env.RUNTIME_LOG_ERR || path.join(process.cwd(), 'backend/logs/pm2-error.log'),
+      process.env.RUNTIME_LOG_ERR ||
+      path.join(getRepoRoot(), 'backend/logs/pm2-error.log'),
   },
 
   jwtSecret: (() => {
