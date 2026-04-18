@@ -130,6 +130,15 @@ Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.
 
 ## Environment Variables
 
+There are **two different places** configuration lives. Do not mix them up:
+
+| Where | What goes there |
+|-------|------------------|
+| **`backend/.env` on the Emma VM** (and the templates `backend/.env.production.example` / `backend/.env.development.example`) | Runtime secrets for the Node API: database, Redis, OpenRouter, `JWT_SECRET`, `CORS_ORIGINS`, etc. **No `EMMA_*` keys** — the running app never reads those names. |
+| **GitHub → Settings → Secrets and variables → Actions** | **Only** for the [Deploy backend to Emma](.github/workflows/deploy-backend-emma.yml) workflow: `EMMA_HOST`, `EMMA_USER`, `EMMA_SSH_KEY`, etc. These are **not** copied into `backend/.env` unless you explicitly use the optional `EMMA_WRITE_BACKEND_ENV` secret (which writes the **whole** API env file on the server — still not individual `EMMA_SSH_*` lines in the template). |
+
+If deploy fails with SSH or permission errors, the fix is in **GitHub repository secrets** and **server SSH authorized_keys** for `EMMA_USER`, not in `backend/.env.production.example`.
+
 ### Backend (Emma runtime VM) — Production
 
 ```env
@@ -339,17 +348,19 @@ If the Vercel project **Root Directory** is the monorepo root, the root [`vercel
 
 Merging to `main` triggers Vercel for the **frontend** independently. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) SSHs to the Emma VM and runs [`scripts/deploy-runtime.sh`](scripts/deploy-runtime.sh): the VM **fetches and resets to `origin/main`**, runs **`npm ci`** (full install, including devDependencies required for migrations), **`npm run build`**, **`npm run migrate`**, then starts or reloads PM2 from **`ecosystem.config.js`**. The backend is **not** built in Actions and rsynced anymore; the VM always runs the current tree from git.
 
-**Repository secrets** (GitHub → Settings → Secrets and variables → Actions):
+**Repository secrets** (GitHub → Settings → Secrets and variables → **Actions** — repository or organization secrets for this repo). These are **not** listed in `backend/.env.production.example` because Actions reads them only at workflow runtime:
 
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `EMMA_HOST` | Yes | SSH hostname or IP of the Emma **runtime** API VM |
 | `EMMA_USER` | Yes | SSH user with write access to the deploy path and permission to run `git`, `npm`, and `pm2` |
-| `EMMA_SSH_KEY` | Yes | Private key (full PEM) for that user |
+| `EMMA_SSH_KEY` | Yes | **Private** key (full PEM), including `-----BEGIN ... PRIVATE KEY-----` and `-----END...` lines — the same material as your local `id_rsa` / `.pem` file, **not** the `.pub` public key |
 | `EMMA_DEPLOY_PATH` | No | App root on the server; default **`/opt/researchone`** (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`) |
 | `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended) |
 | `EMMA_WRITE_BACKEND_ENV` | No | **Opt-in:** multiline contents written to `backend/.env` on the VM before deploy (only if you choose CI-managed secrets) |
 | `EMMA_PUBLIC_HEALTH_URL` | No | **Opt-in:** full URL for an extra curl after deploy (use `http://` or `https://` to match your TLS setup) |
+
+**If `EMMA_SSH_KEY` “looks right” but SSH still fails:** confirm the matching **public** key is in **`EMMA_USER`’s `~/.ssh/authorized_keys`** on the VM; confirm the secret is the **private** key for that pair; paste the PEM with **no** extra quotes or `Key::` prefixes; for ed25519 use `BEGIN OPENSSH PRIVATE KEY` PEM as output by `ssh-keygen`. Workflows triggered from **fork PRs** do not receive repository secrets — use **`workflow_dispatch`** on `main` or merge to **`main`** on this repo.
 
 **Emma VM:** must be a **git clone** of this repo with `origin` reachable; `backend/.env` must exist on the server unless you use `EMMA_WRITE_BACKEND_ENV`.
 
