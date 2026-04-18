@@ -18,8 +18,8 @@ export type ReasoningModelRole =
 
 const BASE_ALLOWLIST = [
   'deepseek/deepseek-r1',
-  'anthropic/claude-3.5-sonnet',
   'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-3.5-haiku',
   'openai/o3-mini',
   'openai/o3',
   'openai/o1',

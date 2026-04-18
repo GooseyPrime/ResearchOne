@@ -183,22 +183,22 @@ FINAL_REVISION_VERIFIER_MODEL=deepseek/deepseek-r1
 EMBEDDING_MODEL=openai/text-embedding-3-small
 
 # Fallbacks (all roles now supported)
-PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
-RETRIEVER_FALLBACK=anthropic/claude-3.5-sonnet
-REASONER_FALLBACK=anthropic/claude-3.5-sonnet
-SKEPTIC_FALLBACK=anthropic/claude-3.5-sonnet
-SYNTHESIZER_FALLBACK=anthropic/claude-3.5-sonnet
-VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
-OUTLINE_ARCHITECT_FALLBACK=anthropic/claude-3.5-sonnet
-SECTION_DRAFTER_FALLBACK=anthropic/claude-3.5-sonnet
-INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-3.5-sonnet
-COHERENCE_REFINER_FALLBACK=anthropic/claude-3.5-sonnet
-REVISION_INTAKE_FALLBACK=anthropic/claude-3.5-sonnet
-REPORT_LOCATOR_FALLBACK=anthropic/claude-3.5-sonnet
-CHANGE_PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
-SECTION_REWRITER_FALLBACK=anthropic/claude-3.5-sonnet
-CITATION_INTEGRITY_CHECKER_FALLBACK=anthropic/claude-3.5-sonnet
-FINAL_REVISION_VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
+PLANNER_FALLBACK=anthropic/claude-3.7-sonnet
+RETRIEVER_FALLBACK=anthropic/claude-3.7-sonnet
+REASONER_FALLBACK=anthropic/claude-3.7-sonnet
+SKEPTIC_FALLBACK=anthropic/claude-3.7-sonnet
+SYNTHESIZER_FALLBACK=anthropic/claude-3.7-sonnet
+VERIFIER_FALLBACK=anthropic/claude-3.7-sonnet
+OUTLINE_ARCHITECT_FALLBACK=anthropic/claude-3.7-sonnet
+SECTION_DRAFTER_FALLBACK=anthropic/claude-3.7-sonnet
+INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-3.7-sonnet
+COHERENCE_REFINER_FALLBACK=anthropic/claude-3.7-sonnet
+REVISION_INTAKE_FALLBACK=anthropic/claude-3.7-sonnet
+REPORT_LOCATOR_FALLBACK=anthropic/claude-3.7-sonnet
+CHANGE_PLANNER_FALLBACK=anthropic/claude-3.7-sonnet
+SECTION_REWRITER_FALLBACK=anthropic/claude-3.7-sonnet
+CITATION_INTEGRITY_CHECKER_FALLBACK=anthropic/claude-3.7-sonnet
+FINAL_REVISION_VERIFIER_FALLBACK=anthropic/claude-3.7-sonnet
 
 # Embedding
 EMBEDDING_DIMENSIONS=1536
@@ -451,11 +451,11 @@ Research direction and paper-building are restricted to reasoning-class models o
 - Startup fails if any fallback is missing.
 - Startup fails if any configured model is outside the approved reasoning allowlist.
 
-Approved reasoning allowlist (role-specific policy module):
+Approved reasoning allowlist (role-specific policy module). Confirm IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`.
 
 - `deepseek/deepseek-r1`
-- `anthropic/claude-3.5-sonnet`
 - `anthropic/claude-3.7-sonnet`
+- `anthropic/claude-3.5-haiku`
 - `openai/o3-mini`
 - `openai/o3`
 - `openai/o1`
