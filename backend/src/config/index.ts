@@ -4,6 +4,7 @@ import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
 } from '../services/reasoning/reasoningModelPolicy';
+import { parseCorsOrigins } from './corsOrigins';
 
 loadEnv();
 
@@ -15,13 +16,6 @@ if (!ALLOWED_NODE_ENVS.has(rawNodeEnv)) {
   throw new Error(
     `Invalid NODE_ENV="${rawNodeEnv}". Allowed values: development, test, production`
   );
-}
-
-function parseCsv(value: string | undefined, fallback: string): string[] {
-  return (value === undefined ? fallback : value)
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 }
 
 function isLocalhostUrl(origin: string): boolean {
@@ -71,7 +65,7 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: rawNodeEnv,
-  corsOrigins: parseCsv(process.env.CORS_ORIGINS, 'http://localhost:5173'),
+  corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, 'http://localhost:5173'),
 
   db: {
     host: process.env.DB_HOST || '10.0.101.2',
