@@ -73,10 +73,14 @@ jobs:
           ssh -o StrictHostKeyChecking=yes "${REMOTE}" \
             "cd '${DEPLOY_PATH}' && export DEPLOY_SOURCE=github-actions RESEARCHONE_DEPLOY_PATH='${DEPLOY_PATH}' && bash ./scripts/deploy-runtime.sh"
 
+      # Cannot use `secrets` in step `if:` — gate inside the script instead.
       - name: Optional public health check
-        if: ${{ secrets.EMMA_PUBLIC_HEALTH_URL != '' }}
         env:
           EMMA_PUBLIC_HEALTH_URL: ${{ secrets.EMMA_PUBLIC_HEALTH_URL }}
         run: |
           set -euo pipefail
+          if [ -z "${EMMA_PUBLIC_HEALTH_URL:-}" ]; then
+            echo "Skipping public health check (EMMA_PUBLIC_HEALTH_URL not set)."
+            exit 0
+          fi
           curl -sS --fail --max-time 30 "${EMMA_PUBLIC_HEALTH_URL}"
