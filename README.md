@@ -361,6 +361,7 @@ These are **not** listed in `backend/.env.production.example` because Actions re
 | `EMMA_USER` | Yes | SSH user with write access to the deploy path and permission to run `git`, `npm`, and `pm2` |
 | `EMMA_SSH_KEY` | Yes | **Private** key (full PEM), including `-----BEGIN ... PRIVATE KEY-----` and `-----END...` lines — the same material as your local `id_rsa` / `.pem` file, **not** the `.pub` public key |
 | `EMMA_DEPLOY_PATH` | No | App root on the server; default **`/opt/researchone`** (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`) |
+| `EMMA_PORT` | No | SSH port on the VM; default **`22`**. Set if `sshd` listens elsewhere. Regenerate **`EMMA_KNOWN_HOSTS`** with `ssh-keyscan -p <port> -H <host>` when the port is not 22. |
 | `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended) |
 | `EMMA_WRITE_BACKEND_ENV` | No | **Opt-in:** multiline contents written to `backend/.env` on the VM before deploy (only if you choose CI-managed secrets) |
 | `EMMA_PUBLIC_HEALTH_URL` | No | **Opt-in:** full URL for an extra curl after deploy (use `http://` or `https://` to match your TLS setup) |
@@ -368,6 +369,8 @@ These are **not** listed in `backend/.env.production.example` because Actions re
 **If `EMMA_SSH_KEY` “looks right” but SSH still fails:** confirm the matching **public** key is in **`EMMA_USER`’s `~/.ssh/authorized_keys`** on the VM; confirm the secret is the **private** key for that pair; paste the PEM with **no** extra quotes or `Key::` prefixes; for ed25519 use `BEGIN OPENSSH PRIVATE KEY` PEM as output by `ssh-keygen`. Workflows triggered from **fork PRs** do not receive repository secrets — use **`workflow_dispatch`** on `main` or merge to **`main`** on this repo.
 
 **Emma VM:** must be a **git clone** of this repo with `origin` reachable; `backend/.env` must exist on the server unless you use `EMMA_WRITE_BACKEND_ENV`.
+
+**If the workflow fails with `Connection timed out` to `EMMA_HOST` port 22:** GitHub-hosted runners run on the public internet. The VM must have a **routable** `EMMA_HOST` (not a private LAN IP), **`sshd` listening** on **`EMMA_PORT`** (default 22), and your cloud **firewall / security group** must **allow inbound TCP** from the internet (or from [GitHub Actions IP ranges](https://api.github.com/meta) if you restrict sources). Your laptop working while Actions times out usually means the runner’s IP is blocked.
 
 **Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
 
