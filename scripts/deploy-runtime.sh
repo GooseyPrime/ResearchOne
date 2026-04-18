@@ -134,12 +134,19 @@ fi
 
 pm2 save || true
 
-echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health"
-HEALTH_JSON="$(curl -sS --fail --max-time 15 "http://127.0.0.1:3001/api/health")" || {
-  echo "[deploy] ERROR: health request failed" >&2
+echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health (retry until ready)"
+HEALTH_JSON=""
+for _ in {1..90}; do
+  if HEALTH_JSON=$(curl -sS --fail --max-time 5 "http://127.0.0.1:3001/api/health" 2>/dev/null); then
+    export HEALTH_JSON
+    break
+  fi
+  sleep 1
+done
+if [[ -z "${HEALTH_JSON}" ]]; then
+  echo "[deploy] ERROR: health did not respond after PM2 start (waited ~90s)" >&2
   exit 1
-}
-export HEALTH_JSON
+fi
 
 python3 <<'PY'
 import json, os, sys

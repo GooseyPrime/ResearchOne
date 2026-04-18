@@ -5,6 +5,7 @@ module.exports = {
       script: './backend/dist/index.js',
       cwd: '/opt/researchone',
       instances: 1,
+      exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
