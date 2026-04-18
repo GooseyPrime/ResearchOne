@@ -370,7 +370,7 @@ These are **not** listed in `backend/.env.production.example` because Actions re
 
 **Emma VM:** must be a **git clone** of this repo with `origin` reachable; `backend/.env` must exist on the server unless you use `EMMA_WRITE_BACKEND_ENV`.
 
-**If the workflow fails with `Connection timed out` to `EMMA_HOST` port 22:** GitHub-hosted runners run on the public internet. The VM must have a **routable** `EMMA_HOST` (not a private LAN IP), **`sshd` listening** on **`EMMA_PORT`** (default 22), and your cloud **firewall / security group** must **allow inbound TCP** from the internet (or from [GitHub Actions IP ranges](https://api.github.com/meta) if you restrict sources). Your laptop working while Actions times out usually means the runner’s IP is blocked.
+**If the workflow fails with `Connection timed out` to `EMMA_HOST` port 22:** GitHub-hosted runners run on the public internet. The VM must have a **routable** `EMMA_HOST` (not a private LAN IP), **`sshd` listening** on **`EMMA_PORT`** (default 22), and your cloud **firewall / security group** must **allow inbound TCP** from the internet (or from [GitHub Actions IP ranges](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#ip-addresses-of-github-hosted-runners) if you restrict sources). Your laptop working while Actions times out usually means the runner’s IP is blocked.
 
 **Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
 
