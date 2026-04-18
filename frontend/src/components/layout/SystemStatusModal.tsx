@@ -22,7 +22,17 @@ function healthErrorMessage(err: unknown): string {
     const status = err.response?.status;
     const data = err.response?.data as { error?: string; message?: string } | undefined;
     const msg = data?.error || data?.message || err.message;
-    return status ? `HTTP ${status}: ${msg}` : msg;
+    if (status) return `HTTP ${status}: ${msg}`;
+    const code = err.code;
+    if (code === 'ERR_NETWORK' || msg === 'Network Error') {
+      return (
+        'Network error (no response from the API). Typical causes: wrong or unreachable ' +
+        'VITE_API_BASE_URL; an HTTPS page calling an HTTP API (blocked as mixed content); or ' +
+        'CORS_ORIGINS on the backend missing this page’s origin (including preview URLs). ' +
+        'Open DevTools → Network and inspect the failed request to /api/health.'
+      );
+    }
+    return code ? `${code}: ${msg}` : msg;
   }
   return err instanceof Error ? err.message : 'Unknown error';
 }
