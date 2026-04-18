@@ -36,6 +36,7 @@ vi.mock('fs/promises', () => ({
 
 vi.mock('../config', () => ({
   config: {
+    nodeEnv: 'test',
     openrouter: { apiKey: 'token', baseUrl: 'https://openrouter.ai/api/v1' },
     models: { planner: 'planner-model' },
     discovery: {
@@ -72,6 +73,10 @@ describe('health route payload', () => {
     const { buildHealth } = await import('../api/routes/health');
     const result = await buildHealth({ app: { get: () => ({}) } });
     expect(result.status).toBe('ok');
+    expect(result.service).toBe('ResearchOne API');
+    expect(typeof result.version).toBe('string');
+    expect(result.gitSha).toBeDefined();
+    expect(result.nodeEnv).toBeDefined();
     expect(result.checks.db.ok).toBe(true);
     expect(result.checks.redis.ok).toBe(true);
     expect(result.checks.openrouter.modelProbe).toBe('planner-model');
