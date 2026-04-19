@@ -5,15 +5,18 @@ node_modules/
 # Build artifacts
 dist/
 **/dist/
+backend/dist/build-meta.json
 
 # Environment files (never commit secrets)
 .env
 **/.env
+backend/.env.bak_*
 *.local
 
 # Logs
 logs/
 **/logs/
+backend/logs/
 *.log
 
 # PM2

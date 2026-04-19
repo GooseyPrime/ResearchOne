@@ -1,8 +1,12 @@
 import path from 'path';
+import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
 } from '../services/reasoning/reasoningModelPolicy';
+import { parseCorsOrigins } from './corsOrigins';
+
+loadEnv();
 
 const ALLOWED_NODE_ENVS = new Set(['development', 'test', 'production']);
 const ALLOWED_SEARCH_PROVIDERS = new Set(['tavily', 'generic', 'brave', 'cascade']);
@@ -12,13 +16,6 @@ if (!ALLOWED_NODE_ENVS.has(rawNodeEnv)) {
   throw new Error(
     `Invalid NODE_ENV="${rawNodeEnv}". Allowed values: development, test, production`
   );
-}
-
-function parseCsv(value: string | undefined, fallback: string): string[] {
-  return (value === undefined ? fallback : value)
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 }
 
 function isLocalhostUrl(origin: string): boolean {
@@ -68,7 +65,7 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: rawNodeEnv,
-  corsOrigins: parseCsv(process.env.CORS_ORIGINS, 'http://localhost:5173'),
+  corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, 'http://localhost:5173'),
 
   db: {
     host: process.env.DB_HOST || '10.0.101.2',
@@ -92,42 +89,45 @@ const config = {
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
   },
 
+  // OpenRouter slugs — tiered defaults (override any role via PLANNER_MODEL, etc.).
   models: {
-    planner: process.env.PLANNER_MODEL || 'deepseek/deepseek-r1',
-    retriever: process.env.RETRIEVER_MODEL || 'deepseek/deepseek-r1',
+    planner: process.env.PLANNER_MODEL || 'moonshotai/kimi-k2-thinking',
+    retriever: process.env.RETRIEVER_MODEL || 'deepseek/deepseek-v3.2',
     reasoner: process.env.REASONER_MODEL || 'deepseek/deepseek-r1',
-    skeptic: process.env.SKEPTIC_MODEL || 'deepseek/deepseek-r1',
-    synthesizer: process.env.SYNTHESIZER_MODEL || 'deepseek/deepseek-r1',
-    verifier: process.env.VERIFIER_MODEL || 'deepseek/deepseek-r1',
-    outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || 'deepseek/deepseek-r1',
-    sectionDrafter: process.env.SECTION_DRAFTER_MODEL || 'deepseek/deepseek-r1',
-    internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || 'deepseek/deepseek-r1',
-    coherenceRefiner: process.env.COHERENCE_REFINER_MODEL || 'deepseek/deepseek-r1',
-    revisionIntake: process.env.REVISION_INTAKE_MODEL || 'deepseek/deepseek-r1',
-    reportLocator: process.env.REPORT_LOCATOR_MODEL || 'deepseek/deepseek-r1',
-    changePlanner: process.env.CHANGE_PLANNER_MODEL || 'deepseek/deepseek-r1',
-    sectionRewriter: process.env.SECTION_REWRITER_MODEL || 'deepseek/deepseek-r1',
-    citationIntegrityChecker: process.env.CITATION_INTEGRITY_CHECKER_MODEL || 'deepseek/deepseek-r1',
-    finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || 'deepseek/deepseek-r1',
+    skeptic: process.env.SKEPTIC_MODEL || 'moonshotai/kimi-k2-thinking',
+    synthesizer: process.env.SYNTHESIZER_MODEL || 'anthropic/claude-sonnet-4.5',
+    verifier: process.env.VERIFIER_MODEL || 'anthropic/claude-sonnet-4',
+    outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || 'moonshotai/kimi-k2-thinking',
+    sectionDrafter: process.env.SECTION_DRAFTER_MODEL || 'google/gemini-2.5-pro',
+    internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || 'moonshotai/kimi-k2-thinking',
+    coherenceRefiner: process.env.COHERENCE_REFINER_MODEL || 'anthropic/claude-sonnet-4.5',
+    revisionIntake: process.env.REVISION_INTAKE_MODEL || 'openai/gpt-5-mini',
+    reportLocator: process.env.REPORT_LOCATOR_MODEL || 'openai/gpt-5-mini',
+    changePlanner: process.env.CHANGE_PLANNER_MODEL || 'moonshotai/kimi-k2-thinking',
+    sectionRewriter: process.env.SECTION_REWRITER_MODEL || 'google/gemini-2.5-pro',
+    citationIntegrityChecker:
+      process.env.CITATION_INTEGRITY_CHECKER_MODEL || 'mistralai/mistral-small-3.2-24b-instruct',
+    finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || 'anthropic/claude-sonnet-4',
     embedding: process.env.EMBEDDING_MODEL || 'openai/text-embedding-3-small',
 
     fallbacks: {
-      planner: process.env.PLANNER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      retriever: process.env.RETRIEVER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      reasoner: process.env.REASONER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      synthesizer: process.env.SYNTHESIZER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      verifier: process.env.VERIFIER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      coherenceRefiner: process.env.COHERENCE_REFINER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      revisionIntake: process.env.REVISION_INTAKE_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      reportLocator: process.env.REPORT_LOCATOR_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      changePlanner: process.env.CHANGE_PLANNER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      citationIntegrityChecker: process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || 'anthropic/claude-3.5-sonnet',
-      finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || 'anthropic/claude-3.5-sonnet',
+      planner: process.env.PLANNER_FALLBACK || 'deepseek/deepseek-r1',
+      retriever: process.env.RETRIEVER_FALLBACK || 'google/gemini-2.5-flash',
+      reasoner: process.env.REASONER_FALLBACK || 'moonshotai/kimi-k2-thinking',
+      skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-sonnet-4',
+      synthesizer: process.env.SYNTHESIZER_FALLBACK || 'google/gemini-2.5-pro',
+      verifier: process.env.VERIFIER_FALLBACK || 'openai/o3-mini',
+      outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || 'deepseek/deepseek-r1',
+      sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || 'anthropic/claude-sonnet-4',
+      internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || 'anthropic/claude-sonnet-4',
+      coherenceRefiner: process.env.COHERENCE_REFINER_FALLBACK || 'google/gemini-2.5-pro',
+      revisionIntake: process.env.REVISION_INTAKE_FALLBACK || 'qwen/qwen3-235b-a22b',
+      reportLocator: process.env.REPORT_LOCATOR_FALLBACK || 'qwen/qwen3-235b-a22b',
+      changePlanner: process.env.CHANGE_PLANNER_FALLBACK || 'deepseek/deepseek-r1',
+      sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || 'anthropic/claude-sonnet-4',
+      citationIntegrityChecker:
+        process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || 'meta-llama/llama-3.3-70b-instruct',
+      finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || 'openai/o3-mini',
     },
   },
 
@@ -164,10 +164,12 @@ const config = {
     restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart researchone-api',
     /** PM2 stdout log (default matches ecosystem.config.js cwd + paths) */
     runtimeLogOut:
-      process.env.RUNTIME_LOG_OUT || path.join(process.cwd(), 'backend/logs/pm2-out.log'),
+      process.env.RUNTIME_LOG_OUT ||
+      path.join(getRepoRoot(), 'backend/logs/pm2-out.log'),
     /** PM2 stderr log */
     runtimeLogErr:
-      process.env.RUNTIME_LOG_ERR || path.join(process.cwd(), 'backend/logs/pm2-error.log'),
+      process.env.RUNTIME_LOG_ERR ||
+      path.join(getRepoRoot(), 'backend/logs/pm2-error.log'),
   },
 
   jwtSecret: (() => {

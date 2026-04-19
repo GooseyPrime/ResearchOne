@@ -6,8 +6,11 @@ import { getPool } from '../../db/pool';
 import { getRedis } from '../../queue/redis';
 import { atlasExportQueue, embeddingQueue, ingestionQueue, researchQueue } from '../../queue/queues';
 import { config } from '../../config';
+import { getBackendPackageVersion, getBuildMeta } from '../../bootstrap/buildMeta';
 
 const router = Router();
+
+const SERVICE_NAME = 'ResearchOne API';
 
 type Check = {
   ok: boolean;
@@ -121,7 +124,17 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   const failed = Object.values(checks).filter((c) => !c.ok).length;
   const status = failed === 0 ? 'ok' : failed <= 2 ? 'degraded' : 'down';
 
+  const meta = getBuildMeta();
+  const gitSha = meta?.gitSha?.trim() || 'unknown';
+  const builtAt = meta?.builtAt?.trim() || null;
+
   return {
+    service: SERVICE_NAME,
+    version: getBackendPackageVersion(),
+    gitSha,
+    buildSha: gitSha,
+    builtAt,
+    nodeEnv: config.nodeEnv,
     status,
     timestamp: new Date().toISOString(),
     checks,

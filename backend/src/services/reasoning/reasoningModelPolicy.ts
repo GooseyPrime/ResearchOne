@@ -1,56 +1,62 @@
-export type ReasoningModelRole =
-  | 'planner'
-  | 'retriever'
-  | 'reasoner'
-  | 'skeptic'
-  | 'synthesizer'
-  | 'verifier'
-  | 'outline_architect'
-  | 'section_drafter'
-  | 'internal_challenger'
-  | 'coherence_refiner'
-  | 'revision_intake'
-  | 'report_locator'
-  | 'change_planner'
-  | 'section_rewriter'
-  | 'citation_integrity_checker'
-  | 'final_revision_verifier';
-
-const BASE_ALLOWLIST = [
-  'deepseek/deepseek-r1',
-  'anthropic/claude-3.5-sonnet',
-  'anthropic/claude-3.7-sonnet',
-  'openai/o3-mini',
-  'openai/o3',
-  'openai/o1',
+/**
+ * Canonical list of OpenRouter-backed agent roles for ResearchOne (research pipeline,
+ * report generation, revisions). Order is stable for UI and DB; do not rename without
+ * updating call sites and migrations.
+ */
+export const REASONING_MODEL_ROLES = [
+  'planner',
+  'retriever',
+  'reasoner',
+  'skeptic',
+  'synthesizer',
+  'verifier',
+  'outline_architect',
+  'section_drafter',
+  'internal_challenger',
+  'coherence_refiner',
+  'revision_intake',
+  'report_locator',
+  'change_planner',
+  'section_rewriter',
+  'citation_integrity_checker',
+  'final_revision_verifier',
 ] as const;
 
-export const APPROVED_REASONING_MODEL_ALLOWLIST: Record<ReasoningModelRole, readonly string[]> = {
-  planner: BASE_ALLOWLIST,
-  retriever: BASE_ALLOWLIST,
-  reasoner: BASE_ALLOWLIST,
-  skeptic: BASE_ALLOWLIST,
-  synthesizer: BASE_ALLOWLIST,
-  verifier: BASE_ALLOWLIST,
-  outline_architect: BASE_ALLOWLIST,
-  section_drafter: BASE_ALLOWLIST,
-  internal_challenger: BASE_ALLOWLIST,
-  coherence_refiner: BASE_ALLOWLIST,
-  revision_intake: BASE_ALLOWLIST,
-  report_locator: BASE_ALLOWLIST,
-  change_planner: BASE_ALLOWLIST,
-  section_rewriter: BASE_ALLOWLIST,
-  citation_integrity_checker: BASE_ALLOWLIST,
-  final_revision_verifier: BASE_ALLOWLIST,
-};
+export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];
+
+/**
+ * Approved OpenRouter model ids (validated against GET /api/v1/models).
+ * Per-role defaults live in config; this list is the deployment allowlist.
+ */
+const BASE_ALLOWLIST = [
+  'anthropic/claude-3.5-haiku',
+  'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-sonnet-4',
+  'anthropic/claude-sonnet-4.5',
+  'deepseek/deepseek-chat',
+  'deepseek/deepseek-r1',
+  'deepseek/deepseek-v3.2',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.5-pro',
+  'meta-llama/llama-3.3-70b-instruct',
+  'mistralai/mistral-small-3.2-24b-instruct',
+  'moonshotai/kimi-k2-thinking',
+  'openai/gpt-5-mini',
+  'openai/o1',
+  'openai/o3',
+  'openai/o3-mini',
+  'qwen/qwen3-235b-a22b',
+] as const;
+
+export const APPROVED_REASONING_MODEL_ALLOWLIST = Object.fromEntries(
+  REASONING_MODEL_ROLES.map((role) => [role, BASE_ALLOWLIST as readonly string[]])
+) as Record<ReasoningModelRole, readonly string[]>;
 
 export function validateReasoningModelPolicy(args: {
   models: Record<ReasoningModelRole, string | undefined>;
   fallbacks: Record<ReasoningModelRole, string | undefined>;
 }): void {
-  const roles = Object.keys(APPROVED_REASONING_MODEL_ALLOWLIST) as ReasoningModelRole[];
-
-  for (const role of roles) {
+  for (const role of REASONING_MODEL_ROLES) {
     const active = args.models[role]?.trim();
     const fallback = args.fallbacks[role]?.trim();
     const allowed = APPROVED_REASONING_MODEL_ALLOWLIST[role];

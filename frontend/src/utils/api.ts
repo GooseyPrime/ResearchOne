@@ -63,6 +63,12 @@ export interface ResearchRun {
 }
 
 export interface SystemHealth {
+  service?: string;
+  version?: string;
+  gitSha?: string;
+  buildSha?: string;
+  builtAt?: string | null;
+  nodeEnv?: string;
   status: 'ok' | 'degraded' | 'down';
   timestamp: string;
   checks: {

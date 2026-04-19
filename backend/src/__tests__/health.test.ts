@@ -34,10 +34,50 @@ vi.mock('fs/promises', () => ({
   unlink,
 }));
 
+const MOCK_MODEL = 'planner-model';
+const MOCK_FB = 'anthropic/claude-3.7-sonnet';
+
 vi.mock('../config', () => ({
   config: {
+    nodeEnv: 'test',
     openrouter: { apiKey: 'token', baseUrl: 'https://openrouter.ai/api/v1' },
-    models: { planner: 'planner-model' },
+    models: {
+      planner: MOCK_MODEL,
+      retriever: MOCK_MODEL,
+      reasoner: MOCK_MODEL,
+      skeptic: MOCK_MODEL,
+      synthesizer: MOCK_MODEL,
+      verifier: MOCK_MODEL,
+      outlineArchitect: MOCK_MODEL,
+      sectionDrafter: MOCK_MODEL,
+      internalChallenger: MOCK_MODEL,
+      coherenceRefiner: MOCK_MODEL,
+      revisionIntake: MOCK_MODEL,
+      reportLocator: MOCK_MODEL,
+      changePlanner: MOCK_MODEL,
+      sectionRewriter: MOCK_MODEL,
+      citationIntegrityChecker: MOCK_MODEL,
+      finalRevisionVerifier: MOCK_MODEL,
+      embedding: 'openai/text-embedding-3-small',
+      fallbacks: {
+        planner: MOCK_FB,
+        retriever: MOCK_FB,
+        reasoner: MOCK_FB,
+        skeptic: MOCK_FB,
+        synthesizer: MOCK_FB,
+        verifier: MOCK_FB,
+        outlineArchitect: MOCK_FB,
+        sectionDrafter: MOCK_FB,
+        internalChallenger: MOCK_FB,
+        coherenceRefiner: MOCK_FB,
+        revisionIntake: MOCK_FB,
+        reportLocator: MOCK_FB,
+        changePlanner: MOCK_FB,
+        sectionRewriter: MOCK_FB,
+        citationIntegrityChecker: MOCK_FB,
+        finalRevisionVerifier: MOCK_FB,
+      },
+    },
     discovery: {
       enabled: true,
       provider: 'tavily',
@@ -72,6 +112,10 @@ describe('health route payload', () => {
     const { buildHealth } = await import('../api/routes/health');
     const result = await buildHealth({ app: { get: () => ({}) } });
     expect(result.status).toBe('ok');
+    expect(result.service).toBe('ResearchOne API');
+    expect(typeof result.version).toBe('string');
+    expect(result.gitSha).toBeDefined();
+    expect(result.nodeEnv).toBeDefined();
     expect(result.checks.db.ok).toBe(true);
     expect(result.checks.redis.ok).toBe(true);
     expect(result.checks.openrouter.modelProbe).toBe('planner-model');

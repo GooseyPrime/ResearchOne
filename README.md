@@ -34,12 +34,10 @@
 │  └── Redis (BullMQ job queues, job state, caching)              │
 │                                                                 │
 │  OpenRouter (remote inference — server-side only)               │
-│  ├── Planner: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)       │
-│  ├── Retriever: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)     │
-│  ├── Reasoner: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
-│  ├── Skeptic: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)       │
-│  ├── Synthesizer: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)   │
-│  └── Verifier: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
+│  Tiered defaults in backend/src/config/index.ts (per-role env   │
+│  overrides). Examples: Kimi K2 Thinking + DeepSeek-R1 (planning  │
+│  & core reasoning); Claude Sonnet 4.5 + Gemini 2.5 Pro (reports │
+│  & sections); GPT-5-mini (structured JSON); distinct fallbacks.  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,6 +128,15 @@ Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.
 
 ## Environment Variables
 
+There are **two different places** configuration lives. Do not mix them up:
+
+| Where | What goes there |
+|-------|------------------|
+| **`backend/.env` on the Emma VM** (and the templates `backend/.env.production.example` / `backend/.env.development.example`) | Runtime secrets for the Node API: database, Redis, OpenRouter, `JWT_SECRET`, `CORS_ORIGINS`, etc. **No `EMMA_*` keys** — the running app never reads those names. |
+| **GitHub → Settings → Secrets and variables → Actions** | **Only** for the [Deploy backend to Emma](.github/workflows/deploy-backend-emma.yml) workflow: `EMMA_HOST`, `EMMA_USER`, `EMMA_SSH_KEY`, etc. These are **not** copied into `backend/.env` unless you explicitly use the optional `EMMA_WRITE_BACKEND_ENV` secret (which writes the **whole** API env file on the server — still not individual `EMMA_SSH_*` lines in the template). |
+
+If deploy fails with SSH or permission errors, the fix is in **GitHub repository secrets** and **server SSH authorized_keys** for `EMMA_USER`, not in `backend/.env.production.example`.
+
 ### Backend (Emma runtime VM) — Production
 
 ```env
@@ -154,42 +161,42 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 JWT_SECRET=
 CORS_ORIGINS=https://<your-vercel-project>.vercel.app,https://<your-custom-frontend-domain>
 
-# Model routing
-PLANNER_MODEL=deepseek/deepseek-r1
-RETRIEVER_MODEL=deepseek/deepseek-r1
+# Model routing (defaults — omit to use code defaults in backend/src/config/index.ts)
+PLANNER_MODEL=moonshotai/kimi-k2-thinking
+RETRIEVER_MODEL=deepseek/deepseek-v3.2
 REASONER_MODEL=deepseek/deepseek-r1
-SKEPTIC_MODEL=deepseek/deepseek-r1
-SYNTHESIZER_MODEL=deepseek/deepseek-r1
-VERIFIER_MODEL=deepseek/deepseek-r1
-OUTLINE_ARCHITECT_MODEL=deepseek/deepseek-r1
-SECTION_DRAFTER_MODEL=deepseek/deepseek-r1
-INTERNAL_CHALLENGER_MODEL=deepseek/deepseek-r1
-COHERENCE_REFINER_MODEL=deepseek/deepseek-r1
-REVISION_INTAKE_MODEL=deepseek/deepseek-r1
-REPORT_LOCATOR_MODEL=deepseek/deepseek-r1
-CHANGE_PLANNER_MODEL=deepseek/deepseek-r1
-SECTION_REWRITER_MODEL=deepseek/deepseek-r1
-CITATION_INTEGRITY_CHECKER_MODEL=deepseek/deepseek-r1
-FINAL_REVISION_VERIFIER_MODEL=deepseek/deepseek-r1
+SKEPTIC_MODEL=moonshotai/kimi-k2-thinking
+SYNTHESIZER_MODEL=anthropic/claude-sonnet-4.5
+VERIFIER_MODEL=anthropic/claude-sonnet-4
+OUTLINE_ARCHITECT_MODEL=moonshotai/kimi-k2-thinking
+SECTION_DRAFTER_MODEL=google/gemini-2.5-pro
+INTERNAL_CHALLENGER_MODEL=moonshotai/kimi-k2-thinking
+COHERENCE_REFINER_MODEL=anthropic/claude-sonnet-4.5
+REVISION_INTAKE_MODEL=openai/gpt-5-mini
+REPORT_LOCATOR_MODEL=openai/gpt-5-mini
+CHANGE_PLANNER_MODEL=moonshotai/kimi-k2-thinking
+SECTION_REWRITER_MODEL=google/gemini-2.5-pro
+CITATION_INTEGRITY_CHECKER_MODEL=mistralai/mistral-small-3.2-24b-instruct
+FINAL_REVISION_VERIFIER_MODEL=anthropic/claude-sonnet-4
 EMBEDDING_MODEL=openai/text-embedding-3-small
 
-# Fallbacks (all roles now supported)
-PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
-RETRIEVER_FALLBACK=anthropic/claude-3.5-sonnet
-REASONER_FALLBACK=anthropic/claude-3.5-sonnet
-SKEPTIC_FALLBACK=anthropic/claude-3.5-sonnet
-SYNTHESIZER_FALLBACK=anthropic/claude-3.5-sonnet
-VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
-OUTLINE_ARCHITECT_FALLBACK=anthropic/claude-3.5-sonnet
-SECTION_DRAFTER_FALLBACK=anthropic/claude-3.5-sonnet
-INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-3.5-sonnet
-COHERENCE_REFINER_FALLBACK=anthropic/claude-3.5-sonnet
-REVISION_INTAKE_FALLBACK=anthropic/claude-3.5-sonnet
-REPORT_LOCATOR_FALLBACK=anthropic/claude-3.5-sonnet
-CHANGE_PLANNER_FALLBACK=anthropic/claude-3.5-sonnet
-SECTION_REWRITER_FALLBACK=anthropic/claude-3.5-sonnet
-CITATION_INTEGRITY_CHECKER_FALLBACK=anthropic/claude-3.5-sonnet
-FINAL_REVISION_VERIFIER_FALLBACK=anthropic/claude-3.5-sonnet
+# Fallbacks (per role — distinct provider families where possible)
+PLANNER_FALLBACK=deepseek/deepseek-r1
+RETRIEVER_FALLBACK=google/gemini-2.5-flash
+REASONER_FALLBACK=moonshotai/kimi-k2-thinking
+SKEPTIC_FALLBACK=anthropic/claude-sonnet-4
+SYNTHESIZER_FALLBACK=google/gemini-2.5-pro
+VERIFIER_FALLBACK=openai/o3-mini
+OUTLINE_ARCHITECT_FALLBACK=deepseek/deepseek-r1
+SECTION_DRAFTER_FALLBACK=anthropic/claude-sonnet-4
+INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-sonnet-4
+COHERENCE_REFINER_FALLBACK=google/gemini-2.5-pro
+REVISION_INTAKE_FALLBACK=qwen/qwen3-235b-a22b
+REPORT_LOCATOR_FALLBACK=qwen/qwen3-235b-a22b
+CHANGE_PLANNER_FALLBACK=deepseek/deepseek-r1
+SECTION_REWRITER_FALLBACK=anthropic/claude-sonnet-4
+CITATION_INTEGRITY_CHECKER_FALLBACK=meta-llama/llama-3.3-70b-instruct
+FINAL_REVISION_VERIFIER_FALLBACK=openai/o3-mini
 
 # Embedding
 EMBEDDING_DIMENSIONS=1536
@@ -222,10 +229,20 @@ MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
 ```
 
-Use `backend/.env.production.example` as the source of truth for Emma runtime production config:
+**Which `.env` file is which (do not confuse these):**
+
+| File | Role |
+|------|------|
+| `backend/.env.example` | Pointer only — tells you to copy a real template |
+| `backend/.env.production.example` | **Committed template** for Emma/production — copy to `backend/.env` and edit |
+| `backend/.env.development.example` | **Committed template** for local backend dev — copy to `backend/.env` for laptop work |
+| `backend/.env` | **Real runtime secrets** — gitignored; this is what Node and PM2 use on the VM and locally |
+
+Emma runtime production setup:
 
 ```bash
 cp backend/.env.production.example backend/.env
+# edit backend/.env — never commit it
 ```
 
 ### Frontend (Vercel) — Required for split deployment
@@ -236,17 +253,25 @@ VITE_SOCKET_URL=https://<emma-runtime-vm-domain>
 VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
 ```
 
-Use the **API hostname** your nginx serves (for example `https://research-api.intellmeai.com`), not the Vercel app URL. Omit the `/api` suffix unless you already use a base that ends with `/api` (see `resolveApiBaseUrl` in `frontend/src/utils/api.ts`). **Redeploy after changing `VITE_*` values** so Vite embeds them.
+Set each `VITE_*` value to the **origin only** (scheme + host, no path): correct `https://api.example.com`, wrong `https://api.example.com/api`. The client code appends `/api` itself (`resolveApiBaseUrl` in `frontend/src/utils/api.ts`). Use the hostname nginx serves on the Emma VM, not the Vercel URL. **Redeploy the frontend after changing `VITE_*`** so Vite embeds them.
+
+If your VM only exposes **HTTP on port 80** (no TLS / no listener on 443), use `http://` in `VITE_*` until TLS is configured. Public `https://` smoke tests only work when HTTPS is actually terminated (443).
 
 **Diagnosing “404” on research:** In the browser Network tab, check the host of `POST .../research`. If it is your Vercel domain, `VITE_API_BASE_URL` was missing at build time. If the host is correct but the path is `/api/api/...`, remove the extra `/api` or trailing slash from `VITE_API_BASE_URL`. If research starts but fails later, open “Show error details” on the run and read `failure_meta.endpoint`: an OpenRouter URL means fix `OPENROUTER_BASE_URL` on the Emma VM, not Vercel.
 
-**Smoke test from your machine (Emma edge):**
+**Smoke test from your machine (Emma edge):** use `https://` only if TLS is configured; otherwise `http://` on port 80.
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" https://<emma-api-host>/api/health
+curl -sS -o /dev/null -w "%{http_code}\n" "https://<emma-api-host>/api/health"
 curl -sS -i -X POST "https://<emma-api-host>/api/research" \
   -H "Content-Type: application/json" \
   -d '{"query":"smoke test"}'
+```
+
+On the **VM**, localhost always works for the API process:
+
+```bash
+curl -sS "http://127.0.0.1:3001/api/health"
 ```
 
 Expect `200` on health and `202` on research. On the VM, confirm `OPENROUTER_BASE_URL` is a **base** URL only (for example `https://openrouter.ai/api/v1`), not a full `/chat/completions` path — see `backend/src/config/index.ts`.
@@ -280,20 +305,27 @@ chmod +x scripts/setup-redis.sh
 ```
 
 #### 3. Backend (Emma runtime VM)
+
+One-time: clone this repo to `/opt/researchone`, configure `backend/.env`, run `scripts/setup-runtime.sh` for nginx/user/exports.
+
+**Canonical app root:** `/opt/researchone` (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`). **All PM2 commands that use `ecosystem.config.js` must be run from that directory**, not from `backend/`:
+
 ```bash
-chmod +x scripts/setup-runtime.sh
-./scripts/setup-runtime.sh
+cd /opt/researchone
+```
 
-# Configure environment
-cp backend/.env.production.example backend/.env
-# Edit backend/.env — set Emma Postgres/Redis hosts, OPENROUTER_API_KEY, JWT_SECRET, CORS_ORIGINS, TAVILY_API_KEY, ADMIN_RUNTIME_TOKEN
+**Deploy / update (idempotent):** runs `git fetch` + `reset` to `origin/main`, full `npm ci`, `build`, `migrate`, PM2 from the ecosystem file, and a localhost health smoke test:
 
-cd backend && npm install
-npm run build
-npm run migrate   # applies all migrations (001-004)
+```bash
+cd /opt/researchone
+cp backend/.env.production.example backend/.env   # first time only; then edit backend/.env
+./scripts/deploy-runtime.sh
+```
 
-pm2 start ecosystem.config.js
-# after env changes:
+After changing only `backend/.env` (no git pull):
+
+```bash
+cd /opt/researchone
 pm2 restart researchone-api --update-env
 ```
 
@@ -312,19 +344,31 @@ If the Vercel project **Root Directory** is the monorepo root, the root [`vercel
 
 ### GitHub Actions: backend deploy to Emma (on `main` push)
 
-Merging to `main` triggers Vercel for the **frontend**. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) runs on the **same** `push` to `main` (in parallel) when `backend/**`, `ecosystem.config.js`, or the workflow file changes. It builds `backend/dist` in Actions, **rsync**s `dist/`, `package.json`, and `package-lock.json` to the Emma VM, runs `npm ci --omit=dev` on the server, and **`pm2 restart researchone-api --update-env`**.
+Merging to `main` triggers Vercel for the **frontend** independently. The workflow [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml) SSHs to the Emma VM and runs [`scripts/deploy-runtime.sh`](scripts/deploy-runtime.sh): the VM **fetches and resets to `origin/main`**, runs **`npm ci`** (full install, including devDependencies required for migrations), **`npm run build`**, **`npm run migrate`**, then starts or reloads PM2 from **`ecosystem.config.js`**. The backend is **not** built in Actions and rsynced anymore; the VM always runs the current tree from git.
 
-**Repository secrets** (GitHub → Settings → Secrets and variables → Actions):
+**Secrets for this workflow** can live in either place — **not** both required:
+
+- **Repository secrets:** GitHub → repo → Settings → Secrets and variables → **Actions** (tab “Repository secrets”).
+- **Environment secrets:** Settings → **Environments** → e.g. `production` → **Environment secrets**. If you use these, the workflow job must declare `environment: production` (see [`.github/workflows/deploy-backend-emma.yml`](.github/workflows/deploy-backend-emma.yml)); otherwise `secrets.EMMA_SSH_KEY` is **empty** and `webfactory/ssh-agent` fails with “ssh-private-key argument is empty”.
+
+These are **not** listed in `backend/.env.production.example` because Actions reads them only at workflow runtime:
 
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `EMMA_HOST` | Yes | SSH hostname or IP of the Emma **runtime** API VM |
-| `EMMA_USER` | Yes | SSH user with write access to `${EMMA_DEPLOY_PATH}/backend` and permission to run `pm2` |
-| `EMMA_SSH_KEY` | Yes | Private key (full PEM) for that user |
+| `EMMA_USER` | Yes | SSH user with write access to the deploy path and permission to run `git`, `npm`, and `pm2` |
+| `EMMA_SSH_KEY` | Yes | **Private** key (full PEM), including `-----BEGIN ... PRIVATE KEY-----` and `-----END...` lines — the same material as your local `id_rsa` / `.pem` file, **not** the `.pub` public key |
 | `EMMA_DEPLOY_PATH` | No | App root on the server; default **`/opt/researchone`** (must match [`ecosystem.config.js`](ecosystem.config.js) `cwd`) |
-| `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended instead of relying on runtime `ssh-keyscan`) |
+| `EMMA_PORT` | No | SSH port on the VM; default **`22`**. Set if `sshd` listens elsewhere. Regenerate **`EMMA_KNOWN_HOSTS`** with `ssh-keyscan -p <port> -H <host>` when the port is not 22. |
+| `EMMA_KNOWN_HOSTS` | No | One or more lines from `ssh-keyscan` for `EMMA_HOST` (recommended) |
+| `EMMA_WRITE_BACKEND_ENV` | No | **Opt-in:** multiline contents written to `backend/.env` on the VM before deploy (only if you choose CI-managed secrets) |
+| `EMMA_PUBLIC_HEALTH_URL` | No | **Opt-in:** full URL for an extra curl after deploy (use `http://` or `https://` to match your TLS setup) |
 
-**Emma VM:** Node and PM2 already installed; `backend/.env` present on the server (not supplied by CI). The deploy user must be able to run `pm2 restart researchone-api` for the app defined in `ecosystem.config.js`.
+**If `EMMA_SSH_KEY` “looks right” but SSH still fails:** confirm the matching **public** key is in **`EMMA_USER`’s `~/.ssh/authorized_keys`** on the VM; confirm the secret is the **private** key for that pair; paste the PEM with **no** extra quotes or `Key::` prefixes; for ed25519 use `BEGIN OPENSSH PRIVATE KEY` PEM as output by `ssh-keygen`. Workflows triggered from **fork PRs** do not receive repository secrets — use **`workflow_dispatch`** on `main` or merge to **`main`** on this repo.
+
+**Emma VM:** must be a **git clone** of this repo with `origin` reachable; `backend/.env` must exist on the server unless you use `EMMA_WRITE_BACKEND_ENV`.
+
+**If the workflow fails with `Connection timed out` to `EMMA_HOST` port 22:** GitHub-hosted runners run on the public internet. The VM must have a **routable** `EMMA_HOST` (not a private LAN IP), **`sshd` listening** on **`EMMA_PORT`** (default 22), and your cloud **firewall / security group** must **allow inbound TCP** from the internet (or from [GitHub Actions IP ranges](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#ip-addresses-of-github-hosted-runners) if you restrict sources). Your laptop working while Actions times out usually means the runner’s IP is blocked.
 
 **Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
 
@@ -353,8 +397,9 @@ npm run dev
 ```
 ResearchOne/
 ├── backend/
-│   ├── .env.production.example     # Emma runtime production template
-│   ├── .env.development.example    # Local backend development template
+│   ├── .env.production.example     # Emma runtime production template (copy → .env)
+│   ├── .env.development.example    # Local backend development template (copy → .env)
+│   ├── .env.example                # Pointer — use one of the templates above
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── app.ts              # Express application
@@ -410,14 +455,25 @@ Research direction and paper-building are restricted to reasoning-class models o
 - Startup fails if any fallback is missing.
 - Startup fails if any configured model is outside the approved reasoning allowlist.
 
-Approved reasoning allowlist (role-specific policy module):
+Approved reasoning allowlist (`backend/src/services/reasoning/reasoningModelPolicy.ts`). Confirm IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`.
 
-- `deepseek/deepseek-r1`
-- `anthropic/claude-3.5-sonnet`
+- `anthropic/claude-3.5-haiku`
 - `anthropic/claude-3.7-sonnet`
-- `openai/o3-mini`
-- `openai/o3`
+- `anthropic/claude-sonnet-4`
+- `anthropic/claude-sonnet-4.5`
+- `deepseek/deepseek-chat`
+- `deepseek/deepseek-r1`
+- `deepseek/deepseek-v3.2`
+- `google/gemini-2.5-flash`
+- `google/gemini-2.5-pro`
+- `meta-llama/llama-3.3-70b-instruct`
+- `mistralai/mistral-small-3.2-24b-instruct`
+- `moonshotai/kimi-k2-thinking`
+- `openai/gpt-5-mini`
 - `openai/o1`
+- `openai/o3`
+- `openai/o3-mini`
+- `qwen/qwen3-235b-a22b`
 
 Role separation for report generation now uses:
 

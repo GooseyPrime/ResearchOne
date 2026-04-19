@@ -1,25 +1,11 @@
 import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
+import { getResolvedModelsOrConfig } from '../../config/modelRuntime';
 import { logger } from '../../utils/logger';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 
-export type ModelRole =
-  | 'planner'
-  | 'retriever'
-  | 'reasoner'
-  | 'skeptic'
-  | 'synthesizer'
-  | 'verifier'
-  | 'outline_architect'
-  | 'section_drafter'
-  | 'internal_challenger'
-  | 'coherence_refiner'
-  | 'revision_intake'
-  | 'report_locator'
-  | 'change_planner'
-  | 'section_rewriter'
-  | 'citation_integrity_checker'
-  | 'final_revision_verifier';
+/** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
+export type ModelRole = ReasoningModelRole;
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';

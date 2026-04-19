@@ -1,8 +1,15 @@
-# Build backend in GitHub Actions and deploy to Emma runtime VM over SSH.
-# Runs on the same push to main that triggers Vercel (parallel, not chained to Vercel).
+# Deploy ResearchOne backend to Emma runtime VM over SSH (VM builds from git main).
+# Runs in parallel with Vercel frontend deploys; not coupled to Vercel success.
 #
-# Required repository secrets: EMMA_HOST, EMMA_USER, EMMA_SSH_KEY
-# Optional: EMMA_DEPLOY_PATH (default /opt/researchone), EMMA_KNOWN_HOSTS (recommended)
+# Required secrets: EMMA_HOST, EMMA_USER, EMMA_SSH_KEY
+# If those live under Settings → Environments → production, the job must set
+# `environment: production` below (or duplicate secrets at repository level).
+# Optional: EMMA_PORT (default 22), EMMA_DEPLOY_PATH (default /opt/researchone),
+#           EMMA_KNOWN_HOSTS, EMMA_WRITE_BACKEND_ENV, EMMA_PUBLIC_HEALTH_URL
+#
+# If ssh: connect to host … port 22: Connection timed out — the VM must accept inbound
+# SSH from GitHub-hosted runners (public IP, security group/firewall, sshd on EMMA_PORT).
+# See: https://api.github.com/meta (actions key) for current runner IP ranges if allowlisting.
 
 name: Deploy backend to Emma
 
@@ -12,6 +19,7 @@ on:
     paths:
       - 'backend/**'
       - 'ecosystem.config.js'
+      - 'scripts/**'
       - '.github/workflows/deploy-backend-emma.yml'
   workflow_dispatch:
 
@@ -22,22 +30,21 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Build backend
+      - name: Validate required secrets
+        env:
+          EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_USER: ${{ secrets.EMMA_USER }}
+          EMMA_SSH_KEY: ${{ secrets.EMMA_SSH_KEY }}
         run: |
-          cd backend
-          npm ci
-          npm run build
+          set -euo pipefail
+          [ -n "${EMMA_HOST}" ] || { echo "::error::Missing or empty EMMA_HOST"; exit 1; }
+          [ -n "${EMMA_USER}" ] || { echo "::error::Missing or empty EMMA_USER"; exit 1; }
+          [ -n "${EMMA_SSH_KEY}" ] || { echo "::error::Missing or empty EMMA_SSH_KEY"; exit 1; }
 
       - name: Start ssh-agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -47,43 +54,55 @@ jobs:
       - name: Configure SSH known_hosts
         env:
           EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_PORT: ${{ secrets.EMMA_PORT }}
           EMMA_KNOWN_HOSTS: ${{ secrets.EMMA_KNOWN_HOSTS }}
         run: |
           set -e
+          SSH_PORT="${EMMA_PORT:-22}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           if [ -n "${EMMA_KNOWN_HOSTS}" ]; then
             printf '%s\n' "${EMMA_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
           else
             echo "::warning::EMMA_KNOWN_HOSTS not set; using ssh-keyscan (prefer pinning host keys in a secret)."
-            ssh-keyscan -H "${EMMA_HOST}" >> ~/.ssh/known_hosts
+            ssh-keyscan -p "${SSH_PORT}" -H "${EMMA_HOST}" >> ~/.ssh/known_hosts
           fi
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Rsync dist and lockfiles to Emma
+      - name: Deploy over SSH
         env:
           EMMA_USER: ${{ secrets.EMMA_USER }}
           EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_PORT: ${{ secrets.EMMA_PORT }}
           EMMA_DEPLOY_PATH: ${{ secrets.EMMA_DEPLOY_PATH }}
+          EMMA_WRITE_BACKEND_ENV: ${{ secrets.EMMA_WRITE_BACKEND_ENV }}
         run: |
           set -euo pipefail
           DEPLOY_PATH="${EMMA_DEPLOY_PATH:-/opt/researchone}"
-          TARGET="${EMMA_USER}@${EMMA_HOST}:${DEPLOY_PATH}/backend/"
-          rsync -avz -e "ssh -o StrictHostKeyChecking=yes" \
-            --delete \
-            backend/dist/ "${TARGET}dist/"
-          rsync -avz -e "ssh -o StrictHostKeyChecking=yes" \
-            backend/package.json \
-            backend/package-lock.json \
-            "${TARGET}"
+          SSH_PORT="${EMMA_PORT:-22}"
+          REMOTE="${EMMA_USER}@${EMMA_HOST}"
+          SSH_OPTS=(-o StrictHostKeyChecking=yes -o ConnectTimeout=30 -p "${SSH_PORT}")
 
-      - name: Install production dependencies and restart PM2
+          if [ -n "${EMMA_WRITE_BACKEND_ENV:-}" ]; then
+            TMP="$(mktemp)"
+            chmod 600 "${TMP}"
+            printf '%s' "${EMMA_WRITE_BACKEND_ENV}" > "${TMP}"
+            ssh "${SSH_OPTS[@]}" "${REMOTE}" \
+              "mkdir -p '${DEPLOY_PATH}/backend' && cat > '${DEPLOY_PATH}/backend/.env' && chmod 600 '${DEPLOY_PATH}/backend/.env'" < "${TMP}"
+            rm -f "${TMP}"
+          fi
+
+          ssh "${SSH_OPTS[@]}" "${REMOTE}" \
+            "cd '${DEPLOY_PATH}' && export DEPLOY_SOURCE=github-actions RESEARCHONE_DEPLOY_PATH='${DEPLOY_PATH}' && bash ./scripts/deploy-runtime.sh"
+
+      # Cannot use `secrets` in step `if:` — gate inside the script instead.
+      - name: Optional public health check
         env:
-          EMMA_USER: ${{ secrets.EMMA_USER }}
-          EMMA_HOST: ${{ secrets.EMMA_HOST }}
-          EMMA_DEPLOY_PATH: ${{ secrets.EMMA_DEPLOY_PATH }}
+          EMMA_PUBLIC_HEALTH_URL: ${{ secrets.EMMA_PUBLIC_HEALTH_URL }}
         run: |
           set -euo pipefail
-          DEPLOY_PATH="${EMMA_DEPLOY_PATH:-/opt/researchone}"
-          ssh -o StrictHostKeyChecking=yes "${EMMA_USER}@${EMMA_HOST}" \
-            "cd '${DEPLOY_PATH}/backend' && npm ci --omit=dev && cd '${DEPLOY_PATH}' && pm2 restart researchone-api --update-env"
+          if [ -z "${EMMA_PUBLIC_HEALTH_URL:-}" ]; then
+            echo "Skipping public health check (EMMA_PUBLIC_HEALTH_URL not set)."
+            exit 0
+          fi
+          curl -sS --fail --max-time 30 "${EMMA_PUBLIC_HEALTH_URL}"
