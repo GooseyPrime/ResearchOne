@@ -7,6 +7,7 @@ import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
 import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { config } from './config';
+import { refreshModelRuntimeCache, validateEnvModelPolicy } from './config/modelRuntime';
 
 async function main() {
   try {
@@ -15,8 +16,13 @@ async function main() {
       envFile: envFile ?? '(dotenv not loaded — no file)',
     });
 
+    validateEnvModelPolicy();
+
     await initDb();
     logger.info('PostgreSQL connected');
+
+    await refreshModelRuntimeCache();
+    logger.info('Model policy cache loaded (env + optional DB overrides)');
 
     await initRedis();
     logger.info('Redis connected');
