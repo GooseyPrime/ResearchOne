@@ -24,13 +24,28 @@ export const REASONING_MODEL_ROLES = [
 
 export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];
 
+/**
+ * Approved OpenRouter model ids (validated against GET /api/v1/models).
+ * Per-role defaults live in config; this list is the deployment allowlist.
+ */
 const BASE_ALLOWLIST = [
-  'deepseek/deepseek-r1',
-  'anthropic/claude-3.7-sonnet',
   'anthropic/claude-3.5-haiku',
-  'openai/o3-mini',
-  'openai/o3',
+  'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-sonnet-4',
+  'anthropic/claude-sonnet-4.5',
+  'deepseek/deepseek-chat',
+  'deepseek/deepseek-r1',
+  'deepseek/deepseek-v3.2',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.5-pro',
+  'meta-llama/llama-3.3-70b-instruct',
+  'mistralai/mistral-small-3.2-24b-instruct',
+  'moonshotai/kimi-k2-thinking',
+  'openai/gpt-5-mini',
   'openai/o1',
+  'openai/o3',
+  'openai/o3-mini',
+  'qwen/qwen3-235b-a22b',
 ] as const;
 
 export const APPROVED_REASONING_MODEL_ALLOWLIST = Object.fromEntries(

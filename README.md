@@ -34,12 +34,10 @@
 │  └── Redis (BullMQ job queues, job state, caching)              │
 │                                                                 │
 │  OpenRouter (remote inference — server-side only)               │
-│  ├── Planner: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)       │
-│  ├── Retriever: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)     │
-│  ├── Reasoner: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
-│  ├── Skeptic: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)       │
-│  ├── Synthesizer: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)   │
-│  └── Verifier: DeepSeek-R1 → Claude 3.5 Sonnet (fallback)      │
+│  Tiered defaults in backend/src/config/index.ts (per-role env   │
+│  overrides). Examples: Kimi K2 Thinking + DeepSeek-R1 (planning  │
+│  & core reasoning); Claude Sonnet 4.5 + Gemini 2.5 Pro (reports │
+│  & sections); GPT-5-mini (structured JSON); distinct fallbacks.  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -163,42 +161,42 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 JWT_SECRET=
 CORS_ORIGINS=https://<your-vercel-project>.vercel.app,https://<your-custom-frontend-domain>
 
-# Model routing
-PLANNER_MODEL=deepseek/deepseek-r1
-RETRIEVER_MODEL=deepseek/deepseek-r1
+# Model routing (defaults — omit to use code defaults in backend/src/config/index.ts)
+PLANNER_MODEL=moonshotai/kimi-k2-thinking
+RETRIEVER_MODEL=deepseek/deepseek-v3.2
 REASONER_MODEL=deepseek/deepseek-r1
-SKEPTIC_MODEL=deepseek/deepseek-r1
-SYNTHESIZER_MODEL=deepseek/deepseek-r1
-VERIFIER_MODEL=deepseek/deepseek-r1
-OUTLINE_ARCHITECT_MODEL=deepseek/deepseek-r1
-SECTION_DRAFTER_MODEL=deepseek/deepseek-r1
-INTERNAL_CHALLENGER_MODEL=deepseek/deepseek-r1
-COHERENCE_REFINER_MODEL=deepseek/deepseek-r1
-REVISION_INTAKE_MODEL=deepseek/deepseek-r1
-REPORT_LOCATOR_MODEL=deepseek/deepseek-r1
-CHANGE_PLANNER_MODEL=deepseek/deepseek-r1
-SECTION_REWRITER_MODEL=deepseek/deepseek-r1
-CITATION_INTEGRITY_CHECKER_MODEL=deepseek/deepseek-r1
-FINAL_REVISION_VERIFIER_MODEL=deepseek/deepseek-r1
+SKEPTIC_MODEL=moonshotai/kimi-k2-thinking
+SYNTHESIZER_MODEL=anthropic/claude-sonnet-4.5
+VERIFIER_MODEL=anthropic/claude-sonnet-4
+OUTLINE_ARCHITECT_MODEL=moonshotai/kimi-k2-thinking
+SECTION_DRAFTER_MODEL=google/gemini-2.5-pro
+INTERNAL_CHALLENGER_MODEL=moonshotai/kimi-k2-thinking
+COHERENCE_REFINER_MODEL=anthropic/claude-sonnet-4.5
+REVISION_INTAKE_MODEL=openai/gpt-5-mini
+REPORT_LOCATOR_MODEL=openai/gpt-5-mini
+CHANGE_PLANNER_MODEL=moonshotai/kimi-k2-thinking
+SECTION_REWRITER_MODEL=google/gemini-2.5-pro
+CITATION_INTEGRITY_CHECKER_MODEL=mistralai/mistral-small-3.2-24b-instruct
+FINAL_REVISION_VERIFIER_MODEL=anthropic/claude-sonnet-4
 EMBEDDING_MODEL=openai/text-embedding-3-small
 
-# Fallbacks (all roles now supported)
-PLANNER_FALLBACK=anthropic/claude-3.7-sonnet
-RETRIEVER_FALLBACK=anthropic/claude-3.7-sonnet
-REASONER_FALLBACK=anthropic/claude-3.7-sonnet
-SKEPTIC_FALLBACK=anthropic/claude-3.7-sonnet
-SYNTHESIZER_FALLBACK=anthropic/claude-3.7-sonnet
-VERIFIER_FALLBACK=anthropic/claude-3.7-sonnet
-OUTLINE_ARCHITECT_FALLBACK=anthropic/claude-3.7-sonnet
-SECTION_DRAFTER_FALLBACK=anthropic/claude-3.7-sonnet
-INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-3.7-sonnet
-COHERENCE_REFINER_FALLBACK=anthropic/claude-3.7-sonnet
-REVISION_INTAKE_FALLBACK=anthropic/claude-3.7-sonnet
-REPORT_LOCATOR_FALLBACK=anthropic/claude-3.7-sonnet
-CHANGE_PLANNER_FALLBACK=anthropic/claude-3.7-sonnet
-SECTION_REWRITER_FALLBACK=anthropic/claude-3.7-sonnet
-CITATION_INTEGRITY_CHECKER_FALLBACK=anthropic/claude-3.7-sonnet
-FINAL_REVISION_VERIFIER_FALLBACK=anthropic/claude-3.7-sonnet
+# Fallbacks (per role — distinct provider families where possible)
+PLANNER_FALLBACK=deepseek/deepseek-r1
+RETRIEVER_FALLBACK=google/gemini-2.5-flash
+REASONER_FALLBACK=moonshotai/kimi-k2-thinking
+SKEPTIC_FALLBACK=anthropic/claude-sonnet-4
+SYNTHESIZER_FALLBACK=google/gemini-2.5-pro
+VERIFIER_FALLBACK=openai/o3-mini
+OUTLINE_ARCHITECT_FALLBACK=deepseek/deepseek-r1
+SECTION_DRAFTER_FALLBACK=anthropic/claude-sonnet-4
+INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-sonnet-4
+COHERENCE_REFINER_FALLBACK=google/gemini-2.5-pro
+REVISION_INTAKE_FALLBACK=qwen/qwen3-235b-a22b
+REPORT_LOCATOR_FALLBACK=qwen/qwen3-235b-a22b
+CHANGE_PLANNER_FALLBACK=deepseek/deepseek-r1
+SECTION_REWRITER_FALLBACK=anthropic/claude-sonnet-4
+CITATION_INTEGRITY_CHECKER_FALLBACK=meta-llama/llama-3.3-70b-instruct
+FINAL_REVISION_VERIFIER_FALLBACK=openai/o3-mini
 
 # Embedding
 EMBEDDING_DIMENSIONS=1536
@@ -451,14 +449,25 @@ Research direction and paper-building are restricted to reasoning-class models o
 - Startup fails if any fallback is missing.
 - Startup fails if any configured model is outside the approved reasoning allowlist.
 
-Approved reasoning allowlist (role-specific policy module). Confirm IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`.
+Approved reasoning allowlist (`backend/src/services/reasoning/reasoningModelPolicy.ts`). Confirm IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`.
 
-- `deepseek/deepseek-r1`
-- `anthropic/claude-3.7-sonnet`
 - `anthropic/claude-3.5-haiku`
-- `openai/o3-mini`
-- `openai/o3`
+- `anthropic/claude-3.7-sonnet`
+- `anthropic/claude-sonnet-4`
+- `anthropic/claude-sonnet-4.5`
+- `deepseek/deepseek-chat`
+- `deepseek/deepseek-r1`
+- `deepseek/deepseek-v3.2`
+- `google/gemini-2.5-flash`
+- `google/gemini-2.5-pro`
+- `meta-llama/llama-3.3-70b-instruct`
+- `mistralai/mistral-small-3.2-24b-instruct`
+- `moonshotai/kimi-k2-thinking`
+- `openai/gpt-5-mini`
 - `openai/o1`
+- `openai/o3`
+- `openai/o3-mini`
+- `qwen/qwen3-235b-a22b`
 
 Role separation for report generation now uses:
 
