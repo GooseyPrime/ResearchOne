@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
-import { getResolvedModelsOrConfig } from '../../config/modelRuntime';
 import { logger } from '../../utils/logger';
+import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 
 /** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */

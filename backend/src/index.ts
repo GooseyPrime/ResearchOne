@@ -6,6 +6,7 @@ import { initDb } from './db/pool';
 import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
 import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
+import { validateEnvModelPolicy } from './config/modelRuntime';
 import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 
