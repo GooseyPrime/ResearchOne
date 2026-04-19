@@ -9,6 +9,7 @@ import { runResearchJob } from '../services/reasoning/researchOrchestrator';
 import { runAtlasExport } from '../services/embedding/atlasExport';
 import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
+import { ResearchCancelledError } from '../services/researchCancellation';
 
 async function markInterruptedResearchRuns(): Promise<void> {
   const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
@@ -91,6 +92,11 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         io.emit('runs:updated', {});
         return result;
       } catch (err) {
+        if (err instanceof ResearchCancelledError) {
+          emit(`job:${job.data.runId}`, 'research:cancelled', { runId: job.data.runId });
+          io.emit('runs:updated', {});
+          return { cancelled: true, runId: job.data.runId };
+        }
         const e = err as Error & {
           runId?: string;
           stage?: string;

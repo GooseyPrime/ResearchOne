@@ -7,7 +7,7 @@ import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
 import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { config } from './config';
-import { refreshModelRuntimeCache, validateEnvModelPolicy } from './config/modelRuntime';
+import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 
 async function main() {
   try {
@@ -21,8 +21,12 @@ async function main() {
     await initDb();
     logger.info('PostgreSQL connected');
 
-    await refreshModelRuntimeCache();
-    logger.info('Model policy cache loaded (env + optional DB overrides)');
+    try {
+      await refreshRuntimeModelOverrides();
+      logger.info('Runtime model overrides loaded');
+    } catch (e) {
+      logger.warn('Could not load runtime model overrides (run migrations if table missing):', e);
+    }
 
     await initRedis();
     logger.info('Redis connected');

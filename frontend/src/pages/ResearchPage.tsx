@@ -16,8 +16,17 @@ import {
   FileSearch,
   PenLine,
   Target,
+  Trash2,
+  Ban,
 } from 'lucide-react';
-import { startResearch, getResearchRuns, ResearchRun } from '../utils/api';
+import {
+  startResearch,
+  getResearchRuns,
+  getResearchRun,
+  cancelResearchRun,
+  deleteResearchRun,
+  ResearchRun,
+} from '../utils/api';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
@@ -85,6 +94,18 @@ export default function ResearchPage() {
     refetchInterval: 5000,
   });
 
+  const trackedRun = runs.find(r => r.id === trackingRunId);
+  const pollEnabled =
+    Boolean(trackingRunId) &&
+    (trackedRun?.status === 'running' || trackedRun?.status === 'queued');
+
+  const { data: polledRun } = useQuery({
+    queryKey: ['research-run', trackingRunId],
+    queryFn: () => getResearchRun(trackingRunId!),
+    enabled: pollEnabled,
+    refetchInterval: 3000,
+  });
+
   const mutation = useMutation({
     mutationFn: startResearch,
     onSuccess: (data) => {
@@ -101,31 +122,57 @@ export default function ResearchPage() {
     },
   });
 
-  // WebSocket progress tracking
+  useEffect(() => {
+    if (!trackingRunId || !polledRun || polledRun.id !== trackingRunId) return;
+    if (polledRun.status !== 'running') return;
+    if (polledRun.progress_message == null || polledRun.progress_percent == null) return;
+    setProgress(prev => {
+      const nextPct = polledRun.progress_percent ?? 0;
+      if (prev && prev.runId === trackingRunId && (prev.percent ?? 0) > nextPct) return prev;
+      return {
+        runId: trackingRunId,
+        stage: polledRun.progress_stage || prev?.stage || 'running',
+        percent: nextPct,
+        message: polledRun.progress_message || prev?.message || 'Running…',
+        timestamp: polledRun.progress_updated_at || new Date().toISOString(),
+      };
+    });
+    setActiveRun({
+      runId: trackingRunId,
+      stage: polledRun.progress_stage || 'running',
+      percent: polledRun.progress_percent ?? 0,
+      message: polledRun.progress_message || 'Running…',
+    });
+  }, [polledRun, trackingRunId, setActiveRun]);
+
+  // WebSocket progress tracking (tracked run + broadcast for activeRun badge)
   useEffect(() => {
     const socket = getSocket();
 
     socket.on('research:progress', (update: ResearchProgressEvent) => {
-      if (update.runId === trackingRunId) {
+      const rid = update.runId;
+      if (!rid) return;
+      if (rid === trackingRunId) {
         setProgress(update);
-        setActiveRun({ ...update, runId: update.runId });
+        setActiveRun({ ...update, runId: rid });
         setTraceEvents(prev => [update, ...prev].slice(0, 100));
       }
     });
 
     socket.on('research:completed', (result: { runId: string; reportId: string }) => {
+      qc.invalidateQueries({ queryKey: ['research-runs'] });
       if (result.runId === trackingRunId) {
         setProgress({ stage: 'done', percent: 100, message: 'Report ready!' });
         setActiveRun(null);
         setTrackingRunId(null);
         addNotification('success', 'Research complete — report generated!');
-        qc.invalidateQueries({ queryKey: ['research-runs'] });
         qc.invalidateQueries({ queryKey: ['reports'] });
         setTimeout(() => navigate(`/reports/${result.reportId}`), 1500);
       }
     });
 
     socket.on('research:failed', (failed: ResearchFailureEvent) => {
+      qc.invalidateQueries({ queryKey: ['research-runs'] });
       if (failed.runId === trackingRunId) {
         const failureReason = formatFailureReason(failed.error || failed.message, failed.failureMeta);
         setFailure(failed);
@@ -133,7 +180,16 @@ export default function ResearchPage() {
         setTrackingRunId(null);
         setActiveRun(null);
         addNotification('error', failureReason || 'Research failed.');
-        qc.invalidateQueries({ queryKey: ['research-runs'] });
+      }
+    });
+
+    socket.on('research:cancelled', (payload: { runId: string }) => {
+      qc.invalidateQueries({ queryKey: ['research-runs'] });
+      if (payload.runId === trackingRunId) {
+        setProgress(null);
+        setTrackingRunId(null);
+        setActiveRun(null);
+        addNotification('info', 'Research run cancelled.');
       }
     });
 
@@ -141,6 +197,7 @@ export default function ResearchPage() {
       socket.off('research:progress');
       socket.off('research:completed');
       socket.off('research:failed');
+      socket.off('research:cancelled');
     };
   }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
 
@@ -343,7 +400,18 @@ export default function ResearchPage() {
           <h2 className="section-title mb-3">Recent Research Runs</h2>
           <div className="space-y-2">
             {runs.slice(0, 5).map(run => (
-              <RunRow key={run.id} run={run} />
+              <RunRow
+                key={run.id}
+                run={run}
+                onRunsChanged={() => qc.invalidateQueries({ queryKey: ['research-runs'] })}
+                onRemoved={(id) => {
+                  if (id === trackingRunId) {
+                    setTrackingRunId(null);
+                    setProgress(null);
+                    setFailure(null);
+                  }
+                }}
+              />
             ))}
           </div>
         </div>
@@ -352,9 +420,18 @@ export default function ResearchPage() {
   );
 }
 
-function RunRow({ run }: { run: ResearchRun }) {
+function RunRow({
+  run,
+  onRunsChanged,
+  onRemoved,
+}: {
+  run: ResearchRun;
+  onRunsChanged: () => void;
+  onRemoved?: (id: string) => void;
+}) {
   const navigate = useNavigate();
   const [showError, setShowError] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const STATUS_CONFIG = {
     queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
@@ -367,10 +444,39 @@ function RunRow({ run }: { run: ResearchRun }) {
   const cfg = STATUS_CONFIG[run.status];
   const Icon = cfg.icon;
 
+  const handleCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Cancel this run?')) return;
+    setBusy(true);
+    try {
+      await cancelResearchRun(run.id);
+      onRunsChanged();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Cancel failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Remove this run from the list?')) return;
+    setBusy(true);
+    try {
+      await deleteResearchRun(run.id);
+      onRemoved?.(run.id);
+      onRunsChanged();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="card p-3 space-y-2">
       <div
-        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all"
+        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2"
         onClick={() => run.status === 'completed' && navigate(`/reports`)}
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -380,9 +486,39 @@ function RunRow({ run }: { run: ResearchRun }) {
             <p className="text-xs text-slate-500">
               {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
             </p>
+            {(run.status === 'running' || run.status === 'queued') && run.progress_message && (
+              <p className="text-xs text-accent/90 mt-1 line-clamp-2">
+                {typeof run.progress_percent === 'number' ? `${run.progress_percent}% · ` : ''}
+                {run.progress_message}
+              </p>
+            )}
           </div>
         </div>
-        <span className={clsx('text-xs font-medium flex-shrink-0', cfg.color)}>{cfg.label}</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className={clsx('text-xs font-medium', cfg.color)}>{cfg.label}</span>
+          {(run.status === 'queued' || run.status === 'running') && (
+            <button
+              type="button"
+              className="btn-ghost p-1.5 text-amber-400"
+              title="Cancel run"
+              disabled={busy}
+              onClick={handleCancel}
+            >
+              <Ban size={14} />
+            </button>
+          )}
+          {(run.status === 'queued' || run.status === 'failed' || run.status === 'cancelled') && (
+            <button
+              type="button"
+              className="btn-ghost p-1.5 text-slate-400"
+              title="Remove from list"
+              disabled={busy}
+              onClick={handleDelete}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {run.status === 'failed' && (run.error_message || run.failed_stage) && (

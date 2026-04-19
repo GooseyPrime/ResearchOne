@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
 import { getResolvedModelsOrConfig } from '../../config/modelRuntime';
 import { logger } from '../../utils/logger';
-import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
+import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 
 /** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
 export type ModelRole = ReasoningModelRole;
@@ -70,48 +70,52 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   }
 }
 
-function modelMap(): Record<ModelRole, string> {
-  const r = getResolvedModelsOrConfig().reasoning;
-  return {
-    planner: r.planner.primary,
-    retriever: r.retriever.primary,
-    reasoner: r.reasoner.primary,
-    skeptic: r.skeptic.primary,
-    synthesizer: r.synthesizer.primary,
-    verifier: r.verifier.primary,
-    outline_architect: r.outline_architect.primary,
-    section_drafter: r.section_drafter.primary,
-    internal_challenger: r.internal_challenger.primary,
-    coherence_refiner: r.coherence_refiner.primary,
-    revision_intake: r.revision_intake.primary,
-    report_locator: r.report_locator.primary,
-    change_planner: r.change_planner.primary,
-    section_rewriter: r.section_rewriter.primary,
-    citation_integrity_checker: r.citation_integrity_checker.primary,
-    final_revision_verifier: r.final_revision_verifier.primary,
-  };
+const ENV_PRIMARY: Record<ModelRole, string> = {
+  planner: config.models.planner,
+  retriever: config.models.retriever,
+  reasoner: config.models.reasoner,
+  skeptic: config.models.skeptic,
+  synthesizer: config.models.synthesizer,
+  verifier: config.models.verifier,
+  outline_architect: config.models.outlineArchitect,
+  section_drafter: config.models.sectionDrafter,
+  internal_challenger: config.models.internalChallenger,
+  coherence_refiner: config.models.coherenceRefiner,
+  revision_intake: config.models.revisionIntake,
+  report_locator: config.models.reportLocator,
+  change_planner: config.models.changePlanner,
+  section_rewriter: config.models.sectionRewriter,
+  citation_integrity_checker: config.models.citationIntegrityChecker,
+  final_revision_verifier: config.models.finalRevisionVerifier,
+};
+
+const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
+  planner: config.models.fallbacks.planner,
+  retriever: config.models.fallbacks.retriever,
+  reasoner: config.models.fallbacks.reasoner,
+  skeptic: config.models.fallbacks.skeptic,
+  synthesizer: config.models.fallbacks.synthesizer,
+  verifier: config.models.fallbacks.verifier,
+  outline_architect: config.models.fallbacks.outlineArchitect,
+  section_drafter: config.models.fallbacks.sectionDrafter,
+  internal_challenger: config.models.fallbacks.internalChallenger,
+  coherence_refiner: config.models.fallbacks.coherenceRefiner,
+  revision_intake: config.models.fallbacks.revisionIntake,
+  report_locator: config.models.fallbacks.reportLocator,
+  change_planner: config.models.fallbacks.changePlanner,
+  section_rewriter: config.models.fallbacks.sectionRewriter,
+  citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+  final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
+};
+
+function primaryForRole(role: ModelRole): string {
+  return effectivePrimary(role, ENV_PRIMARY[role]);
 }
 
-function fallbackMap(): Record<ModelRole, string | undefined> {
-  const r = getResolvedModelsOrConfig().reasoning;
-  return {
-    planner: r.planner.fallback,
-    retriever: r.retriever.fallback,
-    reasoner: r.reasoner.fallback,
-    skeptic: r.skeptic.fallback,
-    synthesizer: r.synthesizer.fallback,
-    verifier: r.verifier.fallback,
-    outline_architect: r.outline_architect.fallback,
-    section_drafter: r.section_drafter.fallback,
-    internal_challenger: r.internal_challenger.fallback,
-    coherence_refiner: r.coherence_refiner.fallback,
-    revision_intake: r.revision_intake.fallback,
-    report_locator: r.report_locator.fallback,
-    change_planner: r.change_planner.fallback,
-    section_rewriter: r.section_rewriter.fallback,
-    citation_integrity_checker: r.citation_integrity_checker.fallback,
-    final_revision_verifier: r.final_revision_verifier.fallback,
-  };
+function fallbackForRole(role: ModelRole): string | undefined {
+  const env = ENV_FALLBACK[role];
+  if (!env) return undefined;
+  return effectiveFallback(role, env);
 }
 
 const TEMPERATURE_MAP: Record<ModelRole, number> = {
@@ -197,8 +201,8 @@ async function callModel(
  * Logs all calls with token counts and duration.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
-  const primaryModel = modelMap()[options.role];
-  const fallbackModel = fallbackMap()[options.role];
+  const primaryModel = primaryForRole(options.role);
+  const fallbackModel = fallbackForRole(options.role);
 
   try {
     const result = await callModel(primaryModel, options);
@@ -288,7 +292,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const response = await axios.post(
     `${config.openrouter.baseUrl}/embeddings`,
     {
-      model: getResolvedModelsOrConfig().embedding,
+      model: effectiveEmbedding(config.models.embedding),
       input: texts,
     },
     {

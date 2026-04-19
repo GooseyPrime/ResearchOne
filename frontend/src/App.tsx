@@ -7,6 +7,7 @@ import CorpusPage from './pages/CorpusPage';
 import AtlasPage from './pages/AtlasPage';
 import IngestPage from './pages/IngestPage';
 import GuidePage from './pages/GuidePage';
+import ModelsPage from './pages/ModelsPage';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/research" replace />} />
           <Route path="research" element={<ResearchPage />} />
+          <Route path="models" element={<ModelsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/:id" element={<ReportDetailPage />} />
           <Route path="corpus" element={<CorpusPage />} />
