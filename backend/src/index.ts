@@ -9,6 +9,7 @@ import { initDb } from './db/pool';
 import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
 import { config } from './config';
+import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 
 async function main() {
   try {
@@ -16,6 +17,13 @@ async function main() {
 
     await initDb();
     logger.info('PostgreSQL connected');
+
+    try {
+      await refreshRuntimeModelOverrides();
+      logger.info('Runtime model overrides loaded');
+    } catch (e) {
+      logger.warn('Could not load runtime model overrides (run migrations if table missing):', e);
+    }
 
     await initRedis();
     logger.info('Redis connected');

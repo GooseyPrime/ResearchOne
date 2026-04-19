@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Activity,
   Cpu,
+  Settings,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getStats, getSystemHealth, restartRuntime } from '../../utils/api';
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding explorer' },
   { to: '/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
   { to: '/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
+  { to: '/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;
 const RESTART_POLL_INTERVAL_MS = 2500;

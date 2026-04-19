@@ -51,6 +51,10 @@ export interface ResearchRun {
   error_message?: string;
   failed_stage?: string;
   failure_meta?: Record<string, unknown>;
+  progress_stage?: string | null;
+  progress_percent?: number | null;
+  progress_message?: string | null;
+  progress_updated_at?: string | null;
   started_at?: string;
   completed_at?: string;
   created_at: string;
@@ -217,6 +221,12 @@ export const getResearchRuns = (params?: { status?: string }) =>
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
 
+export const cancelResearchRun = (id: string) =>
+  api.post<{ ok: boolean; status: string }>(`/research/${id}/cancel`).then(r => r.data);
+
+export const deleteResearchRun = (id: string) =>
+  api.delete(`/research/${id}`).then(r => r.data);
+
 export const getSystemHealth = () =>
   api.get<SystemHealth>('/health').then(r => r.data);
 
@@ -234,6 +244,9 @@ export interface RuntimeLogResponse {
   lines: number;
   content: string;
   truncated: boolean;
+  resolvedPath?: string;
+  triedPaths?: string[];
+  hint?: string;
 }
 
 export const getRuntimeLogs = (
@@ -251,6 +264,29 @@ export const getRuntimeLogs = (
       },
     })
     .then(r => r.data);
+
+export interface ModelOverrideEntry {
+  primary?: string;
+  fallback?: string;
+}
+
+export interface AdminModelsResponse {
+  defaults: Record<string, unknown>;
+  overrides: Record<string, ModelOverrideEntry>;
+  embeddingOverride: string | null;
+}
+
+export const getAdminModels = (adminToken: string) =>
+  api
+    .get<AdminModelsResponse>('/admin/models', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    .then(r => r.data);
+
+export const putAdminModels = (adminToken: string, body: Record<string, unknown>) =>
+  api.put('/admin/models', body, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  }).then(r => r.data);
 
 export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);

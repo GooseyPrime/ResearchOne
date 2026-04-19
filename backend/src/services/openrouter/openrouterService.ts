@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 
 export type ModelRole =
   | 'planner'
@@ -83,7 +84,7 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   }
 }
 
-const MODEL_MAP: Record<ModelRole, string> = {
+const ENV_PRIMARY: Record<ModelRole, string> = {
   planner: config.models.planner,
   retriever: config.models.retriever,
   reasoner: config.models.reasoner,
@@ -102,7 +103,7 @@ const MODEL_MAP: Record<ModelRole, string> = {
   final_revision_verifier: config.models.finalRevisionVerifier,
 };
 
-const FALLBACK_MAP: Record<ModelRole, string | undefined> = {
+const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   planner: config.models.fallbacks.planner,
   retriever: config.models.fallbacks.retriever,
   reasoner: config.models.fallbacks.reasoner,
@@ -120,6 +121,16 @@ const FALLBACK_MAP: Record<ModelRole, string | undefined> = {
   citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
 };
+
+function primaryForRole(role: ModelRole): string {
+  return effectivePrimary(role, ENV_PRIMARY[role]);
+}
+
+function fallbackForRole(role: ModelRole): string | undefined {
+  const env = ENV_FALLBACK[role];
+  if (!env) return undefined;
+  return effectiveFallback(role, env);
+}
 
 const TEMPERATURE_MAP: Record<ModelRole, number> = {
   planner: 0.3,
@@ -204,8 +215,8 @@ async function callModel(
  * Logs all calls with token counts and duration.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
-  const primaryModel = MODEL_MAP[options.role];
-  const fallbackModel = FALLBACK_MAP[options.role];
+  const primaryModel = primaryForRole(options.role);
+  const fallbackModel = fallbackForRole(options.role);
 
   try {
     const result = await callModel(primaryModel, options);
@@ -295,7 +306,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const response = await axios.post(
     `${config.openrouter.baseUrl}/embeddings`,
     {
-      model: config.models.embedding,
+      model: effectiveEmbedding(config.models.embedding),
       input: texts,
     },
     {

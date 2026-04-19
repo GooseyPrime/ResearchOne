@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
+import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 
 export interface ResearchJobData {
   runId: string;
@@ -38,6 +39,12 @@ export interface ResearchProgress {
 }
 
 type ProgressCallback = (update: ResearchProgress) => void;
+
+async function assertNotCancelled(runId: string): Promise<void> {
+  if (await isRunCancellationRequested(runId)) {
+    throw new ResearchCancelledError();
+  }
+}
 
 interface ResearchPlan {
   sub_questions: string[];
@@ -71,17 +78,27 @@ export async function runResearchJob(
   let currentPercent = 0;
   let currentMessage = 'Queued';
 
-  const progress = (
+  const progress = async (
     stage: string,
     percent: number,
     message: string,
     extra?: Omit<ResearchProgress, 'stage' | 'percent' | 'message' | 'runId' | 'timestamp'>
   ) => {
+    await assertNotCancelled(runId);
     currentStage = stage;
     currentPercent = percent;
     currentMessage = message;
-    onProgress({ stage, percent, message, runId, timestamp: new Date().toISOString(), ...extra });
+    const payload = { stage, percent, message, runId, timestamp: new Date().toISOString(), ...extra };
+    onProgress(payload);
     logger.info(`[${runId}] ${stage}: ${message}`);
+    try {
+      await query(
+        `UPDATE research_runs SET progress_stage=$1, progress_percent=$2, progress_message=$3, progress_updated_at=NOW() WHERE id=$4`,
+        [stage, Math.round(percent), message.slice(0, 2000), runId]
+      );
+    } catch (e) {
+      logger.warn(`[${runId}] progress persist skipped`, e);
+    }
   };
 
   // Mark run as running
@@ -94,7 +111,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 1: PLANNER — decompose the research query
     // ────────────────────────────────────────────────────────────────
-    progress('planning', 5, 'Decomposing research query with planner...', { substep: 'request_started' });
+    await progress('planning', 5, 'Decomposing research query with planner...', { substep: 'request_started' });
 
     const plannerResult = await callRoleModel({
       role: 'planner',
@@ -107,7 +124,7 @@ export async function runResearchJob(
       ],
     });
     modelLog.push(plannerResult);
-    progress('planning', 8, 'Planner response parsed', {
+    await progress('planning', 8, 'Planner response parsed', {
       substep: 'response_parsed',
       model: plannerResult.model,
       tokenUsage: { prompt: plannerResult.promptTokens, completion: plannerResult.completionTokens },
@@ -141,7 +158,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
-    progress('discovery', 15, 'Running autonomous external discovery...', { substep: 'queries_generating' });
+    await progress('discovery', 15, 'Running autonomous external discovery...', { substep: 'queries_generating' });
 
     const discoverySummary = await runDiscoveryOrchestrator({
       runId,
@@ -166,7 +183,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
-    progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
+    await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
     const allChunks: RetrievedChunk[] = [];
     const seenIds = new Set<string>();
@@ -184,7 +201,7 @@ export async function runResearchJob(
           allChunks.push(c);
         }
       }
-      progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rq}`, {
+      await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rq}`, {
         substep: 'query_done',
         chunkCount: allChunks.length,
       });
@@ -207,7 +224,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
-    progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
+    await progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
       substep: 'analysis_started',
       chunkCount: allChunks.length,
       sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
@@ -236,7 +253,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
-    progress('reasoning', 50, 'Reasoning over evidence...', { substep: 'reasoner_started' });
+    await progress('reasoning', 50, 'Reasoning over evidence...', { substep: 'reasoner_started' });
 
     const reasonerResult = await callRoleModel({
       role: 'reasoner',
@@ -259,7 +276,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 6: SKEPTIC — challenge conclusions
     // ────────────────────────────────────────────────────────────────
-    progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
+    await progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
 
     const skepticResult = await callRoleModel({
       role: 'skeptic',
@@ -282,7 +299,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 7: SYNTHESIZER — write the full report
     // ────────────────────────────────────────────────────────────────
-    progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
+    await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
     const generatedReport = await generateIterativeReport({
       query: researchQuery,
@@ -292,7 +309,7 @@ export async function runResearchJob(
       reasoningChains: reasonerResult.content,
       challenges: skepticResult.content,
       onSectionProgress: async ({ title, index, total }) => {
-        progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
+        await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',
           detail: title,
         });
@@ -308,7 +325,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 8: VERIFIER — epistemic quality gate
     // ────────────────────────────────────────────────────────────────
-    progress('verification', 92, 'Verifying epistemic standards...');
+    await progress('verification', 92, 'Verifying epistemic standards...');
 
     const verifierResult = await callRoleModel({
       role: 'verifier',
@@ -335,7 +352,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
-    progress('saving', 94, 'Saving report to corpus...');
+    await progress('saving', 94, 'Saving report to corpus...');
 
     const reportSections = parseReportSections(generatedReport.markdown);
     const reportId = await saveReport({
@@ -357,7 +374,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 10: EPISTEMIC PERSISTENCE — claims, contradictions, citations
     // ────────────────────────────────────────────────────────────────
-    progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
+    await progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
 
     try {
       const claims = await extractAndPersistClaims({
@@ -396,10 +413,22 @@ export async function runResearchJob(
       [JSON.stringify(modelLog), reportId, runId]
     );
 
-    progress('done', 100, 'Research complete');
+    await progress('done', 100, 'Research complete');
 
+    await query(
+      `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL WHERE id=$1`,
+      [runId]
+    );
     return { runId, reportId };
   } catch (err) {
+    if (err instanceof ResearchCancelledError) {
+      await query(
+        `UPDATE research_runs SET status='cancelled', error_message=$1, completed_at=NOW(), progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL WHERE id=$2`,
+        ['Cancelled by user', runId]
+      );
+      await clearRunCancelled(runId);
+      throw err;
+    }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
     try {
       await query(

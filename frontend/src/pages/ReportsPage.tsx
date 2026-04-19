@@ -140,9 +140,9 @@ function EmptyState() {
     <div className="text-center py-20 space-y-4">
       <BookOpen size={48} className="text-slate-600 mx-auto" />
       <h3 className="text-lg font-semibold text-slate-400">No reports yet</h3>
-      <p className="text-slate-500 text-sm">Start a research run to generate your first report.</p>
-      <button className="btn-primary mx-auto" onClick={() => navigate('/research')}>
-        Start Research
+      <p className="text-slate-500 text-sm">Start a research run from the Research page to generate your first report.</p>
+      <button type="button" className="btn-ghost text-sm text-accent mx-auto" onClick={() => navigate('/research')}>
+        Go to Research
       </button>
     </div>
   );

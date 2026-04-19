@@ -328,6 +328,12 @@ Merging to `main` triggers Vercel for the **frontend**. The workflow [`.github/w
 
 **Manual run:** Actions → “Deploy backend to Emma” → Run workflow.
 
+After pulling new backend migrations, run `npm run migrate` on Emma so tables/columns exist for **runtime model overrides** (`004_runtime_model_overrides.sql`) and **research run progress polling** (`005_research_run_progress_columns.sql`).
+
+**Model routing (UI):** Sidebar → **Models** (`/models`) — requires admin token; saves overrides in Postgres (not `.env`). Same allowlist as [`reasoningModelPolicy`](backend/src/services/reasoning/reasoningModelPolicy.ts).
+
+**PM2 logs in System status:** If runtime logs return 404, set `RUNTIME_LOG_OUT` and `RUNTIME_LOG_ERR` on the server to paths from `pm2 describe researchone-api` (the API tries several default paths automatically).
+
 ### Mode A: All-in-one (development/legacy)
 ```bash
 docker-compose up postgres redis
