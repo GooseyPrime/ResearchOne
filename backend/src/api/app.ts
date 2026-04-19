@@ -17,7 +17,14 @@ import adminRoutes from './routes/admin';
 
 const app = express();
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// JSON API only — do not send Content-Security-Policy (Helmet default breaks
+// browser tooling that inspects responses; CSP belongs on the HTML document from Vercel).
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 app.use(cors({ origin: config.corsOrigins, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
