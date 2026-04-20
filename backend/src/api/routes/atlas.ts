@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
 import { atlasExportQueue } from '../../queue/queues';
 import * as fs from 'fs';
+import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
+import { config } from '../../config';
 
 const router = Router();
 
@@ -28,7 +30,7 @@ router.post('/export', async (req, res, next) => {
 
     await atlasExportQueue.add('atlas-export', { exportId, label, description, filterTags });
 
-    res.status(202).json({ exportId, status: 'queued' });
+    res.status(202).json({ exportId, status: 'queued', nomicAutoUpload: true, chunkCount: 0 });
   } catch (err) {
     next(err);
   }
@@ -93,6 +95,38 @@ router.get('/points', async (req, res, next) => {
     );
 
     res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/atlas/exports/:id/nomic-upload - Upload existing atlas export to Nomic dataset
+router.post('/exports/:id/nomic-upload', async (req, res, next) => {
+  try {
+    const rows = await query<{ export_path: string; label: string }>(
+      `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
+      [req.params.id]
+    );
+    if (rows.length === 0 || !rows[0].export_path) {
+      res.status(404).json({ error: 'Export not found or not ready' });
+      return;
+    }
+    if (!config.nomic.apiKey.trim()) {
+      res.status(400).json({ error: 'NOMIC_API_KEY is not configured on the backend' });
+      return;
+    }
+    const datasetSlug = (req.body?.datasetSlug as string | undefined)?.trim() || config.nomic.atlasDatasetSlug;
+    const result = await uploadAtlasJsonlToNomic({
+      exportPath: rows[0].export_path,
+      datasetSlug,
+    });
+    await query(
+      `UPDATE atlas_exports
+          SET description = trim(concat_ws(E'\n', description, $1))
+        WHERE id=$2`,
+      [`Nomic upload: ${result.datasetUrl}`, req.params.id]
+    );
+    res.json({ ok: true, ...result });
   } catch (err) {
     next(err);
   }

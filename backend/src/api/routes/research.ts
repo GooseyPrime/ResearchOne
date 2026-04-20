@@ -3,16 +3,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
 import { researchQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
+import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
+import { APPROVED_REASONING_MODEL_ALLOWLIST } from '../../services/reasoning/reasoningModelPolicy';
+import { config } from '../../config';
 
 const router = Router();
 
 // POST /api/research - Start a research run
 router.post('/', async (req, res, next) => {
   try {
-    const { query: researchQuery, supplemental, filterTags } = req.body as {
+    const { query: researchQuery, supplemental, filterTags, modelOverrides } = req.body as {
       query: string;
       supplemental?: string;
       filterTags?: string[];
+      modelOverrides?: unknown;
     };
 
     if (!researchQuery || typeof researchQuery !== 'string') {
@@ -20,13 +24,15 @@ router.post('/', async (req, res, next) => {
       return;
     }
 
+    const normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
+
     const runId = uuidv4();
     const title = researchQuery.slice(0, 200);
 
     await query(
-      `INSERT INTO research_runs (id, title, query, supplemental, status)
-       VALUES ($1, $2, $3, $4, 'queued')`,
-      [runId, title, researchQuery, supplemental ?? '']
+      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides)
+       VALUES ($1, $2, $3, $4, 'queued', $5)`,
+      [runId, title, researchQuery, supplemental ?? '', JSON.stringify(normalizedOverrides)]
     );
 
     await researchQueue.add(
@@ -36,11 +42,43 @@ router.post('/', async (req, res, next) => {
         query: researchQuery,
         supplemental,
         filterTags,
+        modelOverrides: normalizedOverrides,
       },
       { jobId: runId }
     );
 
     res.status(202).json({ runId, status: 'queued' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/research/model-options - model allowlists/defaults for per-run selection UI
+router.get('/model-options', async (_req, res, next) => {
+  try {
+    res.json({
+      defaults: {
+        planner: config.models.planner,
+        retriever: config.models.retriever,
+        reasoner: config.models.reasoner,
+        skeptic: config.models.skeptic,
+        synthesizer: config.models.synthesizer,
+        verifier: config.models.verifier,
+        plain_language_synthesizer: config.models.plainLanguageSynthesizer,
+        outline_architect: config.models.outlineArchitect,
+        section_drafter: config.models.sectionDrafter,
+        internal_challenger: config.models.internalChallenger,
+        coherence_refiner: config.models.coherenceRefiner,
+        revision_intake: config.models.revisionIntake,
+        report_locator: config.models.reportLocator,
+        change_planner: config.models.changePlanner,
+        section_rewriter: config.models.sectionRewriter,
+        citation_integrity_checker: config.models.citationIntegrityChecker,
+        final_revision_verifier: config.models.finalRevisionVerifier,
+      },
+      fallbacks: config.models.fallbacks,
+      allowlist: APPROVED_REASONING_MODEL_ALLOWLIST,
+    });
   } catch (err) {
     next(err);
   }

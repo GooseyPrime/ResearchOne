@@ -1,22 +1,12 @@
 import { create } from 'zustand';
-import { CorpusStats } from '../utils/api';
-
-interface ResearchProgress {
-  runId: string;
-  stage: string;
-  percent: number;
-  message: string;
-  detail?: string;
-  substep?: string;
-  timestamp?: string;
-}
+import { CorpusStats, ResearchProgressEvent } from '../utils/api';
 
 interface AppStore {
   stats: CorpusStats | null;
   setStats: (stats: CorpusStats) => void;
 
-  activeRun: ResearchProgress | null;
-  setActiveRun: (run: ResearchProgress | null) => void;
+  activeRun: ResearchProgressEvent | null;
+  setActiveRun: (run: ResearchProgressEvent | null) => void;
 
   notifications: Array<{ id: string; type: 'success' | 'error' | 'info'; message: string }>;
   addNotification: (type: 'success' | 'error' | 'info', message: string) => void;

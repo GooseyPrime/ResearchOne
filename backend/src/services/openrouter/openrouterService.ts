@@ -18,6 +18,10 @@ export interface ModelCallOptions {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  runtimeOverrides?: {
+    primary?: string;
+    fallback?: string;
+  };
 }
 
 export interface ModelCallResult {
@@ -110,11 +114,13 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
 };
 
-function primaryForRole(role: ModelRole): string {
+function primaryForRole(role: ModelRole, runtimePrimary?: string): string {
+  if (runtimePrimary && runtimePrimary.trim()) return runtimePrimary.trim();
   return effectivePrimary(role, ENV_PRIMARY[role]);
 }
 
-function fallbackForRole(role: ModelRole): string | undefined {
+function fallbackForRole(role: ModelRole, runtimeFallback?: string): string | undefined {
+  if (runtimeFallback && runtimeFallback.trim()) return runtimeFallback.trim();
   const env = ENV_FALLBACK[role];
   if (!env) return undefined;
   return effectiveFallback(role, env);
@@ -205,8 +211,8 @@ async function callModel(
  * Logs all calls with token counts and duration.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
-  const primaryModel = primaryForRole(options.role);
-  const fallbackModel = fallbackForRole(options.role);
+  const primaryModel = primaryForRole(options.role, options.runtimeOverrides?.primary);
+  const fallbackModel = fallbackForRole(options.role, options.runtimeOverrides?.fallback);
 
   try {
     const result = await callModel(primaryModel, options);

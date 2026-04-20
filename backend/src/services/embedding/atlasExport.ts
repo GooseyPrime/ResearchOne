@@ -3,6 +3,7 @@ import * as path from 'path';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
+import { uploadAtlasJsonlToNomic } from './nomicUpload';
 export interface AtlasExportJobData {
   exportId: string;
   label: string;
@@ -138,6 +139,39 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
     [points.length, exportPath, exportId]
   );
+
+  // Optional DR copy for quick local disaster recovery.
+  if (config.exports.atlasBackupDir.trim()) {
+    try {
+      const backupDir = config.exports.atlasBackupDir.trim();
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const backupPath = path.join(backupDir, path.basename(exportPath));
+      fs.copyFileSync(exportPath, backupPath);
+      logger.info(`Atlas export backup copy created: ${backupPath}`);
+    } catch (backupErr) {
+      logger.warn('Atlas backup copy failed', backupErr);
+    }
+  }
+
+  // Optional Nomic upload.
+  if (config.nomic.autoUploadOnExport && config.nomic.apiKey.trim()) {
+    try {
+      const nomic = await uploadAtlasJsonlToNomic({
+        exportPath,
+        datasetSlug: config.nomic.atlasDatasetSlug,
+      });
+      await query(
+        `UPDATE atlas_exports
+            SET description = trim(concat_ws(E'\n', description, $1))
+          WHERE id=$2`,
+        [`Nomic upload: ${nomic.datasetUrl}`, exportId]
+      );
+    } catch (nomicErr) {
+      logger.warn('Nomic upload failed', nomicErr);
+    }
+  }
 
   logger.info(`Atlas export complete: ${points.length} points -> ${exportPath}`);
 

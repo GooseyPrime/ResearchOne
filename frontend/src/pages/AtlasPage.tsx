@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layers, Download, Plus, Map, AlertCircle } from 'lucide-react';
-import { getAtlasExports, triggerAtlasExport } from '../utils/api';
+import { getAtlasExports, triggerAtlasExport, triggerNomicUpload } from '../utils/api';
 import { formatDistanceToNow } from 'date-fns';
 import { useStore } from '../store/useStore';
 
@@ -29,6 +29,19 @@ export default function AtlasPage() {
     },
     onError: () => {
       addNotification('error', 'Failed to queue Atlas export.');
+    },
+  });
+
+
+
+  const nomicUploadMutation = useMutation({
+    mutationFn: (exportId: string) => triggerNomicUpload(exportId),
+    onSuccess: (data) => {
+      addNotification('success', `Uploaded to Nomic Atlas (${data.datasetUrl}).`);
+      qc.invalidateQueries({ queryKey: ['atlas-exports'] });
+    },
+    onError: (err: unknown) => {
+      addNotification('error', err instanceof Error ? err.message : 'Failed to upload to Nomic Atlas.');
     },
   });
 
@@ -173,14 +186,24 @@ export default function AtlasPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {exp.chunk_count > 0 ? (
-                    <a
-                      href={`/api/atlas/exports/${exp.id}/download`}
-                      className="btn-secondary text-xs"
-                      download
-                    >
-                      <Download size={12} />
-                      Download JSONL
-                    </a>
+                    <>
+                      <a
+                        href={`/api/atlas/exports/${exp.id}/download`}
+                        className="btn-secondary text-xs"
+                        download
+                      >
+                        <Download size={12} />
+                        Download JSONL
+                      </a>
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() => nomicUploadMutation.mutate(exp.id)}
+                        disabled={nomicUploadMutation.isPending}
+                      >
+                        Upload to Nomic
+                      </button>
+                    </>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs text-amber-400">
                       <AlertCircle size={12} />

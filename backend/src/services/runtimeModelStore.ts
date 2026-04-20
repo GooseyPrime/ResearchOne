@@ -19,6 +19,8 @@ export type RuntimeOverridesPayload = {
   embedding?: string;
 };
 
+export type PerRunModelOverrides = RuntimeOverridesPayload;
+
 let cached: RuntimeOverridesPayload = { overrides: {} };
 
 export function getCachedOverrides(): RuntimeOverridesPayload {
@@ -62,6 +64,25 @@ function assertModelAllowed(role: string, model: string, kind: 'primary' | 'fall
   if (!allowed.includes(model as (typeof allowed)[number])) {
     throw new Error(`Model "${model}" for ${kind} role "${role}" is not in the approved allowlist`);
   }
+}
+
+export function assertEmbeddingAllowed(model: string): void {
+  const normalized = model.trim();
+  if (!APPROVED_EMBEDDING_MODELS.has(normalized)) {
+    throw new Error(`Embedding model "${normalized}" is not in the approved embedding allowlist`);
+  }
+}
+
+export function validatePerRunModelOverrides(body: unknown): PerRunModelOverrides {
+  return validateAndNormalizePayload(body);
+}
+
+export function resolveRoleModelsForRun(role: ModelRole): ModelOverrideEntry {
+  const o = cached.overrides[role];
+  return {
+    primary: o?.primary?.trim() || undefined,
+    fallback: o?.fallback?.trim() || undefined,
+  };
 }
 
 export function validateAndNormalizePayload(body: unknown): RuntimeOverridesPayload {
