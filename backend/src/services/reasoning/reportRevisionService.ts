@@ -155,6 +155,15 @@ export async function createReportRevision(args: {
     'SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order',
     [args.reportId]
   );
+
+  const reportRunModelEnsembleRows = await query<{ model_ensemble: Record<string, unknown> | null }>(
+    `SELECT rr.model_ensemble FROM research_runs rr
+      JOIN reports r ON r.run_id = rr.id
+     WHERE r.id = $1
+     LIMIT 1`,
+    [args.reportId]
+  );
+  const reportRunModelEnsemble = reportRunModelEnsembleRows[0]?.model_ensemble ?? null;
   if (baseSections.length === 0) {
     throw new Error('Report has no sections');
   }
@@ -344,6 +353,17 @@ Return strict JSON.`,
     verifierResult.content
   ) ?? { passed: true, findings: [], required_fixes: [] };
   const consistencyIssues = basicConsistencyChecks(revisedSections);
+  const revisionImpactSummary = {
+    requested_change: args.requestText,
+    affected_sections: changePlan.affected_sections,
+    rewrite_count: changePlan.required_rewrites.length,
+    insertion_count: changePlan.required_insertions.length,
+    consistency_issues: consistencyIssues,
+    epistemic_impact:
+      consistencyIssues.length > 0
+        ? 'Revision introduced or retained unresolved consistency checks that need review.'
+        : 'Revision preserved core report consistency checks while applying requested changes.',
+  };
 
   emit('persistence', 90, 'Persisting revised report version');
   let revisionId = '';
@@ -386,6 +406,9 @@ Return strict JSON.`,
           revision_verifier: verifierPayload,
           consistency_issues: consistencyIssues,
           citation_checks: citationChecks,
+          revision_impact_summary: revisionImpactSummary,
+          model_ensemble: reportRunModelEnsemble,
+          revision_model_ensemble: reportRunModelEnsemble,
         }),
         rootReportId,
         baseReport.id,

@@ -161,6 +161,15 @@ const config = {
 
   exports: {
     dir: process.env.EXPORTS_DIR || '/opt/researchone/exports',
+    atlasBackupDir: process.env.ATLAS_BACKUP_DIR || '',
+    autoExportOnEmbedding: process.env.ATLAS_AUTO_EXPORT_ON_EMBEDDING === 'true',
+  },
+
+  nomic: {
+    apiKey: process.env.NOMIC_API_KEY || '',
+    atlasDatasetSlug: process.env.NOMIC_ATLAS_DATASET_SLUG || 'intellme',
+    atlasBaseUrl: process.env.NOMIC_ATLAS_BASE_URL || 'https://api-atlas.nomic.ai',
+    autoUploadOnExport: process.env.NOMIC_AUTO_UPLOAD_ON_EXPORT === 'true',
   },
 
   /** Optional: publish full reports to GitHub for thenewontology.life Featured Reports workflow */

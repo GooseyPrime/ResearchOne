@@ -11,7 +11,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getStats, getSystemHealth, restartRuntime } from '../../utils/api';
+import { getStats, getSystemHealth, restartRuntime, getResearchRuns, type ResearchRun } from '../../utils/api';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -35,7 +35,7 @@ const RESTART_POLL_INTERVAL_MS = 2500;
 export default function Layout() {
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { setStats, stats } = useStore();
+  const { setStats, stats, setActiveRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
 
@@ -48,6 +48,28 @@ export default function Layout() {
   useEffect(() => {
     if (data) setStats(data);
   }, [data, setStats]);
+
+
+  const { data: liveRuns = [] } = useQuery<ResearchRun[]>({
+    queryKey: ['layout-active-runs'],
+    queryFn: () => getResearchRuns({ status: 'running' }),
+    refetchInterval: 2500,
+  });
+
+  useEffect(() => {
+    if (!liveRuns || liveRuns.length === 0) {
+      setActiveRun(null);
+      return;
+    }
+    const top = liveRuns[0];
+    setActiveRun({
+      runId: top.id,
+      stage: top.progress_stage || 'running',
+      percent: top.progress_percent ?? 0,
+      message: top.progress_message || 'Running…',
+      timestamp: top.progress_updated_at || new Date().toISOString(),
+    });
+  }, [liveRuns, setActiveRun]);
 
   const {
     data: health,

@@ -1,9 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getReport,
   getReportRevision,
   getReportRevisions,
+  createReportRevision,
   publishReportFeatured,
   ADMIN_SESSION_TOKEN_KEY,
 } from '../utils/api';
@@ -70,12 +71,37 @@ function buildReportMarkdown(report: {
   return lines.join('\n').trim() + '\n';
 }
 
+
+function getReaderFrontMatter(metadata?: Record<string, unknown>): {
+  overall_summary?: string;
+  conclusions_nutshell?: string;
+  metric_glosses?: Array<{ label?: string; narrative?: string }>;
+} {
+  if (!metadata) return {};
+  const m = metadata as Record<string, unknown>;
+  const r = m.reader_front_matter as Record<string, unknown> | undefined;
+  if (!r || typeof r !== 'object') return {};
+  return {
+    overall_summary: typeof r.overall_summary === 'string' ? r.overall_summary : undefined,
+    conclusions_nutshell: typeof r.conclusions_nutshell === 'string' ? r.conclusions_nutshell : undefined,
+    metric_glosses: Array.isArray(r.metric_glosses) ? (r.metric_glosses as Array<{ label?: string; narrative?: string }>) : undefined,
+  };
+}
+
+function metricNarrative(metricGlosses: Array<{ label?: string; narrative?: string }> | undefined, fallback: string, key: string): string {
+  const hit = metricGlosses?.find((g) => (g.label || '').toLowerCase().includes(key.toLowerCase()));
+  return hit?.narrative || fallback;
+}
+
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { addNotification } = useStore();
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
   const [plainOpen, setPlainOpen] = useState(false);
+  const [revisionRequestText, setRevisionRequestText] = useState('');
+  const [revisionRationale, setRevisionRationale] = useState('');
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
@@ -95,10 +121,44 @@ export default function ReportDetailPage() {
     enabled: !!id && !!selectedRevisionId,
   });
 
+  const { data: citations = [] } = useQuery({
+    queryKey: ['report-citations', id],
+    queryFn: async () => {
+      const { default: api } = await import('../utils/api');
+      const res = await api.get(`/reports/${id}/citations`);
+      return res.data as Array<{ id: string; citation_text?: string; source_title?: string; source_url?: string; evidence_tier?: string; stance?: string }>;
+    },
+    enabled: !!id,
+  });
+
+  const frontMatter = getReaderFrontMatter(report?.metadata as Record<string, unknown> | undefined);
+  const metricGlosses = frontMatter.metric_glosses;
+
   const plainMd =
     report?.metadata && typeof report.metadata === 'object' && 'plain_language_markdown' in report.metadata
       ? String((report.metadata as { plain_language_markdown?: string }).plain_language_markdown ?? '')
       : '';
+
+  const revisionMutation = useMutation({
+    mutationFn: () =>
+      createReportRevision(id!, {
+        requestText: revisionRequestText.trim(),
+        rationale: revisionRationale.trim() || undefined,
+      }),
+    onSuccess: (data) => {
+      addNotification('success', 'Revision requested and applied as a new version.');
+      setRevisionRequestText('');
+      setRevisionRationale('');
+      qc.invalidateQueries({ queryKey: ['report-revisions', id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      if (data.revisedReportId) {
+        navigate(`/reports/${data.revisedReportId}`);
+      }
+    },
+    onError: (err: unknown) => {
+      addNotification('error', err instanceof Error ? err.message : 'Revision request failed');
+    },
+  });
 
   const featuredMutation = useMutation({
     mutationFn: async () => {
@@ -234,11 +294,45 @@ export default function ReportDetailPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-4 gap-3 pt-2 border-t border-indigo-900/20">
-          <MetaStat label="Evidence Chunks" value={report.chunk_count} />
-          <MetaStat label="Sources" value={report.source_count} />
-          <MetaStat label="Contradictions" value={report.contradiction_count} color="text-amber-400" />
-          <MetaStat label="Status" value={report.status} />
+        <div className="pt-2 border-t border-indigo-900/20 space-y-3">
+          {(frontMatter.overall_summary || frontMatter.conclusions_nutshell) && (
+            <div className="rounded-lg border border-indigo-900/20 bg-surface-200 p-3 space-y-2">
+              {frontMatter.overall_summary && (
+                <p className="text-sm text-slate-200 leading-relaxed">
+                  {frontMatter.overall_summary}
+                </p>
+              )}
+              {frontMatter.conclusions_nutshell && (
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {frontMatter.conclusions_nutshell}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <MetaStat
+              label="Evidence coverage"
+              value={`${report.chunk_count} chunks from ${report.source_count} sources`}
+              narrative={metricNarrative(metricGlosses, 'Total corpus slices reviewed for this report. More sources can still shift confidence.', 'evidence')}
+            />
+            <MetaStat
+              label="Claim conflicts"
+              value={report.contradiction_count}
+              color="text-amber-400"
+              narrative={metricNarrative(metricGlosses, 'Conflicts indicate claims that cannot both hold as currently framed; review contradiction analysis for the exact pairs.', 'contradiction')}
+            />
+            <MetaStat
+              label="Falsification target"
+              value={report.falsification_criteria ? 'Defined' : 'Pending'}
+              narrative={metricNarrative(metricGlosses, 'Counterevidence must directly disprove the report\'s core mechanism or assumptions listed in falsification criteria.', 'falsification')}
+            />
+            <MetaStat
+              label="Report status"
+              value={report.status}
+              narrative="Finalized means this revision passed the verifier and has persisted claims, contradictions, and citations."
+            />
+          </div>
         </div>
       </div>
 
@@ -311,6 +405,49 @@ export default function ReportDetailPage() {
           </ul>
         </div>
       )}
+
+      <div className="card p-5 space-y-3 print:hidden">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Request edit / correction / re-evaluation</h2>
+        <textarea
+          className="textarea min-h-24"
+          placeholder="Describe the edit, correction, or re-evaluation you want."
+          value={revisionRequestText}
+          onChange={(e) => setRevisionRequestText(e.target.value)}
+          disabled={revisionMutation.isPending}
+        />
+        <textarea
+          className="textarea min-h-20"
+          placeholder="Optional basis for change (sources, rationale, assumptions to test)"
+          value={revisionRationale}
+          onChange={(e) => setRevisionRationale(e.target.value)}
+          disabled={revisionMutation.isPending}
+        />
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!revisionRequestText.trim() || revisionMutation.isPending}
+          onClick={() => revisionMutation.mutate()}
+        >
+          {revisionMutation.isPending ? 'Submitting revision...' : 'Submit revision request'}
+        </button>
+      </div>
+
+      <div className="card p-5 space-y-3 print:hidden">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">References and citations</h2>
+        {citations.length === 0 ? (
+          <p className="text-xs text-slate-500">No mapped citations available for this report revision yet.</p>
+        ) : (
+          <ul className="space-y-2 text-xs">
+            {citations.map((c, idx) => (
+              <li key={c.id} className="rounded border border-indigo-900/20 bg-surface-200 p-2 space-y-1">
+                <div className="text-slate-300">[{idx + 1}] {c.source_title || c.source_url || 'Untitled source'}</div>
+                {c.citation_text && <div className="text-slate-400">{c.citation_text}</div>}
+                <div className="text-slate-500">tier: {c.evidence_tier || 'unknown'} · stance: {c.stance || 'unknown'}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <ReportActionBar
         className="print:hidden"
@@ -456,11 +593,22 @@ function ReportActionBar({
   );
 }
 
-function MetaStat({ label, value, color }: { label: string; value: string | number; color?: string }) {
+function MetaStat({
+  label,
+  value,
+  color,
+  narrative,
+}: {
+  label: string;
+  value: string | number;
+  color?: string;
+  narrative?: string;
+}) {
   return (
-    <div className="text-center">
-      <div className={clsx('text-lg font-bold', color ?? 'text-white')}>{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded-lg border border-indigo-900/20 bg-surface-200 p-3">
+      <div className={clsx('text-sm font-semibold', color ?? 'text-white')}>{value}</div>
+      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+      {narrative && <div className="text-xs text-slate-400 mt-1 leading-relaxed">{narrative}</div>}
     </div>
   );
 }

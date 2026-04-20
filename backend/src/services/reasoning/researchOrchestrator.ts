@@ -16,12 +16,15 @@ import { saveRunCheckpoint } from './checkpointService';
 import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
+import type { PerRunModelOverrides } from '../runtimeModelStore';
+import { APPROVED_REASONING_MODEL_ALLOWLIST } from './reasoningModelPolicy';
 
 export interface ResearchJobData {
   runId: string;
   query: string;
   supplemental?: string;
   filterTags?: string[];
+  modelOverrides?: PerRunModelOverrides;
 }
 
 export interface ResearchProgress {
@@ -36,6 +39,9 @@ export interface ResearchProgress {
   tokenUsage?: { prompt: number; completion: number };
   sourceCount?: number;
   chunkCount?: number;
+  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed';
+  retryable?: boolean;
+  failureMeta?: Record<string, unknown>;
 }
 
 type ProgressCallback = (update: ResearchProgress) => void;
@@ -68,11 +74,108 @@ interface ResearchFailureDetails {
 const RETRIEVAL_PROGRESS_BASE = 22;
 const RETRIEVAL_PROGRESS_CAP = 34;
 
+interface ReaderFrontMatter {
+  overall_summary: string;
+  conclusions_nutshell: string;
+  metric_glosses: Array<{ label: string; narrative: string }>;
+}
+
+function normalizeRunOverrides(overrides: PerRunModelOverrides | undefined): PerRunModelOverrides {
+  if (!overrides || typeof overrides !== 'object') return { overrides: {} };
+  return {
+    overrides: overrides.overrides ?? {},
+    embedding: typeof overrides.embedding === 'string' ? overrides.embedding : undefined,
+  };
+}
+
+function runtimeOverrideForRole(
+  overrides: PerRunModelOverrides,
+  role: keyof typeof APPROVED_REASONING_MODEL_ALLOWLIST
+): { primary?: string; fallback?: string } | undefined {
+  const entry = overrides.overrides?.[role];
+  if (!entry) return undefined;
+  const primary = entry.primary?.trim() || undefined;
+  const fallback = entry.fallback?.trim() || undefined;
+  if (!primary && !fallback) return undefined;
+  return { primary, fallback };
+}
+
+function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, unknown> {
+  const roles = Object.keys(APPROVED_REASONING_MODEL_ALLOWLIST);
+  const out: Record<string, unknown> = {};
+  for (const role of roles) {
+    const o = overrides.overrides?.[role];
+    out[role] = {
+      primary_override: o?.primary ?? null,
+      fallback_override: o?.fallback ?? null,
+    };
+  }
+  return out;
+}
+
+function buildReaderFrontMatter(args: {
+  executiveSummary: string;
+  conclusion: string;
+  contradictionCount: number;
+  sourceCount: number;
+  chunkCount: number;
+  falsificationCriteria: string[];
+}): ReaderFrontMatter {
+  const summary = args.executiveSummary.trim().replace(/\s+/g, ' ');
+  const conclusion = args.conclusion.trim().replace(/\s+/g, ' ');
+
+  const fallbackSummary = `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
+  const fallbackConclusion = args.contradictionCount > 0
+    ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
+    : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
+
+  return {
+    overall_summary: [summary.slice(0, 260) || fallbackSummary, conclusion.slice(0, 220) || fallbackConclusion]
+      .filter(Boolean)
+      .join(' '),
+    conclusions_nutshell: conclusion.slice(0, 360) || fallbackConclusion,
+    metric_glosses: [
+      {
+        label: 'Contradictions',
+        narrative:
+          args.contradictionCount > 0
+            ? `${args.contradictionCount} claim conflicts were detected. Each conflict shows two evidence-backed statements that cannot both be true as currently framed.`
+            : 'No explicit claim conflicts were detected in this run; this does not prove harmony, only that no direct contradiction pairs were extracted.',
+      },
+      {
+        label: 'Counterevidence / Falsification',
+        narrative:
+          args.falsificationCriteria.length > 0
+            ? `Falsification is defined against these targets: ${args.falsificationCriteria.slice(0, 2).join('; ')}.`
+            : 'Counterevidence would need to directly invalidate the report’s central mechanism claims and assumptions.',
+      },
+      {
+        label: 'Evidence coverage',
+        narrative: `${args.sourceCount} sources and ${args.chunkCount} chunks were reviewed; broader coverage can still change the confidence profile of conclusions.`,
+      },
+    ],
+  };
+}
+
+async function appendRunProgressEvent(runId: string, event: Record<string, unknown>): Promise<void> {
+  await query(
+    `UPDATE research_runs
+        SET progress_events = CASE
+          WHEN jsonb_typeof(progress_events) = 'array'
+            THEN (progress_events || $2::jsonb)
+          ELSE $2::jsonb
+        END
+      WHERE id = $1`,
+    [runId, JSON.stringify([event])]
+  );
+}
+
 export async function runResearchJob(
   data: ResearchJobData,
   onProgress: ProgressCallback
 ): Promise<{ runId: string; reportId: string }> {
-  const { runId, query: researchQuery, supplemental, filterTags } = data;
+  const { runId, query: researchQuery, supplemental, filterTags, modelOverrides: incomingModelOverrides } = data;
+  const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
   let currentPercent = 0;
@@ -96,6 +199,7 @@ export async function runResearchJob(
         `UPDATE research_runs SET progress_stage=$1, progress_percent=$2, progress_message=$3, progress_updated_at=NOW() WHERE id=$4`,
         [stage, Math.round(percent), message.slice(0, 2000), runId]
       );
+      await appendRunProgressEvent(runId, payload);
     } catch (e) {
       logger.warn(`[${runId}] progress persist skipped`, e);
     }
@@ -103,8 +207,13 @@ export async function runResearchJob(
 
   // Mark run as running
   await query(
-    `UPDATE research_runs SET status='running', started_at=NOW() WHERE id=$1`,
-    [runId]
+    `UPDATE research_runs
+        SET status='running',
+            started_at=NOW(),
+            model_overrides=$2::jsonb,
+            model_ensemble=$3::jsonb
+      WHERE id=$1`,
+    [runId, JSON.stringify(runModelOverrides), JSON.stringify(snapshotModelEnsemble(runModelOverrides))]
   );
 
   try {
@@ -115,6 +224,7 @@ export async function runResearchJob(
 
     const plannerResult = await callRoleModel({
       role: 'planner',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'planner'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.planner },
         {
@@ -234,6 +344,7 @@ export async function runResearchJob(
 
     const retrieverResult = await callRoleModel({
       role: 'retriever',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.retriever },
         {
@@ -257,6 +368,7 @@ export async function runResearchJob(
 
     const reasonerResult = await callRoleModel({
       role: 'reasoner',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.reasoner },
         {
@@ -280,6 +392,7 @@ export async function runResearchJob(
 
     const skepticResult = await callRoleModel({
       role: 'skeptic',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.skeptic },
         {
@@ -329,6 +442,7 @@ export async function runResearchJob(
 
     const verifierResult = await callRoleModel({
       role: 'verifier',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.verifier },
         {
@@ -356,6 +470,7 @@ export async function runResearchJob(
 
     const plainLanguageResult = await callRoleModel({
       role: 'plain_language_synthesizer',
+      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'plain_language_synthesizer'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
         {
@@ -379,6 +494,14 @@ export async function runResearchJob(
     await progress('saving', 94, 'Saving report to corpus...');
 
     const reportSections = parseReportSections(generatedReport.markdown);
+    const readerFrontMatter = buildReaderFrontMatter({
+      executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
+      conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
+      contradictionCount: 0,
+      sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+      chunkCount: allChunks.length,
+      falsificationCriteria: plan.falsification_criteria,
+    });
     const reportId = await saveReport({
       runId,
       query: researchQuery,
@@ -388,6 +511,8 @@ export async function runResearchJob(
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
+      readerFrontMatter,
+      modelEnsemble: snapshotModelEnsemble(runModelOverrides),
     });
     await saveRunCheckpoint({
       runId,
@@ -439,6 +564,14 @@ export async function runResearchJob(
     );
 
     await progress('done', 100, 'Research complete');
+    await appendRunProgressEvent(runId, {
+      runId,
+      stage: 'done',
+      percent: 100,
+      message: 'Research complete',
+      timestamp: new Date().toISOString(),
+      eventType: 'run_completed',
+    });
 
     await query(
       `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL WHERE id=$1`,
@@ -471,6 +604,15 @@ export async function runResearchJob(
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
       }
     }
+    await appendRunProgressEvent(runId, {
+      runId,
+      stage: currentStage,
+      percent: currentPercent,
+      message: currentMessage,
+      timestamp: new Date().toISOString(),
+      eventType: 'run_failed',
+      failure: failureDetails,
+    });
     logger.error(`Research run ${runId} failed:`, err);
     const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
       runId,
@@ -591,8 +733,10 @@ async function saveReport(args: {
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
   plainLanguageMarkdown?: string;
+  readerFrontMatter?: ReaderFrontMatter;
+  modelEnsemble?: Record<string, unknown>;
 }): Promise<string> {
-  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary, plainLanguageMarkdown } = args;
+  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary, plainLanguageMarkdown, readerFrontMatter, modelEnsemble } = args;
 
   // Parse sections from synthesizer output
   const sections = parseReportSections(synthesizerContent);
@@ -637,6 +781,8 @@ async function saveReport(args: {
           ...(plainLanguageMarkdown && plainLanguageMarkdown.length > 0
             ? { plain_language_markdown: plainLanguageMarkdown }
             : {}),
+          ...(readerFrontMatter ? { reader_front_matter: readerFrontMatter } : {}),
+          ...(modelEnsemble ? { model_ensemble: modelEnsemble } : {}),
         }),
         reportId,
       ]

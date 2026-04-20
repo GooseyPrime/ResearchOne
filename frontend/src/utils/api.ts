@@ -43,6 +43,26 @@ export interface Source {
   published_at?: string;
 }
 
+export interface ResearchProgressEvent {
+  runId?: string;
+  stage: string;
+  percent: number;
+  message: string;
+  detail?: string;
+  substep?: string;
+  timestamp?: string;
+  model?: string;
+  tokenUsage?: { prompt: number; completion: number };
+  sourceCount?: number;
+  chunkCount?: number;
+  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed';
+  failure?: {
+    errorMessage?: string;
+    retryable?: boolean;
+    failureMeta?: Record<string, unknown>;
+  };
+}
+
 export interface ResearchRun {
   id: string;
   title: string;
@@ -60,6 +80,9 @@ export interface ResearchRun {
   created_at: string;
   plan?: Record<string, unknown>;
   model_log?: unknown[];
+  progress_events?: ResearchProgressEvent[];
+  model_overrides?: Record<string, unknown>;
+  model_ensemble?: Record<string, unknown>;
 }
 
 export interface SystemHealth {
@@ -229,7 +252,18 @@ export const publishReportFeatured = (id: string, adminToken: string) =>
     )
     .then(r => r.data);
 
-export const startResearch = (data: { query: string; supplemental?: string; filterTags?: string[] }) =>
+export interface ResearchModelOptionsResponse {
+  defaults: Record<string, string>;
+  fallbacks: Record<string, string>;
+  allowlist: Record<string, string[]>;
+}
+
+export const startResearch = (data: {
+  query: string;
+  supplemental?: string;
+  filterTags?: string[];
+  modelOverrides?: Record<string, unknown>;
+}) =>
   api.post<{ runId: string; status: string }>('/research', data).then(r => r.data);
 
 export const getResearchRuns = (params?: { status?: string }) =>
@@ -237,6 +271,9 @@ export const getResearchRuns = (params?: { status?: string }) =>
 
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
+
+export const getResearchModelOptions = () =>
+  api.get<ResearchModelOptionsResponse>('/research/model-options').then(r => r.data);
 
 export const cancelResearchRun = (id: string) =>
   api.post<{ ok: boolean; status: string }>(`/research/${id}/cancel`).then(r => r.data);
@@ -328,6 +365,9 @@ export const getAtlasExports = () =>
 
 export const triggerAtlasExport = (data: { label: string; description?: string; filterTags?: string[] }) =>
   api.post<{ exportId: string; status: string }>('/atlas/export', data).then(r => r.data);
+
+export const triggerNomicUpload = (exportId: string, data?: { datasetSlug?: string }) =>
+  api.post<{ ok: boolean; datasetUrl: string; uploaded: number }>(`/atlas/exports/${exportId}/nomic-upload`, data || {}).then(r => r.data);
 
 export const getClaims = (params?: { tier?: string; search?: string }) =>
   api.get<Claim[]>('/corpus/claims', { params }).then(r => r.data);
