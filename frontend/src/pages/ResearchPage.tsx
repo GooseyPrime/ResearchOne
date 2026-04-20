@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +19,9 @@ import {
   Trash2,
   Ban,
   Settings2,
+  Layers,
+  RotateCcw,
+  ChevronRight,
 } from 'lucide-react';
 import {
   startResearch,
@@ -79,17 +82,6 @@ function stageOrderIndex(uiStage: string): number {
   return idx >= 0 ? idx : 0;
 }
 
-function formatTraceMeta(evt: ResearchProgressEvent): string {
-  const parts: string[] = [];
-  if (evt.detail) parts.push(evt.detail);
-  if (evt.substep) parts.push(evt.substep);
-  if (typeof evt.chunkCount === 'number') parts.push(`${evt.chunkCount} chunks`);
-  if (typeof evt.sourceCount === 'number') parts.push(`${evt.sourceCount} sources`);
-  if (evt.model) parts.push(evt.model);
-  if (evt.tokenUsage) parts.push(`${evt.tokenUsage.prompt}p/${evt.tokenUsage.completion}c`);
-  return parts.join(' · ');
-}
-
 function normalizeEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
   return {
     ...evt,
@@ -98,6 +90,62 @@ function normalizeEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
     message: evt.message || evt.stage || 'Update',
     timestamp: evt.timestamp || new Date().toISOString(),
   };
+}
+
+const PHASE_ORDER: string[] = [...STAGES.map((s) => s.id), 'failed'];
+
+function bucketEventsByPhase(events: ResearchProgressEvent[]): Map<string, ResearchProgressEvent[]> {
+  const map = new Map<string, ResearchProgressEvent[]>();
+  for (const evt of events) {
+    const id = stageUiId(evt.stage);
+    const list = map.get(id) ?? [];
+    list.push(evt);
+    map.set(id, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+  }
+  return map;
+}
+
+function orderedPhaseIds(bucket: Map<string, ResearchProgressEvent[]>): string[] {
+  return PHASE_ORDER.filter((id) => (bucket.get(id)?.length ?? 0) > 0);
+}
+
+function phaseLabelForId(phaseId: string): { label: string; Icon: StageDescriptor['icon'] } {
+  const found = STAGES.find((s) => s.id === phaseId);
+  if (found) return { label: found.label, Icon: found.icon };
+  if (phaseId === 'failed') return { label: 'Error / recovery', Icon: AlertCircle };
+  return { label: phaseId.replace(/_/g, ' '), Icon: Zap };
+}
+
+function eventHasModelDetails(evt: ResearchProgressEvent): boolean {
+  return Boolean(evt.model || evt.tokenUsage || evt.detail || evt.substep);
+}
+
+function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant: 'retryable' | 'resumed' | 'terminal' } | null {
+  if (evt.eventType === 'run_resumed') {
+    return { text: 'Resumed', variant: 'resumed' };
+  }
+  if (evt.eventType === 'run_failed' || evt.stage === 'failed') {
+    const retryable = evt.failure?.retryable === true;
+    return { text: retryable ? 'Retryable' : 'Stopped', variant: retryable ? 'retryable' : 'terminal' };
+  }
+  if (evt.failure?.retryable === true) {
+    return { text: 'Retryable', variant: 'retryable' };
+  }
+  const msg = `${evt.message} ${evt.substep || ''}`.toLowerCase();
+  if (/\b(retry|retried|resum|backoff)\b/.test(msg)) {
+    return { text: 'Retry', variant: 'retryable' };
+  }
+  return null;
+}
+
+function formatShortTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 export default function ResearchPage() {
@@ -114,6 +162,10 @@ export default function ResearchPage() {
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
+  /** `undefined` = derive open state from the current pipeline stage */
+  const [phaseExpanded, setPhaseExpanded] = useState<Record<string, boolean | undefined>>({});
+  const [traceRowExpanded, setTraceRowExpanded] = useState<Record<string, boolean>>({});
+  const traceScrollRef = useRef<HTMLDivElement>(null);
 
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<Record<string, { primary?: string; fallback?: string }>>({});
@@ -354,6 +406,32 @@ export default function ResearchPage() {
   const currentIndex = stageOrderIndex(currentUiStage);
   const hasWarning = Boolean(failure) || currentUiStage === 'failed';
 
+  const phaseBuckets = useMemo(() => bucketEventsByPhase(traceEvents), [traceEvents]);
+  const orderedPhases = useMemo(() => orderedPhaseIds(phaseBuckets), [phaseBuckets]);
+
+  const isPhaseOpen = (phaseId: string) => {
+    const explicit = phaseExpanded[phaseId];
+    if (explicit !== undefined) return explicit;
+    if (phaseId === 'failed') return hasWarning;
+    return phaseId === currentUiStage;
+  };
+
+  const togglePhase = (phaseId: string) => {
+    setPhaseExpanded((prev) => {
+      const nextOpen = !isPhaseOpen(phaseId);
+      return { ...prev, [phaseId]: nextOpen };
+    });
+  };
+
+  useEffect(() => {
+    if (!traceOpen || !traceScrollRef.current) return;
+    const wrap = traceScrollRef.current;
+    const target = wrap.querySelector(`[data-telemetry-phase="${currentUiStage}"]`);
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [traceOpen, currentUiStage]);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
       <div>
@@ -501,25 +579,157 @@ export default function ResearchPage() {
             </button>
 
             {traceOpen && (
-              <div className="max-h-80 overflow-y-auto rounded-lg border border-surface-100 bg-surface-200/60 p-3 space-y-2">
-                {traceEvents.length === 0 && <p className="text-xs text-slate-500">No trace events yet.</p>}
-                {traceEvents.map((evt, idx) => {
-                  const warning = evt.eventType === 'run_failed' || evt.stage === 'failed';
-                  const completed = evt.eventType === 'run_completed' || evt.stage === 'done';
-                  const resumed = evt.eventType === 'run_resumed';
+              <div
+                ref={traceScrollRef}
+                className="max-h-[22rem] overflow-y-auto rounded-lg border border-surface-100 bg-surface-200/60 p-2 space-y-1"
+              >
+                {traceEvents.length === 0 && <p className="text-xs text-slate-500 px-2 py-2">No trace events yet.</p>}
+                {orderedPhases.map((phaseId) => {
+                  const phaseEvents = phaseBuckets.get(phaseId) ?? [];
+                  const { label, Icon } = phaseLabelForId(phaseId);
+                  const open = isPhaseOpen(phaseId);
+                  const phaseActive = phaseId === currentUiStage && currentUiStage !== 'failed';
+                  const phaseDone =
+                    stageOrderIndex(phaseId) < currentIndex || (phaseId === 'done' && currentUiStage === 'done');
+                  const phaseWarn = hasWarning && (phaseId === 'failed' || (phaseActive && hasWarning));
+
                   return (
-                    <div key={`${evt.timestamp ?? 'no-ts'}-${evt.stage}-${idx}`} className="text-xs border-b border-surface-100/50 pb-2">
-                      <div className="flex items-center justify-between">
-                        <span className={warning ? 'text-amber-300' : completed ? 'text-green-400' : resumed ? 'text-blue-300' : 'text-slate-300'}>
-                          {evt.stage.replace(/_/g, ' ')}
-                        </span>
-                        <span className="text-slate-400">{evt.percent}%</span>
-                      </div>
-                      <p className="text-slate-300 mt-1">{evt.message}</p>
-                      {(evt.detail || evt.substep || evt.chunkCount || evt.sourceCount || evt.model || evt.tokenUsage) && (
-                        <p className="text-slate-500 mt-1">{formatTraceMeta(evt)}</p>
+                    <div
+                      key={phaseId}
+                      data-telemetry-phase={phaseId}
+                      className={clsx(
+                        'rounded-lg border overflow-hidden',
+                        phaseDone && !phaseWarn && 'border-green-800/35 bg-green-950/15',
+                        phaseActive && !phaseWarn && 'border-accent/35 bg-accent/5',
+                        phaseWarn && 'border-amber-700/40 bg-amber-950/20',
+                        !phaseDone && !phaseActive && !phaseWarn && 'border-surface-100/60 bg-surface-200/40'
                       )}
-                      {evt.failure?.errorMessage && <p className="text-amber-200 mt-1">{evt.failure.errorMessage}</p>}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => togglePhase(phaseId)}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-white/5 transition-colors"
+                      >
+                        <Layers size={14} className="text-slate-500 flex-shrink-0" />
+                        <Icon size={14} className={clsx('flex-shrink-0', phaseWarn ? 'text-amber-400' : 'text-accent')} />
+                        <span className="text-xs font-semibold text-slate-200 flex-1 min-w-0 truncate">{label}</span>
+                        <span className="text-[10px] text-slate-500 tabular-nums">{phaseEvents.length} evt</span>
+                        {open ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+                      </button>
+                      {open && (
+                        <div className="border-t border-surface-100/40 px-2 pb-2 pt-1 space-y-1.5">
+                          {phaseEvents.map((evt, idx) => {
+                            const warning = evt.eventType === 'run_failed' || evt.stage === 'failed';
+                            const completed = evt.eventType === 'run_completed' || evt.stage === 'done';
+                            const resumed = evt.eventType === 'run_resumed';
+                            const rowKey = `${evt.timestamp ?? 'ts'}-${evt.stage}-${idx}`;
+                            const detailsOpen = traceRowExpanded[rowKey] ?? false;
+                            const hasDetails = eventHasModelDetails(evt);
+                            const retryBadge = retryBadgeForEvent(evt);
+
+                            return (
+                              <div key={rowKey} className="text-xs rounded-md border border-surface-100/30 bg-surface-300/40 p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span
+                                        className={
+                                          warning
+                                            ? 'text-amber-300 font-medium'
+                                            : completed
+                                              ? 'text-green-400 font-medium'
+                                              : resumed
+                                                ? 'text-blue-300 font-medium'
+                                                : 'text-slate-300 font-medium'
+                                        }
+                                      >
+                                        {evt.stage.replace(/_/g, ' ')}
+                                      </span>
+                                      {retryBadge && (
+                                        <span
+                                          className={clsx(
+                                            'inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                                            retryBadge.variant === 'resumed' && 'bg-blue-950/60 text-blue-300 border border-blue-800/40',
+                                            retryBadge.variant === 'retryable' && 'bg-amber-950/60 text-amber-200 border border-amber-800/40',
+                                            retryBadge.variant === 'terminal' && 'bg-slate-800 text-slate-400 border border-slate-600/50'
+                                          )}
+                                        >
+                                          {retryBadge.variant !== 'terminal' && <RotateCcw size={10} />}
+                                          {retryBadge.text}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-slate-300 mt-0.5 leading-snug">{evt.message}</p>
+                                    {!hasDetails && (evt.chunkCount != null || evt.sourceCount != null) && (
+                                      <p className="text-slate-500 mt-1 text-[11px]">
+                                        {typeof evt.chunkCount === 'number' ? `${evt.chunkCount} chunks` : ''}
+                                        {typeof evt.chunkCount === 'number' && typeof evt.sourceCount === 'number' ? ' · ' : ''}
+                                        {typeof evt.sourceCount === 'number' ? `${evt.sourceCount} sources` : ''}
+                                      </p>
+                                    )}
+                                    {evt.failure?.errorMessage && (
+                                      <p className="text-amber-200/95 mt-1 text-[11px] leading-snug">{evt.failure.errorMessage}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                                    <span className="text-slate-400 tabular-nums">{evt.percent}%</span>
+                                    <span className="text-[10px] text-slate-500">{formatShortTime(evt.timestamp)}</span>
+                                  </div>
+                                </div>
+                                {hasDetails && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTraceRowExpanded((prev) => ({ ...prev, [rowKey]: !detailsOpen }))
+                                      }
+                                      className="mt-1.5 flex items-center gap-1 text-[11px] text-accent/90 hover:text-accent"
+                                    >
+                                      <ChevronRight
+                                        size={12}
+                                        className={clsx('transition-transform', detailsOpen && 'rotate-90')}
+                                      />
+                                      {detailsOpen ? 'Hide model call details' : 'Model call details'}
+                                    </button>
+                                    {detailsOpen && (
+                                      <div className="mt-2 rounded border border-indigo-900/25 bg-surface-200/80 p-2 space-y-1 text-[11px] text-slate-400">
+                                        {evt.model && (
+                                          <p>
+                                            <span className="text-slate-500">Model:</span> {evt.model}
+                                          </p>
+                                        )}
+                                        {evt.tokenUsage && (
+                                          <p>
+                                            <span className="text-slate-500">Tokens:</span> {evt.tokenUsage.prompt} prompt /{' '}
+                                            {evt.tokenUsage.completion} completion
+                                          </p>
+                                        )}
+                                        {evt.substep && (
+                                          <p>
+                                            <span className="text-slate-500">Substep:</span> {evt.substep}
+                                          </p>
+                                        )}
+                                        {evt.detail && (
+                                          <p className="text-slate-300 whitespace-pre-wrap break-words">{evt.detail}</p>
+                                        )}
+                                        {(evt.chunkCount != null || evt.sourceCount != null) && (
+                                          <p>
+                                            {typeof evt.chunkCount === 'number' ? `${evt.chunkCount} chunks` : ''}
+                                            {typeof evt.chunkCount === 'number' && typeof evt.sourceCount === 'number'
+                                              ? ' · '
+                                              : ''}
+                                            {typeof evt.sourceCount === 'number' ? `${evt.sourceCount} sources` : ''}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
