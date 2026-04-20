@@ -32,6 +32,9 @@ const NAV_ITEMS = [
 const MAX_RESTART_POLL_ATTEMPTS = 12;
 const RESTART_POLL_INTERVAL_MS = 2500;
 
+/** Stable fallback so useQuery `data` being undefined does not allocate a new [] each render (would loop setActiveRun → React #185). */
+const EMPTY_RESEARCH_RUNS: ResearchRun[] = [];
+
 export default function Layout() {
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -50,18 +53,19 @@ export default function Layout() {
   }, [data, setStats]);
 
 
-  const { data: liveRuns = [] } = useQuery<ResearchRun[]>({
+  const { data: liveRuns } = useQuery<ResearchRun[]>({
     queryKey: ['layout-active-runs'],
     queryFn: () => getResearchRuns({ status: 'running' }),
     refetchInterval: 2500,
   });
 
   useEffect(() => {
-    if (!liveRuns || liveRuns.length === 0) {
+    const runs = liveRuns ?? EMPTY_RESEARCH_RUNS;
+    if (runs.length === 0) {
       setActiveRun(null);
       return;
     }
-    const top = liveRuns[0];
+    const top = runs[0];
     setActiveRun({
       runId: top.id,
       stage: top.progress_stage || 'running',
