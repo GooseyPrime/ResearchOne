@@ -128,6 +128,7 @@ router.get('/models', async (req, res) => {
       skeptic: config.models.skeptic,
       synthesizer: config.models.synthesizer,
       verifier: config.models.verifier,
+      plain_language_synthesizer: config.models.plainLanguageSynthesizer,
       outline_architect: config.models.outlineArchitect,
       section_drafter: config.models.sectionDrafter,
       internal_challenger: config.models.internalChallenger,

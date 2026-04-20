@@ -97,6 +97,8 @@ const config = {
     skeptic: process.env.SKEPTIC_MODEL || 'moonshotai/kimi-k2-thinking',
     synthesizer: process.env.SYNTHESIZER_MODEL || 'anthropic/claude-sonnet-4.5',
     verifier: process.env.VERIFIER_MODEL || 'anthropic/claude-sonnet-4',
+    plainLanguageSynthesizer:
+      process.env.PLAIN_LANGUAGE_SYNTHESIZER_MODEL || 'anthropic/claude-3.5-haiku',
     outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || 'moonshotai/kimi-k2-thinking',
     sectionDrafter: process.env.SECTION_DRAFTER_MODEL || 'google/gemini-2.5-pro',
     internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || 'moonshotai/kimi-k2-thinking',
@@ -117,6 +119,8 @@ const config = {
       skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-sonnet-4',
       synthesizer: process.env.SYNTHESIZER_FALLBACK || 'google/gemini-2.5-pro',
       verifier: process.env.VERIFIER_FALLBACK || 'openai/o3-mini',
+      plainLanguageSynthesizer:
+        process.env.PLAIN_LANGUAGE_SYNTHESIZER_FALLBACK || 'google/gemini-2.5-flash',
       outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || 'deepseek/deepseek-r1',
       sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || 'anthropic/claude-sonnet-4',
       internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || 'anthropic/claude-sonnet-4',
@@ -157,6 +161,15 @@ const config = {
 
   exports: {
     dir: process.env.EXPORTS_DIR || '/opt/researchone/exports',
+  },
+
+  /** Optional: publish full reports to GitHub for thenewontology.life Featured Reports workflow */
+  featuredReportGithub: {
+    token: process.env.FEATURED_REPORT_GITHUB_TOKEN || '',
+    owner: process.env.FEATURED_REPORT_GITHUB_OWNER || 'GooseyPrime',
+    repo: process.env.FEATURED_REPORT_GITHUB_REPO || 'newontology',
+    path: process.env.FEATURED_REPORT_GITHUB_PATH || 'content/featured-reports/latest.md',
+    branch: process.env.FEATURED_REPORT_GITHUB_BRANCH || 'main',
   },
 
   admin: {
@@ -255,6 +268,7 @@ const reasoningModelsForPolicy = {
   skeptic: config.models.skeptic,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
+  plain_language_synthesizer: config.models.plainLanguageSynthesizer,
   outline_architect: config.models.outlineArchitect,
   section_drafter: config.models.sectionDrafter,
   internal_challenger: config.models.internalChallenger,
@@ -274,6 +288,7 @@ const reasoningFallbacksForPolicy = {
   skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
+  plain_language_synthesizer: config.models.fallbacks.plainLanguageSynthesizer,
   outline_architect: config.models.fallbacks.outlineArchitect,
   section_drafter: config.models.fallbacks.sectionDrafter,
   internal_challenger: config.models.fallbacks.internalChallenger,

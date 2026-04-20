@@ -77,6 +77,7 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   skeptic: config.models.skeptic,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
+  plain_language_synthesizer: config.models.plainLanguageSynthesizer,
   outline_architect: config.models.outlineArchitect,
   section_drafter: config.models.sectionDrafter,
   internal_challenger: config.models.internalChallenger,
@@ -96,6 +97,7 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
+  plain_language_synthesizer: config.models.fallbacks.plainLanguageSynthesizer,
   outline_architect: config.models.fallbacks.outlineArchitect,
   section_drafter: config.models.fallbacks.sectionDrafter,
   internal_challenger: config.models.fallbacks.internalChallenger,
@@ -125,6 +127,7 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   skeptic: 0.4,
   synthesizer: 0.5,
   verifier: 0.1,
+  plain_language_synthesizer: 0.35,
   outline_architect: 0.25,
   section_drafter: 0.35,
   internal_challenger: 0.3,
@@ -144,6 +147,7 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   skeptic: 2048,
   synthesizer: 8192,
   verifier: 2048,
+  plain_language_synthesizer: 8192,
   outline_architect: 2048,
   section_drafter: 4096,
   internal_challenger: 2048,
@@ -405,6 +409,19 @@ CRITICAL RULES:
 - Flag if the corpus was incomplete but the report fails to acknowledge this
 
 Output a structured verification report with PASS/FAIL for each criterion.`),
+
+  plain_language_synthesizer: withPreamble(`You are a plain-language explainer for ResearchOne.
+Rewrite the full research report so a general audience can follow it.
+
+CRITICAL RULES:
+- Use common vocabulary and short sentences (roughly middle-school reading level when possible).
+- Remove or replace technical and argumentative jargon with plain explanations; define unavoidable terms briefly.
+- Preserve the report's factual claims, uncertainty, and contradictions — do not simplify away important caveats.
+- Do not add new facts, sources, or conclusions that are not supported by the original text.
+- Keep a clear structure with markdown headings that mirror the original sections where helpful.
+- Tone: calm, direct, and respectful — not condescending.
+
+Output the complete plain-language report in markdown only.`),
 
   outline_architect: withPreamble(`You are the Outline Architect.
 Produce a structured report outline and section order for the current query and evidence context.
