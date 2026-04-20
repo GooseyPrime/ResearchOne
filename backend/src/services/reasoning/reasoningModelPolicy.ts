@@ -10,6 +10,7 @@ export const REASONING_MODEL_ROLES = [
   'skeptic',
   'synthesizer',
   'verifier',
+  'plain_language_synthesizer',
   'outline_architect',
   'section_drafter',
   'internal_challenger',

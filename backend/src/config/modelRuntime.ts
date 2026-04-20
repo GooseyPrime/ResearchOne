@@ -30,6 +30,10 @@ export function baseModelsFromConfig(): ResolvedModels {
       skeptic: { primary: config.models.skeptic, fallback: config.models.fallbacks.skeptic },
       synthesizer: { primary: config.models.synthesizer, fallback: config.models.fallbacks.synthesizer },
       verifier: { primary: config.models.verifier, fallback: config.models.fallbacks.verifier },
+      plain_language_synthesizer: {
+        primary: config.models.plainLanguageSynthesizer,
+        fallback: config.models.fallbacks.plainLanguageSynthesizer,
+      },
       outline_architect: {
         primary: config.models.outlineArchitect,
         fallback: config.models.fallbacks.outlineArchitect,

@@ -104,7 +104,9 @@ export interface Report {
   finalized_at?: string;
   created_at: string;
   sections?: ReportSection[];
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> & {
+    plain_language_markdown?: string;
+  };
 }
 
 export interface ReportRevision {
@@ -217,6 +219,15 @@ export const getReportRevisions = (id: string) =>
 
 export const getReportRevision = (id: string, revisionId: string) =>
   api.get<ReportRevisionDetail>(`/reports/${id}/revisions/${revisionId}`).then(r => r.data);
+
+export const publishReportFeatured = (id: string, adminToken: string) =>
+  api
+    .post<{ ok: boolean; repo: string; path: string; branch: string; commitUrl: string | null }>(
+      `/reports/${id}/publish-featured`,
+      {},
+      { headers: { Authorization: `Bearer ${adminToken}` } }
+    )
+    .then(r => r.data);
 
 export const startResearch = (data: { query: string; supplemental?: string; filterTags?: string[] }) =>
   api.post<{ runId: string; status: string }>('/research', data).then(r => r.data);

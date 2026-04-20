@@ -350,6 +350,30 @@ export async function runResearchJob(
     }
 
     // ────────────────────────────────────────────────────────────────
+    // STAGE 8b: PLAIN LANGUAGE — sister report for general audiences
+    // ────────────────────────────────────────────────────────────────
+    await progress('plain_language', 93, 'Writing plain-language version of the report...', { substep: 'plain_language_started' });
+
+    const plainLanguageResult = await callRoleModel({
+      role: 'plain_language_synthesizer',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
+        {
+          role: 'user',
+          content: `Rewrite the following research report in plain language for a general reader. Keep uncertainty and contradictions explicit.\n\n${generatedReport.markdown.slice(0, 120000)}`,
+        },
+      ],
+    });
+    modelLog.push(plainLanguageResult);
+    await progress('plain_language', 93, 'Plain-language report drafted', {
+      substep: 'plain_language_done',
+      model: plainLanguageResult.model,
+      tokenUsage: { prompt: plainLanguageResult.promptTokens, completion: plainLanguageResult.completionTokens },
+    });
+
+    const plainLanguageMarkdown = plainLanguageResult.content.trim();
+
+        // ────────────────────────────────────────────────────────────────
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
@@ -363,6 +387,7 @@ export async function runResearchJob(
       synthesizerContent: generatedReport.markdown,
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+      plainLanguageMarkdown,
     });
     await saveRunCheckpoint({
       runId,
@@ -565,8 +590,9 @@ async function saveReport(args: {
   synthesizerContent: string;
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
+  plainLanguageMarkdown?: string;
 }): Promise<string> {
-  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary } = args;
+  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary, plainLanguageMarkdown } = args;
 
   // Parse sections from synthesizer output
   const sections = parseReportSections(synthesizerContent);
@@ -603,7 +629,17 @@ async function saveReport(args: {
     // Store verification metadata
     await client.query(
       `UPDATE reports SET metadata=$1 WHERE id=$2`,
-      [JSON.stringify({ verification, plan, discovery: discoverySummary ?? null }), reportId]
+      [
+        JSON.stringify({
+          verification,
+          plan,
+          discovery: discoverySummary ?? null,
+          ...(plainLanguageMarkdown && plainLanguageMarkdown.length > 0
+            ? { plain_language_markdown: plainLanguageMarkdown }
+            : {}),
+        }),
+        reportId,
+      ]
     );
   });
 
