@@ -21,6 +21,7 @@ import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel } from '../openrouter/openrouterService';
+import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
@@ -100,8 +101,10 @@ export async function runDiscoveryOrchestrator(args: {
   researchQuery: string;
   plan: Record<string, unknown>;
   filterTags?: string[];
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -116,6 +119,8 @@ export async function runDiscoveryOrchestrator(args: {
   try {
     const planResult = await callRoleModel({
       role: 'planner',
+      engineVersion,
+      researchObjective,
       messages: [
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {

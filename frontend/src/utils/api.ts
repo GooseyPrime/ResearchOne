@@ -43,6 +43,13 @@ export interface Source {
   published_at?: string;
 }
 
+export type ResearchObjective =
+  | 'GENERAL'
+  | 'INVESTIGATIVE_SYNTHESIS'
+  | 'NOVEL_APPLICATION_DISCOVERY'
+  | 'PATENT_GAP_ANALYSIS'
+  | 'ANOMALY_CORRELATION';
+
 export interface ResearchProgressEvent {
   runId?: string;
   stage: string;
@@ -67,6 +74,8 @@ export interface ResearchRun {
   id: string;
   title: string;
   query: string;
+  engine_version?: string | null;
+  research_objective?: ResearchObjective | string | null;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   error_message?: string;
   failed_stage?: string;
@@ -270,6 +279,8 @@ export const startResearch = (data: {
   supplemental?: string;
   filterTags?: string[];
   modelOverrides?: Record<string, unknown>;
+  engineVersion?: 'v2';
+  researchObjective?: ResearchObjective;
 }) =>
   api.post<{ runId: string; status: string }>('/research', data).then(r => r.data);
 

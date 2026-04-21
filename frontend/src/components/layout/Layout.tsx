@@ -22,6 +22,7 @@ import clsx from 'clsx';
 
 const NAV_ITEMS = [
   { to: '/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
+  { to: '/research-v2', label: 'Research One 2', icon: FlaskConical, desc: 'V2 frontier ensemble' },
   { to: '/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
   { to: '/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence' },
   { to: '/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding explorer' },

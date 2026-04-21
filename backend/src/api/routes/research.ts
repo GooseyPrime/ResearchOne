@@ -4,7 +4,10 @@ import { query } from '../../db/pool';
 import { researchQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
 import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
-import { APPROVED_REASONING_MODEL_ALLOWLIST } from '../../services/reasoning/reasoningModelPolicy';
+import {
+  APPROVED_REASONING_MODEL_ALLOWLIST,
+  parseResearchObjective,
+} from '../../services/reasoning/reasoningModelPolicy';
 import { config } from '../../config';
 
 const router = Router();
@@ -12,16 +15,40 @@ const router = Router();
 // POST /api/research - Start a research run
 router.post('/', async (req, res, next) => {
   try {
-    const { query: researchQuery, supplemental, filterTags, modelOverrides } = req.body as {
+    const {
+      query: researchQuery,
+      supplemental,
+      filterTags,
+      modelOverrides,
+      engineVersion,
+      researchObjective: researchObjectiveRaw,
+    } = req.body as {
       query: string;
       supplemental?: string;
       filterTags?: string[];
       modelOverrides?: unknown;
+      engineVersion?: string;
+      researchObjective?: string;
     };
 
     if (!researchQuery || typeof researchQuery !== 'string') {
       res.status(400).json({ error: 'query is required' });
       return;
+    }
+
+    const eng = typeof engineVersion === 'string' ? engineVersion.trim() : '';
+    if (eng && eng !== 'v2') {
+      res.status(400).json({ error: 'engineVersion must be "v2" when set' });
+      return;
+    }
+
+    let researchObjective = parseResearchObjective(researchObjectiveRaw);
+    if (researchObjectiveRaw != null && researchObjectiveRaw !== '' && !researchObjective) {
+      res.status(400).json({ error: 'invalid researchObjective' });
+      return;
+    }
+    if (eng === 'v2' && !researchObjective) {
+      researchObjective = 'GENERAL';
     }
 
     const normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
@@ -30,9 +57,17 @@ router.post('/', async (req, res, next) => {
     const title = researchQuery.slice(0, 200);
 
     await query(
-      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides)
-       VALUES ($1, $2, $3, $4, 'queued', $5)`,
-      [runId, title, researchQuery, supplemental ?? '', JSON.stringify(normalizedOverrides)]
+      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, engine_version, research_objective)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7)`,
+      [
+        runId,
+        title,
+        researchQuery,
+        supplemental ?? '',
+        JSON.stringify(normalizedOverrides),
+        eng === 'v2' ? 'v2' : null,
+        researchObjective ?? null,
+      ]
     );
 
     await researchQueue.add(
@@ -43,6 +78,8 @@ router.post('/', async (req, res, next) => {
         supplemental,
         filterTags,
         modelOverrides: normalizedOverrides,
+        engineVersion: eng === 'v2' ? 'v2' : undefined,
+        researchObjective: researchObjective ?? undefined,
       },
       { jobId: runId }
     );
@@ -88,7 +125,7 @@ router.get('/model-options', async (_req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query as { status?: string };
-    let sql = `SELECT id, title, query, status, error_message, failed_stage, failure_meta,
+    let sql = `SELECT id, title, query, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at
                FROM research_runs`;

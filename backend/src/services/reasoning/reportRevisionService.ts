@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { parseResearchObjective, type ResearchObjective } from './reasoningModelPolicy';
 import { logger } from '../../utils/logger';
 
 export interface RevisionProgress {
@@ -156,14 +157,26 @@ export async function createReportRevision(args: {
     [args.reportId]
   );
 
-  const reportRunModelEnsembleRows = await query<{ model_ensemble: Record<string, unknown> | null }>(
-    `SELECT rr.model_ensemble FROM research_runs rr
+  const reportRunModelEnsembleRows = await query<{
+    model_ensemble: Record<string, unknown> | null;
+    engine_version: string | null;
+    research_objective: string | null;
+  }>(
+    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective FROM research_runs rr
       JOIN reports r ON r.run_id = rr.id
      WHERE r.id = $1
      LIMIT 1`,
     [args.reportId]
   );
   const reportRunModelEnsemble = reportRunModelEnsembleRows[0]?.model_ensemble ?? null;
+  const runEngineVersion = reportRunModelEnsembleRows[0]?.engine_version?.trim() || undefined;
+  const runObjective: ResearchObjective | undefined = parseResearchObjective(
+    reportRunModelEnsembleRows[0]?.research_objective ?? undefined
+  );
+  const revOpts = {
+    engineVersion: runEngineVersion,
+    researchObjective: runObjective,
+  };
   if (baseSections.length === 0) {
     throw new Error('Report has no sections');
   }
@@ -184,6 +197,7 @@ export async function createReportRevision(args: {
   emit('intake', 12, 'Parsing revision request');
   const intakeResult = await callRoleModel({
     role: 'revision_intake',
+    ...revOpts,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.revision_intake },
       { role: 'user', content: `Revision request:\n${args.requestText}\nRationale:\n${args.rationale ?? ''}\nReturn JSON only.` },
@@ -196,6 +210,7 @@ export async function createReportRevision(args: {
   const deterministicHits = locateAffectedSections({ sections: baseSections, request: args.requestText, targetTerms });
   const locatorResult = await callRoleModel({
     role: 'report_locator',
+    ...revOpts,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.report_locator },
       {
@@ -213,6 +228,7 @@ Return strict JSON.`,
   emit('planning', 38, 'Building structured change plan');
   const plannerResult = await callRoleModel({
     role: 'change_planner',
+    ...revOpts,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.change_planner },
       {
@@ -261,6 +277,7 @@ Return strict JSON.`,
       const section = revisedSections[idx];
       const rewriteResult = await callRoleModel({
         role: 'section_rewriter',
+        ...revOpts,
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS.section_rewriter },
           {
@@ -310,6 +327,7 @@ Return revised section body only.`,
     revisedSections.map(async (section) => {
       const checkerResult = await callRoleModel({
         role: 'citation_integrity_checker',
+        ...revOpts,
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS.citation_integrity_checker },
           {
@@ -338,6 +356,7 @@ Return JSON only.`,
   emit('verification', 82, 'Running final revision verifier');
   const verifierResult = await callRoleModel({
     role: 'final_revision_verifier',
+    ...revOpts,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.final_revision_verifier },
       {
