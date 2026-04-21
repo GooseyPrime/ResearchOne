@@ -155,6 +155,8 @@ export default function ResearchPage() {
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
+  const [supplementalUrlsText, setSupplementalUrlsText] = useState('');
+  const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
@@ -202,7 +204,15 @@ export default function ResearchPage() {
       setFailure(null);
       setTraceEvents([queuedEvt]);
       subscribeToJob(data.runId);
-      addNotification('info', 'Research started — tracking detailed progress...');
+      const ing = data.supplementalIngest;
+      if (ing && (ing.urlsQueued > 0 || ing.filesQueued > 0)) {
+        addNotification(
+          'info',
+          `Research started — ingested ${ing.urlsQueued} URL(s) and ${ing.filesQueued} file(s) into the corpus.`
+        );
+      } else {
+        addNotification('info', 'Research started — tracking detailed progress...');
+      }
       qc.invalidateQueries({ queryKey: ['research-runs'] });
     },
     onError: (error) => {
@@ -393,11 +403,17 @@ export default function ResearchPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+    const urlList = supplementalUrlsText
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
     mutation.mutate({
       query: query.trim(),
       supplemental: supplemental.trim() || undefined,
       filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
+      supplementalUrls: urlList.length > 0 ? urlList : undefined,
+      supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
     });
   };
 
@@ -474,6 +490,51 @@ export default function ResearchPage() {
                   onChange={(e) => setSupplemental(e.target.value)}
                   disabled={mutation.isPending || !!trackingRunId}
                 />
+              </div>
+              <div>
+                <label className="section-title block mb-2">Supplemental URLs</label>
+                <textarea
+                  className="textarea min-h-16 font-mono text-sm"
+                  placeholder={'https://example.com/paper\n(one URL per line, or comma-separated)'}
+                  value={supplementalUrlsText}
+                  onChange={(e) => setSupplementalUrlsText(e.target.value)}
+                  disabled={mutation.isPending || !!trackingRunId}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Each URL is fetched and added to the ResearchOne corpus, then used for this run.
+                </p>
+              </div>
+              <div>
+                <label className="section-title block mb-2">Supplemental files</label>
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.txt,.md,text/plain,application/pdf"
+                  className="block w-full text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-surface-300 file:text-slate-200"
+                  disabled={mutation.isPending || !!trackingRunId}
+                  onChange={(e) => {
+                    const list = e.target.files ? Array.from(e.target.files) : [];
+                    setSupplementalFiles((prev) => [...prev, ...list]);
+                    e.target.value = '';
+                  }}
+                />
+                {supplementalFiles.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {supplementalFiles.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 text-xs text-slate-400 bg-surface-200 rounded px-2 py-1">
+                        <span className="truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="text-slate-500 hover:text-white flex-shrink-0"
+                          onClick={() => setSupplementalFiles((prev) => prev.filter((_, j) => j !== i))}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-slate-500 mt-1">PDF, TXT, or Markdown — uploaded into the corpus for this run and later retrieval.</p>
               </div>
               <div>
                 <label className="section-title block mb-2">Filter by Tags</label>

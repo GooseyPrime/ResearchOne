@@ -6,6 +6,7 @@ import {
   getReportRevisions,
   createReportRevision,
   publishReportFeatured,
+  getResearchRun,
   ADMIN_SESSION_TOKEN_KEY,
 } from '../utils/api';
 import {
@@ -24,10 +25,13 @@ import {
   Download,
   Sparkles,
   Globe,
+  ChevronDown,
+  ChevronUp,
+  MessageSquareText,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 
@@ -101,6 +105,7 @@ export default function ReportDetailPage() {
   const { addNotification } = useStore();
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
   const [plainOpen, setPlainOpen] = useState(false);
+  const [requestPromptOpen, setRequestPromptOpen] = useState(false);
   const [revisionRequestText, setRevisionRequestText] = useState('');
   const [revisionRationale, setRevisionRationale] = useState('');
   const [revisionProgress, setRevisionProgress] = useState<{
@@ -138,6 +143,12 @@ export default function ReportDetailPage() {
     enabled: !!id,
   });
 
+  const { data: sourceRun } = useQuery({
+    queryKey: ['research-run', report?.run_id],
+    queryFn: () => getResearchRun(report!.run_id!),
+    enabled: Boolean(report?.run_id),
+  });
+
   const { data: revisions = [] } = useQuery({
     queryKey: ['report-revisions', id],
     queryFn: () => getReportRevisions(id!),
@@ -167,6 +178,20 @@ export default function ReportDetailPage() {
     report?.metadata && typeof report.metadata === 'object' && 'plain_language_markdown' in report.metadata
       ? String((report.metadata as { plain_language_markdown?: string }).plain_language_markdown ?? '')
       : '';
+
+  const researchRequestSnapshot = useMemo(() => {
+    const meta = report?.metadata as { research_request?: { query?: string; supplemental?: string; supplemental_attachments?: unknown } } | undefined;
+    const fromMeta = meta?.research_request;
+    const attachments = (sourceRun?.supplemental_attachments ??
+      fromMeta?.supplemental_attachments) as
+      | Array<{ kind: string; url?: string; filename?: string; mimetype?: string; ingestion_job_id: string }>
+      | undefined;
+    return {
+      query: fromMeta?.query ?? sourceRun?.query ?? report?.query ?? '',
+      supplemental: (fromMeta?.supplemental ?? sourceRun?.supplemental ?? '').trim(),
+      attachments: Array.isArray(attachments) ? attachments : [],
+    };
+  }, [report?.metadata, report?.query, sourceRun]);
 
   const revisionMutation = useMutation({
     mutationFn: () =>
@@ -326,6 +351,72 @@ export default function ReportDetailPage() {
               <span>•</span>
               <span className="text-amber-400">⚠ {report.contradiction_count} contradictions found</span>
             </>
+          )}
+        </div>
+
+        <div className="print:hidden">
+          <button
+            type="button"
+            className="flex items-center gap-2 text-sm text-accent hover:underline mt-1"
+            onClick={() => setRequestPromptOpen((o) => !o)}
+          >
+            <MessageSquareText size={14} />
+            {requestPromptOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Original research request
+            {researchRequestSnapshot.attachments.length > 0 && (
+              <span className="text-xs text-slate-500">
+                ({researchRequestSnapshot.attachments.length} supplemental item
+                {researchRequestSnapshot.attachments.length === 1 ? '' : 's'})
+              </span>
+            )}
+          </button>
+          {requestPromptOpen && (
+            <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200 p-4 space-y-3 text-sm">
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Prompt</span>
+                <p className="text-slate-200 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.query}</p>
+              </div>
+              {researchRequestSnapshot.supplemental ? (
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Supplemental text</span>
+                  <p className="text-slate-300 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.supplemental}</p>
+                </div>
+              ) : null}
+              {researchRequestSnapshot.attachments.length > 0 ? (
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Supplemental URLs and files (ingested into corpus)
+                  </span>
+                  <ul className="mt-2 space-y-2">
+                    {researchRequestSnapshot.attachments.map((a, i) => (
+                      <li key={`${a.ingestion_job_id}-${i}`} className="text-slate-300 flex flex-col gap-0.5">
+                        {a.kind === 'url' && a.url ? (
+                          <>
+                            <span className="text-xs text-slate-500">URL</span>
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-accent break-all hover:underline"
+                            >
+                              {a.url}
+                            </a>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-slate-500">File</span>
+                            <span>
+                              {a.filename ?? 'file'}
+                              {a.mimetype ? <span className="text-slate-500 text-xs"> ({a.mimetype})</span> : null}
+                            </span>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
 
