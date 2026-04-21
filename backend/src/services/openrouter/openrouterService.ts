@@ -1,8 +1,16 @@
 import axios, { AxiosError } from 'axios';
+import { InferenceClient } from '@huggingface/inference';
 import { config } from '../../config';
 import { REASONING_FIRST_PREAMBLE, withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
+import {
+  RED_TEAM_V2_SYSTEM_PREFIX,
+  isHfRepoModel,
+  resolveReasoningModels,
+  type ModelCallPurpose,
+  type ResearchObjective,
+} from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble };
@@ -21,6 +29,12 @@ export interface ModelCallOptions {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  /** Research One 2 — when `'v2'`, `resolveReasoningModels` may override models. */
+  engineVersion?: string | null;
+  researchObjective?: ResearchObjective | null;
+  callPurpose?: ModelCallPurpose;
+  /** Optional tools for HF / OpenAI-compatible chat (forwarded when set). */
+  tools?: unknown;
   runtimeOverrides?: {
     primary?: string;
     fallback?: string;
@@ -169,30 +183,118 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   final_revision_verifier: 3072,
 };
 
-async function callModel(
-  model: string,
-  options: ModelCallOptions
-): Promise<ModelCallResult> {
-  const start = Date.now();
+let hfClient: InferenceClient | null = null;
+function getHfClient(): InferenceClient | null {
+  const token = config.hfToken?.trim();
+  if (!token) return null;
+  if (!hfClient) hfClient = new InferenceClient(token);
+  return hfClient;
+}
 
-  const response = await axios.post(
-    `${config.openrouter.baseUrl}/chat/completions`,
-    {
-      model,
-      messages: options.messages,
-      temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
-      max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${config.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://researchone.app',
-        'X-Title': 'ResearchOne',
-      },
-      timeout: 120000,
-    }
+function applyV2RedTeamPrefix(options: ModelCallOptions): ChatMessage[] {
+  const msgs = options.messages;
+  if (options.engineVersion?.trim() !== 'v2') return msgs;
+  if (options.role !== 'skeptic' && options.role !== 'internal_challenger') return msgs;
+  if (options.callPurpose === 'contradiction_extraction') return msgs;
+  const sysIdx = msgs.findIndex((m) => m.role === 'system');
+  if (sysIdx < 0) return msgs;
+  return msgs.map((msg, i) =>
+    i === sysIdx ? { ...msg, content: `${RED_TEAM_V2_SYSTEM_PREFIX}${msg.content}` } : msg
   );
+}
+
+function resolveModelsForCall(options: ModelCallOptions): { primary: string; fallback: string | undefined } {
+  const v2 = resolveReasoningModels({
+    engineVersion: options.engineVersion,
+    researchObjective: options.researchObjective ?? undefined,
+    role: options.role,
+    callPurpose: options.callPurpose,
+  });
+  if (v2) {
+    return { primary: v2.primary, fallback: v2.fallback };
+  }
+  return {
+    primary: primaryForRole(options.role, options.runtimeOverrides?.primary),
+    fallback: fallbackForRole(options.role, options.runtimeOverrides?.fallback),
+  };
+}
+
+async function callHfChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  const client = getHfClient();
+  if (!client) {
+    logger.error('HF model selected but HF_TOKEN is not set', { role: options.role, model });
+    throw new Error('Hugging Face token (HF_TOKEN) is required for this model');
+  }
+
+  const start = Date.now();
+  const messages = applyV2RedTeamPrefix(options).map((m) => ({
+    role: m.role as 'system' | 'user' | 'assistant',
+    content: m.content,
+  }));
+
+  const payload: Record<string, unknown> = {
+    model,
+    messages,
+    temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
+    max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
+  };
+  if (options.tools) payload.tools = options.tools;
+
+  const hf = client as unknown as {
+    chatCompletion: (args: Record<string, unknown>) => Promise<{
+      choices?: Array<{ message?: { content?: string | unknown } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    }>;
+  };
+  const out = await hf.chatCompletion(payload);
+  const choice = out.choices?.[0];
+  const rawContent = choice?.message?.content;
+  const content =
+    typeof rawContent === 'string'
+      ? rawContent
+      : Array.isArray(rawContent)
+        ? rawContent
+            .map((c: unknown) =>
+              c && typeof c === 'object' && 'text' in c && typeof (c as { text?: string }).text === 'string'
+                ? (c as { text: string }).text
+                : ''
+            )
+            .join('')
+        : '';
+
+  const usage = out.usage;
+
+  return {
+    content,
+    model,
+    role: options.role,
+    promptTokens: usage?.prompt_tokens ?? 0,
+    completionTokens: usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - start,
+    usedFallback: false,
+    primaryModel: model,
+  };
+}
+
+async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  const start = Date.now();
+  const body: Record<string, unknown> = {
+    model,
+    messages: applyV2RedTeamPrefix(options),
+    temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
+    max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
+  };
+  if (options.tools) body.tools = options.tools;
+
+  const response = await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
+    headers: {
+      Authorization: `Bearer ${config.openrouter.apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://researchone.app',
+      'X-Title': 'ResearchOne',
+    },
+    timeout: 120000,
+  });
 
   const choice = response.data.choices?.[0];
   if (!choice) throw new Error('No response choices from OpenRouter');
@@ -209,25 +311,35 @@ async function callModel(
   };
 }
 
+async function callModel(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  if (isHfRepoModel(model)) {
+    return callHfChat(model, options);
+  }
+  return callOpenRouter(model, options);
+}
+
 /**
  * Call a model by role with automatic fallback.
  * Logs all calls with token counts and duration.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
-  const primaryModel = primaryForRole(options.role, options.runtimeOverrides?.primary);
-  const fallbackModel = fallbackForRole(options.role, options.runtimeOverrides?.fallback);
+  const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(options);
+  const fallbackModel = resolvedFallback;
 
   try {
     const result = await callModel(primaryModel, options);
-    logger.debug(`OpenRouter [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
+    const backend = isHfRepoModel(result.model) ? 'HF' : 'OpenRouter';
+    logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
     return { ...result, usedFallback: false, primaryModel };
   } catch (err) {
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;
-    const errorClassification = classifyModelError(axiosErr);
+    const errorClassification = axios.isAxiosError(err)
+      ? classifyModelError(axiosErr)
+      : classifyHfError(err);
     const providerBody = axiosErr.response?.data;
 
-    logger.warn(`OpenRouter primary model failed for [${options.role}]`, {
+    logger.warn(`Model primary failed for [${options.role}]`, {
       role: options.role,
       model: primaryModel,
       status,
@@ -236,17 +348,20 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       providerBody,
     });
 
-    if (fallbackModel) {
+    if (fallbackModel && fallbackModel !== primaryModel) {
       logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
       try {
         const result = await callModel(fallbackModel, options);
-        logger.debug(`OpenRouter fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
+        const backend = isHfRepoModel(result.model) ? 'HF' : 'OpenRouter';
+        logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         return { ...result, usedFallback: true, primaryModel, errorClassification };
       } catch (fallbackErr) {
         const fallbackAxiosErr = fallbackErr as AxiosError;
-        const fallbackClassification = classifyModelError(fallbackAxiosErr);
+        const fallbackClassification = axios.isAxiosError(fallbackErr)
+          ? classifyModelError(fallbackAxiosErr)
+          : classifyHfError(fallbackErr);
         const fallbackBody = fallbackAxiosErr.response?.data;
-        logger.error(`OpenRouter fallback also failed for [${options.role}]`, {
+        logger.error(`Model fallback also failed for [${options.role}]`, {
           role: options.role,
           model: fallbackModel,
           status: fallbackAxiosErr.response?.status,
@@ -257,7 +372,11 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         throw new NormalizedModelError({
           classification: fallbackClassification,
           status: fallbackAxiosErr.response?.status,
-          providerMessage: extractProviderMessage(fallbackAxiosErr),
+          providerMessage: axios.isAxiosError(fallbackErr)
+            ? extractProviderMessage(fallbackAxiosErr)
+            : fallbackErr instanceof Error
+              ? fallbackErr.message
+              : String(fallbackErr),
           model: fallbackModel,
           fallbackTried: true,
           role: options.role,
@@ -268,12 +387,26 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     throw new NormalizedModelError({
       classification: errorClassification,
       status,
-      providerMessage: extractProviderMessage(axiosErr),
+      providerMessage: axios.isAxiosError(err)
+        ? extractProviderMessage(axiosErr)
+        : err instanceof Error
+          ? err.message
+          : String(err),
       model: primaryModel,
       fallbackTried: false,
       role: options.role,
     });
   }
+}
+
+function classifyHfError(err: unknown): ModelErrorClassification {
+  if (err instanceof Error) {
+    const m = err.message.toLowerCase();
+    if (m.includes('token') && m.includes('hf')) return 'auth_error';
+    if (m.includes('rate') || m.includes('429')) return 'rate_limited';
+    if (m.includes('timeout') || m.includes('econnrefused')) return 'network_error';
+  }
+  return 'provider_unavailable';
 }
 
 function classifyModelError(err: AxiosError): ModelErrorClassification {

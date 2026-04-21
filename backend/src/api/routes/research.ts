@@ -5,7 +5,10 @@ import { query } from '../../db/pool';
 import { researchQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
 import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
-import { APPROVED_REASONING_MODEL_ALLOWLIST } from '../../services/reasoning/reasoningModelPolicy';
+import {
+  APPROVED_REASONING_MODEL_ALLOWLIST,
+  parseResearchObjective,
+} from '../../services/reasoning/reasoningModelPolicy';
 import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 
@@ -105,11 +108,40 @@ router.post(
           : [];
       }
 
+      let engineVersion: string | undefined;
+      let researchObjectiveRaw: unknown;
+      if (isMultipart) {
+        const ev = body.engineVersion;
+        engineVersion = typeof ev === 'string' ? ev.trim() : undefined;
+        researchObjectiveRaw = body.researchObjective;
+      } else {
+        const jsonBody = req.body as { engineVersion?: string; researchObjective?: string };
+        engineVersion = typeof jsonBody.engineVersion === 'string' ? jsonBody.engineVersion.trim() : undefined;
+        researchObjectiveRaw = jsonBody.researchObjective;
+      }
+
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
 
       if (!researchQuery || typeof researchQuery !== 'string') {
         res.status(400).json({ error: 'query is required' });
         return;
+      }
+
+      const eng = engineVersion ?? '';
+      if (eng && eng !== 'v2') {
+        res.status(400).json({ error: 'engineVersion must be "v2" when set' });
+        return;
+      }
+
+      let researchObjective = parseResearchObjective(
+        typeof researchObjectiveRaw === 'string' ? researchObjectiveRaw : undefined
+      );
+      if (researchObjectiveRaw != null && researchObjectiveRaw !== '' && !researchObjective) {
+        res.status(400).json({ error: 'invalid researchObjective' });
+        return;
+      }
+      if (eng === 'v2' && !researchObjective) {
+        researchObjective = 'GENERAL';
       }
 
       const normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
@@ -147,9 +179,18 @@ router.post(
       }
 
       await query(
-        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb)`,
-        [runId, title, researchQuery, supplemental ?? '', JSON.stringify(normalizedOverrides), JSON.stringify(attachments)]
+        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
+         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
+        [
+          runId,
+          title,
+          researchQuery,
+          supplemental ?? '',
+          JSON.stringify(normalizedOverrides),
+          JSON.stringify(attachments),
+          eng === 'v2' ? 'v2' : null,
+          researchObjective ?? null,
+        ]
       );
 
       await researchQueue.add(
@@ -160,6 +201,8 @@ router.post(
           supplemental,
           filterTags,
           modelOverrides: normalizedOverrides,
+          engineVersion: eng === 'v2' ? 'v2' : undefined,
+          researchObjective: researchObjective ?? undefined,
         },
         { jobId: runId }
       );
@@ -214,7 +257,7 @@ router.get('/model-options', async (_req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query as { status?: string };
-    let sql = `SELECT id, title, query, supplemental, supplemental_attachments, status, error_message, failed_stage, failure_meta,
+    let sql = `SELECT id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at
                FROM research_runs`;

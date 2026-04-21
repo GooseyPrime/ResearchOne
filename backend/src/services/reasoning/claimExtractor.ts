@@ -7,6 +7,7 @@
 
 import { withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import type { ResearchObjective } from './reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { logger } from '../../utils/logger';
@@ -58,6 +59,8 @@ export async function extractAndPersistClaims(args: {
   chunks: RetrievedChunk[];
   reasonerOutput: string;
   synthesizerOutput: string;
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
 }): Promise<ExtractedClaim[]> {
   const { runId, reportId, researchQuery, chunks, reasonerOutput, synthesizerOutput } = args;
 
@@ -73,6 +76,8 @@ export async function extractAndPersistClaims(args: {
   try {
     const result = await callRoleModel({
       role: 'verifier', // Use verifier role for structured extraction
+      engineVersion: args.engineVersion,
+      researchObjective: args.researchObjective,
       messages: [
         { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
         {

@@ -6,6 +6,7 @@
 
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import type { ResearchObjective } from './reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
@@ -52,6 +53,8 @@ export async function extractAndPersistContradictions(args: {
   chunks: RetrievedChunk[];
   claims: ExtractedClaim[];
   skepticOutput: string;
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
 }): Promise<ExtractedContradiction[]> {
   const { runId, reportId, chunks, claims, skepticOutput } = args;
 
@@ -77,6 +80,9 @@ export async function extractAndPersistContradictions(args: {
   try {
     const result = await callRoleModel({
       role: 'skeptic',
+      engineVersion: args.engineVersion,
+      researchObjective: args.researchObjective,
+      callPurpose: 'contradiction_extraction',
       messages: [
         { role: 'system', content: withPreamble(CONTRADICTION_EXTRACTOR_PROMPT) },
         {

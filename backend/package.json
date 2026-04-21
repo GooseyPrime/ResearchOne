@@ -14,6 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@huggingface/inference": "^4.13.15",
     "@langchain/core": "^1.1.40",
     "@langchain/openai": "^1.4.4",
     "@types/node": "^22.0.0",

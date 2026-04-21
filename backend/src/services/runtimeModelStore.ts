@@ -1,4 +1,3 @@
-import path from 'path';
 import { query, queryOne } from '../db/pool';
 import { logger } from '../utils/logger';
 import type { ModelRole } from './openrouter/openrouterService';

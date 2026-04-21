@@ -9,6 +9,7 @@
 
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import type { ResearchObjective } from './reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
@@ -65,6 +66,8 @@ export async function mapAndPersistCitations(args: {
   claims: ExtractedClaim[];
   reportSections: Array<{ type: string; title: string; content: string }>;
   discoverySummary?: Record<string, unknown>;
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
 }): Promise<CitationMapResult> {
   const { runId, reportId, chunks, claims, reportSections, discoverySummary } = args;
 
@@ -89,6 +92,8 @@ export async function mapAndPersistCitations(args: {
   try {
     const modelResult = await callRoleModel({
       role: 'verifier',
+      engineVersion: args.engineVersion,
+      researchObjective: args.researchObjective,
       messages: [
         { role: 'system', content: withPreamble(CITATION_MAPPER_PROMPT) },
         {

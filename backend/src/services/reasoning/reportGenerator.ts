@@ -1,4 +1,5 @@
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import type { ResearchObjective } from './reasoningModelPolicy';
 
 export interface ReportSectionDraft {
   title: string;
@@ -37,10 +38,14 @@ export async function generateIterativeReport(args: {
   retrieverAnalysis: string;
   reasoningChains: string;
   challenges: string;
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[] }> {
+  const v2 = { engineVersion: args.engineVersion, researchObjective: args.researchObjective };
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
+    ...v2,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.outline_architect },
       {
@@ -69,6 +74,7 @@ Return strict JSON only.`,
 
     const sectionResult = await callRoleModel({
       role: 'section_drafter',
+      ...v2,
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.section_drafter },
         {
@@ -95,6 +101,7 @@ Return section body text only.`,
 
   const challenger = await callRoleModel({
     role: 'internal_challenger',
+    ...v2,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.internal_challenger },
       {
@@ -108,6 +115,7 @@ Return section body text only.`,
 
   const refinement = await callRoleModel({
     role: 'coherence_refiner',
+    ...v2,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.coherence_refiner },
       {

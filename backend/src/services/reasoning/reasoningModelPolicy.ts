@@ -25,15 +25,130 @@ export const REASONING_MODEL_ROLES = [
 
 export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];
 
+/** Research One 2 — objective typology (persisted on `research_runs.research_objective`). */
+export const RESEARCH_OBJECTIVES = [
+  'GENERAL',
+  'INVESTIGATIVE_SYNTHESIS',
+  'NOVEL_APPLICATION_DISCOVERY',
+  'PATENT_GAP_ANALYSIS',
+  'ANOMALY_CORRELATION',
+] as const;
+
+export type ResearchObjective = (typeof RESEARCH_OBJECTIVES)[number];
+
+export function isResearchObjective(value: string): value is ResearchObjective {
+  return (RESEARCH_OBJECTIVES as readonly string[]).includes(value);
+}
+
+export function parseResearchObjective(raw: unknown): ResearchObjective | undefined {
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  const v = raw.trim();
+  return isResearchObjective(v) ? v : undefined;
+}
+
+/** V2 ensemble model ids (also re-exported from `config/modelRuntime.ts`). */
+export const MODEL_LATERAL_THINKER_V2 = 'anthropic/claude-opus-4.7';
+/** Primary/fallback pair for strict logic — OpenRouter slugs. */
+export const MODEL_STRICT_LOGICIAN_PRIMARY_V2 = 'openai/o3';
+export const MODEL_STRICT_LOGICIAN_FALLBACK_V2 = 'deepseek/deepseek-r1';
+export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
+/** Hugging Face Inference — uncensored red-team (primary → fallback). */
+export const MODEL_UNBIASED_CHALLENGER_PRIMARY_V2 = 'NousResearch/Hermes-3-Llama-3.1-70B';
+export const MODEL_UNBIASED_CHALLENGER_FALLBACK_V2 = 'cognitivecomputations/dolphin-2.9.2-qwen2-72b';
+
+/** Prepended to skeptic / internal_challenger system prompts when `engineVersion === 'v2'`. */
+export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
+
+export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' | 'default';
+
+/** Route uncensored HF repos (not OpenRouter-style provider slugs). */
+export function isHfRepoModel(model: string): boolean {
+  const m = model.trim();
+  if (!m.includes('/')) return false;
+  return m.startsWith('NousResearch/') || m.startsWith('cognitivecomputations/');
+}
+
 /**
- * Approved OpenRouter model ids (validated against GET /api/v1/models).
+ * When `engineVersion === 'v2'`, returns OpenRouter or HF primary/fallback for this call.
+ * Returns `null` when the V2 engine should not override (use env + DB runtime defaults).
+ */
+export function resolveReasoningModels(args: {
+  engineVersion?: string | null;
+  researchObjective?: ResearchObjective | null;
+  role: ReasoningModelRole;
+  callPurpose?: ModelCallPurpose;
+}): { primary: string; fallback: string } | null {
+  if (!args.engineVersion || args.engineVersion.trim() !== 'v2') return null;
+
+  const obj = args.researchObjective ?? 'GENERAL';
+  const purpose = args.callPurpose ?? 'default';
+  const { role } = args;
+
+  const lateralBrains =
+    obj === 'NOVEL_APPLICATION_DISCOVERY' || obj === 'PATENT_GAP_ANALYSIS';
+
+  const brainPair = (): { primary: string; fallback: string } =>
+    lateralBrains
+      ? { primary: MODEL_LATERAL_THINKER_V2, fallback: MODEL_LATERAL_THINKER_V2 }
+      : { primary: MODEL_STRICT_LOGICIAN_PRIMARY_V2, fallback: MODEL_STRICT_LOGICIAN_FALLBACK_V2 };
+
+  const creativePair = (): { primary: string; fallback: string } => ({
+    primary: MODEL_LATERAL_THINKER_V2,
+    fallback: MODEL_LATERAL_THINKER_V2,
+  });
+
+  const fastPair = (): { primary: string; fallback: string } => ({
+    primary: MODEL_FAST_EXTRACTOR_V2,
+    fallback: MODEL_FAST_EXTRACTOR_V2,
+  });
+
+  const hfRedPair = (): { primary: string; fallback: string } => ({
+    primary: MODEL_UNBIASED_CHALLENGER_PRIMARY_V2,
+    fallback: MODEL_UNBIASED_CHALLENGER_FALLBACK_V2,
+  });
+
+  // Contradiction extraction reuses `role: skeptic` in code — route by purpose first.
+  if (purpose === 'contradiction_extraction') {
+    return fastPair();
+  }
+
+  if (role === 'skeptic' || role === 'internal_challenger') {
+    return hfRedPair();
+  }
+
+  if (role === 'planner' || role === 'reasoner') {
+    return brainPair();
+  }
+
+  if (
+    role === 'outline_architect' ||
+    role === 'section_drafter' ||
+    role === 'synthesizer' ||
+    role === 'coherence_refiner' ||
+    role === 'plain_language_synthesizer'
+  ) {
+    return creativePair();
+  }
+
+  if (role === 'retriever' || role === 'verifier') {
+    return fastPair();
+  }
+
+  // Revision and other roles: keep legacy env/DB defaults for V2 unless extended later.
+  return null;
+}
+
+/**
+ * Approved OpenRouter / Hugging Face model ids for runtime validation.
  * Per-role defaults live in config; this list is the deployment allowlist.
  */
 const BASE_ALLOWLIST = [
   'anthropic/claude-3.5-haiku',
   'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-opus-4.7',
   'anthropic/claude-sonnet-4',
   'anthropic/claude-sonnet-4.5',
+  'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-r1',
   'deepseek/deepseek-v3.2',
@@ -42,10 +157,12 @@ const BASE_ALLOWLIST = [
   'meta-llama/llama-3.3-70b-instruct',
   'mistralai/mistral-small-3.2-24b-instruct',
   'moonshotai/kimi-k2-thinking',
+  'NousResearch/Hermes-3-Llama-3.1-70B',
   'openai/gpt-5-mini',
   'openai/o1',
   'openai/o3',
   'openai/o3-mini',
+  'openai/o4-mini',
   'qwen/qwen3-235b-a22b',
 ] as const;
 

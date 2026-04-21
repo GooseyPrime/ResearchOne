@@ -17,7 +17,7 @@ import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
-import { APPROVED_REASONING_MODEL_ALLOWLIST } from './reasoningModelPolicy';
+import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective } from './reasoningModelPolicy';
 
 export interface ResearchJobData {
   runId: string;
@@ -25,6 +25,8 @@ export interface ResearchJobData {
   supplemental?: string;
   filterTags?: string[];
   modelOverrides?: PerRunModelOverrides;
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
 }
 
 export interface ResearchProgress {
@@ -170,11 +172,27 @@ async function appendRunProgressEvent(runId: string, event: Record<string, unkno
   );
 }
 
+function v2CallOpts(engineVersion: string | undefined, researchObjective: ResearchObjective | undefined) {
+  return {
+    engineVersion: engineVersion ?? undefined,
+    researchObjective: researchObjective ?? undefined,
+  };
+}
+
 export async function runResearchJob(
   data: ResearchJobData,
   onProgress: ProgressCallback
 ): Promise<{ runId: string; reportId: string }> {
-  const { runId, query: researchQuery, supplemental, filterTags, modelOverrides: incomingModelOverrides } = data;
+  const {
+    runId,
+    query: researchQuery,
+    supplemental,
+    filterTags,
+    modelOverrides: incomingModelOverrides,
+    engineVersion,
+    researchObjective,
+  } = data;
+  const v2 = v2CallOpts(engineVersion, researchObjective);
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
@@ -224,6 +242,7 @@ export async function runResearchJob(
 
     const plannerResult = await callRoleModel({
       role: 'planner',
+      ...v2,
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'planner'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.planner },
@@ -275,6 +294,8 @@ export async function runResearchJob(
       researchQuery,
       plan: plan as unknown as Record<string, unknown>,
       filterTags,
+      engineVersion,
+      researchObjective,
     });
 
     await query(
@@ -344,6 +365,7 @@ export async function runResearchJob(
 
     const retrieverResult = await callRoleModel({
       role: 'retriever',
+      ...v2,
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.retriever },
@@ -368,6 +390,7 @@ export async function runResearchJob(
 
     const reasonerResult = await callRoleModel({
       role: 'reasoner',
+      ...v2,
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.reasoner },
@@ -392,6 +415,8 @@ export async function runResearchJob(
 
     const skepticResult = await callRoleModel({
       role: 'skeptic',
+      ...v2,
+      callPurpose: 'pipeline_skeptic',
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.skeptic },
@@ -421,6 +446,7 @@ export async function runResearchJob(
       retrieverAnalysis: retrieverResult.content,
       reasoningChains: reasonerResult.content,
       challenges: skepticResult.content,
+      ...v2,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',
@@ -442,6 +468,7 @@ export async function runResearchJob(
 
     const verifierResult = await callRoleModel({
       role: 'verifier',
+      ...v2,
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.verifier },
@@ -470,6 +497,7 @@ export async function runResearchJob(
 
     const plainLanguageResult = await callRoleModel({
       role: 'plain_language_synthesizer',
+      ...v2,
       runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'plain_language_synthesizer'),
       messages: [
         { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
@@ -543,6 +571,7 @@ export async function runResearchJob(
         chunks: allChunks,
         reasonerOutput: reasonerResult.content,
         synthesizerOutput: generatedReport.markdown,
+        ...v2,
       });
 
       await extractAndPersistContradictions({
@@ -551,6 +580,7 @@ export async function runResearchJob(
         chunks: allChunks,
         claims,
         skepticOutput: skepticResult.content,
+        ...v2,
       });
 
       await mapAndPersistCitations({
@@ -560,6 +590,7 @@ export async function runResearchJob(
         claims,
         reportSections,
         discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+        ...v2,
       });
     } catch (epistemicErr) {
       // Do not fail the run if epistemic persistence fails — log and continue

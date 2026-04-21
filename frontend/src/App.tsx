@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import ResearchPage from './pages/ResearchPage';
+import ResearchPageV2 from './pages/ResearchPageV2';
 import ReportsPage from './pages/ReportsPage';
 import ReportDetailPage from './pages/ReportDetailPage';
 import CorpusPage from './pages/CorpusPage';
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/research" replace />} />
           <Route path="research" element={<ResearchPage />} />
+          <Route path="research-v2" element={<ResearchPageV2 />} />
           <Route path="models" element={<ModelsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/:id" element={<ReportDetailPage />} />

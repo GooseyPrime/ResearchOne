@@ -89,6 +89,9 @@ const config = {
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
   },
 
+  /** Hugging Face Inference API token (Research One 2 red-team models). Optional unless V2 HF routes run. */
+  hfToken: process.env.HF_TOKEN || '',
+
   // OpenRouter slugs — tiered defaults (override any role via PLANNER_MODEL, etc.).
   models: {
     planner: process.env.PLANNER_MODEL || 'moonshotai/kimi-k2-thinking',

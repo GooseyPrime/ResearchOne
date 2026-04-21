@@ -43,6 +43,13 @@ export interface Source {
   published_at?: string;
 }
 
+export type ResearchObjective =
+  | 'GENERAL'
+  | 'INVESTIGATIVE_SYNTHESIS'
+  | 'NOVEL_APPLICATION_DISCOVERY'
+  | 'PATENT_GAP_ANALYSIS'
+  | 'ANOMALY_CORRELATION';
+
 export interface ResearchProgressEvent {
   runId?: string;
   stage: string;
@@ -77,6 +84,8 @@ export interface ResearchRun {
   query: string;
   supplemental?: string;
   supplemental_attachments?: ResearchSupplementalAttachment[];
+  engine_version?: string | null;
+  research_objective?: ResearchObjective | string | null;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   error_message?: string;
   failed_stage?: string;
@@ -285,6 +294,8 @@ export interface StartResearchPayload {
   supplemental?: string;
   filterTags?: string[];
   modelOverrides?: Record<string, unknown>;
+  engineVersion?: 'v2';
+  researchObjective?: ResearchObjective;
   supplementalUrls?: string[];
   supplementalFiles?: File[];
 }
@@ -301,6 +312,8 @@ export const startResearch = (data: StartResearchPayload) => {
     if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
       form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
     }
+    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
+    if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (supplementalUrls?.length) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
     }
