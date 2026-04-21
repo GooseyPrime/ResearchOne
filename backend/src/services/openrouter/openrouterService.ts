@@ -4,10 +4,10 @@ import { config } from '../../config';
 import { REASONING_FIRST_PREAMBLE, withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
+import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
 import {
   RED_TEAM_V2_SYSTEM_PREFIX,
   isHfRepoModel,
-  resolveReasoningModels,
   type ModelCallPurpose,
   type ResearchObjective,
 } from '../reasoning/reasoningModelPolicy';
@@ -191,16 +191,22 @@ function getHfClient(): InferenceClient | null {
   return hfClient;
 }
 
-function applyV2RedTeamPrefix(options: ModelCallOptions): ChatMessage[] {
-  const msgs = options.messages;
+function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
+  let msgs = options.messages;
   if (options.engineVersion?.trim() !== 'v2') return msgs;
-  if (options.role !== 'skeptic' && options.role !== 'internal_challenger') return msgs;
-  if (options.callPurpose === 'contradiction_extraction') return msgs;
-  const sysIdx = msgs.findIndex((m) => m.role === 'system');
-  if (sysIdx < 0) return msgs;
-  return msgs.map((msg, i) =>
-    i === sysIdx ? { ...msg, content: `${RED_TEAM_V2_SYSTEM_PREFIX}${msg.content}` } : msg
-  );
+
+  if (
+    (options.role === 'skeptic' || options.role === 'internal_challenger') &&
+    options.callPurpose !== 'contradiction_extraction'
+  ) {
+    const idx = msgs.findIndex((m) => m.role === 'system');
+    if (idx >= 0) {
+      msgs = msgs.map((msg, i) =>
+        i === idx ? { ...msg, content: `${RED_TEAM_V2_SYSTEM_PREFIX}${msg.content}` } : msg
+      );
+    }
+  }
+  return msgs;
 }
 
 function resolveModelsForCall(options: ModelCallOptions): { primary: string; fallback: string | undefined } {
@@ -211,7 +217,7 @@ function resolveModelsForCall(options: ModelCallOptions): { primary: string; fal
     callPurpose: options.callPurpose,
   });
   if (v2) {
-    return { primary: v2.primary, fallback: v2.fallback };
+    return mergePresetWithRuntimeOverride(v2, options.runtimeOverrides);
   }
   return {
     primary: primaryForRole(options.role, options.runtimeOverrides?.primary),
@@ -227,7 +233,7 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   }
 
   const start = Date.now();
-  const messages = applyV2RedTeamPrefix(options).map((m) => ({
+  const messages = applyV2SystemAugmentations(options).map((m) => ({
     role: m.role as 'system' | 'user' | 'assistant',
     content: m.content,
   }));
@@ -280,7 +286,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   const start = Date.now();
   const body: Record<string, unknown> = {
     model,
-    messages: applyV2RedTeamPrefix(options),
+    messages: applyV2SystemAugmentations(options),
     temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
     max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
   };

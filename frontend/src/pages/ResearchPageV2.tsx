@@ -29,11 +29,15 @@ import {
   getResearchRun,
   cancelResearchRun,
   deleteResearchRun,
-  getResearchModelOptions,
+  getResearchV2EnsemblePresets,
   ResearchRun,
   ResearchProgressEvent,
   type ResearchObjective,
 } from '../utils/api';
+import { useStore } from '../store/useStore';
+import { getSocket, subscribeToJob } from '../utils/socket';
+import { formatDistanceToNow } from 'date-fns';
+import clsx from 'clsx';
 
 const RESEARCH_OBJECTIVE_OPTIONS: { value: ResearchObjective; label: string }[] = [
   { value: 'GENERAL', label: 'General' },
@@ -42,10 +46,6 @@ const RESEARCH_OBJECTIVE_OPTIONS: { value: ResearchObjective; label: string }[] 
   { value: 'PATENT_GAP_ANALYSIS', label: 'Patent gap analysis' },
   { value: 'ANOMALY_CORRELATION', label: 'Anomaly correlation' },
 ];
-import { useStore } from '../store/useStore';
-import { getSocket, subscribeToJob } from '../utils/socket';
-import { formatDistanceToNow } from 'date-fns';
-import clsx from 'clsx';
 
 interface ResearchFailureEvent {
   runId: string;
@@ -180,9 +180,9 @@ export default function ResearchPageV2() {
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<Record<string, { primary?: string; fallback?: string }>>({});
 
-  const { data: modelOptions } = useQuery({
-    queryKey: ['research-model-options'],
-    queryFn: getResearchModelOptions,
+  const { data: ensembleData } = useQuery({
+    queryKey: ['research-v2-ensemble-presets'],
+    queryFn: getResearchV2EnsemblePresets,
     staleTime: 60000,
   });
 
@@ -221,17 +221,16 @@ export default function ResearchPageV2() {
   });
 
   useEffect(() => {
-    if (!modelOptions) return;
-    const defaults = modelOptions.defaults || {};
+    if (!ensembleData?.presets) return;
+    const preset = ensembleData.presets[researchObjective];
+    if (!preset) return;
     const rows: Record<string, { primary?: string; fallback?: string }> = {};
-    for (const role of Object.keys(defaults)) {
-      rows[role] = {
-        primary: defaults[role],
-        fallback: modelOptions.fallbacks?.[role],
-      };
+    for (const role of Object.keys(preset)) {
+      const p = preset[role];
+      rows[role] = { primary: p.primary, fallback: p.fallback };
     }
     setModelRows(rows);
-  }, [modelOptions]);
+  }, [ensembleData, researchObjective]);
 
   useEffect(() => {
     if (!trackingRunId || !polledRun || polledRun.id !== trackingRunId) return;
@@ -380,12 +379,14 @@ export default function ResearchPageV2() {
 
   const runtimeOverridesPayload = useMemo(() => {
     const payload: Record<string, unknown> = {};
-    if (!modelOptions) return payload;
+    if (!ensembleData?.presets) return payload;
+    const baseline = ensembleData.presets[researchObjective];
+    if (!baseline) return payload;
 
     for (const role of Object.keys(modelRows)) {
       const row = modelRows[role];
-      const defaultsPrimary = modelOptions.defaults?.[role];
-      const defaultsFallback = modelOptions.fallbacks?.[role];
+      const defaultsPrimary = baseline[role]?.primary;
+      const defaultsFallback = baseline[role]?.fallback;
       const primary = row?.primary?.trim();
       const fallback = row?.fallback?.trim();
 
@@ -398,7 +399,7 @@ export default function ResearchPageV2() {
     }
 
     return payload;
-  }, [modelRows, modelOptions]);
+  }, [modelRows, ensembleData, researchObjective]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -484,7 +485,9 @@ export default function ResearchPageV2() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-slate-500 mt-1">Shapes planner and model routing for this V2 run.</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Selects the default model ensemble for this run. Open “Model ensemble” to review or edit per role.
+            </p>
           </div>
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowSupplemental((v) => !v)}>
@@ -520,18 +523,40 @@ export default function ResearchPageV2() {
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowModels((v) => !v)}>
             <Settings2 size={14} />
-            {showModels ? 'Hide per-run model selection' : 'Show per-run model selection'}
+            {showModels ? 'Hide model ensemble' : 'Show model ensemble (Research One 2)'}
           </button>
 
-          {showModels && modelOptions && (
+          {showModels && ensembleData?.presets?.[researchObjective] && (
             <div className="rounded-lg border border-indigo-900/30 bg-surface-200 p-3 space-y-3">
-              <p className="text-xs text-slate-400">These model settings apply only to this run, including queued runs.</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-400">
+                  Defaults for <span className="text-slate-300">{RESEARCH_OBJECTIVE_OPTIONS.find((o) => o.value === researchObjective)?.label ?? researchObjective}</span>. Edits apply to this run only.
+                </p>
+                <button
+                  type="button"
+                  className="btn-ghost text-xs flex items-center gap-1"
+                  disabled={mutation.isPending || !!trackingRunId}
+                  onClick={() => {
+                    const preset = ensembleData.presets[researchObjective];
+                    const rows: Record<string, { primary?: string; fallback?: string }> = {};
+                    for (const role of Object.keys(preset)) {
+                      const p = preset[role];
+                      rows[role] = { primary: p.primary, fallback: p.fallback };
+                    }
+                    setModelRows(rows);
+                  }}
+                >
+                  <RotateCcw size={14} />
+                  Reset to default for this objective
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {Object.keys(modelOptions.defaults).map((role) => (
+                {Object.keys(ensembleData.presets[researchObjective]).map((role) => (
                   <div key={role} className="border border-indigo-900/20 rounded p-2 space-y-1">
                     <div className="text-xs text-slate-400 uppercase tracking-wide">{role.replace(/_/g, ' ')}</div>
                     <input
                       className="input text-xs"
+                      placeholder="primary"
                       value={modelRows[role]?.primary || ''}
                       onChange={(e) =>
                         setModelRows((prev) => ({
@@ -543,6 +568,7 @@ export default function ResearchPageV2() {
                     />
                     <input
                       className="input text-xs"
+                      placeholder="fallback"
                       value={modelRows[role]?.fallback || ''}
                       onChange={(e) =>
                         setModelRows((prev) => ({

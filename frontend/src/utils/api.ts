@@ -352,6 +352,16 @@ export const getResearchRun = (id: string) =>
 export const getResearchModelOptions = () =>
   api.get<ResearchModelOptionsResponse>('/research/model-options').then(r => r.data);
 
+export type EnsembleRolePair = { primary: string; fallback: string };
+
+export interface ResearchV2EnsemblePresetsResponse {
+  presets: Record<ResearchObjective, Record<string, EnsembleRolePair>>;
+  allowlist: Record<string, string[]>;
+}
+
+export const getResearchV2EnsemblePresets = () =>
+  api.get<ResearchV2EnsemblePresetsResponse>('/research/v2/ensemble-presets').then((r) => r.data);
+
 export const cancelResearchRun = (id: string) =>
   api.post<{ ok: boolean; status: string }>(`/research/${id}/cancel`).then(r => r.data);
 

@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   MODEL_FAST_EXTRACTOR_V2,
-  MODEL_LATERAL_THINKER_V2,
-  MODEL_STRICT_LOGICIAN_FALLBACK_V2,
-  MODEL_STRICT_LOGICIAN_PRIMARY_V2,
-  MODEL_UNBIASED_CHALLENGER_FALLBACK_V2,
-  MODEL_UNBIASED_CHALLENGER_PRIMARY_V2,
-  resolveReasoningModels,
   isHfRepoModel,
 } from '../services/reasoning/reasoningModelPolicy';
+import { ENSEMBLE_PRESETS, resolveReasoningModels } from '../config/researchEnsemblePresets';
 
 describe('resolveReasoningModels', () => {
   it('returns null for non-v2 engine', () => {
@@ -28,43 +23,32 @@ describe('resolveReasoningModels', () => {
     ).toBeNull();
   });
 
-  it('maps planner to strict logician by default', () => {
+  it('maps planner from GENERAL preset', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL',
       role: 'planner',
     });
-    expect(r).toEqual({
-      primary: MODEL_STRICT_LOGICIAN_PRIMARY_V2,
-      fallback: MODEL_STRICT_LOGICIAN_FALLBACK_V2,
+    expect(r).toEqual(ENSEMBLE_PRESETS.GENERAL.planner);
+  });
+
+  it('maps planner from PATENT_GAP_ANALYSIS preset', () => {
+    const r = resolveReasoningModels({
+      engineVersion: 'v2',
+      researchObjective: 'PATENT_GAP_ANALYSIS',
+      role: 'planner',
     });
+    expect(r).toEqual(ENSEMBLE_PRESETS.PATENT_GAP_ANALYSIS.planner);
   });
 
-  it('maps planner to lateral for patent / novel objectives', () => {
-    for (const o of ['PATENT_GAP_ANALYSIS', 'NOVEL_APPLICATION_DISCOVERY'] as const) {
-      const r = resolveReasoningModels({
-        engineVersion: 'v2',
-        researchObjective: o,
-        role: 'planner',
-      });
-      expect(r).toEqual({
-        primary: MODEL_LATERAL_THINKER_V2,
-        fallback: MODEL_LATERAL_THINKER_V2,
-      });
-    }
-  });
-
-  it('routes pipeline skeptic to HF pair', () => {
+  it('routes pipeline skeptic from preset', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL',
       role: 'skeptic',
       callPurpose: 'pipeline_skeptic',
     });
-    expect(r).toEqual({
-      primary: MODEL_UNBIASED_CHALLENGER_PRIMARY_V2,
-      fallback: MODEL_UNBIASED_CHALLENGER_FALLBACK_V2,
-    });
+    expect(r).toEqual(ENSEMBLE_PRESETS.GENERAL.skeptic);
   });
 
   it('routes contradiction extraction to fast extractor', () => {
@@ -80,14 +64,13 @@ describe('resolveReasoningModels', () => {
     });
   });
 
-  it('returns null for revision roles (legacy path)', () => {
-    expect(
-      resolveReasoningModels({
-        engineVersion: 'v2',
-        researchObjective: 'GENERAL',
-        role: 'revision_intake',
-      })
-    ).toBeNull();
+  it('includes revision roles in presets', () => {
+    const r = resolveReasoningModels({
+      engineVersion: 'v2',
+      researchObjective: 'GENERAL',
+      role: 'revision_intake',
+    });
+    expect(r).toEqual(ENSEMBLE_PRESETS.GENERAL.revision_intake);
   });
 });
 

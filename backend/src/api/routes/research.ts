@@ -11,6 +11,7 @@ import {
 } from '../../services/reasoning/reasoningModelPolicy';
 import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
+import { ENSEMBLE_PRESETS } from '../../config/researchEnsemblePresets';
 
 const router = Router();
 
@@ -221,6 +222,18 @@ router.post(
     }
   }
 );
+
+// GET /api/research/v2/ensemble-presets — Research One 2 objective-based defaults (before /:id)
+router.get('/v2/ensemble-presets', async (_req, res, next) => {
+  try {
+    res.json({
+      presets: ENSEMBLE_PRESETS,
+      allowlist: APPROVED_REASONING_MODEL_ALLOWLIST,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/research/model-options - model allowlists/defaults for per-run selection UI
 router.get('/model-options', async (_req, res, next) => {
