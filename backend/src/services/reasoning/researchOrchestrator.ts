@@ -1,4 +1,4 @@
-import { query, withTransaction } from '../../db/pool';
+import { query, queryOne, withTransaction } from '../../db/pool';
 import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
@@ -530,6 +530,11 @@ export async function runResearchJob(
       chunkCount: allChunks.length,
       falsificationCriteria: plan.falsification_criteria,
     });
+    const prov = await queryOne<{
+      supplemental: string;
+      supplemental_attachments: unknown;
+    }>(`SELECT supplemental, supplemental_attachments FROM research_runs WHERE id=$1`, [runId]);
+
     const reportId = await saveReport({
       runId,
       query: researchQuery,
@@ -541,6 +546,10 @@ export async function runResearchJob(
       plainLanguageMarkdown,
       readerFrontMatter,
       modelEnsemble: snapshotModelEnsemble(runModelOverrides),
+      supplementalText: prov?.supplemental ?? '',
+      supplementalAttachments: Array.isArray(prov?.supplemental_attachments)
+        ? (prov.supplemental_attachments as Record<string, unknown>[])
+        : [],
     });
     await saveRunCheckpoint({
       runId,
@@ -766,8 +775,23 @@ async function saveReport(args: {
   plainLanguageMarkdown?: string;
   readerFrontMatter?: ReaderFrontMatter;
   modelEnsemble?: Record<string, unknown>;
+  supplementalText: string;
+  supplementalAttachments: Record<string, unknown>[];
 }): Promise<string> {
-  const { runId, query: researchQuery, plan, allChunks, synthesizerContent, verification, discoverySummary, plainLanguageMarkdown, readerFrontMatter, modelEnsemble } = args;
+  const {
+    runId,
+    query: researchQuery,
+    plan,
+    allChunks,
+    synthesizerContent,
+    verification,
+    discoverySummary,
+    plainLanguageMarkdown,
+    readerFrontMatter,
+    modelEnsemble,
+    supplementalText,
+    supplementalAttachments,
+  } = args;
 
   // Parse sections from synthesizer output
   const sections = parseReportSections(synthesizerContent);
@@ -809,6 +833,11 @@ async function saveReport(args: {
           verification,
           plan,
           discovery: discoverySummary ?? null,
+          research_request: {
+            query: researchQuery,
+            supplemental: supplementalText,
+            supplemental_attachments: supplementalAttachments,
+          },
           ...(plainLanguageMarkdown && plainLanguageMarkdown.length > 0
             ? { plain_language_markdown: plainLanguageMarkdown }
             : {}),

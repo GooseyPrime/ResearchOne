@@ -70,10 +70,20 @@ export interface ResearchProgressEvent {
   };
 }
 
+export interface ResearchSupplementalAttachment {
+  kind: 'url' | 'file';
+  url?: string;
+  filename?: string;
+  mimetype?: string;
+  ingestion_job_id: string;
+}
+
 export interface ResearchRun {
   id: string;
   title: string;
   query: string;
+  supplemental?: string;
+  supplemental_attachments?: ResearchSupplementalAttachment[];
   engine_version?: string | null;
   research_objective?: ResearchObjective | string | null;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -138,6 +148,11 @@ export interface Report {
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;
+    research_request?: {
+      query?: string;
+      supplemental?: string;
+      supplemental_attachments?: ResearchSupplementalAttachment[];
+    };
   };
 }
 
@@ -274,15 +289,59 @@ export interface ResearchModelOptionsResponse {
   allowlist: Record<string, string[]>;
 }
 
-export const startResearch = (data: {
+export interface StartResearchPayload {
   query: string;
   supplemental?: string;
   filterTags?: string[];
   modelOverrides?: Record<string, unknown>;
   engineVersion?: 'v2';
   researchObjective?: ResearchObjective;
-}) =>
-  api.post<{ runId: string; status: string }>('/research', data).then(r => r.data);
+  supplementalUrls?: string[];
+  supplementalFiles?: File[];
+}
+
+export const startResearch = (data: StartResearchPayload) => {
+  const { supplementalFiles, supplementalUrls, ...rest } = data;
+  const hasFiles = supplementalFiles && supplementalFiles.length > 0;
+
+  if (hasFiles || (supplementalUrls && supplementalUrls.length > 0)) {
+    const form = new FormData();
+    form.append('query', rest.query);
+    if (rest.supplemental) form.append('supplemental', rest.supplemental);
+    if (rest.filterTags?.length) form.append('filterTags', JSON.stringify(rest.filterTags));
+    if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
+      form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
+    }
+    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
+    if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
+    if (supplementalUrls?.length) {
+      form.append('supplementalUrls', JSON.stringify(supplementalUrls));
+    }
+    for (const f of supplementalFiles ?? []) {
+      form.append('files', f);
+    }
+    return api
+      .post<{
+        runId: string;
+        status: string;
+        supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+      }>('/research', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  }
+
+  return api
+    .post<{
+      runId: string;
+      status: string;
+      supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+    }>('/research', {
+      ...rest,
+      supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
+    })
+    .then((r) => r.data);
+};
 
 export const getResearchRuns = (params?: { status?: string }) =>
   api.get<ResearchRun[]>('/research', { params }).then(r => r.data);

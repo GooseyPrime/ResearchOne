@@ -328,7 +328,7 @@ async function ensureReachableUrl(url: string): Promise<string> {
 }
 
 /** Wait for ingestion jobs to complete or timeout */
-async function waitForIngestionJobs(jobIds: string[], timeoutMs: number): Promise<void> {
+export async function waitForIngestionJobs(jobIds: string[], timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const pending = new Set(jobIds);
 
