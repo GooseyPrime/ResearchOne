@@ -235,7 +235,10 @@ export const createReportRevision = (id: string, data: {
   rationale?: string;
   initiatedBy?: string;
   initiatedByType?: string;
-}) => api.post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data).then(r => r.data);
+}) =>
+  api
+    .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
+    .then(r => r.data);
 
 export const getReportRevisions = (id: string) =>
   api.get<ReportRevision[]>(`/reports/${id}/revisions`).then(r => r.data);

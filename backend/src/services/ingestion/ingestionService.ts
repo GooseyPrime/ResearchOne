@@ -186,6 +186,9 @@ export async function runIngestionJob(
       overlap: config.ingestion.chunkOverlap,
     });
 
+    // AUDIT (manual ingest): No LLM title/summary/tags here — rawContent flows to chunkText (deterministic).
+    // If LLM metadata is added, use withPreamble + INGEST_CORPUS_SUMMARY_SUPPLEMENT from constants/prompts.ts.
+
     logger.info(`Created ${chunks.length} chunks for source ${sourceId}`);
 
     onProgress({ stage: 'store_chunks', percent: 60, message: `Storing ${chunks.length} chunks...` });

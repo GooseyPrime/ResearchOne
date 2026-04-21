@@ -9,6 +9,7 @@
 
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
 import { logger } from '../../utils/logger';
@@ -89,7 +90,7 @@ export async function mapAndPersistCitations(args: {
     const modelResult = await callRoleModel({
       role: 'verifier',
       messages: [
-        { role: 'system', content: CITATION_MAPPER_PROMPT },
+        { role: 'system', content: withPreamble(CITATION_MAPPER_PROMPT) },
         {
           role: 'user',
           content: `Report Sections:\n${sectionContext}\n\nEvidence Chunks:\n${chunkContext}\n\nExtracted Claims:\n${claimContext}\n\nMap each section to supporting chunk IDs. Output JSON only.`,

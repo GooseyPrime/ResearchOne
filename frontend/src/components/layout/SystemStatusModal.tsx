@@ -37,6 +37,16 @@ function healthErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error';
 }
 
+function runtimeLogsErrorMessage(err: unknown): string {
+  let base = healthErrorMessage(err);
+  if (axios.isAxiosError(err)) {
+    const d = err.response?.data as { hint?: string; triedPaths?: string[] } | undefined;
+    if (d?.hint) base += ` ${d.hint}`;
+    if (d?.triedPaths?.length) base += ` Tried: ${d.triedPaths.join(', ')}`;
+  }
+  return base;
+}
+
 export interface SystemStatusModalProps {
   open: boolean;
   onClose: () => void;
@@ -103,7 +113,7 @@ export default function SystemStatusModal({
       }
       setLogState({
         loading: false,
-        error: healthErrorMessage(err),
+        error: runtimeLogsErrorMessage(err),
         data: null,
       });
     }

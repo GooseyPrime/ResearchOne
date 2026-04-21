@@ -1,3 +1,8 @@
+/**
+ * AUDIT (epistemic): Uses pdf-parse only (no LLM/OCR). Whitespace normalization does not rewrite claims.
+ * If vision/OCR LLMs are added later, use withPreambleAndFidelity from constants/prompts.ts for system prompts.
+ */
+
 import pdfParse from 'pdf-parse';
 import { logger } from '../../utils/logger';
 

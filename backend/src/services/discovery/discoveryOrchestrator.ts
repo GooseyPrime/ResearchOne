@@ -21,6 +21,7 @@ import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel } from '../openrouter/openrouterService';
+import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
 import {
@@ -116,7 +117,7 @@ export async function runDiscoveryOrchestrator(args: {
     const planResult = await callRoleModel({
       role: 'planner',
       messages: [
-        { role: 'system', content: DISCOVERY_PLANNER_PROMPT },
+        { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {
           role: 'user',
           content: `Research Query: ${researchQuery}\n\nCurrent Research Plan:\n${JSON.stringify(plan, null, 2)}\n\nDecide whether external discovery is needed. Output JSON only.`,

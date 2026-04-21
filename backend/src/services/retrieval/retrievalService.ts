@@ -1,3 +1,8 @@
+/**
+ * AUDIT (epistemic): No LLM query expansion — user query is embedded and used for FTS as-is.
+ * If query rewriting is added, wrap LLM system prompts with withPreamble from constants/prompts.ts.
+ */
+
 import { query } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';

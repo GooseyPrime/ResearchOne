@@ -27,8 +27,9 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
+import { getSocket, subscribeToJob } from '../utils/socket';
 
 const SECTION_ICONS: Record<string, React.ElementType> = {
   executive_summary: BookOpen,
@@ -102,6 +103,34 @@ export default function ReportDetailPage() {
   const [plainOpen, setPlainOpen] = useState(false);
   const [revisionRequestText, setRevisionRequestText] = useState('');
   const [revisionRationale, setRevisionRationale] = useState('');
+  const [revisionProgress, setRevisionProgress] = useState<{
+    stage: string;
+    percent: number;
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    subscribeToJob(id);
+    const sock = getSocket();
+    const onProgress = (payload: unknown) => {
+      const p = payload as { reportId?: string; stage?: string; percent?: number; message?: string };
+      if (p.reportId && p.reportId !== id) return;
+      setRevisionProgress({
+        stage: p.stage ?? '',
+        percent: typeof p.percent === 'number' ? p.percent : 0,
+        message: p.message ?? '',
+      });
+    };
+    const onCompleted = () => setRevisionProgress(null);
+    sock.on('revision:progress', onProgress);
+    sock.on('revision:completed', onCompleted);
+    return () => {
+      sock.off('revision:progress', onProgress);
+      sock.off('revision:completed', onCompleted);
+    };
+  }, [id]);
+
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
@@ -145,7 +174,12 @@ export default function ReportDetailPage() {
         requestText: revisionRequestText.trim(),
         rationale: revisionRationale.trim() || undefined,
       }),
+    onMutate: () => {
+      addNotification('info', 'Revision request submitted — processing on the server…');
+      setRevisionProgress({ stage: 'queued', percent: 0, message: 'Connecting…' });
+    },
     onSuccess: (data) => {
+      setRevisionProgress(null);
       addNotification('success', 'Revision requested and applied as a new version.');
       setRevisionRequestText('');
       setRevisionRationale('');
@@ -156,6 +190,7 @@ export default function ReportDetailPage() {
       }
     },
     onError: (err: unknown) => {
+      setRevisionProgress(null);
       addNotification('error', err instanceof Error ? err.message : 'Revision request failed');
     },
   });
@@ -430,6 +465,23 @@ export default function ReportDetailPage() {
         >
           {revisionMutation.isPending ? 'Submitting revision...' : 'Submit revision request'}
         </button>
+        {revisionProgress && (
+          <div className="rounded border border-indigo-900/30 bg-surface-900/80 p-3 space-y-2">
+            <div className="flex justify-between gap-2 text-xs text-slate-400">
+              <span className="text-slate-300">{revisionProgress.message}</span>
+              <span className="tabular-nums text-slate-500">{revisionProgress.percent}%</span>
+            </div>
+            <div className="h-1.5 bg-surface-400 rounded overflow-hidden">
+              <div
+                className="h-full bg-accent transition-[width] duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, revisionProgress.percent))}%` }}
+              />
+            </div>
+            {revisionProgress.stage && (
+              <p className="text-[11px] text-slate-500 uppercase tracking-wide">{revisionProgress.stage}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card p-5 space-y-3 print:hidden">

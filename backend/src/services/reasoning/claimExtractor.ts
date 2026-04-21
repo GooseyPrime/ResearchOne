@@ -7,6 +7,7 @@
 
 import { withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { logger } from '../../utils/logger';
 
@@ -73,7 +74,7 @@ export async function extractAndPersistClaims(args: {
     const result = await callRoleModel({
       role: 'verifier', // Use verifier role for structured extraction
       messages: [
-        { role: 'system', content: CLAIM_EXTRACTOR_PROMPT },
+        { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
         {
           role: 'user',
           content: `Research Query: ${researchQuery}\n\nEvidence Chunks:\n${chunkContext}\n\nReasoner Output:\n${reasonerOutput.slice(0, MAX_REASONER_CONTEXT_CHARS)}\n\nSynthesizer Output:\n${synthesizerOutput.slice(0, MAX_SYNTHESIZER_CONTEXT_CHARS)}\n\nExtract all discrete claims. Output JSON array only.`,

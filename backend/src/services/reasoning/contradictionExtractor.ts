@@ -6,6 +6,7 @@
 
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel } from '../openrouter/openrouterService';
+import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
 import { logger } from '../../utils/logger';
@@ -77,7 +78,7 @@ export async function extractAndPersistContradictions(args: {
     const result = await callRoleModel({
       role: 'skeptic',
       messages: [
-        { role: 'system', content: CONTRADICTION_EXTRACTOR_PROMPT },
+        { role: 'system', content: withPreamble(CONTRADICTION_EXTRACTOR_PROMPT) },
         {
           role: 'user',
           content: `Claims:\n${claimsContext}\n\nSkeptic Analysis:\n${skepticOutput.slice(0, 2000)}\n\nEvidence Chunks:\n${chunkContext}\n\nIdentify all contradictions. Output JSON array only.`,

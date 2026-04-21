@@ -1,3 +1,8 @@
+/**
+ * AUDIT (epistemic): Persists JSON snapshots only — no LLM summarization. If LLM state summaries are added,
+ * use withPreamble plus CHECKPOINT_SUMMARY_SUPPLEMENT from constants/prompts.ts.
+ */
+
 import { query } from '../../db/pool';
 
 export async function saveRunCheckpoint(args: {
