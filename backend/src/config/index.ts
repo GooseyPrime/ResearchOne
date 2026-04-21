@@ -4,6 +4,8 @@ import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
 } from '../services/reasoning/reasoningModelPolicy';
+import { validateEnsemblePresetsAgainstAllowlist } from './researchEnsemblePresets';
+import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
 import { parseCorsOrigins } from './corsOrigins';
 
 loadEnv();
@@ -92,49 +94,49 @@ const config = {
   /** Hugging Face Inference API token (Research One 2 red-team models). Optional unless V2 HF routes run. */
   hfToken: process.env.HF_TOKEN || '',
 
-  // OpenRouter slugs — tiered defaults (override any role via PLANNER_MODEL, etc.).
+  // OpenRouter slugs — defaults from `defaultModels.ts`; optional env overrides for emergencies.
   models: {
-    planner: process.env.PLANNER_MODEL || 'moonshotai/kimi-k2-thinking',
-    retriever: process.env.RETRIEVER_MODEL || 'deepseek/deepseek-v3.2',
-    reasoner: process.env.REASONER_MODEL || 'deepseek/deepseek-r1',
-    skeptic: process.env.SKEPTIC_MODEL || 'moonshotai/kimi-k2-thinking',
-    synthesizer: process.env.SYNTHESIZER_MODEL || 'anthropic/claude-sonnet-4.5',
-    verifier: process.env.VERIFIER_MODEL || 'anthropic/claude-sonnet-4',
+    planner: process.env.PLANNER_MODEL || CODE_DEFAULT_REASONING_MODELS.planner,
+    retriever: process.env.RETRIEVER_MODEL || CODE_DEFAULT_REASONING_MODELS.retriever,
+    reasoner: process.env.REASONER_MODEL || CODE_DEFAULT_REASONING_MODELS.reasoner,
+    skeptic: process.env.SKEPTIC_MODEL || CODE_DEFAULT_REASONING_MODELS.skeptic,
+    synthesizer: process.env.SYNTHESIZER_MODEL || CODE_DEFAULT_REASONING_MODELS.synthesizer,
+    verifier: process.env.VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.verifier,
     plainLanguageSynthesizer:
-      process.env.PLAIN_LANGUAGE_SYNTHESIZER_MODEL || 'anthropic/claude-3.5-haiku',
-    outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || 'moonshotai/kimi-k2-thinking',
-    sectionDrafter: process.env.SECTION_DRAFTER_MODEL || 'google/gemini-2.5-pro',
-    internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || 'moonshotai/kimi-k2-thinking',
-    coherenceRefiner: process.env.COHERENCE_REFINER_MODEL || 'anthropic/claude-sonnet-4.5',
-    revisionIntake: process.env.REVISION_INTAKE_MODEL || 'openai/gpt-5-mini',
-    reportLocator: process.env.REPORT_LOCATOR_MODEL || 'openai/gpt-5-mini',
-    changePlanner: process.env.CHANGE_PLANNER_MODEL || 'moonshotai/kimi-k2-thinking',
-    sectionRewriter: process.env.SECTION_REWRITER_MODEL || 'google/gemini-2.5-pro',
+      process.env.PLAIN_LANGUAGE_SYNTHESIZER_MODEL || CODE_DEFAULT_REASONING_MODELS.plainLanguageSynthesizer,
+    outlineArchitect: process.env.OUTLINE_ARCHITECT_MODEL || CODE_DEFAULT_REASONING_MODELS.outlineArchitect,
+    sectionDrafter: process.env.SECTION_DRAFTER_MODEL || CODE_DEFAULT_REASONING_MODELS.sectionDrafter,
+    internalChallenger: process.env.INTERNAL_CHALLENGER_MODEL || CODE_DEFAULT_REASONING_MODELS.internalChallenger,
+    coherenceRefiner: process.env.COHERENCE_REFINER_MODEL || CODE_DEFAULT_REASONING_MODELS.coherenceRefiner,
+    revisionIntake: process.env.REVISION_INTAKE_MODEL || CODE_DEFAULT_REASONING_MODELS.revisionIntake,
+    reportLocator: process.env.REPORT_LOCATOR_MODEL || CODE_DEFAULT_REASONING_MODELS.reportLocator,
+    changePlanner: process.env.CHANGE_PLANNER_MODEL || CODE_DEFAULT_REASONING_MODELS.changePlanner,
+    sectionRewriter: process.env.SECTION_REWRITER_MODEL || CODE_DEFAULT_REASONING_MODELS.sectionRewriter,
     citationIntegrityChecker:
-      process.env.CITATION_INTEGRITY_CHECKER_MODEL || 'mistralai/mistral-small-3.2-24b-instruct',
-    finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || 'anthropic/claude-sonnet-4',
-    embedding: process.env.EMBEDDING_MODEL || 'openai/text-embedding-3-small',
+      process.env.CITATION_INTEGRITY_CHECKER_MODEL || CODE_DEFAULT_REASONING_MODELS.citationIntegrityChecker,
+    finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.finalRevisionVerifier,
+    embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
     fallbacks: {
-      planner: process.env.PLANNER_FALLBACK || 'deepseek/deepseek-r1',
-      retriever: process.env.RETRIEVER_FALLBACK || 'google/gemini-2.5-flash',
-      reasoner: process.env.REASONER_FALLBACK || 'moonshotai/kimi-k2-thinking',
-      skeptic: process.env.SKEPTIC_FALLBACK || 'anthropic/claude-sonnet-4',
-      synthesizer: process.env.SYNTHESIZER_FALLBACK || 'google/gemini-2.5-pro',
-      verifier: process.env.VERIFIER_FALLBACK || 'openai/o3-mini',
+      planner: process.env.PLANNER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.planner,
+      retriever: process.env.RETRIEVER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.retriever,
+      reasoner: process.env.REASONER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.reasoner,
+      skeptic: process.env.SKEPTIC_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.skeptic,
+      synthesizer: process.env.SYNTHESIZER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.synthesizer,
+      verifier: process.env.VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.verifier,
       plainLanguageSynthesizer:
-        process.env.PLAIN_LANGUAGE_SYNTHESIZER_FALLBACK || 'google/gemini-2.5-flash',
-      outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || 'deepseek/deepseek-r1',
-      sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || 'anthropic/claude-sonnet-4',
-      internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || 'anthropic/claude-sonnet-4',
-      coherenceRefiner: process.env.COHERENCE_REFINER_FALLBACK || 'google/gemini-2.5-pro',
-      revisionIntake: process.env.REVISION_INTAKE_FALLBACK || 'qwen/qwen3-235b-a22b',
-      reportLocator: process.env.REPORT_LOCATOR_FALLBACK || 'qwen/qwen3-235b-a22b',
-      changePlanner: process.env.CHANGE_PLANNER_FALLBACK || 'deepseek/deepseek-r1',
-      sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || 'anthropic/claude-sonnet-4',
+        process.env.PLAIN_LANGUAGE_SYNTHESIZER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.plainLanguageSynthesizer,
+      outlineArchitect: process.env.OUTLINE_ARCHITECT_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.outlineArchitect,
+      sectionDrafter: process.env.SECTION_DRAFTER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.sectionDrafter,
+      internalChallenger: process.env.INTERNAL_CHALLENGER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.internalChallenger,
+      coherenceRefiner: process.env.COHERENCE_REFINER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.coherenceRefiner,
+      revisionIntake: process.env.REVISION_INTAKE_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.revisionIntake,
+      reportLocator: process.env.REPORT_LOCATOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.reportLocator,
+      changePlanner: process.env.CHANGE_PLANNER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.changePlanner,
+      sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.sectionRewriter,
       citationIntegrityChecker:
-        process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || 'meta-llama/llama-3.3-70b-instruct',
-      finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || 'openai/o3-mini',
+        process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationIntegrityChecker,
+      finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.finalRevisionVerifier,
     },
   },
 
@@ -317,5 +319,7 @@ validateReasoningModelPolicy({
   models: reasoningModelsForPolicy,
   fallbacks: reasoningFallbacksForPolicy,
 });
+
+validateEnsemblePresetsAgainstAllowlist();
 
 export { config };
