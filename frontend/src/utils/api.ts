@@ -182,6 +182,10 @@ export interface IngestionJob {
   started_at?: string;
   completed_at?: string;
   created_at: string;
+  source_id?: string | null;
+  metadata?: Record<string, unknown>;
+  imported_via?: string | null;
+  discovered_by_run_id?: string | null;
 }
 
 export interface AtlasExport {
@@ -344,6 +348,53 @@ export const putAdminModels = (adminToken: string, body: Record<string, unknown>
   api.put('/admin/models', body, {
     headers: { Authorization: `Bearer ${adminToken}` },
   }).then(r => r.data);
+
+/** Must match backend `CORPUS_CLEAR_CONFIRM_PHRASE` (admin corpus clear). */
+export const CORPUS_CLEAR_CONFIRM_PHRASE = 'DELETE ALL CORPUS DATA';
+
+export interface CorpusClearResponse {
+  ok: boolean;
+  deleted: {
+    claims: number;
+    sources: number;
+    ingestion_jobs: number;
+  };
+}
+
+export const clearCorpus = (adminToken: string, body: { confirmPhrase: string }) =>
+  api
+    .post<CorpusClearResponse>('/admin/corpus/clear', body, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    .then(r => r.data);
+
+export interface DeleteCorpusByIngestionJobsResponse {
+  ok: boolean;
+  deletedSourceIds: string[];
+  deletedSourcesCount: number;
+  skippedJobIds: string[];
+}
+
+export const deleteCorpusByIngestionJobs = (adminToken: string, body: { jobIds: string[] }) =>
+  api
+    .post<DeleteCorpusByIngestionJobsResponse>('/admin/corpus/delete-by-ingestion-jobs', body, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    .then(r => r.data);
+
+export interface DeleteCorpusByResearchRunResponse {
+  ok: boolean;
+  runId: string;
+  deletedSourceIds: string[];
+  deletedSourcesCount: number;
+}
+
+export const deleteCorpusByResearchRun = (adminToken: string, body: { runId: string }) =>
+  api
+    .post<DeleteCorpusByResearchRunResponse>('/admin/corpus/delete-by-research-run', body, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    .then(r => r.data);
 
 export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);

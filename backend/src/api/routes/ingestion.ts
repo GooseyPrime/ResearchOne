@@ -165,9 +165,12 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
 router.get('/jobs', async (_req, res, next) => {
   try {
     const jobs = await query(
-      `SELECT id, url, file_name, source_type, status, error_message, started_at, completed_at, created_at
-       FROM ingestion_jobs
-       ORDER BY created_at DESC
+      `SELECT j.id, j.url, j.file_name, j.source_type, j.status, j.error_message,
+              j.started_at, j.completed_at, j.created_at, j.source_id, j.metadata,
+              s.imported_via, s.discovered_by_run_id
+       FROM ingestion_jobs j
+       LEFT JOIN sources s ON s.id = j.source_id
+       ORDER BY j.created_at DESC
        LIMIT 100`
     );
     res.json(jobs);

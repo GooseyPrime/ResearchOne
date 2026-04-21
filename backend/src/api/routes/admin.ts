@@ -4,8 +4,10 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import { config } from '../../config';
+import { CORPUS_CLEAR_CONFIRM_PHRASE } from '../../constants/corpusAdmin';
 import { logger } from '../../utils/logger';
-import { query } from '../../db/pool';
+import type { PoolClient } from 'pg';
+import { query, withTransaction } from '../../db/pool';
 import {
   getCachedOverrides,
   refreshRuntimeModelOverrides,
@@ -15,6 +17,10 @@ import {
 
 const router = Router();
 const execAsync = promisify(exec);
+
+function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
 
 const LOG_TAIL_MAX_BYTES = 512 * 1024;
 const LOG_TAIL_MAX_LINES = 2000;
@@ -158,6 +164,127 @@ router.put('/models', async (req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Invalid payload';
     res.status(400).json({ error: msg });
+  }
+});
+
+/** Remove claims (and cascaded contradictions) tied to these sources, then delete sources. */
+async function deleteCorpusSources(client: PoolClient, sourceIds: string[]): Promise<number> {
+  if (sourceIds.length === 0) return 0;
+  await client.query(
+    `DELETE FROM claims
+     WHERE source_id = ANY($1::uuid[])
+        OR chunk_id IN (SELECT id FROM chunks WHERE source_id = ANY($1::uuid[]))`,
+    [sourceIds]
+  );
+  const del = await client.query(`DELETE FROM sources WHERE id = ANY($1::uuid[])`, [sourceIds]);
+  return del.rowCount ?? 0;
+}
+
+router.post('/corpus/clear', async (req, res) => {
+  if (!adminTokenOk(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const confirmPhrase =
+    req.body && typeof req.body === 'object' && 'confirmPhrase' in req.body
+      ? String((req.body as { confirmPhrase?: string }).confirmPhrase ?? '')
+      : '';
+  if (confirmPhrase !== CORPUS_CLEAR_CONFIRM_PHRASE) {
+    res.status(400).json({
+      error: 'Invalid confirmation',
+      hint: `confirmPhrase must be exactly: ${CORPUS_CLEAR_CONFIRM_PHRASE}`,
+    });
+    return;
+  }
+  try {
+    const deleted = await withTransaction(async (client) => {
+      const claims = await client.query(`DELETE FROM claims RETURNING id`);
+      const sources = await client.query(`DELETE FROM sources RETURNING id`);
+      const jobs = await client.query(`DELETE FROM ingestion_jobs RETURNING id`);
+      return {
+        claims: claims.rowCount ?? 0,
+        sources: sources.rowCount ?? 0,
+        ingestion_jobs: jobs.rowCount ?? 0,
+      };
+    });
+    logger.warn('Admin corpus clear completed', deleted);
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    logger.error('Admin corpus clear failed', err);
+    res.status(500).json({ error: 'Corpus clear failed' });
+  }
+});
+
+router.post('/corpus/delete-by-ingestion-jobs', async (req, res) => {
+  if (!adminTokenOk(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const raw = req.body && typeof req.body === 'object' && 'jobIds' in req.body
+    ? (req.body as { jobIds?: unknown }).jobIds
+    : undefined;
+  const jobIds = Array.isArray(raw)
+    ? [...new Set(raw.map((id) => String(id)).filter(isUuid))]
+    : [];
+  if (jobIds.length === 0) {
+    res.status(400).json({ error: 'jobIds must be a non-empty array of UUIDs' });
+    return;
+  }
+  try {
+    const result = await withTransaction(async (client) => {
+      const jobRows = await client.query<{ id: string; source_id: string | null }>(
+        `SELECT id, source_id FROM ingestion_jobs WHERE id = ANY($1::uuid[])`,
+        [jobIds]
+      );
+      const skippedJobIds = jobRows.rows.filter((jr) => !jr.source_id).map((jr) => jr.id);
+      const sourceIds = [
+        ...new Set(
+          jobRows.rows.map((r) => r.source_id).filter((id): id is string => Boolean(id))
+        ),
+      ];
+      const deletedSourcesCount = await deleteCorpusSources(client, sourceIds);
+      return {
+        deletedSourceIds: sourceIds,
+        deletedSourcesCount,
+        skippedJobIds,
+      };
+    });
+    logger.warn('Admin delete-by-ingestion-jobs', { jobIds, ...result });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error('Admin delete-by-ingestion-jobs failed', err);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+
+router.post('/corpus/delete-by-research-run', async (req, res) => {
+  if (!adminTokenOk(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const runId =
+    req.body && typeof req.body === 'object' && 'runId' in req.body
+      ? String((req.body as { runId?: string }).runId ?? '')
+      : '';
+  if (!isUuid(runId)) {
+    res.status(400).json({ error: 'runId must be a valid UUID' });
+    return;
+  }
+  try {
+    const result = await withTransaction(async (client) => {
+      const src = await client.query<{ id: string }>(
+        `SELECT id FROM sources WHERE discovered_by_run_id = $1`,
+        [runId]
+      );
+      const sourceIds = src.rows.map((r) => r.id);
+      const deletedSourcesCount = await deleteCorpusSources(client, sourceIds);
+      return { runId, deletedSourceIds: sourceIds, deletedSourcesCount };
+    });
+    logger.warn('Admin delete-by-research-run', result);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error('Admin delete-by-research-run failed', err);
+    res.status(500).json({ error: 'Delete failed' });
   }
 });
 
