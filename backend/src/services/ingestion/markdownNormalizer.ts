@@ -2,6 +2,9 @@
  * Markdown normalizer for ingestion.
  * Converts markdown syntax into clean plain text suitable for chunking
  * while preserving structural metadata about headings.
+ * AUDIT (epistemic): No LLM calls — deterministic markdown stripping only. Raw wording is preserved aside from
+ * explicit syntax removal (see EPISTEMIC_FIDELITY_DIRECTIVE in constants/prompts.ts if LLM extraction is added later).
+
  */
 
 export interface MarkdownSection {

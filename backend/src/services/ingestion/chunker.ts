@@ -1,3 +1,8 @@
+/**
+ * AUDIT (epistemic): Deterministic chunking only — no LLM boundaries or summaries. All sentences retained.
+ * If semantic LLM chunking is added, instruct models not to drop "fringe" sentences; consider withPreamble.
+ */
+
 export interface ChunkerOptions {
   maxChunkSize: number;  // in characters
   overlap: number;       // overlap in characters

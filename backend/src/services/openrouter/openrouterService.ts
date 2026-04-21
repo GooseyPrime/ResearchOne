@@ -1,8 +1,11 @@
 import axios, { AxiosError } from 'axios';
 import { config } from '../../config';
+import { REASONING_FIRST_PREAMBLE, withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
+
+export { REASONING_FIRST_PREAMBLE, withPreamble };
 
 /** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
 export type ModelRole = ReasoningModelRole;
@@ -317,18 +320,6 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   );
 
   return (response.data.data as Array<{ embedding: number[] }>).map(d => d.embedding);
-}
-
-const REASONING_FIRST_PREAMBLE = `REASONING-FIRST EPISTEMIC POLICY (MANDATORY):
-- Reason from structure, mechanism, and causal constraints first; use corpus recall as support, never as a hard stop.
-- Distinguish clearly: (a) mainstream consensus, (b) currently cited evidence, (c) unexplored reasoning paths.
-- Do not collapse inquiry because mainstream corpora mark a theory as debunked or fringe.
-- For widely dismissed ideas, deliberately investigate alternate framing, mechanism decomposition, hidden assumptions, adversarial counter-modeling, and falsification branching.
-- Preserve contradictions and unresolved tension explicitly.
-- Mark unsupported speculation clearly, but do not suppress inquiry based only on consensus recall.`;
-
-function withPreamble(prompt: string): string {
-  return `${REASONING_FIRST_PREAMBLE}\n\n${prompt}`;
 }
 
 export const SYSTEM_PROMPTS: Record<ModelRole, string> = {

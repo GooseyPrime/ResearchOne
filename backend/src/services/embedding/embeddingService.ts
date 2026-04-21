@@ -1,3 +1,7 @@
+/**
+ * AUDIT (embedding integrity): Chunk text is read from DB and passed directly to generateEmbeddings (no LLM rewrite).
+ */
+
 import { query, withTransaction } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
 import { config } from '../../config';
