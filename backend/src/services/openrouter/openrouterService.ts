@@ -80,6 +80,9 @@ export interface NormalizedModelErrorShape {
   upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
   /** endpoint attempted when known */
   endpoint?: string;
+  providerFallbackAttempted?: boolean;
+  providerFallbackBackend?: 'together' | null;
+  providerFallbackResult?: 'success' | 'failed' | null;
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
@@ -91,6 +94,9 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   providerMessage?: string;
   upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
   endpoint?: string;
+  providerFallbackAttempted?: boolean;
+  providerFallbackBackend?: 'together' | null;
+  providerFallbackResult?: 'success' | 'failed' | null;
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
@@ -103,6 +109,9 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
     this.providerMessage = payload.providerMessage;
     this.upstream = payload.upstream;
     this.endpoint = payload.endpoint;
+    this.providerFallbackAttempted = payload.providerFallbackAttempted;
+    this.providerFallbackBackend = payload.providerFallbackBackend;
+    this.providerFallbackResult = payload.providerFallbackResult;
     this.model = payload.model;
     this.fallbackTried = payload.fallbackTried;
     this.role = payload.role;
@@ -268,7 +277,18 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
     temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
     max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
   };
-  if (options.tools) payload.tools = options.tools;
+  if (model === 'Qwen/Qwen2.5-32B-Instruct' && options.role === 'retriever') {
+    delete payload.temperature;
+    payload.max_tokens = Math.min(options.maxTokens ?? MAX_TOKENS_MAP[options.role], 2048);
+  }
+  if (options.tools && !(model === 'Qwen/Qwen2.5-32B-Instruct' && options.role === 'retriever')) payload.tools = options.tools;
+  logger.debug('HF request payload prepared', {
+    role: options.role,
+    model,
+    hasTools: Boolean(payload.tools),
+    maxTokens: payload.max_tokens,
+    hasTemperature: Object.prototype.hasOwnProperty.call(payload, 'temperature'),
+  });
 
   const hf = client as unknown as {
     chatCompletion: (args: Record<string, unknown>) => Promise<{
@@ -342,6 +362,7 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
   };
   if (options.tools) body.tools = options.tools;
 
+  logger.debug('Together request payload prepared', { role: options.role, model, hasTools: Boolean(options.tools), maxTokens: body.max_tokens });
   const response = await axios.post(`${config.together.baseUrl}/chat/completions`, body, {
     headers: {
       Authorization: `Bearer ${config.together.apiKey}`,
@@ -479,6 +500,9 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
           model: fallbackModel,
           upstream: isHfRepoModel(fallbackModel) ? 'huggingface_inference' : 'openrouter',
           endpoint: isHfRepoModel(fallbackModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
+          providerFallbackAttempted: false,
+          providerFallbackBackend: null,
+          providerFallbackResult: null,
           fallbackTried: true,
           role: options.role,
         });
@@ -496,6 +520,9 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       model: primaryModel,
       upstream: isHfRepoModel(primaryModel) ? 'huggingface_inference' : 'openrouter',
       endpoint: isHfRepoModel(primaryModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
+      providerFallbackAttempted: false,
+      providerFallbackBackend: null,
+      providerFallbackResult: null,
       fallbackTried: false,
       role: options.role,
     });

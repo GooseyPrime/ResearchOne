@@ -714,6 +714,11 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
         ? meta.orchestratorHints.filter((h): h is string => typeof h === 'string')
         : [];
       hints.push('The request may have failed before model execution; Hugging Face model inference logs can be empty in this case.');
+      if (meta.providerFallbackAttempted === true) {
+        const fb = typeof meta.providerFallbackBackend === 'string' ? meta.providerFallbackBackend : 'unknown';
+        const fbResult = typeof meta.providerFallbackResult === 'string' ? meta.providerFallbackResult : 'unknown';
+        hints.push(`Provider fallback attempted via ${fb} (result=${fbResult}).`);
+      }
       meta.orchestratorHints = hints;
     }
     return {
@@ -738,6 +743,9 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
         role: err.role,
         endpoint,
         upstream: err.upstream || (isHfRepoModel(err.model) ? 'huggingface_inference' : 'openrouter'),
+        providerFallbackAttempted: err.providerFallbackAttempted === true,
+        providerFallbackBackend: err.providerFallbackBackend || null,
+        providerFallbackResult: err.providerFallbackResult || null,
       },
       retryable,
     };
