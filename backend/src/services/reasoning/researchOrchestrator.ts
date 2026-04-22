@@ -18,6 +18,7 @@ import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective } from './reasoningModelPolicy';
+import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 
 export interface ResearchJobData {
   runId: string;
@@ -27,8 +28,6 @@ export interface ResearchJobData {
   modelOverrides?: PerRunModelOverrides;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  /** When true, V2 may use preset fallback models; default false. */
-  allowFallbacks?: boolean;
 }
 
 export interface ResearchProgress {
@@ -112,6 +111,7 @@ function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, 
     out[role] = {
       primary_override: o?.primary ?? null,
       fallback_override: o?.fallback ?? null,
+      fallback_enabled: o?.fallbackEnabled === true,
     };
   }
   return out;
@@ -177,12 +177,12 @@ async function appendRunProgressEvent(runId: string, event: Record<string, unkno
 function v2CallOpts(
   engineVersion: string | undefined,
   researchObjective: ResearchObjective | undefined,
-  allowFallbacks: boolean | undefined
+  allowFallbackByRole: Record<string, boolean>
 ) {
   return {
     engineVersion: engineVersion ?? undefined,
     researchObjective: researchObjective ?? undefined,
-    allowFallbacks: allowFallbacks === true ? true : undefined,
+    allowFallbackByRole,
   };
 }
 
@@ -198,10 +198,10 @@ export async function runResearchJob(
     modelOverrides: incomingModelOverrides,
     engineVersion,
     researchObjective,
-    allowFallbacks,
   } = data;
-  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbacks);
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
+  const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
+  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
   let currentPercent = 0;
@@ -304,7 +304,7 @@ export async function runResearchJob(
       filterTags,
       engineVersion,
       researchObjective,
-      allowFallbacks,
+      allowFallbackByRole,
     });
 
     await query(
@@ -457,7 +457,7 @@ export async function runResearchJob(
       challenges: skepticResult.content,
       engineVersion: v2.engineVersion,
       researchObjective: v2.researchObjective,
-      allowFallbacks: v2.allowFallbacks,
+      allowFallbackByRole: v2.allowFallbackByRole,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',

@@ -103,9 +103,9 @@ export async function runDiscoveryOrchestrator(args: {
   filterTags?: string[];
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbacks?: boolean;
+  allowFallbackByRole?: Record<string, boolean>;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbacks } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -122,7 +122,7 @@ export async function runDiscoveryOrchestrator(args: {
       role: 'planner',
       engineVersion,
       researchObjective,
-      allowFallbacks: allowFallbacks === true ? true : undefined,
+      allowFallbackByRole,
       messages: [
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {

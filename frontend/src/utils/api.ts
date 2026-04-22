@@ -86,7 +86,6 @@ export interface ResearchRun {
   supplemental_attachments?: ResearchSupplementalAttachment[];
   engine_version?: string | null;
   research_objective?: ResearchObjective | string | null;
-  allow_fallbacks?: boolean | null;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   error_message?: string;
   failed_stage?: string;
@@ -297,7 +296,6 @@ export interface StartResearchPayload {
   modelOverrides?: Record<string, unknown>;
   engineVersion?: 'v2';
   researchObjective?: ResearchObjective;
-  allowFallbacks?: boolean;
   supplementalUrls?: string[];
   supplementalFiles?: File[];
 }
@@ -316,7 +314,6 @@ export const startResearch = (data: StartResearchPayload) => {
     }
     if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
-    if (rest.allowFallbacks === true) form.append('allowFallbacks', 'true');
     if (supplementalUrls?.length) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
     }
@@ -341,7 +338,6 @@ export const startResearch = (data: StartResearchPayload) => {
       supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
     }>('/research', {
       ...rest,
-      allowFallbacks: rest.allowFallbacks === true ? true : undefined,
       supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
     })
     .then((r) => r.data);

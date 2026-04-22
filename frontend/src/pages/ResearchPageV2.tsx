@@ -167,7 +167,6 @@ export default function ResearchPageV2() {
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
-  const [allowFallbacks, setAllowFallbacks] = useState(false);
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
@@ -179,7 +178,9 @@ export default function ResearchPageV2() {
   const traceScrollRef = useRef<HTMLDivElement>(null);
 
   const [showModels, setShowModels] = useState(false);
-  const [modelRows, setModelRows] = useState<Record<string, { primary?: string; fallback?: string }>>({});
+  const [modelRows, setModelRows] = useState<
+    Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }>
+  >({});
 
   const { data: ensembleData } = useQuery({
     queryKey: ['research-v2-ensemble-presets'],
@@ -225,10 +226,10 @@ export default function ResearchPageV2() {
     if (!ensembleData?.presets) return;
     const preset = ensembleData.presets[researchObjective];
     if (!preset) return;
-    const rows: Record<string, { primary?: string; fallback?: string }> = {};
+    const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
     for (const role of Object.keys(preset)) {
       const p = preset[role];
-      rows[role] = { primary: p.primary, fallback: p.fallback };
+      rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
     }
     setModelRows(rows);
   }, [ensembleData, researchObjective]);
@@ -378,25 +379,24 @@ export default function ResearchPageV2() {
     };
   }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
 
+  /** Full per-role snapshot for V2: primary, fallback model id, and per-role fallback opt-in. */
   const runtimeOverridesPayload = useMemo(() => {
     const payload: Record<string, unknown> = {};
     if (!ensembleData?.presets) return payload;
     const baseline = ensembleData.presets[researchObjective];
     if (!baseline) return payload;
 
-    for (const role of Object.keys(modelRows)) {
+    for (const role of Object.keys(baseline)) {
       const row = modelRows[role];
-      const defaultsPrimary = baseline[role]?.primary;
-      const defaultsFallback = baseline[role]?.fallback;
-      const primary = row?.primary?.trim();
-      const fallback = row?.fallback?.trim();
-
-      if ((primary && primary !== defaultsPrimary) || (fallback && fallback !== defaultsFallback)) {
-        payload[role] = {
-          primary: primary || undefined,
-          fallback: fallback || undefined,
-        };
-      }
+      const defaultsPrimary = baseline[role].primary;
+      const defaultsFallback = baseline[role].fallback;
+      const primary = (row?.primary?.trim() || defaultsPrimary).trim();
+      const fallback = (row?.fallback?.trim() || defaultsFallback).trim();
+      payload[role] = {
+        primary,
+        fallback,
+        fallbackEnabled: row?.fallbackEnabled === true,
+      };
     }
 
     return payload;
@@ -412,7 +412,6 @@ export default function ResearchPageV2() {
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',
       researchObjective,
-      allowFallbacks: allowFallbacks || undefined,
     });
   };
 
@@ -491,27 +490,10 @@ export default function ResearchPageV2() {
               ))}
             </select>
             <p className="text-xs text-slate-500 mt-1">
-              Selects the default model ensemble for this run. Open “Model ensemble” to review or edit per role.
+              Selects the default model ensemble for this run. Open “Model ensemble” to set primary models and optionally
+              enable per-role fallbacks (off by default).
             </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="allow-fallbacks-v2"
-              type="checkbox"
-              className="rounded border-indigo-900/40 bg-surface-200"
-              checked={allowFallbacks}
-              onChange={(e) => setAllowFallbacks(e.target.checked)}
-              disabled={mutation.isPending || !!trackingRunId}
-            />
-            <label htmlFor="allow-fallbacks-v2" className="text-sm text-slate-300 cursor-pointer">
-              Enable fallback models
-            </label>
-          </div>
-          <p className="text-xs text-slate-500 -mt-2">
-            When unchecked, only primary models from the V2 matrix are used (no automatic fallback). Opt in if you want
-            failover to the paired model on errors.
-          </p>
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowSupplemental((v) => !v)}>
             {showSupplemental ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -561,10 +543,10 @@ export default function ResearchPageV2() {
                   disabled={mutation.isPending || !!trackingRunId}
                   onClick={() => {
                     const preset = ensembleData.presets[researchObjective];
-                    const rows: Record<string, { primary?: string; fallback?: string }> = {};
+                    const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
                     for (const role of Object.keys(preset)) {
                       const p = preset[role];
-                      rows[role] = { primary: p.primary, fallback: p.fallback };
+                      rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
                     }
                     setModelRows(rows);
                   }}
@@ -575,32 +557,58 @@ export default function ResearchPageV2() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {Object.keys(ensembleData.presets[researchObjective]).map((role) => (
-                  <div key={role} className="border border-indigo-900/20 rounded p-2 space-y-1">
+                  <div key={role} className="border border-indigo-900/20 rounded p-2 space-y-2">
                     <div className="text-xs text-slate-400 uppercase tracking-wide">{role.replace(/_/g, ' ')}</div>
-                    <input
-                      className="input text-xs"
-                      placeholder="primary"
-                      value={modelRows[role]?.primary || ''}
-                      onChange={(e) =>
-                        setModelRows((prev) => ({
-                          ...prev,
-                          [role]: { ...prev[role], primary: e.target.value },
-                        }))
-                      }
-                      disabled={mutation.isPending || !!trackingRunId}
-                    />
-                    <input
-                      className="input text-xs"
-                      placeholder="fallback"
-                      value={modelRows[role]?.fallback || ''}
-                      onChange={(e) =>
-                        setModelRows((prev) => ({
-                          ...prev,
-                          [role]: { ...prev[role], fallback: e.target.value },
-                        }))
-                      }
-                      disabled={mutation.isPending || !!trackingRunId}
-                    />
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Primary (approved)</div>
+                      <input
+                        className="input text-xs"
+                        placeholder="primary"
+                        value={modelRows[role]?.primary || ''}
+                        onChange={(e) =>
+                          setModelRows((prev) => ({
+                            ...prev,
+                            [role]: { ...prev[role], primary: e.target.value },
+                          }))
+                        }
+                        disabled={mutation.isPending || !!trackingRunId}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Fallback (pre-selected)</div>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1.5 rounded border-indigo-900/40 bg-surface-200 flex-shrink-0"
+                          id={`fb-${role}`}
+                          checked={modelRows[role]?.fallbackEnabled === true}
+                          onChange={(e) =>
+                            setModelRows((prev) => ({
+                              ...prev,
+                              [role]: { ...prev[role], fallbackEnabled: e.target.checked },
+                            }))
+                          }
+                          disabled={mutation.isPending || !!trackingRunId}
+                        />
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <label htmlFor={`fb-${role}`} className="text-[10px] text-slate-500 cursor-pointer block">
+                            Use fallback on failure
+                          </label>
+                          <input
+                            className="input text-xs w-full"
+                            placeholder="fallback model id"
+                            value={modelRows[role]?.fallback || ''}
+                            onChange={(e) =>
+                              setModelRows((prev) => ({
+                                ...prev,
+                                [role]: { ...prev[role], fallback: e.target.value },
+                              }))
+                            }
+                            disabled={mutation.isPending || !!trackingRunId}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

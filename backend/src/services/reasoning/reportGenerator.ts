@@ -40,13 +40,13 @@ export async function generateIterativeReport(args: {
   challenges: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  allowFallbacks?: boolean;
+  allowFallbackByRole?: Record<string, boolean>;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[] }> {
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
-    allowFallbacks: args.allowFallbacks === true ? true : undefined,
+    allowFallbackByRole: args.allowFallbackByRole,
   };
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',

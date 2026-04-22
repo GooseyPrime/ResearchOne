@@ -36,23 +36,6 @@ const uploadResearch = multer({
   },
 });
 
-function parseAllowFallbacks(isMultipart: boolean, body: Record<string, string | undefined>, jsonBody: { allowFallbacks?: unknown }): boolean {
-  let raw: unknown;
-  if (isMultipart) {
-    raw = body.allowFallbacks;
-  } else {
-    raw = jsonBody.allowFallbacks;
-  }
-  if (raw === undefined || raw === null || raw === '') return false;
-  if (typeof raw === 'boolean') return raw;
-  if (typeof raw === 'string') {
-    const s = raw.trim().toLowerCase();
-    if (s === 'true' || s === '1') return true;
-    if (s === 'false' || s === '0') return false;
-  }
-  return false;
-}
-
 function parseJsonField<T>(raw: unknown, fallback: T): T {
   if (raw === undefined || raw === null || raw === '') return fallback;
   if (typeof raw === 'object') return raw as T;
@@ -128,7 +111,7 @@ router.post(
 
       let engineVersion: string | undefined;
       let researchObjectiveRaw: unknown;
-      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string; allowFallbacks?: unknown };
+      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string };
       if (isMultipart) {
         const ev = body.engineVersion;
         engineVersion = typeof ev === 'string' ? ev.trim() : undefined;
@@ -137,8 +120,6 @@ router.post(
         engineVersion = typeof jsonBodyFull.engineVersion === 'string' ? jsonBodyFull.engineVersion.trim() : undefined;
         researchObjectiveRaw = jsonBodyFull.researchObjective;
       }
-
-      const allowFallbacks = parseAllowFallbacks(isMultipart, body, jsonBodyFull);
 
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
 
@@ -199,8 +180,8 @@ router.post(
       }
 
       await query(
-        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, allow_fallbacks)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
+         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
         [
           runId,
           title,
@@ -210,7 +191,6 @@ router.post(
           JSON.stringify(attachments),
           eng === 'v2' ? 'v2' : null,
           researchObjective ?? null,
-          eng === 'v2' ? allowFallbacks : false,
         ]
       );
 
@@ -224,7 +204,6 @@ router.post(
           modelOverrides: normalizedOverrides,
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
-          allowFallbacks: eng === 'v2' ? allowFallbacks : undefined,
         },
         { jobId: runId }
       );
@@ -291,7 +270,7 @@ router.get('/model-options', async (_req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query as { status?: string };
-    let sql = `SELECT id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, allow_fallbacks, status, error_message, failed_stage, failure_meta,
+    let sql = `SELECT id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at
                FROM research_runs`;
