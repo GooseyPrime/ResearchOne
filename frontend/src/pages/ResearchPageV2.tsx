@@ -845,7 +845,13 @@ export default function ResearchPageV2() {
                       qc.invalidateQueries({ queryKey: ['research-runs'] });
                       addNotification('info', 'Retry queued from last failure.');
                     } catch (err) {
-                      addNotification('error', err instanceof Error ? err.message : 'Failed to queue retry');
+                      if (axios.isAxiosError(err)) {
+                        const d = err.response?.data as { error?: string; reason?: string; hint?: string } | undefined;
+                        const detail = [d?.error, d?.reason, d?.hint].filter(Boolean).join(' | ');
+                        addNotification('error', detail || err.message || 'Failed to queue retry');
+                      } else {
+                        addNotification('error', err instanceof Error ? err.message : 'Failed to queue retry');
+                      }
                     }
                   }}
                 >
@@ -1008,6 +1014,8 @@ function formatFailureReason(message: string, failureMeta?: Record<string, unkno
   const status = typeof failureMeta.status === 'number' ? String(failureMeta.status) : undefined;
   const classification = typeof failureMeta.classification === 'string' ? failureMeta.classification : undefined;
   const endpoint = typeof failureMeta.endpoint === 'string' ? failureMeta.endpoint : undefined;
+  const hint = typeof failureMeta.hint === 'string' ? failureMeta.hint : undefined;
+  const reason = typeof failureMeta.reason === 'string' ? failureMeta.reason : undefined;
   const orchestratorHints = Array.isArray(failureMeta.orchestratorHints)
     ? failureMeta.orchestratorHints.filter((h) => typeof h === 'string').join(' | ')
     : undefined;
@@ -1020,8 +1028,8 @@ function formatFailureReason(message: string, failureMeta?: Record<string, unkno
     .filter(Boolean)
     .join(', ');
 
-  if (!providerMessage && !details && !orchestratorHints) return message;
-  return [message, providerMessage, details, orchestratorHints].filter(Boolean).join(' | ');
+  if (!providerMessage && !details && !orchestratorHints && !hint && !reason) return message;
+  return [message, providerMessage, details, reason, hint, orchestratorHints].filter(Boolean).join(' | ');
 }
 
 function extractStartResearchErrorMessage(error: unknown): string {

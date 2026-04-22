@@ -322,20 +322,36 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       return;
     }
 
-    const retryable = Boolean(row.failure_meta && (row.failure_meta as Record<string, unknown>).retryable);
+    const fm = (row.failure_meta as Record<string, unknown> | null) ?? {};
+    const retryable = fm.retryable === true || fm.resumeAvailable === true;
     if (!retryable) {
-      res.status(400).json({ error: 'Run is not marked retryable' });
+      res.status(400).json({
+        error: 'Run is not marked retryable',
+        reason: 'failure_meta.retryable/resumeAvailable are not true',
+        status: row.status,
+        retryable: false,
+      });
       return;
     }
 
     if (!row.resume_job_payload || typeof row.resume_job_payload !== 'object') {
-      res.status(400).json({ error: 'No resume payload found for this run' });
+      res.status(400).json({
+        error: 'No resume payload found for this run',
+        reason: 'resume_job_payload is missing',
+        status: row.status,
+        retryable,
+      });
       return;
     }
 
     const payload = row.resume_job_payload as ResearchJobData;
     if (!payload.runId || payload.runId !== req.params.id) {
-      res.status(400).json({ error: 'Invalid resume payload for this run' });
+      res.status(400).json({
+        error: 'Invalid resume payload for this run',
+        reason: 'payload.runId mismatch',
+        status: row.status,
+        retryable,
+      });
       return;
     }
 

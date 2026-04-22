@@ -650,6 +650,7 @@ export async function runResearchJob(
     const failureDetails = buildResearchFailureDetails(err, currentStage);
     const failureMetaWithResume = {
       ...failureDetails.failureMeta,
+      retryable: failureDetails.retryable,
       resumeAvailable: failureDetails.retryable,
       resumeHint:
         failureDetails.retryable
@@ -707,9 +708,17 @@ export async function runResearchJob(
 function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
   const errWithMeta = err as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
   if (errWithMeta.failureMeta && typeof errWithMeta.failureMeta === 'object') {
+    const meta = { ...errWithMeta.failureMeta } as Record<string, unknown>;
+    if (meta.upstream === 'huggingface_inference' && meta.classification === 'provider_unavailable') {
+      const hints = Array.isArray(meta.orchestratorHints)
+        ? meta.orchestratorHints.filter((h): h is string => typeof h === 'string')
+        : [];
+      hints.push('The request may have failed before model execution; Hugging Face model inference logs can be empty in this case.');
+      meta.orchestratorHints = hints;
+    }
     return {
       errorMessage: errWithMeta.message || 'Request failed',
-      failureMeta: { ...errWithMeta.failureMeta },
+      failureMeta: meta,
       retryable: Boolean(errWithMeta.retryable),
     };
   }

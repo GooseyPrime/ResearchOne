@@ -285,7 +285,7 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const e = new Error(
-      `Hugging Face inference failed (role=${options.role}, model=${model}): ${msg}`
+      `Hugging Face inference failed before or during model execution (role=${options.role}, model=${model}): ${msg}`
     ) as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
     e.failureMeta = {
       classification: 'provider_unavailable',
