@@ -345,13 +345,6 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       ? String((row.failure_meta as Record<string, unknown>).role)
       : undefined;
 
-    if (nextRetryCount >= 2 && failingRole && payload.modelOverrides && typeof payload.modelOverrides === 'object') {
-      const ov = payload.modelOverrides as { overrides?: Record<string, { fallbackEnabled?: boolean }> };
-      if (ov.overrides?.[failingRole]) {
-        ov.overrides[failingRole].fallbackEnabled = false;
-      }
-    }
-
     await query(
       `UPDATE research_runs
           SET status='queued',
