@@ -8,6 +8,7 @@ import CorpusPage from './pages/CorpusPage';
 import AtlasPage from './pages/AtlasPage';
 import IngestPage from './pages/IngestPage';
 import GuidePage from './pages/GuidePage';
+import ResearchV2GuidePage from './pages/ResearchV2GuidePage';
 import ModelsPage from './pages/ModelsPage';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="atlas" element={<AtlasPage />} />
           <Route path="ingest" element={<IngestPage />} />
           <Route path="guide" element={<GuidePage />} />
+          <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -40,9 +40,14 @@ export async function generateIterativeReport(args: {
   challenges: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  allowFallbacks?: boolean;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[] }> {
-  const v2 = { engineVersion: args.engineVersion, researchObjective: args.researchObjective };
+  const v2 = {
+    engineVersion: args.engineVersion,
+    researchObjective: args.researchObjective,
+    allowFallbacks: args.allowFallbacks === true ? true : undefined,
+  };
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
     ...v2,

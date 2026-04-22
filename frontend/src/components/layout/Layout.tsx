@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { to: '/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding explorer' },
   { to: '/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
   { to: '/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
+  { to: '/guide/research-v2', label: 'Research One 2 guide', icon: HelpCircle, desc: 'V2 research modes' },
   { to: '/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;

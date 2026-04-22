@@ -55,6 +55,7 @@ export async function extractAndPersistContradictions(args: {
   skepticOutput: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  allowFallbacks?: boolean;
 }): Promise<ExtractedContradiction[]> {
   const { runId, reportId, chunks, claims, skepticOutput } = args;
 
@@ -82,6 +83,7 @@ export async function extractAndPersistContradictions(args: {
       role: 'skeptic',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
+      allowFallbacks: args.allowFallbacks === true ? true : undefined,
       callPurpose: 'contradiction_extraction',
       messages: [
         { role: 'system', content: withPreamble(CONTRADICTION_EXTRACTOR_PROMPT) },
