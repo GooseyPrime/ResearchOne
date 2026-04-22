@@ -297,16 +297,16 @@ export function validateV2ModePresetsAgainstAllowlist(): void {
 
 /**
  * Per-run UI overrides win over preset primary/fallback when non-empty.
- * When `allowFallbacks` is false, runtime fallback overrides are ignored.
+ * When `allowFallbackForRole` is false, preset and runtime fallbacks are omitted.
  */
 export function mergePresetWithRuntimeOverride(
   preset: { primary: string; fallback?: string },
   runtime: { primary?: string; fallback?: string } | undefined,
-  allowFallbacks: boolean
+  allowFallbackForRole: boolean
 ): { primary: string; fallback?: string } {
   const p = runtime?.primary?.trim();
-  const f = allowFallbacks ? runtime?.fallback?.trim() : undefined;
-  const presetFb = allowFallbacks ? preset.fallback : undefined;
+  const f = allowFallbackForRole ? runtime?.fallback?.trim() : undefined;
+  const presetFb = allowFallbackForRole ? preset.fallback : undefined;
   return {
     primary: p || preset.primary,
     fallback: f !== undefined && f !== '' ? f : presetFb,
@@ -318,19 +318,20 @@ export function resolveReasoningModels(args: {
   researchObjective?: ResearchObjective | null;
   role: ReasoningModelRole;
   callPurpose?: ModelCallPurpose;
-  allowFallbacks?: boolean | null;
+  /** When true, V2 preset may include fallback for this role (per-role opt-in from overrides). */
+  allowFallbackForRole?: boolean | null;
 }): { primary: string; fallback?: string } | null {
   if (!args.engineVersion || args.engineVersion.trim() !== 'v2') return null;
 
   const obj = args.researchObjective ?? 'GENERAL_EPISTEMIC_RESEARCH';
   const { role } = args;
-  const allowFallbacks = args.allowFallbacks === true;
+  const allowFallbackForRole = args.allowFallbackForRole === true;
 
   const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
   const presetForRole = presetForObjective[role];
   const resolvedConfig: { primary: string; fallback?: string } = { ...presetForRole };
 
-  if (!allowFallbacks) {
+  if (!allowFallbackForRole) {
     delete resolvedConfig.fallback;
   }
 

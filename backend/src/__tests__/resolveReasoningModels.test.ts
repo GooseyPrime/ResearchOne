@@ -20,22 +20,22 @@ describe('resolveReasoningModels', () => {
     ).toBeNull();
   });
 
-  it('maps planner from GENERAL_EPISTEMIC_RESEARCH preset with fallback when allowFallbacks true', () => {
+  it('maps planner from GENERAL_EPISTEMIC_RESEARCH preset with fallback when allowFallbackForRole true', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'planner',
-      allowFallbacks: true,
+      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner);
   });
 
-  it('omits fallback when allowFallbacks is false', () => {
+  it('omits fallback when allowFallbackForRole is false', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'planner',
-      allowFallbacks: false,
+      allowFallbackForRole: false,
     });
     expect(r).toEqual({
       primary: V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner.primary,
@@ -47,7 +47,7 @@ describe('resolveReasoningModels', () => {
       engineVersion: 'v2',
       researchObjective: 'PATENT_GAP_ANALYSIS',
       role: 'planner',
-      allowFallbacks: true,
+      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.PATENT_GAP_ANALYSIS.planner);
   });
@@ -58,7 +58,7 @@ describe('resolveReasoningModels', () => {
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'skeptic',
       callPurpose: 'pipeline_skeptic',
-      allowFallbacks: true,
+      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.skeptic);
   });
@@ -69,7 +69,7 @@ describe('resolveReasoningModels', () => {
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'skeptic',
       callPurpose: 'contradiction_extraction',
-      allowFallbacks: true,
+      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.skeptic);
   });
@@ -79,7 +79,7 @@ describe('resolveReasoningModels', () => {
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'revision_intake',
-      allowFallbacks: true,
+      allowFallbackForRole: true,
     });
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.revision_intake);
   });

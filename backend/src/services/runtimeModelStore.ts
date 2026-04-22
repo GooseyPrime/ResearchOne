@@ -11,7 +11,7 @@ const APPROVED_EMBEDDING_MODELS = new Set([
   'openai/text-embedding-ada-002',
 ]);
 
-export type ModelOverrideEntry = { primary?: string; fallback?: string };
+export type ModelOverrideEntry = { primary?: string; fallback?: string; fallbackEnabled?: boolean };
 
 export type RuntimeOverridesPayload = {
   overrides: Record<string, ModelOverrideEntry>;
@@ -43,10 +43,11 @@ export async function refreshRuntimeModelOverrides(): Promise<void> {
       continue;
     }
     if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const e = v as { primary?: string; fallback?: string };
+      const e = v as { primary?: string; fallback?: string; fallbackEnabled?: unknown };
       overrides[k] = {
         primary: typeof e.primary === 'string' ? e.primary : undefined,
         fallback: typeof e.fallback === 'string' ? e.fallback : undefined,
+        fallbackEnabled: e.fallbackEnabled === true ? true : undefined,
       };
     }
   }
@@ -111,12 +112,13 @@ export function validateAndNormalizePayload(body: unknown): RuntimeOverridesPayl
     if (typeof val !== 'object' || Array.isArray(val)) {
       throw new Error(`Invalid value for role "${key}"`);
     }
-    const entry = val as { primary?: unknown; fallback?: unknown };
+    const entry = val as { primary?: unknown; fallback?: unknown; fallbackEnabled?: unknown };
     const primary = typeof entry.primary === 'string' ? entry.primary.trim() : undefined;
     const fb = typeof entry.fallback === 'string' ? entry.fallback.trim() : undefined;
+    const fallbackEnabled = entry.fallbackEnabled === true ? true : undefined;
     if (primary) assertModelAllowed(key, primary, 'primary');
     if (fb) assertModelAllowed(key, fb, 'fallback');
-    overrides[key] = { primary, fallback: fb };
+    overrides[key] = { primary, fallback: fb, fallbackEnabled };
   }
 
   return { overrides, embedding };

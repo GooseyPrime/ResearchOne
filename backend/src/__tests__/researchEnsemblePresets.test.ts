@@ -28,7 +28,7 @@ describe('researchEnsemblePresets', () => {
     ).toEqual({ primary: 'openai/o3', fallback: 'deepseek/deepseek-r1' });
   });
 
-  it('mergePresetWithRuntimeOverride drops fallback when allowFallbacks is false', () => {
+  it('mergePresetWithRuntimeOverride drops fallback when allowFallbackForRole is false', () => {
     const base = { primary: 'a/x', fallback: 'b/y' };
     expect(mergePresetWithRuntimeOverride(base, { fallback: 'deepseek/deepseek-r1' }, false)).toEqual({
       primary: 'a/x',

@@ -40,11 +40,17 @@ function candidateLogPaths(stream: 'out' | 'err'): string[] {
   const fname = stream === 'err' ? 'pm2-error.log' : 'pm2-out.log';
   const explicit = stream === 'err' ? process.env.RUNTIME_LOG_ERR : process.env.RUNTIME_LOG_OUT;
   const cwd = process.cwd();
+  const configured = stream === 'err' ? config.admin.runtimeLogErr : config.admin.runtimeLogOut;
+  const winstonCombined = path.join(cwd, 'backend', 'logs', 'combined.log');
+  const winstonErr = path.join(cwd, 'backend', 'logs', 'error.log');
   const candidates = [
     explicit,
+    configured,
     path.join(cwd, 'backend', 'logs', fname),
     path.join(cwd, 'logs', fname),
     path.join('/opt/researchone', 'backend', 'logs', fname),
+    path.join('/opt/researchone', 'logs', fname),
+    stream === 'out' ? winstonCombined : winstonErr,
   ].filter((p): p is string => Boolean(p && p.trim()));
   return [...new Set(candidates)];
 }
@@ -106,7 +112,7 @@ router.get('/runtime/logs', async (req, res) => {
       stream,
       triedPaths,
       hint:
-        'Set RUNTIME_LOG_OUT and RUNTIME_LOG_ERR on the server to the paths from pm2 describe (out_file / error_file), or ensure PM2 has created the log files under backend/logs.',
+        'Set RUNTIME_LOG_OUT and RUNTIME_LOG_ERR on the server to the paths from pm2 describe (out_file / error_file). If PM2 logs are missing, the API also tries Winston files backend/logs/combined.log and backend/logs/error.log (see backend/src/utils/logger.ts).',
     });
     return;
   }

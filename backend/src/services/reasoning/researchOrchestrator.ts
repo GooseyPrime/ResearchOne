@@ -18,6 +18,7 @@ import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective } from './reasoningModelPolicy';
+import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 
 export interface ResearchJobData {
   runId: string;
@@ -27,8 +28,6 @@ export interface ResearchJobData {
   modelOverrides?: PerRunModelOverrides;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
-  /** When true, V2 may use preset fallback models; default false. */
-  allowFallbacks?: boolean;
 }
 
 export interface ResearchProgress {
@@ -112,6 +111,7 @@ function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, 
     out[role] = {
       primary_override: o?.primary ?? null,
       fallback_override: o?.fallback ?? null,
+      fallback_enabled: o?.fallbackEnabled === true,
     };
   }
   return out;
@@ -177,12 +177,12 @@ async function appendRunProgressEvent(runId: string, event: Record<string, unkno
 function v2CallOpts(
   engineVersion: string | undefined,
   researchObjective: ResearchObjective | undefined,
-  allowFallbacks: boolean | undefined
+  allowFallbackByRole: Record<string, boolean>
 ) {
   return {
     engineVersion: engineVersion ?? undefined,
     researchObjective: researchObjective ?? undefined,
-    allowFallbacks: allowFallbacks === true ? true : undefined,
+    allowFallbackByRole,
   };
 }
 
@@ -198,10 +198,19 @@ export async function runResearchJob(
     modelOverrides: incomingModelOverrides,
     engineVersion,
     researchObjective,
-    allowFallbacks,
   } = data;
-  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbacks);
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
+  const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
+  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
+  const resumeJobPayload: ResearchJobData = {
+    runId,
+    query: researchQuery,
+    supplemental,
+    filterTags,
+    modelOverrides: runModelOverrides,
+    engineVersion,
+    researchObjective,
+  };
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
   let currentPercent = 0;
@@ -304,7 +313,7 @@ export async function runResearchJob(
       filterTags,
       engineVersion,
       researchObjective,
-      allowFallbacks,
+      allowFallbackByRole,
     });
 
     await query(
@@ -457,7 +466,7 @@ export async function runResearchJob(
       challenges: skepticResult.content,
       engineVersion: v2.engineVersion,
       researchObjective: v2.researchObjective,
-      allowFallbacks: v2.allowFallbacks,
+      allowFallbackByRole: v2.allowFallbackByRole,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',
@@ -625,7 +634,7 @@ export async function runResearchJob(
     });
 
     await query(
-      `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL WHERE id=$1`,
+      `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL, resume_job_payload=NULL WHERE id=$1`,
       [runId]
     );
     return { runId, reportId };
@@ -639,10 +648,24 @@ export async function runResearchJob(
       throw err;
     }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
+    const failureMetaWithResume = {
+      ...failureDetails.failureMeta,
+      resumeAvailable: failureDetails.retryable,
+      resumeHint:
+        failureDetails.retryable
+          ? 'Use POST /api/research/:id/retry-from-failure (or the Resume button) to re-queue this run with the same parameters.'
+          : undefined,
+    };
     try {
       await query(
-        `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW() WHERE id=$4`,
-        [failureDetails.errorMessage, currentStage, JSON.stringify(failureDetails.failureMeta), runId]
+        `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW(), resume_job_payload=$5 WHERE id=$4`,
+        [
+          failureDetails.errorMessage,
+          currentStage,
+          JSON.stringify(failureMetaWithResume),
+          runId,
+          JSON.stringify(resumeJobPayload),
+        ]
       );
     } catch (dbErr) {
       logger.error(`Research run ${runId}: failed to persist failure row`, dbErr);
@@ -662,7 +685,11 @@ export async function runResearchJob(
       message: currentMessage,
       timestamp: new Date().toISOString(),
       eventType: 'run_failed',
-      failure: failureDetails,
+      failure: {
+        errorMessage: failureDetails.errorMessage,
+        retryable: failureDetails.retryable,
+        failureMeta: failureMetaWithResume,
+      },
     });
     logger.error(`Research run ${runId} failed:`, err);
     const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
@@ -678,6 +705,14 @@ export async function runResearchJob(
 }
 
 function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
+  const errWithMeta = err as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
+  if (errWithMeta.failureMeta && typeof errWithMeta.failureMeta === 'object') {
+    return {
+      errorMessage: errWithMeta.message || 'Request failed',
+      failureMeta: { ...errWithMeta.failureMeta },
+      retryable: Boolean(errWithMeta.retryable),
+    };
+  }
   if (err instanceof NormalizedModelError) {
     const endpoint = `${config.openrouter.baseUrl}/chat/completions`;
     const providerMessage = err.providerMessage || 'No provider message returned';
@@ -701,9 +736,17 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
     return buildAxiosFailureDetails(err, stage);
   }
   const errorMessage = err instanceof Error ? err.message : String(err);
+  const lower = errorMessage.toLowerCase();
+  const hints: string[] = [];
+  if (lower.includes('hf_token') || lower.includes('hugging face token')) {
+    hints.push('HF_TOKEN may be missing or invalid on the server.');
+  }
+  if (lower.includes('openrouter') || lower.includes('chat/completions')) {
+    hints.push('Check OPENROUTER_API_KEY and OPENROUTER_BASE_URL (must be the API base, e.g. https://openrouter.ai/api/v1, not .../chat/completions).');
+  }
   return {
     errorMessage,
-    failureMeta: {},
+    failureMeta: hints.length ? { orchestratorHints: hints } : {},
     retryable: false,
   };
 }
@@ -727,6 +770,14 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
       ? ' If this URL is OpenRouter, check OPENROUTER_BASE_URL on the server (must be base only, e.g. https://openrouter.ai/api/v1 — not .../chat/completions).'
       : '';
 
+  const hints: string[] = [];
+  if (retryable) {
+    hints.push('You can use “Resume from last failure” on the Research page if the run saved a retry payload.');
+  }
+  if (classification === 'provider_unavailable' && isOpenRouterCall) {
+    hints.push('OpenRouter may be temporarily unavailable; wait and retry, or verify billing/rate limits.');
+  }
+
   return {
     errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}${openrouter404Hint}`,
     failureMeta: {
@@ -737,6 +788,7 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
       method,
       code: err.code,
       ...(isOpenRouterCall ? { upstream: 'openrouter' } : {}),
+      ...(hints.length ? { orchestratorHints: hints } : {}),
     },
     retryable,
   };

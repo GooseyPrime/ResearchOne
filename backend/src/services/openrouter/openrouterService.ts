@@ -40,8 +40,8 @@ export interface ModelCallOptions {
   /** Research One 2 — when `'v2'`, `resolveReasoningModels` may override models. */
   engineVersion?: string | null;
   researchObjective?: ResearchObjective | null;
-  /** When false (default), V2 presets omit fallback models unless user opted in on the run. */
-  allowFallbacks?: boolean | null;
+  /** Per role: when `role` key is true, V2 may use fallback for that role only (from preset + overrides). */
+  allowFallbackByRole?: Record<string, boolean> | null;
   callPurpose?: ModelCallPurpose;
   /** Optional tools for HF / OpenAI-compatible chat (forwarded when set). */
   tools?: unknown;
@@ -220,16 +220,16 @@ function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
 }
 
 function resolveModelsForCall(options: ModelCallOptions): { primary: string; fallback: string | undefined } {
-  const allowFallbacks = options.allowFallbacks === true;
+  const allowFallbackForRole = options.allowFallbackByRole?.[options.role] === true;
   const v2 = resolveReasoningModels({
     engineVersion: options.engineVersion,
     researchObjective: options.researchObjective ?? undefined,
     role: options.role,
     callPurpose: options.callPurpose,
-    allowFallbacks,
+    allowFallbackForRole,
   });
   if (v2) {
-    const merged = mergePresetWithRuntimeOverride(v2, options.runtimeOverrides, allowFallbacks);
+    const merged = mergePresetWithRuntimeOverride(v2, options.runtimeOverrides, allowFallbackForRole);
     return {
       primary: merged.primary,
       fallback: merged.fallback,
@@ -268,7 +268,29 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     }>;
   };
-  const out = await hf.chatCompletion(payload);
+  let out: {
+    choices?: Array<{ message?: { content?: string | unknown } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  try {
+    out = await hf.chatCompletion(payload);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const e = new Error(
+      `Hugging Face inference failed (role=${options.role}, model=${model}): ${msg}`
+    ) as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
+    e.failureMeta = {
+      classification: 'provider_unavailable',
+      providerMessage: msg,
+      model,
+      role: options.role,
+      upstream: 'huggingface_inference',
+      providerHint:
+        'This call used the Hugging Face Inference API (not OpenRouter). Confirm HF_TOKEN, model repository id, and HF outage/rate limits. If the model should route via OpenRouter instead, use an OpenRouter slug in the ensemble.',
+    };
+    e.retryable = true;
+    throw e;
+  }
   const choice = out.choices?.[0];
   const rawContent = choice?.message?.content;
   const joined =

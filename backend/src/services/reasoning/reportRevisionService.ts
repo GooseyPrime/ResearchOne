@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import { parseResearchObjective, type ResearchObjective } from './reasoningModelPolicy';
+import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { logger } from '../../utils/logger';
 
 export interface RevisionProgress {
@@ -161,9 +162,8 @@ export async function createReportRevision(args: {
     model_ensemble: Record<string, unknown> | null;
     engine_version: string | null;
     research_objective: string | null;
-    allow_fallbacks: boolean | null;
   }>(
-    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective, rr.allow_fallbacks FROM research_runs rr
+    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective FROM research_runs rr
       JOIN reports r ON r.run_id = rr.id
      WHERE r.id = $1
      LIMIT 1`,
@@ -174,11 +174,13 @@ export async function createReportRevision(args: {
   const runObjective: ResearchObjective | undefined = parseResearchObjective(
     reportRunModelEnsembleRows[0]?.research_objective ?? undefined
   );
-  const runAllowFallbacks = reportRunModelEnsembleRows[0]?.allow_fallbacks === true;
+  const allowFallbackByRole = allowFallbackByRoleFromModelEnsembleSnapshot(
+    reportRunModelEnsembleRows[0]?.model_ensemble ?? null
+  );
   const revOpts = {
     engineVersion: runEngineVersion,
     researchObjective: runObjective,
-    allowFallbacks: runAllowFallbacks ? true : undefined,
+    allowFallbackByRole,
   };
   if (baseSections.length === 0) {
     throw new Error('Report has no sections');
