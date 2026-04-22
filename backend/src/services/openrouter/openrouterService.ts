@@ -15,6 +15,14 @@ import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runt
 
 export { REASONING_FIRST_PREAMBLE, withPreamble };
 
+/** Strip DeepSeek-R1 / QwQ style reasoning traces from model output. */
+export function stripModelReasoningTraces(text: string): string {
+  let s = text || '';
+  s = s.replace(/<redacted_thinking>[\s\S]*?<\/redacted_thinking>/gi, '');
+  s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  return s.trim();
+}
+
 /** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
 export type ModelRole = ReasoningModelRole;
 
@@ -32,6 +40,8 @@ export interface ModelCallOptions {
   /** Research One 2 — when `'v2'`, `resolveReasoningModels` may override models. */
   engineVersion?: string | null;
   researchObjective?: ResearchObjective | null;
+  /** When false (default), V2 presets omit fallback models unless user opted in on the run. */
+  allowFallbacks?: boolean | null;
   callPurpose?: ModelCallPurpose;
   /** Optional tools for HF / OpenAI-compatible chat (forwarded when set). */
   tools?: unknown;
@@ -210,14 +220,20 @@ function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
 }
 
 function resolveModelsForCall(options: ModelCallOptions): { primary: string; fallback: string | undefined } {
+  const allowFallbacks = options.allowFallbacks === true;
   const v2 = resolveReasoningModels({
     engineVersion: options.engineVersion,
     researchObjective: options.researchObjective ?? undefined,
     role: options.role,
     callPurpose: options.callPurpose,
+    allowFallbacks,
   });
   if (v2) {
-    return mergePresetWithRuntimeOverride(v2, options.runtimeOverrides);
+    const merged = mergePresetWithRuntimeOverride(v2, options.runtimeOverrides, allowFallbacks);
+    return {
+      primary: merged.primary,
+      fallback: merged.fallback,
+    };
   }
   return {
     primary: primaryForRole(options.role, options.runtimeOverrides?.primary),
@@ -255,7 +271,7 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   const out = await hf.chatCompletion(payload);
   const choice = out.choices?.[0];
   const rawContent = choice?.message?.content;
-  const content =
+  const joined =
     typeof rawContent === 'string'
       ? rawContent
       : Array.isArray(rawContent)
@@ -269,6 +285,7 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
         : '';
 
   const usage = out.usage;
+  const content = stripModelReasoningTraces(joined);
 
   return {
     content,
@@ -306,7 +323,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   if (!choice) throw new Error('No response choices from OpenRouter');
 
   return {
-    content: choice.message?.content ?? '',
+    content: stripModelReasoningTraces(typeof choice.message?.content === 'string' ? choice.message.content : ''),
     model,
     role: options.role,
     promptTokens: response.data.usage?.prompt_tokens ?? 0,

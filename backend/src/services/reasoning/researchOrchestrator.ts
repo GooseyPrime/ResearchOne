@@ -27,6 +27,8 @@ export interface ResearchJobData {
   modelOverrides?: PerRunModelOverrides;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  /** When true, V2 may use preset fallback models; default false. */
+  allowFallbacks?: boolean;
 }
 
 export interface ResearchProgress {
@@ -172,10 +174,15 @@ async function appendRunProgressEvent(runId: string, event: Record<string, unkno
   );
 }
 
-function v2CallOpts(engineVersion: string | undefined, researchObjective: ResearchObjective | undefined) {
+function v2CallOpts(
+  engineVersion: string | undefined,
+  researchObjective: ResearchObjective | undefined,
+  allowFallbacks: boolean | undefined
+) {
   return {
     engineVersion: engineVersion ?? undefined,
     researchObjective: researchObjective ?? undefined,
+    allowFallbacks: allowFallbacks === true ? true : undefined,
   };
 }
 
@@ -191,8 +198,9 @@ export async function runResearchJob(
     modelOverrides: incomingModelOverrides,
     engineVersion,
     researchObjective,
+    allowFallbacks,
   } = data;
-  const v2 = v2CallOpts(engineVersion, researchObjective);
+  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbacks);
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
@@ -296,6 +304,7 @@ export async function runResearchJob(
       filterTags,
       engineVersion,
       researchObjective,
+      allowFallbacks,
     });
 
     await query(
@@ -446,7 +455,9 @@ export async function runResearchJob(
       retrieverAnalysis: retrieverResult.content,
       reasoningChains: reasonerResult.content,
       challenges: skepticResult.content,
-      ...v2,
+      engineVersion: v2.engineVersion,
+      researchObjective: v2.researchObjective,
+      allowFallbacks: v2.allowFallbacks,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',

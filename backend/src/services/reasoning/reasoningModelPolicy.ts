@@ -27,7 +27,7 @@ export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];
 
 /** Research One 2 — objective typology (persisted on `research_runs.research_objective`). */
 export const RESEARCH_OBJECTIVES = [
-  'GENERAL',
+  'GENERAL_EPISTEMIC_RESEARCH',
   'INVESTIGATIVE_SYNTHESIS',
   'NOVEL_APPLICATION_DISCOVERY',
   'PATENT_GAP_ANALYSIS',
@@ -43,18 +43,12 @@ export function isResearchObjective(value: string): value is ResearchObjective {
 export function parseResearchObjective(raw: unknown): ResearchObjective | undefined {
   if (typeof raw !== 'string' || !raw.trim()) return undefined;
   const v = raw.trim();
+  if (v === 'GENERAL') return 'GENERAL_EPISTEMIC_RESEARCH';
   return isResearchObjective(v) ? v : undefined;
 }
 
-/** V2 ensemble model ids (also re-exported from `config/modelRuntime.ts`). */
-export const MODEL_LATERAL_THINKER_V2 = 'anthropic/claude-opus-4.7';
-/** Primary/fallback pair for strict logic — OpenRouter slugs. */
-export const MODEL_STRICT_LOGICIAN_PRIMARY_V2 = 'openai/o3';
-export const MODEL_STRICT_LOGICIAN_FALLBACK_V2 = 'deepseek/deepseek-r1';
+/** Legacy label for fast structured extraction (V1 paths); still in BASE_ALLOWLIST. */
 export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
-/** Hugging Face Inference — uncensored red-team (primary → fallback). */
-export const MODEL_UNBIASED_CHALLENGER_PRIMARY_V2 = 'NousResearch/Hermes-3-Llama-3.1-70B';
-export const MODEL_UNBIASED_CHALLENGER_FALLBACK_V2 = 'cognitivecomputations/dolphin-2.9.2-qwen2-72b';
 
 /** Prepended to skeptic / internal_challenger system prompts when `engineVersion === 'v2'`. */
 export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
@@ -65,7 +59,14 @@ export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' |
 export function isHfRepoModel(model: string): boolean {
   const m = model.trim();
   if (!m.includes('/')) return false;
-  return m.startsWith('NousResearch/') || m.startsWith('cognitivecomputations/');
+  return (
+    m.startsWith('NousResearch/') ||
+    m.startsWith('cognitivecomputations/') ||
+    m.startsWith('DavidAU/') ||
+    m.startsWith('meta-llama/') ||
+    m.startsWith('Qwen/') ||
+    m.startsWith('qwen/')
+  );
 }
 
 /**
@@ -79,11 +80,13 @@ const BASE_ALLOWLIST = [
   'anthropic/claude-sonnet-4',
   'anthropic/claude-sonnet-4.5',
   'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-r1',
   'deepseek/deepseek-v3.2',
   'google/gemini-2.5-flash',
   'google/gemini-2.5-pro',
+  'meta-llama/Llama-3.3-70B-Instruct',
   'meta-llama/llama-3.3-70b-instruct',
   'mistralai/mistral-small-3.2-24b-instruct',
   'moonshotai/kimi-k2-thinking',
@@ -93,6 +96,10 @@ const BASE_ALLOWLIST = [
   'openai/o3',
   'openai/o3-mini',
   'openai/o4-mini',
+  'Qwen/Qwen2.5-14B-Instruct',
+  'Qwen/Qwen2.5-32B-Instruct',
+  'Qwen/Qwen2.5-72B-Instruct',
+  'Qwen/QwQ-32B-Preview',
   'qwen/qwen3-235b-a22b',
 ] as const;
 

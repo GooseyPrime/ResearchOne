@@ -61,6 +61,7 @@ export async function extractAndPersistClaims(args: {
   synthesizerOutput: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  allowFallbacks?: boolean;
 }): Promise<ExtractedClaim[]> {
   const { runId, reportId, researchQuery, chunks, reasonerOutput, synthesizerOutput } = args;
 
@@ -78,6 +79,7 @@ export async function extractAndPersistClaims(args: {
       role: 'verifier', // Use verifier role for structured extraction
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
+      allowFallbacks: args.allowFallbacks === true ? true : undefined,
       messages: [
         { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
         {

@@ -161,8 +161,9 @@ export async function createReportRevision(args: {
     model_ensemble: Record<string, unknown> | null;
     engine_version: string | null;
     research_objective: string | null;
+    allow_fallbacks: boolean | null;
   }>(
-    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective FROM research_runs rr
+    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective, rr.allow_fallbacks FROM research_runs rr
       JOIN reports r ON r.run_id = rr.id
      WHERE r.id = $1
      LIMIT 1`,
@@ -173,9 +174,11 @@ export async function createReportRevision(args: {
   const runObjective: ResearchObjective | undefined = parseResearchObjective(
     reportRunModelEnsembleRows[0]?.research_objective ?? undefined
   );
+  const runAllowFallbacks = reportRunModelEnsembleRows[0]?.allow_fallbacks === true;
   const revOpts = {
     engineVersion: runEngineVersion,
     researchObjective: runObjective,
+    allowFallbacks: runAllowFallbacks ? true : undefined,
   };
   if (baseSections.length === 0) {
     throw new Error('Report has no sections');

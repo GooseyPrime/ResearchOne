@@ -4,7 +4,6 @@ import {
   type ResearchObjective,
   RESEARCH_OBJECTIVES,
   APPROVED_REASONING_MODEL_ALLOWLIST,
-  MODEL_FAST_EXTRACTOR_V2,
   type ModelCallPurpose,
 } from '../services/reasoning/reasoningModelPolicy';
 import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
@@ -52,7 +51,7 @@ function fromCodeDefaults(): Record<ReasoningModelRole, RoleModelPair> {
   return out;
 }
 
-/** OpenRouter / HF ids — tuned per research objective. */
+/** OpenRouter / HF ids — tuned per research objective (V1 ensembles). */
 const M = {
   opus: 'anthropic/claude-opus-4.7',
   sonnet45: 'anthropic/claude-sonnet-4.5',
@@ -88,11 +87,10 @@ function mergePreset(
 const BASE_GENERAL = fromCodeDefaults();
 
 /**
- * Five default ensembles (one per ResearchObjective).
- * Red-team roles use HF uncensored models; utilities lean on fast extractors where appropriate.
+ * Five default ensembles (one per ResearchObjective) — V1 / non-V2 flows.
  */
 export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
-  GENERAL: BASE_GENERAL,
+  GENERAL_EPISTEMIC_RESEARCH: BASE_GENERAL,
 
   INVESTIGATIVE_SYNTHESIS: mergePreset(BASE_GENERAL, {
     planner: pair(M.kimi, M.r1),
@@ -150,6 +148,121 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
   }),
 };
 
+/** Baseline models — Research One 2 strict open-weights matrix. */
+const V2M = {
+  LLAMA_3_3: 'meta-llama/Llama-3.3-70B-Instruct',
+  DEEPSEEK_R1: 'deepseek/deepseek-r1',
+  DOLPHIN_QWEN: 'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  DARK_CHAMPION:
+    'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
+  HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
+  QWEN_72B: 'Qwen/Qwen2.5-72B-Instruct',
+  FAST_UTILITY: 'Qwen/Qwen2.5-32B-Instruct',
+  FAST_FALLBACK: 'Qwen/Qwen2.5-14B-Instruct',
+  QWQ: 'Qwen/QwQ-32B-Preview',
+} as const;
+
+const V2_UTILITIES: Record<
+  | 'retriever'
+  | 'verifier'
+  | 'citation_integrity_checker'
+  | 'revision_intake'
+  | 'report_locator'
+  | 'final_revision_verifier',
+  RoleModelPair
+> = {
+  retriever: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  verifier: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  citation_integrity_checker: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  revision_intake: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  report_locator: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  final_revision_verifier: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+};
+
+function v2Mode(
+  core: Omit<
+    Record<ReasoningModelRole, RoleModelPair>,
+    keyof typeof V2_UTILITIES
+  >
+): Record<ReasoningModelRole, RoleModelPair> {
+  return { ...core, ...V2_UTILITIES };
+}
+
+/**
+ * Research One 2 — strict architecture-aligned presets (open-weights only).
+ */
+export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
+  GENERAL_EPISTEMIC_RESEARCH: v2Mode({
+    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+  }),
+
+  INVESTIGATIVE_SYNTHESIS: v2Mode({
+    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+  }),
+
+  PATENT_GAP_ANALYSIS: v2Mode({
+    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
+    outline_architect: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    section_drafter: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    synthesizer: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    coherence_refiner: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    plain_language_synthesizer: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    section_rewriter: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+    internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+  }),
+
+  NOVEL_APPLICATION_DISCOVERY: v2Mode({
+    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    reasoner: pair(V2M.HERMES_3, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.HERMES_3, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+  }),
+
+  ANOMALY_CORRELATION: v2Mode({
+    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.HERMES_3),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.HERMES_3),
+    outline_architect: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    section_drafter: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    synthesizer: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    coherence_refiner: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    section_rewriter: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+    internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+  }),
+};
+
 export function validateEnsemblePresetsAgainstAllowlist(): void {
   for (const obj of RESEARCH_OBJECTIVES) {
     const preset = ENSEMBLE_PRESETS[obj];
@@ -166,25 +279,37 @@ export function validateEnsemblePresetsAgainstAllowlist(): void {
   }
 }
 
-const FAST_CONTRADICTION_PAIR: { primary: string; fallback: string } = {
-  primary: MODEL_FAST_EXTRACTOR_V2,
-  fallback: MODEL_FAST_EXTRACTOR_V2,
-};
+export function validateV2ModePresetsAgainstAllowlist(): void {
+  for (const obj of RESEARCH_OBJECTIVES) {
+    const preset = V2_MODE_PRESETS[obj];
+    for (const role of REASONING_MODEL_ROLES) {
+      const { primary, fallback } = preset[role];
+      const allowed = APPROVED_REASONING_MODEL_ALLOWLIST[role];
+      if (!allowed.includes(primary)) {
+        throw new Error(`V2_MODE_PRESETS[${obj}].${role} primary "${primary}" not in allowlist`);
+      }
+      if (!allowed.includes(fallback)) {
+        throw new Error(`V2_MODE_PRESETS[${obj}].${role} fallback "${fallback}" not in allowlist`);
+      }
+    }
+  }
+}
 
 /**
- * V2 model resolution: preset by objective, with contradiction extraction override for `skeptic` role.
- * Per-run overrides are merged in `openrouterService.resolveModelsForCall`.
+ * Per-run UI overrides win over preset primary/fallback when non-empty.
+ * When `allowFallbacks` is false, runtime fallback overrides are ignored.
  */
-/** Per-run UI overrides win over preset primary/fallback when non-empty. */
 export function mergePresetWithRuntimeOverride(
-  preset: { primary: string; fallback: string },
-  runtime?: { primary?: string; fallback?: string }
-): { primary: string; fallback: string } {
+  preset: { primary: string; fallback?: string },
+  runtime: { primary?: string; fallback?: string } | undefined,
+  allowFallbacks: boolean
+): { primary: string; fallback?: string } {
   const p = runtime?.primary?.trim();
-  const f = runtime?.fallback?.trim();
+  const f = allowFallbacks ? runtime?.fallback?.trim() : undefined;
+  const presetFb = allowFallbacks ? preset.fallback : undefined;
   return {
     primary: p || preset.primary,
-    fallback: f || preset.fallback,
+    fallback: f !== undefined && f !== '' ? f : presetFb,
   };
 }
 
@@ -193,17 +318,21 @@ export function resolveReasoningModels(args: {
   researchObjective?: ResearchObjective | null;
   role: ReasoningModelRole;
   callPurpose?: ModelCallPurpose;
-}): { primary: string; fallback: string } | null {
+  allowFallbacks?: boolean | null;
+}): { primary: string; fallback?: string } | null {
   if (!args.engineVersion || args.engineVersion.trim() !== 'v2') return null;
 
-  const obj = args.researchObjective ?? 'GENERAL';
-  const purpose = args.callPurpose ?? 'default';
+  const obj = args.researchObjective ?? 'GENERAL_EPISTEMIC_RESEARCH';
   const { role } = args;
+  const allowFallbacks = args.allowFallbacks === true;
 
-  if (purpose === 'contradiction_extraction' && role === 'skeptic') {
-    return FAST_CONTRADICTION_PAIR;
+  const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
+  const presetForRole = presetForObjective[role];
+  const resolvedConfig: { primary: string; fallback?: string } = { ...presetForRole };
+
+  if (!allowFallbacks) {
+    delete resolvedConfig.fallback;
   }
 
-  const preset = ENSEMBLE_PRESETS[obj] ?? ENSEMBLE_PRESETS.GENERAL;
-  return preset[role];
+  return resolvedConfig;
 }

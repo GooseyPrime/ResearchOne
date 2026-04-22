@@ -68,6 +68,7 @@ export async function mapAndPersistCitations(args: {
   discoverySummary?: Record<string, unknown>;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  allowFallbacks?: boolean;
 }): Promise<CitationMapResult> {
   const { runId, reportId, chunks, claims, reportSections, discoverySummary } = args;
 
@@ -94,6 +95,7 @@ export async function mapAndPersistCitations(args: {
       role: 'verifier',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
+      allowFallbacks: args.allowFallbacks === true ? true : undefined,
       messages: [
         { role: 'system', content: withPreamble(CITATION_MAPPER_PROMPT) },
         {

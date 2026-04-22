@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FlaskConical,
@@ -40,7 +40,7 @@ import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
 const RESEARCH_OBJECTIVE_OPTIONS: { value: ResearchObjective; label: string }[] = [
-  { value: 'GENERAL', label: 'General' },
+  { value: 'GENERAL_EPISTEMIC_RESEARCH', label: 'General epistemic research' },
   { value: 'INVESTIGATIVE_SYNTHESIS', label: 'Investigative synthesis' },
   { value: 'NOVEL_APPLICATION_DISCOVERY', label: 'Novel application discovery' },
   { value: 'PATENT_GAP_ANALYSIS', label: 'Patent gap analysis' },
@@ -166,7 +166,8 @@ export default function ResearchPageV2() {
   const [supplemental, setSupplemental] = useState('');
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
-  const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL');
+  const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
+  const [allowFallbacks, setAllowFallbacks] = useState(false);
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
@@ -411,6 +412,7 @@ export default function ResearchPageV2() {
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',
       researchObjective,
+      allowFallbacks: allowFallbacks || undefined,
     });
   };
 
@@ -453,7 +455,10 @@ export default function ResearchPageV2() {
           <span className="text-gradient">Research One 2</span>
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
-          Frontier ensemble (V2 engine): evidence-tiered reporting with full-stage telemetry.
+          Frontier ensemble (V2 engine): evidence-tiered reporting with full-stage telemetry.{' '}
+          <Link to="/guide/research-v2" className="text-accent hover:underline">
+            Research modes and capabilities
+          </Link>
         </p>
       </div>
 
@@ -489,6 +494,24 @@ export default function ResearchPageV2() {
               Selects the default model ensemble for this run. Open “Model ensemble” to review or edit per role.
             </p>
           </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="allow-fallbacks-v2"
+              type="checkbox"
+              className="rounded border-indigo-900/40 bg-surface-200"
+              checked={allowFallbacks}
+              onChange={(e) => setAllowFallbacks(e.target.checked)}
+              disabled={mutation.isPending || !!trackingRunId}
+            />
+            <label htmlFor="allow-fallbacks-v2" className="text-sm text-slate-300 cursor-pointer">
+              Enable fallback models
+            </label>
+          </div>
+          <p className="text-xs text-slate-500 -mt-2">
+            When unchecked, only primary models from the V2 matrix are used (no automatic fallback). Opt in if you want
+            failover to the paired model on errors.
+          </p>
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowSupplemental((v) => !v)}>
             {showSupplemental ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
