@@ -91,6 +91,11 @@ const config = {
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
   },
 
+  together: {
+    apiKey: process.env.TOGETHER_API_KEY || '',
+    baseUrl: process.env.TOGETHER_BASE_URL || 'https://api.together.xyz/v1',
+  },
+
   /** Hugging Face Inference API token (Research One 2 red-team models). Optional unless V2 HF routes run. */
   hfToken: process.env.HF_TOKEN || '',
 

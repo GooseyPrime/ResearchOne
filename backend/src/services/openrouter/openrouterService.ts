@@ -329,6 +329,41 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   };
 }
 
+async function callTogetherChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  if (!config.together.apiKey?.trim()) {
+    throw new Error('Together fallback provider requires TOGETHER_API_KEY');
+  }
+  const start = Date.now();
+  const body: Record<string, unknown> = {
+    model,
+    messages: applyV2SystemAugmentations(options),
+    temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
+    max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
+  };
+  if (options.tools) body.tools = options.tools;
+
+  const response = await axios.post(`${config.together.baseUrl}/chat/completions`, body, {
+    headers: {
+      Authorization: `Bearer ${config.together.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 120000,
+  });
+
+  const choice = response.data.choices?.[0];
+  if (!choice) throw new Error('No response choices from Together');
+
+  return {
+    content: stripModelReasoningTraces(typeof choice.message?.content === 'string' ? choice.message.content : ''),
+    model,
+    role: options.role,
+    promptTokens: response.data.usage?.prompt_tokens ?? 0,
+    completionTokens: response.data.usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - start,
+    usedFallback: false,
+    primaryModel: model,
+  };
+}
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
   const body: Record<string, unknown> = {
@@ -364,11 +399,24 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   };
 }
 
-async function callModel(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+async function callModel(
+  model: string,
+  options: ModelCallOptions
+): Promise<{ result: ModelCallResult; backend: 'HF' | 'Together' | 'OpenRouter' }> {
   if (isHfRepoModel(model)) {
-    return callHfChat(model, options);
+    try {
+      return { result: await callHfChat(model, options), backend: 'HF' };
+    } catch (err) {
+      const canFallbackProvider = Boolean(config.together.apiKey?.trim());
+      if (!canFallbackProvider) throw err;
+      logger.warn('HF provider call failed; attempting Together fallback provider', {
+        role: options.role,
+        model,
+      });
+      return { result: await callTogetherChat(model, options), backend: 'Together' };
+    }
   }
-  return callOpenRouter(model, options);
+  return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
 }
 
 /**
@@ -380,8 +428,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   const fallbackModel = resolvedFallback;
 
   try {
-    const result = await callModel(primaryModel, options);
-    const backend = isHfRepoModel(result.model) ? 'HF' : 'OpenRouter';
+    const { result, backend } = await callModel(primaryModel, options);
     logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
     return { ...result, usedFallback: false, primaryModel };
   } catch (err) {
@@ -404,8 +451,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     if (fallbackModel && fallbackModel !== primaryModel) {
       logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
       try {
-        const result = await callModel(fallbackModel, options);
-        const backend = isHfRepoModel(result.model) ? 'HF' : 'OpenRouter';
+        const { result, backend } = await callModel(fallbackModel, options);
         logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         return { ...result, usedFallback: true, primaryModel, errorClassification };
       } catch (fallbackErr) {
