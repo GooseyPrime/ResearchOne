@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
+import type { ResearchJobData } from '../../services/reasoning/researchOrchestrator';
 import { researchQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
 import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
@@ -298,6 +299,87 @@ router.get('/:id', async (req, res, next) => {
       return;
     }
     res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/research/:id/retry-from-failure — re-queue a failed retryable run with preserved job payload
+router.post('/:id/retry-from-failure', async (req, res, next) => {
+  try {
+    const rows = await query<{ id: string; status: string; failure_meta: Record<string, unknown> | null; resume_job_payload: unknown }>(
+      `SELECT id, status, failure_meta, resume_job_payload FROM research_runs WHERE id=$1`,
+      [req.params.id]
+    );
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+
+    const row = rows[0];
+    if (row.status !== 'failed') {
+      res.status(400).json({ error: `Can only retry failed runs (current status=${row.status})` });
+      return;
+    }
+
+    const retryable = Boolean(row.failure_meta && (row.failure_meta as Record<string, unknown>).retryable);
+    if (!retryable) {
+      res.status(400).json({ error: 'Run is not marked retryable' });
+      return;
+    }
+
+    if (!row.resume_job_payload || typeof row.resume_job_payload !== 'object') {
+      res.status(400).json({ error: 'No resume payload found for this run' });
+      return;
+    }
+
+    const payload = row.resume_job_payload as ResearchJobData;
+    if (!payload.runId || payload.runId !== req.params.id) {
+      res.status(400).json({ error: 'Invalid resume payload for this run' });
+      return;
+    }
+
+    await query(
+      `UPDATE research_runs
+          SET status='queued',
+              error_message=NULL,
+              failed_stage=NULL,
+              failure_meta='{}'::jsonb,
+              progress_stage='queued',
+              progress_percent=0,
+              progress_message='Retry queued from failure',
+              progress_updated_at=NOW(),
+              completed_at=NULL
+        WHERE id=$1`,
+      [req.params.id]
+    );
+
+    await researchQueue.add('research-run', payload, { jobId: req.params.id });
+
+    await query(
+      `UPDATE research_runs
+          SET progress_events = CASE
+              WHEN jsonb_typeof(progress_events) = 'array'
+                THEN (progress_events || $2::jsonb)
+              ELSE $2::jsonb
+            END
+        WHERE id = $1`,
+      [
+        req.params.id,
+        JSON.stringify([
+          {
+            runId: req.params.id,
+            stage: 'queued',
+            percent: 0,
+            message: 'Retry queued from failure',
+            timestamp: new Date().toISOString(),
+            eventType: 'run_resumed',
+          },
+        ]),
+      ]
+    );
+
+    res.json({ ok: true, status: 'queued' });
   } catch (err) {
     next(err);
   }

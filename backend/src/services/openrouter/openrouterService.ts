@@ -268,7 +268,29 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     }>;
   };
-  const out = await hf.chatCompletion(payload);
+  let out: {
+    choices?: Array<{ message?: { content?: string | unknown } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  try {
+    out = await hf.chatCompletion(payload);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const e = new Error(
+      `Hugging Face inference failed (role=${options.role}, model=${model}): ${msg}`
+    ) as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
+    e.failureMeta = {
+      classification: 'provider_unavailable',
+      providerMessage: msg,
+      model,
+      role: options.role,
+      upstream: 'huggingface_inference',
+      providerHint:
+        'This call used the Hugging Face Inference API (not OpenRouter). Confirm HF_TOKEN, model repository id, and HF outage/rate limits. If the model should route via OpenRouter instead, use an OpenRouter slug in the ensemble.',
+    };
+    e.retryable = true;
+    throw e;
+  }
   const choice = out.choices?.[0];
   const rawContent = choice?.message?.content;
   const joined =

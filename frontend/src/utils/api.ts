@@ -368,6 +368,9 @@ export const cancelResearchRun = (id: string) =>
 export const deleteResearchRun = (id: string) =>
   api.delete(`/research/${id}`).then(r => r.data);
 
+export const retryResearchRunFromFailure = (id: string) =>
+  api.post<{ ok: boolean; status: string }>(`/research/${id}/retry-from-failure`).then(r => r.data);
+
 export const getSystemHealth = () =>
   api.get<SystemHealth>('/health').then(r => r.data);
 

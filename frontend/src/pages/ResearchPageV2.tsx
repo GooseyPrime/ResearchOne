@@ -29,6 +29,7 @@ import {
   getResearchRun,
   cancelResearchRun,
   deleteResearchRun,
+  retryResearchRunFromFailure,
   getResearchV2EnsemblePresets,
   ResearchRun,
   ResearchProgressEvent,
@@ -829,7 +830,29 @@ export default function ResearchPageV2() {
             <p className="text-sm text-amber-300 font-medium">Run encountered an error</p>
             <p className="text-xs text-amber-200">Stage: {failure.stage || 'unknown'}</p>
             <p className="text-xs text-amber-200">Reason: {formatFailureReason(failure.error || failure.message, failure.failureMeta)}</p>
-            {failure.retryable && <p className="text-xs text-blue-300">Automatic retry may resume processing if queue policy allows.</p>}
+            {failure.retryable && (
+              <div className="space-y-2">
+                <p className="text-xs text-blue-300">This failure is retryable.</p>
+                <button
+                  type="button"
+                  className="btn-ghost text-xs"
+                  onClick={async () => {
+                    if (!failure.runId) return;
+                    try {
+                      await retryResearchRunFromFailure(failure.runId);
+                      setFailure(null);
+                      setTrackingRunId(failure.runId);
+                      qc.invalidateQueries({ queryKey: ['research-runs'] });
+                      addNotification('info', 'Retry queued from last failure.');
+                    } catch (err) {
+                      addNotification('error', err instanceof Error ? err.message : 'Failed to queue retry');
+                    }
+                  }}
+                >
+                  Resume from last failure
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -985,6 +1008,9 @@ function formatFailureReason(message: string, failureMeta?: Record<string, unkno
   const status = typeof failureMeta.status === 'number' ? String(failureMeta.status) : undefined;
   const classification = typeof failureMeta.classification === 'string' ? failureMeta.classification : undefined;
   const endpoint = typeof failureMeta.endpoint === 'string' ? failureMeta.endpoint : undefined;
+  const orchestratorHints = Array.isArray(failureMeta.orchestratorHints)
+    ? failureMeta.orchestratorHints.filter((h) => typeof h === 'string').join(' | ')
+    : undefined;
 
   const details = [
     classification ? `classification=${classification}` : '',
@@ -994,8 +1020,8 @@ function formatFailureReason(message: string, failureMeta?: Record<string, unkno
     .filter(Boolean)
     .join(', ');
 
-  if (!providerMessage && !details) return message;
-  return [message, providerMessage, details].filter(Boolean).join(' | ');
+  if (!providerMessage && !details && !orchestratorHints) return message;
+  return [message, providerMessage, details, orchestratorHints].filter(Boolean).join(' | ');
 }
 
 function extractStartResearchErrorMessage(error: unknown): string {
