@@ -61,11 +61,11 @@ export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adver
 
 export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' | 'default';
 
-/** Route uncensored HF repos (not OpenRouter-style provider slugs). */
+/** Route Hugging Face hub repos (case-insensitive org prefix). */
 export function isHfRepoModel(model: string): boolean {
-  const m = model.trim();
+  const m = model.trim().toLowerCase();
   if (!m.includes('/')) return false;
-  return m.startsWith('NousResearch/') || m.startsWith('cognitivecomputations/');
+  return m.startsWith('nousresearch/') || m.startsWith('cognitivecomputations/');
 }
 
 /**

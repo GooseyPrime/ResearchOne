@@ -17,7 +17,11 @@ import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
-import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective } from './reasoningModelPolicy';
+import {
+  APPROVED_REASONING_MODEL_ALLOWLIST,
+  isHfRepoModel,
+  type ResearchObjective,
+} from './reasoningModelPolicy';
 
 export interface ResearchJobData {
   runId: string;
@@ -668,7 +672,10 @@ export async function runResearchJob(
 
 function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
   if (err instanceof NormalizedModelError) {
-    const endpoint = `${config.openrouter.baseUrl}/chat/completions`;
+    const hfRepo = isHfRepoModel(err.model);
+    const endpoint = hfRepo
+      ? 'Hugging Face Inference API (or OpenRouter huggingface/* fallback)'
+      : `${config.openrouter.baseUrl}/chat/completions`;
     const providerMessage = err.providerMessage || 'No provider message returned';
     const status = err.status ?? 'unknown';
     const retryable = err.classification === 'rate_limited' || err.classification === 'provider_unavailable';

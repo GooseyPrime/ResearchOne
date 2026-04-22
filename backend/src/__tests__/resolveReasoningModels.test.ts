@@ -75,9 +75,10 @@ describe('resolveReasoningModels', () => {
 });
 
 describe('isHfRepoModel', () => {
-  it('detects allowlisted HF repos', () => {
+  it('detects allowlisted HF repos (case-insensitive)', () => {
     expect(isHfRepoModel('NousResearch/Hermes-3-Llama-3.1-70B')).toBe(true);
     expect(isHfRepoModel('cognitivecomputations/dolphin-2.9.2-qwen2-72b')).toBe(true);
+    expect(isHfRepoModel('COGNITIVECOMPUTATIONS/dolphin-2.9.2-qwen2-72b')).toBe(true);
   });
 
   it('rejects OpenRouter slugs', () => {

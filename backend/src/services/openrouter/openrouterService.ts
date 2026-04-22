@@ -317,9 +317,44 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   };
 }
 
+/**
+ * Hugging Face hub repos: prefer Inference API when HF_TOKEN is set (avoids OpenRouter HF-proxy failures).
+ * Otherwise use OpenRouter with `huggingface/<repo>` slug, then raw repo id.
+ */
+async function callHfRepoOrOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  const hfClient = getHfClient();
+  if (hfClient) {
+    try {
+      return await callHfChat(model, options);
+    } catch (err) {
+      logger.warn(`Hugging Face Inference failed for ${model}, trying OpenRouter`, {
+        role: options.role,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else {
+    logger.warn(`HF repo model ${model} but HF_TOKEN is unset — using OpenRouter only`, {
+      role: options.role,
+    });
+  }
+
+  const huggingfaceSlug = model.startsWith('huggingface/') ? model : `huggingface/${model}`;
+  try {
+    return await callOpenRouter(huggingfaceSlug, options);
+  } catch (err) {
+    if (huggingfaceSlug !== model) {
+      logger.warn(`OpenRouter huggingface slug failed for ${model}, retrying raw id`, {
+        role: options.role,
+      });
+      return await callOpenRouter(model, options);
+    }
+    throw err;
+  }
+}
+
 async function callModel(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   if (isHfRepoModel(model)) {
-    return callHfChat(model, options);
+    return callHfRepoOrOpenRouter(model, options);
   }
   return callOpenRouter(model, options);
 }
