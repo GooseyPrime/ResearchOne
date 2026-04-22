@@ -17,7 +17,7 @@ import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
-import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective } from './reasoningModelPolicy';
+import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 
 export interface ResearchJobData {
@@ -714,7 +714,7 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
     };
   }
   if (err instanceof NormalizedModelError) {
-    const endpoint = `${config.openrouter.baseUrl}/chat/completions`;
+    const endpoint = err.endpoint || (err.upstream === 'huggingface_inference' ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`);
     const providerMessage = err.providerMessage || 'No provider message returned';
     const status = err.status ?? 'unknown';
     const retryable = err.classification === 'rate_limited' || err.classification === 'provider_unavailable';
@@ -728,6 +728,7 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
         fallbackTried: err.fallbackTried,
         role: err.role,
         endpoint,
+        upstream: err.upstream || (isHfRepoModel(err.model) ? 'huggingface_inference' : 'openrouter'),
       },
       retryable,
     };

@@ -339,19 +339,28 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       return;
     }
 
+    const previousRetryCount = Number((row.failure_meta as Record<string, unknown> | null)?.retryCount ?? 0);
+    const nextRetryCount = Number.isFinite(previousRetryCount) ? previousRetryCount + 1 : 1;
+    const failingRole = typeof (row.failure_meta as Record<string, unknown> | null)?.role === 'string'
+      ? String((row.failure_meta as Record<string, unknown>).role)
+      : undefined;
+
     await query(
       `UPDATE research_runs
           SET status='queued',
               error_message=NULL,
               failed_stage=NULL,
-              failure_meta='{}'::jsonb,
+              failure_meta=$2,
               progress_stage='queued',
               progress_percent=0,
               progress_message='Retry queued from failure',
               progress_updated_at=NOW(),
               completed_at=NULL
         WHERE id=$1`,
-      [req.params.id]
+      [
+        req.params.id,
+        JSON.stringify({ retryCount: nextRetryCount, retryable: true, role: failingRole ?? null, lastRetryAt: new Date().toISOString() }),
+      ]
     );
 
     await researchQueue.add('research-run', payload, { jobId: req.params.id });

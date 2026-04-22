@@ -76,6 +76,10 @@ export interface NormalizedModelErrorShape {
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
+  /** upstream backend used for this error */
+  upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
+  /** endpoint attempted when known */
+  endpoint?: string;
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
@@ -85,6 +89,8 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
+  upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
+  endpoint?: string;
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
@@ -95,6 +101,8 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
     this.classification = payload.classification;
     this.status = payload.status;
     this.providerMessage = payload.providerMessage;
+    this.upstream = payload.upstream;
+    this.endpoint = payload.endpoint;
     this.model = payload.model;
     this.fallbackTried = payload.fallbackTried;
     this.role = payload.role;
@@ -423,6 +431,8 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
               ? fallbackErr.message
               : String(fallbackErr),
           model: fallbackModel,
+          upstream: isHfRepoModel(fallbackModel) ? 'huggingface_inference' : 'openrouter',
+          endpoint: isHfRepoModel(fallbackModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
           fallbackTried: true,
           role: options.role,
         });
@@ -438,6 +448,8 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
           ? err.message
           : String(err),
       model: primaryModel,
+      upstream: isHfRepoModel(primaryModel) ? 'huggingface_inference' : 'openrouter',
+      endpoint: isHfRepoModel(primaryModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
       fallbackTried: false,
       role: options.role,
     });
