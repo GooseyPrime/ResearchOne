@@ -14,6 +14,7 @@ import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
 import { isFailureMetaRetryable } from '../../utils/researchRetryEligibility';
+import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQueueing';
 
 const router = Router();
 
@@ -380,7 +381,7 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       ]
     );
 
-    await researchQueue.add('research-run', payload, { jobId: req.params.id });
+    await enqueueResearchRetryJobWithCleanup(researchQueue, req.params.id, payload);
 
     await query(
       `UPDATE research_runs
