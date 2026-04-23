@@ -527,6 +527,14 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
             fallbackAttempted: true,
             providerBody: fallbackErr.providerMessage,
           });
+          logger.error(`Model fallback also failed for [${options.role}]`, {
+            role: options.role,
+            model: fallbackModel,
+            status: fallbackErr.status,
+            classification: fallbackErr.classification,
+            fallbackAttempted: true,
+            providerBody: fallbackErr.providerMessage,
+          });
           throw fallbackErr;
         }
         const fallbackAxiosErr = fallbackErr as AxiosError;
