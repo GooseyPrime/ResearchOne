@@ -19,6 +19,7 @@ import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError }
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
+import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 
 export interface ResearchJobData {
   runId: string;
@@ -709,18 +710,7 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
   const errWithMeta = err as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
   if (errWithMeta.failureMeta && typeof errWithMeta.failureMeta === 'object') {
     const meta = { ...errWithMeta.failureMeta } as Record<string, unknown>;
-    if (meta.upstream === 'huggingface_inference' && meta.classification === 'provider_unavailable') {
-      const hints = Array.isArray(meta.orchestratorHints)
-        ? meta.orchestratorHints.filter((h): h is string => typeof h === 'string')
-        : [];
-      hints.push('The request may have failed before model execution; Hugging Face model inference logs can be empty in this case.');
-      if (meta.providerFallbackAttempted === true) {
-        const fb = typeof meta.providerFallbackBackend === 'string' ? meta.providerFallbackBackend : 'unknown';
-        const fbResult = typeof meta.providerFallbackResult === 'string' ? meta.providerFallbackResult : 'unknown';
-        hints.push(`Provider fallback attempted via ${fb} (result=${fbResult}).`);
-      }
-      meta.orchestratorHints = hints;
-    }
+    mergeOrchestratorHintsIntoFailureMeta(meta);
     return {
       errorMessage: errWithMeta.message || 'Request failed',
       failureMeta: meta,
@@ -728,25 +718,34 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
     };
   }
   if (err instanceof NormalizedModelError) {
-    const endpoint = err.endpoint || (err.upstream === 'huggingface_inference' ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`);
+    const upstream = err.upstream || (isHfRepoModel(err.model) ? 'huggingface_inference' : 'openrouter');
+    const endpoint =
+      err.endpoint
+      || (upstream === 'huggingface_inference'
+        ? 'https://api-inference.huggingface.co'
+        : upstream === 'together'
+          ? `${config.together.baseUrl.replace(/\/+$/, '')}/chat/completions`
+          : `${config.openrouter.baseUrl}/chat/completions`);
     const providerMessage = err.providerMessage || 'No provider message returned';
     const status = err.status ?? 'unknown';
     const retryable = err.classification === 'rate_limited' || err.classification === 'provider_unavailable';
+    const failureMeta: Record<string, unknown> = {
+      classification: err.classification,
+      status: err.status,
+      providerMessage,
+      model: err.model,
+      fallbackTried: err.fallbackTried,
+      role: err.role,
+      endpoint,
+      upstream,
+      providerFallbackAttempted: err.providerFallbackAttempted === true,
+      providerFallbackBackend: err.providerFallbackBackend || null,
+      providerFallbackResult: err.providerFallbackResult || null,
+    };
+    mergeOrchestratorHintsIntoFailureMeta(failureMeta);
     return {
       errorMessage: `Model provider request failed at ${stage} (role=${err.role}, model=${err.model}, status=${status}, classification=${err.classification}): ${providerMessage}`,
-      failureMeta: {
-        classification: err.classification,
-        status: err.status,
-        providerMessage,
-        model: err.model,
-        fallbackTried: err.fallbackTried,
-        role: err.role,
-        endpoint,
-        upstream: err.upstream || (isHfRepoModel(err.model) ? 'huggingface_inference' : 'openrouter'),
-        providerFallbackAttempted: err.providerFallbackAttempted === true,
-        providerFallbackBackend: err.providerFallbackBackend || null,
-        providerFallbackResult: err.providerFallbackResult || null,
-      },
+      failureMeta,
       retryable,
     };
   }

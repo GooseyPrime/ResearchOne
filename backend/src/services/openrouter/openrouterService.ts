@@ -76,8 +76,8 @@ export interface NormalizedModelErrorShape {
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
-  /** upstream backend used for this error */
-  upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
+  /** upstream backend used for this error (Together = provider fallback after HF failure for HF repo ids) */
+  upstream?: 'openrouter' | 'huggingface_inference' | 'together' | 'unknown';
   /** endpoint attempted when known */
   endpoint?: string;
   providerFallbackAttempted?: boolean;
@@ -92,7 +92,7 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
-  upstream?: 'openrouter' | 'huggingface_inference' | 'unknown';
+  upstream?: 'openrouter' | 'huggingface_inference' | 'together' | 'unknown';
   endpoint?: string;
   providerFallbackAttempted?: boolean;
   providerFallbackBackend?: 'together' | null;
@@ -363,7 +363,7 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
   if (options.tools) body.tools = options.tools;
 
   logger.debug('Together request payload prepared', { role: options.role, model, hasTools: Boolean(options.tools), maxTokens: body.max_tokens });
-  const response = await axios.post(`${config.together.baseUrl}/chat/completions`, body, {
+  const response = await axios.post(togetherChatEndpoint(), body, {
     headers: {
       Authorization: `Bearer ${config.together.apiKey}`,
       'Content-Type': 'application/json',
@@ -420,6 +420,11 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   };
 }
 
+function togetherChatEndpoint(): string {
+  const base = config.together.baseUrl.replace(/\/+$/, '');
+  return `${base}/chat/completions`;
+}
+
 async function callModel(
   model: string,
   options: ModelCallOptions
@@ -427,14 +432,40 @@ async function callModel(
   if (isHfRepoModel(model)) {
     try {
       return { result: await callHfChat(model, options), backend: 'HF' };
-    } catch (err) {
+    } catch (hfErr) {
       const canFallbackProvider = Boolean(config.together.apiKey?.trim());
-      if (!canFallbackProvider) throw err;
+      if (!canFallbackProvider) throw hfErr;
       logger.warn('HF provider call failed; attempting Together fallback provider', {
         role: options.role,
         model,
       });
-      return { result: await callTogetherChat(model, options), backend: 'Together' };
+      try {
+        return { result: await callTogetherChat(model, options), backend: 'Together' };
+      } catch (togetherErr) {
+        const togetherAxios = togetherErr as AxiosError;
+        const classification = axios.isAxiosError(togetherErr)
+          ? classifyModelError(togetherAxios)
+          : classifyHfError(togetherErr);
+        const status = togetherAxios.response?.status;
+        const providerMessage = axios.isAxiosError(togetherErr)
+          ? extractProviderMessage(togetherAxios)
+          : togetherErr instanceof Error
+            ? togetherErr.message
+            : String(togetherErr);
+        throw new NormalizedModelError({
+          classification,
+          status,
+          providerMessage,
+          model,
+          upstream: 'together',
+          endpoint: togetherChatEndpoint(),
+          providerFallbackAttempted: true,
+          providerFallbackBackend: 'together',
+          providerFallbackResult: 'failed',
+          fallbackTried: false,
+          role: options.role,
+        });
+      }
     }
   }
   return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
@@ -453,6 +484,17 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
     return { ...result, usedFallback: false, primaryModel };
   } catch (err) {
+    if (err instanceof NormalizedModelError) {
+      logger.warn(`Model primary failed for [${options.role}]`, {
+        role: options.role,
+        model: primaryModel,
+        status: err.status,
+        classification: err.classification,
+        fallbackAttempted: Boolean(fallbackModel),
+        providerBody: err.providerMessage,
+      });
+      throw err;
+    }
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;
     const errorClassification = axios.isAxiosError(err)
@@ -476,6 +518,17 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         return { ...result, usedFallback: true, primaryModel, errorClassification };
       } catch (fallbackErr) {
+        if (fallbackErr instanceof NormalizedModelError) {
+          logger.error(`Model fallback also failed for [${options.role}]`, {
+            role: options.role,
+            model: fallbackModel,
+            status: fallbackErr.status,
+            classification: fallbackErr.classification,
+            fallbackAttempted: true,
+            providerBody: fallbackErr.providerMessage,
+          });
+          throw fallbackErr;
+        }
         const fallbackAxiosErr = fallbackErr as AxiosError;
         const fallbackClassification = axios.isAxiosError(fallbackErr)
           ? classifyModelError(fallbackAxiosErr)

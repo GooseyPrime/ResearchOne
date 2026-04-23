@@ -1,21 +1,17 @@
 import { describe, expect, it } from 'vitest';
-
-function isRetryable(failureMeta: Record<string, unknown> | null | undefined): boolean {
-  const fm = failureMeta ?? {};
-  return fm.retryable === true || fm.resumeAvailable === true;
-}
+import { isFailureMetaRetryable } from '../utils/researchRetryEligibility';
 
 describe('retry-from-failure eligibility compatibility', () => {
   it('accepts explicit retryable=true', () => {
-    expect(isRetryable({ retryable: true })).toBe(true);
+    expect(isFailureMetaRetryable({ retryable: true })).toBe(true);
   });
 
   it('accepts legacy resumeAvailable=true', () => {
-    expect(isRetryable({ resumeAvailable: true })).toBe(true);
+    expect(isFailureMetaRetryable({ resumeAvailable: true })).toBe(true);
   });
 
   it('rejects when neither flag is true', () => {
-    expect(isRetryable({})).toBe(false);
-    expect(isRetryable({ retryable: false, resumeAvailable: false })).toBe(false);
+    expect(isFailureMetaRetryable({})).toBe(false);
+    expect(isFailureMetaRetryable({ retryable: false, resumeAvailable: false })).toBe(false);
   });
 });
