@@ -13,7 +13,7 @@ import {
 import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
-import { isFailureMetaRetryable } from '../../utils/researchRetryEligibility';
+import { isFailureMetaRetryable, mergeFailureMetaForRetry } from '../../utils/researchRetryEligibility';
 import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQueueing';
 
 const router = Router();
@@ -357,11 +357,9 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       return;
     }
 
-    const previousRetryCount = Number((row.failure_meta as Record<string, unknown> | null)?.retryCount ?? 0);
+    const previousRetryCount = Number(fm.retryCount ?? 0);
     const nextRetryCount = Number.isFinite(previousRetryCount) ? previousRetryCount + 1 : 1;
-    const failingRole = typeof (row.failure_meta as Record<string, unknown> | null)?.role === 'string'
-      ? String((row.failure_meta as Record<string, unknown>).role)
-      : undefined;
+    const mergedFailureMeta = mergeFailureMetaForRetry(fm, nextRetryCount);
 
     await query(
       `UPDATE research_runs
@@ -375,10 +373,7 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
               progress_updated_at=NOW(),
               completed_at=NULL
         WHERE id=$1`,
-      [
-        req.params.id,
-        JSON.stringify({ retryCount: nextRetryCount, retryable: true, role: failingRole ?? null, lastRetryAt: new Date().toISOString() }),
-      ]
+      [req.params.id, JSON.stringify(mergedFailureMeta)]
     );
 
     await enqueueResearchRetryJobWithCleanup(researchQueue, req.params.id, payload);

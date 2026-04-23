@@ -47,6 +47,17 @@ function runtimeLogsErrorMessage(err: unknown): string {
   return base;
 }
 
+function downloadRuntimeLogTxt(content: string, stream: LogStream) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const name = `researchone-runtime-${stream}-${stamp}.txt`;
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export interface SystemStatusModalProps {
   open: boolean;
   onClose: () => void;
@@ -119,6 +130,11 @@ export default function SystemStatusModal({
     }
   };
 
+  const exportLoadedLogs = () => {
+    if (!logState.data?.content?.length) return;
+    downloadRuntimeLogTxt(logState.data.content, logStream);
+  };
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -133,6 +149,7 @@ export default function SystemStatusModal({
         aria-labelledby="system-status-title"
         className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl border border-indigo-900/40 bg-surface-300 shadow-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
+        onPointerDown={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-indigo-900/30 flex-shrink-0">
           <h2 id="system-status-title" className="text-sm font-semibold text-white">
@@ -251,6 +268,15 @@ export default function SystemStatusModal({
               <button type="button" className="btn-primary text-xs py-1.5 px-3" onClick={loadLogs} disabled={logState.loading}>
                 {logState.loading ? 'Loading…' : 'Load logs'}
               </button>
+              <button
+                type="button"
+                className="btn-ghost text-xs"
+                onClick={exportLoadedLogs}
+                disabled={!logState.data?.content}
+                title="Download the log text currently shown (same tail as on screen)"
+              >
+                Export logs to .txt
+              </button>
               <button type="button" className="btn-ghost text-xs" onClick={forgetAdminToken}>
                 Forget admin token
               </button>
@@ -264,7 +290,11 @@ export default function SystemStatusModal({
               </p>
             )}
             {logState.data && (
-              <pre className="max-h-64 overflow-auto rounded-lg border border-indigo-900/30 bg-surface-400 p-3 text-[11px] leading-relaxed font-mono text-slate-300 whitespace-pre-wrap break-words">
+              <pre
+                className="max-h-64 overflow-auto rounded-lg border border-indigo-900/30 bg-surface-400 p-3 text-[11px] leading-relaxed font-mono text-slate-300 whitespace-pre-wrap break-words"
+                onClick={e => e.stopPropagation()}
+                onPointerDown={e => e.stopPropagation()}
+              >
                 {logState.data.content || '(empty)'}
               </pre>
             )}

@@ -64,6 +64,25 @@ interface ResearchPlan {
   investigation_angles: string[];
 }
 
+function normalizeRetrievalQueries(raw: unknown, fallback: string): string[] {
+  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  const out: string[] = [];
+  for (const item of list) {
+    if (typeof item === 'string') {
+      const t = item.trim();
+      if (t) out.push(t);
+    } else if (typeof item === 'number' || typeof item === 'boolean') {
+      out.push(String(item));
+    } else if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>;
+      const q = o.query ?? o.text ?? o.q;
+      if (typeof q === 'string' && q.trim()) out.push(q.trim());
+      else out.push(JSON.stringify(item));
+    }
+  }
+  return out.length > 0 ? out : [fallback];
+}
+
 interface VerificationResult {
   passed: boolean;
   criteria: Array<{ criterion: string; status: 'PASS' | 'FAIL'; note: string }>;
@@ -290,6 +309,7 @@ export async function runResearchJob(
         investigation_angles: ['Main investigation'],
       };
     }
+    plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, researchQuery);
 
     await query(
       `UPDATE research_runs SET plan=$1 WHERE id=$2`,
@@ -339,8 +359,9 @@ export async function runResearchJob(
     const seenIds = new Set<string>();
 
     for (const rq of plan.retrieval_queries.slice(0, 5)) {
+      const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
       const chunks = await retrieveChunks({
-        query: rq,
+        query: rqStr,
         topK: 15,
         filterTags,
         hybridSearch: true,
@@ -351,7 +372,7 @@ export async function runResearchJob(
           allChunks.push(c);
         }
       }
-      await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rq}`, {
+      await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rqStr}`, {
         substep: 'query_done',
         chunkCount: allChunks.length,
       });
