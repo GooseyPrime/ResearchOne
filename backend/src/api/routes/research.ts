@@ -13,6 +13,7 @@ import {
 import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
+import { isFailureMetaRetryable } from '../../utils/researchRetryEligibility';
 
 const router = Router();
 
@@ -323,7 +324,7 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
     }
 
     const fm = (row.failure_meta as Record<string, unknown> | null) ?? {};
-    const retryable = fm.retryable === true || fm.resumeAvailable === true;
+    const retryable = isFailureMetaRetryable(fm);
     if (!retryable) {
       res.status(400).json({
         error: 'Run is not marked retryable',
