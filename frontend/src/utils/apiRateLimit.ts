@@ -29,7 +29,7 @@ export function isInApiRateLimitCooldown(): boolean {
 /**
  * React Query `refetchInterval` helper: use a long interval while the API is rate-limiting us.
  */
-export function getAdaptiveRefetchIntervalMs(baselineMs: number, cooldownMs = 60_000): number {
+export function getAdaptiveRefetchIntervalMs(baselineMs: number): number {
   if (!isInApiRateLimitCooldown()) return baselineMs;
   const remainingCooldownMs = Math.min(
     Math.max(cooldownUntilMs - Date.now(), 0),
