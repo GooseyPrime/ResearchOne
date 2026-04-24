@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getStats, getSystemHealth, restartRuntime, getResearchRuns, type ResearchRun } from '../../utils/api';
+import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -47,7 +48,7 @@ export default function Layout() {
   const { data } = useQuery({
     queryKey: ['stats'],
     queryFn: getStats,
-    refetchInterval: 15000,
+    refetchInterval: () => getAdaptiveRefetchIntervalMs(20_000),
   });
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function Layout() {
   const { data: liveRuns } = useQuery<ResearchRun[]>({
     queryKey: ['layout-active-runs'],
     queryFn: () => getResearchRuns({ status: 'running' }),
-    refetchInterval: 2500,
+    refetchInterval: () => getAdaptiveRefetchIntervalMs(6_000),
   });
 
   useEffect(() => {
@@ -87,7 +88,7 @@ export default function Layout() {
   } = useQuery({
     queryKey: ['system-health'],
     queryFn: getSystemHealth,
-    refetchInterval: 10000,
+    refetchInterval: () => getAdaptiveRefetchIntervalMs(20_000),
   });
 
   const refreshHealth = useCallback(() => {

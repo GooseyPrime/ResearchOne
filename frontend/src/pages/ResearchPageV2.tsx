@@ -35,6 +35,7 @@ import {
   ResearchProgressEvent,
   type ResearchObjective,
 } from '../utils/api';
+import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
@@ -104,6 +105,10 @@ function normalizeEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
 
 const PHASE_ORDER: string[] = [...STAGES.map((s) => s.id), 'failed'];
 
+function sortEventsChronological(events: ResearchProgressEvent[]): ResearchProgressEvent[] {
+  return [...events].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+}
+
 function bucketEventsByPhase(events: ResearchProgressEvent[]): Map<string, ResearchProgressEvent[]> {
   const map = new Map<string, ResearchProgressEvent[]>();
   for (const evt of events) {
@@ -113,7 +118,7 @@ function bucketEventsByPhase(events: ResearchProgressEvent[]): Map<string, Resea
     map.set(id, list);
   }
   for (const list of map.values()) {
-    list.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+    list.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
   }
   return map;
 }
@@ -192,7 +197,7 @@ export default function ResearchPageV2() {
   const { data: runs = [] } = useQuery<ResearchRun[]>({
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
-    refetchInterval: 4000,
+    refetchInterval: () => getAdaptiveRefetchIntervalMs(8_000),
   });
 
   const trackedRun = runs.find((r) => r.id === trackingRunId);
@@ -202,7 +207,7 @@ export default function ResearchPageV2() {
     queryKey: ['research-run', trackingRunId],
     queryFn: () => getResearchRun(trackingRunId!),
     enabled: pollEnabled,
-    refetchInterval: 2000,
+    refetchInterval: () => getAdaptiveRefetchIntervalMs(4_000),
   });
 
   const mutation = useMutation({
@@ -252,7 +257,7 @@ export default function ResearchPageV2() {
         });
         setActiveRun(latest);
       }
-      setTraceEvents(sorted.slice(-150).reverse());
+      setTraceEvents(sortEventsChronological(sorted.slice(-150)));
     } else if (polledRun.progress_message != null || polledRun.progress_percent != null) {
       const polledEvt: ResearchProgressEvent = {
         runId: trackingRunId,
@@ -263,7 +268,7 @@ export default function ResearchPageV2() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => [polledEvt, ...prev].slice(0, 150));
+      setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-150)));
     }
 
     if (polledRun.status === 'failed') {
@@ -303,7 +308,7 @@ export default function ResearchPageV2() {
       if (rid === trackingRunId) {
         setProgress(update);
         setActiveRun(update);
-        setTraceEvents((prev) => [update, ...prev].slice(0, 150));
+        setTraceEvents((prev) => sortEventsChronological([...prev, update].slice(-150)));
       }
     });
 

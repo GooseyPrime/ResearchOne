@@ -34,6 +34,11 @@ export interface IngestionProgress {
 
 type ProgressCallback = (progress: IngestionProgress) => void;
 
+/** PostgreSQL text columns reject U+0000. Strip before any INSERT. */
+function stripNul(s: string): string {
+  return s.includes('\0') ? s.replace(/\0/g, '') : s;
+}
+
 export async function runIngestionJob(
   data: IngestionJobData,
   onProgress: ProgressCallback
@@ -99,6 +104,9 @@ export async function runIngestionJob(
     } else {
       throw new Error(`Unsupported source type or missing content: ${sourceType}`);
     }
+
+    rawContent = stripNul(rawContent);
+    title = stripNul(title);
 
     if (!rawContent || rawContent.trim().length === 0) {
       throw new Error('Content is empty after extraction');

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { applyApiRateLimitInterceptor } from './apiRateLimit';
 
 const API_PREFIX = '/api';
 
@@ -13,6 +14,8 @@ const api = axios.create({
   timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+applyApiRateLimitInterceptor(api);
 
 export default api;
 
