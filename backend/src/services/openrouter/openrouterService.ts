@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import { InferenceClient } from '@huggingface/inference';
+import { InferenceClient, InferenceClientProviderApiError } from '@huggingface/inference';
 import { config } from '../../config';
 import { REASONING_FIRST_PREAMBLE, withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
@@ -303,16 +303,30 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   try {
     out = await hf.chatCompletion(payload);
   } catch (err) {
+    let status: number | undefined;
+    let requestUrl: string | undefined;
+    let responseBodyPreview: string | undefined;
+    if (err instanceof InferenceClientProviderApiError) {
+      status = err.httpResponse?.status;
+      requestUrl = err.httpRequest?.url;
+      const body = err.httpResponse?.body;
+      if (typeof body === 'string') responseBodyPreview = body.slice(0, 1000);
+      else if (body != null) responseBodyPreview = JSON.stringify(body).slice(0, 1000);
+    }
     const msg = err instanceof Error ? err.message : String(err);
+    const classification = status != null ? classifyModelStatus(status) : 'provider_unavailable';
     const e = new Error(
       `Hugging Face inference failed before or during model execution (role=${options.role}, model=${model}): ${msg}`
     ) as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
     e.failureMeta = {
-      classification: 'provider_unavailable',
+      classification,
       providerMessage: msg,
       model,
       role: options.role,
       upstream: 'huggingface_inference',
+      status,
+      endpoint: requestUrl ?? 'https://api-inference.huggingface.co',
+      providerBodyPreview: responseBodyPreview,
       providerHint:
         'This call used the Hugging Face Inference API (not OpenRouter). Confirm HF_TOKEN, model repository id, and HF outage/rate limits. If the model should route via OpenRouter instead, use an OpenRouter slug in the ensemble.',
     };
@@ -347,6 +361,16 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
     usedFallback: false,
     primaryModel: model,
   };
+}
+
+function classifyModelStatus(status: number): ModelErrorClassification {
+  if (status === 429) return 'rate_limited';
+  if (status === 402) return 'quota_exceeded';
+  if (status === 503 || status === 502) return 'provider_unavailable';
+  if (status >= 500) return 'provider_unavailable';
+  if (status === 401 || status === 403) return 'auth_error';
+  if (status === 400 || status === 413 || status === 422) return 'bad_request';
+  return 'unknown';
 }
 
 async function callTogetherChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {

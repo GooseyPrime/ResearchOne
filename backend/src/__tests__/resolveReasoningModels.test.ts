@@ -94,8 +94,14 @@ describe('isHfRepoModel', () => {
     expect(isHfRepoModel('Qwen/Qwen2.5-72B-Instruct')).toBe(true);
   });
 
+  it('treats OpenRouter Qwen slugs as non-HF routes', () => {
+    expect(isHfRepoModel('qwen/qwen-2.5-32b-instruct')).toBe(false);
+    expect(isHfRepoModel('qwen/qwen-2.5-14b-instruct')).toBe(false);
+  });
+
   it('rejects OpenRouter slugs', () => {
     expect(isHfRepoModel('openai/o3')).toBe(false);
     expect(isHfRepoModel('anthropic/claude-opus-4.7')).toBe(false);
+    expect(isHfRepoModel('qwen/qwen2.5-32b-instruct')).toBe(false);
   });
 });

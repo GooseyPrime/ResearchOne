@@ -156,9 +156,9 @@ const V2M = {
   DARK_CHAMPION:
     'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
   HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
-  QWEN_72B: 'Qwen/Qwen2.5-72B-Instruct',
-  FAST_UTILITY: 'Qwen/Qwen2.5-32B-Instruct',
-  FAST_FALLBACK: 'Qwen/Qwen2.5-14B-Instruct',
+  QWEN_72B: 'qwen/qwen2.5-72b-instruct',
+  FAST_UTILITY: 'qwen/qwen2.5-32b-instruct',
+  FAST_FALLBACK: 'qwen/qwen2.5-14b-instruct',
   QWQ: 'Qwen/QwQ-32B-Preview',
 } as const;
 

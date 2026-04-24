@@ -64,8 +64,7 @@ export function isHfRepoModel(model: string): boolean {
     m.startsWith('cognitivecomputations/') ||
     m.startsWith('DavidAU/') ||
     m.startsWith('meta-llama/') ||
-    m.startsWith('Qwen/') ||
-    m.startsWith('qwen/')
+    m.startsWith('Qwen/')
   );
 }
 
@@ -99,6 +98,9 @@ const BASE_ALLOWLIST = [
   'Qwen/Qwen2.5-14B-Instruct',
   'Qwen/Qwen2.5-32B-Instruct',
   'Qwen/Qwen2.5-72B-Instruct',
+  'qwen/qwen2.5-14b-instruct',
+  'qwen/qwen2.5-32b-instruct',
+  'qwen/qwen2.5-72b-instruct',
   'Qwen/QwQ-32B-Preview',
   'qwen/qwen3-235b-a22b',
 ] as const;

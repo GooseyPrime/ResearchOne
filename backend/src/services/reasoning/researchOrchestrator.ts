@@ -96,6 +96,9 @@ interface ResearchFailureDetails {
 }
 const RETRIEVAL_PROGRESS_BASE = 22;
 const RETRIEVAL_PROGRESS_CAP = 34;
+const RETRIEVER_FULL_CHUNKS = 16;
+const RETRIEVER_SNIPPET_CHARS = 600;
+const RETRIEVER_EVIDENCE_MAX_CHARS = 70000;
 
 interface ReaderFrontMatter {
   overall_summary: string;
@@ -402,6 +405,7 @@ export async function runResearchJob(
     });
 
     const evidenceContext = formatEvidenceContext(allChunks);
+    const retrieverEvidenceContext = formatEvidenceContextBounded(allChunks);
 
     const retrieverResult = await callRoleModel({
       role: 'retriever',
@@ -411,7 +415,7 @@ export async function runResearchJob(
         { role: 'system', content: SYSTEM_PROMPTS.retriever },
         {
           role: 'user',
-          content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
+          content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${retrieverEvidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
         },
       ],
     });
@@ -863,6 +867,44 @@ function formatEvidenceContext(chunks: RetrievedChunk[]): string {
       '---',
     ].filter(Boolean).join('\n'))
     .join('\n\n');
+}
+
+export function formatEvidenceContextBounded(
+  chunks: RetrievedChunk[],
+  opts?: { fullChunks?: number; snippetChars?: number; maxChars?: number }
+): string {
+  const fullChunks = Math.max(1, opts?.fullChunks ?? RETRIEVER_FULL_CHUNKS);
+  const snippetChars = Math.max(120, opts?.snippetChars ?? RETRIEVER_SNIPPET_CHARS);
+  const maxChars = Math.max(20000, opts?.maxChars ?? RETRIEVER_EVIDENCE_MAX_CHARS);
+
+  const blocks: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    const content = (c.content ?? '').replace(/\s+/g, ' ').trim();
+    const showFull = i < fullChunks;
+    const body = showFull
+      ? content
+      : `${content.slice(0, snippetChars)}${content.length > snippetChars ? '…' : ''}`;
+    const block = [
+      `[CHUNK ${i + 1}] ID: ${c.id}`,
+      `Source: ${c.source_title || c.source_url || 'Unknown'}`,
+      `Similarity: ${c.similarity.toFixed(3)}`,
+      c.evidence_tier ? `Evidence Tier: ${c.evidence_tier}` : '',
+      showFull ? 'Content:' : 'Snippet:',
+      body,
+      '---',
+    ].filter(Boolean).join('\n');
+    blocks.push(block);
+  }
+
+  let out = blocks.join('\n\n');
+  if (out.length <= maxChars) return out;
+
+  // Hard cap payload size for provider stability.
+  out = out.slice(0, maxChars);
+  const cut = out.lastIndexOf('\n---');
+  if (cut > 0) out = out.slice(0, cut);
+  return `${out}\n\n[TRUNCATED: evidence context exceeded max payload budget]`;
 }
 
 async function saveReport(args: {
