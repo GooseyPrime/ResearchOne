@@ -268,7 +268,7 @@ export default function ResearchPageV2() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => sortEventsChronological([polledEvt, ...prev].slice(-150)));
+      setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-150)));
     }
 
     if (polledRun.status === 'failed') {

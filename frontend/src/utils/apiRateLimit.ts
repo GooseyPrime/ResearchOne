@@ -31,7 +31,11 @@ export function isInApiRateLimitCooldown(): boolean {
  */
 export function getAdaptiveRefetchIntervalMs(baselineMs: number, cooldownMs = 60_000): number {
   if (!isInApiRateLimitCooldown()) return baselineMs;
-  return Math.max(cooldownMs, baselineMs);
+  const remainingCooldownMs = Math.min(
+    Math.max(cooldownUntilMs - Date.now(), 0),
+    MAX_COOLDOWN_MS
+  );
+  return Math.max(remainingCooldownMs, baselineMs);
 }
 
 export function applyApiRateLimitInterceptor(client: AxiosInstance): void {
