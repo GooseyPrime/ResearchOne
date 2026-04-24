@@ -23,6 +23,11 @@ export function stripModelReasoningTraces(text: string): string {
   return s.trim();
 }
 
+/** Test-only helper: resets singleton HF client between tests. */
+export function __resetHfClientForTests(): void {
+  hfClient = null;
+}
+
 /** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
 export type ModelRole = ReasoningModelRole;
 
@@ -116,6 +121,52 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
     this.fallbackTried = payload.fallbackTried;
     this.role = payload.role;
   }
+}
+
+function toNormalizedModelError(
+  err: unknown,
+  model: string,
+  role: ModelRole,
+  fallbackTried: boolean
+): NormalizedModelError {
+  if (err instanceof NormalizedModelError) {
+    if (err.fallbackTried === fallbackTried) return err;
+    return new NormalizedModelError({
+      classification: err.classification,
+      status: err.status,
+      providerMessage: err.providerMessage,
+      upstream: err.upstream,
+      endpoint: err.endpoint,
+      providerFallbackAttempted: err.providerFallbackAttempted,
+      providerFallbackBackend: err.providerFallbackBackend,
+      providerFallbackResult: err.providerFallbackResult,
+      model: err.model,
+      fallbackTried,
+      role: err.role,
+    });
+  }
+  const axiosErr = err as AxiosError;
+  const status = axiosErr.response?.status;
+  const classification = axios.isAxiosError(err)
+    ? classifyModelError(axiosErr)
+    : classifyHfError(err);
+  return new NormalizedModelError({
+    classification,
+    status,
+    providerMessage: axios.isAxiosError(err)
+      ? extractProviderMessage(axiosErr)
+      : err instanceof Error
+        ? err.message
+        : String(err),
+    model,
+    upstream: isHfRepoModel(model) ? 'huggingface_inference' : 'openrouter',
+    endpoint: isHfRepoModel(model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
+    providerFallbackAttempted: false,
+    providerFallbackBackend: null,
+    providerFallbackResult: null,
+    fallbackTried,
+    role,
+  });
 }
 
 const ENV_PRIMARY: Record<ModelRole, string> = {
@@ -503,36 +554,20 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(options);
   const fallbackModel = resolvedFallback;
 
+  let primaryFailure: NormalizedModelError | null = null;
   try {
     const { result, backend } = await callModel(primaryModel, options);
     logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
     return { ...result, usedFallback: false, primaryModel };
   } catch (err) {
-    if (err instanceof NormalizedModelError) {
-      logger.warn(`Model primary failed for [${options.role}]`, {
-        role: options.role,
-        model: primaryModel,
-        status: err.status,
-        classification: err.classification,
-        fallbackAttempted: Boolean(fallbackModel),
-        providerBody: err.providerMessage,
-      });
-      throw err;
-    }
-    const axiosErr = err as AxiosError;
-    const status = axiosErr.response?.status;
-    const errorClassification = axios.isAxiosError(err)
-      ? classifyModelError(axiosErr)
-      : classifyHfError(err);
-    const providerBody = axiosErr.response?.data;
-
+    primaryFailure = toNormalizedModelError(err, primaryModel, options.role, false);
     logger.warn(`Model primary failed for [${options.role}]`, {
       role: options.role,
       model: primaryModel,
-      status,
-      classification: errorClassification,
+      status: primaryFailure.status,
+      classification: primaryFailure.classification,
       fallbackAttempted: Boolean(fallbackModel),
-      providerBody,
+      providerBody: primaryFailure.providerMessage,
     });
 
     if (fallbackModel && fallbackModel !== primaryModel) {
@@ -540,69 +575,22 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       try {
         const { result, backend } = await callModel(fallbackModel, options);
         logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-        return { ...result, usedFallback: true, primaryModel, errorClassification };
+        return { ...result, usedFallback: true, primaryModel, errorClassification: primaryFailure.classification };
       } catch (fallbackErr) {
-        if (fallbackErr instanceof NormalizedModelError) {
-          logger.error(`Model fallback also failed for [${options.role}]`, {
-            role: options.role,
-            model: fallbackModel,
-            status: fallbackErr.status,
-            classification: fallbackErr.classification,
-            fallbackAttempted: true,
-            providerBody: fallbackErr.providerMessage,
-          });
-          throw fallbackErr;
-        }
-        const fallbackAxiosErr = fallbackErr as AxiosError;
-        const fallbackClassification = axios.isAxiosError(fallbackErr)
-          ? classifyModelError(fallbackAxiosErr)
-          : classifyHfError(fallbackErr);
-        const fallbackBody = fallbackAxiosErr.response?.data;
+        const fallbackFailure = toNormalizedModelError(fallbackErr, fallbackModel, options.role, true);
         logger.error(`Model fallback also failed for [${options.role}]`, {
           role: options.role,
           model: fallbackModel,
-          status: fallbackAxiosErr.response?.status,
-          classification: fallbackClassification,
+          status: fallbackFailure.status,
+          classification: fallbackFailure.classification,
           fallbackAttempted: true,
-          providerBody: fallbackBody,
+          providerBody: fallbackFailure.providerMessage,
         });
-        throw new NormalizedModelError({
-          classification: fallbackClassification,
-          status: fallbackAxiosErr.response?.status,
-          providerMessage: axios.isAxiosError(fallbackErr)
-            ? extractProviderMessage(fallbackAxiosErr)
-            : fallbackErr instanceof Error
-              ? fallbackErr.message
-              : String(fallbackErr),
-          model: fallbackModel,
-          upstream: isHfRepoModel(fallbackModel) ? 'huggingface_inference' : 'openrouter',
-          endpoint: isHfRepoModel(fallbackModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
-          providerFallbackAttempted: false,
-          providerFallbackBackend: null,
-          providerFallbackResult: null,
-          fallbackTried: true,
-          role: options.role,
-        });
+        throw fallbackFailure;
       }
     }
 
-    throw new NormalizedModelError({
-      classification: errorClassification,
-      status,
-      providerMessage: axios.isAxiosError(err)
-        ? extractProviderMessage(axiosErr)
-        : err instanceof Error
-          ? err.message
-          : String(err),
-      model: primaryModel,
-      upstream: isHfRepoModel(primaryModel) ? 'huggingface_inference' : 'openrouter',
-      endpoint: isHfRepoModel(primaryModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
-      providerFallbackAttempted: false,
-      providerFallbackBackend: null,
-      providerFallbackResult: null,
-      fallbackTried: false,
-      role: options.role,
-    });
+    throw primaryFailure;
   }
 }
 
