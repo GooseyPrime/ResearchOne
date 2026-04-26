@@ -157,9 +157,30 @@ const V2M = {
     'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
   HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
   QWEN_72B: 'Qwen/Qwen2.5-72B-Instruct',
-  FAST_UTILITY: 'Qwen/Qwen2.5-32B-Instruct',
-  FAST_FALLBACK: 'Qwen/Qwen2.5-14B-Instruct',
-  QWQ: 'Qwen/QwQ-32B-Preview',
+  /**
+   * V2 utility primary. We previously routed utility roles through
+   * `Qwen/Qwen2.5-32B-Instruct`, but the HAR captured on 2026-04-26 showed
+   * repeated `provider_unavailable` failures on that slug — HF Inference
+   * Providers currently exposes only one provider for it (featherless-ai),
+   * with no failover. `Qwen/Qwen2.5-72B-Instruct` is on the same
+   * (open-weights, uncensored-friendly, V2-policy-compliant) family but
+   * with broader provider coverage, so we promote it as the V2 utility
+   * primary. Keeping FAST_UTILITY as the symbolic name.
+   */
+  FAST_UTILITY: 'Qwen/Qwen2.5-72B-Instruct',
+  /**
+   * V2 utility fallback. Llama-3.3-70B-Instruct is the most reliably-served
+   * open-weights instruct model on HF Inference today (multi-provider). We
+   * only ever invoke this when the user explicitly opts in per-role.
+   */
+  FAST_FALLBACK: 'meta-llama/Llama-3.3-70B-Instruct',
+  /**
+   * Replacement for QwQ-32B-Preview. QwQ slug was dropped from the main HF
+   * Inference list; we swap it for the DeepSeek R1 distill on Llama 70B,
+   * which is on the live HF Inference table and aligns with our R1-style
+   * reasoner-fallback intent.
+   */
+  QWQ: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
 } as const;
 
 const V2_UTILITIES: Record<

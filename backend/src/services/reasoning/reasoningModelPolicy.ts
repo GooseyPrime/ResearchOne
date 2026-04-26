@@ -63,6 +63,7 @@ export function isHfRepoModel(model: string): boolean {
     m.startsWith('NousResearch/') ||
     m.startsWith('cognitivecomputations/') ||
     m.startsWith('DavidAU/') ||
+    m.startsWith('deepseek-ai/') ||
     m.startsWith('meta-llama/') ||
     m.startsWith('Qwen/') ||
     m.startsWith('qwen/')
@@ -81,6 +82,7 @@ const BASE_ALLOWLIST = [
   'anthropic/claude-sonnet-4.5',
   'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
   'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
+  'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-r1',
   'deepseek/deepseek-v3.2',
