@@ -105,16 +105,21 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           retryable?: boolean;
           failureMeta?: Record<string, unknown>;
         };
+        const fmeta = e.failureMeta ?? {};
+        const terminal = fmeta.terminal === true;
         const failedPayload = {
           runId: e.runId ?? job.data.runId,
-          stage: e.stage ?? 'unknown',
+          stage: terminal ? 'aborted' : e.stage ?? 'unknown',
           percent: e.percent ?? 0,
           message: e.message ?? 'Research run failed',
           error: e.message,
-          retryable: Boolean(e.retryable),
-          failureMeta: e.failureMeta ?? {},
+          retryable: !terminal && Boolean(e.retryable),
+          terminal,
+          failureMeta: fmeta,
         };
-        emit(`job:${job.data.runId}`, 'research:failed', failedPayload);
+        // Differentiate aborted (no retries remain) from failed (retryable).
+        // The frontend listens for both events and shows distinct status.
+        emit(`job:${job.data.runId}`, terminal ? 'research:aborted' : 'research:failed', failedPayload);
         io.emit('reports:updated', {});
         io.emit('runs:updated', {});
         throw err;

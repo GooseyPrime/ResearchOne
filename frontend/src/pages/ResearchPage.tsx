@@ -867,15 +867,16 @@ function RunRow({
   const [showError, setShowError] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const STATUS_CONFIG = {
+  const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
     queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
     running: { icon: Zap, color: 'text-accent animate-pulse', label: 'Running' },
     completed: { icon: CheckCircle2, color: 'text-green-400', label: 'Completed' },
     failed: { icon: AlertCircle, color: 'text-amber-400', label: 'Needs review' },
     cancelled: { icon: AlertCircle, color: 'text-slate-500', label: 'Cancelled' },
+    aborted: { icon: AlertCircle, color: 'text-red-400', label: 'Aborted' },
   };
 
-  const cfg = STATUS_CONFIG[run.status];
+  const cfg = STATUS_CONFIG[run.status] ?? STATUS_CONFIG.failed;
   const Icon = cfg.icon;
 
   const latestEvent = Array.isArray(run.progress_events) && run.progress_events.length > 0

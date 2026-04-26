@@ -65,7 +65,7 @@ export interface ResearchProgressEvent {
   tokenUsage?: { prompt: number; completion: number };
   sourceCount?: number;
   chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed';
+  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
   failure?: {
     errorMessage?: string;
     retryable?: boolean;
@@ -89,7 +89,9 @@ export interface ResearchRun {
   supplemental_attachments?: ResearchSupplementalAttachment[];
   engine_version?: string | null;
   research_objective?: ResearchObjective | string | null;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'aborted';
+  retry_attempts?: number | null;
+  retry_budget?: number | null;
   error_message?: string;
   failed_stage?: string;
   failure_meta?: Record<string, unknown>;
@@ -372,7 +374,15 @@ export const deleteResearchRun = (id: string) =>
   api.delete(`/research/${id}`).then(r => r.data);
 
 export const retryResearchRunFromFailure = (id: string) =>
-  api.post<{ ok: boolean; status: string }>(`/research/${id}/retry-from-failure`).then(r => r.data);
+  api
+    .post<{
+      ok: boolean;
+      status: string;
+      retryAttempts?: number;
+      retryBudget?: number;
+      attemptsRemaining?: number;
+    }>(`/research/${id}/retry-from-failure`)
+    .then((r) => r.data);
 
 export const getSystemHealth = () =>
   api.get<SystemHealth>('/health').then(r => r.data);

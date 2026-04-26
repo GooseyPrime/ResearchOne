@@ -43,7 +43,7 @@ export interface ResearchProgress {
   tokenUsage?: { prompt: number; completion: number };
   sourceCount?: number;
   chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed';
+  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
   retryable?: boolean;
   failureMeta?: Record<string, unknown>;
 }
@@ -260,16 +260,42 @@ export async function runResearchJob(
     }
   };
 
-  // Mark run as running
+  // Mark run as running.
+  //
+  // We also reset progress_stage / progress_percent / progress_message to a
+  // clean "starting" snapshot. This matters for application-level
+  // retry-from-failure attempts: without this, a retried run would inherit the
+  // last failed attempt's stale progress (e.g. 'discovery 15%') for several
+  // seconds before the orchestrator's first `progress(...)` call, which is
+  // exactly the "still says running but nothing is happening" symptom the HAR
+  // captured on 2026-04-26. We also clear failed_stage/error_message/failure_meta
+  // for the new attempt so the live trace tells a coherent story.
   await query(
     `UPDATE research_runs
         SET status='running',
-            started_at=NOW(),
+            started_at=COALESCE(started_at, NOW()),
+            error_message=NULL,
+            failed_stage=NULL,
+            failure_meta='{}'::jsonb,
+            progress_stage='starting',
+            progress_percent=1,
+            progress_message='Worker picked up the run; preparing planner...',
+            progress_updated_at=NOW(),
             model_overrides=$2::jsonb,
             model_ensemble=$3::jsonb
       WHERE id=$1`,
     [runId, JSON.stringify(runModelOverrides), JSON.stringify(snapshotModelEnsemble(runModelOverrides))]
   );
+
+  await appendRunProgressEvent(runId, {
+    runId,
+    stage: 'starting',
+    percent: 1,
+    message: 'Worker picked up the run; preparing planner...',
+    timestamp: new Date().toISOString(),
+    eventType: 'progress',
+    substep: 'worker_started',
+  });
 
   try {
     // ────────────────────────────────────────────────────────────────
@@ -670,23 +696,61 @@ export async function runResearchJob(
       throw err;
     }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
-    const failureMetaWithResume = {
+
+    // Look up retry-budget so we can decide whether this failure is a
+    // "failed (retryable)" row or a terminal "aborted (no retries left)" row.
+    let retryAttempts = 0;
+    let retryBudget = 3;
+    try {
+      const budgetRow = await queryOne<{ retry_attempts: number | null; retry_budget: number | null }>(
+        `SELECT retry_attempts, retry_budget FROM research_runs WHERE id=$1`,
+        [runId]
+      );
+      retryAttempts = Number(budgetRow?.retry_attempts ?? 0);
+      retryBudget = Number(budgetRow?.retry_budget ?? 3);
+    } catch (budgetErr) {
+      logger.warn(`Research run ${runId}: could not read retry budget; assuming defaults`, budgetErr);
+    }
+
+    const attemptsRemaining = Math.max(0, retryBudget - retryAttempts);
+    const budgetExhausted = attemptsRemaining <= 0;
+    const declaredRetryable = failureDetails.retryable && !budgetExhausted;
+    const finalStatus: 'failed' | 'aborted' = budgetExhausted ? 'aborted' : 'failed';
+
+    const failureMetaWithResume: Record<string, unknown> = {
       ...failureDetails.failureMeta,
-      retryable: failureDetails.retryable,
-      resumeAvailable: failureDetails.retryable,
-      resumeHint:
-        failureDetails.retryable
-          ? 'Use POST /api/research/:id/retry-from-failure (or the Resume button) to re-queue this run with the same parameters.'
+      retryable: declaredRetryable,
+      resumeAvailable: declaredRetryable,
+      retryAttempts,
+      retryBudget,
+      attemptsRemaining,
+      terminal: budgetExhausted,
+      resumeHint: declaredRetryable
+        ? 'Use POST /api/research/:id/retry-from-failure (or the Resume button) to re-queue this run with the same parameters.'
+        : budgetExhausted
+          ? 'No retry attempts remain for this run (retry_attempts >= retry_budget). The run has been moved to status=aborted. Start a new run if you still need this report.'
           : undefined,
     };
     try {
       await query(
-        `UPDATE research_runs SET status='failed', error_message=$1, failed_stage=$2, failure_meta=$3, completed_at=NOW(), resume_job_payload=$5 WHERE id=$4`,
+        `UPDATE research_runs
+            SET status=$5,
+                error_message=$1,
+                failed_stage=$2,
+                failure_meta=$3,
+                completed_at=NOW(),
+                progress_stage=NULL,
+                progress_percent=NULL,
+                progress_message=NULL,
+                progress_updated_at=NULL,
+                resume_job_payload=CASE WHEN $5 = 'aborted' THEN NULL ELSE $6 END
+          WHERE id=$4`,
         [
           failureDetails.errorMessage,
           currentStage,
           JSON.stringify(failureMetaWithResume),
           runId,
+          finalStatus,
           JSON.stringify(resumeJobPayload),
         ]
       );
@@ -694,8 +758,8 @@ export async function runResearchJob(
       logger.error(`Research run ${runId}: failed to persist failure row`, dbErr);
       try {
         await query(
-          `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
-          [failureDetails.errorMessage.slice(0, 2000), runId]
+          `UPDATE research_runs SET status=$2, error_message=$1, completed_at=NOW() WHERE id=$3`,
+          [failureDetails.errorMessage.slice(0, 2000), finalStatus, runId]
         );
       } catch (fallbackErr) {
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
@@ -703,14 +767,16 @@ export async function runResearchJob(
     }
     await appendRunProgressEvent(runId, {
       runId,
-      stage: currentStage,
+      stage: budgetExhausted ? 'aborted' : currentStage,
       percent: currentPercent,
-      message: currentMessage,
+      message: budgetExhausted
+        ? `Run aborted — retry budget (${retryBudget}) exhausted. ${currentMessage}`
+        : currentMessage,
       timestamp: new Date().toISOString(),
-      eventType: 'run_failed',
+      eventType: budgetExhausted ? 'run_aborted' : 'run_failed',
       failure: {
         errorMessage: failureDetails.errorMessage,
-        retryable: failureDetails.retryable,
+        retryable: declaredRetryable,
         failureMeta: failureMetaWithResume,
       },
     });
