@@ -94,43 +94,56 @@ HF Inference Providers), several UX bugs are layered on top of it:
 
 ## 2. Model assessment vs. HF Inference Providers spec
 
-Cross-referencing the V2 strict-open-weights matrix
-(`backend/src/config/researchEnsemblePresets.ts`) against the live
-`https://huggingface.co/inference/models` table:
+> **Update 2026-04-27** — the first iteration of this plan moved V2 utility
+> primaries onto `Qwen/Qwen2.5-72B-Instruct` and the V2 utility fallback
+> onto `meta-llama/Llama-3.3-70B-Instruct`. Both of those are RLHF
+> refusal-aligned models. That violates `ResearchOne PolicyOne` and the
+> binding V2 selection criteria — using either as a V2 primary causes
+> drift back toward consensus-debunking and silent omission of anomalous
+> claims, which is exactly the contamination V2 exists to prevent.
+>
+> The corrected V2 matrix (this PR, current state) replaces every
+> RLHF-aligned primary with an abliterated / uncensored / steerable
+> open-weights model. The full criteria are now in
+> [`docs/V2_MODEL_SELECTION_CRITERIA.md`](V2_MODEL_SELECTION_CRITERIA.md).
 
-| V2 slug                                                                       | HF Inference status (observed) | Action |
-|-------------------------------------------------------------------------------|--------------------------------|--------|
-| `meta-llama/Llama-3.3-70B-Instruct`                                           | many providers (live)          | keep |
-| `deepseek/deepseek-r1` (OpenRouter slug)                                      | OpenRouter                     | keep, OpenRouter ok |
-| `cognitivecomputations/dolphin-2.9.2-qwen2-72b`                               | not in HF Inference table      | keep, but treat as best-effort, not in V2 default for utility/retriever |
-| `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-…`                                  | not in HF Inference table      | keep for adversarial only, no auto-fallback |
-| `NousResearch/Hermes-3-Llama-3.1-70B`                                         | not in HF Inference table      | keep for adversarial only; user opt-in only |
-| `Qwen/Qwen2.5-72B-Instruct`                                                   | live (multi-provider)          | promote to V2 retriever / utility primary |
-| `Qwen/Qwen2.5-32B-Instruct`                                                   | **single provider (featherless-ai); flaky** | **demote — no longer V2 retriever default** |
-| `Qwen/Qwen2.5-14B-Instruct`                                                   | listed but volatile            | demote off V2 fast-fallback default |
-| `Qwen/QwQ-32B-Preview`                                                        | dropped from main HF Inference list | demote — replace with `deepseek-ai/DeepSeek-R1-Distill-Llama-70B` |
+Cross-referencing the corrected V2 matrix against the live
+`https://huggingface.co/inference/models` catalog:
 
-**Net result**: the only repeated symptom in the HAR (`provider_unavailable`
-on `Qwen/Qwen2.5-32B-Instruct`) is removed at the source by switching V2
-utility / retriever roles to a primary that *actually has more than one
-backing provider on HF Inference Providers*.
+| V2 slug                                                                       | Refusal head? | Role(s) (default) | Notes |
+|-------------------------------------------------------------------------------|---------------|-------------------|-------|
+| `NousResearch/Hermes-3-Llama-3.1-70B`                                         | None (steerable, low-refusal) | planner, drafter, synthesizer, coherence_refiner, plain_language_synthesizer, section_rewriter | Operator-prompt-as-authority alignment |
+| `NousResearch/DeepHermes-3-Llama-3-8B-Preview`                                | None (steerable, low-refusal) | plain_language fallback | Smaller / faster |
+| `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated`                         | Removed (abliterated) | reasoner, change_planner | R1 reasoning intact; Llama refusal direction orthogonalized |
+| `huihui-ai/Llama-3.3-70B-Instruct-abliterated`                                | Removed (abliterated) | verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier; retriever fallback | Same Meta base capability as Llama-3.3-70B-Instruct, no refusal head |
+| `huihui-ai/Qwen2.5-72B-Instruct-abliterated`                                  | Removed (abliterated) | retriever (every objective); patent-gap synthesizer / outline / coherence | Qwen structured-output strength preserved, alignment filter removed |
+| `cognitivecomputations/dolphin-2.9.2-qwen2-72b`                               | Uncensored fine-tune | skeptic, internal_challenger (general / investigative / novel) | Adversarial primary |
+| `cognitivecomputations/Dolphin3.0-Llama3.1-70B`                               | Uncensored fine-tune | adversarial / synthesis fallback | Newer Dolphin line |
+| `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-…`                                  | Abliterated MoE | skeptic, internal_challenger (patent / anomaly) | Anomaly red-team |
 
-V2 strict-uncensored requirements (no consensus filtering, red-team prefix
-on `skeptic` / `internal_challenger`, no hidden chain-of-thought leak) are
-preserved — only the *primary IDs for utility roles* change. We do not relax
-the policy file or add OpenRouter slugs to V2 utility roles.
+**Forbidden as V2 primary** (kept on the deployment allowlist for V1 / admin
+user-opt-in fallback only): `meta-llama/Llama-3.3-70B-Instruct`,
+`deepseek-ai/DeepSeek-R1-Distill-Llama-70B`, `Qwen/Qwen2.5-72B-Instruct`,
+`Qwen/Qwen2.5-32B-Instruct`, `Qwen/Qwen2.5-14B-Instruct`,
+`Qwen/QwQ-32B-Preview`.
 
-### Concrete V2 model changes (proposed, all still inside the existing
-`APPROVED_REASONING_MODEL_ALLOWLIST`):
+The `Qwen/Qwen2.5-32B-Instruct` slug from the original HAR-captured
+failure is still allowlisted (so admins can manually wire it in via per-run
+overrides) but it is no longer the V2 retriever default. The new V2
+retriever default `huihui-ai/Qwen2.5-72B-Instruct-abliterated` keeps
+Qwen's structured-output behaviour for JSON-clean retriever output without
+the alignment filter that drives debunking on anomalous claims, and is
+hosted by multiple HF Inference Providers, removing the single-provider
+flakiness symptom captured in the HAR.
 
-| Role(s)                                                                   | Old V2 primary               | New V2 primary                | Old V2 fallback             | New V2 fallback (only fires when user opts in per-role) |
-|---------------------------------------------------------------------------|------------------------------|-------------------------------|-----------------------------|--------------------------------------------------------|
-| `retriever`, `verifier`, `citation_integrity_checker`, `revision_intake`, `report_locator`, `final_revision_verifier` | `Qwen/Qwen2.5-32B-Instruct`  | `Qwen/Qwen2.5-72B-Instruct`   | `Qwen/Qwen2.5-14B-Instruct` | `meta-llama/Llama-3.3-70B-Instruct`                    |
-| `reasoner` (when `QwQ-32B-Preview` was the fallback)                      | `Qwen/QwQ-32B-Preview`       | (unchanged primary `deepseek/deepseek-r1`) | `Qwen/QwQ-32B-Preview` | `meta-llama/Llama-3.3-70B-Instruct`                    |
-| `change_planner` (same)                                                   | (same)                       | (same)                        | `Qwen/QwQ-32B-Preview`      | `meta-llama/Llama-3.3-70B-Instruct`                    |
+### Allowlist + repo-prefix detector additions in this PR
 
-Allowlist additions: none required — `Qwen/Qwen2.5-72B-Instruct` is already
-on the list.
+- `huihui-ai/` is added to `isHfRepoModel(...)` so calls to abliterated
+  variants route through the HF Inference Providers API.
+- `BASE_ALLOWLIST` is split into a V1 / closed-weights section and a V2 /
+  uncensored open-weights section. The startup validators
+  (`validateReasoningModelPolicy` and
+  `validateV2ModePresetsAgainstAllowlist`) still pass.
 
 ## 3. Behavioral / orchestration changes
 
@@ -261,12 +274,19 @@ fallback for verbose `detail` strings.
   unchanged and still applied to `skeptic` / `internal_challenger`
   whenever `engineVersion === 'v2'` and `callPurpose !==
   'contradiction_extraction'`.
-- The model allowlist (`APPROVED_REASONING_MODEL_ALLOWLIST`) is **not
-  relaxed**; we move within it.
-- V2 stays open-weights / uncensored where the role demands it
-  (`Hermes-3-Llama-3.1-70B`, `dolphin-2.9.2-qwen2-72b`,
-  `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-…`) — those slots do not
-  change.
-- We are not introducing OpenRouter routing for adversarial roles; we are
-  making the *utility* default that was hitting `provider_unavailable`
-  more reliable.
+- Every V2 default primary in the corrected matrix is uncensored,
+  abliterated, or steerable open-weights. RLHF refusal-aligned slugs
+  (`meta-llama/Llama-3.3-70B-Instruct`,
+  `deepseek-ai/DeepSeek-R1-Distill-Llama-70B`,
+  `Qwen/Qwen2.5-*-Instruct`, `Qwen/QwQ-32B-Preview`) are forbidden as V2
+  primaries per the binding criteria in
+  [`docs/V2_MODEL_SELECTION_CRITERIA.md`](V2_MODEL_SELECTION_CRITERIA.md);
+  they remain allowlisted only for explicit per-role user opt-in via the
+  V2 UI fallback checkbox.
+- We are not introducing OpenRouter routing for V2 utility roles. V2
+  routes through the HF Inference Providers API (HF_TOKEN required on
+  the server). OpenRouter remains for V1 only.
+- The reliability fixes (no silent BullMQ retry, `aborted` terminal
+  state, retry budget, per-attempt progress reset, always-on live
+  trace) all hold. They do not depend on which uncensored open-weights
+  model is selected.

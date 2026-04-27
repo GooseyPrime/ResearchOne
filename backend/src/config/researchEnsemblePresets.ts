@@ -148,39 +148,99 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
   }),
 };
 
-/** Baseline models — Research One 2 strict open-weights matrix. */
+/**
+ * Baseline models — Research One 2 strict uncensored open-weights matrix.
+ *
+ * V2 selection criteria (see `docs/V2_MODEL_SELECTION_CRITERIA.md` for the full
+ * rationale and `ResearchOne PolicyOne` for the epistemic policy these
+ * selections must serve):
+ *
+ *   1. NO refusal-aligned primary models. RLHF/RLAIF safety post-training
+ *      drives the model toward "I cannot help with that," consensus debunking,
+ *      and silent omission of suppressed-knowledge claims. That is the
+ *      contaminated-corpus drift the policy explicitly forbids.
+ *   2. PRIMARY models for every V2 role must be either:
+ *        - abliterated (refusal direction orthogonalized out — same base
+ *          weights with the refusal feature direction removed); or
+ *        - uncensored fine-tunes (Dolphin / Hermes / Dark-Champion lines that
+ *          were trained without the "decline anomalies" objective); or
+ *        - steerable, low-refusal open weights with intact long-form +
+ *          reasoning capability.
+ *   3. Reasoning chains MUST be preserved. The reasoner role uses an
+ *      abliterated DeepSeek R1 distill so we keep R1-style step-by-step
+ *      reasoning *without* the Llama refusal head sitting on top of it.
+ *   4. No closed-source / API-gated routing on V2 utility primaries. V2
+ *      stays on HF-hostable open-weights so we are not dependent on a
+ *      moderation pipeline we do not control.
+ *   5. Adversarial roles (skeptic / internal_challenger) prefer the most
+ *      uncensored slot (Dolphin / Dark-Champion) so red-team critique can
+ *      attack mainstream consensus directly without alignment dampening.
+ *
+ * If a V2 model becomes unavailable on HF Inference Providers we surface
+ * the failure as `provider_unavailable` and (per the same plan)
+ * `aborted` once the retry budget is exhausted. We do NOT silently swap
+ * to a refusal-aligned primary as a "more reliable" substitute — that
+ * would be exactly the policy violation this matrix exists to prevent.
+ */
 const V2M = {
-  LLAMA_3_3: 'meta-llama/Llama-3.3-70B-Instruct',
-  DEEPSEEK_R1: 'deepseek/deepseek-r1',
+  /**
+   * Hermes-3-Llama-3.1-70B (Nous Research). Steerable, low-refusal,
+   * neutrally-aligned long-form model. Used across drafting / synthesis /
+   * coherence / locator / rewriter roles.
+   */
+  HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
+  /**
+   * DeepHermes-3-Llama-3-8B-Preview (Nous Research). Open-reasoning preview
+   * with neutral alignment and chain-of-thought capability; used as a
+   * smaller fallback where speed matters and refusal-free behavior is still
+   * required.
+   */
+  DEEP_HERMES_3: 'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
+  /**
+   * Dolphin-2.9.2 on Qwen2-72B base (Cognitive Computations). Uncensored
+   * long-form fine-tune. Primary for skeptic / internal_challenger.
+   */
   DOLPHIN_QWEN: 'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  /**
+   * Dolphin 3.0 on Llama-3.1-70B base (Cognitive Computations). Newer
+   * uncensored long-form line; used as adversarial / synthesis fallback.
+   */
+  DOLPHIN_3_70B: 'cognitivecomputations/Dolphin3.0-Llama3.1-70B',
+  /**
+   * Dark-Champion 8x3B MoE (DavidAU). Abliterated MoE optimized for
+   * adversarial / anomaly red-teaming.
+   */
   DARK_CHAMPION:
     'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
-  HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
-  QWEN_72B: 'Qwen/Qwen2.5-72B-Instruct',
   /**
-   * V2 utility primary. We previously routed utility roles through
-   * `Qwen/Qwen2.5-32B-Instruct`, but the HAR captured on 2026-04-26 showed
-   * repeated `provider_unavailable` failures on that slug — HF Inference
-   * Providers currently exposes only one provider for it (featherless-ai),
-   * with no failover. `Qwen/Qwen2.5-72B-Instruct` is on the same
-   * (open-weights, uncensored-friendly, V2-policy-compliant) family but
-   * with broader provider coverage, so we promote it as the V2 utility
-   * primary. Keeping FAST_UTILITY as the symbolic name.
+   * Abliterated Llama-3.3-70B-Instruct (huihui-ai). Same Meta base weights
+   * with the refusal direction orthogonalized out. Use this in place of the
+   * RLHF-aligned `meta-llama/Llama-3.3-70B-Instruct`. Capability profile is
+   * preserved (instruction following, long context, tool use); the refusal
+   * head is gone.
    */
-  FAST_UTILITY: 'Qwen/Qwen2.5-72B-Instruct',
+  ABLIT_LLAMA_70B: 'huihui-ai/Llama-3.3-70B-Instruct-abliterated',
   /**
-   * V2 utility fallback. Llama-3.3-70B-Instruct is the most reliably-served
-   * open-weights instruct model on HF Inference today (multi-provider). We
-   * only ever invoke this when the user explicitly opts in per-role.
+   * Abliterated Qwen2.5-72B-Instruct (huihui-ai). Same Qwen base weights
+   * minus the refusal direction. Used where Qwen's structured-output
+   * fidelity matters (retriever JSON output, long-form synthesis on patent
+   * gap analysis) without the Qwen alignment filter.
    */
-  FAST_FALLBACK: 'meta-llama/Llama-3.3-70B-Instruct',
+  ABLIT_QWEN_72B: 'huihui-ai/Qwen2.5-72B-Instruct-abliterated',
   /**
-   * Replacement for QwQ-32B-Preview. QwQ slug was dropped from the main HF
-   * Inference list; we swap it for the DeepSeek R1 distill on Llama 70B,
-   * which is on the live HF Inference table and aligns with our R1-style
-   * reasoner-fallback intent.
+   * Abliterated DeepSeek-R1-Distill-Llama-70B (huihui-ai). R1-style
+   * chain-of-thought reasoning with the Llama refusal direction removed.
+   * Reasoner / change_planner primary — we keep R1 reasoning fidelity
+   * without the closed-corpus consensus debunking pattern.
    */
-  QWQ: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
+  ABLIT_R1_70B: 'huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated',
+  /**
+   * Non-abliterated DeepSeek-R1-Distill-Llama-70B (DeepSeek). Reasoning
+   * fidelity is intact but Llama RLHF refusal head is still attached. We
+   * keep this on the V2 allowlist as a *user-opt-in* fallback only — the
+   * primary path stays on `ABLIT_R1_70B`.
+   */
+  R1_DISTILL_70B: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
 } as const;
 
 const V2_UTILITIES: Record<
@@ -192,12 +252,15 @@ const V2_UTILITIES: Record<
   | 'final_revision_verifier',
   RoleModelPair
 > = {
-  retriever: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
-  verifier: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
-  citation_integrity_checker: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
-  revision_intake: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
-  report_locator: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
-  final_revision_verifier: pair(V2M.FAST_UTILITY, V2M.FAST_FALLBACK),
+  // Retriever needs JSON-clean output → abliterated Qwen 72B (Qwen's
+  // structured-output strength minus the alignment filter).
+  retriever: pair(V2M.ABLIT_QWEN_72B, V2M.ABLIT_LLAMA_70B),
+  // Verification roles need calibrated long-form judgement without refusal.
+  verifier: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
+  citation_integrity_checker: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
+  revision_intake: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
+  report_locator: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
+  final_revision_verifier: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
 };
 
 function v2Mode(
@@ -210,75 +273,85 @@ function v2Mode(
 }
 
 /**
- * Research One 2 — strict architecture-aligned presets (open-weights only).
+ * Research One 2 — strict architecture-aligned presets.
+ *
+ * Every primary in every objective is uncensored / abliterated / steerable
+ * open-weights, per the V2 selection criteria above and the
+ * `ResearchOne PolicyOne` epistemic policy. Fallbacks are also drawn from
+ * the same pool — fallbacks only fire when the user explicitly opts in
+ * per role from the V2 UI.
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
-    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
+    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
     skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
     internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
-    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
+    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
     skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
     internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
-    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWQ),
-    outline_architect: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
-    section_drafter: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
-    synthesizer: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
-    coherence_refiner: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
-    plain_language_synthesizer: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
-    section_rewriter: pair(V2M.QWEN_72B, V2M.LLAMA_3_3),
+    // Patent / structured-claim work benefits from Qwen's structured output
+    // strength — but we use the abliterated Qwen variant so claim
+    // extraction is not silently filtered against anomalous prior art.
+    planner: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
+    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    outline_architect: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
+    section_drafter: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
+    synthesizer: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
+    coherence_refiner: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
+    section_rewriter: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
     skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
     internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
-    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    reasoner: pair(V2M.HERMES_3, V2M.DEEPSEEK_R1),
-    change_planner: pair(V2M.HERMES_3, V2M.DEEPSEEK_R1),
-    outline_architect: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_drafter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    coherence_refiner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    plain_language_synthesizer: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    section_rewriter: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
+    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    reasoner: pair(V2M.HERMES_3, V2M.ABLIT_R1_70B),
+    change_planner: pair(V2M.HERMES_3, V2M.ABLIT_R1_70B),
+    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
+    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
     skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
     internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
-    planner: pair(V2M.LLAMA_3_3, V2M.HERMES_3),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.HERMES_3),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.HERMES_3),
-    outline_architect: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
-    section_drafter: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
-    synthesizer: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
-    coherence_refiner: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
-    section_rewriter: pair(V2M.HERMES_3, V2M.LLAMA_3_3),
+    // Anomaly objective leans into the most uncensored / steerable chain.
+    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
+    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
+    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
     skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
     internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
   }),
