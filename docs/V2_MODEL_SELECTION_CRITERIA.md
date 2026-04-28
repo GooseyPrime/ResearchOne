@@ -36,34 +36,48 @@ prevent.
 A model can be a V2 **primary** for any role if and only if **all** of:
 
 1. **Open weights.** The model is published on Hugging Face under a
-   license that permits redistribution / inference, and it is hosted on
-   the HF Inference Providers catalog (or equivalent open-weights
-   provider we control). No closed-API moderation pipeline.
+   license that permits redistribution / inference. No closed-API
+   moderation pipeline (Anthropic / OpenAI / Google / Mistral closed
+   variants are forbidden).
 
-2. **No live refusal head.** The model is one of:
-   - **Abliterated** — the refusal feature direction has been
-     orthogonalized out of the base model (e.g. the `huihui-ai/*-abliterated`
-     line, `DavidAU/*-abliterated*`). The base capability is preserved;
-     the trained refusal direction is removed.
-   - **Uncensored fine-tune** — the model was fine-tuned without the
-     "decline anomalies / debunk suppressed knowledge" objective in its
-     training mix (e.g. Cognitive Computations' `Dolphin*`).
-   - **Steerable, low-refusal open weights** — community-aligned models
-     trained to follow operator system prompts rather than fall back to
-     a refusal default (e.g. NousResearch `Hermes-3` /
-     `DeepHermes-3-Preview`).
+2. **No live refusal head, OR known low-refusal under operator system
+   prompt.** The model is one of:
+   - **Abliterated** — refusal feature direction orthogonalized out
+     (e.g. `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`).
+   - **Uncensored fine-tune** — trained without the "decline anomalies"
+     objective (e.g. Cognitive Computations' `Dolphin*`).
+   - **Steerable, low-refusal open weights** — follow operator system
+     prompts (e.g. NousResearch `Hermes-3` / `Hermes-4`).
+   - **Low-refusal multi-provider open-weights reasoners** — the
+     DeepSeek V3.x / R1-0528 line, the Kimi K2 line, the Qwen3-235B
+     Thinking line. These are reasoning-focused open weights with
+     comparatively light RLHF refusal training; under our
+     `REASONING_FIRST_PREAMBLE` they follow the operator role rather
+     than refusing. **(Added 2026-04-28-PM after the post-merge
+     outage.)** This category is admitted on critical-path roles
+     because the strict "uncensored only" criterion forced us onto
+     single-provider Hermes / Dolphin slugs that were not reliably
+     deployable on a typical OpenRouter account.
 
 3. **Reasoning capability is intact.** Reasoner / change_planner roles
-   need explicit chain-of-thought capability. We use abliterated
-   DeepSeek R1 distills so we keep R1-style step-by-step reasoning
-   *without* the Llama refusal head sitting on top of it.
+   need explicit chain-of-thought capability (R1, Qwen Thinking, Kimi
+   Thinking) or the abliterated DeepSeek R1 distill.
 
 4. **Capable of long-context, structured output.** Synthesis roles must
    handle ≥ 32k context and produce valid markdown / JSON.
 
 5. **Documented and reviewable.** The model card must describe the
-   training data and the refusal-removal method. We do not pick
-   primaries from undocumented merges.
+   training data; for the "low-refusal multi-provider reasoners"
+   category, the model's published release notes / chat template must
+   show that the model accepts an operator system prompt as authority.
+
+6. **Multi-provider on the routing target** for any role on the
+   *critical path* (planner / reasoner / synthesizer / utility /
+   verifier). At least 2 live OpenRouter upstreams. The 2026-04-28-PM
+   outage was caused by routing every default through a single-upstream
+   slug. Adversarial roles (skeptic / internal_challenger) are
+   exempt from this rule because their failures are recoverable
+   mid-pipeline; they may use single-upstream uncensored fine-tunes.
 
 ## Hard rules — V2 FALLBACKS
 
@@ -109,45 +123,38 @@ as a primary.
 
 ## Currently-approved V2 PRIMARIES (this PR)
 
-The 2026-04-28 V2 outage post-mortem
-(`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`) showed that
-*every* V2 default selected on PR #39 was single-provider on HF Inference
-(or did not exist on HF Inference at all) — featherless-ai was the only
-upstream for all of them, and any featherless-ai hiccup took the whole
-V2 ensemble down.
+The 2026-04-28-AM V2 outage (#1) showed every Hermes/Dolphin/Euryale
+slug we picked on PR #39 was single-provider on HF Inference. PR #40
+moved them to OpenRouter; the 2026-04-28-PM V2 outage (#2) showed that
+moving them to OpenRouter did *not* solve the problem because the same
+slugs are also single-upstream on OpenRouter (Nebius / DeepInfra /
+Venice). The first V2 run after PR #40 merged hit a 404 "No allowed
+providers are available for the selected model" on
+`nousresearch/hermes-4-70b` — Nebius is the only upstream for that
+slug, and the test account's provider filter excluded Nebius.
 
-We now route V2 default primaries through **OpenRouter**, which gives us:
+PR #41 (this one) replaces the critical-path defaults with low-refusal
+multi-provider open-weights reasoners that have ≥ 2 live OpenRouter
+upstreams each, verified live 2026-04-28-PM:
 
-- a single API key path (`OPENROUTER_API_KEY`) you already have,
-- a stable schema-checked endpoint (`/endpoints` per model) we can probe
-  to see which upstreams are live before a deploy,
-- automatic gateway-side failover when a model has multiple upstreams.
+| OpenRouter slug | Upstream providers (verified) | Role(s) |
+|---|---|---|
+| `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | planner, synthesizer, retriever / verifier / utility (default across all objectives) |
+| `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | utility / synthesis fallback |
+| `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | reasoner, change_planner (default across all objectives), patent-gap planner |
+| `qwen/qwen3-235b-a22b-thinking-2507` | Alibaba, DeepInfra, AtlasCloud, Novita (4) | reasoner / change_planner fallback |
+| `moonshotai/kimi-k2-thinking` | Novita, Google, AtlasCloud (3) | planner fallback (general / investigative / anomaly), planner primary (novel application discovery) |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) | skeptic, internal_challenger (default across most objectives). Single-provider is acceptable here per criterion 6 — adversarial role failures are recoverable. |
+| `sao10k/l3.3-euryale-70b` | NextBit, DeepInfra (2) | adversarial fallback; primary on the anomaly objective. |
 
-**Honest caveat (added 2026-04-28 after the post-merge review):** for the
-specific uncensored / steerable slugs we picked, most have a single
-upstream provider on OpenRouter today, not multiple. They are still
-better than the HF Inference path because the upstream providers
-(Nebius, DeepInfra, Venice, NextBit) are bigger, better-run inference
-shops with 100% recent uptime, but you should expect "rare gateway-side
-provider hiccup" rather than "10-provider redundancy." Per-slug counts
-(verified live):
+A pre-flight probe runs at backend startup
+(`backend/src/services/openrouter/openrouterPreflight.ts`) and logs a
+warning per (objective, role, slug) if any default primary has zero
+live OpenRouter endpoints for the configured `OPENROUTER_API_KEY`. The
+probe never blocks startup — it just makes sure outages show up in
+deploy logs, not on the user's first click.
 
-| OpenRouter slug | Upstream providers on OpenRouter |
-|---|---|
-| `nousresearch/hermes-4-70b` | Nebius (1) |
-| `nousresearch/hermes-4-405b` | Nebius (1) |
-| `nousresearch/hermes-3-llama-3.1-70b` | DeepInfra (1) |
-| `nousresearch/hermes-3-llama-3.1-405b` | DeepInfra (1) |
-| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) |
-| `sao10k/l3.3-euryale-70b` | NextBit + DeepInfra (2) |
-
-If a single OpenRouter upstream goes down for one of these slugs, the
-canonical state machine flags the run as `failed_retryable`; the user
-can hit Resume up to `retry_budget` (default 3) times before it goes
-`aborted`. We *do not* fall back to a refusal-aligned model under the
-hood — the policy forbids that.
-
-OpenRouter primaries (uncensored / steerable / non-refusal-aligned):
+OpenRouter primaries (uncensored / steerable / low-refusal):
 
 | OpenRouter slug | Role(s) | Why |
 |---|---|---|

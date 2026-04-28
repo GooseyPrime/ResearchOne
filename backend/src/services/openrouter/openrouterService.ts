@@ -385,6 +385,35 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
     primaryModel: model,
   };
 }
+/**
+ * Build the OpenRouter `provider` request block.
+ *
+ * Why: the 2026-04-28-PM V2 outage ("No allowed providers are available
+ * for the selected model" 404 on `nousresearch/hermes-4-70b`) was caused
+ * by OpenRouter applying the *account's* default provider filter — which
+ * by default excludes providers that train on prompts. We now explicitly
+ * tell OpenRouter:
+ *   - `allow_fallbacks: true`   → if the first upstream rejects (rate
+ *     limit, account-policy filter, hiccup), automatically try the next.
+ *   - `data_collection: 'allow'` → explicitly opt this server into
+ *     prompt-training-permitting providers, which broadens the upstream
+ *     set most accounts have access to. Operators who need stricter
+ *     policy can set OPENROUTER_DATA_COLLECTION=deny via env.
+ *   - `require_parameters: true` → only route to upstreams that actually
+ *     support our request parameters (temperature, max_tokens, tools).
+ *
+ * Reference: https://openrouter.ai/docs/features/provider-routing
+ */
+function buildOpenRouterProviderBlock(): Record<string, unknown> {
+  const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
+  return {
+    allow_fallbacks: true,
+    require_parameters: true,
+    data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
+    sort: 'throughput',
+  };
+}
+
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
   const body: Record<string, unknown> = {
@@ -392,6 +421,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
     messages: applyV2SystemAugmentations(options),
     temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
     max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
+    provider: buildOpenRouterProviderBlock(),
   };
   if (options.tools) body.tools = options.tools;
 
@@ -594,12 +624,36 @@ function classifyHfError(err: unknown): ModelErrorClassification {
 
 function classifyModelError(err: AxiosError): ModelErrorClassification {
   const status = err.response?.status;
+  const data = err.response?.data as unknown;
+  const message =
+    typeof data === 'string'
+      ? data
+      : data && typeof data === 'object'
+        ? ((data as { error?: { message?: string }; message?: string }).error?.message ||
+            (data as { message?: string }).message ||
+            '')
+        : '';
+
   if (!status) return 'network_error';
   if (status === 429) return 'rate_limited';
   if (status === 402) return 'quota_exceeded';
   if (status === 503 || status === 502) return 'provider_unavailable';
   if (status >= 500) return 'provider_unavailable';
   if (status === 401 || status === 403) return 'auth_error';
+
+  // OpenRouter returns 404 with body
+  // `{"error":{"message":"No allowed providers are available for the
+  //   selected model","code":404}}` when the account's provider filter
+  // excludes every upstream the model has. Do not classify this as
+  // `unknown` — it is a permanent configuration mismatch for the
+  // requested model on this account, and the failure card needs to say
+  // so. We classify it as `bad_request` (do not retry) and the
+  // orchestrator's failure-meta carries the providerMessage so the user
+  // sees the actual cause.
+  if (status === 404) {
+    if (/no allowed providers/i.test(message)) return 'bad_request';
+    return 'bad_request';
+  }
   if (status === 400) return 'bad_request';
   return 'unknown';
 }

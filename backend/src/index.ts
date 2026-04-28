@@ -9,6 +9,7 @@ import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { validateEnvModelPolicy } from './config/modelRuntime';
 import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
+import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
 
 async function main() {
   try {
@@ -66,6 +67,14 @@ async function main() {
     httpServer.listen(config.port, () => {
       logger.info(`ResearchOne API listening on port ${config.port}`);
     });
+
+    // Best-effort: probe OpenRouter to confirm every V2 default primary
+    // has at least one live upstream for the configured account. Logs a
+    // structured warning per affected (objective, role, slug) if not.
+    // Never blocks listen.
+    runV2OpenRouterPreflightAndLog().catch((e) =>
+      logger.warn('[v2-preflight] unexpected error', e)
+    );
   } catch (err) {
     logger.error('Fatal startup error:', err);
     process.exit(1);

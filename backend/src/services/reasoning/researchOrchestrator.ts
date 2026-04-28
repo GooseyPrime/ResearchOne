@@ -908,9 +908,14 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
 
   const openrouterBase = config.openrouter.baseUrl.replace(/\/+$/, '');
   const isOpenRouterCall = typeof endpoint === 'string' && endpoint.startsWith(openrouterBase);
-  const openrouter404Hint =
-    status === 404 && isOpenRouterCall
-      ? ' If this URL is OpenRouter, check OPENROUTER_BASE_URL on the server (must be base only, e.g. https://openrouter.ai/api/v1 — not .../chat/completions).'
+  const noAllowedProviders =
+    isOpenRouterCall && status === 404 && /no allowed providers/i.test(providerMessage);
+  const wrongOrEndpoint =
+    isOpenRouterCall && status === 404 && !noAllowedProviders;
+  const trailingHint = noAllowedProviders
+    ? ' OpenRouter rejected the model on this account because every upstream provider is excluded by the account-level privacy / data-collection filter. Open the V2 page and switch the failing role to a model with broader provider coverage, or set OPENROUTER_DATA_COLLECTION=allow on the server.'
+    : wrongOrEndpoint
+      ? ' If this URL is OpenRouter, verify the model slug exists in https://openrouter.ai/api/v1/models and that OPENROUTER_BASE_URL is the API base (e.g. https://openrouter.ai/api/v1, not .../chat/completions).'
       : '';
 
   const hints: string[] = [];
@@ -922,7 +927,7 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
   }
 
   return {
-    errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}${openrouter404Hint}`,
+    errorMessage: `Upstream request failed at ${stage} (${method} ${endpoint ?? 'unknown endpoint'}, status=${statusLabel}, classification=${classification}): ${providerMessage}${trailingHint}`,
     failureMeta: {
       classification,
       status,

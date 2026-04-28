@@ -39,13 +39,13 @@
 │  (planning & core reasoning); Claude Sonnet 4.5 + Gemini 2.5    │
 │  Pro (reports & sections); GPT-5-mini (structured JSON).        │
 │                                                                 │
-│  V2 ensemble (Research One 2) is uncensored / steerable open-  │
-│  weights, routed through OpenRouter for multi-provider          │
-│  redundancy: Hermes-4-70B, Hermes-4-405B, Hermes-3-70B/405B     │
-│  (Nous Research), Dolphin-Mistral-24B-Venice-Edition (Cognitive │
-│  Computations), Sao10K L3.3-Euryale-70B. HF Inference variants  │
-│  (huihui-ai abliterated line, NousResearch HF slugs, dphn       │
-│  Dolphin) are allowlisted for user-opt-in only — see            │
+│  V2 ensemble (Research One 2) routes critical-path roles       │
+│  through OpenRouter on verified multi-provider open-weights     │
+│  reasoners: DeepSeek V3.2 (10+ providers), V3.1 (10+),          │
+│  R1-0528 (5), Qwen3-235B Thinking (4), Kimi K2 Thinking (3).    │
+│  Adversarial roles use Dolphin-Mistral-24B-Venice-Edition and   │
+│  Sao10K L3.3-Euryale-70B. Single-provider Hermes / huihui-ai    │
+│  HF slugs are allowlisted for user-opt-in only — see            │
 │  docs/V2_MODEL_SELECTION_CRITERIA.md.                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -165,6 +165,13 @@ REDIS_USERNAME=           # set if ACL username is needed
 # OpenRouter (server-side only — never in Vercel) — V1 / closed-weights routing
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# Optional: provider data-collection preference sent on every chat
+# completion. Default `allow` lets OpenRouter route to the broadest
+# upstream set (which is what stops the "No allowed providers are
+# available" 404 we hit on 2026-04-28-PM). Set to `deny` to require
+# upstreams that do not train on prompts; the cost is fewer upstreams
+# per model and more frequent provider-unavailable errors.
+OPENROUTER_DATA_COLLECTION=allow
 
 # Hugging Face Inference Providers (server-side only — never in Vercel) —
 # V2 user-opt-in routing for the huihui-ai abliterated line, NousResearch HF
@@ -504,28 +511,23 @@ Confirm V1 OpenRouter IDs still exist in [OpenRouter’s model list](https://ope
 - `openai/o3-mini`
 - `qwen/qwen3-235b-a22b`
 
-### V2 / uncensored / steerable open-weights (OpenRouter, multi-provider)
+### V2 / open-weights (OpenRouter, verified multi-provider)
 
-V2 PRIMARIES — these are the only ids allowed as a V2 preset primary. All have been
-selected because they either (a) are uncensored fine-tunes trained without the
-"decline anomalies / debunk suppressed knowledge" objective, or (b) are
-steerable, low-refusal community-aligned models that follow the operator system
-prompt as authority. See [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md) for the full rationale and rules.
+V2 default primaries are split into two categories:
 
-V2 default primaries route through OpenRouter, which fans out to multiple
-upstream providers per model. This eliminates the single-HF-provider failure
-mode the post-merge V2 run hit on 2026-04-28 (`provider_unavailable` on
-featherless-ai-only Hermes-3). The HF Inference equivalents stay
-allowlisted for user-opt-in routing only.
+**Critical-path roles** (planner / reasoner / synthesizer / utility /
+verifier) — must have ≥ 2 live OpenRouter upstreams. Verified 2026-04-28-PM:
 
-OpenRouter / multi-provider primaries:
+- `deepseek/deepseek-v3.2` — 10+ providers (Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba). Default planner / synthesizer / utility across all objectives.
+- `deepseek/deepseek-chat-v3.1` — 10+ providers. Utility / synthesis fallback.
+- `deepseek/deepseek-r1-0528` — 5 providers (DeepInfra, SiliconFlow, AtlasCloud, Novita, Together). Default reasoner / change_planner.
+- `qwen/qwen3-235b-a22b-thinking-2507` — 4 providers (Alibaba, DeepInfra, AtlasCloud, Novita). Reasoner / change_planner fallback.
+- `moonshotai/kimi-k2-thinking` — 3 providers (Novita, Google, AtlasCloud). Planner fallback / novel-application primary.
 
-- `nousresearch/hermes-4-70b` — Hermes 4 (Nous Research). Steerable, neutrally-aligned long-form; default planner / drafter / synthesizer / coherence / rewriter across all objectives.
-- `nousresearch/hermes-4-405b` — Hermes 4 405B. Default reasoner / change_planner.
-- `nousresearch/hermes-3-llama-3.1-70b` — Hermes 3 70B. Default retriever / verifier / locator / utility roles; also fallback for the Hermes-4 70B primary.
-- `nousresearch/hermes-3-llama-3.1-405b` — Hermes 3 405B. Fallback for the 405B reasoner role.
-- `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` — Dolphin Venice Edition (Cognitive Computations). Uncensored fine-tune; default skeptic / internal_challenger on general / investigative / novel / patent objectives.
-- `sao10k/l3.3-euryale-70b` — Sao10K L3.3 Euryale 70B. Uncensored Llama-3.3-70B long-form; default skeptic on the anomaly objective and fallback adversarial elsewhere.
+**Adversarial roles** (skeptic / internal_challenger) — uncensored fine-tunes; single-provider is acceptable here because skeptic failures are recoverable mid-pipeline:
+
+- `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` — Dolphin Venice Edition. Default skeptic across most objectives.
+- `sao10k/l3.3-euryale-70b` — Sao10K L3.3 Euryale 70B. 2 providers. Adversarial fallback / anomaly-objective primary.
 
 V2 USER-OPT-IN HF Inference allowlist — single-provider on HF Inference (mostly featherless-ai-only). Admins can wire these in via per-run overrides on the Research One 2 page when HF routing is acceptable. The 2026-04-28 outage demonstrated they are not safe as defaults.
 

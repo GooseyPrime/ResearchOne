@@ -135,22 +135,36 @@ const BASE_ALLOWLIST = [
   'openai/o4-mini',
   'qwen/qwen3-235b-a22b',
 
-  // ── V2 / uncensored / steerable open-weights (OpenRouter, multi-provider) ─
-  // V2 default primaries route through OpenRouter, which fans out to multiple
-  // upstream providers per model. This eliminates the single-HF-provider
-  // failure mode the post-merge V2 run hit on 2026-04-28
-  // (`provider_unavailable` on featherless-ai-only Hermes-3). All entries
-  // here are uncensored or steerable / non-refusal-aligned per
-  // `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+  // ── V2 / OpenRouter critical-path primaries (multi-provider) ─────────────
+  // Verified ≥ 2 live OpenRouter upstreams per slug, 100% recent uptime
+  // (2026-04-28). Low-refusal open weights — DeepSeek V3.x / R1 line, Kimi
+  // K2 line, Qwen3-235B Thinking. Used as default V2 critical-path
+  // primaries and fallbacks. See `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+  'deepseek/deepseek-chat-v3.1',
+  'deepseek/deepseek-r1-0528',
+  'deepseek/deepseek-v3.2',
+  'moonshotai/kimi-k2-thinking',
+  'qwen/qwen3-235b-a22b-thinking-2507',
+
+  // ── V2 / OpenRouter adversarial-role primaries (uncensored fine-tune) ────
+  // Single-provider (Venice) and dual-provider (NextBit + DeepInfra)
+  // respectively. Adversarial roles tolerate single-provider risk because
+  // skeptic failures are recoverable mid-pipeline.
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  'sao10k/l3-euryale-70b',
+  'sao10k/l3.1-euryale-70b',
+  'sao10k/l3.3-euryale-70b',
+
+  // ── V2 / OpenRouter user-opt-in only (uncensored, single-provider) ──────
+  // Allowlisted for per-run override but not in any default preset because
+  // they're each single-upstream on OpenRouter (Nebius / DeepInfra /
+  // Venice). The 2026-04-28 outage was caused by routing every default
+  // through one of these.
   'nousresearch/hermes-3-llama-3.1-405b',
   'nousresearch/hermes-3-llama-3.1-405b:free',
   'nousresearch/hermes-3-llama-3.1-70b',
   'nousresearch/hermes-4-405b',
   'nousresearch/hermes-4-70b',
-  'sao10k/l3-euryale-70b',
-  'sao10k/l3.1-euryale-70b',
-  'sao10k/l3.3-euryale-70b',
 
   // ── V2 / uncensored / abliterated open-weights (HF Inference) ────────────
   // Allowlisted for user-opt-in via per-run model overrides. Not used as a
