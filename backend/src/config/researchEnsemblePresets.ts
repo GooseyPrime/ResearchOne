@@ -70,7 +70,14 @@ const M = {
   llama70: 'meta-llama/llama-3.3-70b-instruct',
   qwen: 'qwen/qwen3-235b-a22b',
   hermes: 'NousResearch/Hermes-3-Llama-3.1-70B',
-  dolphin: 'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  // V1 carry-over: the model used to be hosted at
+  // `cognitivecomputations/dolphin-2.9.2-qwen2-72b`, but HF renamed it
+  // upstream to `dphn/dolphin-2.9.2-qwen2-72b`. The 2026-04-28 PR #40
+  // review (Copilot) flagged that the new `isHfRepoModel` no longer
+  // routes the legacy slug through HF, which would silently send V1
+  // calls to OpenRouter where this slug does not exist. Move V1 to the
+  // current upstream slug so the route stays HF.
+  dolphin: 'dphn/dolphin-2.9.2-qwen2-72b',
 } as const;
 
 function mergePreset(
@@ -149,7 +156,7 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
 };
 
 /**
- * Baseline models — Research One 2 strict uncensored open-weights matrix.
+ * Baseline models — Research One 2 strict uncensored / steerable matrix.
  *
  * V2 selection criteria (see `docs/V2_MODEL_SELECTION_CRITERIA.md` for the full
  * rationale and `ResearchOne PolicyOne` for the epistemic policy these
@@ -157,90 +164,56 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
  *
  *   1. NO refusal-aligned primary models. RLHF/RLAIF safety post-training
  *      drives the model toward "I cannot help with that," consensus debunking,
- *      and silent omission of suppressed-knowledge claims. That is the
- *      contaminated-corpus drift the policy explicitly forbids.
+ *      and silent omission of suppressed-knowledge claims.
  *   2. PRIMARY models for every V2 role must be either:
- *        - abliterated (refusal direction orthogonalized out — same base
- *          weights with the refusal feature direction removed); or
- *        - uncensored fine-tunes (Dolphin / Hermes / Dark-Champion lines that
+ *        - abliterated (refusal direction orthogonalized out); or
+ *        - uncensored fine-tunes (Dolphin / Hermes / Euryale lines that
  *          were trained without the "decline anomalies" objective); or
- *        - steerable, low-refusal open weights with intact long-form +
- *          reasoning capability.
- *   3. Reasoning chains MUST be preserved. The reasoner role uses an
- *      abliterated DeepSeek R1 distill so we keep R1-style step-by-step
- *      reasoning *without* the Llama refusal head sitting on top of it.
- *   4. No closed-source / API-gated routing on V2 utility primaries. V2
- *      stays on HF-hostable open-weights so we are not dependent on a
- *      moderation pipeline we do not control.
- *   5. Adversarial roles (skeptic / internal_challenger) prefer the most
- *      uncensored slot (Dolphin / Dark-Champion) so red-team critique can
- *      attack mainstream consensus directly without alignment dampening.
- *
- * If a V2 model becomes unavailable on HF Inference Providers we surface
- * the failure as `provider_unavailable` and (per the same plan)
- * `aborted` once the retry budget is exhausted. We do NOT silently swap
- * to a refusal-aligned primary as a "more reliable" substitute — that
- * would be exactly the policy violation this matrix exists to prevent.
+ *        - steerable, low-refusal open weights that follow operator system
+ *          prompts as authority.
+ *   3. PRIMARY routing must be multi-provider redundant. After the
+ *      2026-04-28 V2 outage (every V2 primary was single-provider on HF
+ *      Inference: featherless-ai), V2 defaults route through OpenRouter,
+ *      which fans out across multiple upstream providers per model. HF
+ *      Inference Providers is still allowlisted for user-opt-in routing.
+ *   4. Adversarial roles (skeptic / internal_challenger) use the most
+ *      uncensored slot so red-team critique can attack mainstream
+ *      consensus directly without alignment dampening.
  */
 const V2M = {
   /**
-   * Hermes-3-Llama-3.1-70B (Nous Research). Steerable, low-refusal,
-   * neutrally-aligned long-form model. Used across drafting / synthesis /
-   * coherence / locator / rewriter roles.
+   * Hermes 4 70B (Nous Research). Steerable, neutrally-aligned long-form
+   * model with strong instruction following. OpenRouter-routed, multi-provider.
    */
-  HERMES_3: 'NousResearch/Hermes-3-Llama-3.1-70B',
+  HERMES_4: 'nousresearch/hermes-4-70b',
   /**
-   * DeepHermes-3-Llama-3-8B-Preview (Nous Research). Open-reasoning preview
-   * with neutral alignment and chain-of-thought capability; used as a
-   * smaller fallback where speed matters and refusal-free behavior is still
-   * required.
+   * Hermes 4 405B (Nous Research). The reasoner-class steerable model.
+   * OpenRouter-routed, multi-provider.
    */
-  DEEP_HERMES_3: 'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
+  HERMES_4_405B: 'nousresearch/hermes-4-405b',
   /**
-   * Dolphin-2.9.2 on Qwen2-72B base (Cognitive Computations). Uncensored
-   * long-form fine-tune. Primary for skeptic / internal_challenger.
+   * Hermes 3 70B (Nous Research, OpenRouter slug). Multi-provider on
+   * OpenRouter. Used for utility roles (verifier, retriever, locator) where
+   * 70B-class steering capacity is sufficient.
    */
-  DOLPHIN_QWEN: 'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  HERMES_3_70B: 'nousresearch/hermes-3-llama-3.1-70b',
   /**
-   * Dolphin 3.0 on Llama-3.1-70B base (Cognitive Computations). Newer
-   * uncensored long-form line; used as adversarial / synthesis fallback.
+   * Hermes 3 405B (Nous Research, OpenRouter slug). Used as a 405B fallback
+   * for the reasoner / change_planner roles when Hermes 4 405B is rate-limited.
    */
-  DOLPHIN_3_70B: 'cognitivecomputations/Dolphin3.0-Llama3.1-70B',
+  HERMES_3_405B: 'nousresearch/hermes-3-llama-3.1-405b',
   /**
-   * Dark-Champion 8x3B MoE (DavidAU). Abliterated MoE optimized for
-   * adversarial / anomaly red-teaming.
+   * Dolphin Mistral 24B Venice Edition (Cognitive Computations,
+   * OpenRouter slug `:free`). Uncensored fine-tune of Mistral Small 24B
+   * trained without the decline-anomalies objective. Primary skeptic /
+   * internal_challenger across all objectives.
    */
-  DARK_CHAMPION:
-    'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
+  DOLPHIN_VENICE: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   /**
-   * Abliterated Llama-3.3-70B-Instruct (huihui-ai). Same Meta base weights
-   * with the refusal direction orthogonalized out. Use this in place of the
-   * RLHF-aligned `meta-llama/Llama-3.3-70B-Instruct`. Capability profile is
-   * preserved (instruction following, long context, tool use); the refusal
-   * head is gone.
+   * Sao10K L3.3 Euryale 70B (OpenRouter slug). Uncensored Llama-3.3-70B
+   * long-form fine-tune used for adversarial / anomaly red-team fallback.
    */
-  ABLIT_LLAMA_70B: 'huihui-ai/Llama-3.3-70B-Instruct-abliterated',
-  /**
-   * Abliterated Qwen2.5-72B-Instruct (huihui-ai). Same Qwen base weights
-   * minus the refusal direction. Used where Qwen's structured-output
-   * fidelity matters (retriever JSON output, long-form synthesis on patent
-   * gap analysis) without the Qwen alignment filter.
-   */
-  ABLIT_QWEN_72B: 'huihui-ai/Qwen2.5-72B-Instruct-abliterated',
-  /**
-   * Abliterated DeepSeek-R1-Distill-Llama-70B (huihui-ai). R1-style
-   * chain-of-thought reasoning with the Llama refusal direction removed.
-   * Reasoner / change_planner primary — we keep R1 reasoning fidelity
-   * without the closed-corpus consensus debunking pattern.
-   */
-  ABLIT_R1_70B: 'huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated',
-  /**
-   * Non-abliterated DeepSeek-R1-Distill-Llama-70B (DeepSeek). Reasoning
-   * fidelity is intact but Llama RLHF refusal head is still attached. We
-   * keep this on the V2 allowlist as a *user-opt-in* fallback only — the
-   * primary path stays on `ABLIT_R1_70B`.
-   */
-  R1_DISTILL_70B: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
+  EURYALE_70B: 'sao10k/l3.3-euryale-70b',
 } as const;
 
 const V2_UTILITIES: Record<
@@ -252,15 +225,14 @@ const V2_UTILITIES: Record<
   | 'final_revision_verifier',
   RoleModelPair
 > = {
-  // Retriever needs JSON-clean output → abliterated Qwen 72B (Qwen's
-  // structured-output strength minus the alignment filter).
-  retriever: pair(V2M.ABLIT_QWEN_72B, V2M.ABLIT_LLAMA_70B),
-  // Verification roles need calibrated long-form judgement without refusal.
-  verifier: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
-  citation_integrity_checker: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
-  revision_intake: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
-  report_locator: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
-  final_revision_verifier: pair(V2M.ABLIT_LLAMA_70B, V2M.HERMES_3),
+  // All utility roles default to Hermes 3 70B (steerable, multi-provider on
+  // OpenRouter), with Hermes 4 70B as the user-opt-in fallback.
+  retriever: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  verifier: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  citation_integrity_checker: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  revision_intake: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  report_locator: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  final_revision_verifier: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
 };
 
 function v2Mode(
@@ -275,85 +247,84 @@ function v2Mode(
 /**
  * Research One 2 — strict architecture-aligned presets.
  *
- * Every primary in every objective is uncensored / abliterated / steerable
- * open-weights, per the V2 selection criteria above and the
- * `ResearchOne PolicyOne` epistemic policy. Fallbacks are also drawn from
- * the same pool — fallbacks only fire when the user explicitly opts in
- * per role from the V2 UI.
+ * Every primary in every objective is uncensored / steerable open-weights,
+ * routed through OpenRouter for multi-provider redundancy, per the V2
+ * selection criteria above and the `ResearchOne PolicyOne` epistemic policy.
+ * Fallbacks are also drawn from the same pool — fallbacks only fire when
+ * the user explicitly opts in per role from the V2 UI.
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
-    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
-    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
-    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
+    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
-    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
-    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
-    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
+    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
-    // Patent / structured-claim work benefits from Qwen's structured output
-    // strength — but we use the abliterated Qwen variant so claim
-    // extraction is not silently filtered against anomalous prior art.
-    planner: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    outline_architect: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    section_drafter: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    synthesizer: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    coherence_refiner: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
-    section_rewriter: pair(V2M.ABLIT_QWEN_72B, V2M.HERMES_3),
-    skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
-    internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+    planner: pair(V2M.HERMES_4_405B, V2M.HERMES_4),
+    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    synthesizer: pair(V2M.HERMES_4_405B, V2M.HERMES_4),
+    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
+    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
-    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    reasoner: pair(V2M.HERMES_3, V2M.ABLIT_R1_70B),
-    change_planner: pair(V2M.HERMES_3, V2M.ABLIT_R1_70B),
-    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
-    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    skeptic: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
-    internal_challenger: pair(V2M.DOLPHIN_QWEN, V2M.DARK_CHAMPION),
+    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
+    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
-    // Anomaly objective leans into the most uncensored / steerable chain.
-    planner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    reasoner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    change_planner: pair(V2M.ABLIT_R1_70B, V2M.HERMES_3),
-    outline_architect: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    section_drafter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    synthesizer: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    coherence_refiner: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3, V2M.DEEP_HERMES_3),
-    section_rewriter: pair(V2M.HERMES_3, V2M.ABLIT_LLAMA_70B),
-    skeptic: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
-    internal_challenger: pair(V2M.DARK_CHAMPION, V2M.DOLPHIN_QWEN),
+    // Anomaly objective leans into the most uncensored chain on the
+    // skeptic side. Hermes-line still drives synthesis where structure
+    // matters.
+    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
+    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
+    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    skeptic: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
+    internal_challenger: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
   }),
 };
 

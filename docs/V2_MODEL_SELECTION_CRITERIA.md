@@ -109,18 +109,73 @@ as a primary.
 
 ## Currently-approved V2 PRIMARIES (this PR)
 
-| HF slug | Role(s) | Why |
-|---|---|---|
-| `NousResearch/Hermes-3-Llama-3.1-70B` | planner, outline_architect, section_drafter, synthesizer, coherence_refiner, plain_language_synthesizer, section_rewriter (general / investigative / novel / anomaly) | Steerable, low-refusal, neutrally aligned long-form. Reads operator system prompts as authority. |
-| `NousResearch/DeepHermes-3-Llama-3-8B-Preview` | plain_language fallback | Smaller, faster Hermes-line preview with neutral alignment and CoT preview. |
-| `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated` | reasoner, change_planner | R1 chain-of-thought reasoning with the Llama refusal direction removed. Keeps reasoning fidelity, drops the refusal head. |
-| `huihui-ai/Llama-3.3-70B-Instruct-abliterated` | retriever fallback, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier | Llama-3.3-70B base capability with refusal direction orthogonalized out. |
-| `huihui-ai/Qwen2.5-72B-Instruct-abliterated` | retriever (all objectives), patent-gap synthesizer / outline / coherence | Qwen's structured-output strength preserved; Qwen alignment filter removed. |
-| `cognitivecomputations/dolphin-2.9.2-qwen2-72b` | skeptic, internal_challenger (general / investigative / novel) | Uncensored long-form fine-tune; primary adversarial. |
-| `cognitivecomputations/Dolphin3.0-Llama3.1-70B` | adversarial / synthesis fallback (allowlisted; per-run opt-in) | Newer uncensored long-form line on Llama 3.1 base. |
-| `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B` | skeptic, internal_challenger (patent gap / anomaly) | Abliterated MoE optimized for adversarial / anomaly red-teaming. |
+The 2026-04-28 V2 outage post-mortem
+(`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`) showed that
+*every* V2 default selected on PR #39 was single-provider on HF Inference
+(or did not exist on HF Inference at all) — featherless-ai was the only
+upstream for all of them, and any featherless-ai hiccup took the whole
+V2 ensemble down.
 
-## Currently-approved V2 USER-OPT-IN FALLBACKS
+We now route V2 default primaries through **OpenRouter**, which gives us:
+
+- a single API key path (`OPENROUTER_API_KEY`) you already have,
+- a stable schema-checked endpoint (`/endpoints` per model) we can probe
+  to see which upstreams are live before a deploy,
+- automatic gateway-side failover when a model has multiple upstreams.
+
+**Honest caveat (added 2026-04-28 after the post-merge review):** for the
+specific uncensored / steerable slugs we picked, most have a single
+upstream provider on OpenRouter today, not multiple. They are still
+better than the HF Inference path because the upstream providers
+(Nebius, DeepInfra, Venice, NextBit) are bigger, better-run inference
+shops with 100% recent uptime, but you should expect "rare gateway-side
+provider hiccup" rather than "10-provider redundancy." Per-slug counts
+(verified live):
+
+| OpenRouter slug | Upstream providers on OpenRouter |
+|---|---|
+| `nousresearch/hermes-4-70b` | Nebius (1) |
+| `nousresearch/hermes-4-405b` | Nebius (1) |
+| `nousresearch/hermes-3-llama-3.1-70b` | DeepInfra (1) |
+| `nousresearch/hermes-3-llama-3.1-405b` | DeepInfra (1) |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) |
+| `sao10k/l3.3-euryale-70b` | NextBit + DeepInfra (2) |
+
+If a single OpenRouter upstream goes down for one of these slugs, the
+canonical state machine flags the run as `failed_retryable`; the user
+can hit Resume up to `retry_budget` (default 3) times before it goes
+`aborted`. We *do not* fall back to a refusal-aligned model under the
+hood — the policy forbids that.
+
+OpenRouter primaries (uncensored / steerable / non-refusal-aligned):
+
+| OpenRouter slug | Role(s) | Why |
+|---|---|---|
+| `nousresearch/hermes-4-70b` | planner, outline_architect, section_drafter, synthesizer, coherence_refiner, section_rewriter (default across all objectives) | Hermes 4 70B (Nous Research). Steerable, neutrally-aligned long-form; multi-provider on OpenRouter. |
+| `nousresearch/hermes-4-405b` | reasoner, change_planner (default across all objectives); patent-gap planner / synthesizer | Hermes 4 405B. Reasoner-class steerable model, multi-provider on OpenRouter. |
+| `nousresearch/hermes-3-llama-3.1-70b` | retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier (utility roles); plain_language primary; default fallback for 70B Hermes-4 roles | Hermes 3 70B OpenRouter slug. Multi-provider; same low-refusal alignment. |
+| `nousresearch/hermes-3-llama-3.1-405b` | reasoner / change_planner fallback | Hermes 3 405B. Multi-provider on OpenRouter. |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | skeptic, internal_challenger (general / investigative / novel / patent); plain_language fallback | Dolphin Venice Edition. Uncensored fine-tune of Mistral Small 24B. |
+| `sao10k/l3.3-euryale-70b` | skeptic / internal_challenger primary on the anomaly objective; adversarial fallback elsewhere | Sao10K L3.3 Euryale 70B. Uncensored Llama-3.3-70B long-form fine-tune; multi-provider on OpenRouter. |
+
+## Currently-approved V2 USER-OPT-IN HF Inference allowlist
+
+These slugs are allowlisted so admins / users can wire them in via per-run
+overrides on the Research One 2 page when HF Inference routing is
+acceptable for that specific run. They are NOT used by any V2 default
+preset and never fire silently. The 2026-04-28 outage demonstrated they
+are not safe as defaults — most are single-provider (featherless-ai)
+on HF Inference today.
+
+- `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated`
+- `huihui-ai/Llama-3.3-70B-Instruct-abliterated`
+- `huihui-ai/Qwen2.5-72B-Instruct-abliterated`
+- `NousResearch/DeepHermes-3-Llama-3-8B-Preview`
+- `NousResearch/Hermes-3-Llama-3.1-70B`
+- `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B`
+- `dphn/dolphin-2.9.2-qwen2-72b`
+
+## Currently-approved V2 USER-OPT-IN refusal-aligned fallbacks
 
 These RLHF-aligned slugs are allowlisted only for explicit per-role opt-in
 from the Research One 2 page; they MUST NOT be wired into a V2 preset:
@@ -132,10 +187,50 @@ from the Research One 2 page; they MUST NOT be wired into a V2 preset:
 - `Qwen/Qwen2.5-72B-Instruct`
 - `Qwen/QwQ-32B-Preview`
 
+## Removed from the allowlist
+
+These slugs were on the V2 allowlist before the 2026-04-28 post-mortem
+and have been removed because they are not deployable:
+
+- `cognitivecomputations/Dolphin3.0-Llama3.1-70B` — slug does not exist
+- The `cognitivecomputations/dolphin-2.9.2-qwen2-72b` slug remains
+  allowlisted as a V1 carry-over only; the model is now hosted at
+  `dphn/dolphin-2.9.2-qwen2-72b` upstream and that is the slug V2 should
+  use for HF user-opt-in routing.
+
 If the user enables per-role fallback in the V2 UI and selects one of
 these, the trace event will record `usedFallback=true` and the run row
 will show the actual model used so the user knows the report may have
 been generated through a refusal-aligned model.
+
+## Provider landscape (verified 2026-04-28)
+
+Outside of OpenRouter and HF Inference Providers, here are direct
+inference providers that host uncensored / steerable / non-refusal-aligned
+open weights. Listed here so future maintainers and operators have a
+single place to look when a provider has an outage.
+
+| Provider | Strength for V2 | URL |
+|---|---|---|
+| **OpenRouter** | The aggregator we use. Single API key, automatic failover when a model has multiple upstreams, structured `/endpoints` API for probing. | https://openrouter.ai |
+| **Featherless AI** | Largest catalog of `huihui-ai/*-abliterated`, every Hermes HF variant, every Dolphin HF variant, plus many slugs that no one else hosts. Current home of the abliterated line. | https://featherless.ai |
+| **DeepInfra** | Direct provider for Hermes 3, R1 distills, Llama-3.3, Qwen 2.5, many open-weights. OpenAI-compatible API. Already routes Hermes 3 on OpenRouter. | https://deepinfra.com |
+| **Together AI** | Older NousResearch / Dolphin generation (Hermes 2 family, Dolphin 2.5 Mixtral). The newer abliterated and Hermes 4 line is **not** on Together as of today. | https://together.ai |
+| **Nebius AI Studio** | Direct provider for Hermes 4 (which OpenRouter currently routes through Nebius). | https://studio.nebius.ai |
+| **Venice AI** | Direct provider for the Dolphin Mistral 24B Venice Edition. Whole product is positioned as uncensored-by-default. | https://venice.ai |
+| **Hyperbolic** | Direct provider for Llama 3.3, DeepSeek, some Hermes. | https://hyperbolic.xyz |
+| **NextBit** | Hosts the Sao10K Euryale line directly. | https://nextbit.io |
+| **Self-hosted (Ollama / vLLM / TGI)** | Every abliterated weight is on HuggingFace; runs on 12–48 GB VRAM cards. Eliminates the provider question entirely. | https://ollama.ai |
+
+The codebase currently uses OpenRouter for V2 defaults. If we want
+provider-level redundancy beyond what OpenRouter's gateway provides, the
+clean addition is to wire **Featherless AI** as a feature-flagged
+secondary provider (it carries the full abliterated catalog including
+every `huihui-ai/*-abliterated` slug we already user-opt-in allowlist).
+The existing `together` config slot in `backend/src/config/index.ts`
+(`TOGETHER_API_KEY`, `TOGETHER_BASE_URL`) was added during the 2026-04-26
+fallback work and can be generalized into a "secondary uncensored
+provider" slot if we add Featherless. Out of scope for this PR.
 
 ## Maintaining this list
 

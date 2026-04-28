@@ -1,0 +1,64 @@
+---
+description: Prevents C-TEST-WEAK — tests that pass both with and without the fix.
+alwaysApply: false
+globs:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/__tests__/**"
+---
+
+# Tests must fail without the fix
+
+## Why this rule exists
+
+PR #37 (Copilot) flagged a new test that asserted `remove()` was called
+when a prior job existed, but did not assert that `remove()` ran
+*before* `add()`. The deduplication bug that motivated the patch is
+visible only as an order violation — so the test would pass even if the
+patch were reverted.
+
+A test that doesn't fail when the bug is present is worse than no
+test, because it gives a false sense of safety.
+
+## Rule
+
+For every new test:
+
+1. **Mentally revert the production change.** Walk through the test in
+   your head with the old code. If the test still passes, it is
+   asserting too little.
+2. **For order-sensitive bugs, assert order.** Use vitest's
+   `toHaveBeenCalledBefore` (vitest-extended), or capture call
+   timestamps / sequence indices, or use `mock.invocationCallOrder`.
+3. **For state-transition bugs, assert the intermediate state**, not
+   just the final state. The `'aborted'` row written *during* a
+   failure is a different observable than the row state at the end.
+4. **For boundary-condition bugs, test the boundary.** First failure
+   *and* last-failure-before-budget *and* exhausted-budget — not just
+   the easy case in the middle.
+
+## Recommended pattern (vitest)
+
+For order:
+
+```ts
+const calls: string[] = [];
+queue.getJob = vi.fn(async () => {
+  calls.push('getJob');
+  return { remove: vi.fn(async () => calls.push('remove')) };
+});
+queue.add = vi.fn(async () => calls.push('add'));
+
+await enqueueResearchRetryJobWithCleanup(queue, runId, payload);
+
+expect(calls).toEqual(['getJob', 'remove', 'add']);
+```
+
+## Pre-commit check
+
+For every new test you wrote:
+- [ ] Did you imagine the patch reverted? Does the test still pass?
+- [ ] If yes, the test asserts too little — strengthen it.
+- [ ] If the bug is order-sensitive, are you asserting order?
+- [ ] If the bug is boundary-sensitive, are you testing the boundary
+  (off-by-one, empty array, last item, beyond-limit)?

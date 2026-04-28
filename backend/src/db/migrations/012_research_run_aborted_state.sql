@@ -1,4 +1,11 @@
+-- @migrate:no-transaction
 -- Migration 012: research_runs aborted terminal state + retry budget bookkeeping
+--
+-- This migration MUST run outside of a transaction block because
+-- `ALTER TYPE ... ADD VALUE` is rejected by Postgres inside a transaction
+-- (`ALTER TYPE ... ADD cannot run inside a transaction block`). The
+-- migration runner honors the `@migrate:no-transaction` directive at the
+-- top of this file and skips its BEGIN/COMMIT wrapper.
 --
 -- Background: V2 research runs that hit a transient upstream error were being
 -- silently retried by BullMQ (queue-level attempts: 2). The orchestrator would
@@ -8,10 +15,11 @@
 -- explicit terminal 'aborted' state for runs whose retry budget is exhausted.
 --
 -- This migration:
---   1. Adds 'aborted' to job_status (Postgres ENUM extension is non-transactional
---      for ALTER TYPE ADD VALUE; we use IF NOT EXISTS to keep this idempotent).
+--   1. Adds 'aborted' to job_status (idempotent via IF NOT EXISTS).
 --   2. Adds retry_budget / retry_attempts columns on research_runs so the API
 --      and UI can show "x of y retries used" and disable Resume after the cap.
+--      Both ADD COLUMN statements use IF NOT EXISTS so partial application
+--      from an earlier attempt is recoverable.
 --
 -- Safe rollback: drop the columns; the 'aborted' enum value can remain (Postgres
 -- does not support ALTER TYPE DROP VALUE without recreating the type).

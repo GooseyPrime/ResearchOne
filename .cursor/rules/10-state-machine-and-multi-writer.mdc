@@ -1,0 +1,65 @@
+---
+description: Prevents C-MULTI-WRITER and C-RACE-WINDOW (two writers of one fact, two readers of one fact, or two async sources of one fact, that can disagree).
+alwaysApply: false
+globs:
+  - "backend/src/**/*.ts"
+  - "frontend/src/**/*.ts"
+  - "frontend/src/**/*.tsx"
+---
+
+# State machine + multi-writer hygiene
+
+## Why this rule exists
+
+PR #39 shipped a bug where the orchestrator computed budget-finalized
+`failure_meta` for the row UPDATE but threw the *pre-budget*
+`failureDetails` to the worker, so the websocket emitted
+`research:failed` while the row already said `aborted`. PR #40 P2 from
+Codex was the same shape on the frontend: the canonical reader
+`deriveRunState` only looked at `run.status === 'failed'`, ignoring a
+transient websocket failure that arrived before the polled row caught
+up. Both are **C-MULTI-WRITER** / **C-RACE-WINDOW**.
+
+## Rule
+
+Before adding a new branch, computation, or socket event that derives
+state, run this checklist:
+
+1. **Name the canonical fact.** Example: "is this run retryable?"
+2. **List every writer of that fact.** DB row, progress event, socket
+   payload, transient client cache, etc.
+3. **List every reader.** UI banner, badge, button visibility, route
+   handler, log line.
+4. **Pick exactly one writer.** All other places that need the fact
+   should *read* from the canonical writer's output, not recompute it.
+5. **Pick exactly one reader function** on each side (backend and
+   frontend). Banners, badges, buttons all call the same function.
+6. **For every async pair (websocket + REST poll, DB write + queue
+   enqueue, code deploy + migration), explicitly handle the in-between
+   window.** Do not assume they update in lockstep.
+
+## Concrete examples in this repo
+
+- ✅ `backend/src/services/reasoning/runStateMachine.ts` is the single
+  writer for failure / retry / aborted classification.
+  `decideRunStateOnFailure` is called from the orchestrator's catch
+  block; the same canonical `failure_meta` it returns is what gets
+  persisted, what gets thrown to the worker, and what the worker
+  re-emits on the socket.
+- ✅ `frontend/src/utils/researchLiveStatus.ts:deriveRunState` is the
+  single reader. Banner, FailureCard headline, Resume button visibility,
+  and trace badges all call it. It also accepts a `transient` parameter
+  so a websocket-only failure that arrives before the row catches up is
+  still classified correctly.
+
+## Pre-commit check
+
+If you added a new state field or computed-state branch:
+
+- [ ] Did you grep for every writer of the underlying field?
+- [ ] Did you grep for every reader of the underlying field?
+- [ ] Are all of them going through one canonical function on each side?
+- [ ] If the field is set by a websocket event and read from a polled
+  row, is the in-between window handled?
+- [ ] Did you mentally walk through the boundary case (first failure,
+  last failure, race) and confirm the UI does not contradict itself?

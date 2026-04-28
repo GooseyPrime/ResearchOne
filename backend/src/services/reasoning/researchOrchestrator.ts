@@ -13,6 +13,7 @@ import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
+import { decideRunStateOnFailure } from './runStateMachine';
 import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
@@ -697,8 +698,9 @@ export async function runResearchJob(
     }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
 
-    // Look up retry-budget so we can decide whether this failure is a
-    // "failed (retryable)" row or a terminal "aborted (no retries left)" row.
+    // Look up retry-budget. If columns do not exist yet (migration 012 has
+    // not applied), default to 0/3 — the state machine will treat this as
+    // "first attempt, recoverable" which is what the row actually is.
     let retryAttempts = 0;
     let retryBudget = 3;
     try {
@@ -712,25 +714,18 @@ export async function runResearchJob(
       logger.warn(`Research run ${runId}: could not read retry budget; assuming defaults`, budgetErr);
     }
 
-    const attemptsRemaining = Math.max(0, retryBudget - retryAttempts);
-    const budgetExhausted = attemptsRemaining <= 0;
-    const declaredRetryable = failureDetails.retryable && !budgetExhausted;
-    const finalStatus: 'failed' | 'aborted' = budgetExhausted ? 'aborted' : 'failed';
-
-    const failureMetaWithResume: Record<string, unknown> = {
-      ...failureDetails.failureMeta,
-      retryable: declaredRetryable,
-      resumeAvailable: declaredRetryable,
+    // Single source of truth for retryable / terminal / aborted-vs-failed.
+    // The row UPDATE, the progress_event entry, and the thrown error (which
+    // the worker re-emits as a socket event) all come from this one tuple.
+    const transition = decideRunStateOnFailure({
+      raw: failureDetails.failureMeta,
+      classifierRetryable: failureDetails.retryable,
       retryAttempts,
       retryBudget,
-      attemptsRemaining,
-      terminal: budgetExhausted,
-      resumeHint: declaredRetryable
-        ? 'Use POST /api/research/:id/retry-from-failure (or the Resume button) to re-queue this run with the same parameters.'
-        : budgetExhausted
-          ? 'No retry attempts remain for this run (retry_attempts >= retry_budget). The run has been moved to status=aborted. Start a new run if you still need this report.'
-          : undefined,
-    };
+    });
+    const failureMetaWithResume = transition.failureMeta;
+    const finalStatus = transition.nextStatus;
+
     try {
       await query(
         `UPDATE research_runs
@@ -756,10 +751,45 @@ export async function runResearchJob(
       );
     } catch (dbErr) {
       logger.error(`Research run ${runId}: failed to persist failure row`, dbErr);
+      // If the primary UPDATE failed (most likely because the 'aborted'
+      // enum value is not yet in place — migration 012 has not applied
+      // yet on this deploy), retry the UPDATE as 'failed' so the row
+      // still settles into a terminal state the rest of the API
+      // understands. We mirror every field from the primary UPDATE so
+      // failed_stage / progress_* / resume_job_payload do not stay
+      // stale — the Copilot review on PR #40 flagged that the previous
+      // fallback only updated status/error_message/completed_at, leaving
+      // the polling path's `failed_stage || progress_stage` reading the
+      // old in-progress values. We force status='failed' (never
+      // 'aborted') so this branch is never the one that exercises the
+      // missing enum value.
+      const safeStatus = 'failed' as const;
       try {
         await query(
-          `UPDATE research_runs SET status=$2, error_message=$1, completed_at=NOW() WHERE id=$3`,
-          [failureDetails.errorMessage.slice(0, 2000), finalStatus, runId]
+          `UPDATE research_runs
+              SET status=$5,
+                  error_message=$1,
+                  failed_stage=$2,
+                  failure_meta=$3,
+                  completed_at=NOW(),
+                  progress_stage=NULL,
+                  progress_percent=NULL,
+                  progress_message=NULL,
+                  progress_updated_at=NULL,
+                  resume_job_payload=$6
+            WHERE id=$4`,
+          [
+            failureDetails.errorMessage.slice(0, 2000),
+            currentStage,
+            JSON.stringify(failureMetaWithResume),
+            runId,
+            safeStatus,
+            // If the canonical decision was 'aborted' but we are forced to
+            // persist as 'failed' here, still drop the resume payload so
+            // the UI cannot offer Resume on a row that the state machine
+            // marked terminal.
+            transition.keepResumePayload ? JSON.stringify(resumeJobPayload) : null,
+          ]
         );
       } catch (fallbackErr) {
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
@@ -767,34 +797,36 @@ export async function runResearchJob(
     }
     await appendRunProgressEvent(runId, {
       runId,
-      stage: budgetExhausted ? 'aborted' : currentStage,
+      stage: finalStatus === 'aborted' ? 'aborted' : currentStage,
       percent: currentPercent,
-      message: budgetExhausted
-        ? `Run aborted — retry budget (${retryBudget}) exhausted. ${currentMessage}`
-        : currentMessage,
+      message:
+        finalStatus === 'aborted'
+          ? `Run aborted — ${
+              failureMetaWithResume.abortReason === 'budget_exhausted'
+                ? `retry budget (${retryBudget}) exhausted`
+                : 'failure was non-recoverable'
+            }. ${currentMessage}`
+          : currentMessage,
       timestamp: new Date().toISOString(),
-      eventType: budgetExhausted ? 'run_aborted' : 'run_failed',
+      eventType: finalStatus === 'aborted' ? 'run_aborted' : 'run_failed',
       failure: {
         errorMessage: failureDetails.errorMessage,
-        retryable: declaredRetryable,
-        failureMeta: failureMetaWithResume,
+        retryable: failureMetaWithResume.retryable,
+        failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
       },
     });
     logger.error(`Research run ${runId} failed:`, err);
-    // Propagate the *budget-finalized* metadata to the BullMQ worker. The
-    // earlier version threw `failureDetails.{retryable,failureMeta}`, which
-    // does not carry the `terminal` / `attemptsRemaining` bookkeeping. The
-    // worker derives 'research:aborted' vs 'research:failed' from
-    // `failureMeta.terminal`, so without this the realtime socket event
-    // would briefly contradict the row we just persisted (Codex / Copilot
-    // PR #39 review).
+    // Propagate the *state-machine-finalized* metadata to the BullMQ worker.
+    // The worker derives 'research:aborted' vs 'research:failed' from
+    // `failureMeta.terminal`, so this guarantees the realtime socket event
+    // matches the row we just persisted.
     const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
       runId,
-      stage: budgetExhausted ? 'aborted' : currentStage,
+      stage: finalStatus === 'aborted' ? 'aborted' : currentStage,
       percent: currentPercent,
       message: currentMessage,
-      retryable: declaredRetryable,
-      failureMeta: failureMetaWithResume,
+      retryable: failureMetaWithResume.retryable,
+      failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
     });
     throw enrichedError;
   }

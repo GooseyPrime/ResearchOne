@@ -1,0 +1,108 @@
+---
+description: Prevents C-DEPLOY-SKEW, C-FALLBACK-DRIFT, C-WRITE-ORDER — code that assumes schema/migration/Redis state is in place before it is.
+alwaysApply: false
+globs:
+  - "backend/src/**/*.ts"
+  - "backend/src/db/migrations/*.sql"
+---
+
+# Deploy-skew and schema hygiene
+
+## Why this rule exists
+
+- PR #37: DB row was set to `status='queued'` *before* BullMQ enqueue.
+  A Redis hiccup left runs stuck `queued` with no enqueued job.
+- PR #40 (Copilot ×3): `retry-from-failure` route SELECTed
+  `retry_attempts` / `retry_budget` and UPDATEd `status='aborted'` —
+  both of which 500 if migration 012 has not applied yet. Deploy ahead
+  of migration is a normal operating state during rollout.
+- PR #40 (Copilot): orchestrator's fallback UPDATE in `catch (dbErr)`
+  was a stripped-down subset of the primary UPDATE; left `failed_stage`
+  unset and `progress_*` stale.
+- PR #40 (Copilot ×1, Codex ×1): migration 012 itself could not apply
+  because `ALTER TYPE … ADD VALUE` is rejected inside the migrate
+  runner's transaction wrapper. Required adding a
+  `-- @migrate:no-transaction` directive.
+
+## Rule — deploy-skew
+
+When code reads from a DB column or enum value that was added by a
+migration in the *same* PR (or a recent one):
+
+1. **Tolerate the migration not having applied yet.** Wrap the SELECT
+   in try/catch and on Postgres `42703` (`column does not exist`),
+   re-issue the SELECT without the new columns and default the values
+   in code.
+2. **For UPDATEs that write a new enum value**, wrap in try/catch on
+   Postgres `22P02` (`invalid input value for enum`) and either fall
+   back to a value the old enum understands, or skip the UPDATE and
+   let the next deploy converge.
+3. **A 4xx response must never become a 500 because of deploy skew.**
+   Defensive UPDATEs that just keep the row consistent should not be
+   able to escalate the response severity.
+
+## Rule — write-order
+
+If a row "promises" a downstream side effect (a queued job, an email,
+an external API call):
+
+1. **Do the side effect first.** Then write the row.
+2. If the side effect is best-effort, write the row first but mark it
+   in a state that is recoverable (e.g. `'queued', resume_payload IS
+   NOT NULL`) so a retry sweep can reconcile.
+3. Document the chosen order in a comment so the next reader sees why.
+
+## Rule — fallback UPDATEs
+
+If the primary UPDATE in a `catch (dbErr)` fails and you fall back to
+a smaller UPDATE:
+
+1. **The fallback must mirror every field the readers depend on**, not
+   just the minimum to satisfy the constraint that failed. If readers
+   look at `failed_stage || progress_stage`, the fallback must clear
+   `progress_*` and set `failed_stage`.
+2. **Force a status the old schema understands** (`'failed'` instead
+   of `'aborted'`) so the same fallback UPDATE is not the one
+   exercising the missing enum value.
+
+## Rule — non-transactional migrations
+
+If a migration uses any of:
+
+- `ALTER TYPE ... ADD VALUE`
+- `CREATE INDEX CONCURRENTLY`
+- `REINDEX CONCURRENTLY`
+
+it **cannot** run inside a transaction. The `migrate.ts` runner honors
+a `-- @migrate:no-transaction` directive at the top of the file.
+Always test these migrations against a fresh Postgres before committing.
+
+## Concrete examples in this repo
+
+- ✅ `backend/src/api/routes/research.ts` — retry-from-failure SELECT
+  catches Postgres `42703` and re-issues without the new columns. The
+  budget-exhausted UPDATE catches `22P02` and falls back to
+  `status='failed'` with `failure_meta.terminal=true`.
+- ✅ `backend/src/services/reasoning/researchOrchestrator.ts` — the
+  fallback UPDATE in `catch (dbErr)` mirrors every primary-UPDATE
+  field (failed_stage, progress_*, resume_job_payload) and forces
+  `safeStatus='failed'`.
+- ✅ `backend/src/db/migrations/012_research_run_aborted_state.sql`
+  starts with `-- @migrate:no-transaction`.
+
+## Pre-commit check
+
+If your patch adds a column / enum value / migration:
+- [ ] Did you grep every reader of the new column or enum value?
+- [ ] Are all of them tolerant of the migration not having applied?
+- [ ] If the migration does non-transactional DDL, does it have the
+  directive at the top?
+
+If your patch writes a row before a downstream side effect:
+- [ ] Can a hiccup in the side effect leave the row in an
+  unrecoverable state?
+- [ ] If yes, reorder or add a recovery sweep.
+
+If your patch has a fallback UPDATE in `catch (dbErr)`:
+- [ ] Does it set the same fields the readers use?
+- [ ] Does it force a status value the old schema understands?

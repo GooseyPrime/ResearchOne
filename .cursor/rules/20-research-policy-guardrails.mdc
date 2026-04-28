@@ -1,0 +1,78 @@
+---
+description: ResearchOne PolicyOne + V2 model selection criteria. The agent must read these before changing any V2 default or any prompt preamble.
+alwaysApply: true
+---
+
+# ResearchOne policy guardrails
+
+## The reasoning-first epistemic policy
+
+The repo has a **strict, binding** policy in `ResearchOne PolicyOne`
+at the repo root. Read it. The summary the agent must internalize:
+
+1. **Treat mainstream knowledge corpora as compromised.** No
+   "knowledge recall" satisfies a research request on this platform.
+2. **Reasoning over recall.** Every prompt wraps with
+   `REASONING_FIRST_PREAMBLE` (`backend/src/constants/prompts.ts`) —
+   that wrapping is **immutable**.
+3. **Preserve anomalies and contradictions.** Never sanitize, never
+   debunk-by-recall, never silently smooth.
+4. **V2 adversarial roles** (`skeptic`, `internal_challenger`) get
+   `RED_TEAM_V2_SYSTEM_PREFIX` prepended whenever
+   `engineVersion === 'v2'` and `callPurpose !==
+   'contradiction_extraction'`. That prefix is **immutable**.
+
+## V2 model selection criteria
+
+Read `docs/V2_MODEL_SELECTION_CRITERIA.md` end-to-end before changing
+any V2 default. The hard rules:
+
+1. **No refusal-aligned RLHF instruct slugs in V2 default presets.**
+   `meta-llama/*-Instruct` (without abliteration), `Qwen/*-Instruct`
+   (without abliteration), `deepseek-ai/DeepSeek-*-Distill` (without
+   abliteration), `Qwen/QwQ-32B-Preview`, all closed-API slugs
+   (Anthropic / OpenAI / Google / Mistral) — **forbidden as V2
+   primaries.** Allowlisted only for user-opt-in via per-run
+   overrides.
+2. **V2 PRIMARIES must be one of:** abliterated (refusal direction
+   orthogonalized out), uncensored fine-tunes (Dolphin / Hermes /
+   Euryale), or steerable / low-refusal community-aligned (Hermes 3 /
+   Hermes 4).
+3. **Adversarial roles use the most uncensored slot** (Dolphin
+   Mistral Venice / Sao10K Euryale / DavidAU Dark-Champion).
+4. **Reasoner roles must keep R1-style chain-of-thought** intact.
+5. The `V2_FORBIDDEN_DEFAULT_MODELS` set in
+   `backend/src/__tests__/researchEnsemblePresets.test.ts` is the
+   regression guard. If a future patch tries to wire a forbidden slug
+   as a default, that test fails first.
+
+## Verification before claiming a model is deployable
+
+Before adding a slug to a V2 default preset:
+
+1. **Verify the slug exists** on the routing target (HF Inference /
+   OpenRouter). Use `hub_repo_details` or
+   `GET /api/v1/models/<slug>/endpoints`.
+2. **Verify the upstream is live.** A slug that exists but has zero
+   live providers is not deployable.
+3. **Note the provider count.** A single-upstream model is more
+   fragile than a multi-upstream model. Document the count in
+   `docs/V2_MODEL_SELECTION_CRITERIA.md` under "Currently-approved V2
+   PRIMARIES."
+
+Do not claim "multi-provider redundant" without a verified count.
+
+## Pre-commit check
+
+If your patch touches a V2 default ensemble or the model allowlist:
+- [ ] Did you re-read `ResearchOne PolicyOne`?
+- [ ] Did you re-read `docs/V2_MODEL_SELECTION_CRITERIA.md`?
+- [ ] Is every new default slug verified live?
+- [ ] Is the provider count documented honestly?
+- [ ] Does `validateV2ModePresetsAgainstAllowlist()` and the
+  forbidden-defaults test still pass?
+
+If your patch touches `REASONING_FIRST_PREAMBLE`,
+`RED_TEAM_V2_SYSTEM_PREFIX`, or any role's system prompt:
+- [ ] Stop. Read the policy. These should not change without an
+  explicit user request to change them.
