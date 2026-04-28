@@ -1,5 +1,16 @@
 import { Link } from 'react-router-dom';
-import { HelpCircle, FlaskConical, BookOpen, Search, FileCode2, Lightbulb, GitBranch } from 'lucide-react';
+import {
+  HelpCircle,
+  FlaskConical,
+  BookOpen,
+  Search,
+  FileCode2,
+  Lightbulb,
+  GitBranch,
+  ShieldOff,
+  Brain,
+  AlertCircle,
+} from 'lucide-react';
 
 const MODES = [
   {
@@ -104,6 +115,67 @@ export default function ResearchV2GuidePage() {
         <HelpCircle className="text-slate-500 flex-shrink-0 mt-0.5" size={18} />
         <p className="text-sm text-slate-400 leading-relaxed">
           Research One 2 uses a reasoning-first epistemic policy: the platform shifts agent configurations and models by research mode to support literature rigor, investigative tracing, patent whitespace, applied feasibility, or cross-domain correlation—without assuming a single narrative by default.
+        </p>
+      </div>
+
+      <div className="card p-5 space-y-4 border border-indigo-900/30">
+        <div className="flex items-center gap-2">
+          <ShieldOff className="text-amber-300" size={18} />
+          <h2 className="text-base font-semibold text-white">V2 model selection criteria</h2>
+        </div>
+        <p className="text-sm text-slate-300 leading-relaxed">
+          V2 runs are governed by a strict open-weights matrix. Every default primary
+          in every research objective must be either <span className="text-slate-100">abliterated</span>{' '}
+          (refusal direction orthogonalized out of the base weights),{' '}
+          <span className="text-slate-100">an uncensored fine-tune</span> (Dolphin / Hermes / Dark-Champion lines),
+          or <span className="text-slate-100">a steerable, low-refusal open-weights model</span>. RLHF/RLAIF
+          refusal-aligned primaries are forbidden in V2 — they cause drift back toward
+          consensus-debunking and silent omission of anomalous findings, which is the contamination
+          ResearchOne PolicyOne explicitly prohibits.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-md border border-green-800/30 bg-green-950/20 p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <Brain className="text-green-400" size={14} />
+              <span className="text-xs font-semibold text-green-300">What V2 primaries MUST do</span>
+            </div>
+            <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
+              <li>Follow the operator system prompt as authority</li>
+              <li>Preserve anomalous claims literally — no auto-correct, no debunking</li>
+              <li>Keep R1-style chain-of-thought reasoning intact (reasoner role)</li>
+              <li>Produce structured JSON / markdown without alignment filtering</li>
+              <li>Allow red-team adversarial roles to attack mainstream consensus</li>
+            </ul>
+          </div>
+          <div className="rounded-md border border-red-800/40 bg-red-950/20 p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="text-red-400" size={14} />
+              <span className="text-xs font-semibold text-red-300">What V2 primaries MUST NOT do</span>
+            </div>
+            <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
+              <li>Refuse anomalous queries (no live RLHF refusal head)</li>
+              <li>Silently sanitize, omit, or "debunk" suppressed-knowledge claims</li>
+              <li>Inject mainstream-consensus counter-evidence not in the corpus</li>
+              <li>Route through a closed-source moderation pipeline we do not control</li>
+              <li>Be an aligned-base Llama / Qwen / DeepSeek instruct slug without abliteration</li>
+            </ul>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          RLHF-aligned models (e.g. <span className="text-slate-200">meta-llama/Llama-3.3-70B-Instruct</span>,
+          <span className="text-slate-200"> Qwen/Qwen2.5-72B-Instruct</span>,
+          <span className="text-slate-200"> deepseek-ai/DeepSeek-R1-Distill-Llama-70B</span>) remain
+          allowlisted but are <span className="text-amber-200">user-opt-in fallbacks only</span>. They never
+          fire silently. If you enable a per-role fallback in the Research One 2 page, the live trace will
+          record <span className="font-mono">usedFallback=true</span> with the actual model so you can
+          tell whether the report was generated through a refusal-aligned model.
+        </p>
+
+        <p className="text-xs text-slate-500">
+          Full criteria: see <span className="font-mono">docs/V2_MODEL_SELECTION_CRITERIA.md</span> in the
+          repository. Epistemic policy: <span className="font-mono">ResearchOne PolicyOne</span>.
         </p>
       </div>
 

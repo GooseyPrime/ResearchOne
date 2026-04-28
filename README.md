@@ -34,10 +34,17 @@
 │  └── Redis (BullMQ job queues, job state, caching)              │
 │                                                                 │
 │  OpenRouter (remote inference — server-side only)               │
-│  Tiered defaults in backend/src/config/index.ts (per-role env   │
-│  overrides). Examples: Kimi K2 Thinking + DeepSeek-R1 (planning  │
-│  & core reasoning); Claude Sonnet 4.5 + Gemini 2.5 Pro (reports │
-│  & sections); GPT-5-mini (structured JSON); distinct fallbacks.  │
+│  Tiered defaults (V1) in backend/src/config/index.ts (per-role  │
+│  env overrides). Examples: Kimi K2 Thinking + DeepSeek-R1       │
+│  (planning & core reasoning); Claude Sonnet 4.5 + Gemini 2.5    │
+│  Pro (reports & sections); GPT-5-mini (structured JSON).        │
+│                                                                 │
+│  V2 ensemble (Research One 2) is uncensored open-weights only.  │
+│  Primaries are routed through the HF Inference Providers API    │
+│  (Hermes-3, Dolphin-2.9.2, Dark-Champion, and abliterated       │
+│  Llama-3.3-70B / Qwen2.5-72B / DeepSeek-R1-Distill from         │
+│  huihui-ai). RLHF-aligned slugs are forbidden as V2 primaries — │
+│  see docs/V2_MODEL_SELECTION_CRITERIA.md.                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -153,9 +160,23 @@ REDIS_URL=redis://<redis-vm>:6379
 REDIS_PASSWORD=           # set if requirepass is enabled
 REDIS_USERNAME=           # set if ACL username is needed
 
-# OpenRouter (server-side only — never in Vercel)
+# OpenRouter (server-side only — never in Vercel) — V1 / closed-weights routing
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# Hugging Face Inference Providers (server-side only — never in Vercel) —
+# V2 / uncensored open-weights routing. REQUIRED whenever V2 is used; without
+# this token every V2 run will fail at the planner stage with an HF auth
+# error. Provision a "read" token from https://huggingface.co/settings/tokens.
+HF_TOKEN=
+
+# Optional Together fallback provider (server-side only). When set, calls to
+# HF repo ids that fail with provider_unavailable will be retried against
+# Together. Leave blank to disable the provider-level fallback (recommended
+# unless you have a vetted Together account that hosts the same uncensored
+# weights — see docs/V2_MODEL_SELECTION_CRITERIA.md before enabling).
+TOGETHER_API_KEY=
+TOGETHER_BASE_URL=https://api.together.xyz/v1
 
 # Security (server-side only — never in Vercel)
 JWT_SECRET=
@@ -455,7 +476,11 @@ Research direction and paper-building are restricted to reasoning-class models o
 - Startup fails if any fallback is missing.
 - Startup fails if any configured model is outside the approved reasoning allowlist.
 
-Approved reasoning allowlist (`backend/src/services/reasoning/reasoningModelPolicy.ts`). Confirm IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`.
+The deployment allowlist lives in [`reasoningModelPolicy.ts`](backend/src/services/reasoning/reasoningModelPolicy.ts) and is split into a V1 / closed-weights side (OpenRouter slugs, used by the V1 ensemble) and a V2 / uncensored open-weights side (HF repo ids, used by the V2 ensemble). V2 has its own binding selection criteria — see [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md) and the [`ResearchOne PolicyOne`](ResearchOne%20PolicyOne) epistemic preamble (RLHF refusal-aligned primaries are forbidden in V2 because they cause drift back toward consensus-debunking and silent omission of anomalous findings, which the policy explicitly prohibits).
+
+Confirm V1 OpenRouter IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`. V2 HF repo ids are validated against the [HF Inference Providers](https://huggingface.co/inference/models) catalog.
+
+### V1 / closed-weights (OpenRouter)
 
 - `anthropic/claude-3.5-haiku`
 - `anthropic/claude-3.7-sonnet`
@@ -474,6 +499,33 @@ Approved reasoning allowlist (`backend/src/services/reasoning/reasoningModelPoli
 - `openai/o3`
 - `openai/o3-mini`
 - `qwen/qwen3-235b-a22b`
+
+### V2 / uncensored / abliterated / steerable open-weights (HF repo ids)
+
+V2 PRIMARIES — these are the only ids allowed as a V2 preset primary. All have been
+selected because they either (a) are abliterated (refusal direction orthogonalized
+out of the base weights), (b) are uncensored fine-tunes trained without the
+"decline anomalies / debunk suppressed knowledge" objective, or (c) are
+steerable, low-refusal community-aligned models that follow the operator system
+prompt as authority. See [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md) for the full rationale and rules.
+
+- `cognitivecomputations/dolphin-2.9.2-qwen2-72b` — uncensored long-form fine-tune; primary skeptic / internal_challenger on most objectives.
+- `cognitivecomputations/Dolphin3.0-Llama3.1-70B` — newer uncensored long-form line on Llama 3.1 base.
+- `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B` — abliterated MoE for adversarial / anomaly red-team roles.
+- `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated` — R1 chain-of-thought reasoning with the Llama refusal direction removed; reasoner / change_planner primary.
+- `huihui-ai/Llama-3.3-70B-Instruct-abliterated` — Llama-3.3-70B base capability with refusal direction orthogonalized out; verifier / locator / utility primary.
+- `huihui-ai/Qwen2.5-72B-Instruct-abliterated` — Qwen's structured-output strength preserved, alignment filter removed; retriever primary on every objective.
+- `NousResearch/DeepHermes-3-Llama-3-8B-Preview` — neutrally-aligned smaller Hermes-line model with reasoning preview; plain-language fallback.
+- `NousResearch/Hermes-3-Llama-3.1-70B` — steerable, low-refusal long-form; primary across drafting / synthesis / coherence / locator on most objectives.
+
+V2 USER-OPT-IN FALLBACK ONLY — these RLHF-aligned slugs remain allowlisted so admins / users can wire them in via per-run overrides on the Research One 2 page if a primary is unreachable. They are NOT used by any V2 default preset and never fire silently. If you enable per-role fallback to one of these, the live trace records `usedFallback=true` with the model id so you can tell the report was generated through a refusal-aligned model.
+
+- `deepseek-ai/DeepSeek-R1-Distill-Llama-70B`
+- `meta-llama/Llama-3.3-70B-Instruct`
+- `Qwen/Qwen2.5-14B-Instruct`
+- `Qwen/Qwen2.5-32B-Instruct`
+- `Qwen/Qwen2.5-72B-Instruct`
+- `Qwen/QwQ-32B-Preview`
 
 Role separation for report generation now uses:
 

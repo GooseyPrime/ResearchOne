@@ -22,6 +22,7 @@ import {
   Layers,
   RotateCcw,
   ChevronRight,
+  XCircle,
 } from 'lucide-react';
 import {
   startResearch,
@@ -56,8 +57,12 @@ interface ResearchFailureEvent {
   message: string;
   error?: string;
   retryable?: boolean;
+  /** True when the run is in terminal `aborted` state — no further retries are possible. */
+  terminal?: boolean;
   failureMeta?: Record<string, unknown>;
 }
+
+import { classifyLiveStatus, LIVE_STATUS_COPY } from '../utils/researchLiveStatus';
 
 interface StageDescriptor {
   id: string;
@@ -84,7 +89,9 @@ const STAGE_BY_BACKEND = new Map<string, string>(
 
 function stageUiId(backendStage?: string): string {
   if (!backendStage) return 'planning';
-  if (backendStage === 'failed') return 'failed';
+  // 'aborted' is treated as a terminal variant of the same Error/recovery
+  // phase so the trace renders both in one place.
+  if (backendStage === 'failed' || backendStage === 'aborted') return 'failed';
   return STAGE_BY_BACKEND.get(backendStage) ?? 'planning';
 }
 
@@ -142,6 +149,9 @@ function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant
   if (evt.eventType === 'run_resumed') {
     return { text: 'Resumed', variant: 'resumed' };
   }
+  if (evt.eventType === 'run_aborted' || evt.stage === 'aborted') {
+    return { text: 'Aborted', variant: 'terminal' };
+  }
   if (evt.eventType === 'run_failed' || evt.stage === 'failed') {
     const retryable = evt.failure?.retryable === true;
     return { text: retryable ? 'Retryable' : 'Stopped', variant: retryable ? 'retryable' : 'terminal' };
@@ -154,6 +164,55 @@ function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant
     return { text: 'Retry', variant: 'retryable' };
   }
   return null;
+}
+
+function LiveStatusBanner({
+  runStatus,
+  failure,
+  retryAttempts,
+  progressMessage,
+  progressStage,
+}: {
+  runStatus?: string;
+  failure: ResearchFailureEvent | null;
+  retryAttempts?: number | null;
+  progressMessage?: string | null;
+  progressStage?: string | null;
+}) {
+  const live = classifyLiveStatus(runStatus, failure, {
+    retryAttempts,
+    progressMessage,
+    progressStage,
+  });
+  const copy = LIVE_STATUS_COPY[live];
+  const toneClass =
+    copy.tone === 'good'
+      ? 'border-green-800/40 bg-green-950/30 text-green-300'
+      : copy.tone === 'warn'
+        ? 'border-amber-700/40 bg-amber-950/30 text-amber-200'
+        : copy.tone === 'bad'
+          ? 'border-red-700/40 bg-red-950/30 text-red-200'
+          : copy.tone === 'info'
+            ? 'border-accent/40 bg-accent/10 text-accent'
+            : 'border-surface-100 bg-surface-200 text-slate-400';
+
+  const Icon =
+    copy.tone === 'good'
+      ? CheckCircle2
+      : copy.tone === 'warn'
+        ? AlertCircle
+        : copy.tone === 'bad'
+          ? XCircle
+          : copy.tone === 'info'
+            ? Zap
+            : Clock;
+
+  return (
+    <div className={clsx('rounded-lg border px-3 py-2 flex items-start gap-2', toneClass)}>
+      <Icon size={16} className="mt-0.5 flex-shrink-0" />
+      <p className="text-xs leading-snug">{copy.label}</p>
+    </div>
+  );
 }
 
 function formatShortTime(iso?: string): string {
@@ -176,7 +235,7 @@ export default function ResearchPageV2() {
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
-  const [traceOpen, setTraceOpen] = useState(false);
+  // Live trace is now always rendered when a run is being tracked; no collapse.
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
   /** `undefined` = derive open state from the current pipeline stage */
   const [phaseExpanded, setPhaseExpanded] = useState<Record<string, boolean | undefined>>({});
@@ -271,24 +330,28 @@ export default function ResearchPageV2() {
       setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-150)));
     }
 
-    if (polledRun.status === 'failed') {
+    if (polledRun.status === 'failed' || polledRun.status === 'aborted') {
+      const fmeta = (polledRun.failure_meta as Record<string, unknown> | undefined) ?? undefined;
       const failed: ResearchFailureEvent = {
         runId: polledRun.id,
         stage: polledRun.failed_stage || polledRun.progress_stage || 'unknown',
         percent: polledRun.progress_percent ?? 0,
         message: polledRun.error_message || 'Research run failed',
         error: polledRun.error_message,
-        retryable: Boolean(polledRun.failure_meta && (polledRun.failure_meta as Record<string, unknown>).retryable),
-        failureMeta: polledRun.failure_meta,
+        retryable:
+          polledRun.status !== 'aborted' && Boolean(fmeta && fmeta.retryable === true),
+        terminal: polledRun.status === 'aborted' || (fmeta && fmeta.terminal === true) === true,
+        failureMeta: fmeta,
       };
       setFailure(failed);
+      const isAborted = polledRun.status === 'aborted' || failed.terminal === true;
       setActiveRun({
         runId: failed.runId,
-        stage: 'failed',
+        stage: isAborted ? 'aborted' : 'failed',
         percent: failed.percent,
         message: failed.message,
         timestamp: new Date().toISOString(),
-        eventType: 'run_failed',
+        eventType: isAborted ? 'run_aborted' : 'run_failed',
         failure: {
           errorMessage: failed.error,
           retryable: failed.retryable,
@@ -367,6 +430,37 @@ export default function ResearchPageV2() {
       }
     });
 
+    socket.on('research:aborted', (failed: ResearchFailureEvent) => {
+      qc.invalidateQueries({ queryKey: ['research-runs'] });
+      if (failed.runId === trackingRunId) {
+        const failureReason = formatFailureReason(failed.error || failed.message, failed.failureMeta);
+        const finalFailure: ResearchFailureEvent = { ...failed, terminal: true, retryable: false };
+        setFailure(finalFailure);
+        setProgress({
+          runId: failed.runId,
+          stage: 'aborted',
+          percent: failed.percent,
+          message: failed.message,
+          timestamp: new Date().toISOString(),
+          eventType: 'run_aborted',
+          failure: { errorMessage: failureReason, retryable: false, failureMeta: failed.failureMeta },
+        });
+        setActiveRun({
+          runId: failed.runId,
+          stage: 'aborted',
+          percent: failed.percent,
+          message: failed.message,
+          timestamp: new Date().toISOString(),
+          eventType: 'run_aborted',
+          failure: { errorMessage: failureReason, retryable: false, failureMeta: failed.failureMeta },
+        });
+        addNotification(
+          'error',
+          'Run aborted — no more retries will run. Start a new run if you still need this report.'
+        );
+      }
+    });
+
     socket.on('research:cancelled', (payload: { runId: string }) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       if (payload.runId === trackingRunId) {
@@ -381,6 +475,7 @@ export default function ResearchPageV2() {
       socket.off('research:progress');
       socket.off('research:completed');
       socket.off('research:failed');
+      socket.off('research:aborted');
       socket.off('research:cancelled');
     };
   }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
@@ -444,13 +539,13 @@ export default function ResearchPageV2() {
   };
 
   useEffect(() => {
-    if (!traceOpen || !traceScrollRef.current) return;
+    if (!traceScrollRef.current) return;
     const wrap = traceScrollRef.current;
     const target = wrap.querySelector(`[data-telemetry-phase="${currentUiStage}"]`);
     if (target && typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [traceOpen, currentUiStage]);
+  }, [currentUiStage, traceEvents.length]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
@@ -665,15 +760,23 @@ export default function ResearchPageV2() {
 
             <p className="text-sm text-slate-300">{current?.message ?? 'Processing...'}</p>
 
-            <button type="button" className="btn-ghost text-xs" onClick={() => setTraceOpen((v) => !v)}>
-              {traceOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              Live research trace ({traceEvents.length})
-            </button>
+            <LiveStatusBanner
+              runStatus={trackedRun?.status}
+              failure={failure}
+              retryAttempts={trackedRun?.retry_attempts ?? polledRun?.retry_attempts ?? null}
+              progressMessage={trackedRun?.progress_message ?? polledRun?.progress_message ?? null}
+              progressStage={trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null}
+            />
 
-            {traceOpen && (
+            <div className="flex items-center justify-between">
+              <span className="section-title">Live research trace ({traceEvents.length})</span>
+              <span className="text-[10px] text-slate-500">Auto-populating · most recent at the bottom</span>
+            </div>
+
+            {(
               <div
                 ref={traceScrollRef}
-                className="max-h-[22rem] overflow-y-auto rounded-lg border border-surface-100 bg-surface-200/60 p-2 space-y-1"
+                className="max-h-[24rem] overflow-y-auto rounded-lg border border-surface-100 bg-surface-200/60 p-2 space-y-1"
               >
                 {traceEvents.length === 0 && <p className="text-xs text-slate-500 px-2 py-2">No trace events yet.</p>}
                 {orderedPhases.map((phaseId) => {
@@ -831,40 +934,17 @@ export default function ResearchPageV2() {
         )}
 
         {failure && (
-          <div className="border border-amber-700/40 bg-amber-950/30 rounded-lg p-4 space-y-1">
-            <p className="text-sm text-amber-300 font-medium">Run encountered an error</p>
-            <p className="text-xs text-amber-200">Stage: {failure.stage || 'unknown'}</p>
-            <p className="text-xs text-amber-200">Reason: {formatFailureReason(failure.error || failure.message, failure.failureMeta)}</p>
-            {failure.retryable && (
-              <div className="space-y-2">
-                <p className="text-xs text-blue-300">This failure is retryable.</p>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={async () => {
-                    if (!failure.runId) return;
-                    try {
-                      await retryResearchRunFromFailure(failure.runId);
-                      setFailure(null);
-                      setTrackingRunId(failure.runId);
-                      qc.invalidateQueries({ queryKey: ['research-runs'] });
-                      addNotification('info', 'Retry queued from last failure.');
-                    } catch (err) {
-                      if (axios.isAxiosError(err)) {
-                        const d = err.response?.data as { error?: string; reason?: string; hint?: string } | undefined;
-                        const detail = [d?.error, d?.reason, d?.hint].filter(Boolean).join(' | ');
-                        addNotification('error', detail || err.message || 'Failed to queue retry');
-                      } else {
-                        addNotification('error', err instanceof Error ? err.message : 'Failed to queue retry');
-                      }
-                    }
-                  }}
-                >
-                  Resume from last failure
-                </button>
-              </div>
-            )}
-          </div>
+          <FailureCard
+            failure={failure}
+            onRetried={(rid) => {
+              setFailure(null);
+              setTrackingRunId(rid);
+              qc.invalidateQueries({ queryKey: ['research-runs'] });
+              addNotification('info', 'Retry queued from last failure.');
+            }}
+            onError={(msg) => addNotification('error', msg)}
+            onInfo={(msg) => addNotification('info', msg)}
+          />
         )}
       </div>
 
@@ -921,15 +1001,16 @@ function RunRow({
   const [showError, setShowError] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const STATUS_CONFIG = {
+  const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
     queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
     running: { icon: Zap, color: 'text-accent animate-pulse', label: 'Running' },
     completed: { icon: CheckCircle2, color: 'text-green-400', label: 'Completed' },
     failed: { icon: AlertCircle, color: 'text-amber-400', label: 'Needs review' },
     cancelled: { icon: AlertCircle, color: 'text-slate-500', label: 'Cancelled' },
+    aborted: { icon: XCircle, color: 'text-red-400', label: 'Aborted' },
   };
 
-  const cfg = STATUS_CONFIG[run.status];
+  const cfg = STATUS_CONFIG[run.status] ?? STATUS_CONFIG.failed;
   const Icon = cfg.icon;
 
   const latestEvent = Array.isArray(run.progress_events) && run.progress_events.length > 0
@@ -988,7 +1069,7 @@ function RunRow({
               <Ban size={14} />
             </button>
           )}
-          {(run.status === 'queued' || run.status === 'failed' || run.status === 'cancelled') && (
+          {(run.status === 'queued' || run.status === 'failed' || run.status === 'cancelled' || run.status === 'aborted') && (
             <button type="button" className="btn-ghost p-1.5 text-slate-400" title="Remove from list" disabled={busy} onClick={handleDelete}>
               <Trash2 size={14} />
             </button>
@@ -996,7 +1077,7 @@ function RunRow({
         </div>
       </div>
 
-      {run.status === 'failed' && (run.error_message || run.failed_stage) && (
+      {(run.status === 'failed' || run.status === 'aborted') && (run.error_message || run.failed_stage) && (
         <div>
           <button type="button" className="text-xs text-amber-300 hover:text-amber-200" onClick={() => setShowError((v) => !v)}>
             {showError ? 'Hide error details' : 'Show error details'}
@@ -1008,6 +1089,160 @@ function RunRow({
             </p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function FailureCard({
+  failure,
+  onRetried,
+  onError,
+  onInfo,
+}: {
+  failure: ResearchFailureEvent;
+  onRetried: (runId: string) => void;
+  onError: (message: string) => void;
+  /**
+   * Used for non-error post-action messages (e.g. "2 retries remaining after
+   * this attempt"). Wired to an info-level notification by the parent so we
+   * do not surface a false error toast on a successful retry queue
+   * (PR #39 Copilot review).
+   */
+  onInfo: (message: string) => void;
+}) {
+  const fmeta = failure.failureMeta ?? {};
+  const terminal = failure.terminal === true || fmeta.terminal === true;
+  const role = typeof fmeta.role === 'string' ? fmeta.role : undefined;
+  const model = typeof fmeta.model === 'string' ? fmeta.model : undefined;
+  const upstream = typeof fmeta.upstream === 'string' ? fmeta.upstream : undefined;
+  const classification =
+    typeof fmeta.classification === 'string' ? fmeta.classification : undefined;
+  const retryAttempts = typeof fmeta.retryAttempts === 'number' ? fmeta.retryAttempts : undefined;
+  const retryBudget = typeof fmeta.retryBudget === 'number' ? fmeta.retryBudget : undefined;
+  const attemptsRemaining =
+    typeof fmeta.attemptsRemaining === 'number' ? fmeta.attemptsRemaining : undefined;
+
+  const tone = terminal ? 'red' : 'amber';
+  const headlineClass = terminal ? 'text-red-300' : 'text-amber-300';
+  const containerClass = terminal
+    ? 'border-red-700/40 bg-red-950/30'
+    : 'border-amber-700/40 bg-amber-950/30';
+
+  const reason = formatFailureReason(failure.error || failure.message, fmeta);
+
+  const headline = terminal
+    ? 'Run aborted — no further retries will be attempted.'
+    : failure.retryable
+      ? 'Run failed — recoverable. You can resume from the last failure.'
+      : 'Run failed — not recoverable from this state.';
+
+  const guidance: string[] = [];
+  if (terminal) {
+    guidance.push(
+      'The retry budget is exhausted (or the orchestrator marked this failure non-recoverable). Start a new run with the same query if you want to try again.'
+    );
+  } else if (failure.retryable) {
+    guidance.push(
+      'Click "Resume from last failure" to re-queue this run from the saved checkpoint with the same models, ensemble, and supplemental context.'
+    );
+    if (typeof retryAttempts === 'number' && typeof retryBudget === 'number') {
+      guidance.push(`Retries used so far: ${retryAttempts} of ${retryBudget}.`);
+    }
+  } else {
+    guidance.push(
+      'Inspect the role and model below; correct the underlying issue (e.g. invalid query, missing supplemental file, upstream auth) and start a new run.'
+    );
+  }
+  if (classification === 'provider_unavailable' && upstream === 'huggingface_inference') {
+    guidance.push(
+      'The Hugging Face Inference Provider for this exact repo was temporarily unavailable. If this keeps happening, switch the role to a different model in the per-run model panel above.'
+    );
+  }
+  if (classification === 'auth_error') {
+    guidance.push(
+      'The upstream rejected the call as unauthenticated. The server-side OPENROUTER_API_KEY / HF_TOKEN may be missing or expired — contact the operator.'
+    );
+  }
+  if (classification === 'rate_limited') {
+    guidance.push(
+      'You are being rate-limited by the upstream provider. Wait briefly before resuming.'
+    );
+  }
+
+  return (
+    <div className={clsx('border rounded-lg p-4 space-y-2', containerClass)}>
+      <div className="flex items-center gap-2">
+        {terminal ? (
+          <XCircle size={16} className="text-red-400" />
+        ) : (
+          <AlertCircle size={16} className="text-amber-400" />
+        )}
+        <p className={clsx('text-sm font-medium', headlineClass)}>{headline}</p>
+      </div>
+
+      <div className={clsx('text-xs space-y-1', tone === 'red' ? 'text-red-200' : 'text-amber-200')}>
+        <p>
+          <span className="text-slate-400">Stage:</span> {failure.stage || 'unknown'}
+          {role ? <span> · <span className="text-slate-400">Role:</span> {role}</span> : null}
+          {model ? <span> · <span className="text-slate-400">Model:</span> {model}</span> : null}
+          {upstream ? <span> · <span className="text-slate-400">Upstream:</span> {upstream}</span> : null}
+          {classification ? (
+            <span> · <span className="text-slate-400">Class:</span> {classification}</span>
+          ) : null}
+        </p>
+        <p className="opacity-90">{reason}</p>
+        {typeof retryAttempts === 'number' && typeof retryBudget === 'number' && (
+          <p className="text-slate-400">
+            Retries used: <span className="text-slate-300">{retryAttempts}</span> of{' '}
+            <span className="text-slate-300">{retryBudget}</span>
+            {typeof attemptsRemaining === 'number' && attemptsRemaining > 0 ? (
+              <span> · <span className="text-slate-300">{attemptsRemaining}</span> remaining</span>
+            ) : null}
+          </p>
+        )}
+      </div>
+
+      {guidance.length > 0 && (
+        <ul className="text-xs space-y-1 text-slate-300 pl-4 list-disc">
+          {guidance.map((g, idx) => (
+            <li key={idx}>{g}</li>
+          ))}
+        </ul>
+      )}
+
+      {!terminal && failure.retryable && (
+        <button
+          type="button"
+          className="btn-ghost text-xs mt-1"
+          onClick={async () => {
+            if (!failure.runId) return;
+            try {
+              const result = await retryResearchRunFromFailure(failure.runId);
+              onRetried(failure.runId);
+              if (typeof result?.attemptsRemaining === 'number') {
+                onInfo(
+                  `${result.attemptsRemaining} ${
+                    result.attemptsRemaining === 1 ? 'retry' : 'retries'
+                  } remaining after this attempt.`
+                );
+              }
+            } catch (err) {
+              if (axios.isAxiosError(err)) {
+                const d = err.response?.data as
+                  | { error?: string; reason?: string; hint?: string; terminal?: boolean }
+                  | undefined;
+                const detail = [d?.error, d?.reason, d?.hint].filter(Boolean).join(' — ');
+                onError(detail || err.message || 'Failed to queue retry');
+              } else {
+                onError(err instanceof Error ? err.message : 'Failed to queue retry');
+              }
+            }
+          }}
+        >
+          <RotateCcw size={12} />
+          Resume from last failure
+        </button>
       )}
     </div>
   );

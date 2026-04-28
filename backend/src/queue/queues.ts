@@ -30,11 +30,17 @@ export const embeddingQueue = new Queue(QUEUE_NAMES.EMBEDDING, {
   },
 });
 
+/**
+ * Research queue: each job is a single research-run attempt. Application-level
+ * retry-from-failure is the only retry path for research, so we set
+ * `attempts: 1`. If a worker throws, the job is failed immediately and the run
+ * row goes terminal — no silent BullMQ-level reprocessing that would reset
+ * `progress_stage` and confuse the UI.
+ */
 export const researchQueue = new Queue(QUEUE_NAMES.RESEARCH, {
   connection,
   defaultJobOptions: {
-    attempts: 2,
-    backoff: { type: 'exponential', delay: 10000 },
+    attempts: 1,
     removeOnComplete: 50,
     removeOnFail: 100,
   },

@@ -10,6 +10,7 @@ import { runAtlasExport } from '../services/embedding/atlasExport';
 import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
 import { ResearchCancelledError } from '../services/researchCancellation';
+import { classifyResearchFailureForSocket } from '../utils/researchFailureRouting';
 
 async function markInterruptedResearchRuns(): Promise<void> {
   const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
@@ -105,16 +106,12 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           retryable?: boolean;
           failureMeta?: Record<string, unknown>;
         };
-        const failedPayload = {
-          runId: e.runId ?? job.data.runId,
-          stage: e.stage ?? 'unknown',
-          percent: e.percent ?? 0,
-          message: e.message ?? 'Research run failed',
-          error: e.message,
-          retryable: Boolean(e.retryable),
-          failureMeta: e.failureMeta ?? {},
-        };
-        emit(`job:${job.data.runId}`, 'research:failed', failedPayload);
+        // Differentiate aborted (no retries remain) from failed (retryable);
+        // the frontend listens for both events and shows distinct status.
+        // The orchestrator throws a *budget-finalized* error shape so this
+        // socket event matches the DB row that was just written.
+        const decision = classifyResearchFailureForSocket(e, job.data.runId);
+        emit(`job:${job.data.runId}`, decision.event, decision.payload);
         io.emit('reports:updated', {});
         io.emit('runs:updated', {});
         throw err;
