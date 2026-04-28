@@ -781,13 +781,20 @@ export async function runResearchJob(
       },
     });
     logger.error(`Research run ${runId} failed:`, err);
+    // Propagate the *budget-finalized* metadata to the BullMQ worker. The
+    // earlier version threw `failureDetails.{retryable,failureMeta}`, which
+    // does not carry the `terminal` / `attemptsRemaining` bookkeeping. The
+    // worker derives 'research:aborted' vs 'research:failed' from
+    // `failureMeta.terminal`, so without this the realtime socket event
+    // would briefly contradict the row we just persisted (Codex / Copilot
+    // PR #39 review).
     const enrichedError = Object.assign(new Error(failureDetails.errorMessage), {
       runId,
-      stage: currentStage,
+      stage: budgetExhausted ? 'aborted' : currentStage,
       percent: currentPercent,
       message: currentMessage,
-      retryable: failureDetails.retryable,
-      failureMeta: failureDetails.failureMeta,
+      retryable: declaredRetryable,
+      failureMeta: failureMetaWithResume,
     });
     throw enrichedError;
   }

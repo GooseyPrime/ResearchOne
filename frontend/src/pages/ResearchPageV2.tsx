@@ -62,49 +62,7 @@ interface ResearchFailureEvent {
   failureMeta?: Record<string, unknown>;
 }
 
-type LiveStatus =
-  | 'queued'
-  | 'running'
-  | 'retrying'
-  | 'failed_retryable'
-  | 'aborted'
-  | 'cancelled'
-  | 'completed';
-
-function classifyLiveStatus(
-  runStatus: string | undefined,
-  failure: ResearchFailureEvent | null
-): LiveStatus {
-  if (failure?.terminal || runStatus === 'aborted') return 'aborted';
-  if (runStatus === 'completed') return 'completed';
-  if (runStatus === 'cancelled') return 'cancelled';
-  if (runStatus === 'failed') {
-    return failure?.retryable === false ? 'aborted' : 'failed_retryable';
-  }
-  if (runStatus === 'running') return 'running';
-  return 'queued';
-}
-
-const LIVE_STATUS_COPY: Record<
-  LiveStatus,
-  { label: string; tone: 'info' | 'good' | 'warn' | 'bad' | 'idle' }
-> = {
-  queued: { label: 'Queued — waiting for a research worker to pick this up.', tone: 'idle' },
-  running: { label: 'Running — pipeline is active.', tone: 'info' },
-  retrying: { label: 'Retrying after a previous failure.', tone: 'info' },
-  failed_retryable: {
-    label:
-      'Failed — the run hit a recoverable error. Use Resume from last failure to retry from the saved state.',
-    tone: 'warn',
-  },
-  aborted: {
-    label:
-      'Aborted — no more retries will run. Either the retry budget was exhausted or the failure was non-recoverable. Start a new run.',
-    tone: 'bad',
-  },
-  cancelled: { label: 'Cancelled by user.', tone: 'idle' },
-  completed: { label: 'Completed — report is being opened.', tone: 'good' },
-};
+import { classifyLiveStatus, LIVE_STATUS_COPY } from '../utils/researchLiveStatus';
 
 interface StageDescriptor {
   id: string;
@@ -131,7 +89,9 @@ const STAGE_BY_BACKEND = new Map<string, string>(
 
 function stageUiId(backendStage?: string): string {
   if (!backendStage) return 'planning';
-  if (backendStage === 'failed') return 'failed';
+  // 'aborted' is treated as a terminal variant of the same Error/recovery
+  // phase so the trace renders both in one place.
+  if (backendStage === 'failed' || backendStage === 'aborted') return 'failed';
   return STAGE_BY_BACKEND.get(backendStage) ?? 'planning';
 }
 
@@ -189,6 +149,9 @@ function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant
   if (evt.eventType === 'run_resumed') {
     return { text: 'Resumed', variant: 'resumed' };
   }
+  if (evt.eventType === 'run_aborted' || evt.stage === 'aborted') {
+    return { text: 'Aborted', variant: 'terminal' };
+  }
   if (evt.eventType === 'run_failed' || evt.stage === 'failed') {
     const retryable = evt.failure?.retryable === true;
     return { text: retryable ? 'Retryable' : 'Stopped', variant: retryable ? 'retryable' : 'terminal' };
@@ -206,11 +169,21 @@ function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant
 function LiveStatusBanner({
   runStatus,
   failure,
+  retryAttempts,
+  progressMessage,
+  progressStage,
 }: {
   runStatus?: string;
   failure: ResearchFailureEvent | null;
+  retryAttempts?: number | null;
+  progressMessage?: string | null;
+  progressStage?: string | null;
 }) {
-  const live = classifyLiveStatus(runStatus, failure);
+  const live = classifyLiveStatus(runStatus, failure, {
+    retryAttempts,
+    progressMessage,
+    progressStage,
+  });
   const copy = LIVE_STATUS_COPY[live];
   const toneClass =
     copy.tone === 'good'
@@ -371,13 +344,14 @@ export default function ResearchPageV2() {
         failureMeta: fmeta,
       };
       setFailure(failed);
+      const isAborted = polledRun.status === 'aborted' || failed.terminal === true;
       setActiveRun({
         runId: failed.runId,
-        stage: 'failed',
+        stage: isAborted ? 'aborted' : 'failed',
         percent: failed.percent,
         message: failed.message,
         timestamp: new Date().toISOString(),
-        eventType: 'run_failed',
+        eventType: isAborted ? 'run_aborted' : 'run_failed',
         failure: {
           errorMessage: failed.error,
           retryable: failed.retryable,
@@ -786,7 +760,13 @@ export default function ResearchPageV2() {
 
             <p className="text-sm text-slate-300">{current?.message ?? 'Processing...'}</p>
 
-            <LiveStatusBanner runStatus={trackedRun?.status} failure={failure} />
+            <LiveStatusBanner
+              runStatus={trackedRun?.status}
+              failure={failure}
+              retryAttempts={trackedRun?.retry_attempts ?? polledRun?.retry_attempts ?? null}
+              progressMessage={trackedRun?.progress_message ?? polledRun?.progress_message ?? null}
+              progressStage={trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null}
+            />
 
             <div className="flex items-center justify-between">
               <span className="section-title">Live research trace ({traceEvents.length})</span>
@@ -963,6 +943,7 @@ export default function ResearchPageV2() {
               addNotification('info', 'Retry queued from last failure.');
             }}
             onError={(msg) => addNotification('error', msg)}
+            onInfo={(msg) => addNotification('info', msg)}
           />
         )}
       </div>
@@ -1117,10 +1098,18 @@ function FailureCard({
   failure,
   onRetried,
   onError,
+  onInfo,
 }: {
   failure: ResearchFailureEvent;
   onRetried: (runId: string) => void;
   onError: (message: string) => void;
+  /**
+   * Used for non-error post-action messages (e.g. "2 retries remaining after
+   * this attempt"). Wired to an info-level notification by the parent so we
+   * do not surface a false error toast on a successful retry queue
+   * (PR #39 Copilot review).
+   */
+  onInfo: (message: string) => void;
 }) {
   const fmeta = failure.failureMeta ?? {};
   const terminal = failure.terminal === true || fmeta.terminal === true;
@@ -1230,12 +1219,14 @@ function FailureCard({
             if (!failure.runId) return;
             try {
               const result = await retryResearchRunFromFailure(failure.runId);
-              const summary =
-                typeof result?.attemptsRemaining === 'number'
-                  ? `${result.attemptsRemaining} retries remaining after this attempt.`
-                  : '';
               onRetried(failure.runId);
-              if (summary) onError(summary); // surfaced as info via notification path is in onRetried
+              if (typeof result?.attemptsRemaining === 'number') {
+                onInfo(
+                  `${result.attemptsRemaining} ${
+                    result.attemptsRemaining === 1 ? 'retry' : 'retries'
+                  } remaining after this attempt.`
+                );
+              }
             } catch (err) {
               if (axios.isAxiosError(err)) {
                 const d = err.response?.data as
