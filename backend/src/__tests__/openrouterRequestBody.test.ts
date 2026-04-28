@@ -80,4 +80,39 @@ describe('OpenRouter request body — provider block', () => {
       'qwen/qwen3-235b-a22b-thinking-2507',
     ]).toContain(model);
   });
+
+  /**
+   * Regression guard for the PR #41 review (Copilot 3+4):
+   * `qwen/qwen3-235b-a22b-thinking-2507` is a lowercase OpenRouter slug
+   * whose namespace prefix overlaps with the HF `Qwen/` org. A previous
+   * revision of `isHfRepoModel` listed lowercase `qwen/` as an HF prefix,
+   * which silently misrouted this slug through HF Inference (where it
+   * does not exist). The contract this test locks in: if the V2 reasoner
+   * is wired to a `qwen/` OpenRouter slug, `callRoleModel` MUST POST to
+   * the OpenRouter chat-completions endpoint, not to HF Inference.
+   */
+  it('routes lowercase qwen/ OpenRouter slugs through OpenRouter, not HF', async () => {
+    await callRoleModel({
+      role: 'reasoner',
+      engineVersion: 'v2',
+      researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
+      runtimeOverrides: {
+        primary: 'qwen/qwen3-235b-a22b-thinking-2507',
+        fallback: 'qwen/qwen3-235b-a22b-thinking-2507',
+      },
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'q' },
+      ],
+    });
+    expect(mockedAxios.post).toHaveBeenCalled();
+    const url = mockedAxios.post.mock.calls[0][0] as string;
+    // Must hit OpenRouter, not the HF Inference Providers API.
+    expect(url).toMatch(/openrouter\.ai\/api\/v1\/chat\/completions$/);
+    expect(url).not.toMatch(/api-inference\.huggingface\.co/);
+    const body = mockedAxios.post.mock.calls[0][1] as Record<string, unknown>;
+    expect(body.model).toBe('qwen/qwen3-235b-a22b-thinking-2507');
+    // And the runtime provider block is present.
+    expect(body).toHaveProperty('provider');
+  });
 });

@@ -62,33 +62,82 @@ export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' |
  * OpenRouter and HF Inference both use `vendor/model` ids and the namespaces
  * sometimes overlap (e.g. `NousResearch/Hermes-3-Llama-3.1-70B` is a HF
  * repo, while `nousresearch/hermes-3-llama-3.1-70b` is its OpenRouter slug).
- * We disambiguate by:
- *   - If the id contains a `:` variant suffix (e.g. `:free`, `:beta`,
- *     `:nitro`), it is OpenRouter (HF repo ids never use `:`).
- *   - Otherwise, the id is HF iff it starts with one of the allowlisted
- *     HF-style namespaces (case-sensitive — HF preserves casing while
- *     OpenRouter slugs are all lowercase).
+ * We disambiguate in this order:
  *
- * Adding a new HF-routed namespace? Add the prefix below AND make sure
- * its OpenRouter equivalent is lowercase so the case check disambiguates
- * correctly.
+ *   1. If the id contains a `:` variant suffix (e.g. `:free`, `:beta`,
+ *      `:nitro`), it is OpenRouter (HF repo ids never use `:`).
+ *   2. If the id is in `OPENROUTER_SLUG_OVERRIDES`, it is OpenRouter even
+ *      though its namespace prefix is HF-shared. This explicit allowlist
+ *      is the only correct disambiguator for namespaces shared between
+ *      HF and OpenRouter where both sides use lowercase canonical orgs
+ *      (e.g. `meta-llama/`, `dphn/`).
+ *   3. Otherwise, the id is HF iff it starts with one of the allowlisted
+ *      HF-style namespaces. For namespaces where HF uses MixedCase and
+ *      OpenRouter uses all-lowercase (`NousResearch/` vs `nousresearch/`,
+ *      `Qwen/` vs `qwen/`, `DavidAU/` vs `davidau/`), only the MixedCase
+ *      form belongs in this list. Lowercase OpenRouter slugs that share
+ *      that namespace prefix in lowercase do NOT belong here.
+ *
+ * Adding a new HF-routed namespace? Add the prefix below in its HF-canonical
+ * casing AND make sure no OpenRouter-canonical lowercase form of the same
+ * prefix appears here — those should remain implicitly OpenRouter.
+ *
+ * ## Why this matters (PR #41 review fix)
+ *
+ * A previous revision of this file added the lowercase form `'qwen/'` to
+ * `HF_NAMESPACE_PREFIXES`. That misrouted the V2 reasoner-class default
+ * `qwen/qwen3-235b-a22b-thinking-2507` (an OpenRouter slug, fully lowercase)
+ * through HF Inference — where it is not hosted — silently breaking V2 on
+ * the GENERAL_EPISTEMIC_RESEARCH / NOVEL_APPLICATION_DISCOVERY objectives.
+ * The lowercase `qwen/` form is OpenRouter-only; HF uses `Qwen/`.
+ *
+ * The override list also handles V1 `meta-llama/llama-3.3-70b-instruct`
+ * (an OpenRouter slug) — its HF counterpart is `meta-llama/Llama-3.3-70B-Instruct`,
+ * sharing the same lowercase namespace. Without the override, the prefix
+ * rule alone cannot disambiguate them.
  */
 const HF_NAMESPACE_PREFIXES = [
+  // HF orgs whose canonical casing is MixedCase. The lowercase OpenRouter
+  // forms (`nousresearch/`, `davidau/`, `qwen/`) are NEVER HF repo ids.
   'NousResearch/',
   'DavidAU/',
+  'Qwen/',
+  // HF orgs whose canonical casing is lowercase. For these, the same
+  // prefix may appear on OpenRouter too; explicit OR slugs go in
+  // OPENROUTER_SLUG_OVERRIDES below.
   'huihui-ai/',
   'deepseek-ai/',
   'meta-llama/',
-  'Qwen/',
-  'qwen/',
   'dphn/',
 ] as const;
+
+/**
+ * Explicit OpenRouter slug allowlist for ids whose namespace prefix
+ * also appears in `HF_NAMESPACE_PREFIXES`. Anything in this set is
+ * unconditionally OpenRouter, and `isHfRepoModel` short-circuits to
+ * `false` for it. Keep this list aligned with `BASE_ALLOWLIST` and
+ * V2 ensemble presets — any new OpenRouter slug whose namespace prefix
+ * is in HF_NAMESPACE_PREFIXES MUST be added here.
+ */
+const OPENROUTER_SLUG_OVERRIDES: ReadonlySet<string> = new Set([
+  // PR #41 V2 reasoner-class default — `qwen/` namespace prefix shared
+  // with HF `Qwen/` (different case) but Node string startsWith is case
+  // sensitive so this is technically redundant; kept here as an explicit
+  // safety net so adding lowercase `qwen/` back to HF_NAMESPACE_PREFIXES
+  // by mistake cannot regress this slug again.
+  'qwen/qwen3-235b-a22b-thinking-2507',
+  // V1 OpenRouter slug — `meta-llama/llama-3.3-70b-instruct` shares the
+  // `meta-llama/` namespace with HF `meta-llama/Llama-3.3-70B-Instruct`.
+  'meta-llama/llama-3.3-70b-instruct',
+]);
 
 export function isHfRepoModel(model: string): boolean {
   const m = model.trim();
   if (!m.includes('/')) return false;
   // OpenRouter variant suffixes are unambiguous — HF repo ids never have ':'.
   if (m.includes(':')) return false;
+  // Explicit OR-slug overrides for namespaces shared with HF.
+  if (OPENROUTER_SLUG_OVERRIDES.has(m)) return false;
   // `cognitivecomputations/` is ambiguous: the V2 default
   // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` is an
   // OpenRouter slug (caught above by ':'), while

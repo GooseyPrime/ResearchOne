@@ -624,15 +624,6 @@ function classifyHfError(err: unknown): ModelErrorClassification {
 
 function classifyModelError(err: AxiosError): ModelErrorClassification {
   const status = err.response?.status;
-  const data = err.response?.data as unknown;
-  const message =
-    typeof data === 'string'
-      ? data
-      : data && typeof data === 'object'
-        ? ((data as { error?: { message?: string }; message?: string }).error?.message ||
-            (data as { message?: string }).message ||
-            '')
-        : '';
 
   if (!status) return 'network_error';
   if (status === 429) return 'rate_limited';
@@ -644,16 +635,13 @@ function classifyModelError(err: AxiosError): ModelErrorClassification {
   // OpenRouter returns 404 with body
   // `{"error":{"message":"No allowed providers are available for the
   //   selected model","code":404}}` when the account's provider filter
-  // excludes every upstream the model has. Do not classify this as
-  // `unknown` — it is a permanent configuration mismatch for the
-  // requested model on this account, and the failure card needs to say
-  // so. We classify it as `bad_request` (do not retry) and the
-  // orchestrator's failure-meta carries the providerMessage so the user
-  // sees the actual cause.
-  if (status === 404) {
-    if (/no allowed providers/i.test(message)) return 'bad_request';
-    return 'bad_request';
-  }
+  // excludes every upstream the model has. It also returns 404 for
+  // typo'd or retired slugs. Both are `bad_request` (do not retry) —
+  // the orchestrator's failure-meta carries the providerMessage so the
+  // FailureCard can show the actual cause to the user. The user-facing
+  // hint differentiates "No allowed providers" vs generic 404 in
+  // `researchFailureHints.ts`; the classifier itself does not need to.
+  if (status === 404) return 'bad_request';
   if (status === 400) return 'bad_request';
   return 'unknown';
 }
