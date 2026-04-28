@@ -97,11 +97,17 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
 
 ## I. Research policy guardrails (repo-specific)
 
-18. **No refusal-aligned RLHF instruct slugs in V2 default presets.**
-    Read `docs/V2_MODEL_SELECTION_CRITERIA.md` and
-    `ResearchOne PolicyOne` before changing any V2 default. (See
-    `.cursor/rules/20-research-policy-guardrails.mdc`.)
-19. **`REASONING_FIRST_PREAMBLE` and `RED_TEAM_V2_SYSTEM_PREFIX` are
+18. **The binding V2 rule is inference-time behavior**, not training
+    history. Read `docs/V2_MODEL_SELECTION_CRITERIA.md` and
+    `ResearchOne PolicyOne` before changing any V2 default. RLHF /
+    abliterated / uncensored are decision proxies, not the rule. See
+    `.cursor/rules/20-research-policy-guardrails.mdc`.
+19. **Critical-path V2 default primaries must have ≥ 2 live OpenRouter
+    upstreams.** Verify per-slug live before claiming "multi-provider"
+    in any doc / PR body. Single-upstream slugs are user-opt-in only.
+    The `V2_FORBIDDEN_DEFAULT_MODELS` regression test and the startup
+    pre-flight probe enforce this.
+20. **`REASONING_FIRST_PREAMBLE` and `RED_TEAM_V2_SYSTEM_PREFIX` are
     immutable.** Do not edit their content; do not skip their
     application.
 

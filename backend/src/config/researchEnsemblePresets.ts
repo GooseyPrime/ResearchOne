@@ -158,45 +158,39 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
 /**
  * Baseline models — Research One 2 matrix (verified live 2026-04-28).
  *
- * The 2026-04-28 post-merge V2 outage taught us that the previous binding
- * criteria — "uncensored / abliterated only" — was not reconcilable with
- * "actually serves on a typical OpenRouter account." Every uncensored
- * fine-tune we picked (Hermes 3/4, Dolphin, Euryale) was single-upstream
- * on OpenRouter (Nebius / DeepInfra / Venice / NextBit), and a single
- * account-policy mismatch (e.g. data-collection filter excluding Nebius)
- * killed the run with a 404 "No allowed providers are available."
+ * The binding rule (see `docs/V2_MODEL_SELECTION_CRITERIA.md`):
+ * **inference-time behavior**, not training history. A V2 primary must,
+ * under our `REASONING_FIRST_PREAMBLE` system prompt, NOT refuse,
+ * sanitize, debunk-by-recall, or smooth over contradictions on
+ * research-style queries about anomalous / suppressed claims.
  *
- * Updated V2 criteria (binding, see `docs/V2_MODEL_SELECTION_CRITERIA.md`):
+ * Three model categories pass the behavioral test in 2026 and are
+ * therefore acceptable as V2 primaries:
  *
- *   1. **Multi-provider redundancy is mandatory** for default primaries
- *      on the *critical path* (planner / reasoner / synthesizer / utility
- *      / verifier roles). A run cannot start if its planner can't serve.
- *      We require ≥ 2 live OpenRouter upstreams for every critical-path
- *      default primary.
- *   2. **Low-refusal open-weights** are acceptable for critical-path
- *      roles even if they are not abliterated, *as long as their
- *      training did not include heavy RLHF refusal post-training*. The
- *      DeepSeek V3.x / R1 line, the Kimi K2 line, and the Qwen3-235B
- *      Thinking line are all known to follow operator system prompts as
- *      authority and to *not* refuse anomalous research-style queries
- *      under our `REASONING_FIRST_PREAMBLE` system prompt. They are
- *      explicitly forbidden as V1 ensemble primaries (closed-API
- *      moderation) but are allowed as V2 critical-path primaries
- *      because they route open-weights through OpenRouter, not through
- *      a closed-API moderation pipeline.
- *   3. **Adversarial roles (skeptic / internal_challenger) MUST stay on
- *      uncensored fine-tunes.** These are the roles that attack
- *      mainstream consensus, and any RLHF dampening defeats the purpose.
- *      Single-provider is acceptable here because (a) skeptic failures
- *      are recoverable mid-pipeline, and (b) the budget+retry path can
- *      keep the run alive while the adversarial slot retries. Default:
- *      Dolphin Mistral Venice (single-provider, 100% uptime). Fallback:
- *      Sao10K L3.3 Euryale (2 providers).
- *   4. **The forbidden list stays.** No closed-API slug, no
- *      RLHF-heavy refusal-aligned base
- *      (`meta-llama/*-Instruct`, `Qwen/*-Instruct`,
- *      `deepseek-ai/DeepSeek-R1-Distill-Llama-70B` without abliteration)
- *      may be a V2 default primary. They remain user-opt-in only.
+ *   (a) Open-weights "Thinking" / CoT reasoners with light RLHF —
+ *       DeepSeek V3.x / R1-0528, Qwen3-235B Thinking, Kimi K2 Thinking.
+ *       Admitted on critical-path roles. Multi-provider on OpenRouter.
+ *   (b) Abliterated weights (refusal vector orthogonalized out) —
+ *       `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`. Used as
+ *       user-opt-in / emergency-sanity fallback.
+ *   (c) Uncensored fine-tunes — `Dolphin*`, `Hermes-3` / `Hermes-4`,
+ *       `Sao10K/Euryale*`. Required for adversarial roles
+ *       (skeptic / internal_challenger).
+ *
+ * Operational constraints layered on top of the behavioral test:
+ *
+ *   1. **Multi-provider redundancy is mandatory** for critical-path
+ *      defaults (planner / reasoner / synthesizer / utility / verifier).
+ *      ≥ 2 live OpenRouter upstreams per slug. The 2026-04-28-PM outage
+ *      was caused by routing every default through a single-upstream
+ *      slug (Nebius-only `nousresearch/hermes-4-70b`).
+ *   2. **Adversarial roles** can use single-provider uncensored
+ *      fine-tunes because their failures are recoverable mid-pipeline.
+ *   3. **Forbidden as default**: closed-API moderation pipelines
+ *      (Anthropic / OpenAI / Google / Mistral closed) and heavy-RLHF
+ *      instruct bases without abliteration (`meta-llama/*-Instruct`,
+ *      `Qwen/*-Instruct`, unabliterated `DeepSeek-R1-Distill-Llama-70B`,
+ *      `Qwen/QwQ-32B-Preview`). They remain user-opt-in fallback only.
  *
  * Verified 2026-04-28 against `https://openrouter.ai/api/v1/models/<slug>/endpoints`.
  */

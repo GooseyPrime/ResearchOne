@@ -105,13 +105,35 @@ export function isHfRepoModel(model: string): boolean {
  *   - V1 (legacy ResearchOne) presets may use the OpenRouter slugs
  *     (`anthropic/...`, `google/...`, `openai/...`, `deepseek/...`, etc).
  *     Those run V1 only; the V1 ensemble is unchanged by this PR.
- *   - V2 presets MUST be uncensored / abliterated / steerable open-weights
- *     only (see `docs/V2_MODEL_SELECTION_CRITERIA.md`). The V2 entries are
- *     the HF repo ids in the lower section.
+ *   - V2 presets are governed by the **inference-time behavioral test**
+ *     in `docs/V2_MODEL_SELECTION_CRITERIA.md`. The model must, under
+ *     our `REASONING_FIRST_PREAMBLE` system prompt, NOT refuse,
+ *     sanitize, debunk-by-recall, or smooth over contradictions on
+ *     research-style queries about anomalous / suppressed claims.
+ *
+ *     RLHF / abliteration / "uncensored fine-tune" are *engineering
+ *     proxies* for that behavior, not the rule itself. As of 2026
+ *     three categories of model satisfy the behavioral test:
+ *
+ *       (a) Open-weights "Thinking" / CoT-trace reasoners with light
+ *           or research-friendly RLHF (DeepSeek V3.x / R1-0528,
+ *           Qwen3-235B Thinking, Kimi K2 Thinking) — admitted on
+ *           critical-path roles; multi-provider on OpenRouter.
+ *       (b) Abliterated weights (refusal vector orthogonalized out;
+ *           `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`) —
+ *           admitted; mathematically refusal-incapable; typically
+ *           single-provider so used as user-opt-in / emergency
+ *           sanity fallback.
+ *       (c) Uncensored fine-tunes (`Dolphin*`, `Hermes-3` /
+ *           `Hermes-4`, `Sao10K/Euryale*`) — admitted; required for
+ *           adversarial roles (skeptic / internal_challenger).
  *
  * Adding a new model? Read both `ResearchOne PolicyOne` and
- * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. RLHF/RLAIF refusal-aligned
- * primaries must NOT be added to a V2 preset, even if added here for V1.
+ * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. Closed-API moderation
+ * pipelines and refusal-aligned RLHF instruct bases (without
+ * abliteration) must NOT be added as V2 default primaries — they fail
+ * the behavioral test in practice. They may live here for V1 use
+ * and / or for explicit V2 user-opt-in routing.
  */
 const BASE_ALLOWLIST = [
   // ── V1 / closed-weights routes (OpenRouter) ──────────────────────────────
