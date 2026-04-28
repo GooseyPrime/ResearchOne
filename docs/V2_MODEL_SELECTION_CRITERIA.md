@@ -109,18 +109,46 @@ as a primary.
 
 ## Currently-approved V2 PRIMARIES (this PR)
 
-| HF slug | Role(s) | Why |
-|---|---|---|
-| `NousResearch/Hermes-3-Llama-3.1-70B` | planner, outline_architect, section_drafter, synthesizer, coherence_refiner, plain_language_synthesizer, section_rewriter (general / investigative / novel / anomaly) | Steerable, low-refusal, neutrally aligned long-form. Reads operator system prompts as authority. |
-| `NousResearch/DeepHermes-3-Llama-3-8B-Preview` | plain_language fallback | Smaller, faster Hermes-line preview with neutral alignment and CoT preview. |
-| `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated` | reasoner, change_planner | R1 chain-of-thought reasoning with the Llama refusal direction removed. Keeps reasoning fidelity, drops the refusal head. |
-| `huihui-ai/Llama-3.3-70B-Instruct-abliterated` | retriever fallback, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier | Llama-3.3-70B base capability with refusal direction orthogonalized out. |
-| `huihui-ai/Qwen2.5-72B-Instruct-abliterated` | retriever (all objectives), patent-gap synthesizer / outline / coherence | Qwen's structured-output strength preserved; Qwen alignment filter removed. |
-| `cognitivecomputations/dolphin-2.9.2-qwen2-72b` | skeptic, internal_challenger (general / investigative / novel) | Uncensored long-form fine-tune; primary adversarial. |
-| `cognitivecomputations/Dolphin3.0-Llama3.1-70B` | adversarial / synthesis fallback (allowlisted; per-run opt-in) | Newer uncensored long-form line on Llama 3.1 base. |
-| `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B` | skeptic, internal_challenger (patent gap / anomaly) | Abliterated MoE optimized for adversarial / anomaly red-teaming. |
+The 2026-04-28 V2 outage post-mortem (`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`)
+showed that *every* V2 default selected on PR #39 was single-provider on
+HF Inference (or did not exist on HF Inference at all). To eliminate the
+single-point-of-failure provider dependency we now route V2 default
+primaries through OpenRouter, which fans out to multiple upstream
+providers per model. The model identity does not change — these are the
+same uncensored / steerable Nous / Cognitive Computations / Sao10K
+families, just routed through a multi-provider gateway. HF Inference
+variants of the same models stay allowlisted for **user-opt-in routing
+only** (see next section).
 
-## Currently-approved V2 USER-OPT-IN FALLBACKS
+OpenRouter / multi-provider primaries:
+
+| OpenRouter slug | Role(s) | Why |
+|---|---|---|
+| `nousresearch/hermes-4-70b` | planner, outline_architect, section_drafter, synthesizer, coherence_refiner, section_rewriter (default across all objectives) | Hermes 4 70B (Nous Research). Steerable, neutrally-aligned long-form; multi-provider on OpenRouter. |
+| `nousresearch/hermes-4-405b` | reasoner, change_planner (default across all objectives); patent-gap planner / synthesizer | Hermes 4 405B. Reasoner-class steerable model, multi-provider on OpenRouter. |
+| `nousresearch/hermes-3-llama-3.1-70b` | retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier (utility roles); plain_language primary; default fallback for 70B Hermes-4 roles | Hermes 3 70B OpenRouter slug. Multi-provider; same low-refusal alignment. |
+| `nousresearch/hermes-3-llama-3.1-405b` | reasoner / change_planner fallback | Hermes 3 405B. Multi-provider on OpenRouter. |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | skeptic, internal_challenger (general / investigative / novel / patent); plain_language fallback | Dolphin Venice Edition. Uncensored fine-tune of Mistral Small 24B. |
+| `sao10k/l3.3-euryale-70b` | skeptic / internal_challenger primary on the anomaly objective; adversarial fallback elsewhere | Sao10K L3.3 Euryale 70B. Uncensored Llama-3.3-70B long-form fine-tune; multi-provider on OpenRouter. |
+
+## Currently-approved V2 USER-OPT-IN HF Inference allowlist
+
+These slugs are allowlisted so admins / users can wire them in via per-run
+overrides on the Research One 2 page when HF Inference routing is
+acceptable for that specific run. They are NOT used by any V2 default
+preset and never fire silently. The 2026-04-28 outage demonstrated they
+are not safe as defaults — most are single-provider (featherless-ai)
+on HF Inference today.
+
+- `huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated`
+- `huihui-ai/Llama-3.3-70B-Instruct-abliterated`
+- `huihui-ai/Qwen2.5-72B-Instruct-abliterated`
+- `NousResearch/DeepHermes-3-Llama-3-8B-Preview`
+- `NousResearch/Hermes-3-Llama-3.1-70B`
+- `DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B`
+- `dphn/dolphin-2.9.2-qwen2-72b`
+
+## Currently-approved V2 USER-OPT-IN refusal-aligned fallbacks
 
 These RLHF-aligned slugs are allowlisted only for explicit per-role opt-in
 from the Research One 2 page; they MUST NOT be wired into a V2 preset:
@@ -131,6 +159,17 @@ from the Research One 2 page; they MUST NOT be wired into a V2 preset:
 - `Qwen/Qwen2.5-32B-Instruct`
 - `Qwen/Qwen2.5-72B-Instruct`
 - `Qwen/QwQ-32B-Preview`
+
+## Removed from the allowlist
+
+These slugs were on the V2 allowlist before the 2026-04-28 post-mortem
+and have been removed because they are not deployable:
+
+- `cognitivecomputations/Dolphin3.0-Llama3.1-70B` — slug does not exist
+- The `cognitivecomputations/dolphin-2.9.2-qwen2-72b` slug remains
+  allowlisted as a V1 carry-over only; the model is now hosted at
+  `dphn/dolphin-2.9.2-qwen2-72b` upstream and that is the slug V2 should
+  use for HF user-opt-in routing.
 
 If the user enables per-role fallback in the V2 UI and selects one of
 these, the trace event will record `usedFallback=true` and the run row

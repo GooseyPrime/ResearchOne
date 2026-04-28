@@ -13,8 +13,11 @@ import {
 import { config } from '../../config';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
-import { isFailureMetaRetryable, mergeFailureMetaForRetry } from '../../utils/researchRetryEligibility';
 import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQueueing';
+import {
+  decideRunStateOnRetryRequest,
+  rejectionToHttpBody,
+} from '../../services/reasoning/runStateMachine';
 
 const router = Router();
 
@@ -326,85 +329,34 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
     }
 
     const row = rows[0];
-    if (row.status === 'aborted') {
-      res.status(400).json({
-        error: 'Run has been aborted (retry budget exhausted)',
-        reason: 'No retry attempts remain. Start a new run instead.',
-        status: row.status,
-        retryable: false,
-        terminal: true,
-      });
-      return;
-    }
-    if (row.status !== 'failed') {
-      res.status(400).json({
-        error: `Can only retry failed runs (current status=${row.status})`,
-        reason: 'A worker may already be processing this run. Wait for it to finish or fail before retrying.',
-        status: row.status,
-      });
-      return;
-    }
-
-    const fm = (row.failure_meta as Record<string, unknown> | null) ?? {};
-    const retryable = isFailureMetaRetryable(fm);
-    if (!retryable) {
-      res.status(400).json({
-        error: 'This failure is not retryable',
-        reason: 'The failure metadata flagged this error as non-recoverable (e.g. malformed query or auth error). Inspect the failure details and start a new run.',
-        status: row.status,
-        retryable: false,
-      });
-      return;
-    }
-
     const retryAttempts = Number(row.retry_attempts ?? 0);
     const retryBudget = Number(row.retry_budget ?? 3);
-    if (retryAttempts >= retryBudget) {
-      // Defensive: the orchestrator should have already marked this aborted,
-      // but if a stale row slipped through, we hard-stop here too and update
-      // the row so the UI catches up.
-      await query(
-        `UPDATE research_runs SET status='aborted', resume_job_payload=NULL WHERE id=$1`,
-        [req.params.id]
-      );
-      res.status(400).json({
-        error: 'Retry budget exhausted',
-        reason: `This run has used all ${retryBudget} retry attempts. The run has been moved to status=aborted; no further retries are possible. Start a new run instead.`,
-        status: 'aborted',
-        retryable: false,
-        terminal: true,
-        retryAttempts,
-        retryBudget,
-      });
-      return;
-    }
 
-    if (!row.resume_job_payload || typeof row.resume_job_payload !== 'object') {
-      res.status(400).json({
-        error: 'No resume payload found for this run',
-        reason: 'resume_job_payload is missing — this run cannot be resumed; start a new run instead.',
-        status: row.status,
-        retryable,
-      });
+    // Single source of truth: state machine decides whether the request is
+    // accepted and emits the canonical failure_meta to persist on retry.
+    const decision = decideRunStateOnRetryRequest({
+      currentStatus: row.status,
+      currentFailureMeta: row.failure_meta,
+      retryAttempts,
+      retryBudget,
+      resumePayload: row.resume_job_payload,
+      expectedRunId: req.params.id,
+    });
+
+    if (!decision.ok) {
+      // For budget_exhausted, also flip the row to 'aborted' defensively so
+      // the UI catches up if the orchestrator missed it.
+      if (decision.reason === 'budget_exhausted') {
+        await query(
+          `UPDATE research_runs SET status='aborted', resume_job_payload=NULL WHERE id=$1`,
+          [req.params.id]
+        );
+      }
+      res.status(400).json(rejectionToHttpBody(decision));
       return;
     }
 
     const payload = row.resume_job_payload as ResearchJobData;
-    if (!payload.runId || payload.runId !== req.params.id) {
-      res.status(400).json({
-        error: 'Invalid resume payload for this run',
-        reason: 'payload.runId mismatch — start a new run instead.',
-        status: row.status,
-        retryable,
-      });
-      return;
-    }
-
-    const nextRetryAttempts = retryAttempts + 1;
-    const mergedFailureMeta = mergeFailureMetaForRetry(fm, nextRetryAttempts);
-    mergedFailureMeta.retryAttempts = nextRetryAttempts;
-    mergedFailureMeta.retryBudget = retryBudget;
-    mergedFailureMeta.attemptsRemaining = Math.max(0, retryBudget - nextRetryAttempts);
 
     await query(
       `UPDATE research_runs
@@ -419,7 +371,7 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
               progress_updated_at=NOW(),
               completed_at=NULL
         WHERE id=$1`,
-      [req.params.id, JSON.stringify(mergedFailureMeta), nextRetryAttempts]
+      [req.params.id, JSON.stringify(decision.failureMeta), decision.nextRetryAttempts]
     );
 
     await enqueueResearchRetryJobWithCleanup(researchQueue, req.params.id, payload);
@@ -450,9 +402,9 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
     res.json({
       ok: true,
       status: 'queued',
-      retryAttempts: nextRetryAttempts,
-      retryBudget,
-      attemptsRemaining: Math.max(0, retryBudget - nextRetryAttempts),
+      retryAttempts: decision.nextRetryAttempts,
+      retryBudget: decision.retryBudget,
+      attemptsRemaining: decision.attemptsRemaining,
     });
   } catch (err) {
     next(err);

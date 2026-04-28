@@ -56,24 +56,46 @@ export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adver
 export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' | 'default';
 
 /**
- * Route uncensored / abliterated open-weights HF repos through the HF
- * Inference Providers API (instead of OpenRouter). The V2 ensemble uses HF
- * repo ids exclusively for primaries; OpenRouter slugs are kept for V1
- * routes only. See `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+ * Decide whether a model id should route through the HF Inference Providers
+ * API (true) or OpenRouter (false).
+ *
+ * OpenRouter and HF Inference both use `vendor/model` ids and the namespaces
+ * sometimes overlap (e.g. `NousResearch/Hermes-3-Llama-3.1-70B` is a HF
+ * repo, while `nousresearch/hermes-3-llama-3.1-70b` is its OpenRouter slug).
+ * We disambiguate by:
+ *   - If the id contains a `:` variant suffix (e.g. `:free`, `:beta`,
+ *     `:nitro`), it is OpenRouter (HF repo ids never use `:`).
+ *   - Otherwise, the id is HF iff it starts with one of the allowlisted
+ *     HF-style namespaces (case-sensitive — HF preserves casing while
+ *     OpenRouter slugs are all lowercase).
+ *
+ * Adding a new HF-routed namespace? Add the prefix below AND make sure
+ * its OpenRouter equivalent is lowercase so the case check disambiguates
+ * correctly.
  */
+const HF_NAMESPACE_PREFIXES = [
+  'NousResearch/',
+  'DavidAU/',
+  'huihui-ai/',
+  'deepseek-ai/',
+  'meta-llama/',
+  'Qwen/',
+  'qwen/',
+  'dphn/',
+] as const;
+
 export function isHfRepoModel(model: string): boolean {
   const m = model.trim();
   if (!m.includes('/')) return false;
-  return (
-    m.startsWith('NousResearch/') ||
-    m.startsWith('cognitivecomputations/') ||
-    m.startsWith('DavidAU/') ||
-    m.startsWith('deepseek-ai/') ||
-    m.startsWith('huihui-ai/') ||
-    m.startsWith('meta-llama/') ||
-    m.startsWith('Qwen/') ||
-    m.startsWith('qwen/')
-  );
+  // OpenRouter variant suffixes are unambiguous — HF repo ids never have ':'.
+  if (m.includes(':')) return false;
+  // `cognitivecomputations/` is ambiguous: the V2 default
+  // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` is an
+  // OpenRouter slug (caught above by ':'), while
+  // `cognitivecomputations/dolphin-2.9.2-qwen2-72b` is HF-only — but HF has
+  // since renamed that to `dphn/dolphin-2.9.2-qwen2-72b`, so we no longer
+  // route any cognitivecomputations/* through HF.
+  return HF_NAMESPACE_PREFIXES.some((p) => m.startsWith(p));
 }
 
 /**
@@ -113,17 +135,40 @@ const BASE_ALLOWLIST = [
   'openai/o4-mini',
   'qwen/qwen3-235b-a22b',
 
-  // ── V2 / uncensored / abliterated / steerable open-weights (HF) ──────────
-  // V2 PRIMARIES — uncensored or refusal-direction-orthogonalized. These are
-  // the only acceptable V2 primaries and may also be used as V2 fallbacks.
-  'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
-  'cognitivecomputations/Dolphin3.0-Llama3.1-70B',
-  'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
+  // ── V2 / uncensored / steerable open-weights (OpenRouter, multi-provider) ─
+  // V2 default primaries route through OpenRouter, which fans out to multiple
+  // upstream providers per model. This eliminates the single-HF-provider
+  // failure mode the post-merge V2 run hit on 2026-04-28
+  // (`provider_unavailable` on featherless-ai-only Hermes-3). All entries
+  // here are uncensored or steerable / non-refusal-aligned per
+  // `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+  'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  'nousresearch/hermes-3-llama-3.1-405b',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+  'nousresearch/hermes-3-llama-3.1-70b',
+  'nousresearch/hermes-4-405b',
+  'nousresearch/hermes-4-70b',
+  'sao10k/l3-euryale-70b',
+  'sao10k/l3.1-euryale-70b',
+  'sao10k/l3.3-euryale-70b',
+
+  // ── V2 / uncensored / abliterated open-weights (HF Inference) ────────────
+  // Allowlisted for user-opt-in via per-run model overrides. Not used as a
+  // V2 default because most are single-provider (featherless-ai) on HF
+  // Inference and so are subject to single-point-of-failure outages.
   'huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated',
   'huihui-ai/Llama-3.3-70B-Instruct-abliterated',
   'huihui-ai/Qwen2.5-72B-Instruct-abliterated',
   'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
   'NousResearch/Hermes-3-Llama-3.1-70B',
+  'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
+  'dphn/dolphin-2.9.2-qwen2-72b',
+  // Legacy V1 carry-over: V1 ensembles still reference this id as an
+  // adversarial fallback. Allowlisted so V1 startup validation passes; V2
+  // never wires this slug. The model is now hosted at
+  // `dphn/dolphin-2.9.2-qwen2-72b` upstream — the V1 entry will be migrated
+  // separately.
+  'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
 
   // V2 USER-OPT-IN FALLBACK ONLY — refusal head still attached (RLHF).
   // Kept on the allowlist so admins can manually wire it in via per-run

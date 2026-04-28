@@ -62,7 +62,14 @@ interface ResearchFailureEvent {
   failureMeta?: Record<string, unknown>;
 }
 
-import { classifyLiveStatus, LIVE_STATUS_COPY } from '../utils/researchLiveStatus';
+import {
+  classifyLiveStatus,
+  LIVE_STATUS_COPY,
+  deriveRunState,
+  isResumeAvailable,
+  failureCardHeadline,
+  type LiveStatus,
+} from '../utils/researchLiveStatus';
 
 interface StageDescriptor {
   id: string;
@@ -936,6 +943,16 @@ export default function ResearchPageV2() {
         {failure && (
           <FailureCard
             failure={failure}
+            // Read once from the canonical state machine. The card never
+            // recomputes retryable/terminal/aborted; it just renders the
+            // result. This eliminates the post-merge UI contradiction
+            // (Retryable badge + 'not recoverable' headline + Aborted
+            // banner all on the same screen).
+            derivedState={deriveRunState(trackedRun ?? null, {
+              terminal: failure.terminal,
+              retryable: failure.retryable,
+              failureMeta: failure.failureMeta,
+            })}
             onRetried={(rid) => {
               setFailure(null);
               setTrackingRunId(rid);
@@ -1096,11 +1113,20 @@ function RunRow({
 
 function FailureCard({
   failure,
+  derivedState,
   onRetried,
   onError,
   onInfo,
 }: {
   failure: ResearchFailureEvent;
+  /**
+   * Canonical state from `deriveRunState`. The card NEVER computes its own
+   * retryable/terminal flags — it just renders what the state machine says.
+   * This is what fixes the "Retryable badge + Aborted banner + 'not
+   * recoverable' headline all on the same screen" failure mode reported on
+   * 2026-04-28.
+   */
+  derivedState: LiveStatus;
   onRetried: (runId: string) => void;
   onError: (message: string) => void;
   /**
@@ -1112,7 +1138,6 @@ function FailureCard({
   onInfo: (message: string) => void;
 }) {
   const fmeta = failure.failureMeta ?? {};
-  const terminal = failure.terminal === true || fmeta.terminal === true;
   const role = typeof fmeta.role === 'string' ? fmeta.role : undefined;
   const model = typeof fmeta.model === 'string' ? fmeta.model : undefined;
   const upstream = typeof fmeta.upstream === 'string' ? fmeta.upstream : undefined;
@@ -1122,37 +1147,47 @@ function FailureCard({
   const retryBudget = typeof fmeta.retryBudget === 'number' ? fmeta.retryBudget : undefined;
   const attemptsRemaining =
     typeof fmeta.attemptsRemaining === 'number' ? fmeta.attemptsRemaining : undefined;
+  const abortReason = typeof fmeta.abortReason === 'string' ? fmeta.abortReason : undefined;
 
-  const tone = terminal ? 'red' : 'amber';
-  const headlineClass = terminal ? 'text-red-300' : 'text-amber-300';
-  const containerClass = terminal
+  const isTerminal = derivedState === 'aborted';
+  const showResume = isResumeAvailable(derivedState);
+
+  const tone = isTerminal ? 'red' : 'amber';
+  const headlineClass = isTerminal ? 'text-red-300' : 'text-amber-300';
+  const containerClass = isTerminal
     ? 'border-red-700/40 bg-red-950/30'
     : 'border-amber-700/40 bg-amber-950/30';
 
   const reason = formatFailureReason(failure.error || failure.message, fmeta);
-
-  const headline = terminal
-    ? 'Run aborted — no further retries will be attempted.'
-    : failure.retryable
-      ? 'Run failed — recoverable. You can resume from the last failure.'
-      : 'Run failed — not recoverable from this state.';
+  const headline =
+    failureCardHeadline(derivedState) ?? 'Run encountered an error.';
 
   const guidance: string[] = [];
-  if (terminal) {
-    guidance.push(
-      'The retry budget is exhausted (or the orchestrator marked this failure non-recoverable). Start a new run with the same query if you want to try again.'
-    );
-  } else if (failure.retryable) {
+  if (isTerminal) {
+    if (abortReason === 'auth_error') {
+      guidance.push(
+        'The upstream rejected the call as unauthenticated. The server-side OPENROUTER_API_KEY / HF_TOKEN may be missing or expired — contact the operator.'
+      );
+    } else if (abortReason === 'invalid_request') {
+      guidance.push(
+        'The orchestrator classified this request as malformed. Inspect the query / supplemental files and start a new run.'
+      );
+    } else if (abortReason === 'budget_exhausted') {
+      guidance.push(
+        `The retry budget (${retryBudget ?? 3}) is exhausted. Start a new run with the same query if you want to try again.`
+      );
+    } else {
+      guidance.push(
+        'The orchestrator marked this failure non-recoverable. Start a new run with the same query if you want to try again.'
+      );
+    }
+  } else if (showResume) {
     guidance.push(
       'Click "Resume from last failure" to re-queue this run from the saved checkpoint with the same models, ensemble, and supplemental context.'
     );
     if (typeof retryAttempts === 'number' && typeof retryBudget === 'number') {
       guidance.push(`Retries used so far: ${retryAttempts} of ${retryBudget}.`);
     }
-  } else {
-    guidance.push(
-      'Inspect the role and model below; correct the underlying issue (e.g. invalid query, missing supplemental file, upstream auth) and start a new run.'
-    );
   }
   if (classification === 'provider_unavailable' && upstream === 'huggingface_inference') {
     guidance.push(
@@ -1173,7 +1208,7 @@ function FailureCard({
   return (
     <div className={clsx('border rounded-lg p-4 space-y-2', containerClass)}>
       <div className="flex items-center gap-2">
-        {terminal ? (
+        {isTerminal ? (
           <XCircle size={16} className="text-red-400" />
         ) : (
           <AlertCircle size={16} className="text-amber-400" />
@@ -1211,7 +1246,7 @@ function FailureCard({
         </ul>
       )}
 
-      {!terminal && failure.retryable && (
+      {showResume && (
         <button
           type="button"
           className="btn-ghost text-xs mt-1"

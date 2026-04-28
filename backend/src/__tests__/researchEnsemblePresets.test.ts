@@ -18,6 +18,7 @@ import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../services/reasonin
  * model into the V2 ensemble.
  */
 const V2_FORBIDDEN_DEFAULT_MODELS = new Set([
+  // RLHF refusal-aligned base instruct slugs (without abliteration).
   'meta-llama/Llama-3.3-70B-Instruct',
   'meta-llama/llama-3.3-70b-instruct',
   'deepseek-ai/DeepSeek-R1-Distill-Llama-70B',
@@ -43,6 +44,19 @@ const V2_FORBIDDEN_DEFAULT_MODELS = new Set([
   'openai/o3-mini',
   'openai/o4-mini',
   'qwen/qwen3-235b-a22b',
+  // Single-provider HF slugs (subject to single-point-of-failure outages).
+  // Allowlisted for user-opt-in routing only; never as a V2 default. The
+  // 2026-04-28 V2 outage was caused by routing every default through these
+  // featherless-ai-only slugs. After the post-mortem they are explicitly
+  // demoted to user-opt-in and forbidden as defaults.
+  'NousResearch/Hermes-3-Llama-3.1-70B',
+  'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
+  'huihui-ai/Llama-3.3-70B-Instruct-abliterated',
+  'huihui-ai/Qwen2.5-72B-Instruct-abliterated',
+  'huihui-ai/DeepSeek-R1-Distill-Llama-70B-abliterated',
+  'dphn/dolphin-2.9.2-qwen2-72b',
+  'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
 ]);
 
 describe('researchEnsemblePresets', () => {

@@ -35,18 +35,41 @@ async function migrate() {
     logger.info(`Applying migration: ${file}`);
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
 
+    // Some Postgres DDL (notably `ALTER TYPE ... ADD VALUE`) cannot run
+    // inside a transaction block. Migrations that need that may opt out of
+    // the implicit BEGIN/COMMIT wrapper by including the directive
+    // `-- @migrate:no-transaction` in the file (case-insensitive,
+    // whitespace-tolerant). We still record the migration in
+    // schema_migrations afterward so it is not retried on the next run.
+    const noTx = /--\s*@migrate:no-transaction\b/i.test(sql);
+
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query(sql);
-      await client.query(
-        'INSERT INTO schema_migrations (filename) VALUES ($1)',
-        [file]
-      );
-      await client.query('COMMIT');
+      if (noTx) {
+        logger.info(`Migration ${file} declared @migrate:no-transaction — applying without transaction`);
+        await client.query(sql);
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [file]
+        );
+      } else {
+        await client.query('BEGIN');
+        await client.query(sql);
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [file]
+        );
+        await client.query('COMMIT');
+      }
       logger.info(`Migration applied: ${file}`);
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (!noTx) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // ignore secondary failure on rollback
+        }
+      }
       logger.error(`Migration failed: ${file}`, err);
       throw err;
     } finally {

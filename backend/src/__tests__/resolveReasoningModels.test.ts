@@ -88,14 +88,29 @@ describe('resolveReasoningModels', () => {
 describe('isHfRepoModel', () => {
   it('detects allowlisted HF repos', () => {
     expect(isHfRepoModel('NousResearch/Hermes-3-Llama-3.1-70B')).toBe(true);
-    expect(isHfRepoModel('cognitivecomputations/dolphin-2.9.2-qwen2-72b')).toBe(true);
     expect(isHfRepoModel('DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B')).toBe(true);
+    expect(isHfRepoModel('huihui-ai/Llama-3.3-70B-Instruct-abliterated')).toBe(true);
+    expect(isHfRepoModel('dphn/dolphin-2.9.2-qwen2-72b')).toBe(true);
     expect(isHfRepoModel('meta-llama/Llama-3.3-70B-Instruct')).toBe(true);
     expect(isHfRepoModel('Qwen/Qwen2.5-72B-Instruct')).toBe(true);
   });
 
-  it('rejects OpenRouter slugs', () => {
+  it('rejects OpenRouter slugs (no `:` variant suffix)', () => {
     expect(isHfRepoModel('openai/o3')).toBe(false);
     expect(isHfRepoModel('anthropic/claude-opus-4.7')).toBe(false);
+    expect(isHfRepoModel('nousresearch/hermes-4-70b')).toBe(false);
+    expect(isHfRepoModel('sao10k/l3.3-euryale-70b')).toBe(false);
+  });
+
+  it('rejects any id with a `:` variant suffix as OpenRouter-only', () => {
+    expect(isHfRepoModel('cognitivecomputations/dolphin-mistral-24b-venice-edition:free')).toBe(false);
+    expect(isHfRepoModel('nousresearch/hermes-3-llama-3.1-405b:free')).toBe(false);
+  });
+
+  it('does not route the deprecated `cognitivecomputations/dolphin-2.9.2-qwen2-72b` slug through HF', () => {
+    // Renamed upstream to dphn/dolphin-2.9.2-qwen2-72b; the old id would 404
+    // on HF Inference. Forcing it through OpenRouter (where it does not
+    // exist either) is a clearer failure mode than silently 404ing on HF.
+    expect(isHfRepoModel('cognitivecomputations/dolphin-2.9.2-qwen2-72b')).toBe(false);
   });
 });
