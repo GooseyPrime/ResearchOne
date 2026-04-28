@@ -751,20 +751,44 @@ export async function runResearchJob(
       );
     } catch (dbErr) {
       logger.error(`Research run ${runId}: failed to persist failure row`, dbErr);
-      // If the UPDATE failed because the 'aborted' enum value is not yet in
-      // place (migration 012 not applied), retry the UPDATE as 'failed' so
-      // the row at least settles into a terminal state the rest of the API
-      // understands. The follow-up deploy will re-classify on the next
-      // failure once 012 lands.
+      // If the primary UPDATE failed (most likely because the 'aborted'
+      // enum value is not yet in place — migration 012 has not applied
+      // yet on this deploy), retry the UPDATE as 'failed' so the row
+      // still settles into a terminal state the rest of the API
+      // understands. We mirror every field from the primary UPDATE so
+      // failed_stage / progress_* / resume_job_payload do not stay
+      // stale — the Copilot review on PR #40 flagged that the previous
+      // fallback only updated status/error_message/completed_at, leaving
+      // the polling path's `failed_stage || progress_stage` reading the
+      // old in-progress values. We force status='failed' (never
+      // 'aborted') so this branch is never the one that exercises the
+      // missing enum value.
       const safeStatus = 'failed' as const;
       try {
         await query(
-          `UPDATE research_runs SET status=$2, error_message=$1, completed_at=NOW(), failure_meta=$3 WHERE id=$4`,
+          `UPDATE research_runs
+              SET status=$5,
+                  error_message=$1,
+                  failed_stage=$2,
+                  failure_meta=$3,
+                  completed_at=NOW(),
+                  progress_stage=NULL,
+                  progress_percent=NULL,
+                  progress_message=NULL,
+                  progress_updated_at=NULL,
+                  resume_job_payload=$6
+            WHERE id=$4`,
           [
             failureDetails.errorMessage.slice(0, 2000),
-            safeStatus,
+            currentStage,
             JSON.stringify(failureMetaWithResume),
             runId,
+            safeStatus,
+            // If the canonical decision was 'aborted' but we are forced to
+            // persist as 'failed' here, still drop the resume payload so
+            // the UI cannot offer Resume on a row that the state machine
+            // marked terminal.
+            transition.keepResumePayload ? JSON.stringify(resumeJobPayload) : null,
           ]
         );
       } catch (fallbackErr) {

@@ -131,6 +131,44 @@ describe('deriveRunState — single source of truth', () => {
     ).toBe('failed_retryable');
   });
 
+  it('transient retryable failure surfaces as failed_retryable even when row.status is still running', () => {
+    // PR #40 Codex P2: a websocket failure event can arrive before the
+    // runs query updates `run.status` to 'failed'. In that window the
+    // FailureCard must already render the Resume action; we cannot wait
+    // for the next poll to render the failure state.
+    expect(
+      deriveRunState(
+        { status: 'running', failure_meta: {} },
+        { retryable: true, failureMeta: { retryable: true } }
+      )
+    ).toBe('failed_retryable');
+  });
+
+  it('transient terminal failure surfaces as aborted even when row.status is still running', () => {
+    expect(
+      deriveRunState(
+        { status: 'running', failure_meta: {} },
+        { terminal: true, failureMeta: { terminal: true } }
+      )
+    ).toBe('aborted');
+  });
+
+  it('transient retryable failure surfaces even when row is still queued', () => {
+    expect(
+      deriveRunState(
+        { status: 'queued', failure_meta: {} },
+        { retryable: true, failureMeta: { retryable: true } }
+      )
+    ).toBe('failed_retryable');
+  });
+
+  it('null/undefined run with no transient stays queued (not "failed_retryable")', () => {
+    // Make sure the Codex P2 fix does not over-trigger when there is no
+    // transient at all.
+    expect(deriveRunState(null)).toBe('queued');
+    expect(deriveRunState(undefined)).toBe('queued');
+  });
+
   it('queued + retry_attempts > 0 → retrying', () => {
     expect(deriveRunState({ status: 'queued', retry_attempts: 1 })).toBe('retrying');
   });

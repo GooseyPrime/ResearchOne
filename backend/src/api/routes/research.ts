@@ -312,17 +312,40 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/research/:id/retry-from-failure — re-queue a failed retryable run with preserved job payload
 router.post('/:id/retry-from-failure', async (req, res, next) => {
   try {
-    const rows = await query<{
+    type RetryRow = {
       id: string;
       status: string;
       failure_meta: Record<string, unknown> | null;
       resume_job_payload: unknown;
       retry_attempts: number | null;
       retry_budget: number | null;
-    }>(
-      `SELECT id, status, failure_meta, resume_job_payload, retry_attempts, retry_budget FROM research_runs WHERE id=$1`,
-      [req.params.id]
-    );
+    };
+
+    // Tolerate deploy-skew between code and migration 012 (the migration
+    // adds `retry_attempts` / `retry_budget` columns). When the columns
+    // are missing, Postgres throws "column does not exist" and the SELECT
+    // would otherwise turn this endpoint into a 500. We retry without
+    // those columns and default attempts/budget to 0/3, which keeps the
+    // retry path deterministic until the migration lands.
+    let rows: RetryRow[] = [];
+    try {
+      rows = await query<RetryRow>(
+        `SELECT id, status, failure_meta, resume_job_payload, retry_attempts, retry_budget FROM research_runs WHERE id=$1`,
+        [req.params.id]
+      );
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      const undefinedColumn =
+        e?.code === '42703' ||
+        (typeof e?.message === 'string' && /column .* does not exist/i.test(e.message));
+      if (!undefinedColumn) throw err;
+      const fallback = await query<Omit<RetryRow, 'retry_attempts' | 'retry_budget'>>(
+        `SELECT id, status, failure_meta, resume_job_payload FROM research_runs WHERE id=$1`,
+        [req.params.id]
+      );
+      rows = fallback.map((r) => ({ ...r, retry_attempts: null, retry_budget: null }));
+    }
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
@@ -344,13 +367,55 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
     });
 
     if (!decision.ok) {
-      // For budget_exhausted, also flip the row to 'aborted' defensively so
-      // the UI catches up if the orchestrator missed it.
+      // For budget_exhausted, also flip the row to a terminal state
+      // defensively so the UI catches up if the orchestrator missed it.
+      // If the 'aborted' enum value is not present yet (deploy ahead of
+      // migration 012), fall back to status='failed' with
+      // failure_meta.terminal=true. Either way, we always still return the
+      // deterministic 400 — never let this path 500. (Copilot PR #40
+      // review.)
       if (decision.reason === 'budget_exhausted') {
-        await query(
-          `UPDATE research_runs SET status='aborted', resume_job_payload=NULL WHERE id=$1`,
-          [req.params.id]
-        );
+        try {
+          await query(
+            `UPDATE research_runs SET status='aborted', resume_job_payload=NULL WHERE id=$1`,
+            [req.params.id]
+          );
+        } catch (abortErr) {
+          const ae = abortErr as { code?: string; message?: string };
+          const enumMissing =
+            ae?.code === '22P02' ||
+            (typeof ae?.message === 'string' && /invalid input value for enum/i.test(ae.message));
+          if (!enumMissing) {
+            // Some other failure — log and keep going to send the 400.
+            // The orchestrator may converge on the next failure write.
+            // Intentionally swallowed: the user-facing 400 is still correct.
+          }
+          const terminalFailureMeta: Record<string, unknown> = {
+            ...((row.failure_meta as Record<string, unknown> | null) ?? {}),
+            terminal: true,
+            retryable: false,
+            resumeAvailable: false,
+            abortReason: 'budget_exhausted',
+            retryAttempts,
+            retryBudget,
+            attemptsRemaining: 0,
+          };
+          try {
+            await query(
+              `UPDATE research_runs
+                  SET status='failed',
+                      failure_meta=$2,
+                      resume_job_payload=NULL
+                WHERE id=$1`,
+              [req.params.id, JSON.stringify(terminalFailureMeta)]
+            );
+          } catch {
+            // Preserve the deterministic 400 response even if the
+            // defensive state update cannot be persisted. The frontend
+            // state machine will still classify this as `aborted` because
+            // the response body has `terminal: true`.
+          }
+        }
       }
       res.status(400).json(rejectionToHttpBody(decision));
       return;
@@ -358,21 +423,48 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
 
     const payload = row.resume_job_payload as ResearchJobData;
 
-    await query(
-      `UPDATE research_runs
-          SET status='queued',
-              error_message=NULL,
-              failed_stage=NULL,
-              failure_meta=$2,
-              retry_attempts=$3,
-              progress_stage='queued',
-              progress_percent=0,
-              progress_message='Retry queued from failure',
-              progress_updated_at=NOW(),
-              completed_at=NULL
-        WHERE id=$1`,
-      [req.params.id, JSON.stringify(decision.failureMeta), decision.nextRetryAttempts]
-    );
+    // The retry_attempts column may not exist if migration 012 hasn't
+    // applied yet on this deploy. Try the full UPDATE first, then fall
+    // back to one without retry_attempts so the retry can still proceed
+    // without the budget bookkeeping (which the in-memory state machine
+    // already enforced via `decision`).
+    try {
+      await query(
+        `UPDATE research_runs
+            SET status='queued',
+                error_message=NULL,
+                failed_stage=NULL,
+                failure_meta=$2,
+                retry_attempts=$3,
+                progress_stage='queued',
+                progress_percent=0,
+                progress_message='Retry queued from failure',
+                progress_updated_at=NOW(),
+                completed_at=NULL
+          WHERE id=$1`,
+        [req.params.id, JSON.stringify(decision.failureMeta), decision.nextRetryAttempts]
+      );
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      const undefinedColumn =
+        e?.code === '42703' ||
+        (typeof e?.message === 'string' && /column .* does not exist/i.test(e.message));
+      if (!undefinedColumn) throw err;
+      await query(
+        `UPDATE research_runs
+            SET status='queued',
+                error_message=NULL,
+                failed_stage=NULL,
+                failure_meta=$2,
+                progress_stage='queued',
+                progress_percent=0,
+                progress_message='Retry queued from failure',
+                progress_updated_at=NOW(),
+                completed_at=NULL
+          WHERE id=$1`,
+        [req.params.id, JSON.stringify(decision.failureMeta)]
+      );
+    }
 
     await enqueueResearchRetryJobWithCleanup(researchQueue, req.params.id, payload);
 

@@ -1,5 +1,6 @@
 /**
- * Research-run state machine — single source of truth.
+ * Research-run state machine — single source of truth for failure /
+ * retry / aborted classification.
  *
  * Before this module, three writers (the orchestrator's row UPDATE, the
  * orchestrator's `progress_events` append, and the worker's socket payload)
@@ -8,13 +9,27 @@
  * which produced UI states like "Retryable" badge + "not recoverable"
  * headline + "Aborted" banner all on the same screen.
  *
- * Now: the orchestrator and the retry-from-failure route call exactly one
- * function — `decideRunStateOnFailure`, `decideRunStateOnSuccess`,
- * `decideRunStateOnCancel`, or `decideRunStateOnRetryRequest` — and write
- * the result. The frontend `deriveRunState` (in `frontend/src/utils/runState.ts`)
- * is the mirror reader and produces the same canonical kind from the
- * persisted row, so the UI banner / failure card / trace badge all read
- * one shape.
+ * Now: the orchestrator failure path and the retry-from-failure route
+ * call into exactly the helpers exported from this module:
+ *
+ *   - `decideRunStateOnFailure(input)` — given a thrown error's
+ *     classification + the row's retry budget, returns the canonical
+ *     `{ nextStatus, failureMeta, socketEvent, … }` tuple to persist.
+ *   - `decideRunStateOnRetryRequest(input)` — given a retry-from-failure
+ *     POST, returns either an acceptance with the next failure_meta to
+ *     persist, or a typed rejection variant.
+ *   - `rejectionToHttpBody(rej)` — maps a rejection to the structured 400
+ *     body the route returns to the client.
+ *
+ * The success and cancel paths still write `status='completed'` /
+ * `status='cancelled'` directly in the orchestrator — there is no
+ * classification needed there, so they do not go through this module.
+ *
+ * The frontend reader is `deriveRunState` in
+ * `frontend/src/utils/researchLiveStatus.ts`. It produces the same
+ * `LiveStatus` from the persisted row + transient socket payload, so
+ * the UI banner / failure card / trace badge / run-row label all read
+ * one canonical shape and cannot disagree.
  */
 
 export type CanonicalRunStatus =

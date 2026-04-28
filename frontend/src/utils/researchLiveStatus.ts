@@ -99,6 +99,15 @@ function readMeta(meta: unknown): CanonicalFailureMeta {
  * The canonical reader. Returns one `LiveStatus`. Every UI surface uses
  * this — there is no "compute it again my way" branch anywhere in the
  * page.
+ *
+ * Note on the transient parameter: a websocket `research:failed` /
+ * `research:aborted` event can arrive before the polled runs query
+ * (`GET /api/research`) has updated `run.status` to `'failed'` /
+ * `'aborted'`. In that brief window the row may still say `'running'` /
+ * `'queued'` while the operator already has a real failure event in
+ * hand. We honor the transient signal in that window so the failure card
+ * renders immediately instead of blinking through 'running' until the
+ * next poll catches up. (Codex PR #40 review.)
  */
 export function deriveRunState(
   run: RunStateInput | null | undefined,
@@ -108,8 +117,10 @@ export function deriveRunState(
   const persistedMeta = readMeta(run?.failure_meta);
   const transientMeta = readMeta(transient?.failureMeta);
 
-  // Terminal state wins everywhere. If either source says terminal, the run
-  // is aborted — full stop, no Resume button, no Retryable badge.
+  // Terminal state wins everywhere — even if the cached row has not caught
+  // up yet. If either the persisted row, the row's failure_meta, or the
+  // transient socket payload says terminal, the run is aborted: no Resume
+  // button, no Retryable badge.
   const terminalFlag = persistedMeta.terminal === true || transientMeta.terminal === true;
   const transientTerminal = transient?.terminal === true;
   if (terminalFlag || transientTerminal || runStatus === 'aborted') return 'aborted';
@@ -117,20 +128,28 @@ export function deriveRunState(
   if (runStatus === 'completed') return 'completed';
   if (runStatus === 'cancelled') return 'cancelled';
 
-  if (runStatus === 'failed') {
+  // A failure event from the websocket might arrive before the runs query
+  // catches up. Recognize a "live" failure signal independent of
+  // run.status and route it through the same retryable/aborted branches
+  // as a persisted failure row.
+  const transientRetryableFlag =
+    transient?.retryable === true ||
+    transientMeta.retryable === true ||
+    transientMeta.resumeAvailable === true;
+  const transientHasFailureSignal =
+    transient?.terminal !== undefined ||
+    transient?.retryable !== undefined ||
+    Object.keys(transientMeta).length > 0;
+
+  if (runStatus === 'failed' || transientHasFailureSignal) {
     // A failed row is retryable only if the canonical meta says so. We
     // never infer retryability from a free-text message.
     const persistedRetryable =
       persistedMeta.retryable === true || persistedMeta.resumeAvailable === true;
-    const transientRetryable =
-      transient?.retryable === true ||
-      transientMeta.retryable === true ||
-      transientMeta.resumeAvailable === true;
-    return persistedRetryable || transientRetryable ? 'failed_retryable' : 'aborted';
+    return persistedRetryable || transientRetryableFlag ? 'failed_retryable' : 'aborted';
   }
 
-  // Live (queued or running). Surface the retrying state when the row was
-  // resumed at least once OR the latest progress message hints at retry.
+  // Live (queued or running) and no failure signal yet.
   const attempts = Number(run?.retry_attempts ?? persistedMeta.retryAttempts ?? 0);
   const isRetryAttempt = Number.isFinite(attempts) && attempts > 0;
   const msg = `${run?.progress_message ?? ''} ${run?.progress_stage ?? ''}`.toLowerCase();

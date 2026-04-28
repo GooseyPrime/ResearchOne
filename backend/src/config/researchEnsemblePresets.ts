@@ -70,7 +70,14 @@ const M = {
   llama70: 'meta-llama/llama-3.3-70b-instruct',
   qwen: 'qwen/qwen3-235b-a22b',
   hermes: 'NousResearch/Hermes-3-Llama-3.1-70B',
-  dolphin: 'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
+  // V1 carry-over: the model used to be hosted at
+  // `cognitivecomputations/dolphin-2.9.2-qwen2-72b`, but HF renamed it
+  // upstream to `dphn/dolphin-2.9.2-qwen2-72b`. The 2026-04-28 PR #40
+  // review (Copilot) flagged that the new `isHfRepoModel` no longer
+  // routes the legacy slug through HF, which would silently send V1
+  // calls to OpenRouter where this slug does not exist. Move V1 to the
+  // current upstream slug so the route stays HF.
+  dolphin: 'dphn/dolphin-2.9.2-qwen2-72b',
 } as const;
 
 function mergePreset(

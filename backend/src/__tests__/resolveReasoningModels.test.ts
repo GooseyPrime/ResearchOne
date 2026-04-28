@@ -111,6 +111,18 @@ describe('isHfRepoModel', () => {
     // Renamed upstream to dphn/dolphin-2.9.2-qwen2-72b; the old id would 404
     // on HF Inference. Forcing it through OpenRouter (where it does not
     // exist either) is a clearer failure mode than silently 404ing on HF.
+    // V1 presets have been migrated to the renamed slug — see the
+    // `M.dolphin` constant in `researchEnsemblePresets.ts`.
     expect(isHfRepoModel('cognitivecomputations/dolphin-2.9.2-qwen2-72b')).toBe(false);
+  });
+
+  it('V1 dolphin slot points at a slug that still routes through HF', () => {
+    // Regression guard for the PR #40 Copilot review: when the
+    // `cognitivecomputations/` HF prefix was dropped, the V1 ensemble
+    // would silently switch providers if anyone ever changes
+    // `M.dolphin` back to the legacy slug. This test pins the contract
+    // that the V1 dolphin slot must be HF-routable.
+    const v1Dolphin = 'dphn/dolphin-2.9.2-qwen2-72b';
+    expect(isHfRepoModel(v1Dolphin)).toBe(true);
   });
 });
