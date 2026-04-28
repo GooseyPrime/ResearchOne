@@ -25,26 +25,53 @@ at the repo root. Read it. The summary the agent must internalize:
 ## V2 model selection criteria
 
 Read `docs/V2_MODEL_SELECTION_CRITERIA.md` end-to-end before changing
-any V2 default. The hard rules:
+any V2 default. **The binding rule is inference-time behavior**, not
+training history. A V2 primary must, under our
+`REASONING_FIRST_PREAMBLE` system prompt, NOT refuse, sanitize,
+debunk-by-recall, or smooth over contradictions on research-style
+queries about anomalous / suppressed claims.
 
-1. **No refusal-aligned RLHF instruct slugs in V2 default presets.**
-   `meta-llama/*-Instruct` (without abliteration), `Qwen/*-Instruct`
-   (without abliteration), `deepseek-ai/DeepSeek-*-Distill` (without
-   abliteration), `Qwen/QwQ-32B-Preview`, all closed-API slugs
-   (Anthropic / OpenAI / Google / Mistral) — **forbidden as V2
-   primaries.** Allowlisted only for user-opt-in via per-run
-   overrides.
-2. **V2 PRIMARIES must be one of:** abliterated (refusal direction
-   orthogonalized out), uncensored fine-tunes (Dolphin / Hermes /
-   Euryale), or steerable / low-refusal community-aligned (Hermes 3 /
-   Hermes 4).
-3. **Adversarial roles use the most uncensored slot** (Dolphin
-   Mistral Venice / Sao10K Euryale / DavidAU Dark-Champion).
-4. **Reasoner roles must keep R1-style chain-of-thought** intact.
-5. The `V2_FORBIDDEN_DEFAULT_MODELS` set in
-   `backend/src/__tests__/researchEnsemblePresets.test.ts` is the
-   regression guard. If a future patch tries to wire a forbidden slug
-   as a default, that test fails first.
+In 2026 three model categories pass the behavioral test:
+
+1. **Open-weights "Thinking" / CoT reasoners with light RLHF** —
+   DeepSeek V3.x / R1-0528, Qwen3-235B Thinking, Kimi K2 Thinking.
+   Admitted on critical-path roles; multi-provider on OpenRouter.
+2. **Abliterated weights** — `huihui-ai/*-abliterated`,
+   `DavidAU/*-abliterated*`. Refusal vector orthogonalized out.
+   Mathematically refusal-incapable. Typically single-provider, so
+   used as user-opt-in / emergency-sanity fallback.
+3. **Uncensored fine-tunes** — `Dolphin*`, `Hermes-3` / `Hermes-4`,
+   `Sao10K/Euryale*`. Required for adversarial roles (skeptic /
+   internal_challenger) because they need a model whose baseline is
+   already uncensored, not one that needs the preamble to bypass RLHF.
+
+Operational constraints layered on top:
+
+- **Critical-path roles must have ≥ 2 live OpenRouter upstreams** to
+  avoid the 2026-04-28-PM single-provider outage shape.
+- **Forbidden as V2 default primaries**: closed-API moderation
+  pipelines (Anthropic / OpenAI / Google / Mistral closed) and
+  refusal-aligned RLHF instruct bases without abliteration
+  (`meta-llama/*-Instruct`, `Qwen/*-Instruct`, unabliterated
+  `DeepSeek-R1-Distill-Llama-70B`, `Qwen/QwQ-32B-Preview`). They fail
+  the behavioral test in practice. They remain user-opt-in fallback only.
+- **Reasoner roles must keep chain-of-thought** intact (R1-style,
+  Qwen Thinking, Kimi Thinking).
+
+The `V2_FORBIDDEN_DEFAULT_MODELS` set in
+`backend/src/__tests__/researchEnsemblePresets.test.ts` is the
+regression guard. If a future patch tries to wire a forbidden slug as
+a default, that test fails first. The startup pre-flight probe
+(`backend/src/services/openrouter/openrouterPreflight.ts`) is the
+deploy-time guard against single-upstream slugs slipping back in.
+
+**Earlier framing was wrong.** PRs #39 and #40 banned "RLHF
+refusal-aligned bases" categorically as a hard rule. That conflated
+training labels with inference behavior — `ResearchOne PolicyOne`
+forbids the *behavior*, not the training procedure. The 2026-04-28
+Gemini policy review (`Research Policy Model Compliance Review -
+Google Gemini.pdf`) confirmed this and is what drove the rewrite. Use
+the inference-time test, not "is this RLHF?"
 
 ## Verification before claiming a model is deployable
 

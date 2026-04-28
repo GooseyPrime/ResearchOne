@@ -62,33 +62,82 @@ export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' |
  * OpenRouter and HF Inference both use `vendor/model` ids and the namespaces
  * sometimes overlap (e.g. `NousResearch/Hermes-3-Llama-3.1-70B` is a HF
  * repo, while `nousresearch/hermes-3-llama-3.1-70b` is its OpenRouter slug).
- * We disambiguate by:
- *   - If the id contains a `:` variant suffix (e.g. `:free`, `:beta`,
- *     `:nitro`), it is OpenRouter (HF repo ids never use `:`).
- *   - Otherwise, the id is HF iff it starts with one of the allowlisted
- *     HF-style namespaces (case-sensitive — HF preserves casing while
- *     OpenRouter slugs are all lowercase).
+ * We disambiguate in this order:
  *
- * Adding a new HF-routed namespace? Add the prefix below AND make sure
- * its OpenRouter equivalent is lowercase so the case check disambiguates
- * correctly.
+ *   1. If the id contains a `:` variant suffix (e.g. `:free`, `:beta`,
+ *      `:nitro`), it is OpenRouter (HF repo ids never use `:`).
+ *   2. If the id is in `OPENROUTER_SLUG_OVERRIDES`, it is OpenRouter even
+ *      though its namespace prefix is HF-shared. This explicit allowlist
+ *      is the only correct disambiguator for namespaces shared between
+ *      HF and OpenRouter where both sides use lowercase canonical orgs
+ *      (e.g. `meta-llama/`, `dphn/`).
+ *   3. Otherwise, the id is HF iff it starts with one of the allowlisted
+ *      HF-style namespaces. For namespaces where HF uses MixedCase and
+ *      OpenRouter uses all-lowercase (`NousResearch/` vs `nousresearch/`,
+ *      `Qwen/` vs `qwen/`, `DavidAU/` vs `davidau/`), only the MixedCase
+ *      form belongs in this list. Lowercase OpenRouter slugs that share
+ *      that namespace prefix in lowercase do NOT belong here.
+ *
+ * Adding a new HF-routed namespace? Add the prefix below in its HF-canonical
+ * casing AND make sure no OpenRouter-canonical lowercase form of the same
+ * prefix appears here — those should remain implicitly OpenRouter.
+ *
+ * ## Why this matters (PR #41 review fix)
+ *
+ * A previous revision of this file added the lowercase form `'qwen/'` to
+ * `HF_NAMESPACE_PREFIXES`. That misrouted the V2 reasoner-class default
+ * `qwen/qwen3-235b-a22b-thinking-2507` (an OpenRouter slug, fully lowercase)
+ * through HF Inference — where it is not hosted — silently breaking V2 on
+ * the GENERAL_EPISTEMIC_RESEARCH / NOVEL_APPLICATION_DISCOVERY objectives.
+ * The lowercase `qwen/` form is OpenRouter-only; HF uses `Qwen/`.
+ *
+ * The override list also handles V1 `meta-llama/llama-3.3-70b-instruct`
+ * (an OpenRouter slug) — its HF counterpart is `meta-llama/Llama-3.3-70B-Instruct`,
+ * sharing the same lowercase namespace. Without the override, the prefix
+ * rule alone cannot disambiguate them.
  */
 const HF_NAMESPACE_PREFIXES = [
+  // HF orgs whose canonical casing is MixedCase. The lowercase OpenRouter
+  // forms (`nousresearch/`, `davidau/`, `qwen/`) are NEVER HF repo ids.
   'NousResearch/',
   'DavidAU/',
+  'Qwen/',
+  // HF orgs whose canonical casing is lowercase. For these, the same
+  // prefix may appear on OpenRouter too; explicit OR slugs go in
+  // OPENROUTER_SLUG_OVERRIDES below.
   'huihui-ai/',
   'deepseek-ai/',
   'meta-llama/',
-  'Qwen/',
-  'qwen/',
   'dphn/',
 ] as const;
+
+/**
+ * Explicit OpenRouter slug allowlist for ids whose namespace prefix
+ * also appears in `HF_NAMESPACE_PREFIXES`. Anything in this set is
+ * unconditionally OpenRouter, and `isHfRepoModel` short-circuits to
+ * `false` for it. Keep this list aligned with `BASE_ALLOWLIST` and
+ * V2 ensemble presets — any new OpenRouter slug whose namespace prefix
+ * is in HF_NAMESPACE_PREFIXES MUST be added here.
+ */
+const OPENROUTER_SLUG_OVERRIDES: ReadonlySet<string> = new Set([
+  // PR #41 V2 reasoner-class default — `qwen/` namespace prefix shared
+  // with HF `Qwen/` (different case) but Node string startsWith is case
+  // sensitive so this is technically redundant; kept here as an explicit
+  // safety net so adding lowercase `qwen/` back to HF_NAMESPACE_PREFIXES
+  // by mistake cannot regress this slug again.
+  'qwen/qwen3-235b-a22b-thinking-2507',
+  // V1 OpenRouter slug — `meta-llama/llama-3.3-70b-instruct` shares the
+  // `meta-llama/` namespace with HF `meta-llama/Llama-3.3-70B-Instruct`.
+  'meta-llama/llama-3.3-70b-instruct',
+]);
 
 export function isHfRepoModel(model: string): boolean {
   const m = model.trim();
   if (!m.includes('/')) return false;
   // OpenRouter variant suffixes are unambiguous — HF repo ids never have ':'.
   if (m.includes(':')) return false;
+  // Explicit OR-slug overrides for namespaces shared with HF.
+  if (OPENROUTER_SLUG_OVERRIDES.has(m)) return false;
   // `cognitivecomputations/` is ambiguous: the V2 default
   // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` is an
   // OpenRouter slug (caught above by ':'), while
@@ -105,13 +154,35 @@ export function isHfRepoModel(model: string): boolean {
  *   - V1 (legacy ResearchOne) presets may use the OpenRouter slugs
  *     (`anthropic/...`, `google/...`, `openai/...`, `deepseek/...`, etc).
  *     Those run V1 only; the V1 ensemble is unchanged by this PR.
- *   - V2 presets MUST be uncensored / abliterated / steerable open-weights
- *     only (see `docs/V2_MODEL_SELECTION_CRITERIA.md`). The V2 entries are
- *     the HF repo ids in the lower section.
+ *   - V2 presets are governed by the **inference-time behavioral test**
+ *     in `docs/V2_MODEL_SELECTION_CRITERIA.md`. The model must, under
+ *     our `REASONING_FIRST_PREAMBLE` system prompt, NOT refuse,
+ *     sanitize, debunk-by-recall, or smooth over contradictions on
+ *     research-style queries about anomalous / suppressed claims.
+ *
+ *     RLHF / abliteration / "uncensored fine-tune" are *engineering
+ *     proxies* for that behavior, not the rule itself. As of 2026
+ *     three categories of model satisfy the behavioral test:
+ *
+ *       (a) Open-weights "Thinking" / CoT-trace reasoners with light
+ *           or research-friendly RLHF (DeepSeek V3.x / R1-0528,
+ *           Qwen3-235B Thinking, Kimi K2 Thinking) — admitted on
+ *           critical-path roles; multi-provider on OpenRouter.
+ *       (b) Abliterated weights (refusal vector orthogonalized out;
+ *           `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`) —
+ *           admitted; mathematically refusal-incapable; typically
+ *           single-provider so used as user-opt-in / emergency
+ *           sanity fallback.
+ *       (c) Uncensored fine-tunes (`Dolphin*`, `Hermes-3` /
+ *           `Hermes-4`, `Sao10K/Euryale*`) — admitted; required for
+ *           adversarial roles (skeptic / internal_challenger).
  *
  * Adding a new model? Read both `ResearchOne PolicyOne` and
- * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. RLHF/RLAIF refusal-aligned
- * primaries must NOT be added to a V2 preset, even if added here for V1.
+ * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. Closed-API moderation
+ * pipelines and refusal-aligned RLHF instruct bases (without
+ * abliteration) must NOT be added as V2 default primaries — they fail
+ * the behavioral test in practice. They may live here for V1 use
+ * and / or for explicit V2 user-opt-in routing.
  */
 const BASE_ALLOWLIST = [
   // ── V1 / closed-weights routes (OpenRouter) ──────────────────────────────
@@ -135,22 +206,36 @@ const BASE_ALLOWLIST = [
   'openai/o4-mini',
   'qwen/qwen3-235b-a22b',
 
-  // ── V2 / uncensored / steerable open-weights (OpenRouter, multi-provider) ─
-  // V2 default primaries route through OpenRouter, which fans out to multiple
-  // upstream providers per model. This eliminates the single-HF-provider
-  // failure mode the post-merge V2 run hit on 2026-04-28
-  // (`provider_unavailable` on featherless-ai-only Hermes-3). All entries
-  // here are uncensored or steerable / non-refusal-aligned per
-  // `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+  // ── V2 / OpenRouter critical-path primaries (multi-provider) ─────────────
+  // Verified ≥ 2 live OpenRouter upstreams per slug, 100% recent uptime
+  // (2026-04-28). Low-refusal open weights — DeepSeek V3.x / R1 line, Kimi
+  // K2 line, Qwen3-235B Thinking. Used as default V2 critical-path
+  // primaries and fallbacks. See `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+  'deepseek/deepseek-chat-v3.1',
+  'deepseek/deepseek-r1-0528',
+  'deepseek/deepseek-v3.2',
+  'moonshotai/kimi-k2-thinking',
+  'qwen/qwen3-235b-a22b-thinking-2507',
+
+  // ── V2 / OpenRouter adversarial-role primaries (uncensored fine-tune) ────
+  // Single-provider (Venice) and dual-provider (NextBit + DeepInfra)
+  // respectively. Adversarial roles tolerate single-provider risk because
+  // skeptic failures are recoverable mid-pipeline.
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  'sao10k/l3-euryale-70b',
+  'sao10k/l3.1-euryale-70b',
+  'sao10k/l3.3-euryale-70b',
+
+  // ── V2 / OpenRouter user-opt-in only (uncensored, single-provider) ──────
+  // Allowlisted for per-run override but not in any default preset because
+  // they're each single-upstream on OpenRouter (Nebius / DeepInfra /
+  // Venice). The 2026-04-28 outage was caused by routing every default
+  // through one of these.
   'nousresearch/hermes-3-llama-3.1-405b',
   'nousresearch/hermes-3-llama-3.1-405b:free',
   'nousresearch/hermes-3-llama-3.1-70b',
   'nousresearch/hermes-4-405b',
   'nousresearch/hermes-4-70b',
-  'sao10k/l3-euryale-70b',
-  'sao10k/l3.1-euryale-70b',
-  'sao10k/l3.3-euryale-70b',
 
   // ── V2 / uncensored / abliterated open-weights (HF Inference) ────────────
   // Allowlisted for user-opt-in via per-run model overrides. Not used as a

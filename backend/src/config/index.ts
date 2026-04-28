@@ -89,6 +89,16 @@ const config = {
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    /**
+     * `provider.data_collection` value sent on every OpenRouter chat
+     * completion. Default `'allow'` lets OpenRouter route to the broadest
+     * upstream set (which is what stops the "No allowed providers
+     * available" 404 we hit on 2026-04-28-PM). Set
+     * `OPENROUTER_DATA_COLLECTION=deny` to require upstreams that do not
+     * train on prompts; the cost is fewer upstreams per model and more
+     * frequent provider-unavailable errors.
+     */
+    dataCollection: (process.env.OPENROUTER_DATA_COLLECTION || 'allow').toLowerCase(),
   },
 
   together: {

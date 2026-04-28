@@ -156,62 +156,94 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
 };
 
 /**
- * Baseline models — Research One 2 strict uncensored / steerable matrix.
+ * Baseline models — Research One 2 matrix (verified live 2026-04-28).
  *
- * V2 selection criteria (see `docs/V2_MODEL_SELECTION_CRITERIA.md` for the full
- * rationale and `ResearchOne PolicyOne` for the epistemic policy these
- * selections must serve):
+ * The binding rule (see `docs/V2_MODEL_SELECTION_CRITERIA.md`):
+ * **inference-time behavior**, not training history. A V2 primary must,
+ * under our `REASONING_FIRST_PREAMBLE` system prompt, NOT refuse,
+ * sanitize, debunk-by-recall, or smooth over contradictions on
+ * research-style queries about anomalous / suppressed claims.
  *
- *   1. NO refusal-aligned primary models. RLHF/RLAIF safety post-training
- *      drives the model toward "I cannot help with that," consensus debunking,
- *      and silent omission of suppressed-knowledge claims.
- *   2. PRIMARY models for every V2 role must be either:
- *        - abliterated (refusal direction orthogonalized out); or
- *        - uncensored fine-tunes (Dolphin / Hermes / Euryale lines that
- *          were trained without the "decline anomalies" objective); or
- *        - steerable, low-refusal open weights that follow operator system
- *          prompts as authority.
- *   3. PRIMARY routing must be multi-provider redundant. After the
- *      2026-04-28 V2 outage (every V2 primary was single-provider on HF
- *      Inference: featherless-ai), V2 defaults route through OpenRouter,
- *      which fans out across multiple upstream providers per model. HF
- *      Inference Providers is still allowlisted for user-opt-in routing.
- *   4. Adversarial roles (skeptic / internal_challenger) use the most
- *      uncensored slot so red-team critique can attack mainstream
- *      consensus directly without alignment dampening.
+ * Three model categories pass the behavioral test in 2026 and are
+ * therefore acceptable as V2 primaries:
+ *
+ *   (a) Open-weights "Thinking" / CoT reasoners with light RLHF —
+ *       DeepSeek V3.x / R1-0528, Qwen3-235B Thinking, Kimi K2 Thinking.
+ *       Admitted on critical-path roles. Multi-provider on OpenRouter.
+ *   (b) Abliterated weights (refusal vector orthogonalized out) —
+ *       `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`. Used as
+ *       user-opt-in / emergency-sanity fallback.
+ *   (c) Uncensored fine-tunes — `Dolphin*`, `Hermes-3` / `Hermes-4`,
+ *       `Sao10K/Euryale*`. Required for adversarial roles
+ *       (skeptic / internal_challenger).
+ *
+ * Operational constraints layered on top of the behavioral test:
+ *
+ *   1. **Multi-provider redundancy is mandatory** for critical-path
+ *      defaults (planner / reasoner / synthesizer / utility / verifier).
+ *      ≥ 2 live OpenRouter upstreams per slug. The 2026-04-28-PM outage
+ *      was caused by routing every default through a single-upstream
+ *      slug (Nebius-only `nousresearch/hermes-4-70b`).
+ *   2. **Adversarial roles** can use single-provider uncensored
+ *      fine-tunes because their failures are recoverable mid-pipeline.
+ *   3. **Forbidden as default**: closed-API moderation pipelines
+ *      (Anthropic / OpenAI / Google / Mistral closed) and heavy-RLHF
+ *      instruct bases without abliteration (`meta-llama/*-Instruct`,
+ *      `Qwen/*-Instruct`, unabliterated `DeepSeek-R1-Distill-Llama-70B`,
+ *      `Qwen/QwQ-32B-Preview`). They remain user-opt-in fallback only.
+ *
+ * Verified 2026-04-28 against `https://openrouter.ai/api/v1/models/<slug>/endpoints`.
  */
 const V2M = {
   /**
-   * Hermes 4 70B (Nous Research). Steerable, neutrally-aligned long-form
-   * model with strong instruction following. OpenRouter-routed, multi-provider.
+   * DeepSeek V3.2 (open-weights, 685B). 11 OpenRouter upstreams (Baidu,
+   * SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail,
+   * Friendli, Google, Alibaba), 100% uptime. DeepSeek's published RLHF
+   * is reasoning-focused, *not* refusal-focused; under our reasoning-
+   * first preamble it follows the operator role rather than refusing.
+   * Default planner / synthesizer / utility role — the workhorse.
    */
-  HERMES_4: 'nousresearch/hermes-4-70b',
+  DEEPSEEK_V32: 'deepseek/deepseek-v3.2',
   /**
-   * Hermes 4 405B (Nous Research). The reasoner-class steerable model.
-   * OpenRouter-routed, multi-provider.
+   * DeepSeek V3.1 (open-weights). 11 OpenRouter upstreams. Used as the
+   * fallback for V3.2 when V3.2 is rate-limited or unavailable. Same
+   * low-refusal profile.
    */
-  HERMES_4_405B: 'nousresearch/hermes-4-405b',
+  DEEPSEEK_V31: 'deepseek/deepseek-chat-v3.1',
   /**
-   * Hermes 3 70B (Nous Research, OpenRouter slug). Multi-provider on
-   * OpenRouter. Used for utility roles (verifier, retriever, locator) where
-   * 70B-class steering capacity is sufficient.
+   * DeepSeek R1-0528 (open-weights, reasoner-class with explicit CoT).
+   * 5 OpenRouter upstreams (DeepInfra, SiliconFlow, AtlasCloud, Novita,
+   * Together), 100% uptime. Default reasoner / change_planner.
    */
-  HERMES_3_70B: 'nousresearch/hermes-3-llama-3.1-70b',
+  DEEPSEEK_R1: 'deepseek/deepseek-r1-0528',
   /**
-   * Hermes 3 405B (Nous Research, OpenRouter slug). Used as a 405B fallback
-   * for the reasoner / change_planner roles when Hermes 4 405B is rate-limited.
+   * Qwen3-235B-A22B-Thinking-2507 (open-weights, MoE reasoner). 4
+   * OpenRouter upstreams (Alibaba, DeepInfra, AtlasCloud, Novita), 100%
+   * uptime. Used as the reasoner fallback. Qwen Thinking line is
+   * reasoning-focused and noticeably less refusal-aligned than the
+   * `Qwen/*-Instruct` chat line.
    */
-  HERMES_3_405B: 'nousresearch/hermes-3-llama-3.1-405b',
+  QWEN_THINKING: 'qwen/qwen3-235b-a22b-thinking-2507',
+  /**
+   * Kimi K2 Thinking (Moonshot AI, open-weights reasoner). 3 OpenRouter
+   * upstreams (Novita, Google, AtlasCloud), 100% uptime. Used as the
+   * planner / change_planner fallback because Kimi K2's reasoning style
+   * complements R1's.
+   */
+  KIMI_K2_THINKING: 'moonshotai/kimi-k2-thinking',
   /**
    * Dolphin Mistral 24B Venice Edition (Cognitive Computations,
-   * OpenRouter slug `:free`). Uncensored fine-tune of Mistral Small 24B
-   * trained without the decline-anomalies objective. Primary skeptic /
-   * internal_challenger across all objectives.
+   * uncensored fine-tune). Single-provider on OpenRouter (Venice). Used
+   * as the primary skeptic / internal_challenger across all objectives
+   * because its training explicitly drops the "decline anomalies"
+   * objective. Acceptable single-provider risk for adversarial roles
+   * per criterion 3.
    */
   DOLPHIN_VENICE: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   /**
-   * Sao10K L3.3 Euryale 70B (OpenRouter slug). Uncensored Llama-3.3-70B
-   * long-form fine-tune used for adversarial / anomaly red-team fallback.
+   * Sao10K L3.3 Euryale 70B (uncensored Llama-3.3-70B fine-tune). 2
+   * OpenRouter upstreams (NextBit, DeepInfra). Used as the skeptic
+   * fallback and as the primary on the anomaly objective.
    */
   EURYALE_70B: 'sao10k/l3.3-euryale-70b',
 } as const;
@@ -225,14 +257,15 @@ const V2_UTILITIES: Record<
   | 'final_revision_verifier',
   RoleModelPair
 > = {
-  // All utility roles default to Hermes 3 70B (steerable, multi-provider on
-  // OpenRouter), with Hermes 4 70B as the user-opt-in fallback.
-  retriever: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
-  verifier: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
-  citation_integrity_checker: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
-  revision_intake: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
-  report_locator: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
-  final_revision_verifier: pair(V2M.HERMES_3_70B, V2M.HERMES_4),
+  // All utility roles default to DeepSeek V3.2 (11 upstream providers,
+  // 100% uptime, low-refusal under our reasoning-first preamble),
+  // falling back to V3.1 (also 11 providers) on rate limit.
+  retriever: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  citation_integrity_checker: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  revision_intake: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  report_locator: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  final_revision_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
 };
 
 function v2Mode(
@@ -247,82 +280,85 @@ function v2Mode(
 /**
  * Research One 2 — strict architecture-aligned presets.
  *
- * Every primary in every objective is uncensored / steerable open-weights,
- * routed through OpenRouter for multi-provider redundancy, per the V2
- * selection criteria above and the `ResearchOne PolicyOne` epistemic policy.
- * Fallbacks are also drawn from the same pool — fallbacks only fire when
- * the user explicitly opts in per role from the V2 UI.
+ * Critical-path roles (planner / reasoner / synthesizer / utility /
+ * verifier) use multi-provider DeepSeek / Qwen-Thinking / Kimi-Thinking
+ * primaries so a single account-policy mismatch can never block a run.
+ * Adversarial roles (skeptic / internal_challenger) stay on uncensored
+ * fine-tunes (Dolphin Venice / Sao10K Euryale) per the binding
+ * `docs/V2_MODEL_SELECTION_CRITERIA.md` rules.
+ *
+ * Fallbacks only fire when the user explicitly opts in per role from
+ * the V2 UI.
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
-    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
-    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
-    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
-    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
-    planner: pair(V2M.HERMES_4_405B, V2M.HERMES_4),
-    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    synthesizer: pair(V2M.HERMES_4_405B, V2M.HERMES_4),
-    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
-    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    synthesizer: pair(V2M.DEEPSEEK_R1, V2M.DEEPSEEK_V32),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
-    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
-    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
-    // Anomaly objective leans into the most uncensored chain on the
-    // skeptic side. Hermes-line still drives synthesis where structure
-    // matters.
-    planner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    reasoner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    change_planner: pair(V2M.HERMES_4_405B, V2M.HERMES_3_405B),
-    outline_architect: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    section_drafter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    synthesizer: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    coherence_refiner: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
-    plain_language_synthesizer: pair(V2M.HERMES_3_70B, V2M.DOLPHIN_VENICE),
-    section_rewriter: pair(V2M.HERMES_4, V2M.HERMES_3_70B),
+    // Anomaly objective leans into Euryale on the skeptic side and uses
+    // R1 + Qwen Thinking for the reasoner ladder.
+    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
+    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
     skeptic: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
     internal_challenger: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
   }),
