@@ -1,0 +1,73 @@
+---
+description: Prevents C-EARLY-RETURN, C-LOG-PARITY, C-CALLBACK-MISWIRE — narrowing an error path or reusing a callback at the wrong severity.
+alwaysApply: false
+globs:
+  - "backend/src/**/*.ts"
+  - "frontend/src/**/*.ts"
+  - "frontend/src/**/*.tsx"
+---
+
+# Error paths and logging parity
+
+## Why this rule exists
+
+PR #36 had three findings on the same theme: `callRoleModel()` was
+changed to `throw` `NormalizedModelError` immediately in two catch
+blocks, which (a) skipped the still-existing role-fallback path that
+was supposed to fire first, and (b) lost the `logger.warn` /
+`logger.error` lines that operators relied on for upstream forensics.
+PR #39 had a frontend twin: `onError(summary)` was wired to
+`addNotification('error', …)` and a successful retry surfaced a false
+error toast because there was no `onInfo` callback.
+
+## Rule — error paths
+
+When you add a `throw`, `return`, or early termination inside a
+`catch` block:
+
+1. **Read the rest of the catch block.** Are there `logger.warn` /
+   `logger.error` calls below that the rest of the system relies on?
+   Move them above the early termination.
+2. **Read every other catch block in the same function.** Are they
+   doing logging the new branch is missing?
+3. **Read every caller of the function.** Did they expect the function
+   to attempt fallback / retry before the error propagates? If so,
+   keep that path running.
+4. **Confirm the diagnostic shape is preserved.** When the error
+   bubbles up, does it still carry classification / status /
+   providerMessage / role / model — every field operators read from
+   logs?
+
+## Rule — callbacks
+
+When you add a callback prop or hook:
+
+1. **Severity must match the wiring.** `onError` is for errors.
+   `onInfo` is for info. `onSuccess` is for success. **Never overload
+   one with another severity.** If you find yourself wanting to do so,
+   add the missing severity.
+2. **The callback name must describe what fires it, not what it does.**
+   `onRetried` (event), not `notify` (action), not `onInfo` (severity).
+3. **Document each callback's expected severity in the prop type.**
+
+## Concrete examples in this repo
+
+- ✅ `backend/src/services/openrouter/openrouterService.ts` — every
+  catch block emits the same diagnostic-rich `logger.warn` /
+  `logger.error` shape with role, model, status, classification, body.
+  When `NormalizedModelError` is rethrown, those logs already ran.
+- ✅ `frontend/src/pages/ResearchPageV2.tsx:FailureCard` — takes
+  `onRetried`, `onError`, **and** `onInfo`. Post-success "N retries
+  remaining" goes through `onInfo`.
+
+## Pre-commit check
+
+If you added or moved a `throw` / `return` in a catch block:
+- [ ] Did all the logger calls survive?
+- [ ] Did all the existing fallback paths still get a chance to run?
+- [ ] Did you read the rest of the catch block end-to-end?
+
+If you added a callback prop:
+- [ ] Is its name about the event (e.g. `onRetried`)?
+- [ ] Is its wiring on every call site at the right severity?
+- [ ] Is there a separate callback for each severity it might emit?

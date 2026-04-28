@@ -1,0 +1,68 @@
+---
+description: Prevents C-DOC-DRIFT and C-UNVERIFIED-CLAIM — PR bodies / docs / header comments that describe an API or external state that does not match what shipped.
+alwaysApply: true
+---
+
+# Doc / PR / code parity
+
+## Why this rule exists
+
+- PR #37 (Copilot): PR description named the helper
+  `enqueueResearchRetryJob` but only `enqueueResearchRetryJobWithCleanup`
+  was exported.
+- PR #40 (Copilot): `runStateMachine.ts` header doc referenced
+  `decideRunStateOnSuccess` / `decideRunStateOnCancel` and a frontend
+  file `frontend/src/utils/runState.ts`, none of which exist.
+- PR #40 (user, after merge attempt): the V2 ensemble PR claimed
+  "OpenRouter, multi-provider redundant" but verification on
+  `openrouter.ai/api/v1/models/<slug>/endpoints` showed most slugs were
+  single-upstream on OpenRouter.
+
+## Rule — PR body / doc parity
+
+Before pushing the final commit on a branch:
+
+1. **Re-read the PR body / README change / doc against the final commit
+   diff.** Every named symbol must exist; every referenced file must
+   exist; every linked path must resolve. Use `Grep` if needed.
+2. **Drop aspirational language.** If a function might be added later
+   but is not in this PR, do not describe it as if it exists. Use
+   "future work" / "follow-up".
+3. **Names in the PR body must match the final exported names.**
+
+## Rule — external-system claims
+
+Any claim about an external system in a doc, PR body, or header
+comment must be verified against the external system itself, not
+recalled from memory:
+
+| Claim shape | Required verification |
+|---|---|
+| "Available on HF Inference Providers" | `hub_repo_details` or model card `availableInferenceProviders` |
+| "Multi-provider on OpenRouter" | `GET https://openrouter.ai/api/v1/models/<slug>/endpoints` and count entries |
+| "Costs $X per 1M tokens" | Live model catalog at the provider |
+| "Multi-region uptime" | The provider's status page |
+| "Slug exists" | The catalog list itself |
+| "Behavior X under load" | An actual test or a benchmark |
+
+If the verification cannot be performed (no internet access in this
+run, no time, etc.), **say so explicitly in the doc** — write
+"unverified, requires deploy-side check" rather than asserting the
+claim.
+
+## Concrete examples in this repo
+
+- ✅ `docs/V2_MODEL_SELECTION_CRITERIA.md` now includes the verified
+  per-slug provider count (Nebius / DeepInfra / Venice / NextBit) and
+  explicitly notes the "multi-provider redundant" framing was overstated.
+- ✅ `runStateMachine.ts` header doc lists only the exports that
+  actually exist: `decideRunStateOnFailure`,
+  `decideRunStateOnRetryRequest`, `rejectionToHttpBody`.
+
+## Pre-commit check
+
+Before `git push` on the final commit of a branch:
+- [ ] Did you `Grep` the final diff for every symbol named in the PR body?
+- [ ] Did you re-read the PR body end-to-end against the final commit?
+- [ ] If the body / doc claims something about an external system, did
+  you verify it live in this session?

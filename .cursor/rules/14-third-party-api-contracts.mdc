@@ -1,0 +1,69 @@
+---
+description: Prevents C-LIBRARY-CONTRACT, C-INPUT-NORM — calling a third-party API without reading its contract, or normalizing input at one site but not centralizing it.
+alwaysApply: false
+globs:
+  - "backend/src/**/*.ts"
+---
+
+# Third-party API contracts
+
+## Why this rule exists
+
+- PR #37 (Codex P1): used BullMQ `Job.remove()` without reading its
+  contract about locked / in-flight jobs.
+- PR #36 (Copilot): `togetherChatEndpoint()` stripped trailing slashes
+  but `callTogetherChat()` independently posted to
+  `${config.together.baseUrl}/chat/completions`, which double-slashed
+  when the env had a trailing `/`.
+
+## Rule — library contracts
+
+When you call a third-party API for the first time in this codebase:
+
+1. **Read the API's documented contract** for failure / locked /
+   not-found / timeout cases. Don't assume the happy path.
+2. **Wrap behavior that has known edge cases in a thin internal
+   helper** with a comment that records the contract you read. Future
+   readers will see the contract without going back to the source.
+3. **Test the edge case if it's a state transition** (locked job,
+   missing key, expired token).
+
+## Rule — input normalization
+
+If a value (URL, slug, env-supplied path) needs normalization
+(trailing slash, lowercase, prefix-stripping):
+
+1. **Centralize it in one function**. Every consumer calls that one
+   function. Do not normalize independently in two places.
+2. **Document the canonical form** in the function's JSDoc.
+
+## Rule — model id routing
+
+The `isHfRepoModel(model)` function in
+`backend/src/services/reasoning/reasoningModelPolicy.ts` is the **one**
+place that decides HF Inference vs. OpenRouter for any model id. Every
+caller of either API runs through it (or `callRoleModel` which calls
+`callModel` which calls it). If you add a new id namespace, add it
+there, not in a parallel switch elsewhere.
+
+## Concrete examples in this repo
+
+- ✅ `togetherChatEndpoint()` is the only function that builds the
+  Together URL. `callTogetherChat()` calls it.
+- ✅ `enqueueResearchRetryJobWithCleanup(queue, runId, payload)`
+  documents the BullMQ deduplication contract in its JSDoc and
+  is the only retry path.
+- ✅ `isHfRepoModel(model)` disambiguates HF vs. OpenRouter and is
+  imported by every caller.
+
+## Pre-commit check
+
+If your patch calls a third-party SDK / HTTP API for the first time:
+- [ ] Did you skim the SDK's failure-mode docs?
+- [ ] Are there any not-yet-tested states (locked, in-flight,
+  rate-limited, expired) that need a code path?
+
+If your patch normalizes a string:
+- [ ] Is the normalization in a single function with a clear JSDoc?
+- [ ] Did you grep the codebase for sites that build the same string
+  shape and route them through the helper?

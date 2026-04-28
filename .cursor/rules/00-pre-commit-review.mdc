@@ -1,0 +1,112 @@
+---
+description: Master pre-commit checklist for every change in this repo. Always read before staging.
+alwaysApply: true
+---
+
+# Pre-commit review checklist (ResearchOne)
+
+This list exists because the agent shipped 22 reviewer-caught bugs across
+PRs #36–#40, and every single one was in a recurring class. Reading and
+walking through this list takes ~60 seconds per commit. The retrospective
+that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findings.md`.
+
+## A. Before staging
+
+1. **Read the full file**, not just the diff, around every edit. About a
+   third of the bugs were visible only when the surrounding function or
+   call site was read end-to-end.
+2. **Grep for every remaining caller** of any primitive you changed. If
+   you renamed/retyped/restricted/loosened a function or constant,
+   search the repo (`Grep`) for its name and confirm each caller is
+   either updated or still correct. (See
+   `.cursor/rules/17-ripple-and-grep-callers.mdc`.)
+3. **Grep for every other writer** of any data field you changed. If
+   you wrote `failure_meta.terminal=true` in one place, find every
+   other writer of `failure_meta` and confirm none can produce a
+   contradictory value. (See
+   `.cursor/rules/10-state-machine-and-multi-writer.mdc`.)
+
+## B. Tests
+
+4. **Tests must fail in the absence of the fix.** Mentally revert the
+   fix and confirm the new test fails. If it would still pass, the
+   test is asserting too little. (See
+   `.cursor/rules/16-tests-must-fail-without-the-fix.mdc`.)
+5. **Order-sensitive tests must assert order**, not just call counts.
+6. Run `npx tsc --noEmit` and `npx vitest run` locally **after** each
+   meaningful edit, not just at the end.
+
+## C. Async / state correctness
+
+7. **Two async sources updating the same fact** → there is a window where
+   they disagree. Decide which one wins and document it. (See
+   `.cursor/rules/10-state-machine-and-multi-writer.mdc`.)
+8. **Side effect first, DB row second.** If a row "promises" a downstream
+   side effect (a queued job, a sent email), do the side effect before
+   writing the row that promises it. (See
+   `.cursor/rules/13-deploy-skew-and-schema.mdc`.)
+
+## D. Error paths and logs
+
+9. **Don't lose diagnostic logging when narrowing an error path.** If
+   you `throw` early in a `catch` block, copy the same `logger.warn` /
+   `logger.error` calls the rest of the codebase relies on. (See
+   `.cursor/rules/11-error-paths-and-logging.mdc`.)
+10. **Don't reuse a callback for a new severity level.** If `onError` is
+    wired to `notify('error', …)`, do not pass success-path strings
+    through it; add `onInfo` / `onSuccess`. (See same rule.)
+
+## E. Schema / deploy / migrations
+
+11. **Code that depends on a migration must tolerate the migration not
+    having applied yet.** Wrap the SELECT/UPDATE in try/catch on
+    Postgres `42703` (column does not exist) or `22P02` (invalid enum
+    value) and degrade to safe defaults. (See
+    `.cursor/rules/13-deploy-skew-and-schema.mdc`.)
+12. **Fallback UPDATEs must mirror the primary UPDATE's writes**, not
+    be a stripped-down subset. (See same rule.)
+13. **`ALTER TYPE … ADD VALUE` cannot run inside a transaction**. The
+    migrate runner honors `-- @migrate:no-transaction`; use it.
+
+## F. Event windowing
+
+14. **`[new, ...prev].slice(-150)` drops the new event** when prev is
+    already at the limit. Use `[...prev, new].slice(-150)` for
+    "newest-at-bottom, drop oldest." (See
+    `.cursor/rules/12-event-window-math.mdc`.)
+
+## G. Third-party APIs
+
+15. **Read the contract of any third-party API you call**. BullMQ
+    `Job.remove()` throws on locked jobs. OpenRouter slugs use `:` for
+    variants; HF repo ids never do. Postgres `ALTER TYPE ADD VALUE`
+    can't be in a tx. (See
+    `.cursor/rules/14-third-party-api-contracts.mdc`.)
+
+## H. Doc / PR body parity
+
+16. **PR body and header docs must reference symbols that actually
+    exist in the patch.** Re-read the body against the final commit
+    diff before pushing. (See
+    `.cursor/rules/15-doc-pr-and-code-parity.mdc`.)
+17. **Any external-system claim in a doc / PR body must be verified
+    live.** "Multi-provider redundant on OpenRouter" requires
+    actually hitting `/api/v1/models/<slug>/endpoints`. "Available on
+    HF Inference" requires actually checking the model card. (See
+    same rule.)
+
+## I. Research policy guardrails (repo-specific)
+
+18. **No refusal-aligned RLHF instruct slugs in V2 default presets.**
+    Read `docs/V2_MODEL_SELECTION_CRITERIA.md` and
+    `ResearchOne PolicyOne` before changing any V2 default. (See
+    `.cursor/rules/20-research-policy-guardrails.mdc`.)
+19. **`REASONING_FIRST_PREAMBLE` and `RED_TEAM_V2_SYSTEM_PREFIX` are
+    immutable.** Do not edit their content; do not skip their
+    application.
+
+---
+
+If a finding from a code review surprises the agent, add it to
+`docs/retrospectives/` and (if it represents a class) extend the rule
+that covers it. The rules are first-class artifacts of this repo.

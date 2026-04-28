@@ -1,0 +1,60 @@
+---
+description: Prevents C-WINDOW-MATH — off-by-one errors in trace / event windowing.
+alwaysApply: false
+globs:
+  - "frontend/src/**/*.ts"
+  - "frontend/src/**/*.tsx"
+  - "backend/src/**/*.ts"
+---
+
+# Event window math
+
+## Why this rule exists
+
+PR #38 had three findings on the same line of code, on three different
+files, all the same bug: `[polledEvt, ...prev].slice(-150)` puts the
+new event at the **front** and then keeps the **last** 150, which means
+once `prev` has 149 items, the new event is dropped on the next call.
+
+The mistake compounded because the bug was copy-pasted from one page
+to another. None of three reviewers / authors caught it; the agent
+shipped it three times.
+
+## Rule
+
+For any "keep newest N events" buffer, write it as:
+
+```ts
+// keep last N, newest at the bottom
+[...prev, newEvent].slice(-N)
+```
+
+For "keep newest N events, newest at the top":
+
+```ts
+// keep first N, newest at the top
+[newEvent, ...prev].slice(0, N)
+```
+
+**Never mix `[new, ...prev]` with `slice(-N)` or `[...prev, new]` with
+`slice(0, N)`.** They drop the wrong end.
+
+When in doubt, write a unit test that adds N+1 events and asserts the
+last one is retained.
+
+## Concrete example in this repo
+
+```ts
+// frontend/src/pages/ResearchPageV2.tsx — current correct usage
+setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-150)));
+```
+
+## Pre-commit check
+
+For any new event buffer:
+- [ ] Does the slice direction match the spread direction?
+- [ ] Is there a unit test that pushes more than the limit and asserts
+  the most recent event survives?
+- [ ] If you copy-pasted the buffer logic from another file, did you
+  re-verify it's correct in both places? (PR #38 had the bug copy-pasted
+  to three files because the original was wrong.)

@@ -1,0 +1,82 @@
+---
+description: Prevents C-RIPPLE and C-DEAD-CODE — changing a primitive without grepping every caller, or declaring a state variant the producing function never emits.
+alwaysApply: false
+globs:
+  - "backend/src/**/*.ts"
+  - "frontend/src/**/*.ts"
+  - "frontend/src/**/*.tsx"
+---
+
+# Ripple checks: grep every caller
+
+## Why this rule exists
+
+- PR #40 (Copilot): `isHfRepoModel()` was rewritten to drop the
+  `cognitivecomputations/` prefix. The change was reasoned through for
+  V2 (the only V2 user of that prefix is the `:free` OpenRouter slug,
+  which the new `:` check catches). But the V1 ensemble still
+  referenced `cognitivecomputations/dolphin-2.9.2-qwen2-72b` as the
+  dolphin fallback — a slug the new function returned `false` for, so
+  V1 calls would silently switch providers (to OpenRouter, where the
+  slug doesn't exist) → silent V1 regression.
+- PR #39 (Copilot): `LiveStatus.retrying` variant was added to the
+  union type, but `classifyLiveStatus` had no inputs that could
+  produce it — so `LIVE_STATUS_COPY.retrying` was dead code.
+
+Both bugs are about the same mental discipline: when you change one
+side of a contract, **grep** for every other side and verify each one.
+
+## Rule
+
+When you change any of the following, run `Grep` for the symbol and
+inspect every caller / consumer:
+
+1. **A function's return type** (e.g. `isHfRepoModel` from "anything
+   with a `/`" → "only specific prefixes, no `:` variants").
+2. **A function's accepted input shape** (e.g. dropped a parameter,
+   tightened a string format).
+3. **An exported constant or list** (e.g. an allowlist).
+4. **An enum or union type** (e.g. added `'aborted'` to a status enum).
+5. **A SQL column / index / migration** — readers and writers both.
+6. **A socket event name or shape**.
+
+For each caller / consumer, ask:
+
+- Does it still pass an input the new function accepts?
+- Does it still expect the old return shape?
+- Does it still match against an old enum value?
+
+## Rule — dead-code prevention
+
+When you add a new variant to a union, enum, or state type:
+
+1. **Find at least one producer that can return the new variant.** If
+   none exists in the same patch, the new variant is dead — either
+   add the producer or drop the variant.
+2. **Find at least one reader that handles the new variant.** If
+   none, the new variant is decorative — either add the reader or
+   drop the variant.
+3. **Add a unit test that exercises the new variant.**
+
+## Concrete examples in this repo
+
+- ✅ When `isHfRepoModel` was rewritten on PR #40, the V1
+  ensemble's `M.dolphin` slug was migrated to `dphn/dolphin-2.9.2-qwen2-72b`
+  in the same PR (after the Copilot review caught the regression).
+- ✅ `LiveStatus.retrying` is now produced by `classifyLiveStatus` /
+  `deriveRunState` when `retry_attempts > 0` or `progress_message`
+  hints at retry, and the test
+  `frontend/src/utils/researchLiveStatus.test.ts` exercises it.
+
+## Pre-commit check
+
+If you changed a primitive (function signature / constant / type / SQL
+column / socket event name):
+- [ ] Did you `Grep` for the symbol name across the repo?
+- [ ] Did you inspect every hit?
+- [ ] Are tests dependent on the old behavior updated?
+
+If you added a new variant to a union / enum:
+- [ ] Is there at least one producer that emits it?
+- [ ] Is there at least one reader that handles it?
+- [ ] Is there a test that exercises it?
