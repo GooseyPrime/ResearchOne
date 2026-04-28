@@ -146,3 +146,70 @@ This PR adds:
 If a future PR proposes a single-upstream slug as a critical-path V2
 default, the test fails and the probe logs a deploy-time warning.
 Both gates have to pass for any future change to land.
+
+## 2026-04-28-PM addendum — PR #41 review fixes (Codex P1/P2 + Copilot)
+
+The first revision of PR #41 introduced two latent defects that the
+review caught before merge. Recording them here because both fall in
+the same C-class buckets the cursor rules already enforce, so the
+self-audit in `docs/retrospectives/2026-04-28-pr36-40-review-findings.md`
+applies cleanly.
+
+### A. `qwen/qwen3-235b-a22b-thinking-2507` was silently misrouted to HF
+
+Root cause: `HF_NAMESPACE_PREFIXES` in
+`backend/src/services/reasoning/reasoningModelPolicy.ts` listed the
+**lowercase** form `'qwen/'` alongside the HF-canonical `'Qwen/'`. The
+PR added the OpenRouter slug `qwen/qwen3-235b-a22b-thinking-2507` as
+the V2 reasoner-class default; `isHfRepoModel('qwen/...')` then
+returned `true`, and `callRoleModel` tried HF Inference for a slug
+that does not exist there. The startup preflight skipped the slug for
+the same reason. Net effect: V2 reasoner role would have failed at
+runtime on every objective that uses Qwen Thinking, with no warning
+during boot. Class: **C-NAMESPACE-OVERLAP** (variant of
+C-DEPLOY-SKEW); same pattern as the V1 `M.dolphin` slug regression
+caught in PR #40.
+
+Fix:
+- Drop lowercase `'qwen/'` from `HF_NAMESPACE_PREFIXES`.
+- Add an explicit `OPENROUTER_SLUG_OVERRIDES` set for any slug whose
+  namespace prefix overlaps a HF-canonical lowercase org
+  (`meta-llama/...`, etc.) so disambiguation can be done by exact
+  match, not by case alone.
+- Lock the contract with a regression test that enumerates every
+  V2 default primary and asserts that all-lowercase slugs route to
+  OpenRouter.
+
+### B. Preflight probe did not honor `provider.data_collection`
+
+Root cause: the probe issued `GET /models/<slug>/endpoints` with
+auth, which returns metadata. Runtime calls go through
+`POST /chat/completions` with the runtime `provider` block including
+`data_collection: 'allow' | 'deny'`. With
+`OPENROUTER_DATA_COLLECTION=deny`, the metadata probe could return
+"endpoints exist" while runtime calls would 404 with "No allowed
+providers" — exactly the failure mode the probe exists to catch.
+Class: **C-PROBE-VS-RUNTIME-DRIFT**.
+
+Fix:
+- Replace the metadata probe with a runtime-mirroring
+  `POST /chat/completions` smoke probe (`max_tokens: 1`,
+  `messages: [system: 'preflight', user: 'ping']`). Same headers
+  (`Authorization`, `HTTP-Referer`, `X-Title`), same `provider`
+  block, same base URL. Preflight pass ⇔ runtime pass for the
+  configured account / policy.
+- Add `OPENROUTER_PREFLIGHT=false` to disable wholesale.
+- Cost: ~$0.0005 per redeploy, negligible vs. the cost of a
+  single failed user-facing run.
+
+### C. Other review fixes folded in
+
+- `classifyModelError` 404 branch had a dead regex (both branches
+  returned `'bad_request'`). Collapsed to a single `return 'bad_request'`
+  with a comment explaining where the disambiguation actually happens
+  (in `researchFailureHints.ts`).
+- The "API key missing" preflight test now actually asserts the
+  fetcher was never invoked, instead of trusting that the function
+  did not throw.
+- New tests: OpenRouter no-allowed-providers / generic-404 hint copy,
+  qwen-OR-routing regression, preflight `data_collection` propagation.

@@ -4,17 +4,47 @@ import { logger } from '../../utils/logger';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
 import { isHfRepoModel, REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../reasoning/reasoningModelPolicy';
 
+/**
+ * Build the OpenRouter `provider` block exactly as `callOpenRouter` does
+ * at runtime. Kept as a copy in this module (not a re-export) because
+ * importing from `openrouterService` would pull the whole HF / runtime
+ * stack into preflight and complicate startup-order constraints. If the
+ * runtime block ever changes shape, update both places. The
+ * `openrouterRequestBody.test.ts` regression locks the runtime side; the
+ * `openrouterPreflight.test.ts` suite locks this side.
+ */
+function buildPreflightProviderBlock(): Record<string, unknown> {
+  const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
+  return {
+    allow_fallbacks: true,
+    require_parameters: true,
+    data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
+    sort: 'throughput',
+  };
+}
+
 export interface PreflightModelStatus {
   slug: string;
   ok: boolean;
-  /** Number of upstream provider endpoints OpenRouter exposes for this slug. */
-  endpointCount: number;
+  /**
+   * HTTP status from the `/chat/completions` smoke probe, when the
+   * request reached OpenRouter. Absent for transport-layer errors
+   * (DNS, connection refused, etc.).
+   */
+  status?: number;
   /** Reason this slug is not OK; only present when `ok=false`. */
   reason?: string;
-  /** HTTP status from OpenRouter, when available. */
-  status?: number;
-  /** Whether at least one endpoint reported live (uptime > 0). */
-  anyLive?: boolean;
+  /**
+   * Provider message extracted from OpenRouter's error body when status
+   * is 4xx/5xx — typically the actionable line such as
+   * `"No allowed providers are available for the selected model"`.
+   */
+  providerMessage?: string;
+  /**
+   * Wall-clock duration of the probe call in ms. Useful for diagnosing
+   * timeout-vs-policy failures in startup logs.
+   */
+  durationMs: number;
 }
 
 export interface PreflightSummary {
@@ -27,14 +57,32 @@ export interface PreflightSummary {
   rolesAffected: Array<{ objective: string; role: string; slug: string; reason: string }>;
   /** Wall-clock duration in ms. */
   durationMs: number;
+  /** Whether the probe was skipped wholesale (no API key, or disabled by env). */
+  skipped?: boolean;
 }
 
 /**
- * Probe OpenRouter `/api/v1/models/<slug>/endpoints` for every distinct
- * V2 default primary slug in `V2_MODE_PRESETS`. The point: if a default
- * primary is unreachable for the configured `OPENROUTER_API_KEY`, log a
- * warning at startup with the exact role(s) and slug(s) so the operator
- * sees the problem before a user clicks Run on a V2 run.
+ * Probe every distinct V2 default OpenRouter primary slug in
+ * `V2_MODE_PRESETS` by issuing a 1-token `/chat/completions` request
+ * that mirrors `callOpenRouter` exactly:
+ *
+ *   - same `Authorization` / `HTTP-Referer` / `X-Title` headers
+ *   - same `provider` block (`allow_fallbacks`, `require_parameters`,
+ *     `data_collection`, `sort`)
+ *   - same base URL
+ *
+ * This is the gold-standard reachability gate: a slug that 200s here
+ * will 200 at runtime; a slug that 404s with `No allowed providers are
+ * available` here will 404 the same way at runtime. Earlier revisions
+ * of this probe queried `/models/<slug>/endpoints` for metadata, which
+ * **did not** apply the runtime `provider.data_collection` policy and
+ * could report a model as reachable even when runtime calls would 404.
+ * That is the PR #41 review finding (Codex P1 — 2026-04-28-PM).
+ *
+ * Cost: each call consumes ~1 completion token per slug per startup.
+ * With the current V2 ensembles that is ~5 distinct slugs ≈ $0.0005
+ * per redeploy (DeepSeek / Kimi / Qwen Thinking pricing). Operators
+ * who need to suppress this can set `OPENROUTER_PREFLIGHT=false`.
  *
  * This **does not** fail startup. The orchestrator will still attempt
  * the call at runtime; a pre-flight failure just means the agent has
@@ -45,10 +93,15 @@ export interface PreflightSummary {
  * and any slug we cannot reach because OPENROUTER_API_KEY is unset.
  */
 export async function preflightV2OpenRouterModels(args?: {
-  /** Override fetch (used in tests). */
-  fetcher?: typeof axios.get;
+  /**
+   * Override `axios.post` (used in tests). Must accept the same
+   * `(url, body, options)` signature.
+   */
+  fetcher?: typeof axios.post;
   /** Override timeout. */
   timeoutMs?: number;
+  /** Disable wholesale (used by `OPENROUTER_PREFLIGHT=false`). */
+  disabled?: boolean;
 }): Promise<PreflightSummary> {
   const start = Date.now();
   const summary: PreflightSummary = {
@@ -59,8 +112,15 @@ export async function preflightV2OpenRouterModels(args?: {
     durationMs: 0,
   };
 
+  if (args?.disabled) {
+    summary.skipped = true;
+    summary.durationMs = Date.now() - start;
+    return summary;
+  }
+
   if (!config.openrouter.apiKey?.trim()) {
     logger.warn('[v2-preflight] OPENROUTER_API_KEY is not set; skipping V2 OpenRouter pre-flight');
+    summary.skipped = true;
     summary.durationMs = Date.now() - start;
     return summary;
   }
@@ -80,32 +140,44 @@ export async function preflightV2OpenRouterModels(args?: {
     }
   }
 
-  const fetcher = args?.fetcher ?? axios.get;
+  const fetcher = args?.fetcher ?? axios.post;
   const timeout = args?.timeoutMs ?? 12000;
   const baseUrl = config.openrouter.baseUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/chat/completions`;
+  const provider = buildPreflightProviderBlock();
+  const headers = {
+    Authorization: `Bearer ${config.openrouter.apiKey}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://researchone.app',
+    'X-Title': 'ResearchOne',
+  };
 
   await Promise.all(
     Array.from(slugToRoles.keys()).map(async (slug) => {
+      const probeStart = Date.now();
+      const body = {
+        model: slug,
+        // Minimal-cost smoke probe. We do not care about the content of the
+        // reply — only that the request envelope is accepted by the
+        // configured account / provider-data-collection policy.
+        messages: [
+          { role: 'system', content: 'preflight' },
+          { role: 'user', content: 'ping' },
+        ],
+        max_tokens: 1,
+        temperature: 0,
+        provider,
+      };
       try {
-        const url = `${baseUrl}/models/${slug}/endpoints`;
-        const res = await fetcher(url, {
-          headers: {
-            Authorization: `Bearer ${config.openrouter.apiKey}`,
-            Accept: 'application/json',
-          },
-          timeout,
-        });
-        const endpoints =
-          (res?.data as { data?: { endpoints?: unknown[] } })?.data?.endpoints ?? [];
-        const count = Array.isArray(endpoints) ? endpoints.length : 0;
-        const anyLive =
-          Array.isArray(endpoints) &&
-          endpoints.some((e) => {
-            const ep = e as { status?: unknown };
-            return typeof ep.status === 'number' ? ep.status >= 0 : true;
-          });
-        summary.models[slug] = { slug, ok: count > 0, endpointCount: count, anyLive };
-        if (count === 0) {
+        const res = await fetcher(url, body, { headers, timeout });
+        const status = (res as { status?: number })?.status ?? 200;
+        summary.models[slug] = {
+          slug,
+          ok: status >= 200 && status < 300,
+          status,
+          durationMs: Date.now() - probeStart,
+        };
+        if (!summary.models[slug].ok) {
           summary.ok = false;
           summary.hasWarnings = true;
           for (const r of slugToRoles.get(slug) ?? []) {
@@ -113,19 +185,35 @@ export async function preflightV2OpenRouterModels(args?: {
               objective: r.objective,
               role: r.role,
               slug,
-              reason: 'no live OpenRouter endpoints for this slug',
+              reason: `HTTP ${status} on /chat/completions probe`,
             });
           }
         }
       } catch (err) {
-        const e = err as { response?: { status?: number; data?: unknown }; message?: string };
+        const e = err as {
+          response?: { status?: number; data?: unknown };
+          message?: string;
+        };
         const status = e?.response?.status;
+        const data = e?.response?.data as
+          | string
+          | { error?: { message?: string }; message?: string }
+          | undefined;
+        const providerMessage =
+          typeof data === 'string'
+            ? data
+            : data && typeof data === 'object'
+              ? data.error?.message || data.message || ''
+              : '';
+        const baseReason = status ? `HTTP ${status}` : e?.message || 'request failed';
+        const reason = providerMessage ? `${baseReason}: ${providerMessage}` : baseReason;
         summary.models[slug] = {
           slug,
           ok: false,
-          endpointCount: 0,
           status,
-          reason: status ? `HTTP ${status}` : (e?.message || 'request failed'),
+          reason,
+          providerMessage: providerMessage || undefined,
+          durationMs: Date.now() - probeStart,
         };
         summary.ok = false;
         summary.hasWarnings = true;
@@ -134,7 +222,7 @@ export async function preflightV2OpenRouterModels(args?: {
             objective: r.objective,
             role: r.role,
             slug,
-            reason: status ? `HTTP ${status}` : (e?.message || 'request failed'),
+            reason,
           });
         }
       }
@@ -147,9 +235,24 @@ export async function preflightV2OpenRouterModels(args?: {
 
 /**
  * Run the pre-flight and log a structured summary. Called at app
- * startup (best-effort, never blocks listen).
+ * startup (best-effort, never blocks listen). Honors
+ * `OPENROUTER_PREFLIGHT=false` to suppress the probe entirely.
  */
 export async function runV2OpenRouterPreflightAndLog(): Promise<PreflightSummary> {
+  const enabledRaw = (process.env.OPENROUTER_PREFLIGHT ?? 'true').trim().toLowerCase();
+  const disabled = enabledRaw === 'false' || enabledRaw === '0' || enabledRaw === 'no';
+  if (disabled) {
+    logger.info('[v2-preflight] Disabled via OPENROUTER_PREFLIGHT=false');
+    return {
+      ok: true,
+      hasWarnings: false,
+      models: {},
+      rolesAffected: [],
+      durationMs: 0,
+      skipped: true,
+    };
+  }
+
   let summary: PreflightSummary;
   try {
     summary = await preflightV2OpenRouterModels();
@@ -163,6 +266,7 @@ export async function runV2OpenRouterPreflightAndLog(): Promise<PreflightSummary
       durationMs: 0,
     };
   }
+  if (summary.skipped) return summary;
   if (summary.hasWarnings) {
     logger.warn(
       `[v2-preflight] ${summary.rolesAffected.length} role(s) have unreachable default primaries on OpenRouter`,
