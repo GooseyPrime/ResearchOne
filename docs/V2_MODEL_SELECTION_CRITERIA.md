@@ -109,18 +109,45 @@ as a primary.
 
 ## Currently-approved V2 PRIMARIES (this PR)
 
-The 2026-04-28 V2 outage post-mortem (`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`)
-showed that *every* V2 default selected on PR #39 was single-provider on
-HF Inference (or did not exist on HF Inference at all). To eliminate the
-single-point-of-failure provider dependency we now route V2 default
-primaries through OpenRouter, which fans out to multiple upstream
-providers per model. The model identity does not change — these are the
-same uncensored / steerable Nous / Cognitive Computations / Sao10K
-families, just routed through a multi-provider gateway. HF Inference
-variants of the same models stay allowlisted for **user-opt-in routing
-only** (see next section).
+The 2026-04-28 V2 outage post-mortem
+(`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`) showed that
+*every* V2 default selected on PR #39 was single-provider on HF Inference
+(or did not exist on HF Inference at all) — featherless-ai was the only
+upstream for all of them, and any featherless-ai hiccup took the whole
+V2 ensemble down.
 
-OpenRouter / multi-provider primaries:
+We now route V2 default primaries through **OpenRouter**, which gives us:
+
+- a single API key path (`OPENROUTER_API_KEY`) you already have,
+- a stable schema-checked endpoint (`/endpoints` per model) we can probe
+  to see which upstreams are live before a deploy,
+- automatic gateway-side failover when a model has multiple upstreams.
+
+**Honest caveat (added 2026-04-28 after the post-merge review):** for the
+specific uncensored / steerable slugs we picked, most have a single
+upstream provider on OpenRouter today, not multiple. They are still
+better than the HF Inference path because the upstream providers
+(Nebius, DeepInfra, Venice, NextBit) are bigger, better-run inference
+shops with 100% recent uptime, but you should expect "rare gateway-side
+provider hiccup" rather than "10-provider redundancy." Per-slug counts
+(verified live):
+
+| OpenRouter slug | Upstream providers on OpenRouter |
+|---|---|
+| `nousresearch/hermes-4-70b` | Nebius (1) |
+| `nousresearch/hermes-4-405b` | Nebius (1) |
+| `nousresearch/hermes-3-llama-3.1-70b` | DeepInfra (1) |
+| `nousresearch/hermes-3-llama-3.1-405b` | DeepInfra (1) |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) |
+| `sao10k/l3.3-euryale-70b` | NextBit + DeepInfra (2) |
+
+If a single OpenRouter upstream goes down for one of these slugs, the
+canonical state machine flags the run as `failed_retryable`; the user
+can hit Resume up to `retry_budget` (default 3) times before it goes
+`aborted`. We *do not* fall back to a refusal-aligned model under the
+hood — the policy forbids that.
+
+OpenRouter primaries (uncensored / steerable / non-refusal-aligned):
 
 | OpenRouter slug | Role(s) | Why |
 |---|---|---|
@@ -175,6 +202,35 @@ If the user enables per-role fallback in the V2 UI and selects one of
 these, the trace event will record `usedFallback=true` and the run row
 will show the actual model used so the user knows the report may have
 been generated through a refusal-aligned model.
+
+## Provider landscape (verified 2026-04-28)
+
+Outside of OpenRouter and HF Inference Providers, here are direct
+inference providers that host uncensored / steerable / non-refusal-aligned
+open weights. Listed here so future maintainers and operators have a
+single place to look when a provider has an outage.
+
+| Provider | Strength for V2 | URL |
+|---|---|---|
+| **OpenRouter** | The aggregator we use. Single API key, automatic failover when a model has multiple upstreams, structured `/endpoints` API for probing. | https://openrouter.ai |
+| **Featherless AI** | Largest catalog of `huihui-ai/*-abliterated`, every Hermes HF variant, every Dolphin HF variant, plus many slugs that no one else hosts. Current home of the abliterated line. | https://featherless.ai |
+| **DeepInfra** | Direct provider for Hermes 3, R1 distills, Llama-3.3, Qwen 2.5, many open-weights. OpenAI-compatible API. Already routes Hermes 3 on OpenRouter. | https://deepinfra.com |
+| **Together AI** | Older NousResearch / Dolphin generation (Hermes 2 family, Dolphin 2.5 Mixtral). The newer abliterated and Hermes 4 line is **not** on Together as of today. | https://together.ai |
+| **Nebius AI Studio** | Direct provider for Hermes 4 (which OpenRouter currently routes through Nebius). | https://studio.nebius.ai |
+| **Venice AI** | Direct provider for the Dolphin Mistral 24B Venice Edition. Whole product is positioned as uncensored-by-default. | https://venice.ai |
+| **Hyperbolic** | Direct provider for Llama 3.3, DeepSeek, some Hermes. | https://hyperbolic.xyz |
+| **NextBit** | Hosts the Sao10K Euryale line directly. | https://nextbit.io |
+| **Self-hosted (Ollama / vLLM / TGI)** | Every abliterated weight is on HuggingFace; runs on 12–48 GB VRAM cards. Eliminates the provider question entirely. | https://ollama.ai |
+
+The codebase currently uses OpenRouter for V2 defaults. If we want
+provider-level redundancy beyond what OpenRouter's gateway provides, the
+clean addition is to wire **Featherless AI** as a feature-flagged
+secondary provider (it carries the full abliterated catalog including
+every `huihui-ai/*-abliterated` slug we already user-opt-in allowlist).
+The existing `together` config slot in `backend/src/config/index.ts`
+(`TOGETHER_API_KEY`, `TOGETHER_BASE_URL`) was added during the 2026-04-26
+fallback work and can be generalized into a "secondary uncensored
+provider" slot if we add Featherless. Out of scope for this PR.
 
 ## Maintaining this list
 

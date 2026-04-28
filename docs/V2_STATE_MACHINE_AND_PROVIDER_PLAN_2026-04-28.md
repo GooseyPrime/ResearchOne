@@ -261,39 +261,59 @@ backend uses it to (a) emit the right socket event, (b) build the right
 frontend uses it to render the banner, the trace badge, the run-row, and
 the failure card. *Same input, same output — no contradictions possible.*
 
-### 2.2 Provider strategy: use OpenRouter for V2 where it is multi-provider
+### 2.2 Provider strategy: use OpenRouter for V2 default routing
 
 The PR #39 binding criteria stand: V2 primaries must be uncensored /
-abliterated / steerable, never refusal-aligned. What changes is the
-*routing*. OpenRouter's catalog includes the following uncensored /
-non-refusal-aligned slugs that are multi-provider redundant:
+steerable, never refusal-aligned. What changes here is the *routing*.
+OpenRouter's catalog includes the following uncensored /
+non-refusal-aligned slugs:
 
-- `nousresearch/hermes-4-70b` (multi-provider)
-- `nousresearch/hermes-4-405b` (multi-provider)
-- `nousresearch/hermes-3-llama-3.1-70b` (multi-provider)
-- `nousresearch/hermes-3-llama-3.1-405b` (multi-provider)
+- `nousresearch/hermes-4-70b`, `nousresearch/hermes-4-405b`
+- `nousresearch/hermes-3-llama-3.1-70b`, `nousresearch/hermes-3-llama-3.1-405b`
 - `cognitivecomputations/dolphin-mistral-24b-venice-edition:free`
-- `sao10k/l3.3-euryale-70b` (multi-provider)
-- `sao10k/l3.1-euryale-70b` (multi-provider)
-- `sao10k/l3-euryale-70b` (multi-provider)
+- `sao10k/l3.3-euryale-70b`, `sao10k/l3.1-euryale-70b`, `sao10k/l3-euryale-70b`
 - `microsoft/wizardlm-2-8x22b`
+- `anthracite-org/magnum-v4-72b`
+- `alpindale/goliath-120b`
 
-These are all open-weights uncensored / steerable models with *no live
-refusal head*. The Hermes line is steerable + neutral; the Dolphin line is
-uncensored fine-tunes; the Euryale L3 line is uncensored RP/long-form. None
-of them is the policy-forbidden Meta/Qwen/DeepSeek RLHF instruct base.
+All of these are open-weights uncensored / steerable models with **no
+live refusal head**. The Hermes line is steerable + neutrally aligned;
+the Dolphin line is uncensored fine-tunes; the Euryale L3 line is
+uncensored long-form. None is the policy-forbidden RLHF instruct base.
 
-Routing them through OpenRouter (instead of HF Inference Providers) gives
-us:
+Routing them through OpenRouter (instead of HF Inference Providers)
+gives us:
 
-- multi-provider failover at the OpenRouter layer (we don't have to build
-  it),
 - a single API key path (`OPENROUTER_API_KEY`) the operator already has,
-- no dependency on a single HF provider (`featherless-ai`) hiccuping.
+- gateway-side failover when a model has multiple upstreams,
+- a stable schema-checked endpoint (`/endpoints` per model) we can probe
+  to see which upstreams are live before a deploy.
 
-We keep the `huihui-ai/*-abliterated` and HF-only Hermes-3 variants on the
-allowlist for **user opt-in via the V2 model UI** for runs where the user
-explicitly wants HF-only routing. They are not the default.
+**Honest caveat about "multi-provider":** an earlier draft of this plan
+called these slugs "multi-provider redundant." Verified live on
+2026-04-28, the actual upstream coverage on OpenRouter is:
+`hermes-4-70b/405b` → Nebius only; `hermes-3-70b/405b` → DeepInfra only;
+`dolphin-mistral-24b-venice-edition:free` → Venice only; `l3.3-euryale-70b`
+→ NextBit + DeepInfra. So most V2 defaults are still single-upstream on
+OpenRouter — they are *more reliable* than the original HF
+Inference / featherless-ai-only path because Nebius / DeepInfra / Venice
+are bigger, better-run inference providers (100% 90-day uptime), but
+they are *not* the strict 10-provider redundancy that, e.g.,
+`meta-llama/Llama-3.3-70B-Instruct` has on OpenRouter. The state
+machine flags an upstream hiccup as `failed_retryable` so the user can
+hit Resume up to `retry_budget` (default 3) times. We never fall back
+to a refusal-aligned primary as a "more reliable" substitute — that
+would be the policy violation V2 exists to prevent.
+
+`docs/V2_MODEL_SELECTION_CRITERIA.md` includes a Provider landscape
+table that lists every uncensored direct provider an operator can
+subscribe to (Featherless, DeepInfra, Together, Nebius, Venice,
+Hyperbolic, NextBit, plus self-hosted Ollama / vLLM) so this is a
+known-and-bounded space.
+
+We keep the `huihui-ai/*-abliterated` and HF-only Hermes-3 variants on
+the allowlist for **user opt-in via the V2 model UI** for runs where
+the user explicitly wants HF-only routing. They are not the default.
 
 ### 2.3 Concrete V2 ensemble (this PR)
 
