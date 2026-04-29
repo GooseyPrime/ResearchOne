@@ -399,8 +399,9 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
  *     prompt-training-permitting providers, which broadens the upstream
  *     set most accounts have access to. Operators who need stricter
  *     policy can set OPENROUTER_DATA_COLLECTION=deny via env.
- *   - `require_parameters: true` → only route to upstreams that actually
- *     support our request parameters (temperature, max_tokens, tools).
+ *   - `sort: 'throughput'`      → prefer the fastest available upstream.
+ *   - `require_parameters` is intentionally **omitted** — see the inline
+ *     comment inside the function for the full rationale.
  *
  * Reference: https://openrouter.ai/docs/features/provider-routing
  */

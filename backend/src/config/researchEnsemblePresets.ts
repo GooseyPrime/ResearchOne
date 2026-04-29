@@ -198,10 +198,10 @@ const V2M = {
   /**
    * DeepSeek V3.2 (open-weights, 685B). 11 OpenRouter upstreams (Baidu,
    * SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail,
-   * Friendli, Google, Alibaba), 100% uptime. DeepSeek's published RLHF
-   * is reasoning-focused, *not* refusal-focused; under our reasoning-
-   * first preamble it follows the operator role rather than refusing.
-   * Default planner / synthesizer / utility role — the workhorse.
+   * Friendli, Google, Alibaba), 100% uptime. Low-refusal under our
+   * reasoning-first preamble. Used as planner fallback (when Kimi K2
+   * is primary) and synthesis-role fallback (when Qwen Thinking is
+   * primary). Utility roles use it as primary — the workhorse there.
    */
   DEEPSEEK_V32: 'deepseek/deepseek-v3.2',
   /**
@@ -210,35 +210,41 @@ const V2M = {
    * only** (retriever, verifier, citation_integrity_checker, revision_intake,
    * report_locator, final_revision_verifier). These roles perform structured
    * analytical tasks on evidence provided to them, so the risk of knowledge-
-   * recall drift is acceptably low. Synthesis roles (synthesizer, outline_
-   * architect, section_drafter, coherence_refiner, plain_language_synthesizer,
-   * section_rewriter) use QWEN_THINKING as fallback instead, because synthesis
-   * needs the same thinking-architecture reasoning-first guarantee as the primary.
+   * recall drift is acceptably low. Synthesis/reasoning roles use
+   * QWEN_THINKING or DEEPSEEK_R1 as fallback to maintain thinking-architecture
+   * reasoning-first guarantees on the fallback path.
    */
   DEEPSEEK_V31: 'deepseek/deepseek-chat-v3.1',
   /**
    * DeepSeek R1-0528 (open-weights, reasoner-class with explicit CoT).
    * 5 OpenRouter upstreams (DeepInfra, SiliconFlow, AtlasCloud, Novita,
-   * Together), 100% uptime. Default reasoner / change_planner.
+   * Together), 100% uptime. "Heavy lifter" fallback — used as (a) the
+   * reasoner / change_planner fallback (when Qwen3 Thinking is primary),
+   * and (b) the NOVEL planner fallback (when Kimi K2 is primary).
+   * Gold standard for raw scientific / technical reasoning.
    */
   DEEPSEEK_R1: 'deepseek/deepseek-r1-0528',
   /**
    * Qwen3-235B-A22B-Thinking-2507 (open-weights, MoE reasoner). 4
    * OpenRouter upstreams (Alibaba, DeepInfra, AtlasCloud, Novita), 100%
-   * uptime. Used as (a) the reasoner fallback and (b) the synthesis-role
-   * fallback (synthesizer, outline_architect, section_drafter,
-   * coherence_refiner, plain_language_synthesizer, section_rewriter).
-   * Qwen Thinking line is reasoning-focused and noticeably less refusal-
-   * aligned than the `Qwen/*-Instruct` chat line. Thinking architecture
-   * enforces reasoning-first behavior structurally rather than by prompt
-   * alone, meeting the same standard as the primary models.
+   * uptime. **Primary research & reasoning engine** — 256k context window
+   * (critical for large corpus ingestion), thinking-trace architecture
+   * structurally enforces reasoning-first behavior. Used as primary for
+   * all synthesis roles (outline_architect, section_drafter, synthesizer,
+   * coherence_refiner, plain_language_synthesizer, section_rewriter) and
+   * for reasoner / change_planner across all objectives. Less refusal-
+   * aligned than the `Qwen/*-Instruct` chat line; passes the inference-
+   * time behavioral test under `REASONING_FIRST_PREAMBLE`.
    */
   QWEN_THINKING: 'qwen/qwen3-235b-a22b-thinking-2507',
   /**
    * Kimi K2 Thinking (Moonshot AI, open-weights reasoner). 3 OpenRouter
-   * upstreams (Novita, Google, AtlasCloud), 100% uptime. Used as the
-   * planner / change_planner fallback because Kimi K2's reasoning style
-   * complements R1's.
+   * upstreams (Novita, Google, AtlasCloud), 100% uptime. **Primary agentic
+   * orchestrator** — engineered for long-horizon tool orchestration
+   * (200-300 sequential calls) without mid-loop drift into refusal.
+   * Primary planner for GENERAL, INVESTIGATIVE, NOVEL, and ANOMALY
+   * objectives. Fallback: DEEPSEEK_V32 (GENERAL/INVESTIGATIVE/ANOMALY)
+   * or DEEPSEEK_R1 (NOVEL).
    */
   KIMI_K2_THINKING: 'moonshotai/kimi-k2-thinking',
   /**
@@ -290,85 +296,98 @@ function v2Mode(
 /**
  * Research One 2 — strict architecture-aligned presets.
  *
- * Critical-path roles (planner / reasoner / synthesizer / utility /
- * verifier) use multi-provider DeepSeek / Qwen-Thinking / Kimi-Thinking
- * primaries so a single account-policy mismatch can never block a run.
- * Adversarial roles (skeptic / internal_challenger) stay on uncensored
- * fine-tunes (Dolphin Venice / Sao10K Euryale) per the binding
- * `docs/V2_MODEL_SELECTION_CRITERIA.md` rules.
+ * Model ladder (per `docs/V2_MODEL_SELECTION_CRITERIA.md`):
+ *   - **Planner**: Kimi K2 Thinking (agentic orchestrator, long-horizon
+ *     tool use) → fallback DeepSeek V3.2 (GENERAL / INVESTIGATIVE /
+ *     ANOMALY) or DeepSeek R1 (NOVEL). PATENT_GAP uses R1 → Qwen3 for
+ *     precise step-by-step patent-claim reasoning.
+ *   - **Reasoner / change_planner**: Qwen3-235B-Thinking (256k context,
+ *     thinking architecture) → fallback DeepSeek R1-0528 (heavy lifter).
+ *   - **Synthesis roles**: Qwen3-235B-Thinking (primary; 256k for corpus
+ *     ingestion) → fallback DeepSeek V3.2 (all objectives). PATENT_GAP
+ *     synthesizer uses Qwen3 → R1 for citation-dense reasoning.
+ *   - **Adversarial** (skeptic / internal_challenger): uncensored fine-tunes
+ *     (Dolphin Venice / Euryale 70B) — never a Thinking model here; these
+ *     roles need a model whose baseline is already uncensored.
+ *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1).
  *
- * Fallbacks only fire when the user explicitly opts in per role from
- * the V2 UI.
+ * Preset fallbacks fire unconditionally on primary failure.
+ * `allowFallbackForRole` only controls whether a user runtime-override
+ * fallback (set in the V2 UI) can replace the preset fallback.
  */
 export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRole, RoleModelPair>> = {
   GENERAL_EPISTEMIC_RESEARCH: v2Mode({
-    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
+    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
-    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
+    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
+    // Patent analysis: R1 primary on planner for precise claim-by-claim
+    // step-by-step reasoning; Qwen3 primary on reasoner/synthesizer for
+    // large patent corpus ingestion (256k context).
     planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    synthesizer: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_R1),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
-    // Anomaly objective leans into Euryale on the skeptic side and uses
-    // R1 + Qwen Thinking for the reasoner ladder.
-    planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
-    reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    // Anomaly objective uses Euryale as primary adversarial role (its
+    // training explicitly targets anomaly-finding) and Kimi K2 as planner
+    // for long-horizon agentic loop stability during deep correlation runs.
+    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
+    reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
+    section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     skeptic: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
     internal_challenger: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
   }),
@@ -431,23 +450,26 @@ export function resolveReasoningModels(args: {
   researchObjective?: ResearchObjective | null;
   role: ReasoningModelRole;
   callPurpose?: ModelCallPurpose;
-  /** When true, V2 preset may include fallback for this role (per-role opt-in from overrides). */
+  /**
+   * @deprecated Has no effect on the preset fallback — preset fallbacks
+   * always fire unconditionally on primary failure. This flag is kept for
+   * API compatibility and is forwarded to `mergePresetWithRuntimeOverride`
+   * where it gates whether a *user-supplied runtime override* fallback
+   * (set from the V2 UI) can replace the preset fallback.
+   */
   allowFallbackForRole?: boolean | null;
 }): { primary: string; fallback?: string } | null {
   if (!args.engineVersion || args.engineVersion.trim() !== 'v2') return null;
 
   const obj = args.researchObjective ?? 'GENERAL_EPISTEMIC_RESEARCH';
   const { role } = args;
-  const allowFallbackForRole = args.allowFallbackForRole === true;
+  // Preset fallbacks always fire. The flag is only meaningful in
+  // mergePresetWithRuntimeOverride where it gates user runtime-override
+  // fallback replacement. Prefixed `_` to satisfy no-unused-vars.
+  const _allowFallbackForRole = args.allowFallbackForRole === true; // eslint-disable-line @typescript-eslint/no-unused-vars
 
   const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
   const presetForRole = presetForObjective[role];
 
-  // Preset-level fallback always fires at the model-call level.
-  // `allowFallbackForRole` only controls whether the user's runtime override
-  // fallback (set in the V2 UI) can replace the preset fallback.
-  // This ensures any primary outage automatically retries the preset fallback
-  // without requiring per-role user opt-in — the gap that caused ongoing
-  // V2 failures even after PR #41 fixed multi-provider routing.
   return { ...presetForRole };
 }

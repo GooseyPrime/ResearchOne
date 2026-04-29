@@ -50,12 +50,25 @@ export interface PreflightModelStatus {
 
 export interface PreflightSummary {
   ok: boolean;
-  /** True iff at least one role primary failed pre-flight, regardless of `ok`. */
+  /** True iff at least one probed slug failed pre-flight, regardless of `ok`. */
   hasWarnings: boolean;
   /** Per-slug results (deduplicated across roles / objectives). */
   models: Record<string, PreflightModelStatus>;
-  /** Roles whose default primary failed (per objective). */
-  rolesAffected: Array<{ objective: string; role: string; slug: string; reason: string }>;
+  /**
+   * Roles whose default primary or preset fallback failed (per objective).
+   * Both tiers are now probed because preset fallbacks always fire
+   * automatically on primary failure — an unreachable fallback is a
+   * reliability gap that should surface at deploy time, not at the
+   * second user click. See PR #42 (Copilot review finding).
+   */
+  rolesAffected: Array<{
+    objective: string;
+    role: string;
+    slug: string;
+    reason: string;
+    /** Whether the failing slug was the role's primary or preset fallback. */
+    tier?: 'primary' | 'fallback';
+  }>;
   /** Wall-clock duration in ms. */
   durationMs: number;
   /** Whether the probe was skipped wholesale (no API key, or disabled by env). */
@@ -63,9 +76,9 @@ export interface PreflightSummary {
 }
 
 /**
- * Probe every distinct V2 default OpenRouter primary slug in
- * `V2_MODE_PRESETS` by issuing a 1-token `/chat/completions` request
- * that mirrors `callOpenRouter` exactly:
+ * Probe every distinct V2 default OpenRouter slug (both primaries and
+ * preset fallbacks) in `V2_MODE_PRESETS` by issuing a 1-token
+ * `/chat/completions` request that mirrors `callOpenRouter` exactly:
  *
  *   - same `Authorization` / `HTTP-Referer` / `X-Title` headers
  *   - same `provider` block (`allow_fallbacks`, `data_collection`, `sort`;
@@ -80,9 +93,12 @@ export interface PreflightSummary {
  * could report a model as reachable even when runtime calls would 404.
  * That is the PR #41 review finding (Codex P1 — 2026-04-28-PM).
  *
- * Cost: each call consumes ~1 completion token per slug per startup.
- * With the current V2 ensembles that is ~5 distinct slugs ≈ $0.0005
- * per redeploy (DeepSeek / Kimi / Qwen Thinking pricing). Operators
+ * Both primaries and preset fallbacks are probed: since preset fallbacks
+ * now fire automatically on any primary failure, an unreachable fallback
+ * is a reliability gap that should surface at deploy time.
+ *
+ * Cost: each call consumes ~1 completion token per distinct slug per
+ * startup. Slugs deduplicated across roles/objectives/tiers. Operators
  * who need to suppress this can set `OPENROUTER_PREFLIGHT=false`.
  *
  * This **does not** fail startup. The orchestrator will still attempt
@@ -126,18 +142,26 @@ export async function preflightV2OpenRouterModels(args?: {
     return summary;
   }
 
-  // Collect distinct OpenRouter slugs referenced as primaries by the V2
-  // default presets, mapped back to the roles / objectives that use them.
-  const slugToRoles = new Map<string, Array<{ objective: string; role: string }>>();
+  // Collect distinct OpenRouter slugs referenced as primaries OR preset
+  // fallbacks by the V2 default presets, mapped back to the roles /
+  // objectives that use them and which tier they occupy.
+  const slugToRoles = new Map<
+    string,
+    Array<{ objective: string; role: string; tier: 'primary' | 'fallback' }>
+  >();
   for (const objective of RESEARCH_OBJECTIVES) {
     const preset = V2_MODE_PRESETS[objective];
     for (const role of REASONING_MODEL_ROLES) {
-      const slug = preset[role]?.primary;
-      if (!slug) continue;
-      if (isHfRepoModel(slug)) continue; // HF repo ids do not go through OR
-      const list = slugToRoles.get(slug) ?? [];
-      list.push({ objective, role });
-      slugToRoles.set(slug, list);
+      const entry = preset[role];
+      if (!entry) continue;
+      for (const tier of ['primary', 'fallback'] as const) {
+        const slug = tier === 'primary' ? entry.primary : entry.fallback;
+        if (!slug) continue;
+        if (isHfRepoModel(slug)) continue; // HF repo ids do not go through OR
+        const list = slugToRoles.get(slug) ?? [];
+        list.push({ objective, role, tier });
+        slugToRoles.set(slug, list);
+      }
     }
   }
 
@@ -185,6 +209,7 @@ export async function preflightV2OpenRouterModels(args?: {
             summary.rolesAffected.push({
               objective: r.objective,
               role: r.role,
+              tier: r.tier,
               slug,
               reason: `HTTP ${status} on /chat/completions probe`,
             });
@@ -222,6 +247,7 @@ export async function preflightV2OpenRouterModels(args?: {
           summary.rolesAffected.push({
             objective: r.objective,
             role: r.role,
+            tier: r.tier,
             slug,
             reason,
           });
@@ -270,7 +296,7 @@ export async function runV2OpenRouterPreflightAndLog(): Promise<PreflightSummary
   if (summary.skipped) return summary;
   if (summary.hasWarnings) {
     logger.warn(
-      `[v2-preflight] ${summary.rolesAffected.length} role(s) have unreachable default primaries on OpenRouter`,
+      `[v2-preflight] ${summary.rolesAffected.length} role(s) have unreachable default primary or fallback slugs on OpenRouter`,
       {
         durationMs: summary.durationMs,
         rolesAffected: summary.rolesAffected,
@@ -280,7 +306,7 @@ export async function runV2OpenRouterPreflightAndLog(): Promise<PreflightSummary
   } else {
     const okCount = Object.keys(summary.models).length;
     logger.info(
-      `[v2-preflight] All ${okCount} V2 default OpenRouter primaries reachable in ${summary.durationMs}ms`
+      `[v2-preflight] All ${okCount} V2 default OpenRouter slugs (primaries + fallbacks) reachable in ${summary.durationMs}ms`
     );
   }
   return summary;
