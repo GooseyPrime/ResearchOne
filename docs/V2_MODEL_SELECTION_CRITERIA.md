@@ -226,7 +226,7 @@ testimony + Thinking architecture. PRs #39 and #40 banned them
 categorically as "RLHF-aligned" — that was the operational
 misinterpretation this document now corrects.
 
-## Currently-approved V2 PRIMARIES (this PR)
+## Currently-approved V2 PRIMARIES (updated PR #42)
 
 The 2026-04-28-AM V2 outage (#1) showed every Hermes/Dolphin/Euryale
 slug we picked on PR #39 was single-provider on HF Inference. PR #40
@@ -238,26 +238,44 @@ providers are available for the selected model" on
 `nousresearch/hermes-4-70b` — Nebius is the only upstream for that
 slug, and the test account's provider filter excluded Nebius.
 
-PR #41 (this one) replaces the critical-path defaults with low-refusal
+PR #41 replaced the critical-path defaults with low-refusal
 multi-provider open-weights reasoners that have ≥ 2 live OpenRouter
-upstreams each, verified live 2026-04-28-PM:
+upstreams each, verified live 2026-04-28-PM. PR #42 promoted the model
+ordering to reflect empirical capability rankings from the April 2026
+policy review:
+
+**Model ladder rationale (PR #42):**
+- **Qwen3-235B-Thinking** is promoted to primary for all reasoning
+  and synthesis roles. Its 256k context window is critical for large
+  corpus ingestion; its thinking-trace architecture enforces reasoning-
+  first behavior structurally, not merely via prompt.
+- **Kimi K2 Thinking** is promoted to primary planner on all general
+  objectives (GENERAL / INVESTIGATIVE / NOVEL / ANOMALY). Engineered
+  for 200-300 sequential tool calls without mid-loop drift into refusal.
+- **DeepSeek R1-0528** becomes the heavy-lifter fallback for reasoning
+  roles and the planner primary for PATENT_GAP (where precise step-by-
+  step claim analysis outweighs context-window size).
+- **DeepSeek V3.2** becomes the synthesis-role fallback and planner
+  fallback; primary for utility roles (structurally bounded outputs).
 
 | OpenRouter slug | Upstream providers (verified) | Role(s) |
 |---|---|---|
-| `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | planner, synthesizer, retriever / verifier / utility (default across all objectives) |
-| `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | utility / synthesis fallback |
-| `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | reasoner, change_planner (default across all objectives), patent-gap planner |
-| `qwen/qwen3-235b-a22b-thinking-2507` | Alibaba, DeepInfra, AtlasCloud, Novita (4) | reasoner / change_planner fallback |
-| `moonshotai/kimi-k2-thinking` | Novita, Google, AtlasCloud (3) | planner fallback (general / investigative / anomaly), planner primary (novel application discovery) |
-| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) | skeptic, internal_challenger (default across most objectives). Single-provider is acceptable here per criterion 6 — adversarial role failures are recoverable. |
-| `sao10k/l3.3-euryale-70b` | NextBit, DeepInfra (2) | adversarial fallback; primary on the anomaly objective. |
+| `qwen/qwen3-235b-a22b-thinking-2507` | Alibaba, DeepInfra, AtlasCloud, Novita (4) | **Primary**: reasoner, change_planner (all objectives); all synthesis roles (outline_architect, section_drafter, synthesizer, coherence_refiner, plain_language_synthesizer, section_rewriter). **Fallback** for R1 when R1 is primary (PATENT_GAP planner). |
+| `moonshotai/kimi-k2-thinking` | Novita, Google, AtlasCloud (3) | **Primary planner**: GENERAL, INVESTIGATIVE, NOVEL, ANOMALY objectives. |
+| `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | **Primary planner + synthesizer**: PATENT_GAP. **Fallback** for Qwen3 on reasoner / change_planner / synthesis roles. NOVEL planner fallback. |
+| `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | **Primary**: all utility roles (retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier). **Fallback**: planner (GENERAL/INVESTIGATIVE/ANOMALY) and synthesis roles. |
+| `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | **Fallback** for utility roles only. |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) | **Primary** skeptic / internal_challenger (GENERAL, INVESTIGATIVE, NOVEL, PATENT_GAP). Single-provider is acceptable — adversarial role failures are recoverable mid-pipeline. |
+| `sao10k/l3.3-euryale-70b` | NextBit, DeepInfra (2) | **Primary** skeptic / internal_challenger (ANOMALY). **Fallback** for adversarial roles elsewhere. |
 
 A pre-flight probe runs at backend startup
 (`backend/src/services/openrouter/openrouterPreflight.ts`) and logs a
-warning per (objective, role, slug) if any default primary has zero
-live OpenRouter endpoints for the configured `OPENROUTER_API_KEY`. The
-probe never blocks startup — it just makes sure outages show up in
-deploy logs, not on the user's first click.
+warning per (objective, role, slug, tier) if any default primary **or
+preset fallback** has zero live OpenRouter endpoints for the configured
+`OPENROUTER_API_KEY`. Both tiers are now probed because preset fallbacks
+fire automatically on primary failure — an unreachable fallback is a
+deploy-time signal, not a user-click-time surprise. The probe never
+blocks startup.
 
 ## Currently-approved V2 USER-OPT-IN HF Inference allowlist
 

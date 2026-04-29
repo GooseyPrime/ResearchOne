@@ -399,16 +399,24 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
  *     prompt-training-permitting providers, which broadens the upstream
  *     set most accounts have access to. Operators who need stricter
  *     policy can set OPENROUTER_DATA_COLLECTION=deny via env.
- *   - `require_parameters: true` → only route to upstreams that actually
- *     support our request parameters (temperature, max_tokens, tools).
+ *   - `sort: 'throughput'`      → prefer the fastest available upstream.
+ *   - `require_parameters` is intentionally **omitted** — see the inline
+ *     comment inside the function for the full rationale.
  *
  * Reference: https://openrouter.ai/docs/features/provider-routing
  */
 function buildOpenRouterProviderBlock(): Record<string, unknown> {
   const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
+  // `require_parameters` is intentionally omitted. Setting it to `true`
+  // excludes any upstream that reports a parameter restriction (e.g. the
+  // `temperature` field on thinking-class models: DeepSeek R1, Qwen3-235B
+  // Thinking, Kimi K2 Thinking). With `allow_fallbacks: true`, OpenRouter
+  // already tries the next provider if one rejects a request. Requiring
+  // full parameter support at the routing stage shrinks the candidate pool
+  // and can drop it to zero for thinking models — reproducing the
+  // "No allowed providers are available" 404 that PR #41 was meant to fix.
   return {
     allow_fallbacks: true,
-    require_parameters: true,
     data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
     sort: 'throughput',
   };

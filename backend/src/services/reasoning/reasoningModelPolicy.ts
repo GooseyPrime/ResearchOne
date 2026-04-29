@@ -160,29 +160,34 @@ export function isHfRepoModel(model: string): boolean {
  *     sanitize, debunk-by-recall, or smooth over contradictions on
  *     research-style queries about anomalous / suppressed claims.
  *
- *     RLHF / abliteration / "uncensored fine-tune" are *engineering
- *     proxies* for that behavior, not the rule itself. As of 2026
- *     three categories of model satisfy the behavioral test:
+ *     **The rule is behavioral, not a training-history label.**
+ *     RLHF / abliteration / "uncensored fine-tune" are engineering
+ *     proxies for the behavior, not the rule itself. As of 2026 three
+ *     categories satisfy the behavioral test:
  *
- *       (a) Open-weights "Thinking" / CoT-trace reasoners with light
- *           or research-friendly RLHF (DeepSeek V3.x / R1-0528,
- *           Qwen3-235B Thinking, Kimi K2 Thinking) — admitted on
- *           critical-path roles; multi-provider on OpenRouter.
+ *       (a) Open-weights "Thinking" / CoT-trace reasoners with light or
+ *           research-friendly RLHF — the primary V2 critical-path tier.
+ *           `Qwen3-235B-A22B-Thinking-2507` (256k context, primary
+ *           reasoning + synthesis engine), `moonshotai/kimi-k2-thinking`
+ *           (long-horizon agentic planner), `deepseek/deepseek-r1-0528`
+ *           (heavy-lifter fallback). Their CoT traces allow the operator
+ *           system prompt to logically override any light RLHF refusal
+ *           direction. Multi-provider on OpenRouter (≥ 3 upstreams each).
  *       (b) Abliterated weights (refusal vector orthogonalized out;
  *           `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`) —
  *           admitted; mathematically refusal-incapable; typically
- *           single-provider so used as user-opt-in / emergency
- *           sanity fallback.
- *       (c) Uncensored fine-tunes (`Dolphin*`, `Hermes-3` /
- *           `Hermes-4`, `Sao10K/Euryale*`) — admitted; required for
- *           adversarial roles (skeptic / internal_challenger).
+ *           single-provider so used as user-opt-in / emergency fallback.
+ *       (c) Uncensored fine-tunes (`Dolphin*`, `Hermes-3` / `Hermes-4`,
+ *           `Sao10K/Euryale*`) — required for adversarial roles (skeptic /
+ *           internal_challenger) where the baseline must be uncensored
+ *           *without* needing the preamble's nudge.
  *
- * Adding a new model? Read both `ResearchOne PolicyOne` and
+ * Adding a new model? Read `ResearchOne PolicyOne` (repo root) and
  * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. Closed-API moderation
- * pipelines and refusal-aligned RLHF instruct bases (without
- * abliteration) must NOT be added as V2 default primaries — they fail
- * the behavioral test in practice. They may live here for V1 use
- * and / or for explicit V2 user-opt-in routing.
+ * pipelines and refusal-aligned RLHF instruct bases (without abliteration)
+ * MUST NOT be added as V2 default primaries — they fail the behavioral
+ * test in practice. They may live here for V1 use and / or explicit V2
+ * user-opt-in routing.
  */
 const BASE_ALLOWLIST = [
   // ── V1 / closed-weights routes (OpenRouter) ──────────────────────────────
