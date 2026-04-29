@@ -205,9 +205,15 @@ const V2M = {
    */
   DEEPSEEK_V32: 'deepseek/deepseek-v3.2',
   /**
-   * DeepSeek V3.1 (open-weights). 11 OpenRouter upstreams. Used as the
-   * fallback for V3.2 when V3.2 is rate-limited or unavailable. Same
-   * low-refusal profile.
+   * DeepSeek V3.1 (open-weights, chat variant). 11 OpenRouter upstreams.
+   * Same low-refusal profile as V3.2. Used as fallback for **utility roles
+   * only** (retriever, verifier, citation_integrity_checker, revision_intake,
+   * report_locator, final_revision_verifier). These roles perform structured
+   * analytical tasks on evidence provided to them, so the risk of knowledge-
+   * recall drift is acceptably low. Synthesis roles (synthesizer, outline_
+   * architect, section_drafter, coherence_refiner, plain_language_synthesizer,
+   * section_rewriter) use QWEN_THINKING as fallback instead, because synthesis
+   * needs the same thinking-architecture reasoning-first guarantee as the primary.
    */
   DEEPSEEK_V31: 'deepseek/deepseek-chat-v3.1',
   /**
@@ -219,9 +225,13 @@ const V2M = {
   /**
    * Qwen3-235B-A22B-Thinking-2507 (open-weights, MoE reasoner). 4
    * OpenRouter upstreams (Alibaba, DeepInfra, AtlasCloud, Novita), 100%
-   * uptime. Used as the reasoner fallback. Qwen Thinking line is
-   * reasoning-focused and noticeably less refusal-aligned than the
-   * `Qwen/*-Instruct` chat line.
+   * uptime. Used as (a) the reasoner fallback and (b) the synthesis-role
+   * fallback (synthesizer, outline_architect, section_drafter,
+   * coherence_refiner, plain_language_synthesizer, section_rewriter).
+   * Qwen Thinking line is reasoning-focused and noticeably less refusal-
+   * aligned than the `Qwen/*-Instruct` chat line. Thinking architecture
+   * enforces reasoning-first behavior structurally rather than by prompt
+   * alone, meeting the same standard as the primary models.
    */
   QWEN_THINKING: 'qwen/qwen3-235b-a22b-thinking-2507',
   /**
@@ -295,12 +305,12 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
     reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
@@ -309,12 +319,12 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
     reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
@@ -323,26 +333,26 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    synthesizer: pair(V2M.DEEPSEEK_R1, V2M.DEEPSEEK_V32),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    synthesizer: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
-    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
+    planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_R1),
     reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
     skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
     internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
   }),
@@ -353,12 +363,12 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_V32, V2M.KIMI_K2_THINKING),
     reasoner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     change_planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
-    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
-    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+    outline_architect: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_drafter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    coherence_refiner: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    plain_language_synthesizer: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
+    section_rewriter: pair(V2M.DEEPSEEK_V32, V2M.QWEN_THINKING),
     skeptic: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
     internal_challenger: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
   }),
