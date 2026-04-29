@@ -406,9 +406,16 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
  */
 function buildOpenRouterProviderBlock(): Record<string, unknown> {
   const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
+  // `require_parameters` is intentionally omitted. Setting it to `true`
+  // excludes any upstream that reports a parameter restriction (e.g. the
+  // `temperature` field on thinking-class models: DeepSeek R1, Qwen3-235B
+  // Thinking, Kimi K2 Thinking). With `allow_fallbacks: true`, OpenRouter
+  // already tries the next provider if one rejects a request. Requiring
+  // full parameter support at the routing stage shrinks the candidate pool
+  // and can drop it to zero for thinking models — reproducing the
+  // "No allowed providers are available" 404 that PR #41 was meant to fix.
   return {
     allow_fallbacks: true,
-    require_parameters: true,
     data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
     sort: 'throughput',
   };

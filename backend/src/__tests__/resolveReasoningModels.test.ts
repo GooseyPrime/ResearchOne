@@ -30,16 +30,18 @@ describe('resolveReasoningModels', () => {
     expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner);
   });
 
-  it('omits fallback when allowFallbackForRole is false', () => {
+  it('always includes preset fallback regardless of allowFallbackForRole (preset fallback auto-fires)', () => {
+    // Post-debug fix: preset fallback always fires at the model-call level
+    // so any primary outage automatically retries the preset fallback without
+    // requiring per-role UI opt-in. `allowFallbackForRole` only gates whether
+    // the *user-supplied runtime override* fallback can replace the preset one.
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
       role: 'planner',
       allowFallbackForRole: false,
     });
-    expect(r).toEqual({
-      primary: V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner.primary,
-    });
+    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.planner);
   });
 
   it('maps planner from PATENT_GAP_ANALYSIS preset', () => {

@@ -77,7 +77,8 @@ describe('preflightV2OpenRouterModels', () => {
     expect(body).toHaveProperty('max_tokens');
     const provider = body.provider as Record<string, unknown>;
     expect(provider.allow_fallbacks).toBe(true);
-    expect(provider.require_parameters).toBe(true);
+    // `require_parameters` intentionally absent — see buildOpenRouterProviderBlock.
+    expect(provider).not.toHaveProperty('require_parameters');
     expect(['allow', 'deny']).toContain(provider.data_collection);
     // Headers must match runtime (HTTP-Referer + X-Title).
     const opts = firstCall[2] as { headers?: Record<string, string> };

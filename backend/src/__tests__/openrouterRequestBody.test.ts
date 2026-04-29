@@ -30,7 +30,14 @@ describe('OpenRouter request body — provider block', () => {
     mockedAxios.isAxiosError = ((_e: unknown) => false) as typeof axios.isAxiosError;
   });
 
-  it('always sends provider.allow_fallbacks=true and require_parameters=true on V2 OpenRouter calls', async () => {
+  it('sends provider.allow_fallbacks=true on V2 OpenRouter calls (require_parameters intentionally absent)', async () => {
+    // `require_parameters` was removed because setting it to `true` excludes
+    // providers that report temperature restrictions on thinking-class models
+    // (DeepSeek R1, Qwen3-235B Thinking, Kimi K2 Thinking), which can reduce
+    // the available upstream pool to zero and reproduce the 404 "No allowed
+    // providers are available" outage. With `allow_fallbacks: true`, OpenRouter
+    // already falls over to the next provider if one rejects the request at
+    // runtime — a lighter-weight safety net that doesn't shrink the routing pool.
     await callRoleModel({
       role: 'planner',
       engineVersion: 'v2',
@@ -49,7 +56,7 @@ describe('OpenRouter request body — provider block', () => {
     expect(body).toHaveProperty('provider');
     const provider = body.provider as Record<string, unknown>;
     expect(provider.allow_fallbacks).toBe(true);
-    expect(provider.require_parameters).toBe(true);
+    expect(provider).not.toHaveProperty('require_parameters');
     expect(['allow', 'deny']).toContain(provider.data_collection);
   });
 

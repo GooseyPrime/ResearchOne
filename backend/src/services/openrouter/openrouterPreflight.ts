@@ -15,9 +15,10 @@ import { isHfRepoModel, REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../re
  */
 function buildPreflightProviderBlock(): Record<string, unknown> {
   const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
+  // Mirrors `buildOpenRouterProviderBlock` in openrouterService.ts exactly.
+  // `require_parameters` is omitted — see that function's comment for why.
   return {
     allow_fallbacks: true,
-    require_parameters: true,
     data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
     sort: 'throughput',
   };
@@ -67,8 +68,8 @@ export interface PreflightSummary {
  * that mirrors `callOpenRouter` exactly:
  *
  *   - same `Authorization` / `HTTP-Referer` / `X-Title` headers
- *   - same `provider` block (`allow_fallbacks`, `require_parameters`,
- *     `data_collection`, `sort`)
+ *   - same `provider` block (`allow_fallbacks`, `data_collection`, `sort`;
+ *     `require_parameters` intentionally omitted — see buildOpenRouterProviderBlock)
  *   - same base URL
  *
  * This is the gold-standard reachability gate: a slug that 200s here

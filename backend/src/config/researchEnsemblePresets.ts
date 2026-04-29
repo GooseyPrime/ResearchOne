@@ -397,8 +397,9 @@ export function validateV2ModePresetsAgainstAllowlist(): void {
 }
 
 /**
- * Per-run UI overrides win over preset primary/fallback when non-empty.
- * When `allowFallbackForRole` is false, preset and runtime fallbacks are omitted.
+ * Per-run UI overrides win over preset primary when non-empty.
+ * Preset fallback always fires. `allowFallbackForRole` only controls whether
+ * a user-supplied runtime override fallback (set from the V2 UI) replaces it.
  */
 export function mergePresetWithRuntimeOverride(
   preset: { primary: string; fallback?: string },
@@ -406,11 +407,12 @@ export function mergePresetWithRuntimeOverride(
   allowFallbackForRole: boolean
 ): { primary: string; fallback?: string } {
   const p = runtime?.primary?.trim();
+  // Runtime override fallback only applies when the user has opted in.
+  // The preset fallback is always the base — it fires unconditionally.
   const f = allowFallbackForRole ? runtime?.fallback?.trim() : undefined;
-  const presetFb = allowFallbackForRole ? preset.fallback : undefined;
   return {
     primary: p || preset.primary,
-    fallback: f !== undefined && f !== '' ? f : presetFb,
+    fallback: f !== undefined && f !== '' ? f : preset.fallback,
   };
 }
 
@@ -430,11 +432,12 @@ export function resolveReasoningModels(args: {
 
   const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
   const presetForRole = presetForObjective[role];
-  const resolvedConfig: { primary: string; fallback?: string } = { ...presetForRole };
 
-  if (!allowFallbackForRole) {
-    delete resolvedConfig.fallback;
-  }
-
-  return resolvedConfig;
+  // Preset-level fallback always fires at the model-call level.
+  // `allowFallbackForRole` only controls whether the user's runtime override
+  // fallback (set in the V2 UI) can replace the preset fallback.
+  // This ensures any primary outage automatically retries the preset fallback
+  // without requiring per-role user opt-in — the gap that caused ongoing
+  // V2 failures even after PR #41 fixed multi-provider routing.
+  return { ...presetForRole };
 }
