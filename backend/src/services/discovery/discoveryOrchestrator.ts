@@ -41,7 +41,6 @@ const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for Researc
 Your role is to decide whether a research query requires external discovery beyond the current corpus.
 
 CRITICAL RULES:
-- Only recommend external discovery when corpus evidence is likely insufficient
 - Be specific about what evidence types would add value
 - Prefer primary sources and structured data over opinion content
 - Flag exclusion patterns for low-quality or off-topic domains
@@ -130,7 +129,7 @@ export async function runDiscoveryOrchestrator(args: {
           content: `Research Query: ${researchQuery}\n\nCurrent Research Plan:\n${JSON.stringify(plan, null, 2)}\n\nDecide whether external discovery is needed. Output JSON only.`,
         },
       ],
-      maxTokens: 1024,
+      maxTokens: 2048,
     });
 
     const jsonMatch = planResult.content.match(/\{[\s\S]*\}/);

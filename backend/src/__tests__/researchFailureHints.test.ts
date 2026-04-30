@@ -63,7 +63,7 @@ describe('buildModelFailureOrchestratorHints — OpenRouter 404 (PR #41)', () =>
   it('emits the no-allowed-providers hint when OpenRouter returns 404 with that message', () => {
     const hints = buildModelFailureOrchestratorHints({
       upstream: 'openrouter',
-      classification: 'bad_request',
+      classification: 'provider_unavailable',
       status: 404,
       providerMessage: 'No allowed providers are available for the selected model',
       role: 'planner',
@@ -82,7 +82,7 @@ describe('buildModelFailureOrchestratorHints — OpenRouter 404 (PR #41)', () =>
   it('emits the generic OpenRouter 404 hint when the message is "Model not found"', () => {
     const hints = buildModelFailureOrchestratorHints({
       upstream: 'openrouter',
-      classification: 'bad_request',
+      classification: 'bad_request', // generic 404 (typo'd slug) stays bad_request
       status: 404,
       providerMessage: 'Model not found',
       role: 'planner',
@@ -99,7 +99,7 @@ describe('buildModelFailureOrchestratorHints — OpenRouter 404 (PR #41)', () =>
   it('mergeOrchestratorHintsIntoFailureMeta is idempotent on the OpenRouter 404 path', () => {
     const meta: Record<string, unknown> = {
       upstream: 'openrouter',
-      classification: 'bad_request',
+      classification: 'provider_unavailable',
       status: 404,
       providerMessage: 'No allowed providers are available for the selected model',
       role: 'planner',
