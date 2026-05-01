@@ -215,6 +215,9 @@ export default function ResearchPageV2() {
   // run:summary Socket.IO event may arrive after those state clears, so the
   // socket handler reads from this ref instead of the (potentially null) state.
   const lastKnownRunIdRef = useRef<string | null>(null);
+  // Tracks whether a run:summary has been received so the REST fallback
+  // (fired 800ms after failure) knows whether to build one from the DB row.
+  const runSummaryReceivedRef = useRef(false);
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummaryData | null>(null);
@@ -257,6 +260,7 @@ export default function ResearchPageV2() {
       setActiveRun(queuedEvt);
       setFailure(null);
       setRunSummary(null);
+      runSummaryReceivedRef.current = false;
       setTraceEvents([queuedEvt]);
       subscribeToJob(data.runId);
       addNotification('info', 'Research One 2 started — tracking detailed progress...');
@@ -266,6 +270,48 @@ export default function ResearchPageV2() {
       addNotification('error', extractStartResearchErrorMessage(error));
     },
   });
+
+  // Mirror runSummary into a ref so async callbacks can read the current value
+  // without being in the dependency array (avoids closure stale-capture).
+  useEffect(() => {
+    runSummaryReceivedRef.current = runSummary !== null;
+  }, [runSummary]);
+
+  // REST fallback: if a run fails but the run:summary socket event does not
+  // arrive within 800 ms (e.g. tab was backgrounded, socket briefly disconnected),
+  // fetch the run from the API and synthesise a summary from the DB row.
+  useEffect(() => {
+    if (!failure || !trackingRunId) return;
+    const capturedRunId = trackingRunId;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cancelled || runSummaryReceivedRef.current) return;
+      try {
+        const run = await getResearchRun(capturedRunId);
+        if (cancelled || runSummaryReceivedRef.current) return;
+        if (run.id !== lastKnownRunIdRef.current) return;
+        runSummaryReceivedRef.current = true;
+        setRunSummary({
+          runId: run.id,
+          status: run.status,
+          totalDurationMs: 0,
+          phaseDurations: {},
+          totalPromptTokens: 0,
+          totalCompletionTokens: 0,
+          retryCount: run.retry_attempts ?? 0,
+          failedStage: run.failed_stage ?? null,
+          errorMessage: run.error_message ?? null,
+          failureMeta: run.failure_meta ?? null,
+        });
+      } catch {
+        // non-fatal: the run card already shows failure state
+      }
+    }, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [failure, trackingRunId]);
 
   useEffect(() => {
     if (!ensembleData?.presets) return;
@@ -454,8 +500,10 @@ export default function ResearchPageV2() {
     socket.on('run:summary', (summary: RunSummaryData) => {
       // Use the ref rather than the closed-over state: trackingRunId and
       // progress may already be null (cleared on cancellation/completion)
-      // by the time this event arrives (Copilot + Codex review finding).
+      // by the time this event arrives. Set the ref synchronously before
+      // setState so the REST fallback timer sees it immediately.
       if (summary.runId === lastKnownRunIdRef.current) {
+        runSummaryReceivedRef.current = true;
         setRunSummary(summary);
       }
     });

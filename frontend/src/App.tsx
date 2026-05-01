@@ -6,6 +6,8 @@ import ReportsPage from './pages/ReportsPage';
 import ReportDetailPage from './pages/ReportDetailPage';
 import CorpusPage from './pages/CorpusPage';
 import AtlasPage from './pages/AtlasPage';
+import EmbeddingAtlasPage from './pages/EmbeddingAtlasPage';
+import KnowledgeGraphPage from './pages/KnowledgeGraphPage';
 import IngestPage from './pages/IngestPage';
 import GuidePage from './pages/GuidePage';
 import ResearchV2GuidePage from './pages/ResearchV2GuidePage';
@@ -24,6 +26,8 @@ export default function App() {
           <Route path="reports/:id" element={<ReportDetailPage />} />
           <Route path="corpus" element={<CorpusPage />} />
           <Route path="atlas" element={<AtlasPage />} />
+          <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
+          <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="ingest" element={<IngestPage />} />
           <Route path="guide" element={<GuidePage />} />
           <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />

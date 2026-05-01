@@ -70,35 +70,122 @@ router.get('/exports/:id/download', async (req, res, next) => {
   }
 });
 
-// GET /api/atlas/points - Get sample points for visualization
+// GET /api/atlas/points - Get sample points with 2D projected coordinates for in-browser visualization.
+// Uses a seeded random projection matrix (Johnson-Lindenstrauss) to project high-dimensional
+// embedding vectors to 2D. The same seed is always used so coordinates are stable across calls.
 router.get('/points', async (req, res, next) => {
   try {
-    const { limit = '500' } = req.query as { limit?: string };
-    const lim = Math.min(parseInt(limit, 10), 2000);
+    const { limit = '500', tags } = req.query as { limit?: string; tags?: string };
+    const parsedLimit = parseInt(limit, 10);
+    const lim = Math.min(Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 500, 2000);
 
-    const rows = await query(
+    const filterTags = tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : null;
+
+    const params: unknown[] = [lim];
+    let tagFilter = '';
+    if (filterTags && filterTags.length > 0) {
+      params.push(filterTags);
+      tagFilter = `AND s.tags && $${params.length}::text[]`;
+    }
+
+    const rows = await query<{
+      id: string;
+      content: string;
+      chunk_index: number;
+      source_url: string;
+      source_title: string;
+      tags: string[];
+      evidence_tier: string | null;
+      vector_str: string;
+    }>(
       `SELECT
          c.id,
          c.content,
          c.chunk_index,
          s.url AS source_url,
          s.title AS source_title,
-         s.tags,
+         COALESCE(s.tags, '{}') AS tags,
+         (SELECT cl.evidence_tier FROM claims cl WHERE cl.chunk_id = c.id LIMIT 1) AS evidence_tier,
          e.vector::text AS vector_str
        FROM chunks c
        JOIN embeddings e ON e.chunk_id = c.id
        LEFT JOIN sources s ON s.id = c.source_id
-       WHERE e.vector IS NOT NULL
-       ORDER BY RANDOM()
+       WHERE e.vector IS NOT NULL ${tagFilter}
+       ORDER BY c.id
        LIMIT $1`,
-      [lim]
+      params
     );
 
-    res.json(rows);
+    if (rows.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    // Parse first vector to get dimensionality
+    const firstVec = parseVector(rows[0].vector_str);
+    const dim = firstVec.length;
+
+    // Build a seeded random projection matrix: dim × 2.
+    // Seed is fixed so projected coordinates are stable across requests.
+    const projMatrix = buildRandomProjection(dim, 2, 42);
+
+    const points = rows.map((row) => {
+      const vec = parseVector(row.vector_str);
+      const [x, y] = project(vec, projMatrix);
+      return {
+        id: row.id,
+        text: row.content.slice(0, 200),
+        source_url: row.source_url ?? '',
+        source_title: row.source_title ?? '',
+        tags: row.tags ?? [],
+        evidence_tier: row.evidence_tier,
+        chunk_index: row.chunk_index,
+        x,
+        y,
+      };
+    });
+
+    res.json(points);
   } catch (err) {
     next(err);
   }
 });
+
+function parseVector(str: string): number[] {
+  // pgvector format: '[0.1,0.2,...]'
+  return str.replace(/^\[|\]$/g, '').split(',').map(Number);
+}
+
+function buildRandomProjection(inputDim: number, outputDim: number, seed: number): number[][] {
+  // Simple LCG RNG for reproducibility
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return (s / 0x100000000) * 2 - 1; // uniform [-1, 1]
+  };
+  // Each column is a random unit vector in inputDim space
+  const matrix: number[][] = [];
+  for (let j = 0; j < outputDim; j++) {
+    const col: number[] = [];
+    let norm = 0;
+    for (let i = 0; i < inputDim; i++) {
+      const v = rand();
+      col.push(v);
+      norm += v * v;
+    }
+    norm = Math.sqrt(norm);
+    matrix.push(col.map((v) => v / norm));
+  }
+  return matrix;
+}
+
+function project(vec: number[], matrix: number[][]): number[] {
+  return matrix.map((col) => {
+    let dot = 0;
+    for (let i = 0; i < vec.length; i++) dot += vec[i] * col[i];
+    return dot;
+  });
+}
 
 // POST /api/atlas/exports/:id/nomic-upload - Upload existing atlas export to Nomic dataset
 router.post('/exports/:id/nomic-upload', async (req, res, next) => {

@@ -1,5 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   getReport,
   getReportRevision,
@@ -757,50 +759,76 @@ function MetaStat({
 }
 
 function ReportContent({ content }: { content: string }) {
-  const paragraphs = content.split('\n\n').filter(p => p.trim());
   return (
-    <div className="space-y-3">
-      {paragraphs.map((p, i) => {
-        if (p.startsWith('# ')) {
-          return (
-            <h1 key={i} className="text-xl font-bold text-white">
-              {p.slice(2)}
-            </h1>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => (
+          <h1 className="text-xl font-bold text-white mt-4 mb-2 leading-snug">{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-lg font-semibold text-slate-100 mt-4 mb-2 leading-snug">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="text-base font-semibold text-slate-200 mt-3 mb-1.5">{children}</h3>
+        ),
+        h4: ({ children }) => (
+          <h4 className="text-sm font-semibold text-slate-300 mt-2 mb-1">{children}</h4>
+        ),
+        p: ({ children }) => (
+          <p className="text-slate-300 text-sm leading-relaxed mb-3">{children}</p>
+        ),
+        ul: ({ children }) => (
+          <ul className="space-y-1 mb-3">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="space-y-1 mb-3 ml-5 list-decimal text-slate-300 text-sm">{children}</ol>
+        ),
+        li: ({ children, ...props }) => {
+          const isOrdered = (props as { ordered?: boolean }).ordered;
+          return isOrdered ? (
+            <li className="text-slate-300 text-sm leading-relaxed pl-1">{children}</li>
+          ) : (
+            <li className="flex items-start gap-2 text-slate-300 text-sm">
+              <span className="text-accent mt-0.5 flex-shrink-0 select-none text-xs">▸</span>
+              <span className="flex-1">{children}</span>
+            </li>
           );
-        }
-        if (p.startsWith('## ')) {
-          return (
-            <h2 key={i} className="text-lg font-semibold text-white">
-              {p.slice(3)}
-            </h2>
+        },
+        strong: ({ children }) => (
+          <strong className="font-semibold text-slate-100">{children}</strong>
+        ),
+        em: ({ children }) => (
+          <em className="italic text-slate-300">{children}</em>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-accent/40 pl-3 my-3 text-slate-400 text-sm italic">{children}</blockquote>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes('language-');
+          return isBlock ? (
+            <pre className="bg-surface-200 rounded p-3 my-3 overflow-x-auto text-xs font-mono text-slate-300">
+              <code>{children}</code>
+            </pre>
+          ) : (
+            <code className="bg-surface-200 rounded px-1 py-0.5 text-xs font-mono text-accent">{children}</code>
           );
-        }
-        if (p.startsWith('### ')) {
-          return (
-            <h3 key={i} className="text-base font-semibold text-slate-200">
-              {p.slice(4)}
-            </h3>
-          );
-        }
-        if (p.startsWith('- ') || p.startsWith('* ')) {
-          const items = p.split('\n').filter(l => l.startsWith('- ') || l.startsWith('* '));
-          return (
-            <ul key={i} className="space-y-1 list-none">
-              {items.map((item, j) => (
-                <li key={j} className="flex items-start gap-2 text-slate-300 text-sm">
-                  <span className="text-accent mt-1 flex-shrink-0">▸</span>
-                  {item.slice(2)}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-        return (
-          <p key={i} className="text-slate-300 text-sm leading-relaxed">
-            {p}
-          </p>
-        );
-      })}
-    </div>
+        },
+        hr: () => <hr className="border-surface-100/30 my-4" />,
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-3">
+            <table className="text-xs text-slate-300 border-collapse w-full">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => (
+          <th className="border border-surface-100/30 px-2 py-1 text-left font-semibold text-slate-200 bg-surface-200">{children}</th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-surface-100/20 px-2 py-1">{children}</td>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
