@@ -36,7 +36,24 @@ export async function runEmbeddingJob(
     const texts = chunks.map(c => c.content);
 
     try {
-      const vectors = await generateEmbeddings(texts);
+      // Belt-and-suspenders: if this batch's estimated token payload exceeds
+      // ~50k tokens (rough: chars / 3.5), split into micro-batches so a single
+      // generateEmbeddings call never carries an outsized payload even if
+      // EMBEDDING_BATCH_SIZE was set high via env. Each micro-batch is still
+      // capped by the per-string truncation guard inside generateEmbeddings.
+      const estimatedTokens = texts.reduce((sum, t) => sum + t.length, 0) / 3.5;
+      const SAFE_TOKEN_BUDGET = 50000;
+      let vectors: number[][] = [];
+      if (estimatedTokens > SAFE_TOKEN_BUDGET) {
+        const microSize = Math.max(1, Math.floor(texts.length * (SAFE_TOKEN_BUDGET / estimatedTokens)));
+        logger.warn(`Embedding batch estimated ${Math.round(estimatedTokens)} tokens; splitting into micro-batches of ${microSize}`, { sourceId: data.sourceId, batchLen: texts.length });
+        for (let m = 0; m < texts.length; m += microSize) {
+          const micro = await generateEmbeddings(texts.slice(m, m + microSize));
+          vectors = vectors.concat(micro);
+        }
+      } else {
+        vectors = await generateEmbeddings(texts);
+      }
 
       await withTransaction(async (client) => {
         for (let j = 0; j < chunks.length; j++) {

@@ -175,6 +175,10 @@ export async function preflightV2OpenRouterModels(args?: {
     'Content-Type': 'application/json',
     'HTTP-Referer': 'https://researchone.app',
     'X-Title': 'ResearchOne',
+    // Distinguishes startup smoke-test calls from live research calls in
+    // OpenRouter's generation logs. Prevents operators from mistaking
+    // intentional 1-token probes (finish_reason=length) for real run failures.
+    'X-ResearchOne-Call-Type': 'preflight',
   };
 
   await Promise.all(

@@ -49,6 +49,21 @@ export interface ResearchProgress {
   failureMeta?: Record<string, unknown>;
 }
 
+export interface RunSummaryPayload {
+  runId: string;
+  status: string;
+  totalDurationMs: number;
+  phaseDurations: Record<string, number>;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  retryCount: number;
+  failedStage?: string | null;
+  errorMessage?: string | null;
+  failureMeta?: Record<string, unknown> | null;
+  orchestratorHints?: string[];
+  modelUsage: Array<{ role: string; model: string; promptTokens: number; completionTokens: number; durationMs: number }>;
+}
+
 type ProgressCallback = (update: ResearchProgress) => void;
 
 async function assertNotCancelled(runId: string): Promise<void> {
@@ -236,6 +251,9 @@ export async function runResearchJob(
   let currentStage = 'queued';
   let currentPercent = 0;
   let currentMessage = 'Queued';
+  const runStartedAt = Date.now();
+  const phaseStartTimes: Record<string, number> = {};
+  const phaseDurations: Record<string, number> = {};
 
   const progress = async (
     stage: string,
@@ -244,6 +262,16 @@ export async function runResearchJob(
     extra?: Omit<ResearchProgress, 'stage' | 'percent' | 'message' | 'runId' | 'timestamp'>
   ) => {
     await assertNotCancelled(runId);
+    // Phase timing: when stage changes, finalise the previous phase's duration
+    // and open a new one. Same stage re-invocations extend the phase window.
+    const now = Date.now();
+    if (currentStage && currentStage !== stage) {
+      const phaseStart = phaseStartTimes[currentStage];
+      if (phaseStart != null) {
+        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (now - phaseStart);
+      }
+    }
+    if (!phaseStartTimes[stage]) phaseStartTimes[stage] = now;
     currentStage = stage;
     currentPercent = percent;
     currentMessage = message;
@@ -686,7 +714,19 @@ export async function runResearchJob(
       `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL, resume_job_payload=NULL WHERE id=$1`,
       [runId]
     );
-    return { runId, reportId };
+
+    // Finalise the last active phase duration before building the summary.
+    const finalNow = Date.now();
+    if (currentStage && phaseStartTimes[currentStage] != null) {
+      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (finalNow - phaseStartTimes[currentStage]);
+    }
+    const summary: RunSummaryPayload = buildRunSummary({
+      runId, status: 'completed',
+      startedAt: runStartedAt, finishedAt: finalNow,
+      phaseDurations, modelLog,
+    });
+
+    return { runId, reportId, summary };
   } catch (err) {
     if (err instanceof ResearchCancelledError) {
       await query(
@@ -694,7 +734,19 @@ export async function runResearchJob(
         ['Cancelled by user', runId]
       );
       await clearRunCancelled(runId);
-      throw err;
+      const cancelledNow = Date.now();
+      if (currentStage && phaseStartTimes[currentStage] != null) {
+        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (cancelledNow - phaseStartTimes[currentStage]);
+      }
+      const cancelledSummary: RunSummaryPayload = buildRunSummary({
+        runId, status: 'cancelled',
+        startedAt: runStartedAt, finishedAt: cancelledNow,
+        phaseDurations, modelLog,
+        failedStage: currentStage, errorMessage: 'Cancelled by user',
+      });
+      const cancelledErrWithSummary = err as Error & { summary?: RunSummaryPayload };
+      cancelledErrWithSummary.summary = cancelledSummary;
+      throw cancelledErrWithSummary;
     }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
 
@@ -816,6 +868,21 @@ export async function runResearchJob(
       },
     });
     logger.error(`Research run ${runId} failed:`, err);
+
+    // Finalise phase timing before building the failure summary.
+    const failedNow = Date.now();
+    if (currentStage && phaseStartTimes[currentStage] != null) {
+      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (failedNow - phaseStartTimes[currentStage]);
+    }
+    const failureSummary: RunSummaryPayload = buildRunSummary({
+      runId, status: finalStatus,
+      startedAt: runStartedAt, finishedAt: failedNow,
+      phaseDurations, modelLog,
+      failedStage: currentStage,
+      errorMessage: failureDetails.errorMessage,
+      failureMeta: failureMetaWithResume as Record<string, unknown>,
+    });
+
     // Propagate the *state-machine-finalized* metadata to the BullMQ worker.
     // The worker derives 'research:aborted' vs 'research:failed' from
     // `failureMeta.terminal`, so this guarantees the realtime socket event
@@ -827,9 +894,49 @@ export async function runResearchJob(
       message: currentMessage,
       retryable: failureMetaWithResume.retryable,
       failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
+      summary: failureSummary,
     });
     throw enrichedError;
   }
+}
+
+function buildRunSummary(args: {
+  runId: string;
+  status: string;
+  startedAt: number;
+  finishedAt: number;
+  phaseDurations: Record<string, number>;
+  modelLog: ModelCallResult[];
+  failedStage?: string | null;
+  errorMessage?: string | null;
+  failureMeta?: Record<string, unknown> | null;
+}): RunSummaryPayload {
+  const totalPromptTokens = args.modelLog.reduce((s, r) => s + (r.promptTokens ?? 0), 0);
+  const totalCompletionTokens = args.modelLog.reduce((s, r) => s + (r.completionTokens ?? 0), 0);
+  const retryCount = args.modelLog.filter((r) => r.usedFallback).length;
+  const orchestratorHints = Array.isArray(args.failureMeta?.orchestratorHints)
+    ? (args.failureMeta!.orchestratorHints as string[])
+    : [];
+  return {
+    runId: args.runId,
+    status: args.status,
+    totalDurationMs: args.finishedAt - args.startedAt,
+    phaseDurations: { ...args.phaseDurations },
+    totalPromptTokens,
+    totalCompletionTokens,
+    retryCount,
+    failedStage: args.failedStage ?? null,
+    errorMessage: args.errorMessage ?? null,
+    failureMeta: args.failureMeta ?? null,
+    orchestratorHints,
+    modelUsage: args.modelLog.map((r) => ({
+      role: r.role,
+      model: r.model,
+      promptTokens: r.promptTokens ?? 0,
+      completionTokens: r.completionTokens ?? 0,
+      durationMs: r.durationMs ?? 0,
+    })),
+  };
 }
 
 function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {

@@ -157,7 +157,7 @@ const config = {
 
   embedding: {
     dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || '1536', 10),
-    batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '100', 10),
+    batchSize: parseInt(process.env.EMBEDDING_BATCH_SIZE || '20', 10),
   },
 
   ingestion: {
