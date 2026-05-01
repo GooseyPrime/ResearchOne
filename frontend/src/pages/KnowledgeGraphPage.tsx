@@ -8,7 +8,6 @@ import clsx from 'clsx';
 const NODE_COLORS: Record<string, string> = {
   source: '#60a5fa',
   claim: '#a78bfa',
-  run: '#34d399',
 };
 
 const TIER_COLORS: Record<string, string> = {
@@ -22,7 +21,6 @@ const TIER_COLORS: Record<string, string> = {
 const EDGE_COLORS: Record<string, string> = {
   contains: '#334155',
   contradicts: '#f87171',
-  discovered: '#34d399',
 };
 
 type SimNode = d3.SimulationNodeDatum & GraphNode;
@@ -31,6 +29,7 @@ type SimEdge = d3.SimulationLinkDatum<SimNode> & { id: string; type: string; wei
 export default function KnowledgeGraphPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [limit, setLimit] = useState(80);
   const [showContradictions, setShowContradictions] = useState(true);
@@ -44,6 +43,9 @@ export default function KnowledgeGraphPage() {
   const buildGraph = useCallback(() => {
     const svg = svgRef.current;
     if (!svg || !data || data.nodes.length === 0) return;
+
+    // Stop any running simulation before rebuilding to prevent timer leaks
+    simulationRef.current?.stop();
 
     const width = svg.clientWidth || 900;
     const height = svg.clientHeight || 600;
@@ -91,8 +93,10 @@ export default function KnowledgeGraphPage() {
     d3svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.7));
     (svg as unknown as { _zoom: typeof zoom })._zoom = zoom;
 
-    // Force simulation
-    const simulation = d3.forceSimulation<SimNode>(nodes)
+    // Force simulation — stored in ref so it can be stopped on rebuild/unmount
+    const simulation = d3.forceSimulation<SimNode>(nodes);
+    simulationRef.current = simulation;
+    simulation
       .force('link', d3.forceLink<SimNode, SimEdge>(edges)
         .id((d) => d.id)
         .distance((d) => d.type === 'contradicts' ? 80 : 120)
@@ -149,18 +153,29 @@ export default function KnowledgeGraphPage() {
       });
     nodeGroup.call(drag);
 
-    // Tooltip + click
-    const tooltip = d3.select(tooltipRef.current!);
+    // Tooltip + click — use DOM text nodes to prevent XSS from corpus content
+    const tooltipEl = tooltipRef.current!;
+    const tooltip = d3.select(tooltipEl);
     nodeGroup
       .on('mouseover', (event, d) => {
+        tooltipEl.innerHTML = '';
+        const typeEl = document.createElement('div');
+        typeEl.className = 'font-semibold text-white text-xs mb-0.5';
+        typeEl.textContent = d.type;
+        tooltipEl.appendChild(typeEl);
+        const labelEl = document.createElement('div');
+        labelEl.className = 'text-slate-300 text-[10px] leading-snug';
+        labelEl.textContent = d.label;
+        tooltipEl.appendChild(labelEl);
+        if (d.sub) {
+          const subEl = document.createElement('div');
+          subEl.className = 'text-slate-500 text-[10px] mt-0.5';
+          subEl.textContent = d.sub;
+          tooltipEl.appendChild(subEl);
+        }
         tooltip.style('display', 'block')
           .style('left', `${event.offsetX + 14}px`)
-          .style('top', `${event.offsetY - 10}px`)
-          .html(
-            `<div class="font-semibold text-white text-xs mb-0.5">${d.type}</div>` +
-            `<div class="text-slate-300 text-[10px] leading-snug">${d.label}</div>` +
-            (d.sub ? `<div class="text-slate-500 text-[10px] mt-0.5">${d.sub}</div>` : '')
-          );
+          .style('top', `${event.offsetY - 10}px`);
       })
       .on('mousemove', (event) => {
         tooltip.style('left', `${event.offsetX + 14}px`).style('top', `${event.offsetY - 10}px`);
@@ -179,6 +194,8 @@ export default function KnowledgeGraphPage() {
   }, [data, showContradictions]);
 
   useEffect(() => { buildGraph(); }, [buildGraph]);
+
+  useEffect(() => () => { simulationRef.current?.stop(); }, []);
 
   useEffect(() => {
     const obs = new ResizeObserver(() => buildGraph());

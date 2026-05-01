@@ -76,7 +76,8 @@ router.get('/exports/:id/download', async (req, res, next) => {
 router.get('/points', async (req, res, next) => {
   try {
     const { limit = '500', tags } = req.query as { limit?: string; tags?: string };
-    const lim = Math.min(parseInt(limit, 10), 2000);
+    const parsedLimit = parseInt(limit, 10);
+    const lim = Math.min(Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 500, 2000);
 
     const filterTags = tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : null;
 
@@ -104,14 +105,13 @@ router.get('/points', async (req, res, next) => {
          s.url AS source_url,
          s.title AS source_title,
          COALESCE(s.tags, '{}') AS tags,
-         cl.evidence_tier,
+         (SELECT cl.evidence_tier FROM claims cl WHERE cl.chunk_id = c.id LIMIT 1) AS evidence_tier,
          e.vector::text AS vector_str
        FROM chunks c
        JOIN embeddings e ON e.chunk_id = c.id
        LEFT JOIN sources s ON s.id = c.source_id
-       LEFT JOIN claims cl ON cl.chunk_id = c.id
        WHERE e.vector IS NOT NULL ${tagFilter}
-       ORDER BY RANDOM()
+       ORDER BY c.id
        LIMIT $1`,
       params
     );

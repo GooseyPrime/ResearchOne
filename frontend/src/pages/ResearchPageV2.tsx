@@ -283,12 +283,14 @@ export default function ResearchPageV2() {
   useEffect(() => {
     if (!failure || !trackingRunId) return;
     const capturedRunId = trackingRunId;
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      if (runSummaryReceivedRef.current) return;
+      if (cancelled || runSummaryReceivedRef.current) return;
       try {
         const run = await getResearchRun(capturedRunId);
-        if (runSummaryReceivedRef.current) return;
+        if (cancelled || runSummaryReceivedRef.current) return;
         if (run.id !== lastKnownRunIdRef.current) return;
+        runSummaryReceivedRef.current = true;
         setRunSummary({
           runId: run.id,
           status: run.status,
@@ -305,7 +307,10 @@ export default function ResearchPageV2() {
         // non-fatal: the run card already shows failure state
       }
     }, 800);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [failure, trackingRunId]);
 
   useEffect(() => {
@@ -495,8 +500,10 @@ export default function ResearchPageV2() {
     socket.on('run:summary', (summary: RunSummaryData) => {
       // Use the ref rather than the closed-over state: trackingRunId and
       // progress may already be null (cleared on cancellation/completion)
-      // by the time this event arrives (Copilot + Codex review finding).
+      // by the time this event arrives. Set the ref synchronously before
+      // setState so the REST fallback timer sees it immediately.
       if (summary.runId === lastKnownRunIdRef.current) {
+        runSummaryReceivedRef.current = true;
         setRunSummary(summary);
       }
     });

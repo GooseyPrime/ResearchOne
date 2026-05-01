@@ -5,7 +5,7 @@ const router = Router();
 
 export interface GraphNode {
   id: string;
-  type: 'source' | 'claim' | 'run';
+  type: 'source' | 'claim';
   label: string;
   sub?: string;
   evidence_tier?: string | null;
@@ -18,7 +18,7 @@ export interface GraphEdge {
   id: string;
   source: string;
   target: string;
-  type: 'contains' | 'contradicts' | 'discovered';
+  type: 'contains' | 'contradicts';
   weight?: number;
 }
 
@@ -28,7 +28,8 @@ export interface GraphEdge {
 router.get('/', async (req, res, next) => {
   try {
     const { runId, limit = '80' } = req.query as { runId?: string; limit?: string };
-    const nodeLimit = Math.min(parseInt(limit, 10), 300);
+    const parsedLimit = parseInt(limit, 10);
+    const nodeLimit = Math.min(Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 80, 300);
 
     // ── Sources ──────────────────────────────────────────────────────────────
     const sourceParams: unknown[] = [Math.floor(nodeLimit * 0.4)];
@@ -72,7 +73,7 @@ router.get('/', async (req, res, next) => {
       `SELECT cl.id, cl.claim_text, cl.evidence_tier, cl.source_id, cl.chunk_id
        FROM claims cl
        WHERE cl.claim_text IS NOT NULL ${claimFilter}
-       ORDER BY RANDOM()
+       ORDER BY cl.id
        LIMIT $1`,
       claimParams
     );

@@ -70,7 +70,9 @@ export default function EmbeddingAtlasPage() {
       .attr('stroke', 'none')
       .style('cursor', 'pointer');
 
-    const tooltip = d3.select(tooltipRef.current!);
+    // Use DOM text nodes in tooltip to prevent XSS from corpus content
+    const tooltipEl = tooltipRef.current!;
+    const tooltip = d3.select(tooltipEl);
 
     circles
       .on('mouseover', function (event, d) {
@@ -79,15 +81,23 @@ export default function EmbeddingAtlasPage() {
           .attr('stroke', '#fff')
           .attr('stroke-width', 1.5)
           .attr('fill-opacity', 1);
+        tooltipEl.innerHTML = '';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'font-semibold text-white text-xs mb-1 line-clamp-2';
+        titleEl.textContent = d.source_title || 'Unknown source';
+        tooltipEl.appendChild(titleEl);
+        const tierEl = document.createElement('div');
+        tierEl.className = 'text-slate-400 text-[10px] mb-1';
+        tierEl.textContent = d.evidence_tier ?? 'unclassified';
+        tooltipEl.appendChild(tierEl);
+        const textEl = document.createElement('div');
+        textEl.className = 'text-slate-300 text-[10px] leading-snug';
+        textEl.textContent = d.text.slice(0, 120) + '…';
+        tooltipEl.appendChild(textEl);
         tooltip
           .style('display', 'block')
           .style('left', `${event.offsetX + 14}px`)
-          .style('top', `${event.offsetY - 10}px`)
-          .html(
-            `<div class="font-semibold text-white text-xs mb-1 line-clamp-2">${d.source_title || 'Unknown source'}</div>` +
-            `<div class="text-slate-400 text-[10px] mb-1">${d.evidence_tier ?? 'unclassified'}</div>` +
-            `<div class="text-slate-300 text-[10px] leading-snug">${d.text.slice(0, 120)}…</div>`
-          );
+          .style('top', `${event.offsetY - 10}px`);
       })
       .on('mousemove', function (event) {
         tooltip
@@ -108,7 +118,8 @@ export default function EmbeddingAtlasPage() {
       .scaleExtent([0.3, 20])
       .on('zoom', (e) => {
         g.attr('transform', e.transform.toString());
-        setZoomLevel(Math.round(e.transform.k * 10) / 10);
+        const rounded = Math.round(e.transform.k * 10) / 10;
+        setZoomLevel((prev) => (prev === rounded ? prev : rounded));
       });
     zoomRef.current = zoom;
     d3svg.call(zoom);

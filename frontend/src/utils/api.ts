@@ -536,7 +536,7 @@ export const getAtlasPoints = (params?: { limit?: number; tags?: string }) =>
 
 export interface GraphNode {
   id: string;
-  type: 'source' | 'claim' | 'run';
+  type: 'source' | 'claim';
   label: string;
   sub?: string;
   evidence_tier?: string | null;
@@ -549,7 +549,7 @@ export interface GraphEdge {
   id: string;
   source: string;
   target: string;
-  type: 'contains' | 'contradicts' | 'discovered';
+  type: 'contains' | 'contradicts';
   weight?: number;
 }
 
