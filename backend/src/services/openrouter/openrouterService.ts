@@ -191,23 +191,27 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
-  planner: 2048,
+  // thinking-class models (Kimi K2, DeepSeek R1, Qwen3-235B) emit a reasoning
+  // trace before output. planner and outline_architect are assigned Kimi K2
+  // as primary across three objectives each — the prior 2048 ceiling truncated
+  // mid-trace and broke all downstream JSON parsers.
+  planner: 16384,
   retriever: 4096,
-  reasoner: 4096,
-  skeptic: 2048,
+  reasoner: 8192,
+  skeptic: 4096,
   synthesizer: 8192,
-  verifier: 2048,
+  verifier: 4096,
   plain_language_synthesizer: 8192,
-  outline_architect: 2048,
+  outline_architect: 8192,
   section_drafter: 4096,
-  internal_challenger: 2048,
+  internal_challenger: 4096,
   coherence_refiner: 6144,
-  revision_intake: 1536,
-  report_locator: 2048,
-  change_planner: 3072,
+  revision_intake: 2048,
+  report_locator: 4096,
+  change_planner: 4096,
   section_rewriter: 4096,
-  citation_integrity_checker: 2048,
-  final_revision_verifier: 3072,
+  citation_integrity_checker: 3072,
+  final_revision_verifier: 4096,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -424,34 +428,70 @@ function buildOpenRouterProviderBlock(): Record<string, unknown> {
 
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
-  const body: Record<string, unknown> = {
-    model,
-    messages: applyV2SystemAugmentations(options),
-    temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
-    max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
-    provider: buildOpenRouterProviderBlock(),
+  const messages: ChatMessage[] = applyV2SystemAugmentations(options);
+  const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
+  const headers = {
+    Authorization: `Bearer ${config.openrouter.apiKey}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://researchone.app',
+    'X-Title': 'ResearchOne',
   };
-  if (options.tools) body.tools = options.tools;
 
-  const response = await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
-    headers: {
-      Authorization: `Bearer ${config.openrouter.apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://researchone.app',
-      'X-Title': 'ResearchOne',
-    },
-    timeout: 120000,
-  });
+  let accumulatedContent = '';
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  // Continuation loop: thinking-class models (Kimi K2, DeepSeek R1, Qwen3) may
+  // hit max_tokens mid-trace even with the raised limits. We re-prompt with the
+  // partial response as an assistant turn and ask the model to continue, up to
+  // MAX_CONTINUATIONS times before returning whatever we have.
+  const MAX_CONTINUATIONS = 2;
+  let continuationMessages = messages;
 
-  const choice = response.data.choices?.[0];
-  if (!choice) throw new Error('No response choices from OpenRouter');
+  for (let attempt = 0; attempt <= MAX_CONTINUATIONS; attempt++) {
+    const body: Record<string, unknown> = {
+      model,
+      messages: continuationMessages,
+      temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
+      max_tokens: maxTokens,
+      provider: buildOpenRouterProviderBlock(),
+    };
+    if (options.tools && attempt === 0) body.tools = options.tools;
+
+    const response = await axios.post(`${config.openrouter.baseUrl}/chat/completions`, body, {
+      headers,
+      timeout: 180000,
+    });
+
+    const choice = response.data.choices?.[0];
+    if (!choice) throw new Error('No response choices from OpenRouter');
+
+    const chunkContent = typeof choice.message?.content === 'string' ? choice.message.content : '';
+    accumulatedContent += chunkContent;
+    totalPromptTokens += response.data.usage?.prompt_tokens ?? 0;
+    totalCompletionTokens += response.data.usage?.completion_tokens ?? 0;
+
+    if (choice.finish_reason !== 'length' || attempt === MAX_CONTINUATIONS) break;
+
+    logger.warn(`[${options.role}] finish_reason=length on ${model} (attempt ${attempt + 1}/${MAX_CONTINUATIONS + 1}); continuing`, {
+      role: options.role,
+      model,
+      attempt: attempt + 1,
+      accumulatedChars: accumulatedContent.length,
+    });
+    // Append partial assistant response and re-prompt to continue
+    continuationMessages = [
+      ...continuationMessages,
+      { role: 'assistant', content: chunkContent },
+      { role: 'user', content: 'Continue exactly where you left off. Do not repeat what you have already written.' },
+    ];
+  }
 
   return {
-    content: stripModelReasoningTraces(typeof choice.message?.content === 'string' ? choice.message.content : ''),
+    content: stripModelReasoningTraces(accumulatedContent),
     model,
     role: options.role,
-    promptTokens: response.data.usage?.prompt_tokens ?? 0,
-    completionTokens: response.data.usage?.completion_tokens ?? 0,
+    promptTokens: totalPromptTokens,
+    completionTokens: totalCompletionTokens,
     durationMs: Date.now() - start,
     usedFallback: false,
     primaryModel: model,
@@ -669,14 +709,33 @@ function extractProviderMessage(err: AxiosError): string {
 }
 
 /**
+ * text-embedding-3-small hard limit per string is 8,191 tokens.
+ * Character-to-token ratio varies: ~3.5 chars/tok for English but ~1 char/tok
+ * for CJK/dense punctuation. A 27k-char cap is safe for English but can still
+ * exceed the limit for non-Latin scripts (Copilot review finding).
+ * We use 8,000 chars — safely below 8,191 tokens even at the worst-case 1:1
+ * ratio — without requiring a tokenizer dependency. Operators can lower
+ * MAX_CHUNK_SIZE to avoid truncation warnings in practice.
+ */
+const EMBEDDING_MAX_CHARS_PER_STRING = 8000;
+
+/**
  * Generate embeddings via OpenRouter (proxied to embedding provider)
  */
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+  const sanitized = texts.map((t, i) => {
+    if (t.length > EMBEDDING_MAX_CHARS_PER_STRING) {
+      logger.warn(`generateEmbeddings: string[${i}] length ${t.length} exceeds ${EMBEDDING_MAX_CHARS_PER_STRING} chars; truncating to avoid API 400. Consider lowering MAX_CHUNK_SIZE.`);
+      return t.slice(0, EMBEDDING_MAX_CHARS_PER_STRING);
+    }
+    return t;
+  });
+
   const response = await axios.post(
     `${config.openrouter.baseUrl}/embeddings`,
     {
       model: effectiveEmbedding(config.models.embedding),
-      input: texts,
+      input: sanitized,
     },
     {
       headers: {

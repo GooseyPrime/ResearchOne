@@ -5,7 +5,7 @@ import { QUEUE_NAMES } from './queues';
 import { logger } from '../utils/logger';
 import { runIngestionJob } from '../services/ingestion/ingestionService';
 import { runEmbeddingJob } from '../services/embedding/embeddingService';
-import { runResearchJob } from '../services/reasoning/researchOrchestrator';
+import { runResearchJob, type RunSummaryPayload } from '../services/reasoning/researchOrchestrator';
 import { runAtlasExport } from '../services/embedding/atlasExport';
 import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
@@ -89,12 +89,19 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           emit(`job:${job.data.runId}`, 'research:progress', update);
         });
         emit(`job:${job.data.runId}`, 'research:completed', result);
+        if (result.summary) {
+          emit(`job:${job.data.runId}`, 'run:summary', result.summary);
+        }
         io.emit('reports:updated', {});
         io.emit('runs:updated', {});
         return result;
       } catch (err) {
         if (err instanceof ResearchCancelledError) {
           emit(`job:${job.data.runId}`, 'research:cancelled', { runId: job.data.runId });
+          const cancelledSummary = (err as Error & { summary?: RunSummaryPayload }).summary;
+          if (cancelledSummary) {
+            emit(`job:${job.data.runId}`, 'run:summary', cancelledSummary);
+          }
           io.emit('runs:updated', {});
           return { cancelled: true, runId: job.data.runId };
         }
@@ -105,6 +112,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           message?: string;
           retryable?: boolean;
           failureMeta?: Record<string, unknown>;
+          summary?: RunSummaryPayload;
         };
         // Differentiate aborted (no retries remain) from failed (retryable);
         // the frontend listens for both events and shows distinct status.
@@ -112,6 +120,9 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         // socket event matches the DB row that was just written.
         const decision = classifyResearchFailureForSocket(e, job.data.runId);
         emit(`job:${job.data.runId}`, decision.event, decision.payload);
+        if (e.summary) {
+          emit(`job:${job.data.runId}`, 'run:summary', e.summary);
+        }
         io.emit('reports:updated', {});
         io.emit('runs:updated', {});
         throw err;
