@@ -38,10 +38,11 @@ import { TavilySearchProvider } from './providers/tavilySearch';
 
 /** Discovery planner system prompt */
 const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for ResearchOne, a disciplined research system.
-Your role is to decide whether a research query requires external discovery beyond the current corpus.
+Your role is to plan external discovery for a research query. External discovery is always required — always output need_external_discovery: true and always generate discovery_queries.
 
 CRITICAL RULES:
-- Only recommend external discovery when corpus evidence is likely insufficient
+- Always set need_external_discovery to true
+- Always generate at least 2 discovery_queries
 - Be specific about what evidence types would add value
 - Prefer primary sources and structured data over opinion content
 - Flag exclusion patterns for low-quality or off-topic domains
@@ -49,7 +50,7 @@ CRITICAL RULES:
 
 Output JSON with this exact schema:
 {
-  "need_external_discovery": boolean,
+  "need_external_discovery": true,
   "rationale": "string",
   "discovery_queries": ["string", ...],
   "target_source_types": ["web_url", "pdf", ...],
@@ -115,7 +116,7 @@ export async function runDiscoveryOrchestrator(args: {
 
   logger.info(`[discovery:${runId}] Starting discovery orchestration`);
 
-  // ─── Step 1: Ask model whether discovery is needed ─────────────────────────
+  // ─── Step 1: Get discovery plan from model ─────────────────────────────────
   let discoveryPlan: DiscoveryPlan;
   try {
     const planResult = await callRoleModel({
@@ -127,10 +128,10 @@ export async function runDiscoveryOrchestrator(args: {
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {
           role: 'user',
-          content: `Research Query: ${researchQuery}\n\nCurrent Research Plan:\n${JSON.stringify(plan, null, 2)}\n\nDecide whether external discovery is needed. Output JSON only.`,
+          content: `Research Query: ${researchQuery}\n\nCurrent Research Plan:\n${JSON.stringify(plan, null, 2)}\n\nPlan external discovery queries for this research. Output JSON only.`,
         },
       ],
-      maxTokens: 1024,
+      maxTokens: 2048,
     });
 
     const jsonMatch = planResult.content.match(/\{[\s\S]*\}/);
@@ -138,8 +139,8 @@ export async function runDiscoveryOrchestrator(args: {
   } catch (err) {
     logger.warn(`[discovery:${runId}] Discovery plan parsing failed:`, err);
     discoveryPlan = {
-      need_external_discovery: false,
-      rationale: 'Discovery plan parsing failed — skipping external discovery',
+      need_external_discovery: true,
+      rationale: 'Discovery plan parsing failed — no queries to execute',
       discovery_queries: [],
       target_source_types: [],
       preferred_evidence_tiers: [],
@@ -149,10 +150,15 @@ export async function runDiscoveryOrchestrator(args: {
     };
   }
 
+  // Policy enforcement: external discovery is always warranted per ResearchOne epistemic
+  // policy. Override any model-produced false to guarantee retries/fallbacks are never
+  // short-circuited by a model that was overly conservative.
+  discoveryPlan.need_external_discovery = true;
+
   await persistDiscoveryEvent(runId, 'plan', 'planner', researchQuery, 0, 0, { plan: discoveryPlan });
 
-  if (!discoveryPlan.need_external_discovery) {
-    logger.info(`[discovery:${runId}] Model decided discovery not needed: ${discoveryPlan.rationale}`);
+  if (discoveryPlan.discovery_queries.length === 0) {
+    logger.warn(`[discovery:${runId}] Discovery plan produced no queries (${discoveryPlan.rationale}) — skipping search`);
     return buildSummary(runId, false, discoveryPlan.rationale, [], [], [], startTime);
   }
 

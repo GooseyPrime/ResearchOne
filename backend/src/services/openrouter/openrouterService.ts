@@ -192,7 +192,7 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   planner: 2048,
-  retriever: 1024,
+  retriever: 4096,
   reasoner: 4096,
   skeptic: 2048,
   synthesizer: 8192,
@@ -640,16 +640,20 @@ function classifyModelError(err: AxiosError): ModelErrorClassification {
   if (status >= 500) return 'provider_unavailable';
   if (status === 401 || status === 403) return 'auth_error';
 
-  // OpenRouter returns 404 with body
-  // `{"error":{"message":"No allowed providers are available for the
-  //   selected model","code":404}}` when the account's provider filter
-  // excludes every upstream the model has. It also returns 404 for
-  // typo'd or retired slugs. Both are `bad_request` (do not retry) —
-  // the orchestrator's failure-meta carries the providerMessage so the
-  // FailureCard can show the actual cause to the user. The user-facing
-  // hint differentiates "No allowed providers" vs generic 404 in
-  // `researchFailureHints.ts`; the classifier itself does not need to.
-  if (status === 404) return 'bad_request';
+  // OpenRouter returns 404 for two distinct failure modes:
+  //   (a) "No allowed providers are available for the selected model" —
+  //       a provider-availability issue, not a malformed request. The
+  //       account's data-collection / privacy filter excludes every
+  //       upstream for this slug. Classified as `provider_unavailable`
+  //       so the retry budget fires and both primary + fallback are
+  //       attempted before the run aborts.
+  //   (b) Generic 404 (typo'd slug, retired model) — a bad_request;
+  //       no retry would succeed, terminal immediately.
+  if (status === 404) {
+    const msg = extractProviderMessage(err);
+    if (/no allowed providers/i.test(msg)) return 'provider_unavailable';
+    return 'bad_request';
+  }
   if (status === 400) return 'bad_request';
   return 'unknown';
 }
