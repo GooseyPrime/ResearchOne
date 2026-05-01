@@ -20,7 +20,6 @@ import {
   Ban,
   Settings2,
   RotateCcw,
-  ChevronRight,
   XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
