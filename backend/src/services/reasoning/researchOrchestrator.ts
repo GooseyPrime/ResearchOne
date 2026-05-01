@@ -186,8 +186,8 @@ function buildReaderFrontMatter(args: {
         label: 'Counterevidence / Falsification',
         narrative:
           args.falsificationCriteria.length > 0
-            ? `Falsification is defined against these targets: ${args.falsificationCriteria.slice(0, 2).join('; ')}.`
-            : 'Counterevidence would need to directly invalidate the report’s central mechanism claims and assumptions.',
+            ? `This report's conclusions would be falsified by: ${args.falsificationCriteria.slice(0, 2).join('; ')}.`
+            : 'No specific falsification targets were extracted. Counterevidence would need to directly contradict the central mechanism or primary hypothesis stated in the report body.',
       },
       {
         label: 'Evidence coverage',
@@ -363,7 +363,7 @@ export async function runResearchJob(
         sub_questions: [researchQuery],
         retrieval_queries: [researchQuery],
         hypothesis: researchQuery,
-        falsification_criteria: ['Counterevidence would disprove this'],
+        falsification_criteria: [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`],
         investigation_angles: ['Main investigation'],
       };
     }
@@ -1030,7 +1030,7 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
 
   const hints: string[] = [];
   if (retryable) {
-    hints.push('You can use “Resume from last failure” on the Research page if the run saved a retry payload.');
+    hints.push('You can use "Resume from last failure" on the Research page if the run saved a retry payload.');
   }
   if (classification === 'provider_unavailable' && isOpenRouterCall) {
     hints.push('OpenRouter may be temporarily unavailable; wait and retry, or verify billing/rate limits.');

@@ -519,6 +519,43 @@ export const triggerAtlasExport = (data: { label: string; description?: string; 
 export const triggerNomicUpload = (exportId: string, data?: { datasetSlug?: string }) =>
   api.post<{ ok: boolean; datasetUrl: string; uploaded: number }>(`/atlas/exports/${exportId}/nomic-upload`, data || {}).then(r => r.data);
 
+export interface AtlasPoint {
+  id: string;
+  text: string;
+  source_url: string;
+  source_title: string;
+  tags: string[];
+  evidence_tier: string | null;
+  chunk_index: number;
+  x: number;
+  y: number;
+}
+
+export const getAtlasPoints = (params?: { limit?: number; tags?: string }) =>
+  api.get<AtlasPoint[]>('/atlas/points', { params }).then(r => r.data);
+
+export interface GraphNode {
+  id: string;
+  type: 'source' | 'claim' | 'run';
+  label: string;
+  sub?: string;
+  evidence_tier?: string | null;
+  tags?: string[];
+  url?: string;
+  weight?: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'contains' | 'contradicts' | 'discovered';
+  weight?: number;
+}
+
+export const getKnowledgeGraph = (params?: { runId?: string; limit?: number }) =>
+  api.get<{ nodes: GraphNode[]; edges: GraphEdge[] }>('/graph', { params }).then(r => r.data);
+
 export const getClaims = (params?: { tier?: string; search?: string }) =>
   api.get<Claim[]>('/corpus/claims', { params }).then(r => r.data);
 

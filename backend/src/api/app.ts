@@ -11,6 +11,7 @@ import researchRoutes from './routes/research';
 import reportsRoutes from './routes/reports';
 import corpusRoutes from './routes/corpus';
 import atlasRoutes from './routes/atlas';
+import graphRoutes from './routes/graph';
 import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
 import adminRoutes from './routes/admin';
@@ -45,6 +46,7 @@ const routes: Array<[string, express.Router]> = [
   ['/reports', reportsRoutes],
   ['/corpus', corpusRoutes],
   ['/atlas', atlasRoutes],
+  ['/graph', graphRoutes],
   ['/sources', sourcesRoutes],
   ['/admin', adminRoutes],
 ];
