@@ -642,8 +642,7 @@ function classifyModelError(err: AxiosError): ModelErrorClassification {
   //   (b) Generic 404 (typo'd slug, retired model) — a bad_request;
   //       no retry would succeed, terminal immediately.
   if (status === 404) {
-    const data = err.response?.data as { error?: { message?: string } } | undefined;
-    const msg = data?.error?.message ?? '';
+    const msg = extractProviderMessage(err);
     if (/no allowed providers/i.test(msg)) return 'provider_unavailable';
     return 'bad_request';
   }
