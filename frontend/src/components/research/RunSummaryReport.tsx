@@ -279,8 +279,8 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
         <div className="px-4 py-3 border-b border-surface-100/20">
           <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-2">Model usage per role</div>
           <div className="space-y-1">
-            {modelUsage.map((u) => (
-              <div key={u.role} className="flex items-center gap-3 text-xs">
+            {modelUsage.map((u, i) => (
+              <div key={`${u.role}-${i}`} className="flex items-center gap-3 text-xs">
                 <span className="text-slate-500 w-32 truncate flex-shrink-0">{u.role.replace(/_/g, ' ')}</span>
                 <span className="text-indigo-400/80 truncate flex-1 min-w-0">{u.model}</span>
                 <span className="text-slate-500 tabular-nums flex-shrink-0">

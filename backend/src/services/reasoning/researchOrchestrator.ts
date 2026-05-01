@@ -225,7 +225,7 @@ function v2CallOpts(
 export async function runResearchJob(
   data: ResearchJobData,
   onProgress: ProgressCallback
-): Promise<{ runId: string; reportId: string }> {
+): Promise<{ runId: string; reportId: string; summary?: RunSummaryPayload }> {
   const {
     runId,
     query: researchQuery,
@@ -262,16 +262,19 @@ export async function runResearchJob(
     extra?: Omit<ResearchProgress, 'stage' | 'percent' | 'message' | 'runId' | 'timestamp'>
   ) => {
     await assertNotCancelled(runId);
-    // Phase timing: when stage changes, finalise the previous phase's duration
-    // and open a new one. Same stage re-invocations extend the phase window.
+    // Phase timing: close out the previous phase and open the incoming one.
+    // We always reset phaseStartTimes[stage]=now on every call so that
+    // resume/retry re-entries start a fresh window instead of double-counting
+    // the gap spent in other stages (Copilot review finding).
     const now = Date.now();
     if (currentStage && currentStage !== stage) {
       const phaseStart = phaseStartTimes[currentStage];
       if (phaseStart != null) {
         phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (now - phaseStart);
+        delete phaseStartTimes[currentStage];
       }
     }
-    if (!phaseStartTimes[stage]) phaseStartTimes[stage] = now;
+    phaseStartTimes[stage] = now;
     currentStage = stage;
     currentPercent = percent;
     currentMessage = message;

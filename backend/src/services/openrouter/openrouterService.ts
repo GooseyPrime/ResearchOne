@@ -709,12 +709,15 @@ function extractProviderMessage(err: AxiosError): string {
 }
 
 /**
- * text-embedding-3-small hard limit per string is 8,191 tokens (~28,000 chars
- * at 3.5 chars/token). Strings that exceed this cause a 400 from the API.
- * We truncate defensively at 27,000 chars (≈7,700 tokens) and log a warning
- * so operators can tune MAX_CHUNK_SIZE if they see truncation warnings.
+ * text-embedding-3-small hard limit per string is 8,191 tokens.
+ * Character-to-token ratio varies: ~3.5 chars/tok for English but ~1 char/tok
+ * for CJK/dense punctuation. A 27k-char cap is safe for English but can still
+ * exceed the limit for non-Latin scripts (Copilot review finding).
+ * We use 8,000 chars — safely below 8,191 tokens even at the worst-case 1:1
+ * ratio — without requiring a tokenizer dependency. Operators can lower
+ * MAX_CHUNK_SIZE to avoid truncation warnings in practice.
  */
-const EMBEDDING_MAX_CHARS_PER_STRING = 27000;
+const EMBEDDING_MAX_CHARS_PER_STRING = 8000;
 
 /**
  * Generate embeddings via OpenRouter (proxied to embedding provider)

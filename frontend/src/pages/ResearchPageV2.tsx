@@ -210,6 +210,11 @@ export default function ResearchPageV2() {
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
+  // Ref that always mirrors the most recently tracked run ID, including after
+  // trackingRunId/progress are cleared on cancellation/completion. The
+  // run:summary Socket.IO event may arrive after those state clears, so the
+  // socket handler reads from this ref instead of the (potentially null) state.
+  const lastKnownRunIdRef = useRef<string | null>(null);
   const [failure, setFailure] = useState<ResearchFailureEvent | null>(null);
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummaryData | null>(null);
@@ -246,6 +251,7 @@ export default function ResearchPageV2() {
     mutationFn: startResearch,
     onSuccess: (data) => {
       setTrackingRunId(data.runId);
+      lastKnownRunIdRef.current = data.runId;
       const queuedEvt: ResearchProgressEvent = { runId: data.runId, stage: 'planning', percent: 0, message: 'Research One 2 queued...', timestamp: new Date().toISOString() };
       setProgress(queuedEvt);
       setActiveRun(queuedEvt);
@@ -446,7 +452,10 @@ export default function ResearchPageV2() {
     });
 
     socket.on('run:summary', (summary: RunSummaryData) => {
-      if (summary.runId === trackingRunId || summary.runId === progress?.runId) {
+      // Use the ref rather than the closed-over state: trackingRunId and
+      // progress may already be null (cleared on cancellation/completion)
+      // by the time this event arrives (Copilot + Codex review finding).
+      if (summary.runId === lastKnownRunIdRef.current) {
         setRunSummary(summary);
       }
     });

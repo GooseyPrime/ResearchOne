@@ -49,7 +49,7 @@ export async function runEmbeddingJob(
         logger.warn(`Embedding batch estimated ${Math.round(estimatedTokens)} tokens; splitting into micro-batches of ${microSize}`, { sourceId: data.sourceId, batchLen: texts.length });
         for (let m = 0; m < texts.length; m += microSize) {
           const micro = await generateEmbeddings(texts.slice(m, m + microSize));
-          vectors = vectors.concat(micro);
+          vectors.push(...micro);
         }
       } else {
         vectors = await generateEmbeddings(texts);
