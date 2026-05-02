@@ -29,10 +29,11 @@ export default function EmbeddingAtlasPage() {
   const [zoomLevel, setZoomLevel] = useState(1);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
-  const { data: points = [], isLoading, refetch, isFetching } = useQuery({
+  const { data: points = [], isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['atlas-points', limit, filterTag],
     queryFn: () => getAtlasPoints({ limit, tags: filterTag || undefined }),
     staleTime: 120_000,
+    retry: 1,
   });
 
   const buildChart = useCallback(() => {
@@ -204,10 +205,23 @@ export default function EmbeddingAtlasPage() {
               <div className="text-slate-500 text-sm animate-pulse">Loading embeddings…</div>
             </div>
           )}
-          {!isLoading && points.length === 0 && (
+          {!isLoading && isError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 px-8 text-center">
+              <Layers size={32} className="text-red-400 opacity-60" />
+              <p className="text-sm text-red-400">Failed to load embedding data</p>
+              <p className="text-xs text-slate-600 font-mono max-w-md break-words">
+                {(error as Error)?.message ?? 'Unknown error'}
+              </p>
+              <button type="button" className="btn-ghost text-xs mt-1" onClick={() => refetch()}>Retry</button>
+            </div>
+          )}
+          {!isLoading && !isError && points.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
               <Layers size={32} className="opacity-30" />
-              <p className="text-sm">No embedded chunks yet. Ingest documents and run embedding first.</p>
+              <p className="text-sm">No embedded chunks yet.</p>
+              <p className="text-xs text-slate-600 max-w-xs text-center">
+                Chunks need embedding vectors to appear here. Ingest documents, then ensure the embedding service has processed them.
+              </p>
             </div>
           )}
 

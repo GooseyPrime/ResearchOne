@@ -34,10 +34,11 @@ export default function KnowledgeGraphPage() {
   const [limit, setLimit] = useState(80);
   const [showContradictions, setShowContradictions] = useState(true);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['knowledge-graph', limit],
     queryFn: () => getKnowledgeGraph({ limit }),
     staleTime: 60_000,
+    retry: 1,
   });
 
   const buildGraph = useCallback(() => {
@@ -279,7 +280,17 @@ export default function KnowledgeGraphPage() {
               Building graph…
             </div>
           )}
-          {!isLoading && nodeCount === 0 && (
+          {!isLoading && isError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 px-8 text-center">
+              <GitFork size={32} className="text-red-400 opacity-60" />
+              <p className="text-sm text-red-400">Failed to load graph data</p>
+              <p className="text-xs text-slate-600 font-mono max-w-md break-words">
+                {(error as Error)?.message ?? 'Unknown error'}
+              </p>
+              <button type="button" className="btn-ghost text-xs mt-1" onClick={() => refetch()}>Retry</button>
+            </div>
+          )}
+          {!isLoading && !isError && nodeCount === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
               <GitFork size={32} className="opacity-30" />
               <p className="text-sm">No corpus data yet. Run research to populate claims and sources.</p>

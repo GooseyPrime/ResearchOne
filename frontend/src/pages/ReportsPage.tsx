@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Search, Filter, CheckCircle, Clock, FileText } from 'lucide-react';
-import { getReports, Report } from '../utils/api';
+import { BookOpen, Search, Filter, CheckCircle, Clock, FileText, XCircle, AlertTriangle } from 'lucide-react';
+import { getReports, getResearchRuns, Report, ResearchRun } from '../utils/api';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
@@ -12,18 +12,63 @@ const STATUS_COLORS: Record<string, string> = {
   draft: 'text-slate-400 bg-slate-800/30 border-slate-700/30',
   under_review: 'text-amber-400 bg-amber-900/20 border-amber-800/30',
   archived: 'text-slate-500 bg-slate-900/20 border-slate-800/30',
+  failed: 'text-red-400 bg-red-900/20 border-red-800/30',
+  aborted: 'text-red-500 bg-red-900/20 border-red-800/30',
 };
+
+type ListItem =
+  | { kind: 'report'; data: Report }
+  | { kind: 'run'; data: ResearchRun };
 
 export default function ReportsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const { data: reports = [], isLoading } = useQuery({
+  const { data: reports = [], isLoading: reportsLoading } = useQuery({
     queryKey: ['reports', statusFilter, search],
     queryFn: () => getReports({ status: statusFilter || undefined, search: search || undefined }),
     refetchInterval: 10000,
   });
+
+  // Fetch failed and aborted runs to surface them alongside reports
+  const showFailed = !statusFilter || statusFilter === 'failed';
+  const { data: failedRuns = [] } = useQuery({
+    queryKey: ['research-runs-failed'],
+    queryFn: async () => {
+      const [failed, aborted] = await Promise.all([
+        getResearchRuns({ status: 'failed' }),
+        getResearchRuns({ status: 'aborted' }),
+      ]);
+      return [...failed, ...aborted];
+    },
+    enabled: showFailed,
+    refetchInterval: 15000,
+  });
+
+  const isLoading = reportsLoading;
+
+  // Merge and sort by created_at descending
+  const items: ListItem[] = [];
+
+  if (!statusFilter || statusFilter === 'failed') {
+    for (const run of failedRuns) {
+      if (search && !run.title.toLowerCase().includes(search.toLowerCase()) &&
+          !run.query.toLowerCase().includes(search.toLowerCase())) continue;
+      items.push({ kind: 'run', data: run });
+    }
+  }
+
+  if (!statusFilter || STATUS_COLORS[statusFilter]) {
+    const filtered = statusFilter === 'failed' ? [] : reports;
+    for (const r of filtered) {
+      items.push({ kind: 'report', data: r });
+    }
+  }
+
+  items.sort((a, b) =>
+    new Date(b.data.created_at).getTime() - new Date(a.data.created_at).getTime()
+  );
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -35,7 +80,10 @@ export default function ReportsPage() {
             Report Library
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            {reports.length} report{reports.length !== 1 ? 's' : ''} in archive
+            {items.length} result{items.length !== 1 ? 's' : ''}
+            {failedRuns.length > 0 && (
+              <span className="text-red-400 ml-1">· {failedRuns.length} failed</span>
+            )}
           </p>
         </div>
       </div>
@@ -63,28 +111,37 @@ export default function ReportsPage() {
             <option value="generating">Generating</option>
             <option value="draft">Draft</option>
             <option value="archived">Archived</option>
+            <option value="failed">Failed</option>
           </select>
         </div>
       </div>
 
-      {/* Reports grid */}
+      {/* List */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="card p-5 animate-pulse h-40" />
           ))}
         </div>
-      ) : reports.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {reports.map(report => (
-            <ReportCard
-              key={report.id}
-              report={report}
-              onClick={() => navigate(`/reports/${report.id}`)}
-            />
-          ))}
+          {items.map(item =>
+            item.kind === 'report' ? (
+              <ReportCard
+                key={item.data.id}
+                report={item.data}
+                onClick={() => navigate(`/reports/${item.data.id}`)}
+              />
+            ) : (
+              <FailedRunCard
+                key={item.data.id}
+                run={item.data}
+                onClick={() => navigate(`/reports/run/${item.data.id}`)}
+              />
+            )
+          )}
         </div>
       )}
     </div>
@@ -128,6 +185,52 @@ function ReportCard({ report, onClick }: { report: Report; onClick: () => void }
         <span>{report.chunk_count} chunks</span>
         {report.contradiction_count > 0 && (
           <span className="text-amber-500">⚠ {report.contradiction_count} contradictions</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FailedRunCard({ run, onClick }: { run: ResearchRun; onClick: () => void }) {
+  const isAborted = run.status === 'aborted';
+  const label = isAborted ? 'aborted' : 'failed';
+  const statusClass = isAborted ? STATUS_COLORS.aborted : STATUS_COLORS.failed;
+
+  return (
+    <div
+      className="card p-5 hover:border-red-500/30 cursor-pointer transition-all duration-200 group space-y-3 border-red-900/30"
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-white text-sm leading-snug truncate group-hover:text-red-400 transition-colors">
+            {run.title || run.query.slice(0, 80)}
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+          </p>
+        </div>
+        <span className={clsx('badge border flex-shrink-0', statusClass)}>
+          <XCircle size={10} />
+          {label}
+        </span>
+      </div>
+
+      {run.error_message && (
+        <p className="text-xs text-red-400/80 line-clamp-2 leading-relaxed">
+          {run.error_message}
+        </p>
+      )}
+
+      <div className="flex items-center gap-4 text-xs text-slate-500 pt-1 border-t border-red-900/20">
+        {run.failed_stage && (
+          <span className="flex items-center gap-1 text-red-500/70">
+            <AlertTriangle size={10} />
+            failed at: {run.failed_stage}
+          </span>
+        )}
+        {run.retry_attempts != null && run.retry_attempts > 0 && (
+          <span className="text-slate-600">{run.retry_attempts} retries</span>
         )}
       </div>
     </div>

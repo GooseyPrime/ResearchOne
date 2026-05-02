@@ -4,6 +4,7 @@ import ResearchPage from './pages/ResearchPage';
 import ResearchPageV2 from './pages/ResearchPageV2';
 import ReportsPage from './pages/ReportsPage';
 import ReportDetailPage from './pages/ReportDetailPage';
+import FailedRunReportPage from './pages/FailedRunReportPage';
 import CorpusPage from './pages/CorpusPage';
 import AtlasPage from './pages/AtlasPage';
 import EmbeddingAtlasPage from './pages/EmbeddingAtlasPage';
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="research-v2" element={<ResearchPageV2 />} />
           <Route path="models" element={<ModelsPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
           <Route path="reports/:id" element={<ReportDetailPage />} />
           <Route path="corpus" element={<CorpusPage />} />
           <Route path="atlas" element={<AtlasPage />} />

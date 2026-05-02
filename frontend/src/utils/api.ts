@@ -354,6 +354,22 @@ export const getResearchRuns = (params?: { status?: string }) =>
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
 
+export interface RunArtifacts {
+  sources: Array<{
+    id: string; title: string; url: string; source_type: string;
+    tags: string[]; ingested_at: string;
+  }>;
+  claims: Array<{
+    id: string; claim_text: string; evidence_tier: string | null; source_id: string | null;
+  }>;
+  checkpoints: Array<{
+    stage: string; checkpoint_key: string; snapshot: Record<string, unknown>; created_at: string;
+  }>;
+}
+
+export const getRunArtifacts = (id: string) =>
+  api.get<RunArtifacts>(`/research/${id}/artifacts`).then(r => r.data);
+
 export const getResearchModelOptions = () =>
   api.get<ResearchModelOptionsResponse>('/research/model-options').then(r => r.data);
 
