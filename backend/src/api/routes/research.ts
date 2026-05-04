@@ -117,14 +117,30 @@ router.post(
 
       let engineVersion: string | undefined;
       let researchObjectiveRaw: unknown;
-      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string };
+      let targetWordCountRaw: unknown;
+      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string; targetWordCount?: unknown };
       if (isMultipart) {
         const ev = body.engineVersion;
         engineVersion = typeof ev === 'string' ? ev.trim() : undefined;
         researchObjectiveRaw = body.researchObjective;
+        targetWordCountRaw = body.targetWordCount;
       } else {
         engineVersion = typeof jsonBodyFull.engineVersion === 'string' ? jsonBodyFull.engineVersion.trim() : undefined;
         researchObjectiveRaw = jsonBodyFull.researchObjective;
+        targetWordCountRaw = jsonBodyFull.targetWordCount;
+      }
+      let targetWordCount: number | undefined;
+      const parsedWords =
+        typeof targetWordCountRaw === 'string'
+          ? Number(targetWordCountRaw)
+          : typeof targetWordCountRaw === 'number'
+            ? targetWordCountRaw
+            : NaN;
+      if (Number.isFinite(parsedWords) && parsedWords > 0) {
+        // Clamp at the route level so a malformed value never reaches the
+        // orchestrator. The synthesizer also clamps but enforcing here keeps
+        // the resume_job_payload clean.
+        targetWordCount = Math.max(600, Math.min(12000, Math.round(parsedWords)));
       }
 
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
@@ -185,20 +201,41 @@ router.post(
         jobIdx += 1;
       }
 
-      await query(
-        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
-        [
-          runId,
-          title,
-          researchQuery,
-          supplemental ?? '',
-          JSON.stringify(normalizedOverrides),
-          JSON.stringify(attachments),
-          eng === 'v2' ? 'v2' : null,
-          researchObjective ?? null,
-        ]
-      );
+      // INSERT — try the new schema first (with target_word_count). If migration
+      // 013 has not yet been applied, fall back to the legacy column set so the
+      // route does not 500 during a deploy gap.
+      try {
+        await query(
+          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
+           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+          [
+            runId,
+            title,
+            researchQuery,
+            supplemental ?? '',
+            JSON.stringify(normalizedOverrides),
+            JSON.stringify(attachments),
+            eng === 'v2' ? 'v2' : null,
+            researchObjective ?? null,
+            targetWordCount ?? null,
+          ]
+        );
+      } catch {
+        await query(
+          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
+           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
+          [
+            runId,
+            title,
+            researchQuery,
+            supplemental ?? '',
+            JSON.stringify(normalizedOverrides),
+            JSON.stringify(attachments),
+            eng === 'v2' ? 'v2' : null,
+            researchObjective ?? null,
+          ]
+        );
+      }
 
       await researchQueue.add(
         'research-run',
@@ -210,6 +247,7 @@ router.post(
           modelOverrides: normalizedOverrides,
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
+          targetWordCount,
         },
         { jobId: runId }
       );
@@ -314,16 +352,37 @@ router.get('/:id/artifacts', async (req, res, next) => {
   try {
     const runId = req.params.id;
 
-    const runRows = await query<{ id: string }>(
-      `SELECT id FROM research_runs WHERE id=$1`,
-      [runId]
-    );
-    if (runRows.length === 0) {
+    type RunMetaRow = {
+      id: string;
+      progress_events: unknown;
+      plan: unknown;
+      discovery_summary: unknown;
+      model_log: unknown;
+      model_overrides: unknown;
+      model_ensemble: unknown;
+      report_id: string | null;
+    };
+    let runMeta: RunMetaRow[] = [];
+    try {
+      runMeta = await query<RunMetaRow>(
+        `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
+           FROM research_runs WHERE id=$1`,
+        [runId]
+      );
+    } catch {
+      // Tolerate older deploys missing some columns by falling back to a minimal SELECT.
+      runMeta = (await query<{ id: string }>(
+        `SELECT id FROM research_runs WHERE id=$1`,
+        [runId]
+      )) as RunMetaRow[];
+    }
+    if (runMeta.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
+    const meta = runMeta[0];
 
-    const [sources, claims, checkpoints, totals] = await Promise.all([
+    const [sources, claims, checkpoints, discoveryEvents, totals] = await Promise.all([
       query<{
         id: string; title: string | null; url: string | null; source_type: string;
         tags: string[]; ingested_at: string;
@@ -354,6 +413,16 @@ router.get('/:id/artifacts', async (req, res, next) => {
          ORDER BY created_at ASC`,
         [runId]
       ),
+      query<{
+        phase: string; provider: string; query_text: string; result_count: number;
+        selected_count: number; payload: Record<string, unknown>; created_at: string;
+      }>(
+        `SELECT phase, provider, query_text, result_count, selected_count, payload, created_at
+         FROM discovery_events
+         WHERE run_id=$1
+         ORDER BY created_at ASC`,
+        [runId]
+      ).catch(() => []),
       query<{ sources_total: string; claims_total: string }>(
         `SELECT
            (SELECT COUNT(*) FROM sources WHERE discovered_by_run_id=$1)::text AS sources_total,
@@ -365,7 +434,21 @@ router.get('/:id/artifacts', async (req, res, next) => {
     const sourcesTotal = parseInt(totals[0]?.sources_total ?? '0', 10);
     const claimsTotal = parseInt(totals[0]?.claims_total ?? '0', 10);
 
-    res.json({ sources, claims, checkpoints, sourcesTotal, claimsTotal });
+    res.json({
+      sources,
+      claims,
+      checkpoints,
+      sourcesTotal,
+      claimsTotal,
+      progressEvents: Array.isArray(meta.progress_events) ? meta.progress_events : [],
+      plan: meta.plan ?? null,
+      discoverySummary: meta.discovery_summary ?? null,
+      discoveryEvents,
+      modelLog: Array.isArray(meta.model_log) ? meta.model_log : [],
+      modelOverrides: meta.model_overrides ?? null,
+      modelEnsemble: meta.model_ensemble ?? null,
+      reportId: meta.report_id ?? null,
+    });
   } catch (err) {
     next(err);
   }

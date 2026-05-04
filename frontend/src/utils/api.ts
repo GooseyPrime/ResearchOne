@@ -316,6 +316,8 @@ export interface StartResearchPayload {
   researchObjective?: ResearchObjective;
   supplementalUrls?: string[];
   supplementalFiles?: File[];
+  /** User-requested total report length in words. Server clamps to a safe range. */
+  targetWordCount?: number;
 }
 
 export const startResearch = (data: StartResearchPayload) => {
@@ -332,6 +334,9 @@ export const startResearch = (data: StartResearchPayload) => {
     }
     if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
+    if (typeof rest.targetWordCount === 'number') {
+      form.append('targetWordCount', String(rest.targetWordCount));
+    }
     if (supplementalUrls?.length) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
     }
@@ -380,6 +385,17 @@ export interface RunArtifacts {
   }>;
   sourcesTotal: number;
   claimsTotal: number;
+  progressEvents?: ResearchProgressEvent[];
+  plan?: Record<string, unknown> | null;
+  discoverySummary?: Record<string, unknown> | null;
+  discoveryEvents?: Array<{
+    phase: string; provider: string; query_text: string; result_count: number;
+    selected_count: number; payload: Record<string, unknown>; created_at: string;
+  }>;
+  modelLog?: Array<Record<string, unknown>>;
+  modelOverrides?: Record<string, unknown> | null;
+  modelEnsemble?: Record<string, unknown> | null;
+  reportId?: string | null;
 }
 
 export const getRunArtifacts = (id: string) =>
