@@ -23,13 +23,51 @@ const EDGE_COLORS: Record<string, string> = {
   contradicts: '#f87171',
 };
 
-type SimNode = d3.SimulationNodeDatum & GraphNode;
-type SimEdge = d3.SimulationLinkDatum<SimNode> & { id: string; type: string; weight?: number };
+// Local structural equivalents of the d3 types — no dependency on @types/d3.
+// Compatible with the real d3 types via structural typing when @types/d3 is installed.
+// Compatible with d3's real types via structural typing when @types/d3 is installed.
+interface D3NodeDatum {
+  index?: number;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+interface D3LinkDatum<N> {
+  source: N | string | number;
+  target: N | string | number;
+  index?: number;
+}
+interface D3Simulation<N, L> {
+  stop(): this;
+  restart(): this;
+  on(typenames: string, listener: () => void): this;
+  alphaTarget(alpha: number): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  force(name: string, force: any): this;
+}
+
+interface D3ZoomBehavior {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (selection: any): void;
+  scaleExtent(extent: [number, number]): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(typenames: string, listener: (...args: any[]) => void): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scaleBy(selection: any, k: number): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform(selection: any, transform: unknown): void;
+}
+
+type SimNode = D3NodeDatum & GraphNode;
+type SimEdge = D3LinkDatum<SimNode> & { id: string; type: string; weight?: number };
 
 export default function KnowledgeGraphPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
+  const simulationRef = useRef<D3Simulation<SimNode, SimEdge> | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [limit, setLimit] = useState(80);
   const [showContradictions, setShowContradictions] = useState(true);
@@ -207,14 +245,14 @@ export default function KnowledgeGraphPage() {
 
   const handleZoom = (factor: number) => {
     const svg = svgRef.current;
-    const zoom = (svg as unknown as { _zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> })?._zoom;
+    const zoom = (svg as unknown as { _zoom?: D3ZoomBehavior })?._zoom;
     if (!svg || !zoom) return;
     d3.select(svg).transition().duration(300).call(zoom.scaleBy, factor);
   };
 
   const handleReset = () => {
     const svg = svgRef.current;
-    const zoom = (svg as unknown as { _zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> })?._zoom;
+    const zoom = (svg as unknown as { _zoom?: D3ZoomBehavior })?._zoom;
     if (!svg || !zoom) return;
     const w = svg.clientWidth || 900;
     const h = svg.clientHeight || 600;

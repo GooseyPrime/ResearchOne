@@ -23,10 +23,3 @@ declare module '*.css' {
   const stylesheet: string;
   export default stylesheet;
 }
-
-// Minimal fallback for react-dom/client when @types/react-dom is not installed locally.
-// Overridden by the real @types/react-dom types in CI.
-declare module 'react-dom/client' {
-  import * as ReactDOM from 'react-dom';
-  export = ReactDOM;
-}

@@ -20,6 +20,19 @@ function tierColor(tier: string | null): string {
 const POINT_RADIUS = 4;
 const HOVER_RADIUS = 7;
 
+// Local structural type for d3 zoom — compatible with d3.ZoomBehavior when @types/d3 is installed.
+interface D3ZoomBehavior {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (selection: any): void;
+  scaleExtent(extent: [number, number]): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(typenames: string, listener: (...args: any[]) => void): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scaleBy(selection: any, k: number): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform(selection: any, transform: unknown): void;
+}
+
 export default function EmbeddingAtlasPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -27,7 +40,7 @@ export default function EmbeddingAtlasPage() {
   const [filterTag, setFilterTag] = useState('');
   const [limit, setLimit] = useState(500);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const zoomRef = useRef<D3ZoomBehavior | null>(null);
 
   const { data: points = [], isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['atlas-points', limit, filterTag],
