@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useId, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -8,6 +8,7 @@ import {
   retryResearchRunFromFailure,
   extractApiError,
 } from '../utils/api';
+import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import {
   ArrowLeft,
   XCircle,
@@ -17,6 +18,14 @@ import {
   RefreshCw,
   ExternalLink,
   Clock,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  ListTree,
+  Target,
+  PenLine,
+  Cpu,
+  Paperclip,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import clsx from 'clsx';
@@ -28,6 +37,16 @@ const TIER_COLORS: Record<string, string> = {
   inference: 'text-amber-400',
   speculation: 'text-red-400',
 };
+
+function formatShortTime(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  } catch {
+    return '';
+  }
+}
 
 export default function FailedRunReportPage() {
   const { runId } = useParams<{ runId: string }>();
@@ -59,6 +78,63 @@ export default function FailedRunReportPage() {
     onError: (err) => setRetryError(extractApiError(err)),
   });
 
+  // Build a RunSummaryData payload from the persisted run row + artifacts so
+  // the same RunSummaryReport component used on the live research page is
+  // available here on failed runs.
+  const runSummary: RunSummaryData | null = useMemo(() => {
+    if (!run) return null;
+    const phaseDurations: Record<string, number> = {};
+    const events = artifacts?.progressEvents ?? [];
+    if (events.length > 0) {
+      const buckets: Record<string, { start: number; end: number }> = {};
+      for (const evt of events) {
+        if (!evt.timestamp || !evt.stage) continue;
+        const t = new Date(evt.timestamp).getTime();
+        if (Number.isNaN(t)) continue;
+        const bucket = buckets[evt.stage] ?? (buckets[evt.stage] = { start: t, end: t });
+        bucket.start = Math.min(bucket.start, t);
+        bucket.end = Math.max(bucket.end, t);
+      }
+      for (const [stage, { start, end }] of Object.entries(buckets)) {
+        phaseDurations[stage] = end - start;
+      }
+    }
+    const totalDurationMs =
+      run.completed_at && run.created_at
+        ? new Date(run.completed_at).getTime() - new Date(run.created_at).getTime()
+        : 0;
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+    const modelUsage: RunSummaryData['modelUsage'] = [];
+    for (const entry of artifacts?.modelLog ?? []) {
+      const e = entry as Record<string, unknown>;
+      const promptTokens = Number(e.promptTokens ?? 0);
+      const completionTokens = Number(e.completionTokens ?? 0);
+      totalPromptTokens += promptTokens;
+      totalCompletionTokens += completionTokens;
+      modelUsage!.push({
+        role: typeof e.role === 'string' ? e.role : 'unknown',
+        model: typeof e.model === 'string' ? e.model : 'unknown',
+        promptTokens,
+        completionTokens,
+        durationMs: Number(e.durationMs ?? 0),
+      });
+    }
+    return {
+      runId: run.id,
+      status: run.status,
+      totalDurationMs,
+      phaseDurations,
+      totalPromptTokens,
+      totalCompletionTokens,
+      retryCount: run.retry_attempts ?? 0,
+      failedStage: run.failed_stage ?? null,
+      errorMessage: run.error_message ?? null,
+      failureMeta: (run.failure_meta as Record<string, unknown> | undefined) ?? null,
+      modelUsage,
+    };
+  }, [run, artifacts]);
+
   if (runLoading) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-500 text-sm animate-pulse">
@@ -80,14 +156,17 @@ export default function FailedRunReportPage() {
   }
 
   const isAborted = run.status === 'aborted';
-  const retryable = (run.failure_meta as Record<string, unknown> | undefined)?.retryable === true;
+  const fmeta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
+  const retryable = fmeta.retryable === true;
   const sourceCount = artifacts?.sources.length ?? 0;
   const claimCount = artifacts?.claims.length ?? 0;
   const sourcesTotal = artifacts?.sourcesTotal ?? sourceCount;
   const claimsTotal = artifacts?.claimsTotal ?? claimCount;
+  const progressEvents = artifacts?.progressEvents ?? [];
+  const supplementalAttachments = run.supplemental_attachments ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
       {/* Nav */}
       <button
         type="button"
@@ -134,10 +213,75 @@ export default function FailedRunReportPage() {
         {/* Original query */}
         <div>
           <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">Research query</div>
-          <p className="text-sm text-white leading-relaxed bg-black/20 rounded-lg p-3 border border-white/5">
+          <p className="text-sm text-white leading-relaxed bg-black/20 rounded-lg p-3 border border-white/5 whitespace-pre-wrap">
             {run.query}
           </p>
         </div>
+
+        {/* Research objective + engine version */}
+        {(run.research_objective || run.engine_version) && (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            {run.research_objective && (
+              <span>
+                <span className="text-slate-600">Objective:</span>{' '}
+                <span className="font-mono text-slate-300">{String(run.research_objective)}</span>
+              </span>
+            )}
+            {run.engine_version && (
+              <span>
+                <span className="text-slate-600">Engine:</span>{' '}
+                <span className="font-mono text-slate-300">{run.engine_version}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Supplemental context */}
+        {(run.supplemental && run.supplemental.trim().length > 0) && (
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
+              Supplemental context (as submitted)
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed bg-black/20 rounded-lg p-3 border border-white/5 whitespace-pre-wrap max-h-64 overflow-y-auto">
+              {run.supplemental}
+            </p>
+          </div>
+        )}
+
+        {/* Supplemental attachments */}
+        {supplementalAttachments.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-1 flex items-center gap-1.5">
+              <Paperclip size={10} />
+              Supplemental attachments ({supplementalAttachments.length})
+            </div>
+            <div className="space-y-1">
+              {supplementalAttachments.map((att, i) => (
+                <div key={i} className="text-xs text-slate-300 bg-black/20 rounded-lg p-2 border border-white/5 flex items-center gap-2">
+                  <span className="text-[10px] uppercase text-slate-500 font-mono">{att.kind}</span>
+                  {att.kind === 'url' ? (
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent hover:underline truncate flex-1 min-w-0"
+                    >
+                      {att.url}
+                    </a>
+                  ) : (
+                    <span className="truncate flex-1 min-w-0">
+                      {att.filename}
+                      {att.mimetype && <span className="text-slate-500 ml-1">({att.mimetype})</span>}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-600 font-mono flex-shrink-0">
+                    job {att.ingestion_job_id.slice(0, 8)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Error details */}
         {(run.failed_stage || run.error_message) && (
@@ -162,19 +306,40 @@ export default function FailedRunReportPage() {
         )}
 
         {/* Retry info */}
-        {run.retry_attempts != null && run.retry_attempts > 0 && (
-          <p className="text-xs text-slate-600">
-            {run.retry_attempts} retry attempt{run.retry_attempts !== 1 ? 's' : ''} made
-            {run.retry_budget != null && ` (budget: ${run.retry_budget})`}
+        {(run.retry_attempts != null || run.retry_budget != null) && (
+          <p className="text-xs text-slate-500">
+            Retries used: <span className="text-slate-300">{run.retry_attempts ?? 0}</span>
+            {run.retry_budget != null && (
+              <> of <span className="text-slate-300">{run.retry_budget}</span></>
+            )}
+            {fmeta.terminal === true && (
+              <span className="ml-2 text-slate-600">
+                · budget locked ({String(fmeta.abortReason ?? 'non-recoverable')})
+              </span>
+            )}
           </p>
         )}
       </div>
+
+      {/* Embedded full Run Summary Report (the exact same component used on the
+          research page so the user's "perfect report" is preserved here). */}
+      <RunSummaryReport
+        summary={runSummary}
+        run={run}
+        traceEvents={progressEvents}
+        failure={{
+          stage: run.failed_stage ?? 'unknown',
+          message: run.error_message ?? '',
+          error: run.error_message ?? '',
+          failureMeta: fmeta,
+        }}
+      />
 
       {/* Artifacts error */}
       {artifactsError && (
         <div className="rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 flex items-center justify-between gap-3">
           <p className="text-xs text-amber-400">
-            Could not load sources/claims: {extractApiError(artifactsErrorObj)}
+            Could not load artifacts: {extractApiError(artifactsErrorObj)}
           </p>
           <button type="button" className="btn-ghost text-xs flex-shrink-0" onClick={() => refetchArtifacts()}>
             Retry
@@ -201,13 +366,130 @@ export default function FailedRunReportPage() {
         />
       </div>
 
+      {/* Full event trace */}
+      {progressEvents.length > 0 && (
+        <CollapsibleSection
+          icon={<Clock size={15} className="text-indigo-400" />}
+          title={`Full event trace (${progressEvents.length} events)`}
+          defaultOpen
+        >
+          <div className="font-mono text-[11px] leading-5 bg-[#080a10] rounded border border-surface-100/20 max-h-96 overflow-y-auto">
+            {progressEvents.map((evt, i) => {
+              const isError = evt.eventType === 'run_failed' || evt.eventType === 'run_aborted';
+              const isDone = evt.eventType === 'run_completed';
+              return (
+                <div
+                  key={i}
+                  className={clsx(
+                    'flex gap-2 px-3 py-1 border-b border-surface-100/10 last:border-0',
+                    isError && 'bg-red-950/30',
+                    isDone && 'bg-green-950/15'
+                  )}
+                >
+                  <span className="text-slate-600 tabular-nums w-[7ch] flex-shrink-0">{formatShortTime(evt.timestamp)}</span>
+                  <span className={clsx(
+                    'w-[14ch] flex-shrink-0 truncate',
+                    isError ? 'text-red-400' : isDone ? 'text-green-400' : 'text-indigo-400'
+                  )}>{evt.stage}</span>
+                  <span className="w-[5ch] flex-shrink-0 text-right text-slate-600 tabular-nums">{evt.percent ?? 0}%</span>
+                  <span className="flex-1 min-w-0 text-slate-300 break-words">
+                    {evt.message}
+                    {evt.model && <span className="ml-2 text-indigo-400/70">[{evt.model}]</span>}
+                    {evt.tokenUsage && (
+                      <span className="ml-1 text-slate-500">{evt.tokenUsage.prompt}p+{evt.tokenUsage.completion}c</span>
+                    )}
+                    {evt.substep && <span className="ml-1 text-slate-500">({evt.substep})</span>}
+                    {evt.failure?.errorMessage && (
+                      <span className="ml-1 text-red-300/90">→ {evt.failure.errorMessage}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Plan from planner */}
+      {artifacts?.plan && (
+        <CollapsibleSection
+          icon={<Target size={15} className="text-amber-400" />}
+          title="Research plan (from planner)"
+        >
+          <pre className="text-[11px] font-mono text-slate-300 bg-[#080a10] rounded border border-surface-100/20 p-3 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
+            {JSON.stringify(artifacts.plan, null, 2)}
+          </pre>
+        </CollapsibleSection>
+      )}
+
+      {/* Discovery summary + events */}
+      {(artifacts?.discoverySummary || (artifacts?.discoveryEvents && artifacts.discoveryEvents.length > 0)) && (
+        <CollapsibleSection
+          icon={<ListTree size={15} className="text-cyan-400" />}
+          title={`Discovery (${artifacts?.discoveryEvents?.length ?? 0} events)`}
+        >
+          <div className="space-y-3">
+            {artifacts?.discoverySummary && (
+              <pre className="text-[11px] font-mono text-slate-300 bg-[#080a10] rounded border border-surface-100/20 p-3 overflow-x-auto whitespace-pre-wrap max-h-72 overflow-y-auto">
+                {JSON.stringify(artifacts.discoverySummary, null, 2)}
+              </pre>
+            )}
+            {artifacts?.discoveryEvents && artifacts.discoveryEvents.length > 0 && (
+              <div className="space-y-1.5">
+                {artifacts.discoveryEvents.map((evt, i) => (
+                  <div key={i} className="text-xs bg-surface-200/40 border border-surface-100/20 rounded p-2 space-y-1">
+                    <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                      <span className="text-cyan-400">{evt.phase}</span>
+                      <span>·</span>
+                      <span className="text-slate-400">{evt.provider}</span>
+                      <span className="ml-auto">{format(new Date(evt.created_at), 'HH:mm:ss')}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 break-all">{evt.query_text}</p>
+                    <div className="text-[10px] text-slate-500">
+                      {evt.result_count} results · {evt.selected_count} selected
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Model log (raw model calls) */}
+      {artifacts?.modelLog && artifacts.modelLog.length > 0 && (
+        <CollapsibleSection
+          icon={<Cpu size={15} className="text-purple-400" />}
+          title={`Model calls (${artifacts.modelLog.length})`}
+        >
+          <div className="space-y-2">
+            {artifacts.modelLog.map((entry, i) => {
+              const e = entry as Record<string, unknown>;
+              return (
+                <details key={i} className="bg-surface-200/40 border border-surface-100/20 rounded">
+                  <summary className="cursor-pointer px-3 py-2 text-xs flex items-center gap-2">
+                    <span className="text-slate-500 w-32 truncate">{String(e.role ?? 'unknown')}</span>
+                    <span className="text-indigo-400/80 truncate flex-1 min-w-0">{String(e.model ?? 'unknown')}</span>
+                    <span className="text-slate-500 tabular-nums">
+                      {Number(e.promptTokens ?? 0)}p+{Number(e.completionTokens ?? 0)}c
+                    </span>
+                  </summary>
+                  <pre className="text-[10px] font-mono text-slate-400 px-3 pb-2 whitespace-pre-wrap max-h-72 overflow-y-auto">
+                    {typeof e.content === 'string' ? e.content : JSON.stringify(e, null, 2)}
+                  </pre>
+                </details>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
+      )}
+
       {/* Sources */}
       {sourceCount > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Database size={15} className="text-blue-400" />
-            Sources Discovered ({sourceCount}{sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})
-          </h2>
+        <CollapsibleSection
+          icon={<Database size={15} className="text-blue-400" />}
+          title={`Sources discovered (${sourceCount}${sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})`}
+        >
           <div className="space-y-2">
             {artifacts!.sources.map((s) => (
               <div
@@ -233,16 +515,15 @@ export default function FailedRunReportPage() {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* Claims */}
       {claimCount > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Brain size={15} className="text-purple-400" />
-            Claims Extracted ({claimCount}{claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})
-          </h2>
+        <CollapsibleSection
+          icon={<Brain size={15} className="text-purple-400" />}
+          title={`Claims extracted (${claimCount}${claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})`}
+        >
           <div className="space-y-2">
             {artifacts!.claims.map((c) => (
               <div
@@ -258,38 +539,54 @@ export default function FailedRunReportPage() {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* Checkpoints */}
       {artifacts && artifacts.checkpoints.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Clock size={15} className="text-slate-400" />
-            Progress Checkpoints
-          </h2>
+        <CollapsibleSection
+          icon={<PenLine size={15} className="text-slate-400" />}
+          title={`Progress checkpoints (${artifacts.checkpoints.length})`}
+        >
           <div className="space-y-1.5">
             {artifacts.checkpoints.map((cp, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 text-xs py-1.5 px-3 rounded-lg bg-surface-200/30 border border-surface-100/10"
-              >
-                <span className="font-mono text-slate-500 flex-shrink-0">{cp.stage}</span>
-                <span className="text-slate-600 flex-shrink-0">→</span>
-                <span className="text-slate-400 truncate">{cp.checkpoint_key}</span>
-                <span className="text-slate-600 text-[10px] ml-auto flex-shrink-0">
-                  {format(new Date(cp.created_at), 'HH:mm:ss')}
-                </span>
-              </div>
+              <details key={i} className="text-xs bg-surface-200/30 border border-surface-100/10 rounded">
+                <summary className="cursor-pointer flex items-center gap-3 py-1.5 px-3">
+                  <span className="font-mono text-slate-500 flex-shrink-0">{cp.stage}</span>
+                  <span className="text-slate-600 flex-shrink-0">→</span>
+                  <span className="text-slate-400 truncate">{cp.checkpoint_key}</span>
+                  <span className="text-slate-600 text-[10px] ml-auto flex-shrink-0">
+                    {format(new Date(cp.created_at), 'HH:mm:ss')}
+                  </span>
+                </summary>
+                <pre className="text-[10px] font-mono text-slate-400 px-3 pb-2 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                  {JSON.stringify(cp.snapshot, null, 2)}
+                </pre>
+              </details>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
+      )}
+
+      {/* Link to saved report (if one was persisted before failure) */}
+      {artifacts?.reportId && (
+        <div className="rounded-lg border border-green-800/40 bg-green-950/20 p-3 flex items-center gap-3">
+          <FileText size={14} className="text-green-400" />
+          <span className="text-xs text-slate-300 flex-1">A partial report was saved before the failure.</span>
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={() => navigate(`/reports/${artifacts.reportId}`)}
+          >
+            Open report
+          </button>
+        </div>
       )}
 
       {/* No artifacts at all */}
-      {!artifactsLoading && !artifactsError && sourceCount === 0 && claimCount === 0 && (
+      {!artifactsLoading && !artifactsError && sourceCount === 0 && claimCount === 0 && progressEvents.length === 0 && (
         <div className="text-center py-8 text-slate-600 text-sm">
-          No sources or claims were collected before the run failed.
+          No artifacts were collected before the run failed.
         </div>
       )}
     </div>
@@ -307,5 +604,38 @@ function StatCard({
       </div>
       <div className="text-2xl font-bold text-white tabular-nums">{value}</div>
     </div>
+  );
+}
+
+function CollapsibleSection({
+  icon,
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={contentId}
+      >
+        {open ? <ChevronDown size={14} className="text-slate-500" aria-hidden /> : <ChevronRight size={14} className="text-slate-500" aria-hidden />}
+        {icon}
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
+      </button>
+      <div id={contentId} hidden={!open}>
+        {open && children}
+      </div>
+    </section>
   );
 }

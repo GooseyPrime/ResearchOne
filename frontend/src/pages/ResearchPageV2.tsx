@@ -208,6 +208,13 @@ export default function ResearchPageV2() {
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
+  // Target report length (words). Standard preset; user can switch to "Custom" to
+  // enter an arbitrary value. The backend clamps to a safe range either way.
+  const [reportLengthPreset, setReportLengthPreset] = useState<'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('standard');
+  // Stored as a string so a temporarily empty input (user clearing the field)
+  // does not coerce to NaN inside a controlled <input type="number">. Parsed
+  // and clamped only when computing `resolvedTargetWordCount`.
+  const [reportLengthCustom, setReportLengthCustom] = useState<string>('2200');
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
   // Ref that always mirrors the most recently tracked run ID, including after
@@ -342,7 +349,7 @@ export default function ResearchPageV2() {
         });
         setActiveRun(latest);
       }
-      setTraceEvents(sortEventsChronological(sorted.slice(-150)));
+      setTraceEvents(sortEventsChronological(sorted.slice(-500)));
     } else if (polledRun.progress_message != null || polledRun.progress_percent != null) {
       const polledEvt: ResearchProgressEvent = {
         runId: trackingRunId,
@@ -353,7 +360,7 @@ export default function ResearchPageV2() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-150)));
+      setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-500)));
     }
 
     if (polledRun.status === 'failed' || polledRun.status === 'aborted') {
@@ -397,7 +404,7 @@ export default function ResearchPageV2() {
       if (rid === trackingRunId) {
         setProgress(update);
         setActiveRun(update);
-        setTraceEvents((prev) => sortEventsChronological([...prev, update].slice(-150)));
+        setTraceEvents((prev) => sortEventsChronological([...prev, update].slice(-500)));
       }
     });
 
@@ -541,6 +548,21 @@ export default function ResearchPageV2() {
     return payload;
   }, [modelRows, ensembleData, researchObjective]);
 
+  const resolvedTargetWordCount = useMemo(() => {
+    switch (reportLengthPreset) {
+      case 'short': return 1200;
+      case 'standard': return 2200;
+      case 'long': return 4000;
+      case 'extra_long': return 7000;
+      case 'custom': {
+        const parsed = Number(reportLengthCustom);
+        const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 2200;
+        // Floor 800 matches backend (10 sections × 80-word per-section floor).
+        return Math.max(800, Math.min(12000, Math.round(safe)));
+      }
+    }
+  }, [reportLengthPreset, reportLengthCustom]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
@@ -551,6 +573,7 @@ export default function ResearchPageV2() {
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',
       researchObjective,
+      targetWordCount: resolvedTargetWordCount,
     });
   };
 
@@ -565,8 +588,21 @@ export default function ResearchPageV2() {
     traceScrollRef.current.scrollTop = traceScrollRef.current.scrollHeight;
   }, [traceEvents.length]);
 
+  // Expand to a wider container while a run is active so the dedicated trace
+  // column has room to breathe. Reverts to the standard width once the run
+  // settles into completed / failed / aborted state.
+  const isActiveRun =
+    Boolean(trackingRunId) ||
+    (current?.percent != null && current.percent > 0 && current.percent < 100);
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+    <div
+      className={clsx(
+        'mx-auto px-6 py-8 space-y-8 transition-[max-width] duration-300',
+        isActiveRun ? 'max-w-[1500px]' : 'max-w-5xl'
+      )}
+    >
+
       <div>
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
           <FlaskConical className="text-accent" size={28} />
@@ -611,6 +647,42 @@ export default function ResearchPageV2() {
             <p className="text-xs text-slate-500 mt-1">
               Selects the default model ensemble for this run. Open “Model ensemble” to set primary models and optionally
               enable per-role fallbacks (off by default).
+            </p>
+          </div>
+
+          <div>
+            <label className="section-title block mb-2">Report length</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="input md:max-w-xs"
+                value={reportLengthPreset}
+                onChange={(e) => setReportLengthPreset(e.target.value as typeof reportLengthPreset)}
+                disabled={mutation.isPending || !!trackingRunId}
+              >
+                <option value="short">Short brief (~1,200 words)</option>
+                <option value="standard">Standard report (~2,200 words)</option>
+                <option value="long">Long-form (~4,000 words)</option>
+                <option value="extra_long">Extra long (~7,000 words)</option>
+                <option value="custom">Custom word count…</option>
+              </select>
+              {reportLengthPreset === 'custom' && (
+                <input
+                  type="number"
+                  min={800}
+                  max={12000}
+                  step={100}
+                  className="input w-32"
+                  value={reportLengthCustom}
+                  onChange={(e) => setReportLengthCustom(e.target.value)}
+                  disabled={mutation.isPending || !!trackingRunId}
+                />
+              )}
+              <span className="text-xs text-slate-500">
+                Target: <span className="text-slate-300 font-mono">{resolvedTargetWordCount.toLocaleString()}</span> words
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              The synthesizer distributes this budget across sections (heavier weight on Reasoning and Evidence). It is steered to use the budget on substance — citing specific evidence — and to stop early rather than pad with filler.
             </p>
           </div>
 
@@ -741,7 +813,8 @@ export default function ResearchPageV2() {
         </form>
 
         {(progress || activeRun || trackingRunId) && (
-          <div className="border-t border-indigo-900/20 pt-5 space-y-4 animate-in">
+          <div className="border-t border-indigo-900/20 pt-5 animate-in lg:grid lg:grid-cols-5 lg:gap-6 space-y-4 lg:space-y-0">
+            <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <span className="section-title">Research One 2 pipeline</span>
               <span className={hasWarning ? 'text-xs text-amber-300 font-medium' : 'text-xs text-accent font-medium'}>
@@ -749,7 +822,7 @@ export default function ResearchPageV2() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {STAGES.map((stage, i) => {
                 const done = i < currentIndex;
                 const active = i === currentIndex && currentUiStage !== 'failed';
@@ -785,7 +858,9 @@ export default function ResearchPageV2() {
               progressMessage={trackedRun?.progress_message ?? polledRun?.progress_message ?? null}
               progressStage={trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null}
             />
+            </div>
 
+            <div className="lg:col-span-3 lg:flex lg:flex-col lg:min-h-0 space-y-2">
             <div className="flex items-center justify-between">
               <span className="section-title">Live research trace ({traceEvents.length})</span>
               <span className="text-[10px] text-slate-500">Chronological · newest at bottom</span>
@@ -793,7 +868,7 @@ export default function ResearchPageV2() {
 
             <div
               ref={traceScrollRef}
-              className="max-h-[28rem] overflow-y-auto rounded-lg border border-surface-100 bg-[#0b0d14] font-mono text-[11px] leading-5"
+              className="lg:flex-1 max-h-[28rem] lg:max-h-[80vh] lg:min-h-[40rem] overflow-y-auto rounded-lg border border-surface-100 bg-[#0b0d14] font-mono text-[11px] leading-5"
             >
               {traceEvents.length === 0 && (
                 <p className="text-slate-500 px-3 py-3">Waiting for events…</p>
@@ -873,6 +948,7 @@ export default function ResearchPageV2() {
                   </div>
                 );
               })}
+            </div>
             </div>
           </div>
         )}
@@ -1178,7 +1254,13 @@ function FailureCard({
             Retries used: <span className="text-slate-300">{retryAttempts}</span> of{' '}
             <span className="text-slate-300">{retryBudget}</span>
             {typeof attemptsRemaining === 'number' && attemptsRemaining > 0 ? (
-              <span> · <span className="text-slate-300">{attemptsRemaining}</span> remaining</span>
+              isTerminal ? (
+                <span>
+                  {' '}· <span className="text-slate-500">{attemptsRemaining} unused (budget locked: {abortReason ?? 'non-recoverable'})</span>
+                </span>
+              ) : (
+                <span> · <span className="text-slate-300">{attemptsRemaining}</span> remaining</span>
+              )
             ) : null}
           </p>
         )}

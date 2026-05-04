@@ -36,7 +36,7 @@ import { GenericWebSearchProvider } from './providers/genericWebSearch';
 import { BraveSearchProvider } from './providers/braveSearch';
 import { TavilySearchProvider } from './providers/tavilySearch';
 
-/** Discovery planner system prompt */
+/** Discovery planner system prompt (round 1 — initial search). */
 const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for ResearchOne, a disciplined research system.
 Your role is to plan external discovery for a research query. External discovery is always required — always output need_external_discovery: true and always generate discovery_queries.
 
@@ -58,6 +58,28 @@ Output JSON with this exact schema:
   "max_sources_to_ingest": number,
   "exclusion_patterns": ["string", ...],
   "disconfirming_evidence_criteria": "string"
+}`;
+
+/** Discovery planner system prompt (round 2 — sleuthing pass).
+ *  After round 1 retrieves an initial set of sources, this round inspects
+ *  the results and proposes follow-up queries that pursue specific entities,
+ *  citations, contradictions, or unexplored avenues found in round-1 hits.
+ *  This is what gives the report its "investigative" feel rather than the
+ *  shallow one-shot retrieval the user complained about. */
+const DISCOVERY_FOLLOWUP_PROMPT = `You are a discovery FOLLOW-UP planning agent for ResearchOne.
+Round 1 of discovery already executed. You are now performing a SLEUTHING pass: look at what was actually found and propose follow-up queries that pursue specific entities, contradictions, citations, or unexplored avenues that emerged from round 1.
+
+CRITICAL RULES:
+- Read the round-1 candidate titles/snippets. Identify named entities, claims that beg verification, references that beg follow-up, and angles the round-1 queries did NOT cover.
+- Propose 2–5 NEW queries that materially expand the investigation. Do not duplicate round-1 phrasing.
+- If round 1 already covered the topic exhaustively, return follow_up_queries: [] and explain why.
+- Output valid JSON only.
+
+Output JSON with this exact schema:
+{
+  "rationale": "string",
+  "follow_up_queries": ["string", ...],
+  "exclusion_patterns": ["string", ...]
 }`;
 
 /** Get the configured search provider(s) */
@@ -105,8 +127,12 @@ export async function runDiscoveryOrchestrator(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
+  /** Optional callback fired after each discovery round so the parent
+   *  orchestrator can emit a live trace event ("Discovery round 2 complete
+   *  +N candidates"). */
+  onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, onRoundComplete } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -167,7 +193,7 @@ export async function runDiscoveryOrchestrator(args: {
     config.discovery.maxIngestPerRun
   );
 
-  logger.info(`[discovery:${runId}] Discovery needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
+  logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
 
   // ─── Step 2: Execute search queries ─────────────────────────────────────────
   const providers = getSearchProviders();
@@ -177,42 +203,141 @@ export async function runDiscoveryOrchestrator(args: {
   const allCandidates: SearchResultCandidate[] = [];
   const seenUrls = new Set<string>();
   const queriesExecuted: string[] = [];
+  let roundsExecuted = 0;
+  // Total query budget shared across all discovery rounds.
+  const totalQueryBudget = config.discovery.maxQueriesPerRun;
 
-  for (const searchQuery of discoveryPlan.discovery_queries.slice(0, config.discovery.maxQueriesPerRun)) {
-    queriesExecuted.push(searchQuery);
+  /** Execute one round of search queries against the configured providers,
+   *  deduplicating against `seenUrls` and persisting per-query audit events. */
+  const runSearchRound = async (
+    roundNumber: number,
+    queries: string[],
+    exclusionPatterns: string[]
+  ) => {
+    if (queries.length === 0) return 0;
+    let roundNewCandidates = 0;
+    for (const searchQuery of queries) {
+      if (queriesExecuted.length >= totalQueryBudget) break;
+      queriesExecuted.push(searchQuery);
 
-    for (const provider of orderedProviders) {
-      try {
-        const results = await provider.search({
-          text: searchQuery,
-          maxResults: config.discovery.maxResults,
-        });
+      for (const provider of orderedProviders) {
+        try {
+          const results = await provider.search({
+            text: searchQuery,
+            maxResults: config.discovery.maxResults,
+          });
 
-        let newCount = 0;
-        for (const r of results) {
-          const key = normalizeUrl(r.url);
-          // Skip excluded patterns
-          const isExcluded = discoveryPlan.exclusion_patterns.some(pat => key.includes(pat));
-          if (isExcluded || seenUrls.has(key)) continue;
-          seenUrls.add(key);
-          allCandidates.push(r);
-          newCount++;
+          let newCount = 0;
+          for (const r of results) {
+            const key = normalizeUrl(r.url);
+            const isExcluded = exclusionPatterns.some((pat) => key.includes(pat));
+            if (isExcluded || seenUrls.has(key)) continue;
+            seenUrls.add(key);
+            allCandidates.push(r);
+            newCount++;
+          }
+          roundNewCandidates += newCount;
+
+          await persistDiscoveryEvent(runId, `search_round_${roundNumber}`, provider.name, searchQuery, results.length, newCount, {
+            round: roundNumber,
+            query: searchQuery,
+            raw_count: results.length,
+            new_count: newCount,
+          });
+
+          logger.debug(`[discovery:${runId}] r${roundNumber} ${provider.name} "${searchQuery}": ${results.length} results, ${newCount} new`);
+        } catch (err) {
+          logger.error(`[discovery:${runId}] r${roundNumber} provider ${provider.name} search failed:`, err);
         }
-
-        await persistDiscoveryEvent(runId, 'search', provider.name, searchQuery, results.length, newCount, {
-          query: searchQuery,
-          raw_count: results.length,
-          new_count: newCount,
-        });
-
-        logger.debug(`[discovery:${runId}] ${provider.name} "${searchQuery}": ${results.length} results, ${newCount} new`);
-      } catch (err) {
-        logger.error(`[discovery:${runId}] Provider ${provider.name} search failed:`, err);
       }
     }
+    roundsExecuted += 1;
+    return roundNewCandidates;
+  };
+
+  // ─── Round 1: initial query set ─────────────────────────────────────────────
+  const round1Queries = discoveryPlan.discovery_queries.slice(0, totalQueryBudget);
+  const round1New = await runSearchRound(1, round1Queries, discoveryPlan.exclusion_patterns);
+  logger.info(`[discovery:${runId}] Round 1 complete: +${round1New} candidates (total ${allCandidates.length})`);
+  try { await onRoundComplete?.({ round: 1, candidatesAfter: allCandidates.length }); } catch { /* non-fatal */ }
+
+  // ─── Round 2: sleuthing pass ────────────────────────────────────────────────
+  // Ask the planner to look at round-1 candidate titles/URLs and propose
+  // follow-up queries pursuing specific entities, citations, contradictions,
+  // or unexplored avenues. Bounded by remaining query budget (capped at 5).
+  const remainingQueryBudget = Math.max(0, totalQueryBudget - queriesExecuted.length);
+  if (allCandidates.length > 0 && remainingQueryBudget > 0) {
+    try {
+      const round1Sample = allCandidates.slice(0, 20).map((c, i) => ({
+        n: i + 1,
+        title: c.title,
+        url: c.url,
+        snippet: typeof c.snippet === 'string' ? c.snippet.slice(0, 220) : '',
+      }));
+      const followupResult = await callRoleModel({
+        role: 'planner',
+        engineVersion,
+        researchObjective,
+        allowFallbackByRole,
+        messages: [
+          { role: 'system', content: withPreamble(DISCOVERY_FOLLOWUP_PROMPT) },
+          {
+            role: 'user',
+            content: `Research Query: ${researchQuery}\n\nRound 1 candidates (${allCandidates.length} total, sample below):\n${JSON.stringify(round1Sample, null, 2)}\n\nRound 1 queries already executed (do not duplicate):\n${queriesExecuted.map((q) => `- ${q}`).join('\n')}\n\nPropose follow-up queries that materially expand the investigation. Output JSON only.`,
+          },
+        ],
+        maxTokens: 1024,
+      });
+      const fmatch = followupResult.content.match(/\{[\s\S]*\}/);
+      const parsed = fmatch ? (JSON.parse(fmatch[0]) as { rationale?: string; follow_up_queries?: unknown; exclusion_patterns?: unknown }) : null;
+      const followUpQueries = Array.isArray(parsed?.follow_up_queries)
+        ? (parsed!.follow_up_queries as unknown[])
+            .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+            .map((q) => q.trim())
+            .filter((q) => !queriesExecuted.includes(q))
+            .slice(0, Math.min(5, remainingQueryBudget))
+        : [];
+      const round2Exclusions = Array.isArray(parsed?.exclusion_patterns)
+        ? [
+            ...discoveryPlan.exclusion_patterns,
+            ...(parsed!.exclusion_patterns as unknown[]).filter((p): p is string => typeof p === 'string'),
+          ]
+        : discoveryPlan.exclusion_patterns;
+
+      await persistDiscoveryEvent(runId, 'plan_round_2', 'planner', researchQuery, 0, 0, {
+        rationale: parsed?.rationale ?? '',
+        follow_up_queries: followUpQueries,
+      });
+
+      if (followUpQueries.length > 0) {
+        logger.info(`[discovery:${runId}] Round 2 queries: ${followUpQueries.join(' | ')}`);
+        const round2New = await runSearchRound(2, followUpQueries, round2Exclusions);
+        logger.info(`[discovery:${runId}] Round 2 complete: +${round2New} candidates (total ${allCandidates.length})`);
+        try { await onRoundComplete?.({ round: 2, candidatesAfter: allCandidates.length }); } catch { /* non-fatal */ }
+      } else {
+        logger.info(`[discovery:${runId}] Round 2 produced no follow-up queries — round 1 already covered the topic`);
+      }
+    } catch (err) {
+      logger.warn(`[discovery:${runId}] Round 2 follow-up planning failed (continuing with round-1 results):`, err);
+    }
+  } else if (allCandidates.length === 0) {
+    logger.info(`[discovery:${runId}] Skipping round 2 — round 1 returned no candidates`);
+  } else {
+    logger.info(`[discovery:${runId}] Skipping round 2 — query budget exhausted`);
   }
 
-  logger.info(`[discovery:${runId}] Total candidates after dedup: ${allCandidates.length}`);
+  logger.info(`[discovery:${runId}] Total candidates after ${roundsExecuted} round(s): ${allCandidates.length}`);
+
+  // Persist the round count on the run row so the FailedRunReportPage trace
+  // can show whether the second-round sleuthing pass actually executed.
+  try {
+    await query(
+      `UPDATE research_runs SET discovery_round_count=$1 WHERE id=$2`,
+      [roundsExecuted, runId]
+    );
+  } catch {
+    // Column may not yet be present pre-migration 013 — non-fatal.
+  }
 
   // ─── Step 3: Score/rank candidates ──────────────────────────────────────────
   // Sort by score descending, then rank ascending
@@ -407,4 +532,4 @@ function buildSummary(
   };
 }
 
-export { DISCOVERY_PLANNER_PROMPT };
+export { DISCOVERY_PLANNER_PROMPT, DISCOVERY_FOLLOWUP_PROMPT };

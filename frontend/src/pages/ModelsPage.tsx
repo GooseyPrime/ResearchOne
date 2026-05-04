@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save } from 'lucide-react';
+import { Settings, Save, CheckSquare } from 'lucide-react';
 import {
   getAdminModels,
   putAdminModels,
@@ -74,6 +74,61 @@ export default function ModelsPage() {
     }));
   };
 
+  const roleToDefaultKey: Record<string, string> = {
+    planner: 'planner',
+    retriever: 'retriever',
+    reasoner: 'reasoner',
+    skeptic: 'skeptic',
+    synthesizer: 'synthesizer',
+    verifier: 'verifier',
+    plain_language_synthesizer: 'plainLanguageSynthesizer',
+    outline_architect: 'outlineArchitect',
+    section_drafter: 'sectionDrafter',
+    internal_challenger: 'internalChallenger',
+    coherence_refiner: 'coherenceRefiner',
+    revision_intake: 'revisionIntake',
+    report_locator: 'reportLocator',
+    change_planner: 'changePlanner',
+    section_rewriter: 'sectionRewriter',
+    citation_integrity_checker: 'citationIntegrityChecker',
+    final_revision_verifier: 'finalRevisionVerifier',
+  };
+
+  /**
+   * "Select all fallbacks" — copy each role's environment-default fallback
+   * into the editable fallback field. Skips rows whose fallback is already
+   * filled in (so a user-entered override is never silently overwritten).
+   */
+  const selectAllFallbacks = () => {
+    const fbMap = (data?.defaults as Record<string, unknown> | undefined)?.fallbacks as
+      | Record<string, string>
+      | undefined;
+    if (!fbMap) return;
+    setRows(prev => {
+      const next = { ...prev };
+      for (const { key } of REASONING_ROLES) {
+        const dk = roleToDefaultKey[key] ?? key;
+        const defFb = fbMap[dk];
+        if (defFb && !next[key]?.fallback?.trim()) {
+          next[key] = { ...next[key], fallback: String(defFb) };
+        }
+      }
+      return next;
+    });
+  };
+
+  const clearAllFallbacks = () => {
+    setRows(prev => {
+      const next = { ...prev };
+      for (const { key } of REASONING_ROLES) {
+        if (next[key]?.fallback) {
+          next[key] = { ...next[key], fallback: '' };
+        }
+      }
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     const token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
     if (!token) {
@@ -106,26 +161,6 @@ export default function ModelsPage() {
   const defaults = data?.defaults as Record<string, unknown> | undefined;
   const fb = defaults?.fallbacks as Record<string, string> | undefined;
 
-  const roleToDefaultKey: Record<string, string> = {
-    planner: 'planner',
-    retriever: 'retriever',
-    reasoner: 'reasoner',
-    skeptic: 'skeptic',
-    synthesizer: 'synthesizer',
-    verifier: 'verifier',
-    plain_language_synthesizer: 'plainLanguageSynthesizer',
-    outline_architect: 'outlineArchitect',
-    section_drafter: 'sectionDrafter',
-    internal_challenger: 'internalChallenger',
-    coherence_refiner: 'coherenceRefiner',
-    revision_intake: 'revisionIntake',
-    report_locator: 'reportLocator',
-    change_planner: 'changePlanner',
-    section_rewriter: 'sectionRewriter',
-    citation_integrity_checker: 'citationIntegrityChecker',
-    final_revision_verifier: 'finalRevisionVerifier',
-  };
-
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
       <div>
@@ -155,6 +190,31 @@ export default function ModelsPage() {
           </div>
 
           <div className="card overflow-x-auto">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3 pb-1">
+              <p className="text-xs text-slate-500">
+                {REASONING_ROLES.length} agent roles · click <span className="text-slate-300">Select all fallbacks</span> to populate every empty fallback with the environment default.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-ghost text-xs flex items-center gap-1.5 border border-accent/30 text-accent px-3 py-1.5 rounded-lg"
+                  onClick={selectAllFallbacks}
+                  disabled={saving}
+                  title="Copy each role's environment-default fallback into the editable field. Existing fallback values are preserved."
+                >
+                  <CheckSquare size={13} />
+                  Select all fallbacks
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost text-xs"
+                  onClick={clearAllFallbacks}
+                  disabled={saving}
+                >
+                  Clear all
+                </button>
+              </div>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-indigo-900/30 text-left text-slate-500">

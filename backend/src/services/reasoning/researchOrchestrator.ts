@@ -30,6 +30,9 @@ export interface ResearchJobData {
   modelOverrides?: PerRunModelOverrides;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  /** Optional total report length in words. Clamped server-side to a safe
+   *  range; routed into the synthesizer's per-section budget directives. */
+  targetWordCount?: number;
 }
 
 export interface ResearchProgress {
@@ -159,10 +162,13 @@ function buildReaderFrontMatter(args: {
   contradictionCount: number;
   sourceCount: number;
   chunkCount: number;
-  falsificationCriteria: string[];
+  falsificationCriteria: string[] | null | undefined;
 }): ReaderFrontMatter {
-  const summary = args.executiveSummary.trim().replace(/\s+/g, ' ');
-  const conclusion = args.conclusion.trim().replace(/\s+/g, ' ');
+  const summary = (args.executiveSummary ?? '').trim().replace(/\s+/g, ' ');
+  const conclusion = (args.conclusion ?? '').trim().replace(/\s+/g, ' ');
+  const falsificationCriteria = Array.isArray(args.falsificationCriteria)
+    ? args.falsificationCriteria.filter((c) => typeof c === 'string')
+    : [];
 
   const fallbackSummary = `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
   const fallbackConclusion = args.contradictionCount > 0
@@ -185,8 +191,8 @@ function buildReaderFrontMatter(args: {
       {
         label: 'Counterevidence / Falsification',
         narrative:
-          args.falsificationCriteria.length > 0
-            ? `This report's conclusions would be falsified by: ${args.falsificationCriteria.slice(0, 2).join('; ')}.`
+          falsificationCriteria.length > 0
+            ? `This report's conclusions would be falsified by: ${falsificationCriteria.slice(0, 2).join('; ')}.`
             : 'No specific falsification targets were extracted. Counterevidence would need to directly contradict the central mechanism or primary hypothesis stated in the report body.',
       },
       {
@@ -234,6 +240,7 @@ export async function runResearchJob(
     modelOverrides: incomingModelOverrides,
     engineVersion,
     researchObjective,
+    targetWordCount,
   } = data;
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
@@ -246,6 +253,7 @@ export async function runResearchJob(
     modelOverrides: runModelOverrides,
     engineVersion,
     researchObjective,
+    targetWordCount,
   };
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
@@ -367,7 +375,25 @@ export async function runResearchJob(
         investigation_angles: ['Main investigation'],
       };
     }
+    // Defensive normalization: a planner that returns valid JSON but omits one
+    // of these array fields used to crash at the saving stage with
+    // "Cannot read properties of undefined (reading 'length')" — see PR #50.
+    // Coerce every required field into the expected shape with safe fallbacks
+    // so downstream readers (saveReport, buildReaderFrontMatter, prompts)
+    // never see undefined.
     plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, researchQuery);
+    plan.sub_questions = Array.isArray(plan.sub_questions) && plan.sub_questions.length > 0
+      ? plan.sub_questions.map((q) => String(q))
+      : [researchQuery];
+    plan.falsification_criteria = Array.isArray(plan.falsification_criteria) && plan.falsification_criteria.length > 0
+      ? plan.falsification_criteria.map((c) => String(c))
+      : [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`];
+    plan.investigation_angles = Array.isArray(plan.investigation_angles) && plan.investigation_angles.length > 0
+      ? plan.investigation_angles.map((a) => String(a))
+      : ['Main investigation'];
+    if (typeof plan.hypothesis !== 'string' || !plan.hypothesis.trim()) {
+      plan.hypothesis = researchQuery;
+    }
 
     await query(
       `UPDATE research_runs SET plan=$1 WHERE id=$2`,
@@ -383,7 +409,7 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
-    await progress('discovery', 15, 'Running autonomous external discovery...', { substep: 'queries_generating' });
+    await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
 
     const discoverySummary = await runDiscoveryOrchestrator({
       runId,
@@ -393,6 +419,12 @@ export async function runResearchJob(
       engineVersion,
       researchObjective,
       allowFallbackByRole,
+      onRoundComplete: async ({ round, candidatesAfter }) => {
+        const pct = round === 1 ? 15 : 17;
+        await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
+          substep: `discovery_round_${round}_complete`,
+        });
+      },
     });
 
     await query(
@@ -547,6 +579,7 @@ export async function runResearchJob(
       engineVersion: v2.engineVersion,
       researchObjective: v2.researchObjective,
       allowFallbackByRole: v2.allowFallbackByRole,
+      targetWordCount,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
           substep: 'section_generated',
@@ -603,7 +636,7 @@ export async function runResearchJob(
         { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
         {
           role: 'user',
-          content: `Rewrite the following research report in plain language for a general reader. Keep uncertainty and contradictions explicit.\n\n${generatedReport.markdown.slice(0, 120000)}`,
+          content: `Rewrite the following research report in plain language for a general reader. Keep uncertainty and contradictions explicit.\n\n${(typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '').slice(0, 120000)}`,
         },
       ],
     });
@@ -621,7 +654,8 @@ export async function runResearchJob(
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
 
-    const reportSections = parseReportSections(generatedReport.markdown);
+    const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
+    const reportSections = parseReportSections(reportMarkdown);
     const readerFrontMatter = buildReaderFrontMatter({
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
       conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
@@ -640,7 +674,7 @@ export async function runResearchJob(
       query: researchQuery,
       plan,
       allChunks,
-      synthesizerContent: generatedReport.markdown,
+      synthesizerContent: reportMarkdown,
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
@@ -670,7 +704,7 @@ export async function runResearchJob(
         researchQuery,
         chunks: allChunks,
         reasonerOutput: reasonerResult.content,
-        synthesizerOutput: generatedReport.markdown,
+        synthesizerOutput: reportMarkdown,
         ...v2,
       });
 
@@ -997,10 +1031,30 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
   if (lower.includes('openrouter') || lower.includes('chat/completions')) {
     hints.push('Check OPENROUTER_API_KEY and OPENROUTER_BASE_URL (must be the API base, e.g. https://openrouter.ai/api/v1, not .../chat/completions).');
   }
+  // Internal/unknown errors (e.g. a TypeError thrown by a downstream parser
+  // when a model returns unexpected JSON shape). Previously this branch
+  // returned `retryable: false` which produced the contradictory
+  // "Run aborted — 0 of 3 retries used · 3 remaining" UI: the row had
+  // budget left but the state-machine refused to use it. Mark these as
+  // retryable so the run can resume from its last checkpoint and burn
+  // through the budget the user already sees on screen.
+  const isInternalProgramError =
+    err instanceof TypeError ||
+    err instanceof RangeError ||
+    err instanceof ReferenceError ||
+    err instanceof SyntaxError;
+  if (isInternalProgramError) {
+    hints.push(
+      'Internal error detected. The orchestrator will mark this retryable so the run can resume from its last checkpoint; if it keeps reproducing, this is a server-side bug and should be reported.'
+    );
+  }
   return {
     errorMessage,
-    failureMeta: hints.length ? { orchestratorHints: hints } : {},
-    retryable: false,
+    failureMeta: {
+      classification: isInternalProgramError ? 'internal_error' : 'unknown_error',
+      ...(hints.length ? { orchestratorHints: hints } : {}),
+    },
+    retryable: isInternalProgramError,
   };
 }
 
@@ -1120,6 +1174,10 @@ async function saveReport(args: {
   let reportId!: string;
 
   await withTransaction(async (client) => {
+    const safeFalsification = Array.isArray(plan?.falsification_criteria)
+      ? plan.falsification_criteria.filter((c) => typeof c === 'string').join('\n')
+      : '';
+    const safeChunks = Array.isArray(allChunks) ? allChunks : [];
     const reportResult = await client.query(
       `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
        VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
@@ -1129,9 +1187,9 @@ async function saveReport(args: {
         researchQuery,
         sections.find(s => s.type === 'executive_summary')?.content ?? '',
         sections.find(s => s.type === 'conclusion')?.content ?? '',
-        plan.falsification_criteria.join('\n'),
-        new Set(allChunks.map(c => c.source_url)).size,
-        allChunks.length,
+        safeFalsification,
+        new Set(safeChunks.map((c) => c.source_url)).size,
+        safeChunks.length,
       ]
     );
     reportId = reportResult.rows[0].id;
@@ -1173,7 +1231,10 @@ async function saveReport(args: {
   return reportId;
 }
 
-function parseReportSections(content: string): Array<{ type: string; title: string; content: string }> {
+function parseReportSections(content: string | undefined | null): Array<{ type: string; title: string; content: string }> {
+  if (typeof content !== 'string' || content.length === 0) {
+    return [{ type: 'body', title: 'Report', content: typeof content === 'string' ? content : '' }];
+  }
   const SECTION_MAP: Record<string, string> = {
     'executive summary': 'executive_summary',
     'research question': 'research_question',
