@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import { GitFork, RefreshCw, Maximize2, Info, ZoomIn, ZoomOut } from 'lucide-react';
-import { getKnowledgeGraph, type GraphNode } from '../utils/api';
+import { getKnowledgeGraph, extractApiError, type GraphNode } from '../utils/api';
 import clsx from 'clsx';
 
 const NODE_COLORS: Record<string, string> = {
@@ -23,21 +23,60 @@ const EDGE_COLORS: Record<string, string> = {
   contradicts: '#f87171',
 };
 
-type SimNode = d3.SimulationNodeDatum & GraphNode;
-type SimEdge = d3.SimulationLinkDatum<SimNode> & { id: string; type: string; weight?: number };
+// Local structural equivalents of the d3 types — no dependency on @types/d3.
+// Compatible with the real d3 types via structural typing when @types/d3 is installed.
+// Compatible with d3's real types via structural typing when @types/d3 is installed.
+interface D3NodeDatum {
+  index?: number;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+interface D3LinkDatum<N> {
+  source: N | string | number;
+  target: N | string | number;
+  index?: number;
+}
+interface D3Simulation {
+  stop(): this;
+  restart(): this;
+  on(typenames: string, listener: () => void): this;
+  alphaTarget(alpha: number): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  force(name: string, force: any): this;
+}
+
+interface D3ZoomBehavior {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (selection: any): void;
+  scaleExtent(extent: [number, number]): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(typenames: string, listener: (...args: any[]) => void): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scaleBy(selection: any, k: number): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform(selection: any, transform: unknown): void;
+}
+
+type SimNode = D3NodeDatum & GraphNode;
+type SimEdge = D3LinkDatum<SimNode> & { id: string; type: string; weight?: number };
 
 export default function KnowledgeGraphPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null);
+  const simulationRef = useRef<D3Simulation | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [limit, setLimit] = useState(80);
   const [showContradictions, setShowContradictions] = useState(true);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['knowledge-graph', limit],
     queryFn: () => getKnowledgeGraph({ limit }),
     staleTime: 60_000,
+    retry: 1,
   });
 
   const buildGraph = useCallback(() => {
@@ -88,7 +127,7 @@ export default function KnowledgeGraphPage() {
     // Zoom
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.2, 8])
-      .on('zoom', (e) => container.attr('transform', e.transform.toString()));
+      .on('zoom', (e: {transform: {toString(): string}}) => container.attr('transform', e.transform.toString()));
     d3svg.call(zoom);
     d3svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.7));
     (svg as unknown as { _zoom: typeof zoom })._zoom = zoom;
@@ -98,9 +137,9 @@ export default function KnowledgeGraphPage() {
     simulationRef.current = simulation;
     simulation
       .force('link', d3.forceLink<SimNode, SimEdge>(edges)
-        .id((d) => d.id)
-        .distance((d) => d.type === 'contradicts' ? 80 : 120)
-        .strength((d) => (d.weight ?? 1) * 0.3)
+        .id((d: SimNode) => d.id)
+        .distance((d: SimEdge) => d.type === 'contradicts' ? 80 : 120)
+        .strength((d: SimEdge) => (d.weight ?? 1) * 0.3)
       )
       .force('charge', d3.forceManyBody().strength(-180))
       .force('collision', d3.forceCollide(18))
@@ -108,13 +147,13 @@ export default function KnowledgeGraphPage() {
 
     // Edges
     const edgeSel = container.append('g')
-      .selectAll<SVGLineElement, SimEdge>('line')
+      .selectAll('line')
       .data(edges)
       .join('line')
-      .attr('stroke', (d) => EDGE_COLORS[d.type] ?? '#334155')
-      .attr('stroke-opacity', (d) => d.type === 'contradicts' ? 0.8 : 0.35)
-      .attr('stroke-width', (d) => d.type === 'contradicts' ? 2 : 1)
-      .attr('marker-end', (d) => `url(#arrow-${d.type})`);
+      .attr('stroke', (d: SimEdge) => EDGE_COLORS[d.type] ?? '#334155')
+      .attr('stroke-opacity', (d: SimEdge) => d.type === 'contradicts' ? 0.8 : 0.35)
+      .attr('stroke-width', (d: SimEdge) => d.type === 'contradicts' ? 2 : 1)
+      .attr('marker-end', (d: SimEdge) => `url(#arrow-${d.type})`);
 
     // Nodes
     const nodeGroup = container.append('g')
@@ -124,8 +163,8 @@ export default function KnowledgeGraphPage() {
       .style('cursor', 'pointer');
 
     nodeGroup.append('circle')
-      .attr('r', (d) => d.type === 'source' ? 10 : 6)
-      .attr('fill', (d) => {
+      .attr('r', (d: SimNode) => d.type === 'source' ? 10 : 6)
+      .attr('fill', (d: SimNode) => {
         if (d.type === 'claim' && d.evidence_tier) return TIER_COLORS[d.evidence_tier] ?? NODE_COLORS.claim;
         return NODE_COLORS[d.type] ?? '#64748b';
       })
@@ -138,16 +177,17 @@ export default function KnowledgeGraphPage() {
       .attr('dy', '0.35em')
       .attr('font-size', '9px')
       .attr('fill', '#94a3b8')
-      .text((d) => d.label.slice(0, 35) + (d.label.length > 35 ? '…' : ''));
+      .text((d: SimNode) => d.label.slice(0, 35) + (d.label.length > 35 ? '…' : ''));
 
+    type DragEv = {active: boolean; x: number; y: number};
     // Drag
     const drag = d3.drag<SVGGElement, SimNode>()
-      .on('start', (event, d) => {
+      .on('start', (event: DragEv, d: SimNode) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
       })
-      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
-      .on('end', (event, d) => {
+      .on('drag', (event: DragEv, d: SimNode) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event: DragEv, d: SimNode) => {
         if (!event.active) simulation.alphaTarget(0);
         d.fx = null; d.fy = null;
       });
@@ -157,7 +197,7 @@ export default function KnowledgeGraphPage() {
     const tooltipEl = tooltipRef.current!;
     const tooltip = d3.select(tooltipEl);
     nodeGroup
-      .on('mouseover', (event, d) => {
+      .on('mouseover', (event: MouseEvent, d: SimNode) => {
         tooltipEl.innerHTML = '';
         const typeEl = document.createElement('div');
         typeEl.className = 'font-semibold text-white text-xs mb-0.5';
@@ -177,19 +217,19 @@ export default function KnowledgeGraphPage() {
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mousemove', (event) => {
+      .on('mousemove', (event: MouseEvent) => {
         tooltip.style('left', `${event.offsetX + 14}px`).style('top', `${event.offsetY - 10}px`);
       })
       .on('mouseout', () => tooltip.style('display', 'none'))
-      .on('click', (_event, d) => setSelected(d));
+      .on('click', (_event: MouseEvent, d: SimNode) => setSelected(d));
 
     simulation.on('tick', () => {
       edgeSel
-        .attr('x1', (d) => (d.source as SimNode).x ?? 0)
-        .attr('y1', (d) => (d.source as SimNode).y ?? 0)
-        .attr('x2', (d) => (d.target as SimNode).x ?? 0)
-        .attr('y2', (d) => (d.target as SimNode).y ?? 0);
-      nodeGroup.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+        .attr('x1', (d: SimEdge) => (d.source as SimNode).x ?? 0)
+        .attr('y1', (d: SimEdge) => (d.source as SimNode).y ?? 0)
+        .attr('x2', (d: SimEdge) => (d.target as SimNode).x ?? 0)
+        .attr('y2', (d: SimEdge) => (d.target as SimNode).y ?? 0);
+      nodeGroup.attr('transform', (d: SimNode) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
   }, [data, showContradictions]);
 
@@ -205,14 +245,14 @@ export default function KnowledgeGraphPage() {
 
   const handleZoom = (factor: number) => {
     const svg = svgRef.current;
-    const zoom = (svg as unknown as { _zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> })?._zoom;
+    const zoom = (svg as unknown as { _zoom?: D3ZoomBehavior })?._zoom;
     if (!svg || !zoom) return;
     d3.select(svg).transition().duration(300).call(zoom.scaleBy, factor);
   };
 
   const handleReset = () => {
     const svg = svgRef.current;
-    const zoom = (svg as unknown as { _zoom?: d3.ZoomBehavior<SVGSVGElement, unknown> })?._zoom;
+    const zoom = (svg as unknown as { _zoom?: D3ZoomBehavior })?._zoom;
     if (!svg || !zoom) return;
     const w = svg.clientWidth || 900;
     const h = svg.clientHeight || 600;
@@ -279,7 +319,17 @@ export default function KnowledgeGraphPage() {
               Building graph…
             </div>
           )}
-          {!isLoading && nodeCount === 0 && (
+          {!isLoading && isError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 px-8 text-center">
+              <GitFork size={32} className="text-red-400 opacity-60" />
+              <p className="text-sm text-red-400">Failed to load graph data</p>
+              <p className="text-xs text-slate-600 font-mono max-w-md break-words">
+                {extractApiError(error)}
+              </p>
+              <button type="button" className="btn-ghost text-xs mt-1" onClick={() => refetch()}>Retry</button>
+            </div>
+          )}
+          {!isLoading && !isError && nodeCount === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
               <GitFork size={32} className="opacity-30" />
               <p className="text-sm">No corpus data yet. Run research to populate claims and sources.</p>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import { Layers, RefreshCw, ZoomIn, ZoomOut, Maximize2, Filter, Info } from 'lucide-react';
-import { getAtlasPoints, type AtlasPoint } from '../utils/api';
+import { getAtlasPoints, extractApiError, type AtlasPoint } from '../utils/api';
 import clsx from 'clsx';
 
 const TIER_COLORS: Record<string, string> = {
@@ -20,6 +20,19 @@ function tierColor(tier: string | null): string {
 const POINT_RADIUS = 4;
 const HOVER_RADIUS = 7;
 
+// Local structural type for d3 zoom — compatible with d3.ZoomBehavior when @types/d3 is installed.
+interface D3ZoomBehavior {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (selection: any): void;
+  scaleExtent(extent: [number, number]): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(typenames: string, listener: (...args: any[]) => void): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  scaleBy(selection: any, k: number): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform(selection: any, transform: unknown): void;
+}
+
 export default function EmbeddingAtlasPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -27,12 +40,13 @@ export default function EmbeddingAtlasPage() {
   const [filterTag, setFilterTag] = useState('');
   const [limit, setLimit] = useState(500);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const zoomRef = useRef<D3ZoomBehavior | null>(null);
 
-  const { data: points = [], isLoading, refetch, isFetching } = useQuery({
+  const { data: points = [], isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['atlas-points', limit, filterTag],
     queryFn: () => getAtlasPoints({ limit, tags: filterTag || undefined }),
     staleTime: 120_000,
+    retry: 1,
   });
 
   const buildChart = useCallback(() => {
@@ -59,13 +73,13 @@ export default function EmbeddingAtlasPage() {
 
     // Render points
     const circles = g
-      .selectAll<SVGCircleElement, AtlasPoint>('circle')
+      .selectAll('circle')
       .data(points)
       .join('circle')
-      .attr('cx', (d) => xScale(d.x))
-      .attr('cy', (d) => yScale(d.y))
+      .attr('cx', (d: AtlasPoint) => xScale(d.x))
+      .attr('cy', (d: AtlasPoint) => yScale(d.y))
       .attr('r', POINT_RADIUS)
-      .attr('fill', (d) => tierColor(d.evidence_tier))
+      .attr('fill', (d: AtlasPoint) => tierColor(d.evidence_tier))
       .attr('fill-opacity', 0.72)
       .attr('stroke', 'none')
       .style('cursor', 'pointer');
@@ -75,8 +89,8 @@ export default function EmbeddingAtlasPage() {
     const tooltip = d3.select(tooltipEl);
 
     circles
-      .on('mouseover', function (event, d) {
-        d3.select(this)
+      .on('mouseover', (event: MouseEvent, d: AtlasPoint) => {
+        d3.select(event.currentTarget as SVGCircleElement)
           .attr('r', HOVER_RADIUS)
           .attr('stroke', '#fff')
           .attr('stroke-width', 1.5)
@@ -99,24 +113,24 @@ export default function EmbeddingAtlasPage() {
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mousemove', function (event) {
+      .on('mousemove', (event: MouseEvent) => {
         tooltip
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mouseout', function () {
-        d3.select(this)
+      .on('mouseout', (event: MouseEvent) => {
+        d3.select(event.currentTarget as SVGCircleElement)
           .attr('r', POINT_RADIUS)
           .attr('stroke', 'none')
           .attr('fill-opacity', 0.72);
         tooltip.style('display', 'none');
       })
-      .on('click', (_event, d) => setSelected(d));
+      .on('click', (_event: MouseEvent, d: AtlasPoint) => setSelected(d));
 
     // Zoom behaviour
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 20])
-      .on('zoom', (e) => {
+      .on('zoom', (e: {transform: {k: number; toString(): string}}) => {
         g.attr('transform', e.transform.toString());
         const rounded = Math.round(e.transform.k * 10) / 10;
         setZoomLevel((prev) => (prev === rounded ? prev : rounded));
@@ -204,10 +218,23 @@ export default function EmbeddingAtlasPage() {
               <div className="text-slate-500 text-sm animate-pulse">Loading embeddings…</div>
             </div>
           )}
-          {!isLoading && points.length === 0 && (
+          {!isLoading && isError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 px-8 text-center">
+              <Layers size={32} className="text-red-400 opacity-60" />
+              <p className="text-sm text-red-400">Failed to load embedding data</p>
+              <p className="text-xs text-slate-600 font-mono max-w-md break-words">
+                {extractApiError(error)}
+              </p>
+              <button type="button" className="btn-ghost text-xs mt-1" onClick={() => refetch()}>Retry</button>
+            </div>
+          )}
+          {!isLoading && !isError && points.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
               <Layers size={32} className="opacity-30" />
-              <p className="text-sm">No embedded chunks yet. Ingest documents and run embedding first.</p>
+              <p className="text-sm">No embedded chunks yet.</p>
+              <p className="text-xs text-slate-600 max-w-xs text-center">
+                Chunks need embedding vectors to appear here. Ingest documents, then ensure the embedding service has processed them.
+              </p>
             </div>
           )}
 

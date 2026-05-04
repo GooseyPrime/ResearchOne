@@ -309,6 +309,68 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// GET /api/research/:id/artifacts — sources + claims + checkpoints collected during any run (failed or succeeded)
+router.get('/:id/artifacts', async (req, res, next) => {
+  try {
+    const runId = req.params.id;
+
+    const runRows = await query<{ id: string }>(
+      `SELECT id FROM research_runs WHERE id=$1`,
+      [runId]
+    );
+    if (runRows.length === 0) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+
+    const [sources, claims, checkpoints, totals] = await Promise.all([
+      query<{
+        id: string; title: string | null; url: string | null; source_type: string;
+        tags: string[]; ingested_at: string;
+      }>(
+        `SELECT id, title, url, source_type, COALESCE(tags, '{}'::text[]) AS tags, ingested_at
+         FROM sources
+         WHERE discovered_by_run_id=$1
+         ORDER BY ingested_at ASC
+         LIMIT 100`,
+        [runId]
+      ),
+      query<{
+        id: string; claim_text: string; evidence_tier: string | null; source_id: string | null;
+      }>(
+        `SELECT id, claim_text, evidence_tier, source_id
+         FROM claims
+         WHERE run_id=$1 AND claim_text IS NOT NULL
+         ORDER BY created_at ASC
+         LIMIT 200`,
+        [runId]
+      ),
+      query<{
+        stage: string; checkpoint_key: string; snapshot: Record<string, unknown>; created_at: string;
+      }>(
+        `SELECT stage, checkpoint_key, snapshot, created_at
+         FROM research_run_checkpoints
+         WHERE run_id=$1
+         ORDER BY created_at ASC`,
+        [runId]
+      ),
+      query<{ sources_total: string; claims_total: string }>(
+        `SELECT
+           (SELECT COUNT(*) FROM sources WHERE discovered_by_run_id=$1)::text AS sources_total,
+           (SELECT COUNT(*) FROM claims WHERE run_id=$1 AND claim_text IS NOT NULL)::text AS claims_total`,
+        [runId]
+      ),
+    ]);
+
+    const sourcesTotal = parseInt(totals[0]?.sources_total ?? '0', 10);
+    const claimsTotal = parseInt(totals[0]?.claims_total ?? '0', 10);
+
+    res.json({ sources, claims, checkpoints, sourcesTotal, claimsTotal });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/research/:id/retry-from-failure — re-queue a failed retryable run with preserved job payload
 router.post('/:id/retry-from-failure', async (req, res, next) => {
   try {

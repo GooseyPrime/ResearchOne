@@ -19,6 +19,19 @@ applyApiRateLimitInterceptor(api);
 
 export default api;
 
+/** Extract a human-readable message from any error, preferring the backend's
+ *  `error` / `message` field over the generic Axios "Request failed…" string. */
+export function extractApiError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as Record<string, unknown> | undefined;
+    if (data) {
+      if (typeof data.error === 'string' && data.error) return data.error;
+      if (typeof data.message === 'string' && data.message) return data.message;
+    }
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CorpusStats {
@@ -353,6 +366,24 @@ export const getResearchRuns = (params?: { status?: string }) =>
 
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
+
+export interface RunArtifacts {
+  sources: Array<{
+    id: string; title: string | null; url: string | null; source_type: string;
+    tags: string[]; ingested_at: string;
+  }>;
+  claims: Array<{
+    id: string; claim_text: string; evidence_tier: string | null; source_id: string | null;
+  }>;
+  checkpoints: Array<{
+    stage: string; checkpoint_key: string; snapshot: Record<string, unknown>; created_at: string;
+  }>;
+  sourcesTotal: number;
+  claimsTotal: number;
+}
+
+export const getRunArtifacts = (id: string) =>
+  api.get<RunArtifacts>(`/research/${id}/artifacts`).then(r => r.data);
 
 export const getResearchModelOptions = () =>
   api.get<ResearchModelOptionsResponse>('/research/model-options').then(r => r.data);
