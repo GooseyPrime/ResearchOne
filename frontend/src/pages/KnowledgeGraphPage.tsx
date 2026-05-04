@@ -40,7 +40,7 @@ interface D3LinkDatum<N> {
   target: N | string | number;
   index?: number;
 }
-interface D3Simulation<N, L> {
+interface D3Simulation {
   stop(): this;
   restart(): this;
   on(typenames: string, listener: () => void): this;
@@ -67,7 +67,7 @@ type SimEdge = D3LinkDatum<SimNode> & { id: string; type: string; weight?: numbe
 export default function KnowledgeGraphPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const simulationRef = useRef<D3Simulation<SimNode, SimEdge> | null>(null);
+  const simulationRef = useRef<D3Simulation | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [limit, setLimit] = useState(80);
   const [showContradictions, setShowContradictions] = useState(true);
@@ -157,7 +157,7 @@ export default function KnowledgeGraphPage() {
 
     // Nodes
     const nodeGroup = container.append('g')
-      .selectAll('g')
+      .selectAll<SVGGElement, SimNode>('g')
       .data(nodes)
       .join('g')
       .style('cursor', 'pointer');
