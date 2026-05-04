@@ -60,13 +60,13 @@ export default function EmbeddingAtlasPage() {
 
     // Render points
     const circles = g
-      .selectAll<SVGCircleElement, AtlasPoint>('circle')
+      .selectAll('circle')
       .data(points)
       .join('circle')
-      .attr('cx', (d) => xScale(d.x))
-      .attr('cy', (d) => yScale(d.y))
+      .attr('cx', (d: AtlasPoint) => xScale(d.x))
+      .attr('cy', (d: AtlasPoint) => yScale(d.y))
       .attr('r', POINT_RADIUS)
-      .attr('fill', (d) => tierColor(d.evidence_tier))
+      .attr('fill', (d: AtlasPoint) => tierColor(d.evidence_tier))
       .attr('fill-opacity', 0.72)
       .attr('stroke', 'none')
       .style('cursor', 'pointer');
@@ -76,7 +76,7 @@ export default function EmbeddingAtlasPage() {
     const tooltip = d3.select(tooltipEl);
 
     circles
-      .on('mouseover', function (event, d) {
+      .on('mouseover', function (this: SVGCircleElement, event: MouseEvent, d: AtlasPoint) {
         d3.select(this)
           .attr('r', HOVER_RADIUS)
           .attr('stroke', '#fff')
@@ -100,24 +100,24 @@ export default function EmbeddingAtlasPage() {
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mousemove', function (event) {
+      .on('mousemove', function (this: SVGCircleElement, event: MouseEvent) {
         tooltip
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mouseout', function () {
+      .on('mouseout', function (this: SVGCircleElement) {
         d3.select(this)
           .attr('r', POINT_RADIUS)
           .attr('stroke', 'none')
           .attr('fill-opacity', 0.72);
         tooltip.style('display', 'none');
       })
-      .on('click', (_event, d) => setSelected(d));
+      .on('click', (_event: MouseEvent, d: AtlasPoint) => setSelected(d));
 
     // Zoom behaviour
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 20])
-      .on('zoom', (e) => {
+      .on('zoom', (e: {transform: {k: number; toString(): string}}) => {
         g.attr('transform', e.transform.toString());
         const rounded = Math.round(e.transform.k * 10) / 10;
         setZoomLevel((prev) => (prev === rounded ? prev : rounded));

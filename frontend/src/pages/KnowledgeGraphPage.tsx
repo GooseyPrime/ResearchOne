@@ -89,7 +89,7 @@ export default function KnowledgeGraphPage() {
     // Zoom
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.2, 8])
-      .on('zoom', (e) => container.attr('transform', e.transform.toString()));
+      .on('zoom', (e: {transform: {toString(): string}}) => container.attr('transform', e.transform.toString()));
     d3svg.call(zoom);
     d3svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.7));
     (svg as unknown as { _zoom: typeof zoom })._zoom = zoom;
@@ -99,9 +99,9 @@ export default function KnowledgeGraphPage() {
     simulationRef.current = simulation;
     simulation
       .force('link', d3.forceLink<SimNode, SimEdge>(edges)
-        .id((d) => d.id)
-        .distance((d) => d.type === 'contradicts' ? 80 : 120)
-        .strength((d) => (d.weight ?? 1) * 0.3)
+        .id((d: SimNode) => d.id)
+        .distance((d: SimEdge) => d.type === 'contradicts' ? 80 : 120)
+        .strength((d: SimEdge) => (d.weight ?? 1) * 0.3)
       )
       .force('charge', d3.forceManyBody().strength(-180))
       .force('collision', d3.forceCollide(18))
@@ -109,24 +109,24 @@ export default function KnowledgeGraphPage() {
 
     // Edges
     const edgeSel = container.append('g')
-      .selectAll<SVGLineElement, SimEdge>('line')
+      .selectAll('line')
       .data(edges)
       .join('line')
-      .attr('stroke', (d) => EDGE_COLORS[d.type] ?? '#334155')
-      .attr('stroke-opacity', (d) => d.type === 'contradicts' ? 0.8 : 0.35)
-      .attr('stroke-width', (d) => d.type === 'contradicts' ? 2 : 1)
-      .attr('marker-end', (d) => `url(#arrow-${d.type})`);
+      .attr('stroke', (d: SimEdge) => EDGE_COLORS[d.type] ?? '#334155')
+      .attr('stroke-opacity', (d: SimEdge) => d.type === 'contradicts' ? 0.8 : 0.35)
+      .attr('stroke-width', (d: SimEdge) => d.type === 'contradicts' ? 2 : 1)
+      .attr('marker-end', (d: SimEdge) => `url(#arrow-${d.type})`);
 
     // Nodes
     const nodeGroup = container.append('g')
-      .selectAll<SVGGElement, SimNode>('g')
+      .selectAll('g')
       .data(nodes)
       .join('g')
       .style('cursor', 'pointer');
 
     nodeGroup.append('circle')
-      .attr('r', (d) => d.type === 'source' ? 10 : 6)
-      .attr('fill', (d) => {
+      .attr('r', (d: SimNode) => d.type === 'source' ? 10 : 6)
+      .attr('fill', (d: SimNode) => {
         if (d.type === 'claim' && d.evidence_tier) return TIER_COLORS[d.evidence_tier] ?? NODE_COLORS.claim;
         return NODE_COLORS[d.type] ?? '#64748b';
       })
@@ -139,16 +139,17 @@ export default function KnowledgeGraphPage() {
       .attr('dy', '0.35em')
       .attr('font-size', '9px')
       .attr('fill', '#94a3b8')
-      .text((d) => d.label.slice(0, 35) + (d.label.length > 35 ? '…' : ''));
+      .text((d: SimNode) => d.label.slice(0, 35) + (d.label.length > 35 ? '…' : ''));
 
+    type DragEv = {active: boolean; x: number; y: number};
     // Drag
     const drag = d3.drag<SVGGElement, SimNode>()
-      .on('start', (event, d) => {
+      .on('start', (event: DragEv, d: SimNode) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
       })
-      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
-      .on('end', (event, d) => {
+      .on('drag', (event: DragEv, d: SimNode) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event: DragEv, d: SimNode) => {
         if (!event.active) simulation.alphaTarget(0);
         d.fx = null; d.fy = null;
       });
@@ -158,7 +159,7 @@ export default function KnowledgeGraphPage() {
     const tooltipEl = tooltipRef.current!;
     const tooltip = d3.select(tooltipEl);
     nodeGroup
-      .on('mouseover', (event, d) => {
+      .on('mouseover', (event: MouseEvent, d: SimNode) => {
         tooltipEl.innerHTML = '';
         const typeEl = document.createElement('div');
         typeEl.className = 'font-semibold text-white text-xs mb-0.5';
@@ -178,19 +179,19 @@ export default function KnowledgeGraphPage() {
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mousemove', (event) => {
+      .on('mousemove', (event: MouseEvent) => {
         tooltip.style('left', `${event.offsetX + 14}px`).style('top', `${event.offsetY - 10}px`);
       })
       .on('mouseout', () => tooltip.style('display', 'none'))
-      .on('click', (_event, d) => setSelected(d));
+      .on('click', (_event: MouseEvent, d: SimNode) => setSelected(d));
 
     simulation.on('tick', () => {
       edgeSel
-        .attr('x1', (d) => (d.source as SimNode).x ?? 0)
-        .attr('y1', (d) => (d.source as SimNode).y ?? 0)
-        .attr('x2', (d) => (d.target as SimNode).x ?? 0)
-        .attr('y2', (d) => (d.target as SimNode).y ?? 0);
-      nodeGroup.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+        .attr('x1', (d: SimEdge) => (d.source as SimNode).x ?? 0)
+        .attr('y1', (d: SimEdge) => (d.source as SimNode).y ?? 0)
+        .attr('x2', (d: SimEdge) => (d.target as SimNode).x ?? 0)
+        .attr('y2', (d: SimEdge) => (d.target as SimNode).y ?? 0);
+      nodeGroup.attr('transform', (d: SimNode) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
   }, [data, showContradictions]);
 
