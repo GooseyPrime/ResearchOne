@@ -19,6 +19,19 @@ applyApiRateLimitInterceptor(api);
 
 export default api;
 
+/** Extract a human-readable message from any error, preferring the backend's
+ *  `error` / `message` field over the generic Axios "Request failed…" string. */
+export function extractApiError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as Record<string, unknown> | undefined;
+    if (data) {
+      if (typeof data.error === 'string' && data.error) return data.error;
+      if (typeof data.message === 'string' && data.message) return data.message;
+    }
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CorpusStats {
@@ -356,7 +369,7 @@ export const getResearchRun = (id: string) =>
 
 export interface RunArtifacts {
   sources: Array<{
-    id: string; title: string; url: string; source_type: string;
+    id: string; title: string | null; url: string | null; source_type: string;
     tags: string[]; ingested_at: string;
   }>;
   claims: Array<{
@@ -365,6 +378,8 @@ export interface RunArtifacts {
   checkpoints: Array<{
     stage: string; checkpoint_key: string; snapshot: Record<string, unknown>; created_at: string;
   }>;
+  sourcesTotal: number;
+  claimsTotal: number;
 }
 
 export const getRunArtifacts = (id: string) =>

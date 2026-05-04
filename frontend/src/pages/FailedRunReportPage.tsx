@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   getResearchRun,
   getRunArtifacts,
   retryResearchRunFromFailure,
+  extractApiError,
 } from '../utils/api';
 import {
   ArrowLeft,
@@ -30,6 +32,7 @@ const TIER_COLORS: Record<string, string> = {
 export default function FailedRunReportPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const { data: run, isLoading: runLoading, error: runError } = useQuery({
     queryKey: ['research-run', runId],
@@ -37,15 +40,23 @@ export default function FailedRunReportPage() {
     enabled: Boolean(runId),
   });
 
-  const { data: artifacts, isLoading: artifactsLoading } = useQuery({
+  const {
+    data: artifacts,
+    isLoading: artifactsLoading,
+    isError: artifactsError,
+    error: artifactsErrorObj,
+    refetch: refetchArtifacts,
+  } = useQuery({
     queryKey: ['run-artifacts', runId],
     queryFn: () => getRunArtifacts(runId!),
     enabled: Boolean(runId),
+    retry: 1,
   });
 
   const retryMutation = useMutation({
     mutationFn: () => retryResearchRunFromFailure(runId!),
     onSuccess: () => navigate('/research-v2'),
+    onError: (err) => setRetryError(extractApiError(err)),
   });
 
   if (runLoading) {
@@ -72,6 +83,8 @@ export default function FailedRunReportPage() {
   const retryable = (run.failure_meta as Record<string, unknown> | undefined)?.retryable === true;
   const sourceCount = artifacts?.sources.length ?? 0;
   const claimCount = artifacts?.claims.length ?? 0;
+  const sourcesTotal = artifacts?.sourcesTotal ?? sourceCount;
+  const claimsTotal = artifacts?.claimsTotal ?? claimCount;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
@@ -101,15 +114,20 @@ export default function FailedRunReportPage() {
             </div>
           </div>
           {retryable && (
-            <button
-              type="button"
-              className="btn-ghost text-xs flex items-center gap-1.5 text-accent border border-accent/30 px-3 py-1.5 rounded-lg"
-              onClick={() => retryMutation.mutate()}
-              disabled={retryMutation.isPending}
-            >
-              <RefreshCw size={12} className={retryMutation.isPending ? 'animate-spin' : ''} />
-              Retry run
-            </button>
+            <div className="flex flex-col items-end gap-1.5">
+              <button
+                type="button"
+                className="btn-ghost text-xs flex items-center gap-1.5 text-accent border border-accent/30 px-3 py-1.5 rounded-lg"
+                onClick={() => { setRetryError(null); retryMutation.mutate(); }}
+                disabled={retryMutation.isPending}
+              >
+                <RefreshCw size={12} className={retryMutation.isPending ? 'animate-spin' : ''} />
+                Retry run
+              </button>
+              {retryError && (
+                <p className="text-[10px] text-red-400 max-w-48 text-right leading-snug">{retryError}</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -152,17 +170,29 @@ export default function FailedRunReportPage() {
         )}
       </div>
 
+      {/* Artifacts error */}
+      {artifactsError && (
+        <div className="rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-400">
+            Could not load sources/claims: {extractApiError(artifactsErrorObj)}
+          </p>
+          <button type="button" className="btn-ghost text-xs flex-shrink-0" onClick={() => refetchArtifacts()}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard
           icon={<Database size={16} className="text-blue-400" />}
           label="Sources found"
-          value={artifactsLoading ? '…' : String(sourceCount)}
+          value={artifactsLoading ? '…' : String(sourcesTotal)}
         />
         <StatCard
           icon={<Brain size={16} className="text-purple-400" />}
           label="Claims extracted"
-          value={artifactsLoading ? '…' : String(claimCount)}
+          value={artifactsLoading ? '…' : String(claimsTotal)}
         />
         <StatCard
           icon={<Clock size={16} className="text-slate-400" />}
@@ -176,7 +206,7 @@ export default function FailedRunReportPage() {
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-white flex items-center gap-2">
             <Database size={15} className="text-blue-400" />
-            Sources Discovered ({sourceCount})
+            Sources Discovered ({sourceCount}{sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})
           </h2>
           <div className="space-y-2">
             {artifacts!.sources.map((s) => (
@@ -211,7 +241,7 @@ export default function FailedRunReportPage() {
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-white flex items-center gap-2">
             <Brain size={15} className="text-purple-400" />
-            Claims Extracted ({claimCount})
+            Claims Extracted ({claimCount}{claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})
           </h2>
           <div className="space-y-2">
             {artifacts!.claims.map((c) => (
@@ -257,7 +287,7 @@ export default function FailedRunReportPage() {
       )}
 
       {/* No artifacts at all */}
-      {!artifactsLoading && sourceCount === 0 && claimCount === 0 && (
+      {!artifactsLoading && !artifactsError && sourceCount === 0 && claimCount === 0 && (
         <div className="text-center py-8 text-slate-600 text-sm">
           No sources or claims were collected before the run failed.
         </div>

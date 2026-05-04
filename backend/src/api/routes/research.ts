@@ -323,12 +323,12 @@ router.get('/:id/artifacts', async (req, res, next) => {
       return;
     }
 
-    const [sources, claims, checkpoints] = await Promise.all([
+    const [sources, claims, checkpoints, totals] = await Promise.all([
       query<{
-        id: string; title: string; url: string; source_type: string;
+        id: string; title: string | null; url: string | null; source_type: string;
         tags: string[]; ingested_at: string;
       }>(
-        `SELECT id, title, url, source_type, COALESCE(tags,'{}') AS tags, ingested_at
+        `SELECT id, title, url, source_type, COALESCE(tags, '{}'::text[]) AS tags, ingested_at
          FROM sources
          WHERE discovered_by_run_id=$1
          ORDER BY ingested_at ASC
@@ -354,9 +354,18 @@ router.get('/:id/artifacts', async (req, res, next) => {
          ORDER BY created_at ASC`,
         [runId]
       ),
+      query<{ sources_total: string; claims_total: string }>(
+        `SELECT
+           (SELECT COUNT(*) FROM sources WHERE discovered_by_run_id=$1)::text AS sources_total,
+           (SELECT COUNT(*) FROM claims WHERE run_id=$1 AND claim_text IS NOT NULL)::text AS claims_total`,
+        [runId]
+      ),
     ]);
 
-    res.json({ sources, claims, checkpoints });
+    const sourcesTotal = parseInt(totals[0]?.sources_total ?? '0', 10);
+    const claimsTotal = parseInt(totals[0]?.claims_total ?? '0', 10);
+
+    res.json({ sources, claims, checkpoints, sourcesTotal, claimsTotal });
   } catch (err) {
     next(err);
   }

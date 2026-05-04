@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import { Layers, RefreshCw, ZoomIn, ZoomOut, Maximize2, Filter, Info } from 'lucide-react';
-import { getAtlasPoints, type AtlasPoint } from '../utils/api';
+import { getAtlasPoints, extractApiError, type AtlasPoint } from '../utils/api';
 import clsx from 'clsx';
 
 const TIER_COLORS: Record<string, string> = {
@@ -210,7 +210,7 @@ export default function EmbeddingAtlasPage() {
               <Layers size={32} className="text-red-400 opacity-60" />
               <p className="text-sm text-red-400">Failed to load embedding data</p>
               <p className="text-xs text-slate-600 font-mono max-w-md break-words">
-                {(error as Error)?.message ?? 'Unknown error'}
+                {extractApiError(error)}
               </p>
               <button type="button" className="btn-ghost text-xs mt-1" onClick={() => refetch()}>Retry</button>
             </div>

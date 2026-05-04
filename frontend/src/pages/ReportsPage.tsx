@@ -16,6 +16,9 @@ const STATUS_COLORS: Record<string, string> = {
   aborted: 'text-red-500 bg-red-900/20 border-red-800/30',
 };
 
+// Statuses that exist in the report_status DB enum — never pass 'failed' to /api/reports
+const REPORT_STATUSES = new Set(['finalized', 'generating', 'draft', 'under_review', 'archived']);
+
 type ListItem =
   | { kind: 'report'; data: Report }
   | { kind: 'run'; data: ResearchRun };
@@ -25,28 +28,37 @@ export default function ReportsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  const reportStatusParam = REPORT_STATUSES.has(statusFilter) ? statusFilter : undefined;
+
+  const showFailed = !statusFilter || statusFilter === 'failed';
+
   const { data: reports = [], isLoading: reportsLoading } = useQuery({
-    queryKey: ['reports', statusFilter, search],
-    queryFn: () => getReports({ status: statusFilter || undefined, search: search || undefined }),
+    queryKey: ['reports', reportStatusParam, search],
+    queryFn: () => getReports({ status: reportStatusParam, search: search || undefined }),
+    // Skip the reports query entirely when viewing only failed runs
+    enabled: statusFilter !== 'failed',
     refetchInterval: 10000,
   });
 
-  // Fetch failed and aborted runs to surface them alongside reports
-  const showFailed = !statusFilter || statusFilter === 'failed';
-  const { data: failedRuns = [] } = useQuery({
+  // Fetch failed and aborted runs separately so one failure doesn't suppress the other
+  const { data: failedRuns = [], isLoading: failedLoading } = useQuery({
     queryKey: ['research-runs-failed'],
     queryFn: async () => {
-      const [failed, aborted] = await Promise.all([
-        getResearchRuns({ status: 'failed' }),
-        getResearchRuns({ status: 'aborted' }),
-      ]);
+      const failed = await getResearchRuns({ status: 'failed' });
+      // Best-effort: fetch aborted separately so a 500 on this status doesn't hide failed runs
+      let aborted: typeof failed = [];
+      try {
+        aborted = await getResearchRuns({ status: 'aborted' });
+      } catch {
+        // aborted status may not exist on older deploys — silently ignore
+      }
       return [...failed, ...aborted];
     },
     enabled: showFailed,
     refetchInterval: 15000,
   });
 
-  const isLoading = reportsLoading;
+  const isLoading = reportsLoading || (showFailed && failedLoading);
 
   // Merge and sort by created_at descending
   const items: ListItem[] = [];
@@ -81,7 +93,7 @@ export default function ReportsPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             {items.length} result{items.length !== 1 ? 's' : ''}
-            {failedRuns.length > 0 && (
+            {showFailed && failedRuns.length > 0 && (
               <span className="text-red-400 ml-1">· {failedRuns.length} failed</span>
             )}
           </p>
