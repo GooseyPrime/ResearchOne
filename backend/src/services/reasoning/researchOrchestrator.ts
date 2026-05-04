@@ -883,7 +883,7 @@ export async function runResearchJob(
       phaseDurations, modelLog,
       failedStage: currentStage,
       errorMessage: failureDetails.errorMessage,
-      failureMeta: failureMetaWithResume as Record<string, unknown>,
+      failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
     });
 
     // Propagate the *state-machine-finalized* metadata to the BullMQ worker.

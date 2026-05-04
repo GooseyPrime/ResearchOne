@@ -1,0 +1,52 @@
+# CI: build and test the ResearchOne backend.
+# Catches TypeScript compilation errors and test failures before they reach
+# the Emma deployment (which runs `npm run build` on the remote VM).
+#
+# Runs on every push and every pull-request that touches backend code, the
+# deploy workflow, or the scripts consumed by deploy-runtime.sh.
+
+name: CI – backend build & test
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - '.github/workflows/ci-backend.yml'
+      - '.github/workflows/deploy-backend-emma.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - '.github/workflows/ci-backend.yml'
+      - '.github/workflows/deploy-backend-emma.yml'
+
+jobs:
+  build-and-test:
+    name: TypeScript build + unit tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript build (tsc)
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm test
