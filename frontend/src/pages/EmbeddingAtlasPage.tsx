@@ -89,8 +89,8 @@ export default function EmbeddingAtlasPage() {
     const tooltip = d3.select(tooltipEl);
 
     circles
-      .on('mouseover', function (this: SVGCircleElement, event: MouseEvent, d: AtlasPoint) {
-        d3.select(this)
+      .on('mouseover', (event: MouseEvent, d: AtlasPoint) => {
+        d3.select(event.currentTarget as SVGCircleElement)
           .attr('r', HOVER_RADIUS)
           .attr('stroke', '#fff')
           .attr('stroke-width', 1.5)
@@ -113,13 +113,13 @@ export default function EmbeddingAtlasPage() {
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mousemove', function (this: SVGCircleElement, event: MouseEvent) {
+      .on('mousemove', (event: MouseEvent) => {
         tooltip
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
       })
-      .on('mouseout', function (this: SVGCircleElement) {
-        d3.select(this)
+      .on('mouseout', (event: MouseEvent) => {
+        d3.select(event.currentTarget as SVGCircleElement)
           .attr('r', POINT_RADIUS)
           .attr('stroke', 'none')
           .attr('fill-opacity', 0.72);
