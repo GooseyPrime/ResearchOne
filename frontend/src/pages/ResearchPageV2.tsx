@@ -211,7 +211,10 @@ export default function ResearchPageV2() {
   // Target report length (words). Standard preset; user can switch to "Custom" to
   // enter an arbitrary value. The backend clamps to a safe range either way.
   const [reportLengthPreset, setReportLengthPreset] = useState<'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('standard');
-  const [reportLengthCustom, setReportLengthCustom] = useState<number>(2200);
+  // Stored as a string so a temporarily empty input (user clearing the field)
+  // does not coerce to NaN inside a controlled <input type="number">. Parsed
+  // and clamped only when computing `resolvedTargetWordCount`.
+  const [reportLengthCustom, setReportLengthCustom] = useState<string>('2200');
   const [trackingRunId, setTrackingRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgressEvent | null>(null);
   // Ref that always mirrors the most recently tracked run ID, including after
@@ -551,7 +554,12 @@ export default function ResearchPageV2() {
       case 'standard': return 2200;
       case 'long': return 4000;
       case 'extra_long': return 7000;
-      case 'custom': return Math.max(600, Math.min(12000, Math.round(reportLengthCustom || 2200)));
+      case 'custom': {
+        const parsed = Number(reportLengthCustom);
+        const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 2200;
+        // Floor 800 matches backend (10 sections × 80-word per-section floor).
+        return Math.max(800, Math.min(12000, Math.round(safe)));
+      }
     }
   }, [reportLengthPreset, reportLengthCustom]);
 
@@ -660,12 +668,12 @@ export default function ResearchPageV2() {
               {reportLengthPreset === 'custom' && (
                 <input
                   type="number"
-                  min={600}
+                  min={800}
                   max={12000}
                   step={100}
                   className="input w-32"
                   value={reportLengthCustom}
-                  onChange={(e) => setReportLengthCustom(Number(e.target.value))}
+                  onChange={(e) => setReportLengthCustom(e.target.value)}
                   disabled={mutation.isPending || !!trackingRunId}
                 />
               )}

@@ -139,8 +139,9 @@ router.post(
       if (Number.isFinite(parsedWords) && parsedWords > 0) {
         // Clamp at the route level so a malformed value never reaches the
         // orchestrator. The synthesizer also clamps but enforcing here keeps
-        // the resume_job_payload clean.
-        targetWordCount = Math.max(600, Math.min(12000, Math.round(parsedWords)));
+        // the resume_job_payload clean. Floor matches the synthesizer's
+        // SECTION_PLAN.length × per-section floor (10 × 80 = 800).
+        targetWordCount = Math.max(800, Math.min(12000, Math.round(parsedWords)));
       }
 
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
@@ -203,7 +204,10 @@ router.post(
 
       // INSERT — try the new schema first (with target_word_count). If migration
       // 013 has not yet been applied, fall back to the legacy column set so the
-      // route does not 500 during a deploy gap.
+      // route does not 500 during a deploy gap. Only the specific
+      // "undefined column" error (Postgres SQLSTATE 42703) is recovered;
+      // everything else (connectivity, constraint violations, etc.) is
+      // rethrown so real failures aren't masked (Copilot PR #50 review).
       try {
         await query(
           `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
@@ -220,7 +224,9 @@ router.post(
             targetWordCount ?? null,
           ]
         );
-      } catch {
+      } catch (insertErr) {
+        const code = (insertErr as { code?: string } | null)?.code;
+        if (code !== '42703') throw insertErr;
         await query(
           `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
            VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
@@ -369,8 +375,13 @@ router.get('/:id/artifacts', async (req, res, next) => {
            FROM research_runs WHERE id=$1`,
         [runId]
       );
-    } catch {
-      // Tolerate older deploys missing some columns by falling back to a minimal SELECT.
+    } catch (selectErr) {
+      // Tolerate deploy-skew where some columns above are not yet present
+      // (Postgres SQLSTATE 42703 — undefined_column). Any other error
+      // (connection loss, permission, etc.) is rethrown so operational
+      // problems aren't masked (Copilot PR #50 review).
+      const code = (selectErr as { code?: string } | null)?.code;
+      if (code !== '42703') throw selectErr;
       runMeta = (await query<{ id: string }>(
         `SELECT id FROM research_runs WHERE id=$1`,
         [runId]

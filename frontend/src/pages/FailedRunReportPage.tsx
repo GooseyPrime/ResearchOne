@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState, useMemo } from 'react';
+import { useId, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -619,18 +619,23 @@ function CollapsibleSection({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
   return (
     <section className="space-y-3">
       <button
         type="button"
         className="w-full flex items-center gap-2 text-left"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={contentId}
       >
-        {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+        {open ? <ChevronDown size={14} className="text-slate-500" aria-hidden /> : <ChevronRight size={14} className="text-slate-500" aria-hidden />}
         {icon}
         <h2 className="text-sm font-semibold text-white">{title}</h2>
       </button>
-      {open && <div>{children}</div>}
+      <div id={contentId} hidden={!open}>
+        {open && children}
+      </div>
     </section>
   );
 }
