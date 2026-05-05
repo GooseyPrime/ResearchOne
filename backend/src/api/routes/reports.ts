@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import multer from 'multer';
 import { query } from '../../db/pool';
 import { config } from '../../config';
@@ -36,10 +36,8 @@ function isAllowedSupplementalUpload(file: { mimetype: string; originalname: str
   return hasAllowedExtension;
 }
 
-function wrapMulterMiddleware(
-  middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
-) {
-  return (req: unknown, res: { status: (code: number) => { json: (body: { error: string }) => void } }, next: (err?: unknown) => void) => {
+function wrapMulterMiddleware(middleware: RequestHandler): RequestHandler {
+  return (req, res, next) => {
     middleware(req, res, (err?: unknown) => {
       if (!err) {
         next();
@@ -51,7 +49,7 @@ function wrapMulterMiddleware(
         return;
       }
 
-      next(err);
+      next(err instanceof Error ? err : new Error(String(err)));
     });
   };
 }
@@ -77,7 +75,7 @@ const uploadRevision = {
   array: (fieldName: string, maxCount?: number) =>
     wrapMulterMiddleware(uploadRevisionMulter.array(fieldName, maxCount)),
   fields: (fields: readonly { name: string; maxCount?: number }[]) =>
-    wrapMulterMiddleware(uploadRevisionMulter.fields(fields as { name: string; maxCount?: number }[])),
+    wrapMulterMiddleware(uploadRevisionMulter.fields(fields)),
   any: () => wrapMulterMiddleware(uploadRevisionMulter.any()),
   none: () => wrapMulterMiddleware(uploadRevisionMulter.none()),
 };
