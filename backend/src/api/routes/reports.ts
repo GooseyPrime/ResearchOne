@@ -5,6 +5,7 @@ import { config } from '../../config';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
   createReportRevision,
+  createRevisionRequest,
   getReportRevision,
   listReportRevisions,
 } from '../../services/reasoning/reportRevisionService';
@@ -186,17 +187,25 @@ router.post(
         io?.to('reports').emit('revision:progress', payload);
       };
 
+      // Create the request row first so the real DB id is available when
+      // ingesting supplemental files. This ensures ingestion_jobs rows are
+      // tagged with the correct revision_request_id from the start rather
+      // than a synthetic pending-... placeholder.
+      const { requestId } = await createRevisionRequest({
+        reportId: req.params.id,
+        requestText,
+        rationale,
+        initiatedBy,
+        initiatedByType,
+      });
+
       let supplementalContext = '';
       let supplementalAttachments: Array<Record<string, unknown>> = [];
       if (files.length > 0 || revisionUrls.length > 0) {
         emitProgress({ reportId: req.params.id, stage: 'attachments', percent: 2, message: 'Ingesting supplemental attachments...', timestamp: new Date().toISOString() });
         const ingest = await ingestSupplementalForRevision({
           reportId: req.params.id,
-          // Use a synthetic request id at the route level since the DB row
-          // hasn't been created yet — the service will create it next and
-          // re-tag if needed. This still groups attachments under one
-          // revision attempt for audit purposes.
-          revisionRequestId: `pending-${req.params.id}-${Date.now()}`,
+          revisionRequestId: requestId,
           urls: revisionUrls,
           files: files.map((f) => ({
             originalname: f.originalname,
@@ -210,6 +219,7 @@ router.post(
 
       const result = await createReportRevision({
         reportId: req.params.id,
+        requestId,
         requestText,
         rationale,
         initiatedBy,
