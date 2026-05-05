@@ -11,6 +11,7 @@ import type { ResearchObjective } from './reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { logger } from '../../utils/logger';
+import { extractJsonArray } from '../../utils/jsonArrayExtractor';
 
 export interface ExtractedClaim {
   claim_text: string;
@@ -90,10 +91,11 @@ export async function extractAndPersistClaims(args: {
       maxTokens: 4096,
     });
 
-    const jsonMatch = result.content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as ExtractedClaim[];
+    const parsed = extractJsonArray<ExtractedClaim>(result.content, { context: `claims:${runId}` });
+    if (parsed) {
       claims = parsed.filter(c => c.claim_text && c.evidence_tier && typeof c.confidence === 'number');
+    } else {
+      logger.warn(`[claims:${runId}] Verifier returned no parseable JSON array; head="${result.content.slice(0, 240).replace(/\s+/g, ' ')}…"`);
     }
   } catch (err) {
     logger.warn(`[claims:${runId}] Claim extraction failed:`, err);

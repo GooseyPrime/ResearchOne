@@ -79,13 +79,16 @@ router.get('/', async (req, res, next) => {
     );
 
     // ── Contradiction pairs ───────────────────────────────────────────────────
+    // The contradictions table column is `description` (see migration 001).
+    // We expose it on the API as `conflict_description` for clarity on the
+    // graph payload — but the SELECT must use the real column name.
     const contradictions = await query<{
       id: string;
       claim_a_id: string;
       claim_b_id: string;
       conflict_description: string | null;
     }>(
-      `SELECT id, claim_a_id, claim_b_id, conflict_description
+      `SELECT id, claim_a_id, claim_b_id, description AS conflict_description
        FROM contradictions
        ORDER BY created_at DESC
        LIMIT 60`
