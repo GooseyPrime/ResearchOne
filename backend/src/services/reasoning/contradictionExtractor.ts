@@ -99,8 +99,6 @@ export async function extractAndPersistContradictions(args: {
     const parsed = extractJsonArray<ExtractedContradiction>(result.content, { context: `contradictions:${runId}` });
     if (parsed) {
       contradictions = parsed.filter(c => c.claim_a_text && c.claim_b_text && c.description);
-    } else {
-      logger.warn(`[contradictions:${runId}] Skeptic returned no parseable JSON array; head="${result.content.slice(0, 240).replace(/\s+/g, ' ')}…"`);
     }
   } catch (err) {
     logger.warn(`[contradictions:${runId}] Contradiction extraction failed:`, err);
