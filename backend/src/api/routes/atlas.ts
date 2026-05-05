@@ -103,10 +103,10 @@ router.get('/embedded-count', async (req, res, next) => {
 // embedding vectors to 2D. The same seed is always used so coordinates are stable across calls.
 //
 // Supports a "full corpus" render path via limit=full (or any limit
-// requesting >= ATLAS_FULL_CORPUS_LIMIT). The hard upper cap is set to
-// keep the JSON payload + d3 force layout within browser memory; if a
-// dataset is larger than the cap the response includes a `truncated`
-// header and the points are sampled deterministically by chunk id.
+// requesting >= ATLAS_FULL_CORPUS_LIMIT). Requests are capped at
+// ATLAS_FULL_CORPUS_LIMIT to keep the JSON payload + d3 force layout
+// within browser memory, and the endpoint returns up to that many
+// points.
 router.get('/points', async (req, res, next) => {
   try {
     const { limit = '500', tags } = req.query as { limit?: string; tags?: string };
