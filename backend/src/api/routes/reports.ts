@@ -12,30 +12,74 @@ import { ingestSupplementalForRevision } from '../../services/research/reportRev
 
 const router = Router();
 
+const allowedSupplementalExtensions = ['.md', '.markdown', '.txt', '.pdf'];
+const allowedSupplementalMimeTypes = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/x-markdown',
+];
+
+function getLowercaseExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot >= 0 ? filename.slice(lastDot).toLowerCase() : '';
+}
+
+function isAllowedSupplementalUpload(file: { mimetype: string; originalname: string }): boolean {
+  const extension = getLowercaseExtension(file.originalname);
+  const hasAllowedExtension = allowedSupplementalExtensions.includes(extension);
+
+  if (allowedSupplementalMimeTypes.includes(file.mimetype)) return true;
+  if (file.mimetype === 'application/octet-stream') return hasAllowedExtension;
+
+  return hasAllowedExtension;
+}
+
+function wrapMulterMiddleware(
+  middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
+) {
+  return (req: unknown, res: { status: (code: number) => { json: (body: { error: string }) => void } }, next: (err?: unknown) => void) => {
+    middleware(req, res, (err?: unknown) => {
+      if (!err) {
+        next();
+        return;
+      }
+
+      if (err instanceof Error) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+
+      next(err);
+    });
+  };
+}
+
 // Multer config for the revision-request endpoint. Mirrors the multer
 // config in /api/research POST so the file allow-list and size limits
 // stay consistent across both supplemental-attachment surfaces.
-const uploadRevision = multer({
+const uploadRevisionMulter = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
   fileFilter: (_req, file, cb) => {
-    const allowed = [
-      'application/pdf',
-      'text/plain',
-      'text/markdown',
-      'text/x-markdown',
-      'application/octet-stream',
-    ];
-    const ok =
-      allowed.includes(file.mimetype) ||
-      file.originalname.endsWith('.md') ||
-      file.originalname.endsWith('.markdown') ||
-      file.originalname.endsWith('.txt') ||
-      file.originalname.endsWith('.pdf');
-    if (ok) cb(null, true);
-    else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
+    if (isAllowedSupplementalUpload(file)) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
   },
 });
+
+const uploadRevision = {
+  single: (fieldName: string) => wrapMulterMiddleware(uploadRevisionMulter.single(fieldName)),
+  array: (fieldName: string, maxCount?: number) =>
+    wrapMulterMiddleware(uploadRevisionMulter.array(fieldName, maxCount)),
+  fields: (fields: readonly { name: string; maxCount?: number }[]) =>
+    wrapMulterMiddleware(uploadRevisionMulter.fields(fields as { name: string; maxCount?: number }[])),
+  any: () => wrapMulterMiddleware(uploadRevisionMulter.any()),
+  none: () => wrapMulterMiddleware(uploadRevisionMulter.none()),
+};
 
 function parseJsonField<T>(raw: unknown, fallback: T): T {
   if (raw === undefined || raw === null || raw === '') return fallback;
