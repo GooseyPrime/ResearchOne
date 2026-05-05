@@ -174,6 +174,7 @@ export async function createRevisionRequest(args: {
       ]
     );
   }
+  if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
   return { requestId: requestRows[0].id };
 }
 
@@ -312,6 +313,7 @@ export async function createReportRevision(args: {
         ]
       );
     }
+    if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
     requestId = requestRows[0].id;
   }
   // Build a single supplemental block to splice into model prompts when
