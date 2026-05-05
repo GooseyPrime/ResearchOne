@@ -25,6 +25,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
+import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
   startResearch,
   getResearchRuns,
@@ -209,6 +210,10 @@ export default function ResearchPageV2() {
   const [supplemental, setSupplemental] = useState('');
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
+  // Supplemental files + URLs are ingested into the corpus on submit so the
+  // models can review them as evidence alongside the corpus search results.
+  const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
+  const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   // Target report length (words). Standard preset; user can switch to "Custom" to
   // enter an arbitrary value. The backend clamps to a safe range either way.
@@ -576,6 +581,8 @@ export default function ResearchPageV2() {
       engineVersion: 'v2',
       researchObjective,
       targetWordCount: resolvedTargetWordCount,
+      supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
+      supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
     });
   };
 
@@ -705,6 +712,17 @@ export default function ResearchPageV2() {
                   disabled={mutation.isPending || !!trackingRunId}
                 />
               </div>
+              <AttachmentDropZone
+                files={supplementalFiles}
+                urls={supplementalUrls}
+                onChange={({ files, urls }) => {
+                  setSupplementalFiles(files);
+                  setSupplementalUrls(urls);
+                }}
+                disabled={mutation.isPending || !!trackingRunId}
+                label="Supplemental files and URLs (ingested into corpus)"
+                description="Drop research papers, dossiers, or links the models should review. Each item is queued onto the same ingestion pipeline as manual corpus uploads, so the discovery + retrieval stages can pull from them."
+              />
               <div>
                 <label className="section-title block mb-2">Filter by Tags</label>
                 <input

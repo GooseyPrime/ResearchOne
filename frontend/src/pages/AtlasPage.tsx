@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Layers, Download, Plus, Map, AlertCircle } from 'lucide-react';
+import { Layers, Download, Plus, Map, AlertCircle, Eye } from 'lucide-react';
 import { getAtlasExports, triggerAtlasExport, triggerNomicUpload } from '../utils/api';
 import { formatDistanceToNow } from 'date-fns';
 import { useStore } from '../store/useStore';
@@ -66,6 +67,30 @@ export default function AtlasPage() {
         <p className="text-slate-400 text-sm mt-1">
           Generate and download embedding exports for use with Nomic Embedding Atlas.
         </p>
+      </div>
+
+      {/* In-browser live viewer CTA. The Atlas page itself is for one-shot
+          JSONL exports (Nomic, offline analysis, etc.). The continuous,
+          tag-filterable, browser-rendered view of the live corpus —
+          comparable to huggingface.co/docs/hub/datasets-embedding-atlas —
+          lives on a separate page; this banner makes that obvious. */}
+      <div className="card p-4 border-accent/30 bg-accent/5 flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3 min-w-0">
+          <Eye size={18} className="text-accent mt-0.5 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-white">Browse the live corpus in-browser</div>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              The Embedding Atlas page renders every embedded chunk of the
+              ResearchOne corpus as an interactive 2D map (continuously
+              refreshed, tag-filterable). Use it for ad-hoc exploration —
+              this page below is for generating shareable JSONL exports.
+            </p>
+          </div>
+        </div>
+        <Link to="/embedding-viz" className="btn-secondary text-xs flex items-center gap-1.5 flex-shrink-0">
+          <Eye size={12} />
+          Open Embedding Atlas
+        </Link>
       </div>
 
       {/* Philosophy panel */}

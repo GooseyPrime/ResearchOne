@@ -11,6 +11,7 @@ import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
 import { logger } from '../../utils/logger';
+import { extractJsonArray } from '../../utils/jsonArrayExtractor';
 
 export interface ExtractedContradiction {
   claim_a_text: string;
@@ -95,9 +96,8 @@ export async function extractAndPersistContradictions(args: {
       maxTokens: 4096,
     });
 
-    const jsonMatch = result.content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as ExtractedContradiction[];
+    const parsed = extractJsonArray<ExtractedContradiction>(result.content, { context: `contradictions:${runId}` });
+    if (parsed) {
       contradictions = parsed.filter(c => c.claim_a_text && c.claim_b_text && c.description);
     }
   } catch (err) {

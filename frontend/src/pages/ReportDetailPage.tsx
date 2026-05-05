@@ -9,8 +9,13 @@ import {
   createReportRevision,
   publishReportFeatured,
   getResearchRun,
+  getRunArtifacts,
   ADMIN_SESSION_TOKEN_KEY,
+  type ResearchRun,
+  type ResearchProgressEvent,
 } from '../utils/api';
+import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
+import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
   ArrowLeft,
   FileText,
@@ -110,6 +115,11 @@ export default function ReportDetailPage() {
   const [requestPromptOpen, setRequestPromptOpen] = useState(false);
   const [revisionRequestText, setRevisionRequestText] = useState('');
   const [revisionRationale, setRevisionRationale] = useState('');
+  // Files and URLs attached to support the revision request. They get
+  // ingested into the corpus AND their text is spliced into the revision
+  // prompts so the models review them on this call.
+  const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
+  const [revisionUrls, setRevisionUrls] = useState<string[]>([]);
   const [revisionProgress, setRevisionProgress] = useState<{
     stage: string;
     percent: number;
@@ -151,6 +161,17 @@ export default function ReportDetailPage() {
     enabled: Boolean(report?.run_id),
   });
 
+  // Fetch the run's artifacts (progress events, model_log, plan, etc.) so the
+  // same RunSummaryReport rendered on FailedRunReportPage is available here
+  // on the success report page. This shows the user the full path the
+  // orchestrator took to a successful report (matching the failed-run view).
+  const { data: runArtifacts } = useQuery({
+    queryKey: ['run-artifacts', report?.run_id],
+    queryFn: () => getRunArtifacts(report!.run_id!),
+    enabled: Boolean(report?.run_id),
+    retry: 1,
+  });
+
   const { data: revisions = [] } = useQuery({
     queryKey: ['report-revisions', id],
     queryFn: () => getReportRevisions(id!),
@@ -161,6 +182,25 @@ export default function ReportDetailPage() {
     queryKey: ['report-revision', id, selectedRevisionId],
     queryFn: () => getReportRevision(id!, selectedRevisionId!),
     enabled: !!id && !!selectedRevisionId,
+  });
+
+  // If this report IS itself the result of a revision (its `parent_report_id`
+  // is set), find the revision row that produced it and auto-fetch the
+  // section-level diff so we can show a "What changed in this revision"
+  // panel near the top of the page. Without this, the user submits a
+  // revision request, lands on the revised report, and has no clear cue
+  // about what was actually altered until they expand the Revision History
+  // section and click into the row by hand.
+  const currentRevisionEntry = useMemo(() => {
+    if (!id) return null;
+    type RevisionRow = { id: string; revised_report_id?: string; report_id?: string; rationale?: string; revision_number?: number; created_at?: string };
+    const rows = revisions as unknown as RevisionRow[];
+    return rows.find((r) => r.revised_report_id === id) ?? null;
+  }, [revisions, id]);
+  const { data: currentRevisionDetail } = useQuery({
+    queryKey: ['report-revision-current', id, currentRevisionEntry?.id],
+    queryFn: () => getReportRevision(id!, currentRevisionEntry!.id),
+    enabled: Boolean(id && currentRevisionEntry?.id),
   });
 
   const { data: citations = [] } = useQuery({
@@ -181,6 +221,60 @@ export default function ReportDetailPage() {
       ? String((report.metadata as { plain_language_markdown?: string }).plain_language_markdown ?? '')
       : '';
 
+  const runSummary: RunSummaryData | null = useMemo(() => {
+    if (!sourceRun) return null;
+    const events = runArtifacts?.progressEvents ?? sourceRun.progress_events ?? [];
+    const phaseDurations: Record<string, number> = {};
+    if (events.length > 0) {
+      const buckets: Record<string, { start: number; end: number }> = {};
+      for (const evt of events) {
+        if (!evt.timestamp || !evt.stage) continue;
+        const t = new Date(evt.timestamp).getTime();
+        if (Number.isNaN(t)) continue;
+        const bucket = buckets[evt.stage] ?? (buckets[evt.stage] = { start: t, end: t });
+        bucket.start = Math.min(bucket.start, t);
+        bucket.end = Math.max(bucket.end, t);
+      }
+      for (const [stage, { start, end }] of Object.entries(buckets)) {
+        phaseDurations[stage] = end - start;
+      }
+    }
+    const totalDurationMs =
+      sourceRun.completed_at && sourceRun.created_at
+        ? new Date(sourceRun.completed_at).getTime() - new Date(sourceRun.created_at).getTime()
+        : 0;
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+    const modelUsage: RunSummaryData['modelUsage'] = [];
+    for (const entry of runArtifacts?.modelLog ?? []) {
+      const e = entry as Record<string, unknown>;
+      const promptTokens = Number(e.promptTokens ?? 0);
+      const completionTokens = Number(e.completionTokens ?? 0);
+      totalPromptTokens += promptTokens;
+      totalCompletionTokens += completionTokens;
+      modelUsage!.push({
+        role: typeof e.role === 'string' ? e.role : 'unknown',
+        model: typeof e.model === 'string' ? e.model : 'unknown',
+        promptTokens,
+        completionTokens,
+        durationMs: Number(e.durationMs ?? 0),
+      });
+    }
+    return {
+      runId: sourceRun.id,
+      status: sourceRun.status,
+      totalDurationMs,
+      phaseDurations,
+      totalPromptTokens,
+      totalCompletionTokens,
+      retryCount: sourceRun.retry_attempts ?? 0,
+      failedStage: sourceRun.failed_stage ?? null,
+      errorMessage: sourceRun.error_message ?? null,
+      failureMeta: (sourceRun.failure_meta as Record<string, unknown> | undefined) ?? null,
+      modelUsage,
+    };
+  }, [sourceRun, runArtifacts]);
+
   const researchRequestSnapshot = useMemo(() => {
     const meta = report?.metadata as { research_request?: { query?: string; supplemental?: string; supplemental_attachments?: unknown } } | undefined;
     const fromMeta = meta?.research_request;
@@ -200,9 +294,15 @@ export default function ReportDetailPage() {
       createReportRevision(id!, {
         requestText: revisionRequestText.trim(),
         rationale: revisionRationale.trim() || undefined,
+        revisionFiles: revisionFiles.length > 0 ? revisionFiles : undefined,
+        revisionUrls: revisionUrls.length > 0 ? revisionUrls : undefined,
       }),
     onMutate: () => {
-      addNotification('info', 'Revision request submitted — processing on the server…');
+      const attachmentNote =
+        revisionFiles.length > 0 || revisionUrls.length > 0
+          ? ` (${revisionFiles.length} file${revisionFiles.length === 1 ? '' : 's'} · ${revisionUrls.length} URL${revisionUrls.length === 1 ? '' : 's'} attached)`
+          : '';
+      addNotification('info', `Revision request submitted${attachmentNote} — processing on the server…`);
       setRevisionProgress({ stage: 'queued', percent: 0, message: 'Connecting…' });
     },
     onSuccess: (data) => {
@@ -210,6 +310,8 @@ export default function ReportDetailPage() {
       addNotification('success', 'Revision requested and applied as a new version.');
       setRevisionRequestText('');
       setRevisionRationale('');
+      setRevisionFiles([]);
+      setRevisionUrls([]);
       qc.invalidateQueries({ queryKey: ['report-revisions', id] });
       qc.invalidateQueries({ queryKey: ['reports'] });
       if (data.revisedReportId) {
@@ -464,6 +566,13 @@ export default function ReportDetailPage() {
         </div>
       </div>
 
+      {currentRevisionEntry && currentRevisionDetail && (
+        <RevisionDiffPanel
+          revisionEntry={currentRevisionEntry as { id: string; revision_number?: number; rationale?: string; created_at?: string }}
+          revisionDetail={currentRevisionDetail as { rationale?: string; sections: Array<{ id: string; section_type?: string; section_title: string; change_type?: string; before_content: string; after_content: string }> }}
+        />
+      )}
+
       {report.falsification_criteria && (
         <div className="card p-4 border-purple-900/40 bg-purple-900/10">
           <div className="flex items-center gap-2 mb-2">
@@ -534,6 +643,16 @@ export default function ReportDetailPage() {
         </div>
       )}
 
+      {sourceRun && (
+        <div className="print:hidden space-y-2">
+          <RunGenerationTracePanel
+            runSummary={runSummary}
+            run={sourceRun}
+            traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
+          />
+        </div>
+      )}
+
       <div className="card p-5 space-y-3 print:hidden">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Request edit / correction / re-evaluation</h2>
         <textarea
@@ -549,6 +668,17 @@ export default function ReportDetailPage() {
           value={revisionRationale}
           onChange={(e) => setRevisionRationale(e.target.value)}
           disabled={revisionMutation.isPending}
+        />
+        <AttachmentDropZone
+          files={revisionFiles}
+          urls={revisionUrls}
+          onChange={({ files, urls }) => {
+            setRevisionFiles(files);
+            setRevisionUrls(urls);
+          }}
+          disabled={revisionMutation.isPending}
+          label="Supplemental files and URLs to support the revision (optional)"
+          description="Attached files are extracted and reviewed by the revision pipeline (intake → planner → section rewriter) and also imported into the corpus so future runs can retrieve them. PDF / TXT / Markdown."
         />
         <button
           type="button"
@@ -830,5 +960,186 @@ function ReportContent({ content }: { content: string }) {
     >
       {content}
     </ReactMarkdown>
+  );
+}
+
+/**
+ * Collapsible panel that shows the same Run Summary Report (phase timings,
+ * model usage, full event trace) used on the FailedRunReportPage — but here
+ * it sits on the success report page so the user can see the path the
+ * orchestrator took to a successful report. Closed by default to keep the
+ * report itself the focus of the page.
+ */
+function RunGenerationTracePanel({
+  runSummary,
+  run,
+  traceEvents,
+}: {
+  runSummary: RunSummaryData | null;
+  run: ResearchRun;
+  traceEvents: ResearchProgressEvent[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card p-0 overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          Generation trace and run summary
+          <span className="text-[10px] font-normal text-slate-500 normal-case tracking-normal">
+            (full path the orchestrator took to this report)
+          </span>
+        </span>
+        <span className="text-[10px] uppercase text-slate-500 font-mono">
+          {(traceEvents ?? []).length} events
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <RunSummaryReport
+            summary={runSummary}
+            run={run}
+            traceEvents={traceEvents ?? []}
+            failure={null}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Auto-shown summary of "what changed in this revision" rendered near the
+ * top of a revised report. Uses the report_revision_sections rows
+ * (before_content / after_content) populated by reportRevisionService when
+ * the revision was applied. Each row collapses to a one-line summary
+ * (added / rewritten section, with a quick line-count delta) and expands
+ * to the full before/after side-by-side diff on click.
+ *
+ * This complements the bottom-of-page "Revision History" — that one lists
+ * every revision in the chain so the user can step through history; this
+ * one calls out the diff for the revision that produced THIS report so
+ * the user does not have to hunt for it after submitting an edit request.
+ */
+function RevisionDiffPanel({
+  revisionEntry,
+  revisionDetail,
+}: {
+  revisionEntry: { id: string; revision_number?: number; rationale?: string; created_at?: string };
+  revisionDetail: {
+    rationale?: string;
+    sections: Array<{
+      id: string;
+      section_type?: string;
+      section_title: string;
+      change_type?: string;
+      before_content: string;
+      after_content: string;
+    }>;
+  };
+}) {
+  const [openSectionIds, setOpenSectionIds] = useState<Set<string>>(new Set());
+  const sections = revisionDetail.sections ?? [];
+  const rationale = (revisionDetail.rationale ?? revisionEntry.rationale ?? '').trim();
+  if (sections.length === 0) {
+    return (
+      <div className="card p-4 border-accent/30 bg-accent/5 print:hidden">
+        <div className="flex items-center gap-2 mb-1">
+          <MessageSquareText size={14} className="text-accent" />
+          <span className="text-xs font-semibold text-accent uppercase tracking-wider">
+            Revision v{revisionEntry.revision_number ?? '?'} applied
+          </span>
+        </div>
+        <p className="text-sm text-slate-300 leading-relaxed">
+          The revision pipeline accepted the request{rationale ? ` ("${rationale}")` : ''} but did not change any sections. Compare with the previous version in Revision History.
+        </p>
+      </div>
+    );
+  }
+  const toggle = (id: string) => {
+    setOpenSectionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  return (
+    <div className="card p-4 border-accent/30 bg-accent/5 space-y-3 print:hidden">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <MessageSquareText size={14} className="text-accent" />
+          <span className="text-xs font-semibold text-accent uppercase tracking-wider">
+            What changed in this revision (v{revisionEntry.revision_number ?? '?'})
+          </span>
+        </div>
+        {revisionEntry.created_at && (
+          <span className="text-[11px] text-slate-500">
+            applied {formatDistanceToNow(new Date(revisionEntry.created_at), { addSuffix: true })}
+          </span>
+        )}
+      </div>
+      {rationale && (
+        <p className="text-xs text-slate-400 leading-relaxed">
+          <span className="text-slate-500 uppercase tracking-wide font-semibold">Rationale: </span>
+          {rationale}
+        </p>
+      )}
+      <ul className="space-y-2">
+        {sections.map((s) => {
+          const isOpen = openSectionIds.has(s.id);
+          const beforeLen = (s.before_content ?? '').length;
+          const afterLen = (s.after_content ?? '').length;
+          const delta = afterLen - beforeLen;
+          const changeLabel = s.change_type === 'insertion'
+            ? 'New section'
+            : s.change_type === 'deletion'
+              ? 'Removed'
+              : 'Rewritten';
+          const deltaLabel = delta === 0
+            ? 'no length change'
+            : `${delta > 0 ? '+' : ''}${delta} chars`;
+          return (
+            <li key={s.id} className="rounded-md border border-indigo-900/30 bg-surface-900/40">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-200/50 transition-colors"
+                onClick={() => toggle(s.id)}
+                aria-expanded={isOpen}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  {isOpen ? <ChevronUp size={12} className="text-slate-500 flex-shrink-0" /> : <ChevronDown size={12} className="text-slate-500 flex-shrink-0" />}
+                  <span className="text-xs text-slate-200 truncate">{s.section_title}</span>
+                  <span className="text-[10px] text-accent font-semibold uppercase tracking-wide flex-shrink-0">{changeLabel}</span>
+                </span>
+                <span className="text-[10px] text-slate-500 tabular-nums flex-shrink-0">{deltaLabel}</span>
+              </button>
+              {isOpen && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3 pb-3 text-xs">
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Before</div>
+                    <div className="bg-surface-900 rounded p-2 text-slate-400 max-h-64 overflow-auto whitespace-pre-wrap leading-relaxed">
+                      {s.before_content || <span className="italic text-slate-600">(empty — section was newly inserted)</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">After</div>
+                    <div className="bg-surface-900 rounded p-2 text-slate-300 max-h-64 overflow-auto whitespace-pre-wrap leading-relaxed">
+                      {s.after_content || <span className="italic text-slate-600">(empty — section was removed)</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
