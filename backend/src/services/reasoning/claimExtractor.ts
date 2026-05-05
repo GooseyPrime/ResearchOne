@@ -94,8 +94,6 @@ export async function extractAndPersistClaims(args: {
     const parsed = extractJsonArray<ExtractedClaim>(result.content, { context: `claims:${runId}` });
     if (parsed) {
       claims = parsed.filter(c => c.claim_text && c.evidence_tier && typeof c.confidence === 'number');
-    } else {
-      logger.warn(`[claims:${runId}] Verifier returned no parseable JSON array; head="${result.content.slice(0, 240).replace(/\s+/g, ' ')}…"`);
     }
   } catch (err) {
     logger.warn(`[claims:${runId}] Claim extraction failed:`, err);
