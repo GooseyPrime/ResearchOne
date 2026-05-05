@@ -49,7 +49,7 @@ function wrapMulterMiddleware(middleware: RequestHandler): RequestHandler {
         return;
       }
 
-      next(err as Error);
+      next(err instanceof Error ? err : new Error(String(err)));
     });
   };
 }
@@ -75,7 +75,7 @@ const uploadRevision = {
   array: (fieldName: string, maxCount?: number) =>
     wrapMulterMiddleware(uploadRevisionMulter.array(fieldName, maxCount)),
   fields: (fields: readonly { name: string; maxCount?: number }[]) =>
-    wrapMulterMiddleware(uploadRevisionMulter.fields(fields as { name: string; maxCount?: number }[])),
+    wrapMulterMiddleware(uploadRevisionMulter.fields(fields)),
   any: () => wrapMulterMiddleware(uploadRevisionMulter.any()),
   none: () => wrapMulterMiddleware(uploadRevisionMulter.none()),
 };
