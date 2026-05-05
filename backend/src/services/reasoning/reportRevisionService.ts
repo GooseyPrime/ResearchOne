@@ -134,6 +134,15 @@ export async function createReportRevision(args: {
   rationale?: string;
   initiatedBy?: string;
   initiatedByType?: string;
+  /** Concatenated text extracted from user-attached files / URLs (built by
+   *  `ingestSupplementalForRevision` at the route level). Spliced into the
+   *  revision_intake / change_planner / section_rewriter prompts so the
+   *  models can review the attached material on this revision call. */
+  supplementalContext?: string;
+  /** Audit list of the attachments that produced `supplementalContext`. Stored
+   *  on the revision_request row's metadata for the report detail page to
+   *  display. */
+  supplementalAttachments?: Array<Record<string, unknown>>;
   onProgress?: (update: RevisionProgress) => void;
 }): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
   const emit = (stage: string, percent: number, message: string, revisionId?: string) => {
@@ -186,18 +195,52 @@ export async function createReportRevision(args: {
     throw new Error('Report has no sections');
   }
 
-  const requestRows = await query<{ id: string }>(
-    `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status)
-     VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id`,
-    [
-      args.reportId,
-      args.requestText,
-      args.rationale ?? '',
-      args.initiatedBy ?? 'system',
-      args.initiatedByType ?? 'user',
-    ]
-  );
+  // INSERT — try the new schema first (with metadata + supplemental_attachments).
+  // If migration 014 has not yet been applied, fall back to the legacy column
+  // set so the route does not 500 during a deploy gap. Only the specific
+  // "undefined column" error (Postgres SQLSTATE 42703) is recovered.
+  const supplementalAttachments = args.supplementalAttachments ?? [];
+  const requestMetadata = {
+    has_supplemental_context: Boolean(args.supplementalContext && args.supplementalContext.length > 0),
+    supplemental_context_chars: args.supplementalContext?.length ?? 0,
+    attachment_count: supplementalAttachments.length,
+  };
+  let requestRows: Array<{ id: string }>;
+  try {
+    requestRows = await query<{ id: string }>(
+      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status, metadata, supplemental_attachments)
+       VALUES ($1, $2, $3, $4, $5, 'queued', $6::jsonb, $7::jsonb) RETURNING id`,
+      [
+        args.reportId,
+        args.requestText,
+        args.rationale ?? '',
+        args.initiatedBy ?? 'system',
+        args.initiatedByType ?? 'user',
+        JSON.stringify(requestMetadata),
+        JSON.stringify(supplementalAttachments),
+      ]
+    );
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== '42703') throw err;
+    requestRows = await query<{ id: string }>(
+      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status)
+       VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id`,
+      [
+        args.reportId,
+        args.requestText,
+        args.rationale ?? '',
+        args.initiatedBy ?? 'system',
+        args.initiatedByType ?? 'user',
+      ]
+    );
+  }
   const requestId = requestRows[0].id;
+  // Build a single supplemental block to splice into model prompts when
+  // attachments are present. Kept short to stay inside per-prompt budgets.
+  const supplementalBlock = args.supplementalContext && args.supplementalContext.trim().length > 0
+    ? `\n\nUser-attached supplemental context (review and weigh as evidence; cite when used):\n${args.supplementalContext.trim()}`
+    : '';
 
   emit('intake', 12, 'Parsing revision request');
   const intakeResult = await callRoleModel({
@@ -205,7 +248,7 @@ export async function createReportRevision(args: {
     ...revOpts,
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.revision_intake },
-      { role: 'user', content: `Revision request:\n${args.requestText}\nRationale:\n${args.rationale ?? ''}\nReturn JSON only.` },
+      { role: 'user', content: `Revision request:\n${args.requestText}\nRationale:\n${args.rationale ?? ''}${supplementalBlock}\nReturn JSON only.` },
     ],
   });
   const intake = parseJson<RevisionIntake>(intakeResult.content) ?? {};
@@ -240,7 +283,7 @@ Return strict JSON.`,
         role: 'user',
         content: `Request:\n${args.requestText}
 Intake:\n${JSON.stringify(intake)}
-Affected sections:\n${JSON.stringify(affectedSections)}
+Affected sections:\n${JSON.stringify(affectedSections)}${supplementalBlock}
 Return strict JSON.`,
       },
     ],
@@ -291,7 +334,7 @@ Return strict JSON.`,
 Section type: ${section.section_type}
 Section title: ${section.title}
 Rewrite instruction: ${rewrite.instruction}
-Current content:\n${section.content}
+Current content:\n${section.content}${supplementalBlock}
 Return revised section body only.`,
           },
         ],

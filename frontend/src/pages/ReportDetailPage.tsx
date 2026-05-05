@@ -9,8 +9,13 @@ import {
   createReportRevision,
   publishReportFeatured,
   getResearchRun,
+  getRunArtifacts,
   ADMIN_SESSION_TOKEN_KEY,
+  type ResearchRun,
+  type ResearchProgressEvent,
 } from '../utils/api';
+import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
+import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
   ArrowLeft,
   FileText,
@@ -110,6 +115,11 @@ export default function ReportDetailPage() {
   const [requestPromptOpen, setRequestPromptOpen] = useState(false);
   const [revisionRequestText, setRevisionRequestText] = useState('');
   const [revisionRationale, setRevisionRationale] = useState('');
+  // Files and URLs attached to support the revision request. They get
+  // ingested into the corpus AND their text is spliced into the revision
+  // prompts so the models review them on this call.
+  const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
+  const [revisionUrls, setRevisionUrls] = useState<string[]>([]);
   const [revisionProgress, setRevisionProgress] = useState<{
     stage: string;
     percent: number;
@@ -151,6 +161,17 @@ export default function ReportDetailPage() {
     enabled: Boolean(report?.run_id),
   });
 
+  // Fetch the run's artifacts (progress events, model_log, plan, etc.) so the
+  // same RunSummaryReport rendered on FailedRunReportPage is available here
+  // on the success report page. This shows the user the full path the
+  // orchestrator took to a successful report (matching the failed-run view).
+  const { data: runArtifacts } = useQuery({
+    queryKey: ['run-artifacts', report?.run_id],
+    queryFn: () => getRunArtifacts(report!.run_id!),
+    enabled: Boolean(report?.run_id),
+    retry: 1,
+  });
+
   const { data: revisions = [] } = useQuery({
     queryKey: ['report-revisions', id],
     queryFn: () => getReportRevisions(id!),
@@ -181,6 +202,60 @@ export default function ReportDetailPage() {
       ? String((report.metadata as { plain_language_markdown?: string }).plain_language_markdown ?? '')
       : '';
 
+  const runSummary: RunSummaryData | null = useMemo(() => {
+    if (!sourceRun) return null;
+    const events = runArtifacts?.progressEvents ?? sourceRun.progress_events ?? [];
+    const phaseDurations: Record<string, number> = {};
+    if (events.length > 0) {
+      const buckets: Record<string, { start: number; end: number }> = {};
+      for (const evt of events) {
+        if (!evt.timestamp || !evt.stage) continue;
+        const t = new Date(evt.timestamp).getTime();
+        if (Number.isNaN(t)) continue;
+        const bucket = buckets[evt.stage] ?? (buckets[evt.stage] = { start: t, end: t });
+        bucket.start = Math.min(bucket.start, t);
+        bucket.end = Math.max(bucket.end, t);
+      }
+      for (const [stage, { start, end }] of Object.entries(buckets)) {
+        phaseDurations[stage] = end - start;
+      }
+    }
+    const totalDurationMs =
+      sourceRun.completed_at && sourceRun.created_at
+        ? new Date(sourceRun.completed_at).getTime() - new Date(sourceRun.created_at).getTime()
+        : 0;
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+    const modelUsage: RunSummaryData['modelUsage'] = [];
+    for (const entry of runArtifacts?.modelLog ?? []) {
+      const e = entry as Record<string, unknown>;
+      const promptTokens = Number(e.promptTokens ?? 0);
+      const completionTokens = Number(e.completionTokens ?? 0);
+      totalPromptTokens += promptTokens;
+      totalCompletionTokens += completionTokens;
+      modelUsage!.push({
+        role: typeof e.role === 'string' ? e.role : 'unknown',
+        model: typeof e.model === 'string' ? e.model : 'unknown',
+        promptTokens,
+        completionTokens,
+        durationMs: Number(e.durationMs ?? 0),
+      });
+    }
+    return {
+      runId: sourceRun.id,
+      status: sourceRun.status,
+      totalDurationMs,
+      phaseDurations,
+      totalPromptTokens,
+      totalCompletionTokens,
+      retryCount: sourceRun.retry_attempts ?? 0,
+      failedStage: sourceRun.failed_stage ?? null,
+      errorMessage: sourceRun.error_message ?? null,
+      failureMeta: (sourceRun.failure_meta as Record<string, unknown> | undefined) ?? null,
+      modelUsage,
+    };
+  }, [sourceRun, runArtifacts]);
+
   const researchRequestSnapshot = useMemo(() => {
     const meta = report?.metadata as { research_request?: { query?: string; supplemental?: string; supplemental_attachments?: unknown } } | undefined;
     const fromMeta = meta?.research_request;
@@ -200,9 +275,15 @@ export default function ReportDetailPage() {
       createReportRevision(id!, {
         requestText: revisionRequestText.trim(),
         rationale: revisionRationale.trim() || undefined,
+        revisionFiles: revisionFiles.length > 0 ? revisionFiles : undefined,
+        revisionUrls: revisionUrls.length > 0 ? revisionUrls : undefined,
       }),
     onMutate: () => {
-      addNotification('info', 'Revision request submitted — processing on the server…');
+      const attachmentNote =
+        revisionFiles.length > 0 || revisionUrls.length > 0
+          ? ` (${revisionFiles.length} file${revisionFiles.length === 1 ? '' : 's'} · ${revisionUrls.length} URL${revisionUrls.length === 1 ? '' : 's'} attached)`
+          : '';
+      addNotification('info', `Revision request submitted${attachmentNote} — processing on the server…`);
       setRevisionProgress({ stage: 'queued', percent: 0, message: 'Connecting…' });
     },
     onSuccess: (data) => {
@@ -210,6 +291,8 @@ export default function ReportDetailPage() {
       addNotification('success', 'Revision requested and applied as a new version.');
       setRevisionRequestText('');
       setRevisionRationale('');
+      setRevisionFiles([]);
+      setRevisionUrls([]);
       qc.invalidateQueries({ queryKey: ['report-revisions', id] });
       qc.invalidateQueries({ queryKey: ['reports'] });
       if (data.revisedReportId) {
@@ -534,6 +617,16 @@ export default function ReportDetailPage() {
         </div>
       )}
 
+      {sourceRun && (
+        <div className="print:hidden space-y-2">
+          <RunGenerationTracePanel
+            runSummary={runSummary}
+            run={sourceRun}
+            traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
+          />
+        </div>
+      )}
+
       <div className="card p-5 space-y-3 print:hidden">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Request edit / correction / re-evaluation</h2>
         <textarea
@@ -549,6 +642,17 @@ export default function ReportDetailPage() {
           value={revisionRationale}
           onChange={(e) => setRevisionRationale(e.target.value)}
           disabled={revisionMutation.isPending}
+        />
+        <AttachmentDropZone
+          files={revisionFiles}
+          urls={revisionUrls}
+          onChange={({ files, urls }) => {
+            setRevisionFiles(files);
+            setRevisionUrls(urls);
+          }}
+          disabled={revisionMutation.isPending}
+          label="Supplemental files and URLs to support the revision (optional)"
+          description="Attached files are extracted and reviewed by the revision pipeline (intake → planner → section rewriter) and also imported into the corpus so future runs can retrieve them. PDF / TXT / Markdown."
         />
         <button
           type="button"
@@ -832,3 +936,54 @@ function ReportContent({ content }: { content: string }) {
     </ReactMarkdown>
   );
 }
+
+/**
+ * Collapsible panel that shows the same Run Summary Report (phase timings,
+ * model usage, full event trace) used on the FailedRunReportPage — but here
+ * it sits on the success report page so the user can see the path the
+ * orchestrator took to a successful report. Closed by default to keep the
+ * report itself the focus of the page.
+ */
+function RunGenerationTracePanel({
+  runSummary,
+  run,
+  traceEvents,
+}: {
+  runSummary: RunSummaryData | null;
+  run: ResearchRun;
+  traceEvents: ResearchProgressEvent[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card p-0 overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          Generation trace and run summary
+          <span className="text-[10px] font-normal text-slate-500 normal-case tracking-normal">
+            (full path the orchestrator took to this report)
+          </span>
+        </span>
+        <span className="text-[10px] uppercase text-slate-500 font-mono">
+          {(traceEvents ?? []).length} events
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <RunSummaryReport
+            summary={runSummary}
+            run={run}
+            traceEvents={traceEvents ?? []}
+            failure={null}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+

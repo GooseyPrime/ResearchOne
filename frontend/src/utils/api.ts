@@ -281,10 +281,35 @@ export const createReportRevision = (id: string, data: {
   rationale?: string;
   initiatedBy?: string;
   initiatedByType?: string;
-}) =>
-  api
+  /** Files attached to support the revision request. Sent as multipart;
+   *  ingested into the corpus and inlined into revision prompts so the
+   *  models can review them on this revision call. */
+  revisionFiles?: File[];
+  revisionUrls?: string[];
+}) => {
+  const hasFiles = data.revisionFiles && data.revisionFiles.length > 0;
+  const hasUrls = data.revisionUrls && data.revisionUrls.length > 0;
+  if (hasFiles || hasUrls) {
+    const form = new FormData();
+    form.append('requestText', data.requestText);
+    if (data.rationale) form.append('rationale', data.rationale);
+    if (data.initiatedBy) form.append('initiatedBy', data.initiatedBy);
+    if (data.initiatedByType) form.append('initiatedByType', data.initiatedByType);
+    if (hasUrls) form.append('revisionUrls', JSON.stringify(data.revisionUrls));
+    for (const f of data.revisionFiles ?? []) {
+      form.append('files', f);
+    }
+    return api
+      .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, form, {
+        timeout: 900000,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  }
+  return api
     .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
-    .then(r => r.data);
+    .then((r) => r.data);
+};
 
 export const getReportRevisions = (id: string) =>
   api.get<ReportRevision[]>(`/reports/${id}/revisions`).then(r => r.data);

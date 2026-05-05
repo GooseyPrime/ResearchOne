@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { query } from '../../db/pool';
 import { config } from '../../config';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
@@ -7,8 +8,47 @@ import {
   getReportRevision,
   listReportRevisions,
 } from '../../services/reasoning/reportRevisionService';
+import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 
 const router = Router();
+
+// Multer config for the revision-request endpoint. Mirrors the multer
+// config in /api/research POST so the file allow-list and size limits
+// stay consistent across both supplemental-attachment surfaces.
+const uploadRevision = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'text/plain',
+      'text/markdown',
+      'text/x-markdown',
+      'application/octet-stream',
+    ];
+    const ok =
+      allowed.includes(file.mimetype) ||
+      file.originalname.endsWith('.md') ||
+      file.originalname.endsWith('.markdown') ||
+      file.originalname.endsWith('.txt') ||
+      file.originalname.endsWith('.pdf');
+    if (ok) cb(null, true);
+    else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
+  },
+});
+
+function parseJsonField<T>(raw: unknown, fallback: T): T {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  if (typeof raw === 'object') return raw as T;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
 
 function publishTokenOk(req: { header: (name: string) => string | undefined }): boolean {
   const h = req.header('authorization') || req.header('x-admin-token') || '';
@@ -89,49 +129,101 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/reports/:id/revisions - Request and apply a report revision
-router.post('/:id/revisions', async (req, res, next) => {
-  try {
-    const {
-      requestText,
-      rationale,
-      initiatedBy,
-      initiatedByType,
-    } = req.body as {
-      requestText?: string;
-      rationale?: string;
-      initiatedBy?: string;
-      initiatedByType?: string;
-    };
-
-    if (!requestText || typeof requestText !== 'string') {
-      res.status(400).json({ error: 'requestText is required' });
-      return;
+// POST /api/reports/:id/revisions - Request and apply a report revision.
+// Accepts JSON or multipart/form-data. The multipart variant lets the user
+// attach supplemental files (PDF/TXT/MD) and URLs alongside their request
+// text. Attachments are queued onto the same corpus-ingestion pipeline
+// used by manual uploads (so they persist as retrievable evidence) AND
+// their extracted text is spliced into the revision prompts so the
+// current revision call can use them as evidence directly.
+router.post(
+  '/:id/revisions',
+  (req, res, next) => {
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('multipart/form-data')) {
+      uploadRevision.array('files', 25)(req, res, next);
+    } else {
+      next();
     }
+  },
+  async (req, res, next) => {
+    try {
+      const isMultipart = Boolean(req.headers['content-type']?.includes('multipart/form-data'));
+      const body = req.body as Record<string, unknown>;
 
-    const io = req.app.get('io') as { to: (room: string) => { emit: (event: string, data: unknown) => void } } | undefined;
-    const emitProgress = (payload: unknown) => {
-      io?.to(`job:revision:${req.params.id}`).emit('revision:progress', payload);
-      io?.to(`job:${req.params.id}`).emit('revision:progress', payload);
-      io?.to('reports').emit('revision:progress', payload);
-    };
+      const requestText = typeof body.requestText === 'string' ? body.requestText : '';
+      const rationale = typeof body.rationale === 'string' ? body.rationale : undefined;
+      const initiatedBy = typeof body.initiatedBy === 'string' ? body.initiatedBy : undefined;
+      const initiatedByType = typeof body.initiatedByType === 'string' ? body.initiatedByType : undefined;
 
-    const result = await createReportRevision({
-      reportId: req.params.id,
-      requestText,
-      rationale,
-      initiatedBy,
-      initiatedByType,
-      onProgress: emitProgress,
-    });
+      let revisionUrls: string[] = [];
+      if (isMultipart) {
+        const rawSu = body.revisionUrls as unknown;
+        const parsed =
+          typeof rawSu === 'string' ? parseJsonField<unknown[]>(rawSu, []) : Array.isArray(rawSu) ? rawSu : [];
+        revisionUrls = Array.isArray(parsed) ? parsed.map((u) => String(u).trim()).filter(Boolean) : [];
+      } else {
+        const jsonBody = req.body as { revisionUrls?: string[] };
+        revisionUrls = Array.isArray(jsonBody.revisionUrls)
+          ? jsonBody.revisionUrls.map((u) => String(u).trim()).filter(Boolean)
+          : [];
+      }
 
-    io?.to(`job:revision:${req.params.id}`).emit('revision:completed', result);
-    io?.to('reports').emit('reports:updated', {});
-    res.status(202).json(result);
-  } catch (err) {
-    next(err);
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+
+      if (!requestText || typeof requestText !== 'string') {
+        res.status(400).json({ error: 'requestText is required' });
+        return;
+      }
+
+      const io = req.app.get('io') as { to: (room: string) => { emit: (event: string, data: unknown) => void } } | undefined;
+      const emitProgress = (payload: unknown) => {
+        io?.to(`job:revision:${req.params.id}`).emit('revision:progress', payload);
+        io?.to(`job:${req.params.id}`).emit('revision:progress', payload);
+        io?.to('reports').emit('revision:progress', payload);
+      };
+
+      let supplementalContext = '';
+      let supplementalAttachments: Array<Record<string, unknown>> = [];
+      if (files.length > 0 || revisionUrls.length > 0) {
+        emitProgress({ reportId: req.params.id, stage: 'attachments', percent: 2, message: 'Ingesting supplemental attachments...', timestamp: new Date().toISOString() });
+        const ingest = await ingestSupplementalForRevision({
+          reportId: req.params.id,
+          // Use a synthetic request id at the route level since the DB row
+          // hasn't been created yet — the service will create it next and
+          // re-tag if needed. This still groups attachments under one
+          // revision attempt for audit purposes.
+          revisionRequestId: `pending-${req.params.id}-${Date.now()}`,
+          urls: revisionUrls,
+          files: files.map((f) => ({
+            originalname: f.originalname,
+            mimetype: f.mimetype,
+            buffer: f.buffer,
+          })),
+        });
+        supplementalContext = ingest.inlineContext;
+        supplementalAttachments = ingest.attachments as Array<Record<string, unknown>>;
+      }
+
+      const result = await createReportRevision({
+        reportId: req.params.id,
+        requestText,
+        rationale,
+        initiatedBy,
+        initiatedByType,
+        supplementalContext: supplementalContext || undefined,
+        supplementalAttachments,
+        onProgress: emitProgress,
+      });
+
+      io?.to(`job:revision:${req.params.id}`).emit('revision:completed', result);
+      io?.to('reports').emit('reports:updated', {});
+      res.status(202).json(result);
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 
 // POST /api/reports/:id/publish-featured — push full report markdown to GitHub for thenewontology.life
