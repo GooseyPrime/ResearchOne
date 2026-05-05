@@ -302,7 +302,6 @@ export const createReportRevision = (id: string, data: {
     return api
       .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, form, {
         timeout: 900000,
-        headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data);
   }
