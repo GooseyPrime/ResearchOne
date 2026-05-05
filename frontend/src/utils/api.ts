@@ -302,7 +302,6 @@ export const createReportRevision = (id: string, data: {
     return api
       .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, form, {
         timeout: 900000,
-        headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data);
   }
@@ -603,8 +602,14 @@ export interface AtlasPoint {
   y: number;
 }
 
-export const getAtlasPoints = (params?: { limit?: number; tags?: string }) =>
+export const getAtlasPoints = (params?: { limit?: number | 'full'; tags?: string }) =>
   api.get<AtlasPoint[]>('/atlas/points', { params }).then(r => r.data);
+
+// Total embedded chunk count (optionally filtered by tag). Used to show
+// "rendering N of M" on the in-browser embedding atlas so the user knows
+// when their selected limit is truncating the live corpus.
+export const getAtlasEmbeddedCount = (params?: { tags?: string }) =>
+  api.get<{ count: number }>('/atlas/embedded-count', { params }).then(r => r.data);
 
 export interface GraphNode {
   id: string;

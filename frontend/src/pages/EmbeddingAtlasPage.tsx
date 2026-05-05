@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
 import { Layers, RefreshCw, ZoomIn, ZoomOut, Maximize2, Filter, Info } from 'lucide-react';
-import { getAtlasPoints, extractApiError, type AtlasPoint } from '../utils/api';
+import { getAtlasPoints, getAtlasEmbeddedCount, extractApiError, type AtlasPoint } from '../utils/api';
 import clsx from 'clsx';
 
 const TIER_COLORS: Record<string, string> = {
@@ -38,7 +38,13 @@ export default function EmbeddingAtlasPage() {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<AtlasPoint | null>(null);
   const [filterTag, setFilterTag] = useState('');
-  const [limit, setLimit] = useState(500);
+  // `limit` is either a number (samples up to that many points) or 'full'
+  // (sends limit=full so the backend returns up to ATLAS_FULL_CORPUS_LIMIT
+  // = 10000). Pairing with the embedded-count endpoint lets the UI show
+  // "rendering N of M" so the user knows when the live corpus is larger
+  // than the rendered set.
+  const [limit, setLimit] = useState<number | 'full'>(500);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const zoomRef = useRef<D3ZoomBehavior | null>(null);
 
@@ -47,6 +53,14 @@ export default function EmbeddingAtlasPage() {
     queryFn: () => getAtlasPoints({ limit, tags: filterTag || undefined }),
     staleTime: 120_000,
     retry: 1,
+    refetchInterval: autoRefresh ? 30_000 : false,
+  });
+
+  const { data: countData } = useQuery({
+    queryKey: ['atlas-embedded-count', filterTag],
+    queryFn: () => getAtlasEmbeddedCount({ tags: filterTag || undefined }),
+    staleTime: 60_000,
+    refetchInterval: autoRefresh ? 30_000 : false,
   });
 
   const buildChart = useCallback(() => {
@@ -168,7 +182,12 @@ export default function EmbeddingAtlasPage() {
           <Layers size={18} className="text-accent" />
           <h1 className="text-base font-bold text-white">Embedding Atlas</h1>
           <span className="text-xs text-slate-500">— in-browser vector visualization</span>
-          {points.length > 0 && (
+          {points.length > 0 && countData && countData.count > points.length && (
+            <span className="badge bg-amber-900/20 text-amber-300 border border-amber-800/30 text-[10px]" title="Rendered points are a sample of the live corpus. Switch the limit selector to 'Full corpus' to render the full set (up to 10k).">
+              rendering {points.length.toLocaleString()} of {countData.count.toLocaleString()}
+            </span>
+          )}
+          {points.length > 0 && (!countData || countData.count <= points.length) && (
             <span className="badge bg-accent/10 text-accent border border-accent/20 text-[10px]">
               {points.length.toLocaleString()} points
             </span>
@@ -186,18 +205,36 @@ export default function EmbeddingAtlasPage() {
               onChange={(e) => setFilterTag(e.target.value)}
             />
           </div>
-          {/* Limit selector */}
+          {/* Limit selector — last option is the full live corpus */}
           <select
-            className="input h-7 text-xs w-24"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            className="input h-7 text-xs w-32"
+            value={String(limit)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setLimit(v === 'full' ? 'full' : Number(v));
+            }}
+            title="How many points to render. 'Full corpus' streams every embedded chunk (up to 10k) so you see the entire ResearchOne corpus laid out."
           >
-            <option value={100}>100 pts</option>
-            <option value={300}>300 pts</option>
-            <option value={500}>500 pts</option>
-            <option value={1000}>1000 pts</option>
-            <option value={2000}>2000 pts</option>
+            <option value="100">100 pts</option>
+            <option value="300">300 pts</option>
+            <option value="500">500 pts</option>
+            <option value="1000">1000 pts</option>
+            <option value="2000">2000 pts</option>
+            <option value="full">Full corpus</option>
           </select>
+          {/* Continuous live-refresh — re-fetches every 30s. Keeps the
+              embedding atlas mirrored to the active corpus while
+              ingestion / claim extraction is running, similar to the
+              "live dataset" feel of huggingface datasets-embedding-atlas. */}
+          <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none" title="When enabled, re-fetches the corpus every 30 seconds so newly-ingested chunks appear without manual reload.">
+            <input
+              type="checkbox"
+              className="accent-accent h-3 w-3"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            Live
+          </label>
           <button
             type="button"
             className="btn-ghost h-7 text-xs flex items-center gap-1"

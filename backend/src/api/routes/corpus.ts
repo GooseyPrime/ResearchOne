@@ -3,26 +3,58 @@ import { query } from '../../db/pool';
 
 const router = Router();
 
-// GET /api/corpus/tier-distribution - Evidence tier counts from claims
+// GET /api/corpus/tier-distribution - Evidence tier counts from claims.
+// Cast count to int (already done) and coerce defensively — keeps the
+// recharts pie chart on CorpusPage from getting tripped up by string
+// values when the postgres int-parser config isn't loaded.
 router.get('/tier-distribution', async (_req, res, next) => {
   try {
-    const rows = await query(
+    const rows = await query<{ evidence_tier: string; count: number | string }>(
       `SELECT evidence_tier, COUNT(*)::int AS count
        FROM claims
        GROUP BY evidence_tier
        ORDER BY count DESC`
     );
-    res.json(rows);
+    res.json(rows.map((r) => ({ evidence_tier: r.evidence_tier, count: Number(r.count ?? 0) })));
   } catch (err) {
     next(err);
   }
 });
 
 // GET /api/corpus/stats - Live corpus metrics
+//
+// The corpus_stats VIEW (migration 001) sums COUNT(*) over each table.
+// Postgres COUNT returns `bigint`, which `node-postgres` parses to
+// `string` by default — that's a footgun for downstream consumers
+// (the frontend's StatCard concatenates instead of adding, recharts
+// can't compare them, etc.). Cast every numeric column to a plain
+// number on the way out so the JSON payload is consistent regardless
+// of pg type-parser configuration.
 router.get('/stats', async (_req, res, next) => {
   try {
-    const rows = await query('SELECT * FROM corpus_stats');
-    res.json(rows[0] ?? {});
+    const rows = await query<Record<string, unknown>>('SELECT * FROM corpus_stats');
+    const row = rows[0] ?? {};
+    const numericKeys = [
+      'source_count',
+      'document_count',
+      'chunk_count',
+      'embedding_count',
+      'claim_count',
+      'contradiction_count',
+      'open_contradiction_count',
+      'finalized_report_count',
+      'active_run_count',
+    ];
+    const out: Record<string, unknown> = { ...row };
+    for (const k of numericKeys) {
+      if (out[k] !== null && out[k] !== undefined) {
+        const n = Number(out[k]);
+        out[k] = Number.isFinite(n) ? n : 0;
+      } else {
+        out[k] = 0;
+      }
+    }
+    res.json(out);
   } catch (err) {
     next(err);
   }

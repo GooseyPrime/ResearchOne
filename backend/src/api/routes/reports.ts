@@ -63,12 +63,33 @@ const uploadRevisionMulter = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
   fileFilter: (_req, file, cb) => {
+<<<<<<< claude/success-report-trace-and-revision-attachments
     if (isAllowedSupplementalUpload(file)) {
       cb(null, true);
       return;
     }
 
     cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
+=======
+    const allowed = [
+      'application/pdf',
+      'text/plain',
+      'text/markdown',
+      'text/x-markdown',
+    ];
+    // Use lowercased name so .PDF/.MD etc. are treated the same as .pdf/.md.
+    // application/octet-stream is intentionally excluded from the mime list;
+    // it is only accepted when the extension itself is on the allow-list.
+    const name = file.originalname.toLowerCase();
+    const ok =
+      allowed.includes(file.mimetype) ||
+      name.endsWith('.md') ||
+      name.endsWith('.markdown') ||
+      name.endsWith('.txt') ||
+      name.endsWith('.pdf');
+    if (ok) cb(null, true);
+    else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
+>>>>>>> main
   },
 });
 

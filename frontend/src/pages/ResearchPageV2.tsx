@@ -20,6 +20,8 @@ import {
   Ban,
   Settings2,
   RotateCcw,
+  CheckSquare,
+  Square,
   XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
@@ -746,23 +748,73 @@ export default function ResearchPageV2() {
                 <p className="text-xs text-slate-400">
                   Defaults for <span className="text-slate-300">{RESEARCH_OBJECTIVE_OPTIONS.find((o) => o.value === researchObjective)?.label ?? researchObjective}</span>. Edits apply to this run only.
                 </p>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs flex items-center gap-1"
-                  disabled={mutation.isPending || !!trackingRunId}
-                  onClick={() => {
-                    const preset = ensembleData.presets[researchObjective];
-                    const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
-                    for (const role of Object.keys(preset)) {
-                      const p = preset[role];
-                      rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
-                    }
-                    setModelRows(rows);
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  Reset to default for this objective
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs flex items-center gap-1 border border-accent/30 text-accent px-2 py-1 rounded-lg"
+                    disabled={mutation.isPending || !!trackingRunId}
+                    title="Turn on the per-role fallback opt-in for every role at once."
+                    onClick={() => {
+                      const preset = ensembleData.presets[researchObjective];
+                      setModelRows((prev) => {
+                        const next: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = { ...prev };
+                        for (const role of Object.keys(preset)) {
+                          const p = preset[role];
+                          // Preserve any user-edited primary/fallback strings;
+                          // only flip the per-role fallbackEnabled flag.
+                          // Populate fallback from the preset if the field is
+                          // currently empty so the run actually has a fallback
+                          // model id to use.
+                          next[role] = {
+                            ...next[role],
+                            primary: next[role]?.primary ?? p.primary,
+                            fallback: next[role]?.fallback?.trim() ? next[role].fallback : p.fallback,
+                            fallbackEnabled: true,
+                          };
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <CheckSquare size={14} />
+                    Select all fallbacks
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs flex items-center gap-1"
+                    disabled={mutation.isPending || !!trackingRunId}
+                    title="Turn off the per-role fallback opt-in for every role at once."
+                    onClick={() => {
+                      setModelRows((prev) => {
+                        const next: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
+                        for (const role of Object.keys(prev)) {
+                          next[role] = { ...prev[role], fallbackEnabled: false };
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <Square size={14} />
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost text-xs flex items-center gap-1"
+                    disabled={mutation.isPending || !!trackingRunId}
+                    onClick={() => {
+                      const preset = ensembleData.presets[researchObjective];
+                      const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
+                      for (const role of Object.keys(preset)) {
+                        const p = preset[role];
+                        rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
+                      }
+                      setModelRows(rows);
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    Reset to default for this objective
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {Object.keys(ensembleData.presets[researchObjective]).map((role) => (

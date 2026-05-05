@@ -74,14 +74,17 @@ export default function CorpusPage() {
         <p className="text-slate-400 text-sm mt-1">Browse evidence, claims, and contradictions in the research corpus.</p>
       </div>
 
-      {/* Stats cards */}
+      {/* Stats cards. node-postgres returns bigint as string by default,
+          so we Number()-coerce every count to keep the StatCard visuals
+          consistent (also lets the recharts renderers downstream treat
+          them as numerics rather than text). */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Sources" value={stats.source_count} icon={Database} />
-          <StatCard label="Chunks" value={stats.chunk_count} icon={Layers} />
-          <StatCard label="Embeddings" value={stats.embedding_count} icon={BarChart2} />
-          <StatCard label="Claims" value={stats.claim_count} icon={Tag} />
-          <StatCard label="Contradictions" value={stats.open_contradiction_count} icon={AlertTriangle} color="text-amber-400" />
+          <StatCard label="Sources" value={Number(stats.source_count ?? 0)} icon={Database} />
+          <StatCard label="Chunks" value={Number(stats.chunk_count ?? 0)} icon={Layers} />
+          <StatCard label="Embeddings" value={Number(stats.embedding_count ?? 0)} icon={BarChart2} />
+          <StatCard label="Claims" value={Number(stats.claim_count ?? 0)} icon={Tag} />
+          <StatCard label="Contradictions" value={Number(stats.open_contradiction_count ?? 0)} icon={AlertTriangle} color="text-amber-400" />
         </div>
       )}
 
