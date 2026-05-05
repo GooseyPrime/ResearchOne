@@ -26,14 +26,17 @@ const ALLOWED_MIMES = new Set([
   'text/plain',
   'text/markdown',
   'text/x-markdown',
-  'application/octet-stream',
 ]);
 const ALLOWED_EXTS = ['.pdf', '.txt', '.md'];
 
 function isAllowedFile(file: File): boolean {
-  if (ALLOWED_MIMES.has(file.type)) return true;
   const lower = file.name.toLowerCase();
-  return ALLOWED_EXTS.some((ext) => lower.endsWith(ext));
+  const hasAllowedExtension = ALLOWED_EXTS.some((ext) => lower.endsWith(ext));
+
+  if (ALLOWED_MIMES.has(file.type)) return true;
+  if (file.type === 'application/octet-stream') return hasAllowedExtension;
+
+  return hasAllowedExtension;
 }
 
 function formatBytes(n: number): string {
