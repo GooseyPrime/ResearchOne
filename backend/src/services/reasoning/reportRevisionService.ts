@@ -174,10 +174,7 @@ export async function createRevisionRequest(args: {
       ]
     );
   }
-<<<<<<< claude/success-report-trace-and-revision-attachments
   if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
-=======
->>>>>>> main
   return { requestId: requestRows[0].id };
 }
 
@@ -316,10 +313,7 @@ export async function createReportRevision(args: {
         ]
       );
     }
-<<<<<<< claude/success-report-trace-and-revision-attachments
     if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
-=======
->>>>>>> main
     requestId = requestRows[0].id;
   }
   // Build a single supplemental block to splice into model prompts when

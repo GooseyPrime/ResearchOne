@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import multer from 'multer';
 import { query } from '../../db/pool';
 import { config } from '../../config';
@@ -36,10 +36,8 @@ function isAllowedSupplementalUpload(file: { mimetype: string; originalname: str
   return hasAllowedExtension;
 }
 
-function wrapMulterMiddleware(
-  middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
-) {
-  return (req: unknown, res: { status: (code: number) => { json: (body: { error: string }) => void } }, next: (err?: unknown) => void) => {
+function wrapMulterMiddleware(middleware: RequestHandler): RequestHandler {
+  return (req, res, next) => {
     middleware(req, res, (err?: unknown) => {
       if (!err) {
         next();
@@ -51,7 +49,7 @@ function wrapMulterMiddleware(
         return;
       }
 
-      next(err);
+      next(err instanceof Error ? err : new Error(String(err)));
     });
   };
 }
@@ -63,33 +61,12 @@ const uploadRevisionMulter = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
   fileFilter: (_req, file, cb) => {
-<<<<<<< claude/success-report-trace-and-revision-attachments
     if (isAllowedSupplementalUpload(file)) {
       cb(null, true);
       return;
     }
 
     cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
-=======
-    const allowed = [
-      'application/pdf',
-      'text/plain',
-      'text/markdown',
-      'text/x-markdown',
-    ];
-    // Use lowercased name so .PDF/.MD etc. are treated the same as .pdf/.md.
-    // application/octet-stream is intentionally excluded from the mime list;
-    // it is only accepted when the extension itself is on the allow-list.
-    const name = file.originalname.toLowerCase();
-    const ok =
-      allowed.includes(file.mimetype) ||
-      name.endsWith('.md') ||
-      name.endsWith('.markdown') ||
-      name.endsWith('.txt') ||
-      name.endsWith('.pdf');
-    if (ok) cb(null, true);
-    else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
->>>>>>> main
   },
 });
 
@@ -98,7 +75,7 @@ const uploadRevision = {
   array: (fieldName: string, maxCount?: number) =>
     wrapMulterMiddleware(uploadRevisionMulter.array(fieldName, maxCount)),
   fields: (fields: readonly { name: string; maxCount?: number }[]) =>
-    wrapMulterMiddleware(uploadRevisionMulter.fields(fields as { name: string; maxCount?: number }[])),
+    wrapMulterMiddleware(uploadRevisionMulter.fields(fields)),
   any: () => wrapMulterMiddleware(uploadRevisionMulter.any()),
   none: () => wrapMulterMiddleware(uploadRevisionMulter.none()),
 };
