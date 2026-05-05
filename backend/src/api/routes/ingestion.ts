@@ -15,12 +15,15 @@ const upload = multer({
       'text/plain',
       'text/markdown',
       'text/x-markdown',
-      'application/octet-stream', // fallback for .md files uploaded without MIME detection
     ];
+    // Use lowercased name so .PDF/.MD etc. are treated the same as .pdf/.md.
+    // application/octet-stream is intentionally excluded from the mime list;
+    // it is only accepted when the extension itself is on the allow-list.
+    const name = file.originalname.toLowerCase();
     const isAllowed = allowed.includes(file.mimetype)
-      || file.originalname.endsWith('.md')
-      || file.originalname.endsWith('.txt')
-      || file.originalname.endsWith('.pdf');
+      || name.endsWith('.md')
+      || name.endsWith('.txt')
+      || name.endsWith('.pdf');
     if (isAllowed) {
       cb(null, true);
     } else {
