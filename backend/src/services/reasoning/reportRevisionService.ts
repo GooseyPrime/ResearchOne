@@ -128,6 +128,55 @@ export function basicConsistencyChecks(sections: ReportSectionRow[]): string[] {
   return issues;
 }
 
+/**
+ * Create the `report_revision_requests` row and return the real DB id.
+ * Call this BEFORE ingesting supplemental files so the ingestion_jobs rows
+ * are tagged with the real request id from the start.
+ *
+ * Uses the same migration-014 fallback as `createReportRevision` — if the
+ * `metadata`/`supplemental_attachments` columns are not yet present the
+ * INSERT falls back to the legacy column set (Postgres SQLSTATE 42703).
+ */
+export async function createRevisionRequest(args: {
+  reportId: string;
+  requestText: string;
+  rationale?: string;
+  initiatedBy?: string;
+  initiatedByType?: string;
+}): Promise<{ requestId: string }> {
+  let requestRows: Array<{ id: string }>;
+  try {
+    requestRows = await query<{ id: string }>(
+      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status, metadata, supplemental_attachments)
+       VALUES ($1, $2, $3, $4, $5, 'queued', $6::jsonb, $7::jsonb) RETURNING id`,
+      [
+        args.reportId,
+        args.requestText,
+        args.rationale ?? '',
+        args.initiatedBy ?? 'system',
+        args.initiatedByType ?? 'user',
+        JSON.stringify({ has_supplemental_context: false, supplemental_context_chars: 0, attachment_count: 0 }),
+        JSON.stringify([]),
+      ]
+    );
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== '42703') throw err;
+    requestRows = await query<{ id: string }>(
+      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status)
+       VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id`,
+      [
+        args.reportId,
+        args.requestText,
+        args.rationale ?? '',
+        args.initiatedBy ?? 'system',
+        args.initiatedByType ?? 'user',
+      ]
+    );
+  }
+  return { requestId: requestRows[0].id };
+}
+
 export async function createReportRevision(args: {
   reportId: string;
   requestText: string;
@@ -144,6 +193,10 @@ export async function createReportRevision(args: {
    *  display. */
   supplementalAttachments?: Array<Record<string, unknown>>;
   onProgress?: (update: RevisionProgress) => void;
+  /** Pre-created request id from `createRevisionRequest`. When provided the
+   *  INSERT is skipped and this id is used directly; the row's metadata and
+   *  supplemental_attachments are updated to reflect the final ingest result. */
+  requestId?: string;
 }): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
   const emit = (stage: string, percent: number, message: string, revisionId?: string) => {
     args.onProgress?.({
@@ -199,43 +252,68 @@ export async function createReportRevision(args: {
   // If migration 014 has not yet been applied, fall back to the legacy column
   // set so the route does not 500 during a deploy gap. Only the specific
   // "undefined column" error (Postgres SQLSTATE 42703) is recovered.
+  //
+  // When a pre-created requestId is supplied (from `createRevisionRequest` at
+  // the route level) we skip the INSERT and instead UPDATE the row with the
+  // final supplemental metadata now that we know the real attachment list.
   const supplementalAttachments = args.supplementalAttachments ?? [];
   const requestMetadata = {
     has_supplemental_context: Boolean(args.supplementalContext && args.supplementalContext.length > 0),
     supplemental_context_chars: args.supplementalContext?.length ?? 0,
     attachment_count: supplementalAttachments.length,
   };
-  let requestRows: Array<{ id: string }>;
-  try {
-    requestRows = await query<{ id: string }>(
-      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status, metadata, supplemental_attachments)
-       VALUES ($1, $2, $3, $4, $5, 'queued', $6::jsonb, $7::jsonb) RETURNING id`,
-      [
-        args.reportId,
-        args.requestText,
-        args.rationale ?? '',
-        args.initiatedBy ?? 'system',
-        args.initiatedByType ?? 'user',
-        JSON.stringify(requestMetadata),
-        JSON.stringify(supplementalAttachments),
-      ]
-    );
-  } catch (err) {
-    const code = (err as { code?: string } | null)?.code;
-    if (code !== '42703') throw err;
-    requestRows = await query<{ id: string }>(
-      `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status)
-       VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id`,
-      [
-        args.reportId,
-        args.requestText,
-        args.rationale ?? '',
-        args.initiatedBy ?? 'system',
-        args.initiatedByType ?? 'user',
-      ]
-    );
+  let requestId: string;
+  if (args.requestId) {
+    requestId = args.requestId;
+    // Back-fill the metadata and supplemental_attachments that weren't
+    // available when the row was first created (before ingest completed).
+    try {
+      await query(
+        `UPDATE report_revision_requests SET metadata=$1::jsonb, supplemental_attachments=$2::jsonb WHERE id=$3`,
+        [JSON.stringify(requestMetadata), JSON.stringify(supplementalAttachments), requestId]
+      );
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code !== '42703') throw err;
+      // supplemental_attachments column not yet present — update metadata only.
+      await query(
+        `UPDATE report_revision_requests SET metadata=$1::jsonb WHERE id=$2`,
+        [JSON.stringify(requestMetadata), requestId]
+      );
+    }
+  } else {
+    let requestRows: Array<{ id: string }>;
+    try {
+      requestRows = await query<{ id: string }>(
+        `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status, metadata, supplemental_attachments)
+         VALUES ($1, $2, $3, $4, $5, 'queued', $6::jsonb, $7::jsonb) RETURNING id`,
+        [
+          args.reportId,
+          args.requestText,
+          args.rationale ?? '',
+          args.initiatedBy ?? 'system',
+          args.initiatedByType ?? 'user',
+          JSON.stringify(requestMetadata),
+          JSON.stringify(supplementalAttachments),
+        ]
+      );
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code !== '42703') throw err;
+      requestRows = await query<{ id: string }>(
+        `INSERT INTO report_revision_requests (report_id, request_text, rationale, initiated_by, initiated_by_type, status)
+         VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id`,
+        [
+          args.reportId,
+          args.requestText,
+          args.rationale ?? '',
+          args.initiatedBy ?? 'system',
+          args.initiatedByType ?? 'user',
+        ]
+      );
+    }
+    requestId = requestRows[0].id;
   }
-  const requestId = requestRows[0].id;
   // Build a single supplemental block to splice into model prompts when
   // attachments are present. Kept short to stay inside per-prompt budgets.
   const supplementalBlock = args.supplementalContext && args.supplementalContext.trim().length > 0
