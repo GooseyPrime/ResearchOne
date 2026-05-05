@@ -28,7 +28,7 @@ const ALLOWED_MIMES = new Set([
   'text/x-markdown',
   'application/octet-stream',
 ]);
-const ALLOWED_EXTS = ['.pdf', '.txt', '.md', '.markdown'];
+const ALLOWED_EXTS = ['.pdf', '.txt', '.md'];
 
 function isAllowedFile(file: File): boolean {
   if (ALLOWED_MIMES.has(file.type)) return true;
