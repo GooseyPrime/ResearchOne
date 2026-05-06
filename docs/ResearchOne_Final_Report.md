@@ -2772,13 +2772,13 @@ cd ../backend && npm install @clerk/backend@^1 svix
 
 **Files to create:**
 
-Frontend: `SignInPage.tsx`, `SignUpPage.tsx`, `OnboardingPage.tsx`, `AccountPage.tsx`, `RequireAuth.tsx`, `RequireAdmin.tsx`, `lib/api/authedFetch.ts`.
+Frontend: `SignInPage.tsx`, `SignUpPage.tsx`, `OnboardingPage.tsx`, `AccountPage.tsx`, `RequireAuth.tsx`, `RequireAdmin.tsx`, `components/auth/ClerkApiSessionBridge.tsx`, `utils/clerkSession.ts` (shared Axios client in `utils/api.ts` attaches Clerk JWT via that bridge).
 
 Backend: `middleware/clerkAuth.ts`, `middleware/rlsContext.ts`, `api/webhooks/clerk.ts`, migration `20260XXX_users_table.sql` creating `users`, `orgs`, `org_members` tables.
 
 **Files to modify:**
 
-`frontend/src/main.tsx` — wrap with `<ClerkProvider>`. `frontend/src/App.tsx` — add sign-in/sign-up/onboarding/account routes; gate `/app/*` with `<RequireAuth>`. `frontend/src/components/layout/Layout.tsx` — add Clerk `<UserButton afterSignOutUrl="/" />`.
+`frontend/src/main.tsx` — wrap with `<ClerkProvider>`. `frontend/src/App.tsx` — add sign-in/sign-up/onboarding/account routes; gate `/app/*` with `<RequireAuth>`. `frontend/src/components/layout/Layout.tsx` — add Clerk `<UserButton />`; set `afterSignOutUrl` on `<ClerkProvider>` (see `main.tsx`).
 
 `backend/src/index.ts` — mount middleware in order:
 1. CORS
@@ -2793,7 +2793,7 @@ Backend: `middleware/clerkAuth.ts`, `middleware/rlsContext.ts`, `api/webhooks/cl
 - New user can sign up via Clerk → lands on `/onboarding` → completes → lands at `/app/research`
 - Returning user can sign in, lands at `/app`
 - Visiting `/app/research` while signed-out redirects to `/sign-in?redirect=/app/research`; after sign-in redirect param routes back
-- API call to `/api/research/runs` without JWT returns 401
+- API call to a protected route (e.g. `GET /api/research`) without JWT returns 401
 - API call with valid JWT returns 200
 - Clerk webhook `user.created` event with valid signature inserts row into `users`
 - Clerk webhook with invalid signature returns 400
@@ -2811,16 +2811,16 @@ Backend: `middleware/clerkAuth.ts`, `middleware/rlsContext.ts`, `api/webhooks/cl
 
 **Files to modify:** Every route handler in `backend/src/api/`. Every endpoint must read `req.auth.userId`, use only application_role DB connection, reject unauthenticated requests with 401.
 
-Add `POST /api/auth/sync` — called by frontend on first sign-in if user not yet in local `users` table (race with Clerk webhook). Idempotent: `INSERT ... ON CONFLICT DO NOTHING`.
+Add `POST /api/auth/sync` — called by the frontend once per signed-in Clerk session (via `ClerkApiSessionBridge`) to cover the race with the Clerk webhook. Idempotent: `INSERT ... ON CONFLICT DO UPDATE` merges email from the JWT when present (`COALESCE(EXCLUDED.email, users.email)`).
 
-**Frontend:** `frontend/src/lib/api/authedFetch.ts` already created in Work Order C — verify every existing API call site uses it. Grep for raw `fetch(`; replace with `authedFetch(`.
+**Frontend:** Ensure authenticated REST traffic goes through the shared Axios client (`frontend/src/utils/api.ts`), which injects `Authorization: Bearer <Clerk JWT>` after `ClerkApiSessionBridge` registers `getToken`. Grep for raw `fetch('/api` and migrate call sites that need auth.
 
 **Acceptance criteria:**
 - Every API endpoint audited and updated
 - Two seeded users; user A's API call returns only user A's data
 - `POST /api/auth/sync` is idempotent
 
-**Tests required:** `research-runs.rls.test.ts`, `auth-sync.test.ts`.
+**Tests required:** `auth-guard.test.ts` (`requireAuth` behavior today); `auth-sync.test.ts`. Deferred: Postgres RLS cross-user assertions are tracked as `it.todo` in `auth-guard.test.ts` until WO-K.
 
 ## Work Order E — Stripe wallet + checkout
 
