@@ -24,17 +24,17 @@ import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
 
 const NAV_ITEMS = [
-  { to: '/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
-  { to: '/research-v2', label: 'Research One 2', icon: FlaskConical, desc: 'V2 frontier ensemble' },
-  { to: '/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
-  { to: '/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence' },
-  { to: '/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)' },
-  { to: '/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas' },
-  { to: '/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph' },
-  { to: '/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
-  { to: '/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
-  { to: '/guide/research-v2', label: 'Research One 2 guide', icon: HelpCircle, desc: 'V2 research modes' },
-  { to: '/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
+  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
+  { to: '/app/research-v2', label: 'Research One 2', icon: FlaskConical, desc: 'V2 frontier ensemble' },
+  { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
+  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence' },
+  { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)' },
+  { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas' },
+  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph' },
+  { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
+  { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
+  { to: '/app/guide/research-v2', label: 'Research One 2 guide', icon: HelpCircle, desc: 'V2 research modes' },
+  { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;
 const RESTART_POLL_INTERVAL_MS = 2500;

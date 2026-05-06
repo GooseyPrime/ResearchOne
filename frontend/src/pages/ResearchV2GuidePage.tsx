@@ -104,7 +104,7 @@ export default function ResearchV2GuidePage() {
         </h1>
         <p className="text-slate-400 text-sm mt-1">
           Each mode changes orchestrator focus, red-team criteria, and report structure. Open-weights ensemble defaults are tuned per mode on{' '}
-          <Link to="/research-v2" className="text-accent hover:underline">
+          <Link to="/app/research-v2" className="text-accent hover:underline">
             Research One 2
           </Link>
           .

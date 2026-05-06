@@ -401,7 +401,7 @@ export default function ReportDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6 print:px-4">
-      <button className="btn-ghost text-sm print:hidden" onClick={() => navigate('/reports')}>
+      <button className="btn-ghost text-sm print:hidden" onClick={() => navigate('/app/reports')}>
         <ArrowLeft size={14} />
         Back to Reports
       </button>
