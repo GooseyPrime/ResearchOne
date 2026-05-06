@@ -1,5 +1,6 @@
 import path from 'path';
 import { Router } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -16,6 +17,8 @@ import {
 } from '../../services/runtimeModelStore';
 
 const router = Router();
+
+router.use(requireAuth);
 const execAsync = promisify(exec);
 
 function isUuid(s: string): boolean {

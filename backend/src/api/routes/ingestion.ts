@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
@@ -6,6 +7,8 @@ import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
 
 const router = Router();
+
+router.use(requireAuth);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024 },
