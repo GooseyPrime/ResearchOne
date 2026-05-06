@@ -7,7 +7,7 @@ export default {
       colors: {
         // Dark theme palette
         surface: {
-          50:  '#f8fafc',
+          50: '#f8fafc',
           100: '#1e293b',
           200: '#172033',
           300: '#111827',
@@ -34,10 +34,17 @@ export default {
           inference: '#a855f7',
           speculation: '#ef4444',
         },
+        'r1-bg': '#0A0E1A',
+        'r1-bg-deep': '#060912',
+        'r1-text': '#F5F7FA',
+        'r1-text-muted': '#94A3B8',
+        'r1-accent': '#5BCEFA',
+        'r1-accent-deep': '#3AA8E0',
       },
       fontFamily: {
+        serif: ['Fraunces', 'serif'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        mono: ['JetBrains Mono', 'monospace'],
         display: ['Inter', 'system-ui', 'sans-serif'],
       },
       animation: {

@@ -87,7 +87,7 @@ export default function AtlasPage() {
             </p>
           </div>
         </div>
-        <Link to="/embedding-viz" className="btn-secondary text-xs flex items-center gap-1.5 flex-shrink-0">
+        <Link to="/app/embedding-viz" className="btn-secondary text-xs flex items-center gap-1.5 flex-shrink-0">
           <Eye size={12} />
           Open Embedding Atlas
         </Link>

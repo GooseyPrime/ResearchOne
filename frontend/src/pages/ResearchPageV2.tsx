@@ -619,7 +619,7 @@ export default function ResearchPageV2() {
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
           Frontier ensemble (V2 engine): evidence-tiered reporting with full-stage telemetry.{' '}
-          <Link to="/guide/research-v2" className="text-accent hover:underline">
+          <Link to="/app/guide/research-v2" className="text-accent hover:underline">
             Research modes and capabilities
           </Link>
         </p>

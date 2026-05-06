@@ -74,7 +74,7 @@ export default function FailedRunReportPage() {
 
   const retryMutation = useMutation({
     mutationFn: () => retryResearchRunFromFailure(runId!),
-    onSuccess: () => navigate('/research-v2'),
+    onSuccess: () => navigate('/app/research-v2'),
     onError: (err) => setRetryError(extractApiError(err)),
   });
 
@@ -148,7 +148,7 @@ export default function FailedRunReportPage() {
       <div className="max-w-3xl mx-auto px-6 py-12 text-center space-y-3">
         <XCircle size={40} className="mx-auto text-red-400" />
         <p className="text-white">Run not found or could not be loaded.</p>
-        <button type="button" className="btn-ghost text-sm" onClick={() => navigate('/reports')}>
+        <button type="button" className="btn-ghost text-sm" onClick={() => navigate('/app/reports')}>
           Back to Reports
         </button>
       </div>
@@ -171,7 +171,7 @@ export default function FailedRunReportPage() {
       <button
         type="button"
         className="btn-ghost text-xs flex items-center gap-1.5"
-        onClick={() => navigate('/reports')}
+        onClick={() => navigate('/app/reports')}
       >
         <ArrowLeft size={13} />
         Back to Reports
