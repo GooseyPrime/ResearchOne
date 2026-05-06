@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
+import RequireAdmin from './components/auth/RequireAdmin';
+import RequireAuth from './components/auth/RequireAuth';
 import LandingPage from './pages/LandingPage';
 import ResearchPage from './pages/ResearchPage';
 import ResearchPageV2 from './pages/ResearchPageV2';
@@ -22,10 +24,16 @@ import SecurityPage from './pages/SecurityPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import AcceptableUsePage from './pages/AcceptableUsePage';
+import SignInPage from './pages/SignInPage';
+import SignUpPage from './pages/SignUpPage';
+import OnboardingPage from './pages/OnboardingPage';
+import AccountPage from './pages/AccountPage';
 
 export default function App() {
+  const RouterProvider = typeof document === 'undefined' ? MemoryRouter : BrowserRouter;
+
   return (
-    <BrowserRouter>
+    <RouterProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
@@ -36,11 +44,16 @@ export default function App() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/acceptable-use" element={<AcceptableUsePage />} />
-        <Route path="/app" element={<Layout />}>
+        <Route path="/sign-in" element={<SignInPage />} />
+        <Route path="/sign-up" element={<SignUpPage />} />
+        <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+        <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+
+        <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Navigate to="/app/research" replace />} />
           <Route path="research" element={<ResearchPage />} />
           <Route path="research-v2" element={<ResearchPageV2 />} />
-          <Route path="models" element={<ModelsPage />} />
+          <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
           <Route path="reports/:id" element={<ReportDetailPage />} />
@@ -53,6 +66,6 @@ export default function App() {
           <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </RouterProvider>
   );
 }

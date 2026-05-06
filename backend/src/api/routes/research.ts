@@ -11,6 +11,7 @@ import {
   parseResearchObjective,
 } from '../../services/reasoning/reasoningModelPolicy';
 import { config } from '../../config';
+import { requireAuth } from '../../middleware/clerkAuth';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
 import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQueueing';
@@ -20,6 +21,8 @@ import {
 } from '../../services/reasoning/runStateMachine';
 
 const router = Router();
+
+router.use(requireAuth);
 
 const uploadResearch = multer({
   storage: multer.memoryStorage(),

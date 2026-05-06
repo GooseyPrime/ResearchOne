@@ -78,6 +78,12 @@ const config = {
     url: process.env.DATABASE_URL,
   },
 
+
+  clerk: {
+    secretKey: process.env.CLERK_SECRET_KEY || '',
+    webhookSecret: process.env.CLERK_WEBHOOK_SECRET || '',
+  },
+
   redis: {
     host: process.env.REDIS_HOST || '10.0.101.3',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
