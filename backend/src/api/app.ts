@@ -16,6 +16,7 @@ import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
 import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
+import billingRoutes from './routes/billing';
 import clerkWebhookRoutes from './webhooks/clerk';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
@@ -31,7 +32,9 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
-app.use('/api/webhooks/clerk', express.raw({ type: 'application/json' }));
+const clerkWebhookRawParser = express.raw({ type: 'application/json' });
+app.use('/api/webhooks/clerk', clerkWebhookRawParser);
+app.use('/webhooks/clerk', clerkWebhookRawParser);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
@@ -57,16 +60,17 @@ const routes: Array<[string, express.Router]> = [
   ['/sources', sourcesRoutes],
   ['/admin', adminRoutes],
   ['/auth', authRoutes],
+  ['/billing', billingRoutes],
 ];
 
-// Primary API prefix
+// Primary API prefix (compat mount below shares the same router instance)
 app.use('/api/webhooks/clerk', clerkWebhookRoutes);
 
 for (const [path, router] of routes) {
   app.use(`/api${path}`, router);
 }
 
-// Compatibility prefix for reverse proxies that strip /api
+// Compatibility prefix for reverse proxies that strip /api (raw body parser registered above)
 app.use('/webhooks/clerk', clerkWebhookRoutes);
 
 for (const [path, router] of routes) {

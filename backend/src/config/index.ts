@@ -84,6 +84,18 @@ const config = {
     webhookSecret: process.env.CLERK_WEBHOOK_SECRET || '',
   },
 
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    successUrl: process.env.STRIPE_CHECKOUT_SUCCESS_URL || 'http://localhost:5173/app/billing?checkout=success',
+    cancelUrl: process.env.STRIPE_CHECKOUT_CANCEL_URL || 'http://localhost:5173/app/billing?checkout=cancel',
+    priceIds: {
+      wallet20: process.env.STRIPE_PRICE_ID_WALLET_20 || '',
+      wallet50: process.env.STRIPE_PRICE_ID_WALLET_50 || '',
+      wallet100: process.env.STRIPE_PRICE_ID_WALLET_100 || '',
+    },
+  },
+
   redis: {
     host: process.env.REDIS_HOST || '10.0.101.3',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),

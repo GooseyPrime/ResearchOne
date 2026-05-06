@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/react';
 
 export function useAuthedFetch() {
   const { getToken } = useAuth();

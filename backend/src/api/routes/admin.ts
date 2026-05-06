@@ -35,8 +35,11 @@ function getProvidedToken(header?: string): string {
 }
 
 function adminTokenOk(req: { header: (name: string) => string | undefined }): boolean {
-  const token = getProvidedToken(req.header('authorization') || req.header('x-admin-token'));
-  return Boolean(config.admin.token) && token === config.admin.token;
+  if (!config.admin.token) return false;
+  const x = req.header('x-admin-token')?.trim();
+  if (x === config.admin.token) return true;
+  const bearer = getProvidedToken(req.header('authorization'));
+  return bearer === config.admin.token;
 }
 
 function candidateLogPaths(stream: 'out' | 'err'): string[] {

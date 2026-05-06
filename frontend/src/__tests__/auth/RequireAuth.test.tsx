@@ -2,7 +2,7 @@ import { renderToString } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@clerk/clerk-react', () => ({
+vi.mock('@clerk/react', () => ({
   useAuth: vi.fn(() => ({ isLoaded: true, isSignedIn: false })),
 }));
 

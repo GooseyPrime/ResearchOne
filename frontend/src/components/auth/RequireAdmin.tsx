@@ -1,4 +1,4 @@
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import type { ReactElement } from 'react';
 import { Navigate } from 'react-router-dom';
 
