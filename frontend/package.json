@@ -13,6 +13,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.0.0",
+    "@stripe/stripe-js": "^9.4.0",
     "@tanstack/react-query": "^5.62.7",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
@@ -28,8 +30,7 @@
     "recharts": "^2.14.1",
     "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.1",
-    "zustand": "^5.0.2",
-    "@clerk/clerk-react": "^5.0.0"
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

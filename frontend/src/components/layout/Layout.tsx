@@ -11,6 +11,7 @@ import {
   Activity,
   Cpu,
   Settings,
+  Wallet,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserButton } from '@clerk/clerk-react';
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
   { to: '/app/guide/research-v2', label: 'Research One 2 guide', icon: HelpCircle, desc: 'V2 research modes' },
+  { to: '/app/billing', label: 'Billing', icon: Wallet, desc: 'Wallet and subscription' },
   { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;

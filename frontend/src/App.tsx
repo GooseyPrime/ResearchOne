@@ -28,6 +28,7 @@ import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
 import OnboardingPage from './pages/OnboardingPage';
 import AccountPage from './pages/AccountPage';
+import BillingPage from './pages/BillingPage';
 
 export default function App() {
   const RouterProvider = typeof document === 'undefined' ? MemoryRouter : BrowserRouter;
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="ingest" element={<IngestPage />} />
           <Route path="guide" element={<GuidePage />} />
           <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
+          <Route path="billing" element={<BillingPage />} />
         </Route>
       </Routes>
     </RouterProvider>

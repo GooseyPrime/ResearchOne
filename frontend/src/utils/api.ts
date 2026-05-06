@@ -262,6 +262,29 @@ export interface Contradiction {
   created_at: string;
 }
 
+export interface WalletLedgerEntry {
+  id: number;
+  amount_cents: number;
+  entry_type: 'credit' | 'debit';
+  description: string;
+  idempotency_key: string;
+  stripe_checkout_session_id: string | null;
+  created_at: string;
+}
+
+export interface WalletSummary {
+  balanceCents: number;
+  currency: string;
+  history: WalletLedgerEntry[];
+}
+
+export interface UserSubscription {
+  tier: string;
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+}
+
 // ─── API Functions ────────────────────────────────────────────────────────────
 
 export const getStats = () => api.get<CorpusStats>('/corpus/stats').then(r => r.data);
@@ -646,6 +669,12 @@ export const getClaimTierDistribution = () =>
 
 export const getContradictions = (params?: { resolved?: boolean }) =>
   api.get<Contradiction[]>('/corpus/contradictions', { params }).then(r => r.data);
+
+export const getWalletSummary = () =>
+  api.get<WalletSummary>('/billing/wallet').then((r) => r.data);
+
+export const getSubscription = () =>
+  api.get<UserSubscription>('/billing/subscription').then((r) => r.data);
 
 /**
  * Resolve an export file download URL, supporting cross-origin Vercel + Emma deployments.
