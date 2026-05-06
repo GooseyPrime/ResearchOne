@@ -1,4 +1,4 @@
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ClerkProvider } from '@clerk/clerk-react';
+import { ClerkProvider } from '@clerk/react';
 import App from './App';
 import './index.css';
 import { assertSplitDeploymentEnv } from './config/splitDeployment';
@@ -25,7 +25,7 @@ if (import.meta.env.PROD && !String(clerkPublishableKey).trim()) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={clerkPublishableKey}>
+    <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/">
       <ClerkApiSessionBridge>
         <QueryClientProvider client={queryClient}>
           <App />

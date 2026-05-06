@@ -14,7 +14,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserButton } from '@clerk/clerk-react';
+import { UserButton } from '@clerk/react';
 import { getStats, getSystemHealth, restartRuntime, getResearchRuns, type ResearchRun } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
 import { useStore } from '../../store/useStore';
@@ -211,7 +211,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
-            <UserButton afterSignOutUrl='/' />
+            <UserButton />
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"

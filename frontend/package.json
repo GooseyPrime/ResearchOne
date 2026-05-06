@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.0.0",
+    "@clerk/react": "^6.6.0",
     "@stripe/stripe-js": "^9.4.0",
     "@tanstack/react-query": "^5.62.7",
     "axios": "^1.7.9",

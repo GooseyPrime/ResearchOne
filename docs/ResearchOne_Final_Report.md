@@ -1962,7 +1962,7 @@ Clerk is the right choice. Purpose-built for React + Vite SPAs and Express backe
 
 ## Dependencies
 
-**Frontend:** `@clerk/clerk-react@^5.0.0`
+**Frontend:** `@clerk/react@^6` (successor to deprecated `@clerk/clerk-react`; same React hooks and components)
 
 **Backend:** `@clerk/backend@^1.0.0` and `svix` (for Clerk webhook verification)
 
@@ -1993,7 +1993,7 @@ ADMIN_USER_IDS=user_xxx,user_yyy
 **Wrap root with ClerkProvider** in `frontend/src/main.tsx`:
 
 ```tsx
-import { ClerkProvider } from '@clerk/clerk-react';
+import { ClerkProvider } from '@clerk/react';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 if (!PUBLISHABLE_KEY) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY');
@@ -2054,7 +2054,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 **`RequireAuth` component:**
 
 ```tsx
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -2758,13 +2758,13 @@ fontFamily: {
 
 ## Work Order C — Clerk auth implementation
 
-**Goal.** Wire Clerk into React + Vite frontend and Express backend per Section 11. **This is React + Vite, NOT Next.js — use `@clerk/clerk-react` and `@clerk/backend`, NOT `@clerk/nextjs`.**
+**Goal.** Wire Clerk into React + Vite frontend and Express backend per Section 11. **This is React + Vite, NOT Next.js — use `@clerk/react` and `@clerk/backend`, NOT `@clerk/nextjs`.**
 
 **Pre-work:** Read `AGENTS.md`, `.cursor/rules/`, this report Section 11, `frontend/src/main.tsx`, `frontend/src/App.tsx`, `backend/src/index.ts`, `backend/src/api/`. Verify against current Clerk docs.
 
 **Dependencies:**
 ```
-cd frontend && npm install @clerk/clerk-react@^5
+cd frontend && npm install @clerk/react@^6
 cd ../backend && npm install @clerk/backend@^1 svix
 ```
 
