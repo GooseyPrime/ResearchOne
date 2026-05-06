@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import { query } from '../../db/pool';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/corpus/tier-distribution - Evidence tier counts from claims.
 // Cast count to int (already done) and coerce defensively — keeps the

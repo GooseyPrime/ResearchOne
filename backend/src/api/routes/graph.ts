@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import { query } from '../../db/pool';
 
 const router = Router();
+
+router.use(requireAuth);
 
 export interface GraphNode {
   id: string;

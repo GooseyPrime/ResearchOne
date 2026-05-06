@@ -15,6 +15,7 @@ import graphRoutes from './routes/graph';
 import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
 import adminRoutes from './routes/admin';
+import authRoutes from './routes/auth';
 import clerkWebhookRoutes from './webhooks/clerk';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
@@ -55,6 +56,7 @@ const routes: Array<[string, express.Router]> = [
   ['/graph', graphRoutes],
   ['/sources', sourcesRoutes],
   ['/admin', adminRoutes],
+  ['/auth', authRoutes],
 ];
 
 // Primary API prefix

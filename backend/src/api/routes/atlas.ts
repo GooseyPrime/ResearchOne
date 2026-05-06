@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
 import { atlasExportQueue } from '../../queue/queues';
@@ -7,6 +8,8 @@ import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
 import { config } from '../../config';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // POST /api/atlas/export - Trigger an Atlas export
 router.post('/export', async (req, res, next) => {

@@ -1,4 +1,5 @@
 import { Router, RequestHandler } from 'express';
+import { requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { query } from '../../db/pool';
 import { config } from '../../config';
@@ -12,6 +13,8 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 
 const router = Router();
+
+router.use(requireAuth);
 
 const allowedSupplementalExtensions = ['.md', '.markdown', '.txt', '.pdf'];
 const allowedSupplementalMimeTypes = [
