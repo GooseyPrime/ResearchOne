@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import RequireAdmin from './components/auth/RequireAdmin';
 import RequireAuth from './components/auth/RequireAuth';
@@ -30,8 +30,10 @@ import OnboardingPage from './pages/OnboardingPage';
 import AccountPage from './pages/AccountPage';
 
 export default function App() {
+  const RouterProvider = typeof document === 'undefined' ? MemoryRouter : BrowserRouter;
+
   return (
-    <BrowserRouter>
+    <RouterProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
@@ -64,6 +66,6 @@ export default function App() {
           <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </RouterProvider>
   );
 }

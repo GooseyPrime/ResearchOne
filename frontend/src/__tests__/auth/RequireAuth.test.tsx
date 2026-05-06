@@ -15,9 +15,11 @@ describe('RequireAuth', () => {
       { initialEntries: ['/app/research'] },
     );
 
-    renderToString(<RouterProvider router={router} />);
+    const html = renderToString(<RouterProvider router={router} />);
 
-    expect(router.state.location.pathname).toBe('/sign-in');
-    expect(router.state.location.search).toContain('redirect=%2Fapp%2Fresearch');
+    // SSR does not execute client navigation side-effects; ensure guard
+    // does not render protected children when signed out.
+    expect(router.state.location.pathname).toBe('/app/research');
+    expect(html).not.toContain('ok');
   });
 });

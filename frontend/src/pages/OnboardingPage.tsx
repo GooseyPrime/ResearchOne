@@ -7,8 +7,8 @@ export default function OnboardingPage() {
 
   const complete = async () => {
     await user?.update({
-      publicMetadata: {
-        ...(user.publicMetadata ?? {}),
+      unsafeMetadata: {
+        ...(user.unsafeMetadata ?? {}),
         onboardingComplete: true,
       },
     });
