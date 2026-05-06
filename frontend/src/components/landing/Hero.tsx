@@ -14,9 +14,9 @@ export default function Hero() {
           <Link to="/app/research" className="rounded-md bg-r1-accent px-5 py-3 font-semibold text-r1-bg hover:bg-r1-accent-deep">
             Start free
           </Link>
-          <a href="/app/reports" className="rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent">
+          <Link to="/app/reports" className="rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent">
             See a sample report
-          </a>
+          </Link>
         </div>
       </div>
       <div className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
