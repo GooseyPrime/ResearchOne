@@ -1,5 +1,6 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { applyApiRateLimitInterceptor } from './apiRateLimit';
+import { getClerkJwtForApi } from './clerkSession';
 
 const API_PREFIX = '/api';
 
@@ -16,6 +17,14 @@ const api = axios.create({
 });
 
 applyApiRateLimitInterceptor(api);
+
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  const token = await getClerkJwtForApi();
+  if (token) {
+    config.headers.set('Authorization', `Bearer ${token}`);
+  }
+  return config;
+});
 
 export default api;
 
@@ -344,7 +353,7 @@ export const publishReportFeatured = (id: string, adminToken: string) =>
     .post<{ ok: boolean; repo: string; path: string; branch: string; commitUrl: string | null }>(
       `/reports/${id}/publish-featured`,
       {},
-      { headers: { Authorization: `Bearer ${adminToken}` } }
+      { headers: { 'x-admin-token': adminToken } }
     )
     .then(r => r.data);
 
@@ -484,7 +493,7 @@ export const getSystemHealth = () =>
 export const restartRuntime = (adminToken: string) =>
   api.post('/admin/runtime/restart', {}, {
     headers: {
-      Authorization: `Bearer ${adminToken}`,
+      'x-admin-token': adminToken,
     },
   }).then(r => r.data);
 
@@ -511,7 +520,7 @@ export const getRuntimeLogs = (
         lines: opts?.lines ?? 500,
       },
       headers: {
-        Authorization: `Bearer ${adminToken}`,
+        'x-admin-token': adminToken,
       },
     })
     .then(r => r.data);
@@ -530,13 +539,13 @@ export interface AdminModelsResponse {
 export const getAdminModels = (adminToken: string) =>
   api
     .get<AdminModelsResponse>('/admin/models', {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { 'x-admin-token': adminToken },
     })
     .then(r => r.data);
 
 export const putAdminModels = (adminToken: string, body: Record<string, unknown>) =>
   api.put('/admin/models', body, {
-    headers: { Authorization: `Bearer ${adminToken}` },
+    headers: { 'x-admin-token': adminToken },
   }).then(r => r.data);
 
 /** Must match backend `CORPUS_CLEAR_CONFIRM_PHRASE` (admin corpus clear). */
@@ -554,7 +563,7 @@ export interface CorpusClearResponse {
 export const clearCorpus = (adminToken: string, body: { confirmPhrase: string }) =>
   api
     .post<CorpusClearResponse>('/admin/corpus/clear', body, {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { 'x-admin-token': adminToken },
     })
     .then(r => r.data);
 
@@ -568,7 +577,7 @@ export interface DeleteCorpusByIngestionJobsResponse {
 export const deleteCorpusByIngestionJobs = (adminToken: string, body: { jobIds: string[] }) =>
   api
     .post<DeleteCorpusByIngestionJobsResponse>('/admin/corpus/delete-by-ingestion-jobs', body, {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { 'x-admin-token': adminToken },
     })
     .then(r => r.data);
 
@@ -582,7 +591,7 @@ export interface DeleteCorpusByResearchRunResponse {
 export const deleteCorpusByResearchRun = (adminToken: string, body: { runId: string }) =>
   api
     .post<DeleteCorpusByResearchRunResponse>('/admin/corpus/delete-by-research-run', body, {
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: { 'x-admin-token': adminToken },
     })
     .then(r => r.data);
 

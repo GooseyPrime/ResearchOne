@@ -24,7 +24,7 @@ describe('clerk webhook route', () => {
     const req = { header: (name: string) => (name.startsWith('svix-') ? 'x' : undefined), body: '{}' } as any;
     const res = { status: vi.fn(() => res), json: vi.fn() } as any;
 
-    await layer!(req, res);
+    await layer!(req, res, vi.fn());
 
     expect(res.status).toHaveBeenCalledWith(400);
   });
@@ -37,8 +37,30 @@ describe('clerk webhook route', () => {
     const req = { header: (name: string) => (name.startsWith('svix-') ? 'x' : undefined), body: '{}' } as any;
     const res = { status: vi.fn(() => res), json: vi.fn() } as any;
 
-    await layer!(req, res);
+    await layer!(req, res, vi.fn());
 
+    expect(query).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it('verifies Buffer bodies as UTF-8 (production express.raw shape)', async () => {
+    verify.mockImplementationOnce((payload: string) => {
+      expect(payload).toBe('{"type":"user.created","data":{}}');
+      return { type: 'user.created', data: { id: 'user_buf', email_addresses: [{ email_address: 'z@y.x' }] } };
+    });
+    const router = (await import('../api/webhooks/clerk')).default;
+    const layer = (router as unknown as { stack: Array<{ route?: { stack: Array<{ handle: Function }> } }> }).stack.find((l) => l.route)?.route?.stack[0].handle;
+    expect(layer).toBeTypeOf('function');
+    const payloadUtf8 = '{"type":"user.created","data":{}}';
+    const req = {
+      header: (name: string) => (name.startsWith('svix-') ? 'x' : undefined),
+      body: Buffer.from(payloadUtf8, 'utf8'),
+    } as any;
+    const res = { status: vi.fn(() => res), json: vi.fn() } as any;
+
+    await layer!(req, res, vi.fn());
+
+    expect(verify).toHaveBeenCalledWith(payloadUtf8, expect.any(Object));
     expect(query).toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });

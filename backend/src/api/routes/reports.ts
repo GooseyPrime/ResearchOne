@@ -97,9 +97,12 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
 }
 
 function publishTokenOk(req: { header: (name: string) => string | undefined }): boolean {
-  const h = req.header('authorization') || req.header('x-admin-token') || '';
+  if (!config.admin.token) return false;
+  const x = req.header('x-admin-token')?.trim();
+  if (x === config.admin.token) return true;
+  const h = req.header('authorization') || '';
   const token = h.startsWith('Bearer ') ? h.slice('Bearer '.length).trim() : h.trim();
-  return Boolean(config.admin.token) && token === config.admin.token;
+  return token === config.admin.token;
 }
 
 function reportToMarkdown(args: {

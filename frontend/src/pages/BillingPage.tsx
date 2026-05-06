@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthedFetch } from '../lib/api/authedFetch';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
@@ -29,6 +29,7 @@ type TopupOption = {
 
 export default function BillingPage() {
   const authedFetch = useAuthedFetch();
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
@@ -67,14 +68,18 @@ export default function BillingPage() {
         <p className="mt-2 text-sm text-slate-400">
           Balance: {walletQuery.data?.currency?.toUpperCase() ?? 'USD'} ${balance}
         </p>
+        {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           {(topupOptionsQuery.data?.options ?? []).map((option) => (
             <button
               key={option.priceId}
               className="rounded bg-indigo-600 px-3 py-2 text-sm"
-              onClick={() =>
-                startCheckoutRedirect(authedFetch, '/api/billing/checkout/topup', { priceId: option.priceId })
-              }
+              onClick={() => {
+                setCheckoutError(null);
+                void startCheckoutRedirect(authedFetch, '/api/billing/checkout/topup', {
+                  priceId: option.priceId,
+                }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
+              }}
             >
               {option.label}
             </button>

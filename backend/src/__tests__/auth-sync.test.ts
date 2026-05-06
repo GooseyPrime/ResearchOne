@@ -26,7 +26,7 @@ describe('POST /api/auth/sync', () => {
     expect(layer).toBeTypeOf('function');
     await layer!(req, res, vi.fn());
 
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('ON CONFLICT (id) DO NOTHING'), ['user_1', 'user@example.com']);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ON CONFLICT (id) DO UPDATE'), ['user_1', 'user@example.com']);
     expect(res.json).toHaveBeenCalledWith({ ok: true, userId: 'user_1' });
   });
 });

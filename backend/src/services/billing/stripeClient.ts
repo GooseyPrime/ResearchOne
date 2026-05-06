@@ -14,8 +14,10 @@ export function getStripeClient(): InstanceType<typeof Stripe> {
 }
 
 export function getTopupAmountForPrice(priceId: string): number | null {
-  if (priceId === config.stripe.priceIds.wallet20) return 2000;
-  if (priceId === config.stripe.priceIds.wallet50) return 5000;
-  if (priceId === config.stripe.priceIds.wallet100) return 10000;
+  const ids = config.stripe.priceIds;
+  if (!priceId.trim()) return null;
+  if (ids.wallet20 && priceId === ids.wallet20) return 2000;
+  if (ids.wallet50 && priceId === ids.wallet50) return 5000;
+  if (ids.wallet100 && priceId === ids.wallet100) return 10000;
   return null;
 }

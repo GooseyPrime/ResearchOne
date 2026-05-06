@@ -20,7 +20,9 @@ router.post('/sync', async (req, res, next) => {
     await query(
       `INSERT INTO users (id, email)
        VALUES ($1, $2)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET
+         email = COALESCE(EXCLUDED.email, users.email),
+         updated_at = NOW()`,
       [userId, email]
     );
 

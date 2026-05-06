@@ -41,9 +41,9 @@ router.get('/subscription', async (req, res, next) => {
 
 router.get('/topup-options', (_req, res) => {
   const options = [
-    { amountCents: 2000, priceId: config.stripe.priceIds.wallet20 },
-    { amountCents: 5000, priceId: config.stripe.priceIds.wallet50 },
-    { amountCents: 10000, priceId: config.stripe.priceIds.wallet100 },
+    { label: 'Top up $20', amountCents: 2000, priceId: config.stripe.priceIds.wallet20 },
+    { label: 'Top up $50', amountCents: 5000, priceId: config.stripe.priceIds.wallet50 },
+    { label: 'Top up $100', amountCents: 10000, priceId: config.stripe.priceIds.wallet100 },
   ].filter((row) => Boolean(row.priceId));
   res.json({ options });
 });

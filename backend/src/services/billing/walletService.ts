@@ -34,6 +34,13 @@ type WalletMutationInput = {
   metadata?: Record<string, unknown>;
 };
 
+/** `pg` returns BIGINT columns as strings unless a type parser is set — normalize for JSON/API consumers. */
+function parseMoneyInt(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) return Number(value);
+  return 0;
+}
+
 async function ensureWalletRow(client: PoolClient, userId: string): Promise<void> {
   await client.query(
     `INSERT INTO user_wallets (user_id, balance_cents)
@@ -70,7 +77,7 @@ async function mutateWallet(client: PoolClient, input: WalletMutationInput): Pro
     );
     return {
       applied: false,
-      balanceCents: wallet.rows[0]?.balance_cents ?? 0,
+      balanceCents: parseMoneyInt(wallet.rows[0]?.balance_cents),
     };
   }
 
@@ -87,7 +94,7 @@ async function mutateWallet(client: PoolClient, input: WalletMutationInput): Pro
     if (enough.rowCount === 0) {
       throw new Error('Insufficient wallet balance');
     }
-    return { applied: true, balanceCents: enough.rows[0].balance_cents };
+    return { applied: true, balanceCents: parseMoneyInt(enough.rows[0].balance_cents) };
   }
 
   const credited = await client.query<{ balance_cents: number }>(
@@ -98,7 +105,7 @@ async function mutateWallet(client: PoolClient, input: WalletMutationInput): Pro
      RETURNING balance_cents`,
     [input.amountCents, input.userId]
   );
-  return { applied: true, balanceCents: credited.rows[0].balance_cents };
+  return { applied: true, balanceCents: parseMoneyInt(credited.rows[0].balance_cents) };
 }
 
 export async function creditWallet(input: Omit<WalletMutationInput, 'entryType'>): Promise<WalletMutationResult> {
@@ -124,7 +131,7 @@ export async function getWalletSummary(userId: string): Promise<WalletSummary> {
     'SELECT balance_cents, currency FROM user_wallets WHERE user_id = $1',
     [userId]
   );
-  const history = await query<WalletLedgerEntry>(
+  const historyRows = await query<WalletLedgerEntry>(
     `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at
      FROM wallet_ledger
      WHERE user_id = $1
@@ -132,8 +139,12 @@ export async function getWalletSummary(userId: string): Promise<WalletSummary> {
      LIMIT 50`,
     [userId]
   );
+  const history = historyRows.map((row) => ({
+    ...row,
+    amount_cents: parseMoneyInt(row.amount_cents),
+  }));
   return {
-    balanceCents: wallet[0]?.balance_cents ?? 0,
+    balanceCents: parseMoneyInt(wallet[0]?.balance_cents),
     currency: wallet[0]?.currency ?? 'usd',
     history,
   };
