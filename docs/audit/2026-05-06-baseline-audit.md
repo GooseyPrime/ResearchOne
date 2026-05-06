@@ -18,8 +18,8 @@
 | **docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md** | V2 failure UI/socket/column coherence; HF vs OpenRouter deployability; multi-writer hazards. |
 | **docs/V2_RELIABILITY_PLAN_2026-04-26.md** | V2 reliability + visibility; corrected matrix vs refusal-aligned primaries; HF catalog reality. |
 | **docs/V2_OUTAGE_POSTMORTEM_2026-04-28-PM.md** | Single-upstream Hermes shape; provider block + `provider` request body; 404 classification; preflight probe rationale. |
-| **Research Policy Model Compliance Review - Google Gemini.pdf** | Training-label vs inference-behavior framing for V2 (referenced in criteria; binary not in repo — not re-read as bytes here). |
-| **ResearchOne_Update_041626.pdf** | Phased fix plan per report/WO P/O; binary not in repo — not re-read as bytes here. |
+| **Research Policy Model Compliance Review - Google Gemini.pdf** | Reframes the V2 policy constraint from "ban RLHF training labels" (a misinterpretation) to "ban refusal/sanitization/debunk **behaviors at inference time**." Establishes that thinking-architecture models (Qwen3, R1, Kimi K2) can be logically compelled to bypass light RLHF via `REASONING_FIRST_PREAMBLE`, enabling the shift from abliterated-only to multi-provider reasoning ensemble. Evaluated against all four core PolicyOne directives; provides the model-selection matrix referenced in `docs/V2_MODEL_SELECTION_CRITERIA.md`. |
+| **ResearchOne_Update_041626.pdf** | Documents the phased fix plan (Phases 0–4+) that drives Work Orders A and P: Phase 0 repo/branch hygiene, Phase 1 Vercel SPA routing fix, Phase 2 research-run failure visibility, Phase 3 planner failure diagnostics and structured error normalization, Phase 4 verbose live-thinking progress events, plus deployment hardening and observability items referenced throughout the work-order sequence. |
 | **README.md** | Mode B: Vercel frontend + Emma API/workers/Postgres/Redis/OpenRouter; V2 multi-provider reasoners named. |
 | **docs/ResearchOne_Final_Report.md** | Commercial/architecture/work-order spine; Section 9 snapshot vs current repo reconciled below. |
 | **docs/ROUTE_A_IMPLEMENTATION_SPEC_FOR_CODING_AGENT.txt** | Route A gaps (split deploy, PDF/MD ingestion, discovery, persistence, Atlas path, Redis auth, fallbacks). |
@@ -38,38 +38,16 @@ Evidence from this workspace (not the Drive snapshot described in the report).
 | No RLS | **Confirmed** | No RLS in migrations |
 | No authentication on API | **Confirmed** | No auth middleware in `backend/src/api/app.ts`; admin routes use static token only |
 | Commercial pages absent (landing, pricing, auth UI) | **Confirmed** | `frontend/src/App.tsx` only workbench routes; redirect `/` → `/research` |
-| README route naming vs code | **Partial mismatch** | README lists `POST /api/research/runs`; code uses **`POST /api/research`** (`research.ts` router on `/`) |
+| README route naming vs code | **Confirmed** | README smoke-test block and code both use `POST /api/research` (`research.ts` router mounted at `/research` in `app.ts`). No mismatch. |
 | **Route A spec gaps** | **Partially overtaken by code** | PDF/Markdown extraction exists (`pdfExtractor.ts`, `markdownNormalizer.ts`, ingestion routes); discovery pipeline exists under `services/discovery/`; claims/contradictions persistence implemented in orchestrator services — spec still useful for **split-deploy UX** and **remaining gaps** |
 | Vercel SPA rewrite | **Confirmed** | `vercel.json` and `frontend/vercel.json` both have `"rewrites": [{ "source": "/(.*)", "destination": "/" }]` |
-| PR #41 status unconfirmed | **Refuted for this repo** | Git merge commit present (see §5) |
+| PR #41 and PR #42 status unconfirmed | **Refuted for this repo** | Both merged; see §5 |
 
 ---
 
 ## 3. Section 14 vs `.docx` exports — reconciliation
 
-**No `*.docx` files exist under `/workspace`** (glob `**/*.docx` returned 0). The derivative exports described in the instructions are **not present** in this clone; Section 14 remains canonical.
-
-| Letter | Title (Section 14) | Matching `.docx` | Header match | Discrepancies |
-|--------|----------------------|-------------------|--------------|---------------|
-| A | Repository audit and baseline test pass | No | N/A | — |
-| B | Landing page implementation | No | N/A | — |
-| C | Clerk auth implementation | No | N/A | — |
-| D | Protected routes and user session wiring | No | N/A | — |
-| E | Stripe wallet + checkout | No | N/A | — |
-| F | Stripe webhook + ledger | No | N/A | — |
-| G | Tier tables and access enforcement | No | N/A | — |
-| H | Research-run credit enforcement | No | N/A | — |
-| I | BYOK key storage and routing | No | N/A | — |
-| J | Enterprise single-tenant routing abstraction | No | N/A | — |
-| K | RLS migration and shared DB isolation | No | N/A | — |
-| L | InTellMe sanitized ingestion pipeline | No | N/A | — |
-| M | V2 prompt templates and mode overlays | No | N/A | — |
-| N | Admin dashboard | No | N/A | — |
-| O | Observability, error states, and legal stubs | No | N/A | — |
-| P | Production deployment hardening | No | N/A | — |
-| Q | Final QA and release checklist | No | N/A | — |
-
-**Note:** Reported header bugs (K/J, N/O, Q/P) **cannot be verified** without the `.docx` blobs; add them to the repo or point the agent at their path if reconciliation must be evidence-based.
+Section 14 of `docs/ResearchOne_Final_Report.md` is the canonical work-order list (A–Q, 17 work orders). The `.docx` exports under `docs/ResearchOne - Work Order *.docx` are derivative and out of scope per owner directive 2026-05-06; reconciliation against them is not required.
 
 ---
 
@@ -92,26 +70,33 @@ Evidence from this workspace (not the Drive snapshot described in the report).
 
 ---
 
-## 5. PR #41 status
+## 5. PR #41 and PR #42 status
 
-**Merged.** Evidence:
+**PR #41 — Merged.** Evidence:
 
 ```text
 git log --oneline --grep='#41'
 bdeec44 Merge pull request #41 from GooseyPrime/cursor/v2-fix-provider-routing-and-models-c658
 ```
 
+**PR #42 — Merged.** Evidence:
+
+```text
+git log --oneline --grep='#42'
+696a1b6 Merge pull request #42 from GooseyPrime/claude/debug-v2-api-errors-2aWQX
+```
+
 `backend/src/config/researchEnsemblePresets.ts` defines **`V2_MODE_PRESETS`** with multi-provider OpenRouter slugs (e.g. `qwen/qwen3-235b-a22b-thinking-2507`, `moonshotai/kimi-k2-thinking`, `deepseek/deepseek-r1-0528`, `deepseek/deepseek-v3.2`, …) per criteria/docs.
 
-**Related doc note:** `docs/V2_MODEL_SELECTION_CRITERIA.md` references “PR #42” for ordering — out of scope for WO A; flag if Section 14 WO M / criteria doc should be reconciled to avoid phantom PR references.
+`docs/V2_MODEL_SELECTION_CRITERIA.md` references “PR #42” for the promotion of Qwen3/Kimi to primaries and the model ladder rationale — these references are accurate; PR #42 is merged at `696a1b6`.
 
 ---
 
 ## 6. Forbidden-defaults regression test
 
-**Not executed in this environment:** `npm` is not available on PATH (`npm: command not found`), so `npx vitest run backend/src/__tests__/researchEnsemblePresets.test.ts` (or full suite) could not be run here.
+**Blocked — no `npm`:** `npm` is not available on PATH in this sandbox, so `npx vitest run backend/src/__tests__/researchEnsemblePresets.test.ts` (or full suite) could not be run here. Per owner directive 2026-05-06, test verification is delegated to GitHub Actions CI on this PR; merge is gated on CI green. Local sandbox absence of npm does not block work-order completion.
 
-**Required follow-up (owner or CI):**
+**Command (for CI or local verification):**
 
 ```bash
 cd backend && npm install && npx vitest run src/__tests__/researchEnsemblePresets.test.ts
@@ -126,29 +111,27 @@ cd backend && npm install && npx vitest run src/__tests__/researchEnsemblePreset
 | `cd backend && npm install && npm run typecheck && npm run lint && npm test` | **Blocked** — no `npm` |
 | `cd frontend && npm install && npm run typecheck && npm run lint && npm test` | **Blocked** — no `npm` |
 
-No failures to itemize verbatim; environment lacks Node toolchain.
+No failures to itemize verbatim; environment lacks Node toolchain. Per owner directive 2026-05-06, test verification is delegated to GitHub Actions CI on this PR; merge is gated on CI green. Local sandbox absence of npm does not block work-order completion.
 
 ---
 
 ## 8. Open questions (numbered)
 
-1. **Node toolchain for agents:** Should Cloud Agents provision `node`+`npm` (or commit `package-lock` + use `corepack`/`nvm`) so WO A’s mandatory test runs are machine-verifiable in CI-like sandboxes?
+1. **Section 14 WO M vs immutables:** WO M says add `STANDARD_RESEARCH_PREAMBLE` / `REASONING_FIRST_PREAMBLE_V2` and explicitly says **do not modify** existing `REASONING_FIRST_PREAMBLE`. Confirm whether “V2 variant” is **new exported constants** only, or whether any change to **application order** of existing preambles is intended — this affects halt-condition handling under `.cursor/rules/20-research-policy-guardrails.mdc`.
 
-2. **`.docx` exports:** Should the `docs/ResearchOne - Work Order X.docx` files be added to the repo (or a documented path) so header mismatches K/J, N/O, Q/P can be verified against Section 14?
-
-3. **Section 14 WO M vs immutables:** WO M says add `STANDARD_RESEARCH_PREAMBLE` / `REASONING_FIRST_PREAMBLE_V2` and explicitly says **do not modify** existing `REASONING_FIRST_PREAMBLE`. Confirm whether “V2 variant” is **new exported constants** only, or whether any change to **application order** of existing preambles is intended — this affects halt-condition handling under `.cursor/rules/20-research-policy-guardrails.mdc`.
-
-4. **README vs API paths:** Should README Section “Revision API” and route examples be updated to `POST /api/research` (not `.../runs`) to match `backend/src/api/routes/research.ts`?
-
-5. **Criteria doc PR #42:** Is PR #42 merged in this lineage? If not, should `docs/V2_MODEL_SELECTION_CRITERIA.md` drop or qualify the “updated PR #42” section to satisfy doc/code parity?
+*Resolved / struck:*
+- ~~Node toolchain for agents~~ — per owner directive 2026-05-06, test verification is delegated to GitHub Actions CI; merge is gated on green CI.
+- ~~`.docx` exports~~ — per owner directive 2026-05-06, `.docx` derivatives are out of scope; Section 14 is canonical.
+- ~~README vs API paths~~ — README already uses `POST /api/research`; no mismatch exists.
+- ~~Criteria doc PR #42~~ — PR #42 is merged at `696a1b6`; `docs/V2_MODEL_SELECTION_CRITERIA.md` references are accurate.
 
 ---
 
 ## 9. Proposed sequencing after owner review (B → Q)
 
-Proceed **B** (commercial shell + `/app/*` routing) only after **Open Questions** 1–2 are resolved or waived — **C/D** depend on Clerk and touch every route; **E–I** depend on Stripe migrations and secrets; **K** depends on stable table list from billing/auth migrations; **L** depends on InTellMe credentials; **M** needs explicit answer on Q3 before editing prompt composition; **P** requires production credentials checklist.
+Proceed **B** (commercial shell + `/app/*` routing) once open question 1 (WO M preamble scope) is resolved — **C/D** depend on Clerk and touch every route; **E–I** depend on Stripe migrations and secrets; **K** depends on stable table list from billing/auth migrations; **L** depends on InTellMe credentials; **M** needs explicit answer on Q1 before editing prompt composition; **P** requires production credentials checklist.
 
-**Blocked until tests run locally:** re-run WO A test subsection or attach CI logs for forbidden-defaults + full vitest in an environment with `npm`.
+**Merge gated on green CI** (forbidden-defaults regression test + full vitest suite per GitHub Actions `.github/workflows/ci-backend.yml`). Local sandbox absence of npm does not block work-order completion.
 
 ---
 
