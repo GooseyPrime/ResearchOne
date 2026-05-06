@@ -19,7 +19,7 @@
     "@langchain/core": "^1.1.42",
     "@langchain/openai": "^1.4.4",
     "@types/node": "^22.0.0",
-    "axios": "^1.7.9",
+    "axios": "^1.15.2",
     "bullmq": "^5.76.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
