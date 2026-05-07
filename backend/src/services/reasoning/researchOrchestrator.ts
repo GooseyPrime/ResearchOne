@@ -21,6 +21,16 @@ import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
+import { consumeHold, releaseHold } from '../billing/walletReservations';
+import { incrementReportCount } from '../tier/tierService';
+
+export interface CreditChargeContext {
+  type: 'subscription' | 'wallet' | 'byok' | 'none';
+  costCents: number;
+  holdId?: string;
+  userId?: string;
+  subscriptionQuotaToDecrement?: number;
+}
 
 export interface ResearchJobData {
   runId: string;
@@ -33,6 +43,7 @@ export interface ResearchJobData {
   /** Optional total report length in words. Clamped server-side to a safe
    *  range; routed into the synthesizer's per-section budget directives. */
   targetWordCount?: number;
+  creditChargeContext?: CreditChargeContext;
 }
 
 export interface ResearchProgress {
@@ -245,6 +256,8 @@ export async function runResearchJob(
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
   const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
+  const creditCtx = data.creditChargeContext;
+
   const resumeJobPayload: ResearchJobData = {
     runId,
     query: researchQuery,
@@ -254,6 +267,7 @@ export async function runResearchJob(
     engineVersion,
     researchObjective,
     targetWordCount,
+    creditChargeContext: creditCtx,
   };
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
@@ -737,6 +751,24 @@ export async function runResearchJob(
       [JSON.stringify(modelLog), reportId, runId]
     );
 
+    // Credit charge: consume hold on success, decrement subscription quota
+    if (creditCtx) {
+      try {
+        if (creditCtx.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+          await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
+        }
+        if (creditCtx.type === 'subscription' && creditCtx.userId) {
+          await incrementReportCount(creditCtx.userId, false);
+        }
+      } catch (creditErr) {
+        logger.error('credit_charge_on_completion_failed', {
+          runId,
+          creditCtx,
+          error: creditErr instanceof Error ? creditErr.message : 'Unknown',
+        });
+      }
+    }
+
     await progress('done', 100, 'Research complete');
     await appendRunProgressEvent(runId, {
       runId,
@@ -933,6 +965,26 @@ export async function runResearchJob(
       failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
       summary: failureSummary,
     });
+
+    // Release wallet hold on failure — DO NOT charge for failed runs.
+    // For terminal failures (aborted, non-retryable), release immediately.
+    // For retryable failures, hold is kept for the retry attempt (it carries
+    // forward via resumeJobPayload.creditChargeContext).
+    if (creditCtx?.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+      const isTerminal = finalStatus === 'aborted' || !failureMetaWithResume.retryable;
+      if (isTerminal) {
+        try {
+          await releaseHold(creditCtx.holdId, creditCtx.userId);
+        } catch (releaseErr) {
+          logger.error('credit_hold_release_on_failure_failed', {
+            runId,
+            holdId: creditCtx.holdId,
+            error: releaseErr instanceof Error ? releaseErr.message : 'Unknown',
+          });
+        }
+      }
+    }
+
     throw enrichedError;
   }
 }
