@@ -1,0 +1,73 @@
+# Billing, webhook, and metadata-key contracts
+
+## Why this rule exists
+
+PRs #66–#69 review revealed six recurring patterns:
+
+1. **Metadata key mismatch between writer and reader.** The billing
+   route wrote Checkout Session metadata as `{ userId, topupAmountCents }`
+   but the webhook handler read `session.metadata.user_id` and
+   `session.metadata.price_id` — legitimate webhooks silently no-op'd.
+   Same shape for subscription metadata: session-level vs
+   subscription-level `metadata`.
+2. **Unused imports left behind.** `isTierName`, `getAvailableBalance`
+   imported but never used in their respective files.
+3. **`gen_random_uuid()` vs `uuid_generate_v4()`.** The repo enables
+   `uuid-ossp` but not `pgcrypto`; `gen_random_uuid()` fails on
+   Postgres instances without `pgcrypto`.
+4. **Dead wiring.** `startTierResetCron()` defined but never called;
+   `incrementReportCount` defined but never invoked from the
+   orchestrator — cap enforcement was a no-op.
+5. **JS `Date` overflow on month arithmetic.** `setMonth(now+1)` on
+   Jan 31 overflows to March; always construct the next-month boundary
+   via `new Date(Date.UTC(year, month + 1, 1))`.
+6. **Deploy-skew tolerance gaps.** New columns like `reserved_cents`
+   or new tables like `wallet_holds` need both `42P01` (table missing)
+   and `42703` (column missing) catch paths — not just one.
+
+## Rule — metadata key parity
+
+When a route writes metadata to a third-party object (Stripe Session,
+Subscription, Webhook), and a separate handler reads it:
+
+1. **Grep both the writer and reader for the key name** and confirm
+   they match exactly. If the writer uses `userId`, the reader must
+   use `userId` (not `user_id`).
+2. **If metadata must be on a child object** (e.g. `subscription_data.metadata`
+   on a Checkout Session), set it explicitly — Stripe does not copy
+   session-level metadata to the subscription object.
+
+## Rule — UUID generation in migrations
+
+Use `uuid_generate_v4()` (from `uuid-ossp`) in all migrations unless
+`pgcrypto` is explicitly enabled. `gen_random_uuid()` requires
+`pgcrypto`.
+
+## Rule — JS Date month arithmetic
+
+Never use `date.setMonth(date.getMonth() + 1)` on dates that may be
+near month boundaries. Always construct the target date explicitly:
+
+```ts
+const periodEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
+```
+
+## Rule — code must be wired, not just defined
+
+If a function is defined in this PR, it must be called from at least
+one production code path in this PR. If it's a cron job or startup
+task, it must be started from `index.ts` or the relevant entry point.
+A defined-but-never-called function is dead code that gives a false
+sense of coverage.
+
+## Pre-commit check
+
+- [ ] Did you grep for every metadata key name in both the writer
+  (route) and reader (webhook handler)?
+- [ ] Are all migrations using `uuid_generate_v4()` (not `gen_random_uuid()`)?
+- [ ] Does any Date arithmetic use `setMonth` on a variable date?
+  If so, rewrite to explicit UTC construction.
+- [ ] Is every new exported function called from at least one
+  production code path?
+- [ ] Are there any unused imports? (`npx tsc --noEmit` catches type
+  errors but not unused imports in all cases.)

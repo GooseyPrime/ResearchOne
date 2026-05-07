@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
-import { getStripeClient, getTopupAmountForPrice } from '../../services/billing/stripeClient';
-import { getUserSubscription } from '../../services/billing/subscriptionService';
-import { getWalletSummary } from '../../services/billing/walletService';
+import { getStripeClient, getTopupAmountForPrice, getSubscriptionPriceOptions } from '../../services/billing/stripeClient';
+import { getUserSubscription, cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
+import { getWalletSummary, getWalletTransactions } from '../../services/billing/walletService';
 import { config } from '../../config';
 
 const router = Router();
@@ -45,6 +45,11 @@ router.get('/topup-options', (_req, res) => {
     { label: 'Top up $50', amountCents: 5000, priceId: config.stripe.priceIds.wallet50 },
     { label: 'Top up $100', amountCents: 10000, priceId: config.stripe.priceIds.wallet100 },
   ].filter((row) => Boolean(row.priceId));
+  res.json({ options });
+});
+
+router.get('/subscription-options', (_req, res) => {
+  const options = getSubscriptionPriceOptions();
   res.json({ options });
 });
 
@@ -106,9 +111,54 @@ router.post('/checkout/subscription', async (req, res, next) => {
         userId,
         tier,
       },
+      subscription_data: {
+        metadata: {
+          user_id: userId,
+          tier,
+        },
+      },
     });
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/transactions', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10), 1), 100);
+    const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10), 0);
+
+    const result = await getWalletTransactions(userId, limit, offset);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/cancel-subscription', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const result = await cancelSubscriptionAtPeriodEnd(userId);
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    res.json({ success: true, message: 'Subscription will be canceled at the end of the current billing period' });
   } catch (err) {
     next(err);
   }

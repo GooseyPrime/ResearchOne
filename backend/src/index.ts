@@ -10,6 +10,7 @@ import { validateEnvModelPolicy } from './config/modelRuntime';
 import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
+import { startTierResetCron } from './jobs/tierResetCron';
 
 async function main() {
   try {
@@ -63,6 +64,9 @@ async function main() {
 
     await startWorkers(io);
     logger.info('BullMQ workers started');
+
+    startTierResetCron();
+    logger.info('Tier reset cron started');
 
     httpServer.listen(config.port, () => {
       logger.info(`ResearchOne API listening on port ${config.port}`);

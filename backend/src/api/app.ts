@@ -18,6 +18,7 @@ import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import clerkWebhookRoutes from './webhooks/clerk';
+import stripeWebhookRoutes from './webhooks/stripe';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
@@ -32,9 +33,13 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
-const clerkWebhookRawParser = express.raw({ type: 'application/json' });
-app.use('/api/webhooks/clerk', clerkWebhookRawParser);
-app.use('/webhooks/clerk', clerkWebhookRawParser);
+// Webhook routes need raw body for signature verification - MUST be before JSON parser
+const webhookRawParser = express.raw({ type: 'application/json' });
+app.use('/api/webhooks/clerk', webhookRawParser);
+app.use('/webhooks/clerk', webhookRawParser);
+app.use('/api/webhooks/stripe', webhookRawParser);
+app.use('/webhooks/stripe', webhookRawParser);
+// Global JSON parser for all other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
@@ -63,8 +68,9 @@ const routes: Array<[string, express.Router]> = [
   ['/billing', billingRoutes],
 ];
 
-// Primary API prefix (compat mount below shares the same router instance)
+// Webhooks - primary API prefix (compat mount below shares the same router instance)
 app.use('/api/webhooks/clerk', clerkWebhookRoutes);
+app.use('/api/webhooks/stripe', stripeWebhookRoutes);
 
 for (const [path, router] of routes) {
   app.use(`/api${path}`, router);
@@ -72,6 +78,7 @@ for (const [path, router] of routes) {
 
 // Compatibility prefix for reverse proxies that strip /api (raw body parser registered above)
 app.use('/webhooks/clerk', clerkWebhookRoutes);
+app.use('/webhooks/stripe', stripeWebhookRoutes);
 
 for (const [path, router] of routes) {
   app.use(path, router);

@@ -1,0 +1,40 @@
+# Out-of-scope discoveries must be addressed or scheduled
+
+## Why this rule exists
+
+PR #66 review surfaced "balance after" in transaction history — an
+acceptance criterion from Work Order E that was missed during
+implementation. The agent dismissed it as "PR description already says
+this isn't in scope," but the user corrected: if something is
+discovered that should be addressed and isn't already scheduled in a
+future work order, it must be addressed immediately or explicitly
+scheduled.
+
+## Rule
+
+When a review finding, test failure, or implementation gap is
+discovered that is outside the current work order's scope:
+
+1. **Check whether it is scheduled in a future work order.** Search
+   all `docs/ResearchOne - Work Order *.md` files for the relevant
+   feature/requirement. If it is explicitly called out in a future
+   WO, note the deferral and move on.
+
+2. **If it is NOT scheduled anywhere**, choose one:
+   - **Implement it now** if it is small enough to address in the
+     current PR without scope creep (e.g., adding a missing field to
+     an existing API response).
+   - **Create a tracked follow-up** if it requires significant work:
+     add a section to the nearest relevant work order file or create
+     a new tracking document under `docs/`.
+
+3. **Never dismiss a valid finding with "not in scope."** Either
+   demonstrate it is already covered by a future WO, or handle it.
+
+## Pre-commit check
+
+If a code review surfaced a finding you deferred:
+- [ ] Did you grep all work order files to confirm it's scheduled?
+- [ ] If not scheduled, did you implement it or create a tracking item?
+- [ ] If you created a tracking item, does it reference the PR and
+  finding that surfaced it?
