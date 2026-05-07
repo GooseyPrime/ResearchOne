@@ -21,6 +21,10 @@ import MethodologyPage from './pages/MethodologyPage';
 import SovereignPage from './pages/SovereignPage';
 import BYOKPage from './pages/BYOKPage';
 import BYOKConfigPage from './pages/BYOKConfigPage';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import UserLookup from './pages/admin/UserLookup';
+import RunTelemetry from './pages/admin/RunTelemetry';
+import AuditLogViewer from './pages/admin/AuditLogViewer';
 import SecurityPage from './pages/SecurityPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -67,6 +71,12 @@ export function AppRoutes() {
         <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="byok" element={<BYOKConfigPage />} />
+        <Route path="admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>}>
+          <Route index element={<Navigate to="users" replace />} />
+          <Route path="users" element={<UserLookup />} />
+          <Route path="telemetry" element={<RunTelemetry />} />
+          <Route path="audit" element={<AuditLogViewer />} />
+        </Route>
       </Route>
     </Routes>
   );
