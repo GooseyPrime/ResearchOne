@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const query = vi.fn();
@@ -24,7 +25,9 @@ describe('walletService credit/debit idempotency', () => {
         .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // ledger conflict
         .mockResolvedValueOnce({ rowCount: 1, rows: [{ balance_cents: 2000 }] }), // wallet read
     };
-    withTransaction.mockImplementation((fn: (client: any) => Promise<unknown>) => fn(client));
+    withTransaction.mockImplementation((fn: (c: PoolClient) => Promise<unknown>) =>
+      fn(client as unknown as PoolClient),
+    );
 
     const { creditWallet } = await import('../services/billing/walletService');
 
@@ -53,7 +56,9 @@ describe('walletService credit/debit idempotency', () => {
         .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] }) // ledger insert
         .mockResolvedValueOnce({ rowCount: 0, rows: [] }), // failed debit update
     };
-    withTransaction.mockImplementation((fn: (client: any) => Promise<unknown>) => fn(client));
+    withTransaction.mockImplementation((fn: (c: PoolClient) => Promise<unknown>) =>
+      fn(client as unknown as PoolClient),
+    );
 
     const { debitWallet } = await import('../services/billing/walletService');
 

@@ -1,6 +1,6 @@
 import path from 'path';
 import { Router } from 'express';
-import { requireAuth } from '../../middleware/clerkAuth';
+import { requireAdmin } from '../../middleware/clerkAuth';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -18,7 +18,7 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAdmin);
 const execAsync = promisify(exec);
 
 function isUuid(s: string): boolean {
@@ -27,20 +27,6 @@ function isUuid(s: string): boolean {
 
 const LOG_TAIL_MAX_BYTES = 512 * 1024;
 const LOG_TAIL_MAX_LINES = 2000;
-
-function getProvidedToken(header?: string): string {
-  if (!header) return '';
-  if (header.startsWith('Bearer ')) return header.slice('Bearer '.length).trim();
-  return header.trim();
-}
-
-function adminTokenOk(req: { header: (name: string) => string | undefined }): boolean {
-  if (!config.admin.token) return false;
-  const x = req.header('x-admin-token')?.trim();
-  if (x === config.admin.token) return true;
-  const bearer = getProvidedToken(req.header('authorization'));
-  return bearer === config.admin.token;
-}
 
 function candidateLogPaths(stream: 'out' | 'err'): string[] {
   const fname = stream === 'err' ? 'pm2-error.log' : 'pm2-out.log';
@@ -84,10 +70,11 @@ async function readLogTail(filePath: string, lineCount: number): Promise<{ conte
 }
 
 router.get('/runtime/logs', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-runtime', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/runtime/logs',
+  });
 
   const stream = (req.query.stream as string) === 'err' ? 'err' : 'out';
   const rawLines = parseInt(String(req.query.lines || '500'), 10);
@@ -127,10 +114,12 @@ router.get('/runtime/logs', async (req, res) => {
 });
 
 router.get('/models', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-models', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/models',
+    verb: 'GET',
+  });
   try {
     await refreshRuntimeModelOverrides();
   } catch (err) {
@@ -165,10 +154,12 @@ router.get('/models', async (req, res) => {
 });
 
 router.put('/models', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-models', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/models',
+    verb: 'PUT',
+  });
   try {
     const payload = validateAndNormalizePayload(req.body);
     await saveRuntimeModelOverrides(payload);
@@ -193,10 +184,11 @@ async function deleteCorpusSources(client: PoolClient, sourceIds: string[]): Pro
 }
 
 router.post('/corpus/clear', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-corpus', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/corpus/clear',
+  });
   const confirmPhrase =
     req.body && typeof req.body === 'object' && 'confirmPhrase' in req.body
       ? String((req.body as { confirmPhrase?: string }).confirmPhrase ?? '')
@@ -228,10 +220,11 @@ router.post('/corpus/clear', async (req, res) => {
 });
 
 router.post('/corpus/delete-by-ingestion-jobs', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-corpus', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/corpus/delete-by-ingestion-jobs',
+  });
   const raw = req.body && typeof req.body === 'object' && 'jobIds' in req.body
     ? (req.body as { jobIds?: unknown }).jobIds
     : undefined;
@@ -270,10 +263,11 @@ router.post('/corpus/delete-by-ingestion-jobs', async (req, res) => {
 });
 
 router.post('/corpus/delete-by-research-run', async (req, res) => {
-  if (!adminTokenOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  logger.info('admin-corpus', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/corpus/delete-by-research-run',
+  });
   const runId =
     req.body && typeof req.body === 'object' && 'runId' in req.body
       ? String((req.body as { runId?: string }).runId ?? '')
@@ -301,23 +295,27 @@ router.post('/corpus/delete-by-research-run', async (req, res) => {
 });
 
 router.post('/runtime/restart', async (req, res) => {
-  const ok = adminTokenOk(req);
+  logger.info('admin-runtime', {
+    method: req.adminAuth?.method,
+    userId: req.adminAuth?.userId,
+    endpoint: '/runtime/restart',
+  });
 
   await query(
     `INSERT INTO error_log (service, error_code, message, context)
      VALUES ($1, $2, $3, $4)`,
     [
       'admin-runtime',
-      ok ? 'restart_requested' : 'restart_denied',
-      ok ? 'Runtime restart requested by authenticated admin token' : 'Unauthorized runtime restart attempt',
-      JSON.stringify({ ip: req.ip, at: new Date().toISOString() }),
+      'restart_requested',
+      'Runtime restart requested',
+      JSON.stringify({
+        ip: req.ip,
+        at: new Date().toISOString(),
+        adminMethod: req.adminAuth?.method,
+        adminUserId: req.adminAuth?.userId,
+      }),
     ]
   );
-
-  if (!ok) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
 
   const command = config.admin.restartCommand;
   logger.warn(`Admin runtime restart initiated: ${command}`);

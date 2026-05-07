@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useAuth } from '@clerk/react';
+import { useState, useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
@@ -15,7 +16,7 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
-import {
+import api, {
   ingestUrl,
   ingestText,
   ingestFile,
@@ -25,7 +26,6 @@ import {
   deleteCorpusByIngestionJobs,
   deleteCorpusByResearchRun,
   CORPUS_CLEAR_CONFIRM_PHRASE,
-  ADMIN_SESSION_TOKEN_KEY,
   type IngestionJob,
 } from '../utils/api';
 import { useStore } from '../store/useStore';
@@ -46,6 +46,7 @@ function provenanceLabel(job: IngestionJob): string {
 }
 
 export default function IngestPage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const qc = useQueryClient();
   const { addNotification } = useStore();
   const [tab, setTab] = useState<IngestTab>('url');
@@ -55,7 +56,6 @@ export default function IngestPage() {
   const [tags, setTags] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const [adminToken, setAdminToken] = useState<string | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(() => new Set());
   const [clearAck, setClearAck] = useState(false);
   const [clearPhrase, setClearPhrase] = useState('');
@@ -63,19 +63,14 @@ export default function IngestPage() {
   const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
 
-  useEffect(() => {
-    setAdminToken(sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY));
-  }, []);
-
-  const ensureAdminToken = useCallback(() => {
-    let t = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-    if (!t) {
-      t = window.prompt('Enter admin token')?.trim() ?? '';
-      if (t) sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, t);
-    }
-    setAdminToken(t || null);
-    return t || null;
-  }, []);
+  const { data: adminMe } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => api.get<{ userId: string; isAdmin: boolean }>('/auth/me').then((r) => r.data),
+    enabled: Boolean(isLoaded && isSignedIn),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const isAdminSession = Boolean(adminMe?.isAdmin);
 
   const invalidateCorpusQueries = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['ingestion-jobs'] });
@@ -92,7 +87,7 @@ export default function IngestPage() {
   const { data: researchRuns = [] } = useQuery({
     queryKey: ['research-runs', 'ingest-admin'],
     queryFn: () => getResearchRuns(),
-    enabled: Boolean(adminToken),
+    enabled: isAdminSession,
   });
 
   const jobsWithSource = useMemo(
@@ -132,11 +127,7 @@ export default function IngestPage() {
   });
 
   const clearCorpusMutation = useMutation({
-    mutationFn: () => {
-      const token = adminToken ?? ensureAdminToken();
-      if (!token) throw new Error('No admin token');
-      return clearCorpus(token, { confirmPhrase: CORPUS_CLEAR_CONFIRM_PHRASE });
-    },
+    mutationFn: () => clearCorpus(undefined, { confirmPhrase: CORPUS_CLEAR_CONFIRM_PHRASE }),
     onSuccess: res => {
       addNotification('info', `Corpus cleared (${res.deleted.sources} sources removed).`);
       setClearAck(false);
@@ -145,18 +136,15 @@ export default function IngestPage() {
       invalidateCorpusQueries();
     },
     onError: (e: unknown) => {
-      const unauthorized = axios.isAxiosError(e) && e.response?.status === 401;
-      addNotification('error', unauthorized ? 'Unauthorized — check admin token.' : 'Corpus clear failed.');
-      if (unauthorized) sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      const msg =
+        status === 403 ? 'Forbidden — admin session required.' : status === 401 ? 'Unauthorized — sign in again.' : 'Corpus clear failed.';
+      addNotification('error', msg);
     },
   });
 
   const deleteJobsMutation = useMutation({
-    mutationFn: (jobIds: string[]) => {
-      const token = adminToken ?? ensureAdminToken();
-      if (!token) throw new Error('No admin token');
-      return deleteCorpusByIngestionJobs(token, { jobIds });
-    },
+    mutationFn: (jobIds: string[]) => deleteCorpusByIngestionJobs(undefined, { jobIds }),
     onSuccess: res => {
       addNotification(
         'info',
@@ -167,18 +155,13 @@ export default function IngestPage() {
       invalidateCorpusQueries();
     },
     onError: (e: unknown) => {
-      const unauthorized = axios.isAxiosError(e) && e.response?.status === 401;
-      addNotification('error', unauthorized ? 'Unauthorized.' : 'Delete failed.');
-      if (unauthorized) sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      addNotification('error', status === 403 ? 'Forbidden — admin session required.' : 'Delete failed.');
     },
   });
 
   const deleteRunMutation = useMutation({
-    mutationFn: (runId: string) => {
-      const token = adminToken ?? ensureAdminToken();
-      if (!token) throw new Error('No admin token');
-      return deleteCorpusByResearchRun(token, { runId });
-    },
+    mutationFn: (runId: string) => deleteCorpusByResearchRun(undefined, { runId }),
     onSuccess: res => {
       addNotification('info', `Removed ${res.deletedSourcesCount} source(s) for run.`);
       setRunToDelete('');
@@ -186,9 +169,8 @@ export default function IngestPage() {
       invalidateCorpusQueries();
     },
     onError: (e: unknown) => {
-      const unauthorized = axios.isAxiosError(e) && e.response?.status === 401;
-      addNotification('error', unauthorized ? 'Unauthorized.' : 'Delete failed.');
-      if (unauthorized) sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      addNotification('error', status === 403 ? 'Forbidden — admin session required.' : 'Delete failed.');
     },
   });
 
@@ -258,7 +240,7 @@ export default function IngestPage() {
         </p>
       </div>
 
-      {adminToken ? (
+      {isAdminSession ? (
         <div className="card p-6 border border-red-900/40 space-y-5">
           <div className="flex items-start gap-3">
             <ShieldAlert className="text-amber-400 flex-shrink-0 mt-0.5" size={22} />
@@ -266,7 +248,7 @@ export default function IngestPage() {
               <h2 className="text-lg font-semibold text-white">Administrative corpus controls</h2>
               <p className="text-slate-400 text-sm mt-1">
                 Destructive actions remove evidence from the database. Reports are kept; citations may point to removed
-                chunks or sources. Use an admin token (same as Models / runtime tools).
+                chunks or sources. Requires an admin session (operator allowlist).
               </p>
             </div>
           </div>
@@ -339,10 +321,9 @@ export default function IngestPage() {
         </div>
       ) : (
         <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-400">Admin token required for corpus reset and selective deletion.</p>
-          <button type="button" className="btn-primary text-sm py-1.5" onClick={() => ensureAdminToken()}>
-            Load administrative controls
-          </button>
+          <p className="text-sm text-slate-400">
+            Corpus reset and selective deletion require an admin session (your Clerk user must be in ADMIN_USER_IDS).
+          </p>
         </div>
       )}
 
@@ -487,7 +468,7 @@ export default function IngestPage() {
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <h2 className="section-title">Ingestion history</h2>
-          {adminToken && jobs.length > 0 && (
+          {isAdminSession && jobs.length > 0 && (
             <div className="flex flex-wrap gap-2 items-center text-xs">
               <button type="button" className="text-accent hover:underline" onClick={selectAllWithSource}>
                 Select all with corpus row ({jobsWithSource.length})
@@ -518,7 +499,7 @@ export default function IngestPage() {
               <JobRow
                 key={job.id}
                 job={job}
-                adminMode={Boolean(adminToken)}
+                adminMode={isAdminSession}
                 selected={selectedJobIds.has(job.id)}
                 onToggle={() => toggleJob(job.id)}
               />

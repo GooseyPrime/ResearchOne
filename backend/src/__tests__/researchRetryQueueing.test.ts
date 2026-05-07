@@ -3,7 +3,7 @@ import { enqueueResearchRetryJobWithCleanup } from '../utils/researchRetryQueuei
 
 describe('enqueueResearchRetryJobWithCleanup', () => {
   it('removes existing job with same runId before enqueueing retry', async () => {
-    const remove = vi.fn(async () => {});
+    const remove = vi.fn(async (): Promise<void> => undefined);
     const getJob = vi.fn(async () => ({ remove }));
     const add = vi.fn(async () => ({}));
 

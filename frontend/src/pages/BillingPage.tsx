@@ -32,25 +32,16 @@ export default function BillingPage() {
 
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
-    queryFn: async () => {
-      const { data } = await api.get<WalletResponse>('/billing/wallet');
-      return data;
-    },
+    queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
   });
 
   const subQuery = useQuery({
     queryKey: ['billing-subscription'],
-    queryFn: async () => {
-      const { data } = await api.get<SubscriptionResponse>('/billing/subscription');
-      return data;
-    },
+    queryFn: async () => (await api.get<SubscriptionResponse>('/billing/subscription')).data,
   });
   const topupOptionsQuery = useQuery({
     queryKey: ['billing-topup-options'],
-    queryFn: async () => {
-      const { data } = await api.get<{ options: TopupOption[] }>('/billing/topup-options');
-      return data;
-    },
+    queryFn: async () => (await api.get<{ options: TopupOption[] }>('/billing/topup-options')).data,
   });
 
   const balance = useMemo(() => ((walletQuery.data?.balanceCents ?? 0) / 100).toFixed(2), [walletQuery.data]);
@@ -72,7 +63,7 @@ export default function BillingPage() {
               className="rounded bg-indigo-600 px-3 py-2 text-sm"
               onClick={() => {
                 setCheckoutError(null);
-                void startCheckoutRedirect('/api/billing/checkout/topup', {
+                void startCheckoutRedirect('/billing/checkout/topup', {
                   priceId: option.priceId,
                 }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
               }}
