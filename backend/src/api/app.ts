@@ -22,6 +22,8 @@ import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
+import { requestLoggerMiddleware } from '../middleware/requestLogger';
+import { centralErrorHandler } from '../middleware/errorHandler';
 
 const app = express();
 
@@ -105,10 +107,7 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err.message });
-});
+// Central error handler with PII redaction
+app.use(centralErrorHandler);
 
 export default app;
