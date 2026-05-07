@@ -127,12 +127,13 @@ export async function runDiscoveryOrchestrator(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
+  byokApiKeyOverride?: string;
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, onRoundComplete } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, onRoundComplete } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -150,6 +151,7 @@ export async function runDiscoveryOrchestrator(args: {
       engineVersion,
       researchObjective,
       allowFallbackByRole,
+      byokApiKeyOverride,
       messages: [
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {
@@ -278,6 +280,7 @@ export async function runDiscoveryOrchestrator(args: {
         role: 'planner',
         engineVersion,
         researchObjective,
+        byokApiKeyOverride,
         allowFallbackByRole,
         messages: [
           { role: 'system', content: withPreamble(DISCOVERY_FOLLOWUP_PROMPT) },

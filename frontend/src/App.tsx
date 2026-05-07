@@ -20,6 +20,7 @@ import PricingPage from './pages/PricingPage';
 import MethodologyPage from './pages/MethodologyPage';
 import SovereignPage from './pages/SovereignPage';
 import BYOKPage from './pages/BYOKPage';
+import BYOKConfigPage from './pages/BYOKConfigPage';
 import SecurityPage from './pages/SecurityPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -65,6 +66,7 @@ export function AppRoutes() {
         <Route path="guide" element={<GuidePage />} />
         <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="byok" element={<BYOKConfigPage />} />
       </Route>
     </Routes>
   );

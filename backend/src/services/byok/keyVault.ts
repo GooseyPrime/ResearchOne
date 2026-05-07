@@ -61,7 +61,7 @@ export async function validateKey(provider: BYOKProvider, plaintextKey: string):
       }
       case 'google': {
         const res = await axios.get(
-          `https://generativelanguage.googleapis.com/v1/models?key=${plaintextKey}`,
+          `https://generativelanguage.googleapis.com/v1/models?key=${encodeURIComponent(plaintextKey)}`,
           { timeout: 10000 }
         );
         return { valid: res.status === 200, lastFour };

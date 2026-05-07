@@ -7,24 +7,31 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { config } from '../../config';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
+
+function parseHexKey(hex: string, label: string): Buffer {
+  const buf = Buffer.from(hex, 'hex');
+  if (buf.length !== 32) {
+    throw new Error(`${label} must decode to exactly 32 bytes (got ${buf.length}). Provide a 64-char hex string.`);
+  }
+  return buf;
+}
 
 function getMasterKey(): Buffer {
   const hex = process.env.BYOK_ENCRYPTION_KEY ?? '';
   if (!hex || hex.length !== 64) {
     throw new Error('BYOK_ENCRYPTION_KEY must be a 64-char hex string (32 bytes)');
   }
-  return Buffer.from(hex, 'hex');
+  return parseHexKey(hex, 'BYOK_ENCRYPTION_KEY');
 }
 
 function getPreviousMasterKey(): Buffer | null {
   const hex = process.env.BYOK_ENCRYPTION_KEY_PREVIOUS ?? '';
   if (!hex || hex.length !== 64) return null;
-  return Buffer.from(hex, 'hex');
+  return parseHexKey(hex, 'BYOK_ENCRYPTION_KEY_PREVIOUS');
 }
 
 export interface EncryptedPayload {

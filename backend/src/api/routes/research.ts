@@ -285,7 +285,7 @@ router.post(
           const addons = (req.body as { addons?: string[] }).addons;
 
           if (userTier.tier === 'byok' || userTier.tier === 'admin' || userTier.tier === 'sovereign') {
-            creditChargeContext = { type: 'byok', costCents: 0 };
+            creditChargeContext = { type: 'byok', costCents: 0, userId };
           } else {
             const { costCents, errors } = computeRunCost(userTier.tier, researchObjective, addons);
             if (errors.length > 0) {

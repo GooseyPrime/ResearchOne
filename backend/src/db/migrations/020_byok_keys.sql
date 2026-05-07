@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS byok_keys (
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider TEXT NOT NULL DEFAULT 'openrouter' CHECK (provider IN (
     'openrouter','anthropic','openai','google'
   )),
