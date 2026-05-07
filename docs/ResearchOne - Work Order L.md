@@ -13,7 +13,11 @@ infrastructure), the actual InTellMe ingestion API documentation
     ingestion_audit_log per Section 8**
 
 -   **backend/src/services/ingestion/sanitizationGate.ts --- pure
-    function, full Section 8 spec**
+    function, full Section 8 spec. Metadata-passthrough allowlist gains:
+    scite\_institutional\_status, scite\_supporting\_count,
+    scite\_contrasting\_count, scite\_mentioning\_count,
+    scite\_contrasting\_paper\_dois, scite\_citation\_section. PII gate
+    confirms these fields contain no user-identifying data.**
 
 -   **backend/src/services/ingestion/intellmeClient.ts --- HTTPS client
     with signed requests, idempotency, retry semantics**

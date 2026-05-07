@@ -25,6 +25,26 @@ does not charge user - 402 returns when wallet empty - Webhook
 idempotency: replay checkout.session.completed, verify single ledger
 row**
 
+**Section 15 smoke test additions:**
+
+**(1) Subscribe to Living Report → Parallel webhook fires → revision
+pipeline runs → user sees revised report.**
+
+**(2) Run Adversarial Twin against uploaded doc → output contains only
+contradictions and gaps, not new research.**
+
+**(3) Provenance Ledger export → public verification endpoint validates
+manifest.**
+
+**(4) Retraction-handling regression: chunk with
+institutional\_status='retracted' flows through pipeline without
+evidence\_tier mutation.**
+
+**(5) Parallel webhook signature replay returns 200 idempotent (no
+duplicate revision).**
+
+**(6) Tier-disallowed addon returns 403, not 200 with silent ignore.**
+
 **Acceptance criteria: - Section 15 checklist 100% complete with
 evidence - No P0 or P1 bugs open - Smoke test from production passes -
 Legal review complete (TOS, Privacy, AUP all approved by counsel) - Soft

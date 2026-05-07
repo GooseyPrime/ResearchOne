@@ -13,6 +13,13 @@ The ledger is the source of truth for wallet state.**
 
 **Files to create:**
 
+-   **backend/src/api/webhooks/_shared/verifyAndDispatch.ts ---
+    Extract the raw-body + signature-scheme + idempotency-key core into
+    this shared module. The Stripe handler becomes a 40-line consumer of
+    this core. Acceptance: a fake noop provider can be wired in tests in
+    \<30 LOC. This is the template for WO-T\'s Parallel Monitor
+    webhook.**
+
 -   **backend/src/api/webhooks/stripe.ts --- handler with signature
     verification, idempotency, transactional ledger writes. Full code in
     Section 12.**

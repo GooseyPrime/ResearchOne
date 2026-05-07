@@ -40,7 +40,29 @@ table, tier middleware, per-tier mode and feature gating.**
 **);**
 
 -   **backend/src/config/tierRules.ts --- exports TIER_RULES const
-    object matching Section 13\'s table exactly**
+    object matching Section 13\'s table exactly. Add per-tier flags:
+    parallel\_search, parallel\_extract, smart\_citations,
+    living\_reports\_included, adversarial\_twin\_included,
+    provenance\_ledger\_included.**
+
+-   **backend/src/db/migrations/20260XXX_tier_tables.sql --- include
+    the user\_tiers table above and also:**
+
+**sql**
+
+**CREATE TABLE tier_addons (**
+
+**id uuid PRIMARY KEY DEFAULT gen_random_uuid(),**
+
+**tier text NOT NULL,**
+
+**addon_key text NOT NULL,**
+
+**addon_price_cents integer NOT NULL,**
+
+**included_count_per_period integer NOT NULL DEFAULT 0**
+
+**);**
 
 -   **backend/src/middleware/tierEnforcement.ts --- requireTier(check)
     middleware factory**

@@ -22,7 +22,13 @@ platform\'s master key.**
 
 **CREATE TABLE byok_keys (**
 
-**user_id text PRIMARY KEY REFERENCES users(user_id),**
+**user_id text NOT NULL REFERENCES users(user_id),**
+
+**provider text NOT NULL DEFAULT \'openrouter\' CHECK (provider IN (**
+
+**\'openrouter\',\'anthropic\',\'openai\',\'google\'**
+
+**)),**
 
 **encrypted_openrouter_key text NOT NULL,**
 
@@ -42,16 +48,22 @@ platform\'s master key.**
 
 **created_at timestamp NOT NULL DEFAULT now(),**
 
-**updated_at timestamp NOT NULL DEFAULT now()**
+**updated_at timestamp NOT NULL DEFAULT now(),**
+
+**PRIMARY KEY (user_id, provider)**
 
 **);**
+
+**Migration note: backfill existing rows with provider=\'openrouter\'
+before applying PRIMARY KEY change.**
 
 -   **backend/src/services/byok/encryption.ts --- AES-256-GCM helpers
     using BYOK_ENCRYPTION_KEY env var (32-byte master key)**
 
 -   **backend/src/services/byok/keyVault.ts --- storeKey,
-    retrieveDecryptedKey, validateKey (calls OpenRouter
-    /api/v1/auth/key), deleteKey, getKeyStatus**
+    getDecryptedKey(userId, provider) (replaces single-key getter),
+    validateKey (calls OpenRouter /api/v1/auth/key), deleteKey,
+    getKeyStatus**
 
 -   **backend/src/api/byok/keys.ts --- POST /api/byok/keys, GET
     /api/byok/keys/status, DELETE /api/byok/keys**

@@ -45,11 +45,23 @@ and the legal-page stubs that need lawyer review before launch.**
 
 **// socket: { ok },**
 
-**// exports_dir: { ok }**
+**// exports_dir: { ok },**
+
+**// parallel: { ok, latencyMs },**
+
+**// scite: { ok, latencyMs }**
 
 **// }**
 
 **// }**
+
+**// Status is \'degraded\' if parallel or scite latencyMs \> 2000.**
+
+-   **backend/src/services/provenance/ledgerExporter.ts --- generates
+    tamper-evident PDF from research\_runs + discovery\_events + claims
+    + contradictions + report\_citations data with SHA-256 manifest
+    signed by ResearchOne release key. Public verification endpoint GET
+    /api/provenance/verify/:manifestHash.**
 
 -   **backend/src/middleware/errorHandler.ts --- central error handler,
     structured Winston logging, sanitizes PII before logging**
@@ -78,8 +90,11 @@ launch):**
 
 -   **frontend/src/pages/PrivacyPage.tsx --- Privacy Policy stub. Cover:
     data collected, how used, third parties (Clerk, Stripe, OpenRouter,
-    InTellMe ingestion with full disclosure), retention, deletion
-    rights, GDPR/CCPA, contact**
+    InTellMe ingestion with full disclosure, Parallel Web Systems as
+    data sub-processor describing what data is sent and user opt-out
+    path, Scite as data sub-processor describing what data is sent and
+    user opt-out path), retention, deletion rights, GDPR/CCPA, contact.
+    Legal review required before launch.**
 
 -   **frontend/src/pages/AcceptableUsePage.tsx --- AUP stub. Cover:
     prohibited uses (harassment, defamation, illegal activity, malicious

@@ -20,6 +20,14 @@ Per Section 12 of this report.**
 -   **Create prices for each: monthly + annual for subscriptions;
     \$20/\$50/\$100 for top-ups**
 
+-   **Run scripts/stripe-bootstrap.ts as the canonical product/price
+    spec. Replaces manual dashboard product creation. Idempotent via
+    lookup\_key. Outputs the STRIPE\_PRICE\_ID\_\* env block on success.
+    The script creates: existing six tiers from the current spec, plus
+    seven new SKUs (Living Reports, Reverse-Citation Watch, Adversarial
+    Twin, Provenance Ledger, PolicyOne Score API Pro, Patent IP
+    Diligence floor, Sovereign Onboarding) and four Sovereign add-ons.**
+
 -   **Configure webhook endpoint:
     https://api.researchone.io/api/webhooks/stripe**
 

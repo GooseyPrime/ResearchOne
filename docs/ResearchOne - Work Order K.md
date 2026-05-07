@@ -20,7 +20,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO application_role;\
 *\-- Append-only on critical tables*\
 REVOKE UPDATE, DELETE ON wallet_ledger FROM application_role;\
 REVOKE UPDATE, DELETE ON ingestion_audit_log FROM application_role;\
-REVOKE UPDATE, DELETE ON stripe_webhook_events FROM application_role;**
+REVOKE UPDATE, DELETE ON stripe_webhook_events FROM application_role;\
+REVOKE UPDATE, DELETE ON report_monitor_events FROM application_role;**
 
 -   **backend/src/db/migrations/20260XXX_rls_policies.sql --- for every
     customer-data table:**
@@ -39,7 +40,9 @@ kg_edges,*\
 wallet_ledger,*\
 *\-- user_subscriptions, user_tiers, byok_keys,
 user_ingestion_consent,*\
-*\-- run_ingestion_state, run_user_overrides***
+*\-- run_ingestion_state, run_user_overrides,*\
+*\-- report_monitors, report_monitor_events, provenance_ledgers,*\
+*\-- adversarial_twin_runs, tier_addons***
 
 **Files to modify: backend/src/db/index.ts --- connect as
 application_role, not superuser. Separate connection pool for

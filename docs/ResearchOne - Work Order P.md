@@ -17,8 +17,11 @@ B topology, ResearchOne_Update_041626.pdf Phase 1 (SPA refresh fix).**
 
 2.  **Production environment variables. Provision all .env values: real
     Clerk keys, Stripe keys, OpenRouter key, BYOK encryption key,
-    InTellMe ingestion token, SheerID program ID. Document in secure
-    password manager --- never commit.**
+    InTellMe ingestion token, SheerID program ID, PARALLEL\_API\_KEY,
+    PARALLEL\_MONITOR\_WEBHOOK\_SECRET, SCITE\_API\_KEY,
+    OPENALEX\_USER\_AGENT, CROSSREF\_USER\_AGENT,
+    RESEARCHONE\_LEDGER\_SIGNING\_KEY (32-byte for Provenance Ledger).
+    Document in secure password manager --- never commit.**
 
 3.  **Database backups. Configure pg_basebackup + WAL archiving on Emma
     Postgres VM. Test restore. Document RPO/RTO.**
@@ -35,14 +38,17 @@ B topology, ResearchOne_Update_041626.pdf Phase 1 (SPA refresh fix).**
     https://www.researchone.io only. No wildcards.**
 
 8.  **CSP headers. Set Content-Security-Policy via Helmet, allowing
-    Clerk, Stripe, InTellMe origins explicitly.**
+    Clerk, Stripe, InTellMe, api.parallel.ai, api.scite.ai origins
+    explicitly.**
 
 9.  **Stripe webhook URL. Confirm Stripe dashboard webhook points to
     https://api.researchone.io/api/webhooks/stripe and secret matches
     STRIPE_WEBHOOK_SECRET.**
 
 10. **DNS. researchone.io, www.researchone.io → Vercel;
-    api.researchone.io → Emma runtime VM.**
+    api.researchone.io → Emma runtime VM. Confirm
+    api.researchone.io/api/webhooks/parallel-monitor routes to Emma
+    runtime VM.**
 
 11. **Monitoring. Configure uptime monitoring on /api/health/ready.
     Sentry alerts on error rate spikes.**

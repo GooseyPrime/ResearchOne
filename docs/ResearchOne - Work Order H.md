@@ -16,7 +16,10 @@ Section 13.**
 **Files to create:**
 
 -   **backend/src/middleware/creditEnforcement.ts ---
-    requireCreditsForRun middleware. Code in Section 12.**
+    Replace requireCreditsForRun flat-cost logic with
+    computeRunCost(tier, mode, addons). Validate each requested addon
+    against tier eligibility before pricing. Reject unknown addons with
+    400. Reject tier-disallowed addons with 403.**
 
 **Files to modify:**
 
@@ -85,6 +88,12 @@ with stage and error metadata, but do not deduct credits.**
 
 -   **Concurrent decrement is race-safe (use SQL UPDATE \... WHERE
     balance_cents \>= \$1 RETURNING \... pattern)**
+
+-   **Each addon adds correct cost to computeRunCost output**
+
+-   **Tier-disallowed addon returns 403**
+
+-   **Unknown addon key returns 400**
 
 **What not to change.**
 
