@@ -21,6 +21,10 @@ import {
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { getWalletSummary } from '../../services/billing/walletService';
+import { computeRunCost, type CreditChargeContext } from '../../middleware/creditEnforcement';
+import { getUserTier } from '../../services/tier/tierService';
+import { TIER_RULES } from '../../config/tierRules';
+import { placeHold, getAvailableBalance } from '../../services/billing/walletReservations';
 
 const router = Router();
 
@@ -272,6 +276,56 @@ router.post(
         );
       }
 
+      // Credit enforcement: compute cost, place wallet hold if needed
+      let creditChargeContext: CreditChargeContext | undefined;
+      if (userId) {
+        try {
+          const userTier = await getUserTier(userId);
+          const rules = TIER_RULES[userTier.tier] ?? TIER_RULES.free_demo;
+          const addons = (req.body as { addons?: string[] }).addons;
+
+          if (userTier.tier === 'byok' || userTier.tier === 'admin' || userTier.tier === 'sovereign') {
+            creditChargeContext = { type: 'byok', costCents: 0 };
+          } else {
+            const { costCents, errors } = computeRunCost(userTier.tier, researchObjective, addons);
+            if (errors.length > 0) {
+              const first = errors[0];
+              res.status(first.status).json({ error: first.message, errors });
+              return;
+            }
+
+            const withinMonthlyCap = rules.monthlyReportCap !== null &&
+              userTier.current_period_reports_used < rules.monthlyReportCap;
+
+            if (withinMonthlyCap) {
+              creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
+            } else if (rules.walletFallbackEnabled || rules.monthlyReportCap === null) {
+              const holdResult = await placeHold(userId, runId, costCents);
+              if (!holdResult.success) {
+                res.status(402).json({
+                  error: 'Insufficient wallet balance',
+                  available_balance_cents: holdResult.availableBalanceCents,
+                  required_cents: costCents,
+                  checkout_path: '/app/billing',
+                });
+                return;
+              }
+              creditChargeContext = { type: 'wallet', costCents, holdId: holdResult.holdId, userId };
+            } else {
+              creditChargeContext = { type: 'none', costCents: 0 };
+            }
+          }
+        } catch (creditErr) {
+          // Deploy-skew tolerance: if wallet_holds table doesn't exist, proceed without credit enforcement
+          const pgCode = (creditErr as { code?: string })?.code;
+          if (pgCode === '42P01') {
+            creditChargeContext = undefined;
+          } else {
+            throw creditErr;
+          }
+        }
+      }
+
       await researchQueue.add(
         'research-run',
         {
@@ -283,6 +337,7 @@ router.post(
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
           targetWordCount,
+          creditChargeContext,
         },
         { jobId: runId }
       );

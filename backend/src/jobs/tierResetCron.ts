@@ -1,4 +1,5 @@
 import { resetMonthlyCounters } from '../services/tier/tierService';
+import { reapExpiredHolds } from '../services/billing/walletReservations';
 import { logger } from '../utils/logger';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -25,6 +26,15 @@ export function startTierResetCron(): void {
       }
     } catch (err) {
       logger.error('tier_reset_cron_error', { error: err instanceof Error ? err.message : 'Unknown' });
+    }
+
+    try {
+      const reapedCount = await reapExpiredHolds();
+      if (reapedCount > 0) {
+        logger.info('wallet_holds_reaped_by_cron', { count: reapedCount });
+      }
+    } catch (err) {
+      logger.error('wallet_hold_reap_cron_error', { error: err instanceof Error ? err.message : 'Unknown' });
     }
   }
 
