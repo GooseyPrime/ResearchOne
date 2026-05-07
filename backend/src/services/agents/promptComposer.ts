@@ -5,7 +5,7 @@
  * 3. Mode overlay
  */
 
-import { REASONING_FIRST_PREAMBLE } from '../../constants/prompts';
+import { REASONING_FIRST_PREAMBLE, RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK } from '../../constants/prompts';
 import { MODE_OVERLAYS, type ResearchMode, type AgentRole } from '../../constants/modeOverlays';
 import { SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 
@@ -25,13 +25,16 @@ export type EnsembleVariant = 'v1_standard' | 'v2_deep';
  * removing the withPreamble() wrapper (REASONING_FIRST_PREAMBLE + knowledge block).
  */
 function stripExistingPreamble(fullPrompt: string): string {
-  const marker = REASONING_FIRST_PREAMBLE;
-  const idx = fullPrompt.indexOf(marker);
-  if (idx === -1) return fullPrompt;
-  let stripped = fullPrompt.slice(idx + marker.length);
-  const roleStart = stripped.search(/[A-Z]/);
-  if (roleStart > 0) stripped = stripped.slice(roleStart);
-  return stripped;
+  let stripped = fullPrompt;
+  const preambleIdx = stripped.indexOf(REASONING_FIRST_PREAMBLE);
+  if (preambleIdx >= 0) {
+    stripped = stripped.slice(preambleIdx + REASONING_FIRST_PREAMBLE.length);
+  }
+  const kbIdx = stripped.indexOf(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK);
+  if (kbIdx >= 0) {
+    stripped = stripped.slice(kbIdx + RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK.length);
+  }
+  return stripped.replace(/^\s+/, '');
 }
 
 /**

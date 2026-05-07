@@ -1,5 +1,10 @@
 /**
  * Zod schemas for agent structured JSON outputs per Section 7.
+ *
+ * NOTE: Current agent prompts request plain-text/markdown output, not structured
+ * JSON. These schemas define the target contract for when prompts are updated to
+ * require JSON output. Until then, validateAgentOutput is used by future prompt
+ * updates and for new agents that are designed to emit structured JSON from the start.
  * Schema validation failure triggers single retry, then escalates to fallback.
  */
 

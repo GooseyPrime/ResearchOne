@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   composePrompt,
   getAllModeAgentPairs,
-  STANDARD_RESEARCH_PREAMBLE,
   REASONING_FIRST_PREAMBLE_V2,
 } from '../services/agents/promptComposer';
 import { REASONING_FIRST_PREAMBLE } from '../constants/prompts';
