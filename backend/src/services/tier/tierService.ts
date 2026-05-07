@@ -171,7 +171,8 @@ export interface TierCheckResult {
 export async function checkTierAccess(
   userId: string,
   objective?: string | null,
-  walletBalanceCents?: number
+  walletBalanceCents?: number,
+  isDeep?: boolean
 ): Promise<TierCheckResult> {
   const userTier = await getUserTier(userId);
   const rules = TIER_RULES[userTier.tier] ?? TIER_RULES.free_demo;
@@ -192,6 +193,26 @@ export async function checkTierAccess(
     return {
       allowed: false,
       reason: `Lifetime report cap reached (${rules.lifetimeReportCap})`,
+      httpStatus: 403,
+      upgradePath: '/pricing',
+    };
+  }
+
+  if (isDeep && rules.monthlyDeepReportCap !== null && userTier.current_period_deep_reports_used >= rules.monthlyDeepReportCap) {
+    if (rules.walletFallbackEnabled && walletBalanceCents !== undefined && walletBalanceCents > 0) {
+      return { allowed: true };
+    }
+    if (rules.walletFallbackEnabled) {
+      return {
+        allowed: false,
+        reason: `Monthly deep report cap reached (${rules.monthlyDeepReportCap}) and wallet balance is $0`,
+        httpStatus: 402,
+        checkoutPath: '/app/billing',
+      };
+    }
+    return {
+      allowed: false,
+      reason: `Monthly deep report cap reached (${rules.monthlyDeepReportCap})`,
       httpStatus: 403,
       upgradePath: '/pricing',
     };
