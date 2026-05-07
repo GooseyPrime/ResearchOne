@@ -17,12 +17,19 @@ const INTELLME_BASE_URL = process.env.INTELLME_API_URL ?? 'https://api.intellme.
 const INTELLME_API_KEY = process.env.INTELLME_API_KEY ?? '';
 const INTELLME_API_SECRET = process.env.INTELLME_API_SECRET ?? '';
 
+function ensureConfigured(): void {
+  if (!INTELLME_API_KEY || !INTELLME_API_SECRET) {
+    throw new Error('InTellMe client not configured: INTELLME_API_KEY and INTELLME_API_SECRET are required');
+  }
+}
+
 function signPayload(body: string): string {
   return createHmac('sha256', INTELLME_API_SECRET).update(body).digest('hex');
 }
 
 export const intellmeClient: InTellMeClient = {
   async ingest(params) {
+    ensureConfigured();
     const body = JSON.stringify({
       document_id: params.documentId,
       content: params.content,
@@ -56,8 +63,8 @@ export const intellmeClient: InTellMeClient = {
   },
 
   async delete(params) {
-    const body = JSON.stringify({ document_id: params.documentId });
-    const signature = signPayload(body);
+    ensureConfigured();
+    const signature = signPayload('');
 
     await axios.delete(`${INTELLME_BASE_URL}/data/${encodeURIComponent(params.documentId)}`, {
       headers: {
@@ -70,6 +77,7 @@ export const intellmeClient: InTellMeClient = {
   },
 
   async query(params) {
+    ensureConfigured();
     const body = JSON.stringify({
       query: params.query,
       user_id_hash: createHmac('sha256', INTELLME_API_SECRET).update(params.userId).digest('hex'),

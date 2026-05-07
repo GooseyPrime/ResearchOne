@@ -47,6 +47,12 @@ describe('sanitizationGate', () => {
       expect(result.claims[0].text).not.toContain('John Smith');
     });
 
+    it('strips credit card numbers', () => {
+      const result = sanitize(makeInput({ reportMarkdown: 'Card 4111 1111 1111 1111 on file.' }));
+      expect(result.reportMarkdown).toContain('[CC_REDACTED]');
+      expect(result.reportMarkdown).not.toContain('4111');
+    });
+
     it('strips PII from contradiction text', () => {
       const result = sanitize(makeInput({
         contradictions: [{ text: 'Researcher at admin@lab.org disagrees.' }],

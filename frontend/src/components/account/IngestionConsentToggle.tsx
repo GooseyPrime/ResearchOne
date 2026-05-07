@@ -22,6 +22,7 @@ export default function IngestionConsentToggle() {
     onError: (err: unknown) => setError(extractApiError(err)),
   });
 
+  const isLoading = consentQuery.isLoading;
   const consent = consentQuery.data?.consent ?? true;
 
   return (
@@ -36,13 +37,15 @@ export default function IngestionConsentToggle() {
           </p>
         </div>
         <button
+          type="button"
           onClick={() => toggleMutation.mutate(!consent)}
-          disabled={toggleMutation.isPending}
+          disabled={toggleMutation.isPending || isLoading}
           className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
             consent ? 'bg-indigo-600' : 'bg-slate-700'
-          } ${toggleMutation.isPending ? 'opacity-50' : ''}`}
+          } ${toggleMutation.isPending || isLoading ? 'opacity-50' : ''}`}
           role="switch"
           aria-checked={consent}
+          aria-label="Toggle research contribution"
         >
           <span
             className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${

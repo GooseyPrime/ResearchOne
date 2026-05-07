@@ -46,7 +46,9 @@ describe('sovereign deployment routing', () => {
       try {
         await intellmeClient.query({ userId: 'u1', query: 'test' });
       } catch (err) {
-        expect((err as Error).message).not.toMatch(/InTellMe client is disabled/);
+        const msg = (err as Error).message;
+        expect(msg).not.toMatch(/InTellMe client is disabled/);
+        expect(msg === 'InTellMe client not configured: INTELLME_API_KEY and INTELLME_API_SECRET are required' || msg.includes('ENOTFOUND')).toBe(true);
       }
     });
 

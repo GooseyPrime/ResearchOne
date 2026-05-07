@@ -784,6 +784,38 @@ export async function runResearchJob(
       }
     }
 
+    // Pipeline B: evaluate eligibility and enqueue sanitized artifact if eligible
+    if (creditCtx?.userId) {
+      try {
+        const { evaluatePipelineBEligibility } = await import('../ingestion/pipelineBEligibility');
+        const { getUserTier } = await import('../tier/tierService');
+        const userTier = await getUserTier(creditCtx.userId);
+        const eligibility = await evaluatePipelineBEligibility(runId, creditCtx.userId, userTier.tier, 'completed');
+        if (eligibility.eligible) {
+          const { sanitize } = await import('../ingestion/sanitizationGate');
+          const { pipelineBIngestionQueue } = await import('../../queue/queues');
+          const { writeAuditLog } = await import('../ingestion/auditLogger');
+          const sanitized = sanitize({
+            runId,
+            reportMarkdown: generatedReport.markdown,
+            claims: [],
+            contradictions: [],
+            metadata: { research_objective: researchObjective, engine_version: engineVersion },
+          });
+          await writeAuditLog(runId, creditCtx.userId, 'sanitization_completed', { contentHash: sanitized.contentHash });
+          await pipelineBIngestionQueue.add('pipeline-b-ingest', {
+            runId,
+            userId: creditCtx.userId,
+            contentHash: sanitized.contentHash,
+            sanitizedContent: sanitized.reportMarkdown,
+          }, { jobId: `pb_${runId}` });
+          await writeAuditLog(runId, creditCtx.userId, 'eligibility_check', { eligible: true });
+        }
+      } catch (pbErr) {
+        logger.warn('pipeline_b_enqueue_failed', { runId, error: pbErr instanceof Error ? pbErr.message : 'Unknown' });
+      }
+    }
+
     await progress('done', 100, 'Research complete');
     await appendRunProgressEvent(runId, {
       runId,

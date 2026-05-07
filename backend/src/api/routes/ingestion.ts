@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../../db/pool';
+import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
+import { writeAuditLog } from '../../services/ingestion/auditLogger';
 
 const router = Router();
 
@@ -200,6 +201,44 @@ router.get('/jobs/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// Pipeline B consent endpoints
+router.get('/consent', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    try {
+      const row = await queryOne<{ pipeline_b_consent: boolean }>(
+        'SELECT pipeline_b_consent FROM user_ingestion_consent WHERE user_id = $1',
+        [userId]
+      );
+      res.json({ consent: row?.pipeline_b_consent ?? true });
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === '42P01') { res.json({ consent: true }); return; }
+      throw err;
+    }
+  } catch (err) { next(err); }
+});
+
+router.post('/consent', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const rawConsent = req.body?.pipeline_b_consent;
+    if (typeof rawConsent !== 'boolean') {
+      res.status(400).json({ error: 'pipeline_b_consent must be a boolean' });
+      return;
+    }
+    await query(
+      `INSERT INTO user_ingestion_consent (user_id, pipeline_b_consent, consent_updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET pipeline_b_consent = EXCLUDED.pipeline_b_consent, consent_updated_at = NOW()`,
+      [userId, rawConsent]
+    );
+    await writeAuditLog('system', userId, 'consent_changed', { consent: rawConsent });
+    res.json({ consent: rawConsent });
+  } catch (err) { next(err); }
 });
 
 export default router;

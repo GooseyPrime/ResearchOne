@@ -71,12 +71,12 @@ function stripPii(text: string, userDisplayName?: string): string {
   return cleaned;
 }
 
-function filterMetadata(raw: Record<string, unknown>): Record<string, unknown> {
+function filterMetadata(raw: Record<string, unknown>, userDisplayName?: string): Record<string, unknown> {
   const filtered: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
     if (METADATA_ALLOWLIST.has(key)) {
       if (typeof value === 'string') {
-        filtered[key] = stripPii(value);
+        filtered[key] = stripPii(value, userDisplayName);
       } else {
         filtered[key] = value;
       }
@@ -95,15 +95,15 @@ export function sanitize(input: SanitizationInput): SanitizedOutput {
   const claims = input.claims.map((c) => ({
     text: stripPii(c.text, input.userDisplayName),
     source: c.source,
-    metadata: c.metadata ? filterMetadata(c.metadata) : undefined,
+    metadata: c.metadata ? filterMetadata(c.metadata, input.userDisplayName) : undefined,
   }));
 
   const contradictions = input.contradictions.map((c) => ({
     text: stripPii(c.text, input.userDisplayName),
-    metadata: c.metadata ? filterMetadata(c.metadata) : undefined,
+    metadata: c.metadata ? filterMetadata(c.metadata, input.userDisplayName) : undefined,
   }));
 
-  const metadata = filterMetadata(input.metadata);
+  const metadata = filterMetadata(input.metadata, input.userDisplayName);
 
   const canonical = JSON.stringify({ reportMarkdown, claims, contradictions, metadata });
   const contentHash = createHash('sha256').update(canonical).digest('hex');
