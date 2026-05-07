@@ -6,6 +6,8 @@ export const QUEUE_NAMES = {
   EMBEDDING: 'embedding',
   RESEARCH: 'research',
   ATLAS_EXPORT: 'atlas-export',
+  PIPELINE_B_INGESTION: 'pipeline-b-ingestion',
+  INTELLME_DELETION: 'intellme-deletion',
 } as const;
 
 const connection = createRedisConnection();
@@ -41,6 +43,26 @@ export const researchQueue = new Queue(QUEUE_NAMES.RESEARCH, {
   connection,
   defaultJobOptions: {
     attempts: 1,
+    removeOnComplete: 50,
+    removeOnFail: 100,
+  },
+});
+
+export const pipelineBIngestionQueue = new Queue(QUEUE_NAMES.PIPELINE_B_INGESTION, {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 10000 },
+    removeOnComplete: 100,
+    removeOnFail: 500,
+  },
+});
+
+export const intellmeDeletionQueue = new Queue(QUEUE_NAMES.INTELLME_DELETION, {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: 50,
     removeOnFail: 100,
   },
