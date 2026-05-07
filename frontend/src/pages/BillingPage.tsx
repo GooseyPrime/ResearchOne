@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../utils/api';
+import api, { extractApiError } from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
 
 type WalletResponse = {
@@ -12,6 +12,7 @@ type WalletResponse = {
     entry_type: 'credit' | 'debit';
     description: string;
     created_at: string;
+    balance_after_cents?: number;
   }>;
 };
 
@@ -101,8 +102,8 @@ export default function BillingPage() {
       void queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
       setCancelError(null);
     },
-    onError: (err: Error) => {
-      setCancelError(err.message);
+    onError: (err: unknown) => {
+      setCancelError(extractApiError(err));
     },
   });
 
@@ -238,13 +239,20 @@ export default function BillingPage() {
           <ul className="mt-3 space-y-2 text-sm text-slate-300">
             {(walletQuery.data?.history ?? []).map((row) => (
               <li key={row.id} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
-                <div>
+                <div className="flex-1 min-w-0">
                   <span>{row.description}</span>
                   <span className="ml-2 text-xs text-slate-500">{formatTimestamp(row.created_at)}</span>
                 </div>
-                <span className={row.entry_type === 'credit' ? 'text-emerald-400' : 'text-red-400'}>
-                  {row.entry_type === 'credit' ? '+' : '-'}${(row.amount_cents / 100).toFixed(2)}
-                </span>
+                <div className="flex items-center gap-3 text-right">
+                  <span className={row.entry_type === 'credit' ? 'text-emerald-400' : 'text-red-400'}>
+                    {row.entry_type === 'credit' ? '+' : '-'}${(row.amount_cents / 100).toFixed(2)}
+                  </span>
+                  {row.balance_after_cents != null && (
+                    <span className="text-xs text-slate-500 w-16">
+                      ${(row.balance_after_cents / 100).toFixed(2)}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

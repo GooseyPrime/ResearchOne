@@ -11,6 +11,7 @@ export interface WalletLedgerEntry {
   idempotency_key: string;
   stripe_checkout_session_id: string | null;
   created_at: string;
+  balance_after_cents?: number;
 }
 
 export interface WalletSummary {
@@ -131,8 +132,10 @@ export async function getWalletSummary(userId: string): Promise<WalletSummary> {
     'SELECT balance_cents, currency FROM user_wallets WHERE user_id = $1',
     [userId]
   );
-  const historyRows = await query<WalletLedgerEntry>(
-    `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at
+  const historyRows = await query<WalletLedgerEntry & { balance_after_cents: number }>(
+    `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at,
+            SUM(CASE WHEN entry_type = 'credit' THEN amount_cents ELSE -amount_cents END)
+              OVER (ORDER BY created_at ASC, id ASC) AS balance_after_cents
      FROM wallet_ledger
      WHERE user_id = $1
      ORDER BY created_at DESC
@@ -142,6 +145,7 @@ export async function getWalletSummary(userId: string): Promise<WalletSummary> {
   const history = historyRows.map((row) => ({
     ...row,
     amount_cents: parseMoneyInt(row.amount_cents),
+    balance_after_cents: parseMoneyInt(row.balance_after_cents),
   }));
   return {
     balanceCents: parseMoneyInt(wallet[0]?.balance_cents),
@@ -169,8 +173,10 @@ export async function getWalletTransactions(
   );
   const total = parseInt(countResult[0]?.count ?? '0', 10);
 
-  const rows = await query<WalletLedgerEntry>(
-    `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at
+  const rows = await query<WalletLedgerEntry & { balance_after_cents: number }>(
+    `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at,
+            SUM(CASE WHEN entry_type = 'credit' THEN amount_cents ELSE -amount_cents END)
+              OVER (ORDER BY created_at ASC, id ASC) AS balance_after_cents
      FROM wallet_ledger
      WHERE user_id = $1
      ORDER BY created_at DESC
@@ -181,6 +187,7 @@ export async function getWalletTransactions(
   const transactions = rows.map((row) => ({
     ...row,
     amount_cents: parseMoneyInt(row.amount_cents),
+    balance_after_cents: parseMoneyInt(row.balance_after_cents),
   }));
 
   return {
