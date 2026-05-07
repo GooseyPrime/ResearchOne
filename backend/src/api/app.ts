@@ -53,8 +53,8 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api', limiter);
 app.use(requestLoggerMiddleware);
+app.use('/api', limiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 

@@ -20,8 +20,11 @@ describe('observability', () => {
       expect(redactPii('Secret: whsec_abc123def456')).toContain('[SECRET_REDACTED]');
     });
 
-    it('redacts generic sk- key prefixes', () => {
-      expect(redactPii('API key sk-proj-abc123')).toContain('[KEY_REDACTED]');
+    it('redacts generic sk- key prefixes including hyphenated formats', () => {
+      const result = redactPii('API key sk-proj-abc123-def456');
+      expect(result).toContain('[KEY_REDACTED]');
+      expect(result).not.toContain('abc123');
+      expect(result).not.toContain('def456');
     });
 
     it('handles multiple PII types in one string', () => {

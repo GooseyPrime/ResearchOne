@@ -106,19 +106,20 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   const websocketCheck: Check = { ok: Boolean(req.app.get('io')) };
   const discoveryCheck = getDiscoveryReadinessCheck();
 
-  const parallelProbe = await timedCheck(async () => {
-    const url = process.env.PARALLEL_WEB_URL;
-    if (!url) return 'not_configured';
-    await axios.get(`${url}/health`, { timeout: 5000 });
-    return 'ok';
-  });
-
-  const sciteProbe = await timedCheck(async () => {
-    const key = process.env.SCITE_API_KEY;
-    if (!key) return 'not_configured';
-    await axios.get('https://api.scite.ai/health', { timeout: 5000, headers: { Authorization: `Bearer ${key}` } });
-    return 'ok';
-  });
+  const [parallelProbe, sciteProbe] = await Promise.all([
+    timedCheck(async () => {
+      const url = process.env.PARALLEL_WEB_URL;
+      if (!url) throw new Error('PARALLEL_WEB_URL not configured');
+      await axios.get(`${url}/health`, { timeout: 5000 });
+      return 'ok';
+    }),
+    timedCheck(async () => {
+      const key = process.env.SCITE_API_KEY;
+      if (!key) throw new Error('SCITE_API_KEY not configured');
+      await axios.get('https://api.scite.ai/health', { timeout: 5000, headers: { Authorization: `Bearer ${key}` } });
+      return 'ok';
+    }),
+  ]);
 
   const checks = {
     api: apiCheck,
@@ -130,8 +131,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
       latencyMs: openrouterProbe.latencyMs,
       modelProbe: openrouterProbe.value,
     },
-    socket: websocketCheck,
-    exports_dir: { ok: exportsProbe.ok, writable: exportsProbe.ok },
+    websocket: websocketCheck,
+    exports: { ok: exportsProbe.ok, writable: exportsProbe.ok },
     discovery: discoveryCheck,
     parallel: { ok: parallelProbe.ok, latencyMs: parallelProbe.latencyMs },
     scite: { ok: sciteProbe.ok, latencyMs: sciteProbe.latencyMs },
