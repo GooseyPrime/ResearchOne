@@ -1,8 +1,9 @@
-#!/usr/bin/env npx ts-node
+#!/usr/bin/env -S npx tsx
 /**
  * stripe-bootstrap.ts — Idempotent Stripe product/price setup for ResearchOne
  *
- * Creates all Stripe products and prices using lookup_key for idempotency.
+ * Creates all Stripe products and prices. Products are deduped via
+ * metadata['lookup_key'] + Stripe search; prices use the Stripe lookup_key field.
  * On success, outputs the STRIPE_PRICE_ID_* environment variable block.
  *
  * Usage:
@@ -163,8 +164,14 @@ async function findOrCreatePrice(spec: PriceSpec, productIdMap: Map<string, stri
   return { lookupKey: spec.lookupKey, priceId: price.id };
 }
 
+const ENV_VAR_OVERRIDES: Record<string, string> = {
+  wallet_topup_20: 'STRIPE_PRICE_ID_WALLET_20',
+  wallet_topup_50: 'STRIPE_PRICE_ID_WALLET_50',
+  wallet_topup_100: 'STRIPE_PRICE_ID_WALLET_100',
+};
+
 function toEnvVarName(lookupKey: string): string {
-  return `STRIPE_PRICE_ID_${lookupKey.toUpperCase()}`;
+  return ENV_VAR_OVERRIDES[lookupKey] ?? `STRIPE_PRICE_ID_${lookupKey.toUpperCase()}`;
 }
 
 async function main() {

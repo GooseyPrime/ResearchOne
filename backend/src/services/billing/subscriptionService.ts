@@ -83,13 +83,13 @@ export async function upsertUserSubscription(input: {
  * Called by webhook handlers to determine tier from subscription.
  */
 function tierFromPriceLookupKey(lookupKey: string | null | undefined): string {
-  if (!lookupKey) return 'wallet';
+  if (!lookupKey) return 'free_demo';
   const key = lookupKey.toLowerCase();
   if (key.startsWith('student')) return 'student';
   if (key.startsWith('pro')) return 'pro';
   if (key.startsWith('team')) return 'team';
   if (key.startsWith('byok')) return 'byok';
-  return 'wallet';
+  return 'free_demo';
 }
 
 /**
