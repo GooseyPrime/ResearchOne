@@ -25,6 +25,7 @@ drove the rules is at
 | [`.cursor/rules/16-tests-must-fail-without-the-fix.mdc`](.cursor/rules/16-tests-must-fail-without-the-fix.mdc) | A test that passes both with and without the fix is worse than no test. |
 | [`.cursor/rules/17-ripple-and-grep-callers.mdc`](.cursor/rules/17-ripple-and-grep-callers.mdc) | When you change a primitive, grep every caller. |
 | [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` + V2 model selection criteria. |
+| [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention. |
 
 ## Repo-specific reading list (in priority order)
 
