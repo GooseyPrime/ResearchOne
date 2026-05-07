@@ -29,45 +29,63 @@ import SignUpPage from './pages/SignUpPage';
 import OnboardingPage from './pages/OnboardingPage';
 import AccountPage from './pages/AccountPage';
 import BillingPage from './pages/BillingPage';
+import SampleReportPage from './pages/SampleReportPage';
 
-export default function App() {
-  const RouterProvider = typeof document === 'undefined' ? MemoryRouter : BrowserRouter;
-
+export function AppRoutes() {
   return (
-    <RouterProvider>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/methodology" element={<MethodologyPage />} />
-        <Route path="/sovereign" element={<SovereignPage />} />
-        <Route path="/byok" element={<BYOKPage />} />
-        <Route path="/security" element={<SecurityPage />} />
-        <Route path="/terms" element={<TermsPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/acceptable-use" element={<AcceptableUsePage />} />
-        <Route path="/sign-in" element={<SignInPage />} />
-        <Route path="/sign-up" element={<SignUpPage />} />
-        <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
-        <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/methodology" element={<MethodologyPage />} />
+      <Route path="/sovereign" element={<SovereignPage />} />
+      <Route path="/byok" element={<BYOKPage />} />
+      <Route path="/security" element={<SecurityPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/acceptable-use" element={<AcceptableUsePage />} />
+      <Route path="/sign-in" element={<SignInPage />} />
+      <Route path="/sign-up" element={<SignUpPage />} />
+      <Route path="/sample-report" element={<SampleReportPage />} />
+      <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+      <Route path="/account/*" element={<RequireAuth><AccountPage /></RequireAuth>} />
 
-        <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
-          <Route index element={<Navigate to="/app/research" replace />} />
-          <Route path="research" element={<ResearchPage />} />
-          <Route path="research-v2" element={<ResearchPageV2 />} />
-          <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
-          <Route path="reports/:id" element={<ReportDetailPage />} />
-          <Route path="corpus" element={<CorpusPage />} />
-          <Route path="atlas" element={<AtlasPage />} />
-          <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
-          <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
-          <Route path="ingest" element={<IngestPage />} />
-          <Route path="guide" element={<GuidePage />} />
-          <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
-          <Route path="billing" element={<BillingPage />} />
-        </Route>
-      </Routes>
-    </RouterProvider>
+      <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route index element={<Navigate to="/app/research" replace />} />
+        <Route path="research" element={<ResearchPage />} />
+        <Route path="research-v2" element={<ResearchPageV2 />} />
+        <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
+        <Route path="reports/:id" element={<ReportDetailPage />} />
+        <Route path="corpus" element={<CorpusPage />} />
+        <Route path="atlas" element={<AtlasPage />} />
+        <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
+        <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
+        <Route path="ingest" element={<IngestPage />} />
+        <Route path="guide" element={<GuidePage />} />
+        <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
+        <Route path="billing" element={<BillingPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export type AppProps = {
+  /** Used when rendering under SSR/tests without a real browser location. */
+  initialEntries?: string[];
+};
+
+export default function App({ initialEntries }: AppProps = {}) {
+  if (typeof document === 'undefined') {
+    return (
+      <MemoryRouter initialEntries={initialEntries ?? ['/']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+  }
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

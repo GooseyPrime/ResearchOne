@@ -1,5 +1,5 @@
 import { Router, RequestHandler } from 'express';
-import { requireAuth } from '../../middleware/clerkAuth';
+import { requireAdmin, requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { query } from '../../db/pool';
 import { config } from '../../config';
@@ -13,8 +13,6 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 
 const router = Router();
-
-router.use(requireAuth);
 
 const allowedSupplementalExtensions = ['.md', '.markdown', '.txt', '.pdf'];
 const allowedSupplementalMimeTypes = [
@@ -96,15 +94,6 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
   return fallback;
 }
 
-function publishTokenOk(req: { header: (name: string) => string | undefined }): boolean {
-  if (!config.admin.token) return false;
-  const x = req.header('x-admin-token')?.trim();
-  if (x === config.admin.token) return true;
-  const h = req.header('authorization') || '';
-  const token = h.startsWith('Bearer ') ? h.slice('Bearer '.length).trim() : h.trim();
-  return token === config.admin.token;
-}
-
 function reportToMarkdown(args: {
   title: string;
   query: string;
@@ -122,6 +111,57 @@ function reportToMarkdown(args: {
   return lines.join('\n').trim() + '\n';
 }
 
+// POST /api/reports/:id/publish-featured — admin-only; mounted before requireAuth so
+// break-glass ADMIN_RUNTIME_TOKEN works without a Clerk session.
+router.post('/:id/publish-featured', requireAdmin, async (req, res, next) => {
+  try {
+    const rows = await query<{
+      id: string;
+      title: string;
+      query: string;
+    }>(`SELECT id, title, query FROM reports WHERE id=$1`, [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+
+    const report = rows[0];
+    const sections = await query<{ title: string; content: string }>(
+      `SELECT title, content FROM report_sections WHERE report_id=$1 ORDER BY section_order`,
+      [req.params.id]
+    );
+
+    const markdown = reportToMarkdown({
+      title: report.title,
+      query: report.query,
+      sections,
+    });
+
+    const pathInRepo = config.featuredReportGithub.path;
+    const branch = config.featuredReportGithub.branch;
+    const commitMessage = `feat(featured): ResearchOne report — ${report.title.slice(0, 80)}`;
+
+    const result = await publishReportToFeaturedRepo({
+      pathInRepo,
+      branch,
+      markdown,
+      commitMessage,
+    });
+
+    res.json({
+      ok: true,
+      repo: `${config.featuredReportGithub.owner}/${config.featuredReportGithub.repo}`,
+      path: pathInRepo,
+      branch,
+      commitUrl: result.commitUrl ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.use(requireAuth);
 
 // GET /api/reports - List reports
 router.get('/', async (req, res, next) => {
@@ -282,61 +322,6 @@ router.post(
     }
   }
 );
-
-
-// POST /api/reports/:id/publish-featured — push full report markdown to GitHub for thenewontology.life
-router.post('/:id/publish-featured', async (req, res, next) => {
-  try {
-    if (!publishTokenOk(req)) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
-    const rows = await query<{
-      id: string;
-      title: string;
-      query: string;
-    }>(`SELECT id, title, query FROM reports WHERE id=$1`, [req.params.id]);
-
-    if (rows.length === 0) {
-      res.status(404).json({ error: 'Report not found' });
-      return;
-    }
-
-    const report = rows[0];
-    const sections = await query<{ title: string; content: string }>(
-      `SELECT title, content FROM report_sections WHERE report_id=$1 ORDER BY section_order`,
-      [req.params.id]
-    );
-
-    const markdown = reportToMarkdown({
-      title: report.title,
-      query: report.query,
-      sections,
-    });
-
-    const pathInRepo = config.featuredReportGithub.path;
-    const branch = config.featuredReportGithub.branch;
-    const commitMessage = `feat(featured): ResearchOne report — ${report.title.slice(0, 80)}`;
-
-    const result = await publishReportToFeaturedRepo({
-      pathInRepo,
-      branch,
-      markdown,
-      commitMessage,
-    });
-
-    res.json({
-      ok: true,
-      repo: `${config.featuredReportGithub.owner}/${config.featuredReportGithub.repo}`,
-      path: pathInRepo,
-      branch,
-      commitUrl: result.commitUrl ?? null,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
 
 // GET /api/reports/:id/revisions - list revision history
 router.get('/:id/revisions', async (req, res, next) => {

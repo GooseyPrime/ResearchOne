@@ -86,7 +86,7 @@ vi.mock('../config', () => ({
       providerBaseUrl: '',
     },
     exports: { dir: '/tmp/exports' },
-    admin: { token: 'admintoken' },
+    admin: { token: 'admintoken', userIds: [] },
   },
 }));
 

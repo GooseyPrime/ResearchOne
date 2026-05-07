@@ -221,6 +221,10 @@ const config = {
 
   admin: {
     token: process.env.ADMIN_RUNTIME_TOKEN || '',
+    userIds: (process.env.ADMIN_USER_IDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     restartCommand: process.env.RUNTIME_RESTART_COMMAND || 'pm2 restart researchone-api',
     /** PM2 stdout log (default matches ecosystem.config.js cwd + paths) */
     runtimeLogOut:

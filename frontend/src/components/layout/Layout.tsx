@@ -14,8 +14,15 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserButton } from '@clerk/react';
-import { getStats, getSystemHealth, restartRuntime, getResearchRuns, type ResearchRun } from '../../utils/api';
+import { useAuth, UserButton } from '@clerk/react';
+import api, {
+  getStats,
+  getSystemHealth,
+  readBreakGlassAdminTokenFromSession,
+  restartRuntime,
+  getResearchRuns,
+  type ResearchRun,
+} from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
@@ -51,6 +58,20 @@ export default function Layout() {
   const { setStats, stats, setActiveRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
+  const [breakGlassToken, setBreakGlassToken] = useState<string | undefined>(() =>
+    readBreakGlassAdminTokenFromSession(),
+  );
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+
+  const { data: authMe } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => api.get<{ userId: string; isAdmin: boolean }>('/auth/me').then((r) => r.data),
+    enabled: Boolean(authLoaded && isSignedIn),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const isAllowlistedAdmin = authMe?.isAdmin === true;
 
   const { data } = useQuery({
     queryKey: ['stats'],
@@ -134,12 +155,10 @@ export default function Layout() {
       : health?.status ?? 'checking';
 
   const handleRestart = async () => {
-    const token = window.prompt('Enter admin runtime token to restart the system');
-    if (!token) return;
     if (!window.confirm('Restart runtime now? Active jobs may be interrupted.')) return;
     setRestartBusy(true);
     try {
-      await restartRuntime(token);
+      await restartRuntime(isAllowlistedAdmin ? undefined : breakGlassToken);
       for (let i = 0; i < MAX_RESTART_POLL_ATTEMPTS; i++) {
         await new Promise(resolve => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
         try {
@@ -211,6 +230,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
+            {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}
             <UserButton />
             <button
               type="button"
@@ -245,6 +265,9 @@ export default function Layout() {
         onRefreshHealth={refreshHealth}
         onRestart={handleRestart}
         restartBusy={restartBusy}
+        isAllowlistedAdmin={isAllowlistedAdmin}
+        breakGlassAdminToken={breakGlassToken}
+        onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
       />
 
       <Notifications />

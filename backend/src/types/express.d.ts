@@ -10,6 +10,8 @@ declare global {
         token?: string;
         payload?: JwtPayload;
       };
+      /** Set by `requireAdmin` when an admin route authorizes the request. */
+      adminAuth?: { method: 'clerk' | 'token'; userId: string | null };
     }
   }
 }

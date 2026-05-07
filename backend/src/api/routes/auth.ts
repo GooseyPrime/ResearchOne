@@ -1,10 +1,22 @@
 import { Router } from 'express';
 import { query } from '../../db/pool';
 import { requireAuth } from '../../middleware/clerkAuth';
+import { config } from '../../config';
 
 const router = Router();
 
 router.use(requireAuth);
+
+// GET /api/auth/me — identity + admin flag (ADMIN_USER_IDS allowlist).
+router.get('/me', (req, res) => {
+  const userId = req.auth?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const isAdmin = config.admin.userIds.includes(userId);
+  res.json({ userId, isAdmin });
+});
 
 // POST /api/auth/sync - idempotent local users-table sync for signed-in Clerk users.
 router.post('/sync', async (req, res, next) => {

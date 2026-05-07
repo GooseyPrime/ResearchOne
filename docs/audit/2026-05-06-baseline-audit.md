@@ -117,13 +117,25 @@ No failures to itemize verbatim; environment lacks Node toolchain. Per owner dir
 
 ## 8. Open questions (numbered)
 
-1. **Section 14 WO M vs immutables:** WO M says add `STANDARD_RESEARCH_PREAMBLE` / `REASONING_FIRST_PREAMBLE_V2` and explicitly says **do not modify** existing `REASONING_FIRST_PREAMBLE`. Confirm whether “V2 variant” is **new exported constants** only, or whether any change to **application order** of existing preambles is intended — this affects halt-condition handling under `.cursor/rules/20-research-policy-guardrails.mdc`.
+1. ~~**Section 14 WO M vs immutables**~~ — **Resolved in §11:** new exported constants only; `REASONING_FIRST_PREAMBLE` application order unchanged (immutable).
 
 *Resolved / struck:*
 - ~~Node toolchain for agents~~ — per owner directive 2026-05-06, test verification is delegated to GitHub Actions CI; merge is gated on green CI.
 - ~~`.docx` exports~~ — per owner directive 2026-05-06, `.docx` derivatives are out of scope; Section 14 is canonical.
 - ~~README vs API paths~~ — README already uses `POST /api/research`; no mismatch exists.
 - ~~Criteria doc PR #42~~ — PR #42 is merged at `696a1b6`; `docs/V2_MODEL_SELECTION_CRITERIA.md` references are accurate.
+
+---
+
+## 11. Open question resolution (WO-R)
+
+### WO-M preamble scope (formerly §8 Q1)
+
+Work Order M may introduce **`STANDARD_RESEARCH_PREAMBLE`** / **`REASONING_FIRST_PREAMBLE_V2`** as **new exported constants only**. It must **not** change the **application order** or replace **`REASONING_FIRST_PREAMBLE`** — that constant remains **immutable** per `.cursor/rules/20-research-policy-guardrails.mdc` and `AGENTS.md`. Any WO-M implementation that reorders or substitutes the existing preamble requires explicit owner approval before merge.
+
+### Users `email` column nullability (WO-R Part 2.5)
+
+Migration `015_users_orgs_members.sql` declares `email TEXT` (nullable) while an older spec called for `NOT NULL`. **Nullable is intentional:** Clerk supports phone-only sign-up and some OAuth providers (for example Twitter/X) omit email. Presence-of-email is enforced at the application layer instead of the DDL constraint.
 
 ---
 

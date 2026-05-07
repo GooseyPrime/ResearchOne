@@ -138,7 +138,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
     status,
     timestamp: new Date().toISOString(),
     checks,
-    restartAvailable: Boolean(config.admin.token),
+    restartAvailable: Boolean(config.admin.token || config.admin.userIds.length > 0),
   };
 }
 
