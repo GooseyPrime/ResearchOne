@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import clsx from 'clsx';
 import {
-  ADMIN_SESSION_TOKEN_KEY,
   getRuntimeLogs,
+  writeBreakGlassAdminTokenToSession,
   type RuntimeLogResponse,
   type SystemHealth,
 } from '../../utils/api';
@@ -67,6 +67,12 @@ export interface SystemStatusModalProps {
   onRefreshHealth: () => void;
   onRestart: () => void;
   restartBusy: boolean;
+  /** Clerk session is in ADMIN_USER_IDS — runtime admin calls use JWT only. */
+  isAllowlistedAdmin: boolean;
+  /** Saved break-glass token for token-only server configs (sessionStorage). */
+  breakGlassAdminToken: string | undefined;
+  /** Bump after saving/clearing break-glass token so parent re-reads storage. */
+  onBreakGlassAdminTokenChange: () => void;
 }
 
 export default function SystemStatusModal({
@@ -78,8 +84,12 @@ export default function SystemStatusModal({
   onRefreshHealth,
   onRestart,
   restartBusy,
+  isAllowlistedAdmin,
+  breakGlassAdminToken,
+  onBreakGlassAdminTokenChange,
 }: SystemStatusModalProps) {
   const [logStream, setLogStream] = useState<LogStream>('out');
+  const [breakGlassDraft, setBreakGlassDraft] = useState('');
   const [logState, setLogState] = useState<{
     loading: boolean;
     error: string | null;
@@ -102,26 +112,24 @@ export default function SystemStatusModal({
 
   if (!open) return null;
 
-  const forgetAdminToken = () => {
-    sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-    setLogState({ loading: false, error: null, data: null });
-  };
+  const canOperateRuntimeAdmin = isAllowlistedAdmin || Boolean(breakGlassAdminToken);
 
   const loadLogs = async () => {
-    let token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-    if (!token) {
-      token = window.prompt('Enter admin runtime token to view logs')?.trim() ?? '';
-      if (!token) return;
-      sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
-    }
     setLogState({ loading: true, error: null, data: null });
+    if (!canOperateRuntimeAdmin) {
+      setLogState({
+        loading: false,
+        error:
+          'Save a break-glass admin token below (session only), or sign in as an allowlisted operator (ADMIN_USER_IDS).',
+        data: null,
+      });
+      return;
+    }
     try {
-      const data = await getRuntimeLogs(token, { stream: logStream, lines: 500 });
+      const tokenForRequest = isAllowlistedAdmin ? undefined : breakGlassAdminToken;
+      const data = await getRuntimeLogs(tokenForRequest, { stream: logStream, lines: 500 });
       setLogState({ loading: false, error: null, data });
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
-        sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-      }
       setLogState({
         loading: false,
         error: runtimeLogsErrorMessage(err),
@@ -217,7 +225,7 @@ export default function SystemStatusModal({
                     </div>
                   ))}
                 </div>
-                {health.restartAvailable && (
+                {health.restartAvailable && canOperateRuntimeAdmin && (
                   <button
                     type="button"
                     className="btn-ghost text-xs mt-2"
@@ -227,6 +235,53 @@ export default function SystemStatusModal({
                     {restartBusy ? 'Restarting…' : 'Restart runtime'}
                   </button>
                 )}
+                {health.restartAvailable && !isAllowlistedAdmin && (
+                  <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200/80 px-3 py-2 text-xs text-slate-400 space-y-2">
+                    <p className="font-medium text-slate-300">Break-glass admin token</p>
+                    <p>
+                      If this deployment uses <code className="text-slate-300">ADMIN_RUNTIME_TOKEN</code> without Clerk
+                      allowlisting, paste the token once per browser session. Stored only in{' '}
+                      <code className="text-slate-300">sessionStorage</code>.
+                    </p>
+                    {breakGlassAdminToken ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-green-400/90">Token saved for this session.</span>
+                        <button
+                          type="button"
+                          className="btn-ghost text-xs py-0.5"
+                          onClick={() => {
+                            writeBreakGlassAdminTokenToSession(null);
+                            onBreakGlassAdminTokenChange();
+                          }}
+                        >
+                          Clear token
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          placeholder="ADMIN_RUNTIME_TOKEN"
+                          className="flex-1 min-w-[12rem] rounded border border-indigo-900/40 bg-surface-400 px-2 py-1 text-slate-200"
+                          value={breakGlassDraft}
+                          onChange={e => setBreakGlassDraft(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-primary text-xs py-1 px-2"
+                          onClick={() => {
+                            writeBreakGlassAdminTokenToSession(breakGlassDraft.trim() || null);
+                            setBreakGlassDraft('');
+                            onBreakGlassAdminTokenChange();
+                          }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -234,7 +289,7 @@ export default function SystemStatusModal({
           <section>
             <h3 className="section-title mb-2">Runtime logs</h3>
             <p className="text-xs text-slate-500 mb-3">
-              Tail of PM2 stdout/stderr (admin token required). Token is stored for this browser session only.
+              Tail of PM2 stdout/stderr. Uses your Clerk session when allowlisted, otherwise the break-glass token above.
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <div className="inline-flex rounded-md border border-indigo-900/30 p-0.5 bg-surface-200">
@@ -265,7 +320,12 @@ export default function SystemStatusModal({
                   stderr
                 </button>
               </div>
-              <button type="button" className="btn-primary text-xs py-1.5 px-3" onClick={loadLogs} disabled={logState.loading}>
+              <button
+                type="button"
+                className="btn-primary text-xs py-1.5 px-3"
+                onClick={loadLogs}
+                disabled={logState.loading || !canOperateRuntimeAdmin}
+              >
                 {logState.loading ? 'Loading…' : 'Load logs'}
               </button>
               <button
@@ -276,9 +336,6 @@ export default function SystemStatusModal({
                 title="Download the log text currently shown (same tail as on screen)"
               >
                 Export logs to .txt
-              </button>
-              <button type="button" className="btn-ghost text-xs" onClick={forgetAdminToken}>
-                Forget admin token
               </button>
             </div>
             {logState.error && (

@@ -16,20 +16,23 @@ backend/src/services/reasoning/reasoningModelPolicy.ts
 
 -   **backend/src/services/agents/promptComposer.ts:**
 
-**export function composePrompt(\
-agentRole: AgentRole,\
-mode: ResearchMode,\
-ensembleVariant: \'v1_standard\' \| \'v2_deep\'\
-): string {\
-const preamble = ensembleVariant === \'v2_deep\'\
-? REASONING_FIRST_PREAMBLE_V2\
-: STANDARD_RESEARCH_PREAMBLE;\
-const baseTemplate = AGENT_BASE_TEMPLATES\[agentRole\];\
-const modeOverlay = MODE_OVERLAYS\[mode\]\[agentRole\] ?? \'\';\
-return baseTemplate\
-.replace(\'\[PREAMBLE\]\', preamble)\
-.replace(\'\[MODE OVERLAY\]\', modeOverlay);\
-}**
+```ts
+export function composePrompt(
+  agentRole: AgentRole,
+  mode: ResearchMode,
+  ensembleVariant: 'v1_standard' | 'v2_deep',
+): string {
+  const preamble =
+    ensembleVariant === 'v2_deep'
+      ? REASONING_FIRST_PREAMBLE_V2
+      : STANDARD_RESEARCH_PREAMBLE;
+  const baseTemplate = AGENT_BASE_TEMPLATES[agentRole];
+  const modeOverlay = MODE_OVERLAYS[mode][agentRole] ?? '';
+  return baseTemplate
+    .replace('[PREAMBLE]', preamble)
+    .replace('[MODE OVERLAY]', modeOverlay);
+}
+```
 
 **Files to modify:**
 

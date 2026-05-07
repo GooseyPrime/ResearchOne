@@ -1,5 +1,9 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  -- email is nullable: Clerk supports phone-only sign-up and some OAuth providers
+  -- (e.g. Twitter/X) do not return email. Spec called for NOT NULL but real-world
+  -- Clerk identities can have no email. We track presence-of-email at the application
+  -- layer instead.
   email TEXT,
   first_name TEXT,
   last_name TEXT,

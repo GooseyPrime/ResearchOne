@@ -465,8 +465,8 @@ export function resolveReasoningModels(args: {
   const { role } = args;
   // Preset fallbacks always fire. The flag is only meaningful in
   // mergePresetWithRuntimeOverride where it gates user runtime-override
-  // fallback replacement. Prefixed `_` to satisfy no-unused-vars.
-  const _allowFallbackForRole = args.allowFallbackForRole === true; // eslint-disable-line @typescript-eslint/no-unused-vars
+  // fallback replacement.
+  void args.allowFallbackForRole;
 
   const presetForObjective = V2_MODE_PRESETS[obj] ?? V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH;
   const presetForRole = presetForObjective[role];

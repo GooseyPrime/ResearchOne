@@ -10,39 +10,49 @@ B2C database per Section 8 and Section 9.**
 
 -   **backend/src/db/migrations/20260XXX_rls_setup.sql:**
 
-**CREATE ROLE application_role NOINHERIT;\
-GRANT USAGE ON SCHEMA public TO application_role;\
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO
-application_role;\
-ALTER DEFAULT PRIVILEGES IN SCHEMA public\
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO application_role;\
-\
-*\-- Append-only on critical tables*\
-REVOKE UPDATE, DELETE ON wallet_ledger FROM application_role;\
-REVOKE UPDATE, DELETE ON ingestion_audit_log FROM application_role;\
-REVOKE UPDATE, DELETE ON stripe_webhook_events FROM application_role;\
-REVOKE UPDATE, DELETE ON report_monitor_events FROM application_role;**
+```sql
+CREATE ROLE application_role NOINHERIT;
+GRANT USAGE ON SCHEMA public TO application_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO application_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO application_role;
+
+-- Append-only on critical tables
+REVOKE UPDATE, DELETE ON wallet_ledger FROM application_role;
+REVOKE UPDATE, DELETE ON ingestion_audit_log FROM application_role;
+REVOKE UPDATE, DELETE ON stripe_webhook_events FROM application_role;
+REVOKE UPDATE, DELETE ON report_monitor_events FROM application_role;
+
+-- tier_addons is global tier configuration, not customer data.
+-- application_role gets read-only access; only the migration/admin
+-- role mutates it.
+REVOKE INSERT, UPDATE, DELETE ON tier_addons FROM application_role;
+```
 
 -   **backend/src/db/migrations/20260XXX_rls_policies.sql --- for every
     customer-data table:**
 
-**ALTER TABLE corpus_documents ENABLE ROW LEVEL SECURITY;\
-CREATE POLICY corpus_documents_user_isolation ON corpus_documents\
-FOR ALL TO application_role\
-USING (\
-user_id = current_setting(\'app.user_id\', true)\
-OR (org_id IS NOT NULL AND org_id = current_setting(\'app.org_id\',
-true))\
-);\
-*\-- Repeat for: corpus_chunks, claims, contradictions, kg_entities,
-kg_edges,*\
-*\-- reports, report_revisions, research_runs, user_wallets,
-wallet_ledger,*\
-*\-- user_subscriptions, user_tiers, byok_keys,
-user_ingestion_consent,*\
-*\-- run_ingestion_state, run_user_overrides,*\
-*\-- report_monitors, report_monitor_events, provenance_ledgers,*\
-*\-- adversarial_twin_runs, tier_addons***
+```sql
+ALTER TABLE corpus_documents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY corpus_documents_user_isolation ON corpus_documents
+  FOR ALL TO application_role
+  USING (
+    user_id = current_setting('app.user_id', true)
+    OR (org_id IS NOT NULL AND org_id = current_setting('app.org_id', true))
+  );
+-- Repeat the same policy shape for every customer-data table:
+--   corpus_chunks, claims, contradictions, kg_entities, kg_edges,
+--   reports, report_revisions, research_runs, user_wallets,
+--   wallet_ledger, user_subscriptions, user_tiers, byok_keys,
+--   user_ingestion_consent, run_ingestion_state, run_user_overrides,
+--   report_monitors, report_monitor_events, provenance_ledgers,
+--   adversarial_twin_runs.
+--
+-- DO NOT enroll tier_addons here. It has no user_id/org_id columns
+-- and is global tier-pricing configuration; the per-user policy
+-- predicate above would not even compile against it. tier_addons is
+-- handled by the read-only grant in 20260XXX_rls_setup.sql above.
+```
 
 **Files to modify: backend/src/db/index.ts --- connect as
 application_role, not superuser. Separate connection pool for
@@ -55,12 +65,17 @@ connects as application_role 3. Apply migration enabling RLS and
 creating policies 4. Verify in production with read-only checks before
 promoting**
 
-**Acceptance criteria: - Two seeded users in DB. Set app.user_id =
-user_a. Query corpus_documents returns only user A's docs. Set to
-user_b. Returns only user B's. No session var → returns zero rows. -
-Team org members can read each other's reports within org but not
-outside it - Sovereign tier doesn't use this DB at all (lives on
-dedicated DB)**
+**Acceptance criteria:**
+
+- Two seeded users in DB. Set `app.user_id = user_a`. Query
+  `corpus_documents` returns only user A's docs. Set to `user_b` —
+  returns only user B's. No session var → returns zero rows.
+- Team org members can read each other's reports within the org but
+  not outside it.
+- Sovereign tier doesn't use this DB at all (lives on a dedicated DB).
+- `tier_addons` is readable to `application_role` from any session
+  (it has no per-user predicate); writes are denied for
+  `application_role`.
 
 **Tests required (must fail without the fix): rls.cross-user.test.ts
 (seed two users, verify isolation), rls.no-context.test.ts (clear

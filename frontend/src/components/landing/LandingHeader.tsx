@@ -21,11 +21,11 @@ export default function LandingHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-4">
-          <Link to="/app/research" className="text-sm text-r1-text-muted transition hover:text-r1-text">
+          <Link to="/sign-in" className="text-sm text-r1-text-muted transition hover:text-r1-text">
             Sign in
           </Link>
           <Link
-            to="/app/research"
+            to="/sign-up"
             className="rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep"
           >
             Start free

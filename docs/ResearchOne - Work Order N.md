@@ -39,8 +39,9 @@ override, run telemetry, and audit log query.**
 
 **Backend:**
 
--   **backend/src/api/admin/users.ts --- GET
-    /api/admin/users?email=\..., GET /api/admin/users/:id**
+-   **backend/src/api/admin/users.ts --- `GET
+    /api/admin/users?email=<user@example.com>`, `GET
+    /api/admin/users/:id`**
 
 -   **backend/src/api/admin/wallet.ts --- POST
     /api/admin/users/:id/wallet-adjust with reason field (logged to

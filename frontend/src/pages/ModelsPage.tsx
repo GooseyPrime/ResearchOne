@@ -3,7 +3,6 @@ import { Settings, Save, CheckSquare } from 'lucide-react';
 import {
   getAdminModels,
   putAdminModels,
-  ADMIN_SESSION_TOKEN_KEY,
   type ModelOverrideEntry,
   type AdminModelsResponse,
 } from '../utils/api';
@@ -37,27 +36,15 @@ export default function ModelsPage() {
   const [rows, setRows] = useState<Record<string, ModelOverrideEntry>>({});
 
   const load = async () => {
-    let token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-    if (!token) {
-      token = window.prompt('Enter admin token to load model settings')?.trim() ?? '';
-      if (!token) {
-        setLoading(false);
-        setError('Admin token required');
-        return;
-      }
-      sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await getAdminModels(token);
+      const res = await getAdminModels();
       setData(res);
       setEmbedding(res.embeddingOverride ?? '');
       setRows({ ...res.overrides });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load';
-      setError(msg);
-      if (msg.includes('401')) sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+      setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -130,11 +117,6 @@ export default function ModelsPage() {
   };
 
   const handleSave = async () => {
-    const token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-    if (!token) {
-      setError('No admin token — reload page and enter token');
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
@@ -149,7 +131,7 @@ export default function ModelsPage() {
         }
       }
       if (embedding.trim()) body.embedding = embedding.trim();
-      await putAdminModels(token, body);
+      await putAdminModels(undefined, body);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
@@ -169,7 +151,8 @@ export default function ModelsPage() {
           Model routing
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          Overrides are stored on the server (not in .env). Empty fields use environment defaults. Requires admin token.
+          Overrides are stored on the server (not in .env). Empty fields use environment defaults. Requires an
+          admin account (see ADMIN_USER_IDS on the backend).
         </p>
       </div>
 
@@ -192,7 +175,8 @@ export default function ModelsPage() {
           <div className="card overflow-x-auto">
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3 pb-1">
               <p className="text-xs text-slate-500">
-                {REASONING_ROLES.length} agent roles · click <span className="text-slate-300">Select all fallbacks</span> to populate every empty fallback with the environment default.
+                {REASONING_ROLES.length} agent roles · click <span className="text-slate-300">Select all fallbacks</span>{' '}
+                to populate every empty fallback with the environment default.
               </p>
               <div className="flex items-center gap-2">
                 <button
