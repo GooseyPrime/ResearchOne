@@ -15,10 +15,22 @@ import { creditWallet } from '../../services/billing/walletService';
 import { syncSubscription, markSubscriptionCanceled } from '../../services/billing/subscriptionService';
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
+import { setUserTier } from '../../services/tier/tierService';
+import { isTierName } from '../../config/tierRules';
 
 const router = Router();
 
 type StripeEventData = Record<string, unknown>;
+
+function deriveTierFromLookupKey(lookupKey: string | null | undefined): import('../../config/tierRules').TierName | null {
+  if (!lookupKey) return null;
+  const key = lookupKey.toLowerCase();
+  if (key.startsWith('student')) return 'student';
+  if (key.startsWith('pro')) return 'pro';
+  if (key.startsWith('team')) return 'team';
+  if (key.startsWith('byok')) return 'byok';
+  return null;
+}
 
 interface CheckoutSessionData {
   id: string;
@@ -90,6 +102,16 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     subscription.cancel_at_period_end,
     priceLookupKey
   );
+
+  // Sync tier in user_tiers table to match subscription plan
+  const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
+  if (tierFromLookup && subscription.status === 'active') {
+    try {
+      await setUserTier(userId, tierFromLookup);
+    } catch (err) {
+      logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
 };
 
 /**

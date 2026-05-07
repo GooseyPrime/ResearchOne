@@ -19,6 +19,8 @@ import {
   decideRunStateOnRetryRequest,
   rejectionToHttpBody,
 } from '../../services/reasoning/runStateMachine';
+import { checkTierAccess } from '../../services/tier/tierService';
+import { getWalletSummary } from '../../services/billing/walletService';
 
 const router = Router();
 
@@ -172,6 +174,27 @@ router.post(
       }
       if (eng === 'v2' && !researchObjective) {
         researchObjective = 'GENERAL_EPISTEMIC_RESEARCH';
+      }
+
+      // Tier enforcement: check access before creating the run
+      const userId = req.auth?.userId;
+      if (userId) {
+        let walletBalanceCents = 0;
+        try {
+          const wallet = await getWalletSummary(userId);
+          walletBalanceCents = wallet.balanceCents;
+        } catch {
+          // wallet service may not be available yet
+        }
+        const tierCheck = await checkTierAccess(userId, researchObjective ?? null, walletBalanceCents);
+        if (!tierCheck.allowed) {
+          const status = tierCheck.httpStatus ?? 403;
+          const body: Record<string, unknown> = { error: tierCheck.reason };
+          if (tierCheck.upgradePath) body.upgrade_path = tierCheck.upgradePath;
+          if (tierCheck.checkoutPath) body.checkout_path = tierCheck.checkoutPath;
+          res.status(status).json(body);
+          return;
+        }
       }
 
       const normalizedOverrides = modelOverrides ? validatePerRunModelOverrides(modelOverrides) : { overrides: {} };
