@@ -15,33 +15,55 @@ import { creditWallet } from '../../services/billing/walletService';
 import { syncSubscription, markSubscriptionCanceled } from '../../services/billing/subscriptionService';
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
+import { setUserTier } from '../../services/tier/tierService';
 
 const router = Router();
 
 type StripeEventData = Record<string, unknown>;
 
+function deriveTierFromLookupKey(lookupKey: string | null | undefined): import('../../config/tierRules').TierName | null {
+  if (!lookupKey) return null;
+  const key = lookupKey.toLowerCase();
+  if (key.startsWith('student')) return 'student';
+  if (key.startsWith('pro')) return 'pro';
+  if (key.startsWith('team')) return 'team';
+  if (key.startsWith('byok')) return 'byok';
+  return null;
+}
+
 interface CheckoutSessionData {
   id: string;
-  metadata?: { user_id?: string; price_id?: string };
+  metadata?: { userId?: string; user_id?: string; topupAmountCents?: string; price_id?: string };
+  amount_total?: number;
 }
 
 /**
  * Handler for checkout.session.completed events (wallet top-ups).
  * Credits the user's wallet based on the checkout session metadata.
+ *
+ * The billing route writes metadata as { userId, topupAmountCents }.
+ * We also accept { user_id, price_id } for forward compatibility.
  */
 const handleCheckoutSessionCompleted: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const session = data as unknown as CheckoutSessionData;
-  const userId = session.metadata?.user_id;
+  const userId = session.metadata?.userId ?? session.metadata?.user_id;
+  const topupAmountStr = session.metadata?.topupAmountCents;
   const priceId = session.metadata?.price_id;
 
-  if (!userId || !priceId) {
+  if (!userId) {
     logger.warn('stripe_checkout_missing_metadata', { eventId, sessionId: session.id });
     return;
   }
 
-  const amountCents = getTopupAmountForPrice(priceId);
+  let amountCents: number | null = null;
+  if (topupAmountStr) {
+    amountCents = parseInt(topupAmountStr, 10) || null;
+  } else if (priceId) {
+    amountCents = getTopupAmountForPrice(priceId);
+  }
+
   if (amountCents === null) {
-    logger.warn('stripe_checkout_unknown_price', { eventId, priceId });
+    logger.warn('stripe_checkout_unknown_amount', { eventId, sessionId: session.id });
     return;
   }
 
@@ -61,7 +83,7 @@ interface SubscriptionData {
   status: string;
   current_period_end: number;
   cancel_at_period_end: boolean;
-  metadata?: { user_id?: string };
+  metadata?: { user_id?: string; userId?: string };
   items?: { data?: Array<{ price?: { lookup_key?: string | null } }> };
 }
 
@@ -71,7 +93,7 @@ interface SubscriptionData {
  */
 const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const subscription = data as unknown as SubscriptionData;
-  const userId = subscription.metadata?.user_id;
+  const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
 
   if (!userId) {
     logger.warn('stripe_subscription_missing_user_id', { eventId, subscriptionId: subscription.id });
@@ -90,6 +112,16 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     subscription.cancel_at_period_end,
     priceLookupKey
   );
+
+  // Sync tier in user_tiers table to match subscription plan
+  const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
+  if (tierFromLookup && subscription.status === 'active') {
+    try {
+      await setUserTier(userId, tierFromLookup);
+    } catch (err) {
+      logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
 };
 
 /**
@@ -100,6 +132,15 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
 const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (data) => {
   const subscription = data as unknown as SubscriptionData;
   await markSubscriptionCanceled(subscription.id);
+
+  const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
+  if (userId) {
+    try {
+      await setUserTier(userId, 'free_demo');
+    } catch (err) {
+      logger.warn('stripe_webhook_tier_downgrade_failed', { userId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
 };
 
 interface InvoiceData {

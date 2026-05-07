@@ -111,6 +111,12 @@ router.post('/checkout/subscription', async (req, res, next) => {
         userId,
         tier,
       },
+      subscription_data: {
+        metadata: {
+          user_id: userId,
+          tier,
+        },
+      },
     });
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
