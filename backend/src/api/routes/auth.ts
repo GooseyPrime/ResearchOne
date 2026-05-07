@@ -18,7 +18,8 @@ router.get('/me', (req, res) => {
   res.json({ userId, isAdmin });
 });
 
-// POST /api/auth/sync - idempotent local users-table sync for signed-in Clerk users.
+// POST /api/auth/sync — idempotent local `users` sync for signed-in Clerk users (race with webhook).
+// Uses ON CONFLICT DO UPDATE so email changes in Clerk propagate; still safe to call repeatedly.
 router.post('/sync', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;

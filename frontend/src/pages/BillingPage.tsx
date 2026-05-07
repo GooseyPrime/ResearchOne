@@ -63,7 +63,7 @@ export default function BillingPage() {
               className="rounded bg-indigo-600 px-3 py-2 text-sm"
               onClick={() => {
                 setCheckoutError(null);
-                void startCheckoutRedirect(api, '/billing/checkout/topup', {
+                void startCheckoutRedirect('/billing/checkout/topup', {
                   priceId: option.priceId,
                 }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
               }}

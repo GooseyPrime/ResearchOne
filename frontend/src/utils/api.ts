@@ -28,6 +28,10 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 
 export default api;
 
+/** Idempotent: ensures `users` row exists / email refreshed (race with Clerk webhook). */
+export const syncLocalUserFromClerk = () =>
+  api.post<{ ok: boolean; userId: string }>('/auth/sync').then((r) => r.data);
+
 /** Extract a human-readable message from any error, preferring the backend's
  *  `error` / `message` field over the generic Axios "Request failed…" string. */
 export function extractApiError(err: unknown): string {
