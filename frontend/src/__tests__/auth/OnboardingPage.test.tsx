@@ -57,7 +57,7 @@ describe('OnboardingPage', () => {
   it('selecting No enables continue and saves pipelineBConsent false', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/onboarding']}>
         <OnboardingPage />
       </MemoryRouter>,
     );
@@ -71,6 +71,22 @@ describe('OnboardingPage', () => {
         pipelineBConsentAt: null,
         initialTier: 'free_demo',
         onboardingComplete: true,
+      }),
+    });
+  });
+
+  it('persists tier=pro from the onboarding URL into unsafeMetadata.initialTier', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/onboarding?tier=pro']}>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('radio', { name: /No, opt out/i }));
+    await user.click(screen.getByRole('button', { name: /Continue to research workspace/i }));
+    expect(mockUpdate).toHaveBeenCalledWith({
+      unsafeMetadata: expect.objectContaining({
+        initialTier: 'pro',
       }),
     });
   });

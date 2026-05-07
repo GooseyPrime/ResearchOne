@@ -48,14 +48,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 function bearerOrAdminHeaderToken(req: Request): string | null {
   const x = req.header('x-admin-token')?.trim();
   if (x) return x;
-  const raw = req.header('authorization') || '';
+  const raw = (req.header('authorization') || '').trim();
+  if (!raw) return null;
   if (raw.startsWith('Bearer ')) return raw.slice('Bearer '.length).trim() || null;
-  return null;
+  // Legacy automation: `Authorization: <ADMIN_RUNTIME_TOKEN>` without Bearer prefix.
+  return raw;
 }
 
 /** Authorizes admin via either:
  *  1. Clerk JWT whose userId is in ADMIN_USER_IDS (preferred — audit trail), or
- *  2. Static ADMIN_RUNTIME_TOKEN (break-glass / automation only).
+ *  2. Static ADMIN_RUNTIME_TOKEN (break-glass / automation only), via `x-admin-token`,
+ *     `Authorization: Bearer <token>`, or legacy raw `Authorization: <token>`.
  *
  *  Returns 401 if the request has no usable identity for admin (no Clerk user and no valid token).
  *  Returns 403 if the request has a Clerk identity but is not allowlisted and no valid token.

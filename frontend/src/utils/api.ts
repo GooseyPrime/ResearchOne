@@ -499,8 +499,21 @@ export const getSystemHealth = () =>
 export const restartRuntime = (adminToken?: string) =>
   api.post('/admin/runtime/restart', {}, optionalAdminHeaders(adminToken)).then(r => r.data);
 
-/** Session key for optional break-glass admin token (automation / devtools only — not used by product pages). */
+/** Session key for optional break-glass admin token (operators without Clerk allowlist). */
 export const ADMIN_SESSION_TOKEN_KEY = 'researchone_admin_token';
+
+export function readBreakGlassAdminTokenFromSession(): string | undefined {
+  if (typeof sessionStorage === 'undefined') return undefined;
+  const t = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY)?.trim();
+  return t || undefined;
+}
+
+export function writeBreakGlassAdminTokenToSession(token: string | null | undefined): void {
+  if (typeof sessionStorage === 'undefined') return;
+  const t = token?.trim();
+  if (!t) sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+  else sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, t);
+}
 
 export interface RuntimeLogResponse {
   stream: 'out' | 'err';

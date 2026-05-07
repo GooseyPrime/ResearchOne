@@ -83,4 +83,17 @@ describe('requireAdmin', () => {
     expect(next).toHaveBeenCalled();
     expect(req.adminAuth).toEqual({ method: 'token', userId: null });
   });
+
+  it('calls next when Authorization is raw ADMIN_RUNTIME_TOKEN (no Bearer prefix)', () => {
+    const req = {
+      auth: { userId: null },
+      header: vi.fn((name: string) => (name === 'authorization' ? 'breakglass' : undefined)),
+      originalUrl: '/api/admin/runtime/restart',
+    } as unknown as Request;
+    const res = mockRes();
+    const next = vi.fn();
+    requireAdmin(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(req.adminAuth).toEqual({ method: 'token', userId: null });
+  });
 });

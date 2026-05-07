@@ -1,12 +1,19 @@
 import { useUser } from '@clerk/react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { parseSignupTierFromSearch, signupTierLabel, type SignupInitialTier } from '../utils/signupTier';
 
 type PipelineChoice = 'yes' | 'no' | null;
 
 export default function OnboardingPage() {
   const { user, isLoaded } = useUser();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tierSearchString = searchParams.toString();
+  const initialTier: SignupInitialTier = useMemo(
+    () => parseSignupTierFromSearch(tierSearchString ? `?${tierSearchString}` : ''),
+    [tierSearchString],
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pipelineChoice, setPipelineChoice] = useState<PipelineChoice>(null);
@@ -27,7 +34,7 @@ export default function OnboardingPage() {
           onboardingCompletedAt: now,
           pipelineBConsent,
           pipelineBConsentAt: pipelineBConsent ? now : null,
-          initialTier: 'free_demo',
+          initialTier,
         },
       });
       navigate('/app/research', { replace: true });
@@ -89,7 +96,11 @@ export default function OnboardingPage() {
       <section className="mt-8 rounded-xl border border-white/10 bg-r1-bg-deep p-6">
         <h2 className="font-serif text-xl text-r1-text">Starting tier</h2>
         <p className="mt-2 text-sm text-r1-text-muted">
-          Your account starts on <span className="font-medium text-r1-text">Free Demo</span> (no checkout on this screen).
+          Your signup intent is{' '}
+          <span className="font-medium text-r1-text">{signupTierLabel(initialTier)}</span>
+          {initialTier === 'free_demo'
+            ? ' — no checkout on this screen.'
+            : ' — pricing intent is recorded for billing; checkout happens from Billing when you are ready.'}{' '}
           Upgrade paths unlock from billing later.
         </p>
       </section>
