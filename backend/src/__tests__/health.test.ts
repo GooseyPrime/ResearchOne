@@ -124,7 +124,7 @@ describe('health route payload', () => {
     expect(result.restartAvailable).toBe(true);
   });
 
-  it('returns degraded when one subsystem is down', async () => {
+  it('returns down when one subsystem is down', async () => {
     dbQuery.mockReset();
     redisPing.mockReset();
     queueCounts.mockReset();
