@@ -149,3 +149,45 @@ export async function getWalletSummary(userId: string): Promise<WalletSummary> {
     history,
   };
 }
+
+export interface PaginatedTransactions {
+  transactions: WalletLedgerEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export async function getWalletTransactions(
+  userId: string,
+  limit = 50,
+  offset = 0
+): Promise<PaginatedTransactions> {
+  const countResult = await query<{ count: string }>(
+    'SELECT COUNT(*)::text as count FROM wallet_ledger WHERE user_id = $1',
+    [userId]
+  );
+  const total = parseInt(countResult[0]?.count ?? '0', 10);
+
+  const rows = await query<WalletLedgerEntry>(
+    `SELECT id, amount_cents, entry_type, description, idempotency_key, stripe_checkout_session_id, created_at
+     FROM wallet_ledger
+     WHERE user_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
+  );
+
+  const transactions = rows.map((row) => ({
+    ...row,
+    amount_cents: parseMoneyInt(row.amount_cents),
+  }));
+
+  return {
+    transactions,
+    total,
+    limit,
+    offset,
+    hasMore: offset + transactions.length < total,
+  };
+}
