@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { checkTierAccess } from '../services/tier/tierService';
 import { getWalletSummary } from '../services/billing/walletService';
-import { TIER_RULES, isTierName } from '../config/tierRules';
+import { TIER_RULES } from '../config/tierRules';
 import { getUserTier } from '../services/tier/tierService';
 import { logger } from '../utils/logger';
 

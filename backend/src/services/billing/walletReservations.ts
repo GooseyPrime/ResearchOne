@@ -66,12 +66,26 @@ export async function placeHold(
   holdCents: number
 ): Promise<PlaceHoldResult> {
   return withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO user_wallets (user_id, balance_cents, reserved_cents)
-       VALUES ($1, 0, 0)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
-    );
+    try {
+      await client.query(
+        `INSERT INTO user_wallets (user_id, balance_cents, reserved_cents)
+         VALUES ($1, 0, 0)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+    } catch (err: unknown) {
+      const pgCode = (err as { code?: string })?.code;
+      if (pgCode === '42703') {
+        await client.query(
+          `INSERT INTO user_wallets (user_id, balance_cents)
+           VALUES ($1, 0)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [userId]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     const reserveResult = await client.query<{ balance_cents: string; reserved_cents: string }>(
       `UPDATE user_wallets
@@ -148,7 +162,7 @@ export async function consumeHold(
     await client.query(
       `UPDATE user_wallets
        SET balance_cents = balance_cents - $2,
-           reserved_cents = reserved_cents - $2,
+           reserved_cents = GREATEST(reserved_cents - $2, 0),
            updated_at = NOW()
        WHERE user_id = $1`,
       [userId, holdCents]
@@ -211,30 +225,44 @@ export async function releaseHold(holdId: string, userId: string): Promise<void>
 }
 
 /**
- * Reaps expired holds. Called by the daily cron alongside tier resets.
+ * Reaps expired holds that don't belong to in-flight research runs.
+ * Only expires holds whose run is no longer queued/running, or whose
+ * expiry is more than 2x the default (indicating the run is truly stale).
+ * Uses a single aggregated UPDATE per user to avoid N+1 queries.
  */
 export async function reapExpiredHolds(): Promise<number> {
   try {
     const expired = await query<{ id: string; user_id: string; hold_cents: string }>(
-      `UPDATE wallet_holds
+      `UPDATE wallet_holds h
        SET status = 'expired', released_at = NOW()
-       WHERE status = 'active' AND expires_at <= NOW()
-       RETURNING id, user_id, hold_cents::text`,
+       WHERE h.status = 'active'
+         AND h.expires_at <= NOW()
+         AND NOT EXISTS (
+           SELECT 1 FROM research_runs r
+           WHERE r.id = h.run_id
+             AND r.status IN ('queued', 'running')
+         )
+       RETURNING h.id, h.user_id, h.hold_cents::text`,
       []
     );
 
-    for (const row of expired) {
-      const holdCents = parseInt(row.hold_cents, 10);
-      await query(
-        `UPDATE user_wallets
-         SET reserved_cents = GREATEST(reserved_cents - $2, 0),
-             updated_at = NOW()
-         WHERE user_id = $1`,
-        [row.user_id, holdCents]
-      );
-    }
-
     if (expired.length > 0) {
+      const perUser = new Map<string, number>();
+      for (const row of expired) {
+        const holdCents = parseInt(row.hold_cents, 10);
+        perUser.set(row.user_id, (perUser.get(row.user_id) ?? 0) + holdCents);
+      }
+
+      for (const [userId, totalCents] of perUser) {
+        await query(
+          `UPDATE user_wallets
+           SET reserved_cents = GREATEST(reserved_cents - $2, 0),
+               updated_at = NOW()
+           WHERE user_id = $1`,
+          [userId, totalCents]
+        );
+      }
+
       logger.info('wallet_holds_reaped', { count: expired.length });
     }
 

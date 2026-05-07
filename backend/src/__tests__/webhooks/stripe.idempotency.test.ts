@@ -40,6 +40,9 @@ describe('stripe webhook idempotency', () => {
   it('returns already_processed status when event was already processed', async () => {
     const eventId = 'evt_test_123_already_processed';
 
+    // INSERT ... ON CONFLICT DO NOTHING RETURNING → empty (conflict, not inserted)
+    query.mockResolvedValueOnce([]);
+    // SELECT processed_at → already processed
     query.mockResolvedValueOnce([{ processed_at: '2026-05-01T00:00:00Z' }]);
 
     constructEvent.mockReturnValueOnce({
@@ -70,8 +73,9 @@ describe('stripe webhook idempotency', () => {
     expect(res.json).toHaveBeenCalledWith({ status: 'already_processed' });
 
     const queryCalls = query.mock.calls;
-    expect(queryCalls.length).toBe(1);
-    expect(queryCalls[0][0]).toContain('SELECT processed_at FROM stripe_webhook_events');
+    expect(queryCalls.length).toBe(2);
+    expect(queryCalls[0][0]).toContain('INSERT INTO stripe_webhook_events');
+    expect(queryCalls[1][0]).toContain('SELECT processed_at FROM stripe_webhook_events');
   });
 
   it('processes new event and marks it as processed', async () => {

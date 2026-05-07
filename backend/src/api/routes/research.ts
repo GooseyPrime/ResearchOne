@@ -24,7 +24,7 @@ import { getWalletSummary } from '../../services/billing/walletService';
 import { computeRunCost, type CreditChargeContext } from '../../middleware/creditEnforcement';
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
-import { placeHold, getAvailableBalance } from '../../services/billing/walletReservations';
+import { placeHold } from '../../services/billing/walletReservations';
 
 const router = Router();
 
@@ -318,7 +318,7 @@ router.post(
         } catch (creditErr) {
           // Deploy-skew tolerance: if wallet_holds table doesn't exist, proceed without credit enforcement
           const pgCode = (creditErr as { code?: string })?.code;
-          if (pgCode === '42P01') {
+          if (pgCode === '42P01' || pgCode === '42703') {
             creditChargeContext = undefined;
           } else {
             throw creditErr;

@@ -61,10 +61,9 @@ export async function getUserTier(userId: string): Promise<UserTierRow> {
  */
 export async function setUserTier(userId: string, tier: TierName, orgId?: string | null): Promise<void> {
   const now = new Date();
-  const periodEnd = new Date(now);
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
-  periodEnd.setDate(1);
-  periodEnd.setHours(0, 0, 0, 0);
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const periodEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
 
   try {
     await query(

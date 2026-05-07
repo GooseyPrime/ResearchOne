@@ -1,9 +1,10 @@
 /**
- * Shared webhook idempotency and dispatch module.
+ * Webhook idempotency and dispatch module for Stripe webhook events.
  *
- * Extracts the idempotency-key core into a reusable module.
- * Each webhook provider (Stripe, etc.) handles its own signature verification,
- * then uses this module for idempotency checking and event dispatch.
+ * Uses INSERT ... ON CONFLICT DO NOTHING RETURNING to atomically
+ * claim an event. The SELECT-then-INSERT race is avoided by relying on
+ * the RETURNING clause: if the row was not inserted, the caller knows
+ * another request already claimed it.
  *
  * Per Work Order F: "a fake noop provider can be wired in tests in <30 LOC"
  */
@@ -18,33 +19,45 @@ export interface IdempotencyResult {
 
 /**
  * Records a webhook event in the database for idempotency checking.
- * Returns { isNew: true, alreadyProcessed: false } if this is a new event.
- * Returns { isNew: false, alreadyProcessed: true } if already processed.
- * Returns { isNew: false, alreadyProcessed: false } if recorded but not processed (can retry).
+ * Uses INSERT ... ON CONFLICT DO NOTHING RETURNING to atomically claim.
+ * Tolerates the migration not having applied (Postgres 42P01 / 42703).
  */
 export async function checkAndRecordWebhookEvent(
   eventId: string,
   eventType: string,
   payload: unknown
 ): Promise<IdempotencyResult> {
-  const existing = await query<{ processed_at: string | null }>(
-    'SELECT processed_at FROM stripe_webhook_events WHERE stripe_event_id = $1',
-    [eventId]
-  );
+  try {
+    const inserted = await query<{ stripe_event_id: string }>(
+      `INSERT INTO stripe_webhook_events (stripe_event_id, event_type, payload, processed_at)
+       VALUES ($1, $2, $3, NULL)
+       ON CONFLICT (stripe_event_id) DO NOTHING
+       RETURNING stripe_event_id`,
+      [eventId, eventType, JSON.stringify(payload)]
+    );
 
-  if (existing.length > 0) {
-    const alreadyProcessed = existing[0].processed_at !== null;
-    return { isNew: false, alreadyProcessed };
+    if (inserted.length > 0) {
+      return { isNew: true, alreadyProcessed: false };
+    }
+
+    const existing = await query<{ processed_at: string | null }>(
+      'SELECT processed_at FROM stripe_webhook_events WHERE stripe_event_id = $1',
+      [eventId]
+    );
+
+    if (existing.length > 0 && existing[0].processed_at !== null) {
+      return { isNew: false, alreadyProcessed: true };
+    }
+
+    return { isNew: false, alreadyProcessed: false };
+  } catch (err: unknown) {
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === '42P01' || pgCode === '42703') {
+      logger.warn('stripe_webhook_events table not ready — processing without idempotency', { eventId });
+      return { isNew: true, alreadyProcessed: false };
+    }
+    throw err;
   }
-
-  await query(
-    `INSERT INTO stripe_webhook_events (stripe_event_id, event_type, payload, processed_at)
-     VALUES ($1, $2, $3, NULL)
-     ON CONFLICT (stripe_event_id) DO NOTHING`,
-    [eventId, eventType, JSON.stringify(payload)]
-  );
-
-  return { isNew: true, alreadyProcessed: false };
 }
 
 /**

@@ -5,7 +5,7 @@
 ALTER TABLE user_wallets ADD COLUMN IF NOT EXISTS reserved_cents BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS wallet_holds (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,
   hold_cents BIGINT NOT NULL,

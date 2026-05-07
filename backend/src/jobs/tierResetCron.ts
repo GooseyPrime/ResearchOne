@@ -5,13 +5,9 @@ import { logger } from '../utils/logger';
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Starts the daily tier reset cron job.
- * Runs at UTC midnight daily and resets monthly counters for users whose
- * current_period_resets_at has passed.
- *
- * Uses setInterval instead of node-cron to avoid adding a dependency.
- * The interval checks every hour; resetMonthlyCounters itself is idempotent
- * (only resets users whose period has actually passed).
+ * Starts the tier reset job. Runs immediately on startup and then every
+ * hour via setInterval. resetMonthlyCounters and reapExpiredHolds are
+ * both idempotent (only affect rows whose period/expiry has passed).
  */
 export function startTierResetCron(): void {
   if (intervalId) return;

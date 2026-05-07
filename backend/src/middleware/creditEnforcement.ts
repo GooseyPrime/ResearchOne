@@ -8,7 +8,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getUserTier } from '../services/tier/tierService';
 import { TIER_RULES, type TierName } from '../config/tierRules';
-import { placeHold, getAvailableBalance } from '../services/billing/walletReservations';
+import { placeHold } from '../services/billing/walletReservations';
 import { logger } from '../utils/logger';
 
 export type { CreditChargeContext } from '../services/reasoning/researchOrchestrator';
@@ -122,6 +122,7 @@ export function requireCreditsForRun(
           type: 'subscription',
           costCents: 0,
           subscriptionQuotaToDecrement: 1,
+          userId,
         };
         next();
         return;
@@ -156,6 +157,7 @@ export function requireCreditsForRun(
         type: 'wallet',
         costCents,
         holdId: holdResult.holdId,
+        userId,
       };
       next();
     } catch (err) {

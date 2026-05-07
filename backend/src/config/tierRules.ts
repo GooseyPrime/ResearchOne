@@ -189,5 +189,5 @@ export const TIER_RULES: Record<TierName, TierRule> = {
 } as const;
 
 export function isTierName(value: string): value is TierName {
-  return value in TIER_RULES;
+  return Object.hasOwn(TIER_RULES, value);
 }
