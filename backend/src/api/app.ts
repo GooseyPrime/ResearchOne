@@ -27,6 +27,9 @@ import { centralErrorHandler } from '../middleware/errorHandler';
 
 const app = express();
 
+// Trust the first proxy (Nginx/Vercel) for correct client IP in rate limiting
+app.set('trust proxy', 1);
+
 // JSON API only — do not send Content-Security-Policy (Helmet default breaks
 // browser tooling that inspects responses; CSP belongs on the HTML document from Vercel).
 app.use(cors({ origin: config.corsOrigins, credentials: true }));
@@ -47,13 +50,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
 
-const defaultLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 10,
@@ -61,9 +57,16 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many authentication requests. Please try again later.' },
 });
-
 app.use('/api/auth', authLimiter);
-app.use('/api/webhooks', authLimiter);
+
+const defaultLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/api/auth'),
+});
+app.use(requestLoggerMiddleware);
 app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);

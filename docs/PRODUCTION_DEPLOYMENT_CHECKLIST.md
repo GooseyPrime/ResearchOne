@@ -30,6 +30,12 @@ All must be provisioned in secure password manager. **Never commit.**
 | `SENTRY_DSN` | Sentry project | Pending |
 | `DATABASE_URL` | Emma VM Postgres | Pending |
 | `REDIS_URL` | Emma VM Redis | Pending |
+| `CORS_ORIGINS` | `https://researchone.io,https://www.researchone.io` | Pending |
+| `VITE_API_BASE_URL` | `https://api.researchone.io` | Pending |
+| `VITE_SOCKET_URL` | `https://api.researchone.io` | Pending |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk Dashboard | Pending |
+| `ADMIN_RUNTIME_TOKEN` | Self-generated | Pending |
+| `ADMIN_USER_IDS` | Clerk user IDs for admin users | Pending |
 
 ## 3. Database Backups
 - [ ] pg_basebackup configured on Emma Postgres VM
@@ -48,9 +54,11 @@ All must be provisioned in secure password manager. **Never commit.**
 - [ ] TLS Labs A+ rating on api.researchone.io
 
 ## 6. Rate Limiting
-- [x] 500 req/15min default on `/api/*`
-- [x] 10 req/min on `/api/auth` and `/api/webhooks`
-- [x] Health endpoint (`/api/health`) not rate-limited (excluded by mount order)
+- [x] 500 req/15min default on `/api/*` (skips `/api/auth` to avoid double-limit)
+- [x] 10 req/min on `/api/auth` (stricter for login attempts)
+- [x] Webhooks NOT rate-limited (Stripe/Clerk retries need headroom)
+- [x] `trust proxy` set to 1 for correct client IP behind Nginx/Vercel
+- Note: `/api/health` is rate-limited by the default limiter (500/15min is sufficient for monitoring)
 
 ## 7. CORS
 - [ ] `CORS_ORIGINS=https://researchone.io,https://www.researchone.io`
@@ -58,10 +66,11 @@ All must be provisioned in secure password manager. **Never commit.**
 - Production config validation enforces non-localhost origins
 
 ## 8. CSP Headers
-- [x] Clerk (`js.clerk.io`, `img.clerk.com`) allowed in script-src, img-src
-- [x] Stripe (`js.stripe.com`, `hooks.stripe.com`) allowed in script-src, frame-src
+- [x] Clerk (`js.clerk.io`, `img.clerk.com`, `challenges.cloudflare.com`) in script-src, img-src, frame-src
+- [x] Stripe (`js.stripe.com`, `hooks.stripe.com`) in script-src, frame-src
+- [x] `worker-src 'self' blob:` for Clerk service worker
 - [x] connect-src allows `https:` and `wss:` (covers all API subprocessors)
-- [x] HSTS header added to vercel.json
+- [x] HSTS header (without `includeSubDomains`/`preload` until all subdomains verified HTTPS)
 
 ## 9. Stripe Webhook URL
 - [ ] Stripe dashboard → webhook endpoint: `https://api.researchone.io/api/webhooks/stripe`
