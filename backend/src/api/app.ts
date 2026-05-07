@@ -17,6 +17,7 @@ import healthRoutes from './routes/health';
 import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
+import byokRoutes from './routes/byok';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
@@ -66,6 +67,7 @@ const routes: Array<[string, express.Router]> = [
   ['/admin', adminRoutes],
   ['/auth', authRoutes],
   ['/billing', billingRoutes],
+  ['/byok', byokRoutes],
 ];
 
 // Webhooks - primary API prefix (compat mount below shares the same router instance)

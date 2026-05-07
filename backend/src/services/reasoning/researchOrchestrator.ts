@@ -255,8 +255,21 @@ export async function runResearchJob(
   } = data;
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
-  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
+  const v2Base = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
   const creditCtx = data.creditChargeContext;
+
+  // BYOK: if user is on BYOK tier, all OpenRouter calls use their key.
+  // Errors are fatal for BYOK runs (fail closed, never fall back to platform key).
+  let byokApiKeyOverride: string | undefined;
+  if (creditCtx?.type === 'byok' && creditCtx.userId) {
+    const { getDecryptedKey } = await import('../byok/keyVault');
+    const key = await getDecryptedKey(creditCtx.userId, 'openrouter');
+    if (!key) {
+      throw new Error('BYOK key required but not found. Configure your API key at /app/byok before running research.');
+    }
+    byokApiKeyOverride = key;
+  }
+  const v2 = { ...v2Base, ...(byokApiKeyOverride ? { byokApiKeyOverride } : {}) };
 
   const resumeJobPayload: ResearchJobData = {
     runId,
@@ -433,6 +446,7 @@ export async function runResearchJob(
       engineVersion,
       researchObjective,
       allowFallbackByRole,
+      byokApiKeyOverride,
       onRoundComplete: async ({ round, candidatesAfter }) => {
         const pct = round === 1 ? 15 : 17;
         await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
@@ -593,6 +607,7 @@ export async function runResearchJob(
       engineVersion: v2.engineVersion,
       researchObjective: v2.researchObjective,
       allowFallbackByRole: v2.allowFallbackByRole,
+      byokApiKeyOverride,
       targetWordCount,
       onSectionProgress: async ({ title, index, total }) => {
         await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {

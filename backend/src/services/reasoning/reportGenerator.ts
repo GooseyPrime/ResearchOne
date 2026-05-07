@@ -136,12 +136,14 @@ export async function generateIterativeReport(args: {
    *  [REPORT_WORD_COUNT_MIN, REPORT_WORD_COUNT_MAX]. Falls back to
    *  REPORT_WORD_COUNT_DEFAULT if not provided. */
   targetWordCount?: number;
+  byokApiKeyOverride?: string;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
     allowFallbackByRole: args.allowFallbackByRole,
+    byokApiKeyOverride: args.byokApiKeyOverride,
   };
   const targetWordCount = clampWordTarget(args.targetWordCount);
   const sectionBudgets = distributeWordBudget(targetWordCount);
