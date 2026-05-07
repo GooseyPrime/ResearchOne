@@ -255,8 +255,30 @@ export async function runResearchJob(
   } = data;
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
-  const v2 = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
+  const v2Base = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
   const creditCtx = data.creditChargeContext;
+
+  // BYOK: if user has a valid key, all OpenRouter calls use their key
+  let byokApiKeyOverride: string | undefined;
+  if (creditCtx?.userId) {
+    try {
+      const { getDecryptedKey } = await import('../byok/keyVault');
+      const { getUserTier } = await import('../tier/tierService');
+      const userTier = await getUserTier(creditCtx.userId);
+      if (userTier.tier === 'byok') {
+        const key = await getDecryptedKey(creditCtx.userId, 'openrouter');
+        if (key) {
+          byokApiKeyOverride = key;
+        } else {
+          throw Object.assign(new Error('BYOK key required but not found'), { stage: 'byok_key_check' });
+        }
+      }
+    } catch (err) {
+      if ((err as { stage?: string }).stage === 'byok_key_check') throw err;
+      logger.warn('byok_key_lookup_failed', { runId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
+  const v2 = { ...v2Base, ...(byokApiKeyOverride ? { byokApiKeyOverride } : {}) };
 
   const resumeJobPayload: ResearchJobData = {
     runId,

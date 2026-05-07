@@ -49,6 +49,8 @@ export interface ModelCallOptions {
     primary?: string;
     fallback?: string;
   };
+  /** BYOK: when set, OpenRouter calls use this key instead of the platform master key. */
+  byokApiKeyOverride?: string;
 }
 
 export interface ModelCallResult {
@@ -430,8 +432,9 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   const start = Date.now();
   const messages: ChatMessage[] = applyV2SystemAugmentations(options);
   const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
+  const apiKey = options.byokApiKeyOverride ?? config.openrouter.apiKey;
   const headers = {
-    Authorization: `Bearer ${config.openrouter.apiKey}`,
+    Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
     'HTTP-Referer': 'https://researchone.app',
     'X-Title': 'ResearchOne',
