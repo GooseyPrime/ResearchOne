@@ -7,14 +7,15 @@ export default function Hero() {
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">Built for serious research</p>
         <h1 className="font-serif text-4xl leading-tight text-r1-text sm:text-6xl">Research that shows its work.</h1>
         <p className="max-w-xl text-base text-r1-text-muted sm:text-lg">
-          ResearchOne is a multi-agent research platform that plans, retrieves, reasons, and challenges its own
-          conclusions before it answers.
+          ResearchOne is a multi-agent research platform that plans, retrieves, reasons, and challenges its own conclusions
+          before it answers — producing long-form reports with tiered evidence and contradictions kept visible, not
+          smoothed away.
         </p>
         <div className="flex flex-wrap gap-3">
-          <Link to="/app/research" className="rounded-md bg-r1-accent px-5 py-3 font-semibold text-r1-bg hover:bg-r1-accent-deep">
+          <Link to="/sign-up" className="rounded-md bg-r1-accent px-5 py-3 font-semibold text-r1-bg hover:bg-r1-accent-deep">
             Start free
           </Link>
-          <Link to="/app/reports" className="rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent">
+          <Link to="/sample-report" className="rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent">
             See a sample report
           </Link>
         </div>

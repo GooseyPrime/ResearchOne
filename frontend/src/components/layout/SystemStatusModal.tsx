@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import clsx from 'clsx';
-import {
-  ADMIN_SESSION_TOKEN_KEY,
-  getRuntimeLogs,
-  type RuntimeLogResponse,
-  type SystemHealth,
-} from '../../utils/api';
+import { getRuntimeLogs, type RuntimeLogResponse, type SystemHealth } from '../../utils/api';
 
 type LogStream = 'out' | 'err';
 
@@ -102,26 +97,12 @@ export default function SystemStatusModal({
 
   if (!open) return null;
 
-  const forgetAdminToken = () => {
-    sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-    setLogState({ loading: false, error: null, data: null });
-  };
-
   const loadLogs = async () => {
-    let token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-    if (!token) {
-      token = window.prompt('Enter admin runtime token to view logs')?.trim() ?? '';
-      if (!token) return;
-      sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
-    }
     setLogState({ loading: true, error: null, data: null });
     try {
-      const data = await getRuntimeLogs(token, { stream: logStream, lines: 500 });
+      const data = await getRuntimeLogs(undefined, { stream: logStream, lines: 500 });
       setLogState({ loading: false, error: null, data });
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
-        sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-      }
       setLogState({
         loading: false,
         error: runtimeLogsErrorMessage(err),
@@ -234,7 +215,7 @@ export default function SystemStatusModal({
           <section>
             <h3 className="section-title mb-2">Runtime logs</h3>
             <p className="text-xs text-slate-500 mb-3">
-              Tail of PM2 stdout/stderr (admin token required). Token is stored for this browser session only.
+              Tail of PM2 stdout/stderr. Requires an admin session (same ADMIN_USER_IDS gate as model overrides).
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <div className="inline-flex rounded-md border border-indigo-900/30 p-0.5 bg-surface-200">
@@ -276,9 +257,6 @@ export default function SystemStatusModal({
                 title="Download the log text currently shown (same tail as on screen)"
               >
                 Export logs to .txt
-              </button>
-              <button type="button" className="btn-ghost text-xs" onClick={forgetAdminToken}>
-                Forget admin token
               </button>
             </div>
             {logState.error && (

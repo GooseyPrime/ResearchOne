@@ -10,7 +10,6 @@ import {
   publishReportFeatured,
   getResearchRun,
   getRunArtifacts,
-  ADMIN_SESSION_TOKEN_KEY,
   type ResearchRun,
   type ResearchProgressEvent,
 } from '../utils/api';
@@ -325,15 +324,7 @@ export default function ReportDetailPage() {
   });
 
   const featuredMutation = useMutation({
-    mutationFn: async () => {
-      let token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-      if (!token) {
-        token = window.prompt('Admin token required to publish to Featured Report on thenewontology.life')?.trim() ?? '';
-        if (token) sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
-      }
-      if (!token) throw new Error('Admin token required');
-      return publishReportFeatured(id!, token);
-    },
+    mutationFn: async () => publishReportFeatured(id!, undefined),
     onSuccess: (data) => {
       addNotification('success', data.commitUrl ? 'Featured report updated — commit pushed.' : 'Featured report publish completed.');
       if (data.commitUrl) {

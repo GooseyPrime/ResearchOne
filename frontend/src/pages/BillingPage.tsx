@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthedFetch } from '../lib/api/authedFetch';
+import api from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
 
 type WalletResponse = {
@@ -28,33 +28,20 @@ type TopupOption = {
 };
 
 export default function BillingPage() {
-  const authedFetch = useAuthedFetch();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
-    queryFn: async () => {
-      const res = await authedFetch('/api/billing/wallet');
-      if (!res.ok) throw new Error('Failed to load wallet');
-      return (await res.json()) as WalletResponse;
-    },
+    queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
   });
 
   const subQuery = useQuery({
     queryKey: ['billing-subscription'],
-    queryFn: async () => {
-      const res = await authedFetch('/api/billing/subscription');
-      if (!res.ok) throw new Error('Failed to load subscription');
-      return (await res.json()) as SubscriptionResponse;
-    },
+    queryFn: async () => (await api.get<SubscriptionResponse>('/billing/subscription')).data,
   });
   const topupOptionsQuery = useQuery({
     queryKey: ['billing-topup-options'],
-    queryFn: async () => {
-      const res = await authedFetch('/api/billing/topup-options');
-      if (!res.ok) throw new Error('Failed to load top-up options');
-      return (await res.json()) as { options: TopupOption[] };
-    },
+    queryFn: async () => (await api.get<{ options: TopupOption[] }>('/billing/topup-options')).data,
   });
 
   const balance = useMemo(() => ((walletQuery.data?.balanceCents ?? 0) / 100).toFixed(2), [walletQuery.data]);
@@ -76,7 +63,7 @@ export default function BillingPage() {
               className="rounded bg-indigo-600 px-3 py-2 text-sm"
               onClick={() => {
                 setCheckoutError(null);
-                void startCheckoutRedirect(authedFetch, '/api/billing/checkout/topup', {
+                void startCheckoutRedirect(api, '/billing/checkout/topup', {
                   priceId: option.priceId,
                 }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
               }}

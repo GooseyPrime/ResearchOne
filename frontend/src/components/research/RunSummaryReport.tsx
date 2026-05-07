@@ -1,6 +1,5 @@
-import { useRef, useCallback } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Copy, CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react';
-import { useState } from 'react';
 import clsx from 'clsx';
 import type { ResearchRun, ResearchProgressEvent } from '../../utils/api';
 
@@ -97,16 +96,24 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
   const status = summary?.status ?? run?.status ?? 'unknown';
   const totalDurationMs = summary?.totalDurationMs ?? deriveRunDurationMs(run, traceEvents);
   const phaseDurations = summary?.phaseDurations ?? derivePhaseTimings(traceEvents);
-  const tokens = {
-    prompt: summary?.totalPromptTokens ?? deriveTokenTotals(traceEvents).prompt,
-    completion: summary?.totalCompletionTokens ?? deriveTokenTotals(traceEvents).completion,
-  };
+  const tokens = useMemo(
+    () => ({
+      prompt: summary?.totalPromptTokens ?? deriveTokenTotals(traceEvents).prompt,
+      completion: summary?.totalCompletionTokens ?? deriveTokenTotals(traceEvents).completion,
+    }),
+    [summary?.totalPromptTokens, summary?.totalCompletionTokens, traceEvents],
+  );
   const retryCount = summary?.retryCount ?? 0;
   const failedStage = summary?.failedStage ?? failure?.stage ?? run?.failed_stage ?? null;
   const errorMessage = summary?.errorMessage ?? failure?.error ?? failure?.message ?? run?.error_message ?? null;
   const fmeta = summary?.failureMeta ?? failure?.failureMeta ?? (run?.failure_meta as Record<string, unknown> | undefined) ?? null;
-  const hints = summary?.orchestratorHints ?? (Array.isArray(fmeta?.orchestratorHints) ? fmeta.orchestratorHints as string[] : []);
-  const modelUsage = summary?.modelUsage ?? [];
+  const hints = useMemo(
+    () =>
+      summary?.orchestratorHints ??
+      (Array.isArray(fmeta?.orchestratorHints) ? (fmeta.orchestratorHints as string[]) : []),
+    [summary?.orchestratorHints, fmeta],
+  );
+  const modelUsage = useMemo(() => summary?.modelUsage ?? [], [summary?.modelUsage]);
 
   const runId = summary?.runId ?? run?.id ?? 'unknown';
   const query = run?.title ?? '';

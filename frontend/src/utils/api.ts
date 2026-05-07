@@ -348,12 +348,18 @@ export const getReportRevisions = (id: string) =>
 export const getReportRevision = (id: string, revisionId: string) =>
   api.get<ReportRevisionDetail>(`/reports/${id}/revisions/${revisionId}`).then(r => r.data);
 
-export const publishReportFeatured = (id: string, adminToken: string) =>
+/** Optional break-glass `x-admin-token`; omit in UI so Clerk JWT + ADMIN_USER_IDS authorize. */
+function optionalAdminHeaders(adminToken?: string): { headers?: { 'x-admin-token': string } } {
+  const t = adminToken?.trim();
+  return t ? { headers: { 'x-admin-token': t } } : {};
+}
+
+export const publishReportFeatured = (id: string, adminToken?: string) =>
   api
     .post<{ ok: boolean; repo: string; path: string; branch: string; commitUrl: string | null }>(
       `/reports/${id}/publish-featured`,
       {},
-      { headers: { 'x-admin-token': adminToken } }
+      optionalAdminHeaders(adminToken)
     )
     .then(r => r.data);
 
@@ -490,13 +496,10 @@ export const retryResearchRunFromFailure = (id: string) =>
 export const getSystemHealth = () =>
   api.get<SystemHealth>('/health').then(r => r.data);
 
-export const restartRuntime = (adminToken: string) =>
-  api.post('/admin/runtime/restart', {}, {
-    headers: {
-      'x-admin-token': adminToken,
-    },
-  }).then(r => r.data);
+export const restartRuntime = (adminToken?: string) =>
+  api.post('/admin/runtime/restart', {}, optionalAdminHeaders(adminToken)).then(r => r.data);
 
+/** Session key for optional break-glass admin token (automation / devtools only — not used by product pages). */
 export const ADMIN_SESSION_TOKEN_KEY = 'researchone_admin_token';
 
 export interface RuntimeLogResponse {
@@ -509,19 +512,14 @@ export interface RuntimeLogResponse {
   hint?: string;
 }
 
-export const getRuntimeLogs = (
-  adminToken: string,
-  opts?: { stream?: 'out' | 'err'; lines?: number }
-) =>
+export const getRuntimeLogs = (adminToken: string | undefined, opts?: { stream?: 'out' | 'err'; lines?: number }) =>
   api
     .get<RuntimeLogResponse>('/admin/runtime/logs', {
       params: {
         stream: opts?.stream === 'err' ? 'err' : 'out',
         lines: opts?.lines ?? 500,
       },
-      headers: {
-        'x-admin-token': adminToken,
-      },
+      ...optionalAdminHeaders(adminToken),
     })
     .then(r => r.data);
 
@@ -536,17 +534,11 @@ export interface AdminModelsResponse {
   embeddingOverride: string | null;
 }
 
-export const getAdminModels = (adminToken: string) =>
-  api
-    .get<AdminModelsResponse>('/admin/models', {
-      headers: { 'x-admin-token': adminToken },
-    })
-    .then(r => r.data);
+export const getAdminModels = (adminToken?: string) =>
+  api.get<AdminModelsResponse>('/admin/models', optionalAdminHeaders(adminToken)).then(r => r.data);
 
-export const putAdminModels = (adminToken: string, body: Record<string, unknown>) =>
-  api.put('/admin/models', body, {
-    headers: { 'x-admin-token': adminToken },
-  }).then(r => r.data);
+export const putAdminModels = (adminToken: string | undefined, body: Record<string, unknown>) =>
+  api.put('/admin/models', body, optionalAdminHeaders(adminToken)).then(r => r.data);
 
 /** Must match backend `CORPUS_CLEAR_CONFIRM_PHRASE` (admin corpus clear). */
 export const CORPUS_CLEAR_CONFIRM_PHRASE = 'DELETE ALL CORPUS DATA';
@@ -560,12 +552,8 @@ export interface CorpusClearResponse {
   };
 }
 
-export const clearCorpus = (adminToken: string, body: { confirmPhrase: string }) =>
-  api
-    .post<CorpusClearResponse>('/admin/corpus/clear', body, {
-      headers: { 'x-admin-token': adminToken },
-    })
-    .then(r => r.data);
+export const clearCorpus = (adminToken: string | undefined, body: { confirmPhrase: string }) =>
+  api.post<CorpusClearResponse>('/admin/corpus/clear', body, optionalAdminHeaders(adminToken)).then(r => r.data);
 
 export interface DeleteCorpusByIngestionJobsResponse {
   ok: boolean;
@@ -574,11 +562,9 @@ export interface DeleteCorpusByIngestionJobsResponse {
   skippedJobIds: string[];
 }
 
-export const deleteCorpusByIngestionJobs = (adminToken: string, body: { jobIds: string[] }) =>
+export const deleteCorpusByIngestionJobs = (adminToken: string | undefined, body: { jobIds: string[] }) =>
   api
-    .post<DeleteCorpusByIngestionJobsResponse>('/admin/corpus/delete-by-ingestion-jobs', body, {
-      headers: { 'x-admin-token': adminToken },
-    })
+    .post<DeleteCorpusByIngestionJobsResponse>('/admin/corpus/delete-by-ingestion-jobs', body, optionalAdminHeaders(adminToken))
     .then(r => r.data);
 
 export interface DeleteCorpusByResearchRunResponse {
@@ -588,11 +574,9 @@ export interface DeleteCorpusByResearchRunResponse {
   deletedSourcesCount: number;
 }
 
-export const deleteCorpusByResearchRun = (adminToken: string, body: { runId: string }) =>
+export const deleteCorpusByResearchRun = (adminToken: string | undefined, body: { runId: string }) =>
   api
-    .post<DeleteCorpusByResearchRunResponse>('/admin/corpus/delete-by-research-run', body, {
-      headers: { 'x-admin-token': adminToken },
-    })
+    .post<DeleteCorpusByResearchRunResponse>('/admin/corpus/delete-by-research-run', body, optionalAdminHeaders(adminToken))
     .then(r => r.data);
 
 export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>

@@ -134,12 +134,10 @@ export default function Layout() {
       : health?.status ?? 'checking';
 
   const handleRestart = async () => {
-    const token = window.prompt('Enter admin runtime token to restart the system');
-    if (!token) return;
     if (!window.confirm('Restart runtime now? Active jobs may be interrupted.')) return;
     setRestartBusy(true);
     try {
-      await restartRuntime(token);
+      await restartRuntime();
       for (let i = 0; i < MAX_RESTART_POLL_ATTEMPTS; i++) {
         await new Promise(resolve => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
         try {
@@ -211,6 +209,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
+            {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}
             <UserButton />
             <button
               type="button"
