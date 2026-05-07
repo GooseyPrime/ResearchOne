@@ -3,6 +3,7 @@ import { Webhook } from 'svix';
 import { query } from '../../db/pool';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { ensureUserTierRow } from '../../services/tier/tierService';
 
 const router = Router();
 
@@ -72,6 +73,12 @@ router.post('/', async (req, res, next) => {
             clerkStringField(event.data.last_name),
           ]
         );
+
+        try {
+          await ensureUserTierRow(userId);
+        } catch (err) {
+          logger.warn('Failed to create user_tiers row (migration may not be applied)', { userId, error: err instanceof Error ? err.message : 'Unknown' });
+        }
       }
     }
 
