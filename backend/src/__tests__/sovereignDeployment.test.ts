@@ -49,7 +49,7 @@ describe('sovereign deployment routing', () => {
     it('sovereign build imports the stub', async () => {
       process.env.EXCLUDE_INTELLME_CLIENT = 'true';
       const { intellmeClient } = await import('../services/ingestion/index');
-      expect(() => intellmeClient.ingest({ userId: 'u1', documentId: 'd1', content: 'test' })).toThrow(
+      await expect(intellmeClient.ingest({ userId: 'u1', documentId: 'd1', content: 'test' })).rejects.toThrow(
         /InTellMe client is disabled/
       );
     });
