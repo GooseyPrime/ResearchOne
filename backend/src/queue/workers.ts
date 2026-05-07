@@ -143,5 +143,13 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     { connection: createRedisConnection(), concurrency: 1 }
   );
 
+  // ─── Pipeline B Ingestion Worker ─────────────────────────────────────
+  const { startPipelineBWorker } = await import('./workers/pipelineBIngestion');
+  startPipelineBWorker(io);
+
+  // ─── InTellMe Deletion Worker ──────────────────────────────────────
+  const { startDeletionWorker } = await import('./workers/intellmeDeletion');
+  startDeletionWorker(io);
+
   logger.info('All BullMQ workers started');
 }
