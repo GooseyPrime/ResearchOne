@@ -43,7 +43,7 @@ export default function WalletAdjustment({ userId }: { userId: string }) {
       </div>
       <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required)"
         className="w-full rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
-      <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !amount || !reason}
+      <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !amount || parseFloat(amount) <= 0 || !reason}
         className="w-full rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 px-3 py-1 text-sm text-white">
         {mutation.isPending ? 'Applying...' : 'Apply'}
       </button>

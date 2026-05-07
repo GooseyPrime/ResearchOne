@@ -5,13 +5,17 @@ import api from '../../utils/api';
 export default function AuditLogViewer() {
   const [userId, setUserId] = useState('');
   const [eventType, setEventType] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', userId, eventType],
+    queryKey: ['admin-audit', userId, eventType, dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (userId) params.set('user_id', userId);
       if (eventType) params.set('event_type', eventType);
+      if (dateFrom) params.set('from', dateFrom);
+      if (dateTo) params.set('to', dateTo);
       params.set('limit', '50');
       return (await api.get(`/admin/audit-log?${params}`)).data as {
         entries: Array<{ id: number; admin_user_id: string; target_user_id: string; action: string; reason: string; created_at: string }>;
@@ -22,11 +26,15 @@ export default function AuditLogViewer() {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-medium">Audit Log</h2>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <input type="text" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="Filter by user ID..."
-          className="flex-1 rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
+          className="flex-1 min-w-[150px] rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
         <input type="text" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="Filter by action..."
-          className="flex-1 rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
+          className="flex-1 min-w-[120px] rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+          className="rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+          className="rounded bg-slate-800 border border-white/10 px-2 py-1 text-sm text-white" />
       </div>
 
       {auditQuery.data?.entries && (

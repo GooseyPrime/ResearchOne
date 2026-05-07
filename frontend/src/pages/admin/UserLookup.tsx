@@ -73,8 +73,8 @@ export default function UserLookup() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <WalletAdjustment userId={user.id} />
-            <TierOverride userId={user.id} currentTier={user.tier ?? 'free_demo'} />
+            <WalletAdjustment key={`wa-${user.id}`} userId={user.id} />
+            <TierOverride key={`to-${user.id}`} userId={user.id} currentTier={user.tier ?? 'free_demo'} />
           </div>
         </div>
       )}
