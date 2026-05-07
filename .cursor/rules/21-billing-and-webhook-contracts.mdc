@@ -60,6 +60,19 @@ task, it must be started from `index.ts` or the relevant entry point.
 A defined-but-never-called function is dead code that gives a false
 sense of coverage.
 
+## Rule — no per-request mutation of shared singletons
+
+Never monkey-patch a shared singleton (DB pool, Redis client, queue)
+for request-scoped behavior. Use `AsyncLocalStorage` to carry
+per-request context and read it from the singleton's methods.
+
+## Rule — Postgres session variables require a transaction
+
+`SET LOCAL` only works inside an explicit `BEGIN`/`COMMIT` block.
+For RLS session variables, use `set_config('app.var', $1, true)`
+(parameterized, not string-interpolated) inside the transaction
+that executes the tenant-scoped query.
+
 ## Pre-commit check
 
 - [ ] Did you grep for every metadata key name in both the writer
