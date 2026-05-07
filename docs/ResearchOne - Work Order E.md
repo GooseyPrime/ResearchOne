@@ -40,9 +40,10 @@ Per Section 12 of this report.**
 
 **Dependencies:**
 
-**cd backend && npm install stripe@\^17**
-
-**cd ../frontend && npm install \@stripe/stripe-js@\^4**
+```bash
+cd backend && npm install stripe@^17
+cd ../frontend && npm install @stripe/stripe-js@^4
+```
 
 **Environment variables (Section 12 lists all of them): add to
 .env.example files.**

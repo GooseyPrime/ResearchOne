@@ -18,52 +18,62 @@ platform\'s master key.**
 
 -   **backend/src/db/migrations/20260XXX_byok_keys.sql:**
 
-**sql**
+```sql
+CREATE TABLE byok_keys (
+  user_id text NOT NULL REFERENCES users(id),
+  provider text NOT NULL DEFAULT 'openrouter' CHECK (provider IN (
+    'openrouter','anthropic','openai','google'
+  )),
+  encrypted_key text NOT NULL,
+  encrypted_key_iv text NOT NULL,
+  encrypted_key_tag text NOT NULL,
+  key_last_four text NOT NULL,
+  key_validated_at timestamp,
+  key_status text NOT NULL DEFAULT 'pending' CHECK (key_status IN (
+    'pending','valid','invalid','revoked'
+  )),
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, provider)
+);
+```
 
-**CREATE TABLE byok_keys (**
+> **FK note.** `users.id` is the existing primary key in
+> `backend/src/db/migrations/015_users_orgs_members.sql`. Reference
+> `users(id)`, never `users(user_id)`.
+>
+> **Column naming.** Columns are provider-agnostic
+> (`encrypted_key*`) so the same row layout works for OpenRouter,
+> Anthropic, OpenAI, and Google keys without a future migration.
 
-**user_id text NOT NULL REFERENCES users(user_id),**
-
-**provider text NOT NULL DEFAULT \'openrouter\' CHECK (provider IN (**
-
-**\'openrouter\',\'anthropic\',\'openai\',\'google\'**
-
-**)),**
-
-**encrypted_openrouter_key text NOT NULL,**
-
-**encrypted_openrouter_key_iv text NOT NULL,**
-
-**encrypted_openrouter_key_tag text NOT NULL,**
-
-**key_last_four text NOT NULL,**
-
-**key_validated_at timestamp,**
-
-**key_status text NOT NULL DEFAULT \'pending\' CHECK (key_status IN (**
-
-**\'pending\',\'valid\',\'invalid\',\'revoked\'**
-
-**)),**
-
-**created_at timestamp NOT NULL DEFAULT now(),**
-
-**updated_at timestamp NOT NULL DEFAULT now(),**
-
-**PRIMARY KEY (user_id, provider)**
-
-**);**
-
-**Migration note: backfill existing rows with provider=\'openrouter\'
-before applying PRIMARY KEY change.**
+**Migration note: backfill existing single-provider rows with
+`provider = 'openrouter'` before applying the composite PRIMARY KEY
+change. The legacy `encrypted_openrouter_key*` column names (if
+present from earlier drafts) must be renamed to `encrypted_key*` in
+the same migration.**
 
 -   **backend/src/services/byok/encryption.ts --- AES-256-GCM helpers
     using BYOK_ENCRYPTION_KEY env var (32-byte master key)**
 
 -   **backend/src/services/byok/keyVault.ts --- storeKey,
     getDecryptedKey(userId, provider) (replaces single-key getter),
-    validateKey (calls OpenRouter /api/v1/auth/key), deleteKey,
-    getKeyStatus**
+    validateKey(provider, plaintextKey) (provider-specific — see
+    below), deleteKey, getKeyStatus**
+
+> **`validateKey` must dispatch on `provider`.** The earlier draft
+> said \"calls OpenRouter `/api/v1/auth/key`\" unconditionally. That
+> is wrong for non-OpenRouter providers and would mark valid keys as
+> invalid. Required dispatch table:
+>
+> | provider     | validation call                                                       |
+> | ------------ | --------------------------------------------------------------------- |
+> | `openrouter` | `GET https://openrouter.ai/api/v1/auth/key` with `Authorization: Bearer <key>` |
+> | `anthropic`  | `POST https://api.anthropic.com/v1/messages` minimal probe (or `GET /v1/models` once the SDK exposes it) with `x-api-key` |
+> | `openai`     | `GET https://api.openai.com/v1/models` with `Authorization: Bearer <key>` |
+> | `google`     | `GET https://generativelanguage.googleapis.com/v1/models?key=<key>` |
+>
+> Each branch returns `{ valid: boolean, last_four: string,
+> reason?: string }` and never logs the plaintext key.
 
 -   **backend/src/api/byok/keys.ts --- POST /api/byok/keys, GET
     /api/byok/keys/status, DELETE /api/byok/keys**

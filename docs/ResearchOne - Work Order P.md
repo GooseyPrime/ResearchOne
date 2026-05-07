@@ -9,11 +9,16 @@ B topology, ResearchOne_Update_041626.pdf Phase 1 (SPA refresh fix).**
 **Tasks:**
 
 1.  **Verify both vercel.json files have SPA rewrite. Per 041626 doc,
-    fix added but only one file confirmed. Check root vercel.json AND
-    frontend/vercel.json. Both must have:**
+    fix added but only one file confirmed. Check root `vercel.json`
+    AND `frontend/vercel.json`. Both must contain:**
 
-**{ \"rewrites\": \[{ \"source\": \"/(.\*)\", \"destination\": \"/\" }\]
-}**
+```json
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
+```
 
 2.  **Production environment variables. Provision all .env values: real
     Clerk keys, Stripe keys, OpenRouter key, BYOK encryption key,

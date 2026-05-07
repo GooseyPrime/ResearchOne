@@ -13,31 +13,25 @@ table, tier middleware, per-tier mode and feature gating.**
 
 -   **backend/src/db/migrations/20260XXX_tier_tables.sql:**
 
-**sql**
+```sql
+CREATE TABLE user_tiers (
+  user_id text PRIMARY KEY REFERENCES users(id),
+  tier text NOT NULL DEFAULT 'free_demo' CHECK (tier IN (
+    'anonymous','free_demo','student','wallet','pro','team','byok','sovereign','admin'
+  )),
+  org_id text,
+  current_period_reports_used integer NOT NULL DEFAULT 0,
+  current_period_deep_reports_used numeric NOT NULL DEFAULT 0,
+  lifetime_reports_used integer NOT NULL DEFAULT 0,
+  current_period_resets_at timestamp,
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+```
 
-**CREATE TABLE user_tiers (**
-
-**user_id text PRIMARY KEY REFERENCES users(user_id),**
-
-**tier text NOT NULL DEFAULT \'free_demo\' CHECK (tier IN (**
-
-**\'anonymous\',\'free_demo\',\'student\',\'wallet\',\'pro\',\'team\',\'byok\',\'sovereign\',\'admin\'**
-
-**)),**
-
-**org_id text,**
-
-**current_period_reports_used integer NOT NULL DEFAULT 0,**
-
-**current_period_deep_reports_used numeric NOT NULL DEFAULT 0,**
-
-**lifetime_reports_used integer NOT NULL DEFAULT 0,**
-
-**current_period_resets_at timestamp,**
-
-**updated_at timestamp NOT NULL DEFAULT now()**
-
-**);**
+> **FK note.** `users.id` is the existing primary key in
+> `backend/src/db/migrations/015_users_orgs_members.sql`. Do **not**
+> reference `users(user_id)` — that column does not exist and the
+> migration would fail to apply.
 
 -   **backend/src/config/tierRules.ts --- exports TIER_RULES const
     object matching Section 13\'s table exactly. Add per-tier flags:
@@ -48,21 +42,21 @@ table, tier middleware, per-tier mode and feature gating.**
 -   **backend/src/db/migrations/20260XXX_tier_tables.sql --- include
     the user\_tiers table above and also:**
 
-**sql**
+```sql
+CREATE TABLE tier_addons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tier text NOT NULL,
+  addon_key text NOT NULL,
+  addon_price_cents integer NOT NULL,
+  included_count_per_period integer NOT NULL DEFAULT 0,
+  UNIQUE (tier, addon_key)
+);
+```
 
-**CREATE TABLE tier_addons (**
-
-**id uuid PRIMARY KEY DEFAULT gen_random_uuid(),**
-
-**tier text NOT NULL,**
-
-**addon_key text NOT NULL,**
-
-**addon_price_cents integer NOT NULL,**
-
-**included_count_per_period integer NOT NULL DEFAULT 0**
-
-**);**
+> `tier_addons` is **global tier configuration**, not customer-owned
+> data. It must NOT be enrolled in the per-user RLS policy in WO-K
+> (which keys on `user_id` / `org_id` columns it does not have). See
+> WO-K for the read-only `application_role` grant pattern.
 
 -   **backend/src/middleware/tierEnforcement.ts --- requireTier(check)
     middleware factory**

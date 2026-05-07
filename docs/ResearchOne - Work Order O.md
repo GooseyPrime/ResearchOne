@@ -18,44 +18,31 @@ and the legal-page stubs that need lawyer review before launch.**
 
 **Backend:**
 
--   **backend/src/api/health/index.ts --- real /api/health and
-    /api/health/ready per the 041626 doc:**
+-   **backend/src/api/health/index.ts --- real `/api/health` and
+    `/api/health/ready` per the 041626 doc. The `/api/health/ready`
+    response contract:**
 
-**typescript**
+```ts
+type ReadyResponse = {
+  status: 'ok' | 'degraded' | 'down';
+  timestamp: string; // ISO 8601
+  checks: {
+    api: { ok: boolean; latencyMs: number };
+    db: { ok: boolean; latencyMs: number };
+    redis: { ok: boolean; latencyMs: number };
+    queue: { ok: boolean; depth: number };
+    openrouter: { ok: boolean; latencyMs: number };
+    socket: { ok: boolean };
+    exports_dir: { ok: boolean };
+    parallel: { ok: boolean; latencyMs: number };
+    scite: { ok: boolean; latencyMs: number };
+  };
+};
 
-**// /api/health/ready returns:**
-
-**// {**
-
-**// status: \'ok\' \| \'degraded\' \| \'down\',**
-
-**// timestamp,**
-
-**// checks: {**
-
-**// api: { ok, latencyMs },**
-
-**// db: { ok, latencyMs },**
-
-**// redis: { ok, latencyMs },**
-
-**// queue: { ok, depth },**
-
-**// openrouter: { ok, latencyMs },**
-
-**// socket: { ok },**
-
-**// exports_dir: { ok },**
-
-**// parallel: { ok, latencyMs },**
-
-**// scite: { ok, latencyMs }**
-
-**// }**
-
-**// }**
-
-**// Status is \'degraded\' if parallel or scite latencyMs \> 2000.**
+// status is 'degraded' if parallel.latencyMs > 2000 or
+// scite.latencyMs > 2000 but every check is ok; 'down' if any
+// check.ok is false.
+```
 
 -   **backend/src/services/provenance/ledgerExporter.ts --- generates
     tamper-evident PDF from research\_runs + discovery\_events + claims
