@@ -1,57 +1,22 @@
 import type { NextFunction, Request, Response } from 'express';
-import { getPool } from '../db/pool';
-import { logger } from '../utils/logger';
+import { rlsStore } from '../db/pool';
 
 /**
- * Sets PostgreSQL session variables (app.user_id, app.org_id) for RLS policy evaluation.
- * These are read by the USING clauses in migration 022_rls_policies.sql.
+ * RLS context middleware — stores userId/orgId in AsyncLocalStorage.
  *
- * The variables are set on the next connection the pool hands out for this request.
- * Since Express is single-threaded per request, the SET LOCAL in the pool's connect
- * callback ensures the correct user context.
- *
- * When no auth is present, the variables remain unset (current_setting returns NULL
- * with the `true` missing_ok parameter), which means RLS policies return zero rows.
+ * The DB pool reads from this store inside transactions to SET ROLE
+ * and set_config() for Postgres RLS policy evaluation. No monkey-patching
+ * of the pool; no race conditions between concurrent requests.
  */
 export function rlsContextMiddleware(req: Request, _res: Response, next: NextFunction) {
   if (!req.auth) {
     req.auth = { userId: null, orgId: null, sessionId: null };
   }
 
-  const userId = req.auth.userId;
-  const orgId = req.auth.orgId;
+  const ctx = {
+    userId: req.auth.userId ?? null,
+    orgId: req.auth.orgId ?? null,
+  };
 
-  if (userId) {
-    const pool = getPool();
-    const origConnect = pool.connect.bind(pool);
-
-    const wrappedConnect = async () => {
-      const client = await origConnect();
-      try {
-        if (userId) {
-          await client.query(`SET LOCAL app.user_id = '${userId.replace(/'/g, "''")}'`);
-        }
-        if (orgId) {
-          await client.query(`SET LOCAL app.org_id = '${orgId.replace(/'/g, "''")}'`);
-        }
-      } catch (err) {
-        logger.warn('Failed to set RLS session variables (migration may not be applied)', {
-          userId,
-          error: err instanceof Error ? err.message : 'Unknown',
-        });
-      }
-      return client;
-    };
-
-    pool.connect = wrappedConnect as typeof pool.connect;
-
-    const cleanup = () => {
-      pool.connect = origConnect;
-    };
-
-    _res.on('finish', cleanup);
-    _res.on('close', cleanup);
-  }
-
-  next();
+  rlsStore.run(ctx, () => next());
 }
