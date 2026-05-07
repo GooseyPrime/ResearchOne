@@ -53,22 +53,24 @@ interface PriceSpec {
 }
 
 const PRODUCTS: ProductSpec[] = [
-  { name: 'ResearchOne Student', description: 'Student tier subscription (SheerID-verified)', lookupKey: 'researchone_student' },
-  { name: 'ResearchOne Pro', description: 'Pro tier subscription for indie researchers and consultants', lookupKey: 'researchone_pro' },
-  { name: 'ResearchOne Team Seat', description: 'Team tier subscription per seat (3-seat minimum)', lookupKey: 'researchone_team_seat' },
-  { name: 'ResearchOne BYOK', description: 'Bring Your Own Keys subscription', lookupKey: 'researchone_byok' },
-  { name: 'Wallet Top-up', description: 'One-time wallet credit for pay-per-report usage', lookupKey: 'researchone_wallet_topup' },
-  { name: 'Living Reports', description: 'Continuous monitoring and updates for published reports', lookupKey: 'researchone_living_reports' },
-  { name: 'Reverse-Citation Watch', description: 'Track when your research is cited or referenced', lookupKey: 'researchone_reverse_citation_watch' },
-  { name: 'Adversarial Twin', description: 'Dedicated adversarial analysis service', lookupKey: 'researchone_adversarial_twin' },
-  { name: 'Provenance Ledger', description: 'Immutable audit trail for research provenance', lookupKey: 'researchone_provenance_ledger' },
-  { name: 'PolicyOne Score API Pro', description: 'API access to PolicyOne compliance scoring', lookupKey: 'researchone_policyone_api_pro' },
-  { name: 'Patent IP Diligence Floor', description: 'Base fee for patent and IP diligence analysis', lookupKey: 'researchone_patent_ip_floor' },
-  { name: 'Sovereign Onboarding', description: 'One-time onboarding fee for Sovereign tier', lookupKey: 'researchone_sovereign_onboarding' },
-  { name: 'Sovereign: Custom Corpus Adapter', description: 'Custom corpus ingestion adapter for Sovereign clients', lookupKey: 'researchone_sovereign_corpus_adapter' },
-  { name: 'Sovereign: Custom Model Weights', description: 'Custom model weights integration for Sovereign clients', lookupKey: 'researchone_sovereign_custom_weights' },
-  { name: 'Sovereign: Priority Response SLA', description: 'Priority response SLA add-on for Sovereign clients', lookupKey: 'researchone_sovereign_priority_sla' },
-  { name: 'Sovereign: Dedicated Success', description: 'Dedicated success contact add-on for Sovereign clients', lookupKey: 'researchone_sovereign_dedicated_success' },
+  { name: 'ResearchOne — Student', description: 'Student tier subscription (SheerID-verified)', lookupKey: 'researchone_student' },
+  { name: 'ResearchOne — Pro', description: 'Pro tier subscription for indie researchers and consultants', lookupKey: 'researchone_pro' },
+  { name: 'ResearchOne — Team Seat', description: 'Team tier subscription per seat (3-seat minimum)', lookupKey: 'researchone_team_seat' },
+  { name: 'ResearchOne — BYOK', description: 'Bring Your Own Keys subscription', lookupKey: 'researchone_byok' },
+  { name: 'ResearchOne — Wallet Top-up ($20)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_20' },
+  { name: 'ResearchOne — Wallet Top-up ($50)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_50' },
+  { name: 'ResearchOne — Wallet Top-up ($100)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_100' },
+  { name: 'ResearchOne — Living Reports', description: 'Continuous monitoring and updates for published reports', lookupKey: 'researchone_living_reports' },
+  { name: 'ResearchOne — Reverse-Citation Watch', description: 'Track when your research is cited or referenced', lookupKey: 'researchone_reverse_citation_watch' },
+  { name: 'ResearchOne — Adversarial Twin', description: 'Dedicated adversarial analysis service', lookupKey: 'researchone_adversarial_twin' },
+  { name: 'ResearchOne — Provenance Ledger', description: 'Immutable audit trail for research provenance', lookupKey: 'researchone_provenance_ledger' },
+  { name: 'ResearchOne — PolicyOne Score API Pro', description: 'API access to PolicyOne compliance scoring', lookupKey: 'researchone_policyone_api_pro' },
+  { name: 'ResearchOne — Patent IP Diligence Floor', description: 'Base fee for patent and IP diligence analysis', lookupKey: 'researchone_patent_ip_floor' },
+  { name: 'ResearchOne — Sovereign Onboarding', description: 'One-time onboarding fee for Sovereign tier', lookupKey: 'researchone_sovereign_onboarding' },
+  { name: 'ResearchOne — Sovereign: Custom Corpus Adapter', description: 'Custom corpus ingestion adapter for Sovereign clients', lookupKey: 'researchone_sovereign_corpus_adapter' },
+  { name: 'ResearchOne — Sovereign: Custom Model Weights', description: 'Custom model weights integration for Sovereign clients', lookupKey: 'researchone_sovereign_custom_weights' },
+  { name: 'ResearchOne — Sovereign: Priority Response SLA', description: 'Priority response SLA add-on for Sovereign clients', lookupKey: 'researchone_sovereign_priority_sla' },
+  { name: 'ResearchOne — Sovereign: Dedicated Success', description: 'Dedicated success contact add-on for Sovereign clients', lookupKey: 'researchone_sovereign_dedicated_success' },
 ];
 
 const PRICES: PriceSpec[] = [
@@ -88,10 +90,10 @@ const PRICES: PriceSpec[] = [
   { productLookupKey: 'researchone_byok', lookupKey: 'byok_monthly', unitAmountCents: 2900, currency: 'usd', recurring: { interval: 'month' } },
   { productLookupKey: 'researchone_byok', lookupKey: 'byok_annual', unitAmountCents: 29000, currency: 'usd', recurring: { interval: 'year' } },
 
-  // Wallet top-ups (one-time)
-  { productLookupKey: 'researchone_wallet_topup', lookupKey: 'wallet_topup_20', unitAmountCents: 2000, currency: 'usd' },
-  { productLookupKey: 'researchone_wallet_topup', lookupKey: 'wallet_topup_50', unitAmountCents: 5000, currency: 'usd' },
-  { productLookupKey: 'researchone_wallet_topup', lookupKey: 'wallet_topup_100', unitAmountCents: 10000, currency: 'usd' },
+  // Wallet top-ups (one-time, one product per denomination)
+  { productLookupKey: 'researchone_wallet_topup_20', lookupKey: 'wallet_topup_20', unitAmountCents: 2000, currency: 'usd' },
+  { productLookupKey: 'researchone_wallet_topup_50', lookupKey: 'wallet_topup_50', unitAmountCents: 5000, currency: 'usd' },
+  { productLookupKey: 'researchone_wallet_topup_100', lookupKey: 'wallet_topup_100', unitAmountCents: 10000, currency: 'usd' },
 
   // Add-on services (monthly recurring)
   { productLookupKey: 'researchone_living_reports', lookupKey: 'living_reports_monthly', unitAmountCents: 1900, currency: 'usd', recurring: { interval: 'month' } },
