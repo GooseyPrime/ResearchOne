@@ -124,7 +124,7 @@ describe('health route payload', () => {
     expect(result.restartAvailable).toBe(true);
   });
 
-  it('returns degraded when one subsystem is down', async () => {
+  it('returns down when one subsystem is down', async () => {
     dbQuery.mockReset();
     redisPing.mockReset();
     queueCounts.mockReset();
@@ -142,7 +142,7 @@ describe('health route payload', () => {
 
     const { buildHealth } = await import('../api/routes/health');
     const result = await buildHealth({ app: { get: () => ({}) } });
-    expect(result.status).toBe('degraded');
+    expect(result.status).toBe('down');
     expect(result.checks.db.ok).toBe(false);
   });
 });

@@ -105,10 +105,15 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err.message });
+// Error handler — never leak err.message to clients (may contain PII or internal details)
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  const requestId = (req as unknown as Record<string, unknown>).requestId as string | undefined;
+  logger.error('Unhandled error:', { message: err.message, stack: err.stack, requestId });
+  res.status(500).json({ error: 'Internal server error', requestId });
 });
 
 export default app;

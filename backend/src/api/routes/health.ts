@@ -121,8 +121,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
     websocket: websocketCheck,
   };
 
-  const failed = Object.values(checks).filter((c) => !c.ok).length;
-  const status = failed === 0 ? 'ok' : failed <= 2 ? 'degraded' : 'down';
+  const anyDown = Object.values(checks).some((c) => !c.ok);
+  const status = anyDown ? 'down' : 'ok';
 
   const meta = getBuildMeta();
   const gitSha = meta?.gitSha?.trim() || 'unknown';
