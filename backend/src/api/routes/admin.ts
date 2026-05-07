@@ -8,7 +8,9 @@ import { config } from '../../config';
 import { CORPUS_CLEAR_CONFIRM_PHRASE } from '../../constants/corpusAdmin';
 import { logger } from '../../utils/logger';
 import type { PoolClient } from 'pg';
-import { query, withTransaction } from '../../db/pool';
+import { query, adminQuery, withTransaction } from '../../db/pool';
+import { writeAdminAction } from '../admin/adminAuditLog';
+import { isTierName } from '../../config/tierRules';
 import {
   getCachedOverrides,
   refreshRuntimeModelOverrides,
@@ -327,6 +329,210 @@ router.post('/runtime/restart', async (req, res) => {
     logger.error('Restart command failed', err);
     res.status(500).json({ ok: false, error: 'Restart command failed' });
   }
+});
+
+// ─── Admin Dashboard: User Lookup ──────────────────────────────────
+router.get('/users', async (req, res, next) => {
+  try {
+    const email = req.query.email as string | undefined;
+    const id = req.query.id as string | undefined;
+
+    if (email) {
+      const rows = await adminQuery<{ id: string; email: string; first_name: string; last_name: string; created_at: string }>(
+        'SELECT id, email, first_name, last_name, created_at FROM users WHERE email ILIKE $1 LIMIT 20',
+        [`%${email}%`]
+      );
+      res.json({ users: rows });
+    } else if (id) {
+      const rows = await adminQuery<{ id: string; email: string; first_name: string; last_name: string; created_at: string }>(
+        'SELECT id, email, first_name, last_name, created_at FROM users WHERE id = $1',
+        [id]
+      );
+      res.json({ users: rows });
+    } else {
+      res.status(400).json({ error: 'email or id query parameter required' });
+    }
+  } catch (err) { next(err); }
+});
+
+router.get('/users/:id', async (req, res, next) => {
+  try {
+    const rows = await adminQuery<Record<string, unknown>>(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.created_at,
+              t.tier, t.current_period_reports_used, t.lifetime_reports_used,
+              w.balance_cents, w.reserved_cents
+       FROM users u
+       LEFT JOIN user_tiers t ON t.user_id = u.id
+       LEFT JOIN user_wallets w ON w.user_id = u.id
+       WHERE u.id = $1`,
+      [req.params.id]
+    );
+    if (rows.length === 0) { res.status(404).json({ error: 'User not found' }); return; }
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ─── Admin Dashboard: Wallet Adjustment ───────────────────────────
+// Uses adminQuery to bypass RLS — admin must be able to adjust any user's wallet.
+router.post('/users/:id/wallet-adjust', async (req, res, next) => {
+  try {
+    const adminId = req.adminAuth?.userId ?? `admin_token:${req.adminAuth?.method ?? 'unknown'}`;
+    const targetUserId = req.params.id;
+    const { amountCents, type, reason, idempotencyKey } = req.body as {
+      amountCents?: number; type?: string; reason?: string; idempotencyKey?: string;
+    };
+
+    if (!amountCents || typeof amountCents !== 'number' || !Number.isInteger(amountCents) || amountCents <= 0 || amountCents > 10_000_00) {
+      res.status(400).json({ error: 'amountCents must be a positive integer (max 1000000)' }); return;
+    }
+    if (!type || (type !== 'credit' && type !== 'debit')) {
+      res.status(400).json({ error: 'type must be "credit" or "debit"' }); return;
+    }
+    if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
+      res.status(400).json({ error: 'reason is required (min 3 chars)' }); return;
+    }
+
+    const idemKey = idempotencyKey ?? `admin_adjust_${targetUserId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Bypass RLS for cross-user admin operations: write directly via adminQuery
+    const description = `Admin adjustment: ${reason}`;
+    const metadata = JSON.stringify({ adminUserId: adminId, reason });
+
+    await adminQuery(
+      `INSERT INTO user_wallets (user_id, balance_cents) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING`,
+      [targetUserId]
+    );
+
+    if (type === 'credit') {
+      await adminQuery(
+        `INSERT INTO wallet_ledger (user_id, amount_cents, entry_type, description, idempotency_key, metadata)
+         VALUES ($1, $2, 'credit', $3, $4, $5::jsonb)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [targetUserId, amountCents, description, idemKey, metadata]
+      );
+      await adminQuery(
+        `UPDATE user_wallets SET balance_cents = balance_cents + $2, updated_at = NOW() WHERE user_id = $1`,
+        [targetUserId, amountCents]
+      );
+    } else {
+      await adminQuery(
+        `INSERT INTO wallet_ledger (user_id, amount_cents, entry_type, description, idempotency_key, metadata)
+         VALUES ($1, $2, 'debit', $3, $4, $5::jsonb)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [targetUserId, amountCents, description, idemKey, metadata]
+      );
+      await adminQuery(
+        `UPDATE user_wallets SET balance_cents = balance_cents - $2, updated_at = NOW() WHERE user_id = $1`,
+        [targetUserId, amountCents]
+      );
+    }
+
+    const balance = await adminQuery<{ balance_cents: string }>(
+      'SELECT balance_cents::text FROM user_wallets WHERE user_id = $1',
+      [targetUserId]
+    );
+
+    await writeAdminAction(adminId, targetUserId, `wallet_${type}`, reason, {
+      amountCents, newBalance: parseInt(balance[0]?.balance_cents ?? '0', 10),
+    });
+
+    res.json({ applied: true, balanceCents: parseInt(balance[0]?.balance_cents ?? '0', 10) });
+  } catch (err) { next(err); }
+});
+
+// ─── Admin Dashboard: Tier Override ───────────────────────────────
+// Uses adminQuery to bypass RLS — admin must be able to change any user's tier.
+router.post('/users/:id/tier-override', async (req, res, next) => {
+  try {
+    const adminId = req.adminAuth?.userId ?? `admin_token:${req.adminAuth?.method ?? 'unknown'}`;
+    const targetUserId = req.params.id;
+    const { tier, reason } = req.body as { tier?: string; reason?: string };
+
+    if (!tier || !isTierName(tier)) {
+      res.status(400).json({ error: 'tier must be a valid tier name' }); return;
+    }
+    if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
+      res.status(400).json({ error: 'reason is required (min 3 chars)' }); return;
+    }
+
+    const now = new Date();
+    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    await adminQuery(
+      `INSERT INTO user_tiers (user_id, tier, current_period_resets_at, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET tier = EXCLUDED.tier, updated_at = NOW()`,
+      [targetUserId, tier, periodEnd.toISOString()]
+    );
+
+    await writeAdminAction(adminId, targetUserId, 'tier_override', reason, { tier });
+
+    res.json({ tier });
+  } catch (err) { next(err); }
+});
+
+// ─── Admin Dashboard: Run Telemetry ──────────────────────────────
+router.get('/telemetry/runs', async (req, res, next) => {
+  try {
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const stats = await adminQuery<Record<string, unknown>>(
+      `SELECT
+         COUNT(*) as total_runs,
+         COUNT(*) FILTER (WHERE status = 'completed') as completed,
+         COUNT(*) FILTER (WHERE status = 'failed') as failed,
+         COUNT(*) FILTER (WHERE status = 'running') as running,
+         research_objective,
+         AVG(EXTRACT(EPOCH FROM (completed_at - created_at))) FILTER (WHERE completed_at IS NOT NULL) as avg_runtime_seconds
+       FROM research_runs
+       WHERE created_at >= $1
+       GROUP BY research_objective
+       ORDER BY total_runs DESC`,
+      [since.toISOString()]
+    );
+
+    const daily = await adminQuery<Record<string, unknown>>(
+      `SELECT DATE(created_at) as day, COUNT(*) as count, status
+       FROM research_runs WHERE created_at >= $1
+       GROUP BY DATE(created_at), status ORDER BY day DESC LIMIT 100`,
+      [since.toISOString()]
+    );
+
+    res.json({ stats, daily, days });
+  } catch (err) { next(err); }
+});
+
+// ─── Admin Dashboard: Audit Log ──────────────────────────────────
+router.get('/audit-log', async (req, res, next) => {
+  try {
+    const { user_id, event_type, from, to } = req.query as Record<string, string | undefined>;
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string, 10) || 50, 200));
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+
+    let sql = 'SELECT * FROM admin_actions_log WHERE 1=1';
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (user_id) { sql += ` AND (admin_user_id = $${idx} OR target_user_id = $${idx})`; params.push(user_id); idx++; }
+    if (event_type) { sql += ` AND action = $${idx}`; params.push(event_type); idx++; }
+    if (from) { sql += ` AND created_at >= $${idx}`; params.push(from); idx++; }
+    if (to) { sql += ` AND created_at <= $${idx}`; params.push(to); idx++; }
+
+    sql += ` ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+    params.push(limit, offset);
+
+    try {
+      const rows = await adminQuery(sql, params);
+      res.json({ entries: rows, limit, offset });
+    } catch (dbErr: unknown) {
+      if ((dbErr as { code?: string })?.code === '42P01') {
+        res.json({ entries: [], limit, offset, notice: 'Audit log table not yet created' });
+        return;
+      }
+      throw dbErr;
+    }
+  } catch (err) { next(err); }
 });
 
 export default router;
