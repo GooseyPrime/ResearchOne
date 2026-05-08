@@ -13,7 +13,6 @@ import {
   Cpu,
   Settings,
   Wallet,
-  Radar,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
