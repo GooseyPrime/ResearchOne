@@ -76,8 +76,8 @@
 
 ## Launch Blockers
 
-- [ ] Legal review of Terms, Privacy, Acceptable Use ($2.5-5K budget)
-- [ ] Remove LegalDraftBanner after lawyer sign-off
+- [x] Legal review of Terms, Privacy, Acceptable Use ($2.5-5K budget)
+- [x] Remove LegalDraftBanner after lawyer sign-off
 - [ ] Production environment variables provisioned
 - [ ] Database backups configured and tested
 - [ ] Sentry DSN provisioned
