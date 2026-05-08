@@ -179,17 +179,26 @@ export async function enqueueLivingRevisionFromWebhook(args: {
   });
 
   const { livingReportRevisionQueue } = await import('../../queue/queues');
-  await livingReportRevisionQueue.add(
-    'revision',
-    {
-      monitorId: args.monitor.id,
-      reportId: args.monitor.report_id,
-      revisionRequestId: requestId,
-      webhookEventId: args.webhookEventId,
-      triggeredBy,
-    },
-    { jobId: args.webhookEventId, removeOnComplete: 50, removeOnFail: 100 }
-  );
+  try {
+    await livingReportRevisionQueue.add(
+      'revision',
+      {
+        monitorId: args.monitor.id,
+        reportId: args.monitor.report_id,
+        revisionRequestId: requestId,
+        webhookEventId: args.webhookEventId,
+        triggeredBy,
+      },
+      { jobId: args.webhookEventId, removeOnComplete: 50, removeOnFail: 100 }
+    );
+  } catch (enqueueErr) {
+    await query(
+      `UPDATE report_revision_requests SET status='failed', completed_at=NOW()
+       WHERE id=$1`,
+      [requestId]
+    );
+    throw enqueueErr;
+  }
 
   await query(
     `INSERT INTO report_monitor_events (monitor_id, event_kind, payload)
@@ -301,7 +310,17 @@ export async function registerMonitor(args: {
   );
   if (existing[0]) {
     const row = existing[0];
-    return { monitorId: row.id, parallelMonitorId: row.parallel_monitor_id, status: row.status };
+    if (row.status === 'active') {
+      return { monitorId: row.id, parallelMonitorId: row.parallel_monitor_id, status: row.status };
+    }
+    await query(
+      `UPDATE report_monitors
+       SET status='active', cancelled_at=NULL, paused_at=NULL,
+           stripe_subscription_id=$2, stripe_subscription_item_id=$3
+       WHERE id=$1`,
+      [row.id, args.stripeSubscriptionId, args.stripeSubscriptionItemId ?? null]
+    );
+    return { monitorId: row.id, parallelMonitorId: row.parallel_monitor_id, status: 'active' };
   }
 
   const reportRows = await query<{ falsification_criteria: string | null }>(

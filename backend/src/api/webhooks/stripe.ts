@@ -109,31 +109,13 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     return;
   }
 
-  const item = subscription.items?.data?.[0];
-  const priceLookupKey = item?.price?.lookup_key ?? null;
-
-  await syncSubscription(
-    userId,
-    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-    subscription.id,
-    subscription.status,
-    new Date(subscription.current_period_end * 1000),
-    subscription.cancel_at_period_end,
-    priceLookupKey
-  );
-
-  // Sync tier in user_tiers table to match subscription plan
-  const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
-  if (tierFromLookup && subscription.status === 'active') {
-    try {
-      await setUserTier(userId, tierFromLookup);
-    } catch (err) {
-      logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
-    }
-  }
-
   const items = subscription.items?.data ?? [];
-  if (subscription.status === 'active' && subscriptionHasLivingReportsPrice(items)) {
+  const isMonitorOnlySubscription =
+    subscription.status === 'active' && subscriptionHasLivingReportsPrice(items);
+
+  // Monitor-only subscriptions must not corrupt the user's plan tier.
+  // Handle them before tier sync and return early after registration.
+  if (isMonitorOnlySubscription) {
     const reportId = subscription.metadata?.report_id?.trim();
     const rawKind = subscription.metadata?.monitor_kind?.trim();
     const monitorKind =
@@ -161,6 +143,30 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
           throw regErr;
         }
       }
+    }
+    return;
+  }
+
+  // Normal tier subscription — sync plan state
+  const item = subscription.items?.data?.[0];
+  const priceLookupKey = item?.price?.lookup_key ?? null;
+
+  await syncSubscription(
+    userId,
+    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+    subscription.id,
+    subscription.status,
+    new Date(subscription.current_period_end * 1000),
+    subscription.cancel_at_period_end,
+    priceLookupKey
+  );
+
+  const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
+  if (tierFromLookup && subscription.status === 'active') {
+    try {
+      await setUserTier(userId, tierFromLookup);
+    } catch (err) {
+      logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
     }
   }
 };

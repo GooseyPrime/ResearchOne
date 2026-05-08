@@ -82,11 +82,16 @@ export function startLivingReportRevisionWorker(io: SocketIOServer): Worker {
       error: err instanceof Error ? err.message : String(err),
     });
 
-    void recordLivingRevisionJobFailed({
+    recordLivingRevisionJobFailed({
       monitorId: data.monitorId,
       revisionRequestId: data.revisionRequestId,
       webhookEventId: data.webhookEventId,
       errorMessage: err instanceof Error ? err.message : String(err),
+    }).catch((dbErr) => {
+      logger.error('living_revision_record_failure_write_failed', {
+        monitorId: data.monitorId,
+        error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+      });
     });
   });
 

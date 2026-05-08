@@ -2,7 +2,7 @@
 -- user_id / org_id are TEXT to match users(id) and orgs(id) (Clerk-style ids).
 
 CREATE TABLE report_monitors (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   org_id TEXT REFERENCES orgs(id) ON DELETE CASCADE,
@@ -27,7 +27,7 @@ CREATE INDEX idx_report_monitors_status ON report_monitors(status) WHERE status 
 CREATE INDEX idx_report_monitors_parallel_id ON report_monitors(parallel_monitor_id);
 
 CREATE TABLE report_monitor_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   monitor_id UUID NOT NULL REFERENCES report_monitors(id) ON DELETE CASCADE,
   event_kind TEXT NOT NULL
     CHECK (event_kind IN ('webhook_received', 'webhook_replayed', 'webhook_invalid_signature',

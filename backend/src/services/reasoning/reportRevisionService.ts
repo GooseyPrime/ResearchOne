@@ -627,6 +627,7 @@ Return strict JSON.`,
       args.revisionTriggeredBy ? { triggeredBy: args.revisionTriggeredBy } : {}
     );
     let revision: { rows: Array<{ id: string }> };
+    await client.query('SAVEPOINT pre_metadata_insert');
     try {
       revision = await client.query<{ id: string }>(
         `INSERT INTO report_revisions (
@@ -656,6 +657,7 @@ Return strict JSON.`,
     } catch (revErr) {
       const code = (revErr as { code?: string } | null)?.code;
       if (code !== '42703') throw revErr;
+      await client.query('ROLLBACK TO SAVEPOINT pre_metadata_insert');
       revision = await client.query<{ id: string }>(
         `INSERT INTO report_revisions (
            report_id, base_report_id, revised_report_id, parent_report_id, root_report_id,
