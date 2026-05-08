@@ -13,6 +13,7 @@ import {
   type ResearchRun,
   type ResearchProgressEvent,
 } from '../utils/api';
+import MonitorToggle from '../components/monitors/MonitorToggle';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
@@ -139,13 +140,23 @@ export default function ReportDetailPage() {
       });
     };
     const onCompleted = () => setRevisionProgress(null);
+    const onLivingCompleted = (payload: unknown) => {
+      const p = payload as { reportId?: string };
+      if (p.reportId && p.reportId !== id) return;
+      qc.invalidateQueries({ queryKey: ['report', id] });
+      qc.invalidateQueries({ queryKey: ['report-revisions', id] });
+      qc.invalidateQueries({ queryKey: ['report-monitors', id] });
+      addNotification('info', 'Living Report monitor produced a new revision for this report.');
+    };
     sock.on('revision:progress', onProgress);
     sock.on('revision:completed', onCompleted);
+    sock.on('living_report:revision_completed', onLivingCompleted);
     return () => {
       sock.off('revision:progress', onProgress);
       sock.off('revision:completed', onCompleted);
+      sock.off('living_report:revision_completed', onLivingCompleted);
     };
-  }, [id]);
+  }, [id, qc, addNotification]);
 
 
   const { data: report, isLoading } = useQuery({
@@ -448,6 +459,8 @@ export default function ReportDetailPage() {
             </>
           )}
         </div>
+
+        <MonitorToggle reportId={report.id} reportStatus={report.status} />
 
         <div className="print:hidden">
           <button
