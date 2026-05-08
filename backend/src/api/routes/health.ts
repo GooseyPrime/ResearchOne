@@ -158,9 +158,12 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
     scite: sciteCheck,
   };
 
+  const INTEGRATION_LATENCY_THRESHOLD_MS = 2000;
   const coreDown = Object.values(coreChecks).some((c) => !c.ok);
   const integrationDegraded =
-    Object.values(integrations).some((c) => c.configured && !c.ok);
+    Object.values(integrations).some(
+      (c) => c.configured && (!c.ok || (c.latencyMs ?? 0) > INTEGRATION_LATENCY_THRESHOLD_MS)
+    );
 
   const status: 'ok' | 'degraded' | 'down' = coreDown
     ? 'down'
