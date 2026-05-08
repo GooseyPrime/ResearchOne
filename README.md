@@ -133,7 +133,7 @@ Key tables:
 - `ingestion_artifacts` — Optional ingestion audit (hashes, parse warnings)
 - `error_log` — Structured error tracking
 
-Migrations: `001_initial_schema.sql` → `002_research_governance_and_discovery.sql` → `003_runtime_health_checkpoints.sql` → `004_report_revisions_and_model_policy.sql`
+Migrations are additive and currently span `001_initial_schema.sql` through `026_report_monitors.sql` in `backend/src/db/migrations/`.
 
 ## Environment Variables
 
@@ -148,29 +148,30 @@ If deploy fails with SSH or permission errors, the fix is in **GitHub repository
 
 ### Backend (Emma runtime VM) — Production
 
+Canonical source of truth: `backend/.env.production.example`. Keep `backend/.env` on the VM synced to that template when new features ship.
+
 ```env
 NODE_ENV=production
 PORT=3001
 
 # Database
 DATABASE_URL=postgresql://researchone:<password>@<postgres-vm>:5432/researchone
-# or individual fields: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+DB_HOST=<postgres-vm>
+DB_PORT=5432
+DB_NAME=researchone
+DB_USER=researchone
+DB_PASSWORD=<password>
 
 # Redis
 REDIS_URL=redis://<redis-vm>:6379
-# or: REDIS_HOST, REDIS_PORT
-REDIS_PASSWORD=           # set if requirepass is enabled
-REDIS_USERNAME=           # set if ACL username is needed
+REDIS_HOST=<redis-vm>
+REDIS_PORT=6379
+REDIS_PASSWORD=            # set if requirepass is enabled
+REDIS_USERNAME=            # set if ACL username is enabled
 
 # OpenRouter (server-side only — never in Vercel) — V1 / closed-weights routing
 OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-# Optional: provider data-collection preference sent on every chat
-# completion. Default `allow` lets OpenRouter route to the broadest
-# upstream set (which is what stops the "No allowed providers are
-# available" 404 we hit on 2026-04-28-PM). Set to `deny` to require
-# upstreams that do not train on prompts; the cost is fewer upstreams
-# per model and more frequent provider-unavailable errors.
 OPENROUTER_DATA_COLLECTION=allow
 
 # Hugging Face Inference Providers (server-side only — never in Vercel) —
@@ -193,46 +194,20 @@ TOGETHER_BASE_URL=https://api.together.xyz/v1
 JWT_SECRET=
 CORS_ORIGINS=https://<your-vercel-project>.vercel.app,https://<your-custom-frontend-domain>
 
-# Model routing (defaults — omit to use code defaults in backend/src/config/index.ts)
-PLANNER_MODEL=moonshotai/kimi-k2-thinking
-RETRIEVER_MODEL=deepseek/deepseek-v3.2
-REASONER_MODEL=deepseek/deepseek-r1
-SKEPTIC_MODEL=moonshotai/kimi-k2-thinking
-SYNTHESIZER_MODEL=anthropic/claude-sonnet-4.5
-VERIFIER_MODEL=anthropic/claude-sonnet-4
-OUTLINE_ARCHITECT_MODEL=moonshotai/kimi-k2-thinking
-SECTION_DRAFTER_MODEL=google/gemini-2.5-pro
-INTERNAL_CHALLENGER_MODEL=moonshotai/kimi-k2-thinking
-COHERENCE_REFINER_MODEL=anthropic/claude-sonnet-4.5
-REVISION_INTAKE_MODEL=openai/gpt-5-mini
-REPORT_LOCATOR_MODEL=openai/gpt-5-mini
-CHANGE_PLANNER_MODEL=moonshotai/kimi-k2-thinking
-SECTION_REWRITER_MODEL=google/gemini-2.5-pro
-CITATION_INTEGRITY_CHECKER_MODEL=mistralai/mistral-small-3.2-24b-instruct
-FINAL_REVISION_VERIFIER_MODEL=anthropic/claude-sonnet-4
-EMBEDDING_MODEL=openai/text-embedding-3-small
-
-# Fallbacks (per role — distinct provider families where possible)
-PLANNER_FALLBACK=deepseek/deepseek-r1
-RETRIEVER_FALLBACK=google/gemini-2.5-flash
-REASONER_FALLBACK=moonshotai/kimi-k2-thinking
-SKEPTIC_FALLBACK=anthropic/claude-sonnet-4
-SYNTHESIZER_FALLBACK=google/gemini-2.5-pro
-VERIFIER_FALLBACK=openai/o3-mini
-OUTLINE_ARCHITECT_FALLBACK=deepseek/deepseek-r1
-SECTION_DRAFTER_FALLBACK=anthropic/claude-sonnet-4
-INTERNAL_CHALLENGER_FALLBACK=anthropic/claude-sonnet-4
-COHERENCE_REFINER_FALLBACK=google/gemini-2.5-pro
-REVISION_INTAKE_FALLBACK=qwen/qwen3-235b-a22b
-REPORT_LOCATOR_FALLBACK=qwen/qwen3-235b-a22b
-CHANGE_PLANNER_FALLBACK=deepseek/deepseek-r1
-SECTION_REWRITER_FALLBACK=anthropic/claude-sonnet-4
-CITATION_INTEGRITY_CHECKER_FALLBACK=meta-llama/llama-3.3-70b-instruct
-FINAL_REVISION_VERIFIER_FALLBACK=openai/o3-mini
+# Clerk authentication (backend runtime)
+# Note: backend runtime uses CLERK_SECRET_KEY and CLERK_WEBHOOK_SECRET.
+# CLERK_PUBLISHABLE_KEY is included in backend template for ops visibility.
+CLERK_PUBLISHABLE_KEY=pk_live_REPLACE
+CLERK_SECRET_KEY=sk_live_REPLACE
+CLERK_WEBHOOK_SECRET=whsec_REPLACE
+ADMIN_USER_IDS=
+ADMIN_RUNTIME_TOKEN=
 
 # Embedding
 EMBEDDING_DIMENSIONS=1536
-EMBEDDING_BATCH_SIZE=100
+EMBEDDING_BATCH_SIZE=20
+# Optional model override:
+# EMBEDDING_MODEL=openai/text-embedding-3-small
 
 # Ingestion
 MAX_CHUNK_SIZE=1000
@@ -241,24 +216,62 @@ MAX_FILE_SIZE_MB=50
 
 # Exports — canonical path must match nginx /exports alias
 EXPORTS_DIR=/opt/researchone/exports
+ATLAS_BACKUP_DIR=
+ATLAS_AUTO_EXPORT_ON_EMBEDDING=false
 
 # Admin runtime control
-ADMIN_RUNTIME_TOKEN=
 RUNTIME_RESTART_COMMAND=pm2 restart researchone-api
+RUNTIME_LOG_OUT=
+RUNTIME_LOG_ERR=
 
 # Autonomous discovery
 DISCOVERY_ENABLED=true
 SEARCH_PROVIDER=tavily
 TAVILY_API_KEY=
 TAVILY_BASE_URL=https://api.tavily.com/search
-# Optional/legacy providers only:
-# SEARCH_PROVIDER=brave   -> requires SEARCH_PROVIDER_API_KEY
-# SEARCH_PROVIDER=generic -> requires SEARCH_PROVIDER_BASE_URL (SearXNG, Serper, or compatible endpoint)
-# SEARCH_PROVIDER=cascade -> optional architecture path (not recommended default)
 SEARCH_PROVIDER_API_KEY=
 SEARCH_PROVIDER_BASE_URL=
+MAX_DISCOVERY_QUERIES_PER_RUN=5
+DISCOVERY_INGEST_TIMEOUT_MS=90000
 MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
+
+# Optional scholarly/provider enrichment settings
+PARALLEL_API_KEY=
+PARALLEL_BASE_URL=https://api.parallel.ai/v1
+SCITE_API_KEY=
+SCITE_BASE_URL=https://api.scite.ai/v1
+OPENALEX_USER_AGENT=ResearchOne/1.0 (mailto:ops@researchone.io)
+CROSSREF_USER_AGENT=ResearchOne/1.0 (mailto:ops@researchone.io)
+
+# Parallel monitor / Living Reports (WO T)
+PARALLEL_MONITOR_API_KEY=
+PARALLEL_MONITOR_WEBHOOK_SECRET=
+
+# BYOK encryption
+BYOK_ENCRYPTION_KEY=
+# BYOK_ENCRYPTION_KEY_PREVIOUS=
+
+# Optional featured report publishing
+FEATURED_REPORT_GITHUB_TOKEN=
+FEATURED_REPORT_GITHUB_OWNER=GooseyPrime
+FEATURED_REPORT_GITHUB_REPO=newontology
+FEATURED_REPORT_GITHUB_PATH=content/featured-reports/latest.md
+FEATURED_REPORT_GITHUB_BRANCH=main
+
+# Optional Nomic Atlas integration
+NOMIC_API_KEY=
+NOMIC_ATLAS_DATASET_SLUG=intellme
+NOMIC_ATLAS_BASE_URL=https://api-atlas.nomic.ai
+NOMIC_AUTO_UPLOAD_ON_EXPORT=false
+
+# Optional InTellMe integration
+INTELLME_API_KEY=
+INTELLME_API_SECRET=
+INTELLME_API_URL=https://api.intellme.com/v1
+
+# Model and fallback overrides are optional and omitted here for brevity.
+# See backend/src/config/index.ts for the full list of *_MODEL / *_FALLBACK keys.
 ```
 
 **Which `.env` file is which (do not confuse these):**
@@ -283,6 +296,13 @@ cp backend/.env.production.example backend/.env
 VITE_API_BASE_URL=https://<emma-runtime-vm-domain>
 VITE_SOCKET_URL=https://<emma-runtime-vm-domain>
 VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_REPLACE
+VITE_CLERK_SIGN_IN_URL=/sign-in
+VITE_CLERK_SIGN_UP_URL=/sign-up
+VITE_CLERK_AFTER_SIGN_IN_URL=/app
+VITE_CLERK_AFTER_SIGN_UP_URL=/onboarding
+# Optional (currently unused by default checkout flow):
+# VITE_STRIPE_PUBLISHABLE_KEY=pk_live_REPLACE
 ```
 
 Set each `VITE_*` value to the **origin only** (scheme + host, no path): correct `https://api.example.com`, wrong `https://api.example.com/api`. The client code appends `/api` itself (`resolveApiBaseUrl` in `frontend/src/utils/api.ts`). Use the hostname nginx serves on the Emma VM, not the Vercel URL. **Redeploy the frontend after changing `VITE_*`** so Vite embeds them.
@@ -367,6 +387,7 @@ pm2 restart researchone-api --update-env
 #   VITE_API_BASE_URL=https://<emma-runtime-vm>
 #   VITE_SOCKET_URL=https://<emma-runtime-vm>
 #   VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm>
+#   VITE_CLERK_PUBLISHABLE_KEY=pk_live_REPLACE
 
 # Deploy via Vercel Git integration or:
 cd frontend && npx vercel --prod

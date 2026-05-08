@@ -12,24 +12,32 @@ All must be provisioned in secure password manager. **Never commit.**
 
 | Variable | Source | Status |
 |---|---|---|
+| `JWT_SECRET` | Generated random 32+ char secret | Pending |
+| `CORS_ORIGINS` | Production frontend origins (`https://...`) | Pending |
+| `DATABASE_URL` | Emma VM Postgres | Pending |
+| `REDIS_URL` | Emma VM Redis | Pending |
 | `CLERK_SECRET_KEY` | Clerk Dashboard | Pending |
 | `CLERK_WEBHOOK_SECRET` | Clerk Dashboard | Pending |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk Dashboard | Pending |
 | `STRIPE_SECRET_KEY` | Stripe Dashboard | Pending |
 | `STRIPE_WEBHOOK_SECRET` | Stripe Dashboard | Pending |
 | `STRIPE_PRICE_ID_*` | stripe-bootstrap.ts output | Pending |
 | `OPENROUTER_API_KEY` | OpenRouter Dashboard | Pending |
+| `TAVILY_API_KEY` | Tavily Dashboard | Pending |
 | `BYOK_ENCRYPTION_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` | Pending |
 | `INTELLME_API_KEY` | InTellMe team | Pending |
 | `INTELLME_API_SECRET` | InTellMe team | Pending |
 | `PARALLEL_API_KEY` | Parallel Web Systems | Pending |
+| `PARALLEL_MONITOR_API_KEY` | Parallel Web Systems (or fallback to `PARALLEL_API_KEY`) | Pending |
 | `PARALLEL_MONITOR_WEBHOOK_SECRET` | Self-generated | Pending |
 | `SCITE_API_KEY` | Scite Dashboard | Pending |
 | `OPENALEX_USER_AGENT` | `ResearchOne/1.0 (mailto:admin@researchone.io)` | Pending |
 | `CROSSREF_USER_AGENT` | `ResearchOne/1.0 (mailto:admin@researchone.io)` | Pending |
-| `RESEARCHONE_LEDGER_SIGNING_KEY` | Self-generated (32 bytes) | Pending |
-| `SENTRY_DSN` | Sentry project | Pending |
-| `DATABASE_URL` | Emma VM Postgres | Pending |
-| `REDIS_URL` | Emma VM Redis | Pending |
+| `VITE_API_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
+| `VITE_SOCKET_URL` | Public Emma API origin (`https://api...`) | Pending |
+| `VITE_EXPORTS_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
+
+Optional (feature-flag/feature-specific): `HF_TOKEN`, `TOGETHER_API_KEY`, `FEATURED_REPORT_GITHUB_TOKEN`, `NOMIC_API_KEY`, `SEARCH_PROVIDER_API_KEY`, `SEARCH_PROVIDER_BASE_URL`, `OPENROUTER_DATA_COLLECTION`.
 
 ## 3. Database Backups
 - [ ] pg_basebackup configured on Emma Postgres VM
@@ -75,8 +83,7 @@ All must be provisioned in secure password manager. **Never commit.**
 
 ## 11. Monitoring
 - [ ] Uptime monitoring on `/api/health/ready`
-- [ ] Sentry alerts on error rate spikes
-- [ ] Sentry DSN provisioned and wired
+- [ ] Runtime/API alerting configured for error spikes (provider/tooling per ops stack)
 
 ## 12. Smoke Tests
 - [ ] Sign up via production URL
