@@ -101,7 +101,16 @@ const config = {
       wallet20: process.env.STRIPE_PRICE_ID_WALLET_20 || '',
       wallet50: process.env.STRIPE_PRICE_ID_WALLET_50 || '',
       wallet100: process.env.STRIPE_PRICE_ID_WALLET_100 || '',
+      livingReportMonthly: process.env.STRIPE_PRICE_ID_LIVING_REPORT_MONTHLY || '',
+      reverseCitationWatchMonthly: process.env.STRIPE_PRICE_ID_REVERSE_CITATION_WATCH_MONTHLY || '',
     },
+  },
+
+  /** Parallel Monitor / Living Reports (Work Order T). Uses same API key as discovery Parallel unless overridden. */
+  parallelMonitor: {
+    apiKey: process.env.PARALLEL_MONITOR_API_KEY || process.env.PARALLEL_API_KEY || '',
+    webhookSecret: process.env.PARALLEL_MONITOR_WEBHOOK_SECRET || '',
+    baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
   redis: {

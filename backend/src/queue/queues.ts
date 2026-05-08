@@ -8,6 +8,7 @@ export const QUEUE_NAMES = {
   ATLAS_EXPORT: 'atlas-export',
   PIPELINE_B_INGESTION: 'pipeline-b-ingestion',
   INTELLME_DELETION: 'intellme-deletion',
+  LIVING_REPORT_REVISION: 'living-report-revision',
 } as const;
 
 const connection = createRedisConnection();
@@ -75,5 +76,19 @@ export const atlasExportQueue = new Queue(QUEUE_NAMES.ATLAS_EXPORT, {
     backoff: { type: 'fixed', delay: 5000 },
     removeOnComplete: 20,
     removeOnFail: 50,
+  },
+});
+
+/**
+ * Work Order T: run `createReportRevision` for Parallel Monitor webhooks.
+ * `attempts: 3` — after max attempts the job fails; operator can replay from Parallel.
+ */
+export const livingReportRevisionQueue = new Queue(QUEUE_NAMES.LIVING_REPORT_REVISION, {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: 50,
+    removeOnFail: 100,
   },
 });
