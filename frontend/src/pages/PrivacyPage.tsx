@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 
-
 const EFFECTIVE_DATE = 'May 6, 2025';
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
