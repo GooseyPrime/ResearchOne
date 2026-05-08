@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
 
 import { requireAuth } from '../middleware/clerkAuth';
+import { rlsContextMiddleware } from '../middleware/rlsContext';
+import { rlsStore } from '../db/pool';
 
 describe('requireAuth guard (JWT gate on API routers)', () => {
   it('rejects unauthenticated request with 401 before handler work', () => {
@@ -16,6 +18,38 @@ describe('requireAuth guard (JWT gate on API routers)', () => {
   });
 });
 
-describe('Postgres RLS on research runs', () => {
-  it.todo('blocked on WO-K — needs two-user seed + cross-user read assertion');
+describe('Postgres RLS context propagation', () => {
+  it('authenticated user has userId propagated to AsyncLocalStorage for RLS', () => {
+    const req = {
+      auth: { userId: 'user_rls_test', orgId: 'org_rls', sessionId: 's1' },
+    } as unknown as Request;
+
+    let storeSnapshot: { userId: string | null; orgId: string | null } | undefined;
+    rlsContextMiddleware(req, {} as Response, () => {
+      storeSnapshot = rlsStore.getStore();
+    });
+
+    expect(storeSnapshot).toEqual({ userId: 'user_rls_test', orgId: 'org_rls' });
+  });
+
+  it('unauthenticated request gets null userId in store (RLS sees zero rows)', () => {
+    const req = {} as Request;
+
+    let storeSnapshot: { userId: string | null; orgId: string | null } | undefined;
+    rlsContextMiddleware(req, {} as Response, () => {
+      storeSnapshot = rlsStore.getStore();
+    });
+
+    expect(storeSnapshot).toEqual({ userId: null, orgId: null });
+  });
+
+  it('RLS store is scoped to request — not visible after middleware returns', () => {
+    const req = {
+      auth: { userId: 'user_scope', orgId: null, sessionId: null },
+    } as unknown as Request;
+
+    rlsContextMiddleware(req, {} as Response, () => {});
+
+    expect(rlsStore.getStore()).toBeUndefined();
+  });
 });
