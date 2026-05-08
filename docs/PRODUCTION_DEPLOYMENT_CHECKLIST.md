@@ -31,8 +31,8 @@ All must be provisioned in secure password manager. **Never commit.**
 | `PARALLEL_MONITOR_API_KEY` | Parallel Web Systems (or fallback to `PARALLEL_API_KEY`) | Pending |
 | `PARALLEL_MONITOR_WEBHOOK_SECRET` | Self-generated | Pending |
 | `SCITE_API_KEY` | Scite Dashboard | Pending |
-| `OPENALEX_USER_AGENT` | `ResearchOne/1.0 (mailto:admin@researchone.io)` | Pending |
-| `CROSSREF_USER_AGENT` | `ResearchOne/1.0 (mailto:admin@researchone.io)` | Pending |
+| `OPENALEX_USER_AGENT` | `ResearchOne/1.0 (mailto:ops@researchone.io)` | Pending |
+| `CROSSREF_USER_AGENT` | `ResearchOne/1.0 (mailto:ops@researchone.io)` | Pending |
 | `VITE_API_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
 | `VITE_SOCKET_URL` | Public Emma API origin (`https://api...`) | Pending |
 | `VITE_EXPORTS_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
