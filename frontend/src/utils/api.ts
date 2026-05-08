@@ -154,6 +154,10 @@ export interface SystemHealth {
     exports: { ok: boolean; writable?: boolean };
     websocket: { ok: boolean };
   };
+  integrations?: {
+    parallel?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
+    scite?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
+  };
   restartAvailable: boolean;
 }
 

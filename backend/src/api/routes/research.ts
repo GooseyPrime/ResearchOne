@@ -3,7 +3,7 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
 import type { ResearchJobData } from '../../services/reasoning/researchOrchestrator';
-import { researchQueue } from '../../queue/queues';
+import { researchQueue, intellmeDeletionQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
 import { validatePerRunModelOverrides } from '../../services/runtimeModelStore';
 import {
@@ -785,15 +785,15 @@ router.post('/:id/cancel', async (req, res, next) => {
 // DELETE /api/research/:id — remove terminal or queued run row
 router.delete('/:id', async (req, res, next) => {
   try {
-    const rows = await query<{ status: string }>(
-      `SELECT status FROM research_runs WHERE id=$1`,
+    const rows = await query<{ status: string; user_id: string }>(
+      `SELECT status, user_id FROM research_runs WHERE id=$1`,
       [req.params.id]
     );
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
-    const { status } = rows[0];
+    const { status, user_id } = rows[0];
     if (status === 'running') {
       res.status(400).json({ error: 'Cannot delete a running run; cancel first' });
       return;
@@ -802,6 +802,26 @@ router.delete('/:id', async (req, res, next) => {
       const job = await researchQueue.getJob(req.params.id);
       if (job) await job.remove();
     }
+
+    // Enqueue InTellMe deletion if the run had a Pipeline B document ingested.
+    // Best-effort: do not block the delete response on queue failures.
+    try {
+      const ingestionRows = await query<{ intellme_request_id: string | null }>(
+        `SELECT intellme_request_id FROM run_ingestion_state WHERE run_id=$1`,
+        [req.params.id]
+      );
+      const docId = ingestionRows[0]?.intellme_request_id;
+      if (docId) {
+        await intellmeDeletionQueue.add(`delete-${req.params.id}`, {
+          runId: req.params.id,
+          userId: user_id,
+          documentId: docId,
+        });
+      }
+    } catch {
+      // Deploy-skew tolerance: table may not exist yet (migration 023)
+    }
+
     await query(`DELETE FROM research_runs WHERE id=$1`, [req.params.id]);
     res.status(204).send();
   } catch (err) {
