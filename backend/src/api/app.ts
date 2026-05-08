@@ -5,6 +5,8 @@ import morgan from 'morgan';
 import { rateLimit } from 'express-rate-limit';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { requestLoggerMiddleware } from '../middleware/requestLogger';
+import { centralErrorHandler } from '../middleware/errorHandler';
 
 import ingestionRoutes from './routes/ingestion';
 import researchRoutes from './routes/research';
@@ -24,6 +26,7 @@ import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // JSON API only — do not send Content-Security-Policy (Helmet default breaks
 // browser tooling that inspects responses; CSP belongs on the HTML document from Vercel).
@@ -45,13 +48,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
 
-const defaultLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 10,
@@ -59,9 +55,16 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many authentication requests. Please try again later.' },
 });
-
+app.use(requestLoggerMiddleware);
 app.use('/api/auth', authLimiter);
-app.use('/api/webhooks', authLimiter);
+
+const defaultLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/auth'),
+});
 app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
@@ -105,15 +108,7 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler — never leak err.message to clients (may contain PII or internal details)
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (res.headersSent) {
-    next(err);
-    return;
-  }
-  const requestId = (req as unknown as Record<string, unknown>).requestId as string | undefined;
-  logger.error('Unhandled error:', { message: err.message, stack: err.stack, requestId });
-  res.status(500).json({ error: 'Internal server error', requestId });
-});
+// Central error handler with PII redaction
+app.use(centralErrorHandler);
 
 export default app;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbQuery = vi.fn();
 const redisPing = vi.fn();
@@ -91,6 +91,16 @@ vi.mock('../config', () => ({
 }));
 
 describe('health route payload', () => {
+  const origParallel = process.env.PARALLEL_API_KEY;
+  const origScite = process.env.SCITE_API_KEY;
+
+  afterEach(() => {
+    if (origParallel === undefined) delete process.env.PARALLEL_API_KEY;
+    else process.env.PARALLEL_API_KEY = origParallel;
+    if (origScite === undefined) delete process.env.SCITE_API_KEY;
+    else process.env.SCITE_API_KEY = origScite;
+  });
+
   beforeEach(() => {
     dbQuery.mockReset();
     redisPing.mockReset();
@@ -102,10 +112,12 @@ describe('health route payload', () => {
     dbQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
     redisPing.mockResolvedValueOnce('PONG');
     queueCounts.mockResolvedValue({ waiting: 0 });
-    axiosGet.mockResolvedValueOnce({ data: {} });
+    axiosGet.mockResolvedValue({ data: {} });
     mkdir.mockResolvedValueOnce(undefined);
     writeFile.mockResolvedValueOnce(undefined);
     unlink.mockResolvedValueOnce(undefined);
+    process.env.PARALLEL_API_KEY = 'test-parallel-key';
+    process.env.SCITE_API_KEY = 'test-scite-key';
   });
 
   it('returns structured health payload with checks', async () => {

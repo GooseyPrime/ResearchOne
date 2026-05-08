@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
+import LegalDraftBanner from '../components/LegalDraftBanner';
 
 const EFFECTIVE_DATE = 'May 6, 2025';
 
@@ -18,6 +19,7 @@ export default function PrivacyPage() {
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
       <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+        <LegalDraftBanner />
         <h1 className="font-serif text-4xl">Privacy Policy</h1>
         <p className="mt-3 text-sm text-r1-text-muted">Effective date: {EFFECTIVE_DATE}</p>
 
