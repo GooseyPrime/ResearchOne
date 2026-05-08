@@ -23,7 +23,12 @@ BEGIN
   -- user_wallets
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_wallets') THEN
     EXECUTE 'ALTER TABLE user_wallets ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'user_wallets_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'user_wallets'
+        AND policyname = 'user_wallets_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY user_wallets_user_isolation ON user_wallets
         FOR ALL TO application_role
         USING (user_id = current_setting('app.user_id', true))$p$;
@@ -33,7 +38,12 @@ BEGIN
   -- wallet_ledger
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'wallet_ledger') THEN
     EXECUTE 'ALTER TABLE wallet_ledger ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'wallet_ledger_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'wallet_ledger'
+        AND policyname = 'wallet_ledger_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY wallet_ledger_user_isolation ON wallet_ledger
         FOR ALL TO application_role
         USING (user_id = current_setting('app.user_id', true))$p$;
@@ -43,7 +53,12 @@ BEGIN
   -- wallet_holds
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'wallet_holds') THEN
     EXECUTE 'ALTER TABLE wallet_holds ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'wallet_holds_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'wallet_holds'
+        AND policyname = 'wallet_holds_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY wallet_holds_user_isolation ON wallet_holds
         FOR ALL TO application_role
         USING (user_id = current_setting('app.user_id', true))$p$;
@@ -53,7 +68,12 @@ BEGIN
   -- user_subscriptions
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_subscriptions') THEN
     EXECUTE 'ALTER TABLE user_subscriptions ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'user_subscriptions_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'user_subscriptions'
+        AND policyname = 'user_subscriptions_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY user_subscriptions_user_isolation ON user_subscriptions
         FOR ALL TO application_role
         USING (user_id = current_setting('app.user_id', true))$p$;
@@ -63,7 +83,12 @@ BEGIN
   -- user_tiers
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_tiers') THEN
     EXECUTE 'ALTER TABLE user_tiers ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'user_tiers_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'user_tiers'
+        AND policyname = 'user_tiers_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY user_tiers_user_isolation ON user_tiers
         FOR ALL TO application_role
         USING (
@@ -76,7 +101,12 @@ BEGIN
   -- byok_keys
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'byok_keys') THEN
     EXECUTE 'ALTER TABLE byok_keys ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'byok_keys_user_isolation') THEN
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'byok_keys'
+        AND policyname = 'byok_keys_user_isolation'
+    ) THEN
       EXECUTE $p$CREATE POLICY byok_keys_user_isolation ON byok_keys
         FOR ALL TO application_role
         USING (user_id = current_setting('app.user_id', true))$p$;

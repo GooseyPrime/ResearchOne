@@ -99,6 +99,15 @@ describe('RLS isolation', () => {
       expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'application_role')");
       expect(sql).toContain('RETURN');
     });
+
+    it('scopes policy existence checks to public schema and target table', () => {
+      for (const table of tablesWithRls) {
+        const scopedPolicyCheck = new RegExp(
+          `WHERE schemaname = 'public'[\\s\\S]*tablename = '${table}'[\\s\\S]*policyname = '${table}_user_isolation'`
+        );
+        expect(sql).toMatch(scopedPolicyCheck);
+      }
+    });
   });
 
   describe('pool.ts — exports and AsyncLocalStorage', () => {
