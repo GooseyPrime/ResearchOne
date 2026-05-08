@@ -20,6 +20,7 @@ import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import byokRoutes from './routes/byok';
 import monitorsRoutes from './routes/monitors';
+import notificationsRoutes from './routes/notifications';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
 import parallelMonitorWebhookRoutes from './webhooks/parallelMonitor';
@@ -85,6 +86,7 @@ const routes: Array<[string, express.Router]> = [
   ['/auth', authRoutes],
   ['/billing', billingRoutes],
   ['/byok', byokRoutes],
+  ['/notifications', notificationsRoutes],
 ];
 
 // Webhooks - primary API prefix (compat mount below shares the same router instance)

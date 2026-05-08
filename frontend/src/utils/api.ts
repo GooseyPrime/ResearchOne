@@ -741,6 +741,24 @@ export const cancelUserMonitor = (monitorId: string) =>
 export const listMonitorEventsApi = (monitorId: string) =>
   api.get<{ events: MonitorEventRow[] }>(`/monitors/${monitorId}/events`).then((r) => r.data);
 
+export type UserNotificationKind = 'payment_failed' | 'subscription_canceled' | 'system';
+
+export interface UserNotificationRow {
+  id: string;
+  kind: UserNotificationKind;
+  title: string;
+  body: string | null;
+  cta_path: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export const listUserNotificationsApi = () =>
+  api.get<{ notifications: UserNotificationRow[] }>('/notifications').then((r) => r.data);
+
+export const markNotificationReadApi = (id: string) =>
+  api.post<{ ok: boolean }>(`/notifications/${id}/read`).then((r) => r.data);
+
 /**
  * Resolve an export file download URL, supporting cross-origin Vercel + Emma deployments.
  * Falls back to same-origin /exports path if VITE_EXPORTS_BASE_URL is not set.

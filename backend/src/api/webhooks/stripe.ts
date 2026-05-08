@@ -24,6 +24,10 @@ import {
   recordSubscriptionPastDueForMonitor,
   subscriptionHasLivingReportsPrice,
 } from '../../services/monitoring/parallelMonitorService';
+import {
+  createUserNotification,
+  resolveUserIdFromStripeSubscription,
+} from '../../services/notifications/userNotifications';
 
 const router = Router();
 
@@ -237,7 +241,17 @@ interface InvoiceData {
 
 /**
  * Handler for invoice.payment_failed events.
- * Flags the event in DB for later notification work (email notification out of scope per Work Order F).
+ *
+ * Two writers per Rule 10 (state-machine + multi-writer):
+ *  1. `stripe_webhook_events.payload.needs_notification` flag — operator/audit
+ *     trail. Kept for forensic queries.
+ *  2. `user_notifications` row of kind `payment_failed` — user-facing in-app
+ *     notification. Read by GET /api/notifications and the frontend
+ *     NotificationBanner.
+ *
+ * The notification insert is best-effort: if the user_id can't be resolved
+ * (subscription not yet synced) or the notifications table is missing
+ * (deploy skew), we still leave the audit flag in place and log.
  */
 const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const invoice = data as unknown as InvoiceData;
@@ -255,6 +269,27 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
       await recordSubscriptionPastDueForMonitor(subscriptionId);
     } catch (err) {
       logger.warn('stripe_monitor_past_due_event_failed', {
+        subscriptionId,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+
+    // Best-effort: surface an in-app notification so the user sees a banner.
+    try {
+      const userId = await resolveUserIdFromStripeSubscription(subscriptionId);
+      if (userId) {
+        await createUserNotification({
+          userId,
+          kind: 'payment_failed',
+          title: 'Payment failed',
+          body: 'We could not charge your card for this billing cycle. Update your payment method to avoid losing access.',
+          ctaPath: '/app/billing',
+        });
+      } else {
+        logger.warn('stripe_payment_failed_user_unresolved', { eventId, subscriptionId });
+      }
+    } catch (err) {
+      logger.warn('stripe_payment_failed_notification_insert_failed', {
         subscriptionId,
         error: err instanceof Error ? err.message : 'Unknown',
       });

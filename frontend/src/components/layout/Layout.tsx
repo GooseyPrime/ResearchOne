@@ -29,6 +29,7 @@ import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
+import NotificationBanner from '../ui/NotificationBanner';
 import ActiveRunBadge from '../research/ActiveRunBadge';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
@@ -285,6 +286,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto grid-bg">
+          <NotificationBanner />
           <Outlet />
         </main>
       </div>
