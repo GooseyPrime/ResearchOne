@@ -65,6 +65,15 @@ a smaller UPDATE:
    of `'aborted'`) so the same fallback UPDATE is not the one
    exercising the missing enum value.
 
+## Rule — migration DDL matches existing tables
+
+Before `COMMENT ON COLUMN` / `CREATE INDEX` in a new migration, **confirm
+the column exists on that table** in earlier migrations (e.g. `sources`
+vs. `documents`). PR #83 review (Codex/Copilot): migration 025 targeted
+`sources.parse_method`, but `parse_method` lives on `documents` from
+migration 002; `sources` has `fetch_method`. Wrong-table DDL fails at
+migrate time and blocks deploy.
+
 ## Rule — non-transactional migrations
 
 If a migration uses any of:

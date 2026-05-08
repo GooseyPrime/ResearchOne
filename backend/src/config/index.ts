@@ -203,6 +203,12 @@ const config = {
     maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
     maxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '5', 10),
     ingestionWaitTimeoutMs: parseInt(process.env.DISCOVERY_INGEST_TIMEOUT_MS || '90000', 10),
+    parallelApiKey: process.env.PARALLEL_API_KEY || '',
+    parallelBaseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
+    sciteApiKey: process.env.SCITE_API_KEY || '',
+    sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
+    openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
+    crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
   },
 
   exports: {
