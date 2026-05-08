@@ -73,6 +73,55 @@ For RLS session variables, use `set_config('app.var', $1, true)`
 (parameterized, not string-interpolated) inside the transaction
 that executes the tenant-scoped query.
 
+## Rule — subscription type discrimination
+
+When Stripe sends subscription events, a single `customer.subscription.*`
+handler may receive BOTH plan subscriptions (tier-based) and add-on
+subscriptions (monitor, credit packs). **Discriminate early**:
+
+1. Check whether the subscription contains a monitor/add-on price
+   BEFORE running tier sync.
+2. If it's an add-on subscription, handle it and `return` early — do
+   NOT let it flow through `syncSubscription` / `setUserTier`.
+
+PR #86 (Codex P1): A Living Report subscription was mapped to
+`free_demo` by `deriveTierFromLookupKey` and overwrote the user's
+real plan tier.
+
+## Rule — savepoints for deploy-skew fallback inside transactions
+
+When a deploy-skew fallback catches a column-missing error (`42703`)
+inside an existing transaction, PostgreSQL marks the transaction as
+aborted. A plain try/catch around the failing statement is not enough
+— the fallback statement also fails on the aborted transaction.
+
+Use `SAVEPOINT` / `ROLLBACK TO SAVEPOINT` around the speculative
+statement:
+
+```ts
+await client.query('SAVEPOINT sp_name');
+try { /* statement using new column */ }
+catch (err) {
+  if (pgCode === '42703') {
+    await client.query('ROLLBACK TO SAVEPOINT sp_name');
+    /* fallback statement without new column */
+  } else throw err;
+}
+```
+
+PR #86 (Codex P1): `report_revisions.metadata` INSERT failed during
+skew, but the fallback also failed because the transaction was aborted.
+
+## Rule — reactivation on re-subscribe
+
+When a service has a unique constraint on (entity, kind) and a
+subscription is cancelled then renewed, the handler must UPDATE the
+existing row (reactivate, refresh subscription IDs) instead of early-
+returning a stale cancelled row or conflicting on INSERT.
+
+PR #86 (Codex P2 / Copilot): `registerMonitor()` returned a cancelled
+row without updating it.
+
 ## Pre-commit check
 
 - [ ] Did you grep for every metadata key name in both the writer
@@ -84,3 +133,9 @@ that executes the tenant-scoped query.
   production code path?
 - [ ] Are there any unused imports? (`npx tsc --noEmit` catches type
   errors but not unused imports in all cases.)
+- [ ] If a webhook handler processes multiple subscription types, does
+  it discriminate and return early for non-tier subscriptions?
+- [ ] If a deploy-skew fallback is inside a transaction, does it use
+  SAVEPOINT / ROLLBACK TO SAVEPOINT?
+- [ ] If a row has a unique constraint and can be cancelled/reactivated,
+  does the register/create path handle the reactivation case?
