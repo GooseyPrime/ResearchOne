@@ -124,20 +124,30 @@ export default function BillingPage() {
         </p>
         {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(topupOptionsQuery.data?.options ?? []).map((option) => (
-            <button
-              key={option.priceId}
-              className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
-              onClick={() => {
-                setCheckoutError(null);
-                void startCheckoutRedirect('/billing/checkout/topup', {
-                  priceId: option.priceId,
-                }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
+          {(topupOptionsQuery.data?.options ?? []).length > 0 ? (
+            (topupOptionsQuery.data?.options ?? []).map((option) => (
+              <button
+                key={option.priceId}
+                className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
+                onClick={() => {
+                  setCheckoutError(null);
+                  void startCheckoutRedirect('/billing/checkout/topup', {
+                    priceId: option.priceId,
+                  }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
+                }}
+              >
+                {option.label}
+              </button>
+            ))
+          ) : topupOptionsQuery.isLoading ? (
+            <p className="text-sm text-slate-500">Loading top-up options...</p>
+          ) : (
+            <div className="w-full rounded-md border border-white/5 bg-slate-800/30 p-3">
+              <p className="text-sm text-slate-400">
+                Wallet top-ups are not yet configured. Check back soon or contact support.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 

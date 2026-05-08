@@ -31,6 +31,10 @@ export interface TierRule {
   livingReportsIncluded: boolean;
   adversarialTwinIncluded: boolean;
   provenanceLedgerIncluded: boolean;
+  corpusAccess: boolean;
+  atlasAccess: boolean;
+  knowledgeGraphAccess: boolean;
+  deepResearchAccess: boolean;
   exportFormats: readonly string[];
 }
 
@@ -56,6 +60,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: false,
+    atlasAccess: false,
+    knowledgeGraphAccess: false,
+    deepResearchAccess: false,
     exportFormats: [],
   },
 
@@ -72,6 +80,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: false,
+    atlasAccess: false,
+    knowledgeGraphAccess: false,
+    deepResearchAccess: false,
     exportFormats: ['markdown'],
   },
 
@@ -88,6 +100,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: false,
+    atlasAccess: false,
+    knowledgeGraphAccess: false,
+    deepResearchAccess: false,
     exportFormats: ['markdown', 'pdf'],
   },
 
@@ -104,6 +120,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: false,
+    atlasAccess: false,
+    knowledgeGraphAccess: false,
+    deepResearchAccess: false,
     exportFormats: ['markdown', 'pdf'],
   },
 
@@ -120,6 +140,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: true,
+    atlasAccess: true,
+    knowledgeGraphAccess: true,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf', 'docx'],
   },
 
@@ -136,6 +160,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: true,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: true,
+    corpusAccess: true,
+    atlasAccess: true,
+    knowledgeGraphAccess: true,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf', 'docx'],
   },
 
@@ -152,6 +180,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: false,
     adversarialTwinIncluded: false,
     provenanceLedgerIncluded: false,
+    corpusAccess: true,
+    atlasAccess: true,
+    knowledgeGraphAccess: true,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf', 'docx'],
   },
 
@@ -168,6 +200,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: true,
     adversarialTwinIncluded: true,
     provenanceLedgerIncluded: true,
+    corpusAccess: true,
+    atlasAccess: true,
+    knowledgeGraphAccess: true,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf', 'docx', 'json'],
   },
 
@@ -184,6 +220,10 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     livingReportsIncluded: true,
     adversarialTwinIncluded: true,
     provenanceLedgerIncluded: true,
+    corpusAccess: true,
+    atlasAccess: true,
+    knowledgeGraphAccess: true,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf', 'docx', 'json'],
   },
 } as const;

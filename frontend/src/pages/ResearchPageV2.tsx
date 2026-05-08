@@ -269,7 +269,7 @@ export default function ResearchPageV2() {
     onSuccess: (data) => {
       setTrackingRunId(data.runId);
       lastKnownRunIdRef.current = data.runId;
-      const queuedEvt: ResearchProgressEvent = { runId: data.runId, stage: 'planning', percent: 0, message: 'Research One 2 queued...', timestamp: new Date().toISOString() };
+      const queuedEvt: ResearchProgressEvent = { runId: data.runId, stage: 'planning', percent: 0, message: 'Deep Research queued...', timestamp: new Date().toISOString() };
       setProgress(queuedEvt);
       setActiveRun(queuedEvt);
       setFailure(null);
@@ -277,7 +277,7 @@ export default function ResearchPageV2() {
       runSummaryReceivedRef.current = false;
       setTraceEvents([queuedEvt]);
       subscribeToJob(data.runId);
-      addNotification('info', 'Research One 2 started — tracking detailed progress...');
+      addNotification('info', 'Deep Research started — tracking detailed progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
     },
     onError: (error) => {
@@ -429,7 +429,7 @@ export default function ResearchPageV2() {
         setProgress(doneEvt);
         setActiveRun(doneEvt);
         setTrackingRunId(null);
-        addNotification('success', 'Research One 2 complete — report generated!');
+        addNotification('success', 'Deep Research complete — report generated!');
         qc.invalidateQueries({ queryKey: ['reports'] });
         setTimeout(() => navigate(`/reports/${result.reportId}`), 1200);
       }
@@ -466,7 +466,7 @@ export default function ResearchPageV2() {
             failureMeta: failed.failureMeta,
           },
         });
-        addNotification('error', failureReason || 'Research One 2 failed.');
+        addNotification('error', failureReason || 'Deep Research failed.');
       }
     });
 
@@ -507,7 +507,7 @@ export default function ResearchPageV2() {
         setProgress(null);
         setTrackingRunId(null);
         setActiveRun(null);
-        addNotification('info', 'Research One 2 run cancelled.');
+        addNotification('info', 'Deep Research run cancelled.');
       }
     });
 
@@ -615,7 +615,7 @@ export default function ResearchPageV2() {
       <div>
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
           <FlaskConical className="text-accent" size={28} />
-          <span className="text-gradient">Research One 2</span>
+          <span className="text-gradient">Deep Research</span>
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
           Frontier ensemble (V2 engine): evidence-tiered reporting with full-stage telemetry.{' '}
@@ -628,7 +628,7 @@ export default function ResearchPageV2() {
       <div className="card-glow p-6 space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="section-title block mb-2">Research One 2 query</label>
+            <label className="section-title block mb-2">Deep Research query</label>
             <textarea
               className="textarea min-h-28 text-base"
               placeholder="What is the relationship between mitochondrial dysfunction and cancer metabolism?"
@@ -739,7 +739,7 @@ export default function ResearchPageV2() {
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowModels((v) => !v)}>
             <Settings2 size={14} />
-            {showModels ? 'Hide model ensemble' : 'Show model ensemble (Research One 2)'}
+            {showModels ? 'Hide model ensemble' : 'Show model ensemble'}
           </button>
 
           {showModels && ensembleData?.presets?.[researchObjective] && (
@@ -878,7 +878,7 @@ export default function ResearchPageV2() {
 
           <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || !!trackingRunId}>
             <Send size={16} />
-            {mutation.isPending ? 'Queuing...' : trackingRunId ? 'Research One 2 running...' : 'Run Research One 2'}
+            {mutation.isPending ? 'Queuing...' : trackingRunId ? 'Deep Research running...' : 'Run Deep Research'}
           </button>
         </form>
 
@@ -886,7 +886,7 @@ export default function ResearchPageV2() {
           <div className="border-t border-indigo-900/20 pt-5 animate-in lg:grid lg:grid-cols-5 lg:gap-6 space-y-4 lg:space-y-0">
             <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="section-title">Research One 2 pipeline</span>
+              <span className="section-title">Deep Research pipeline</span>
               <span className={hasWarning ? 'text-xs text-amber-300 font-medium' : 'text-xs text-accent font-medium'}>
                 {current?.percent ?? 0}%
               </span>
@@ -1058,7 +1058,7 @@ export default function ResearchPageV2() {
       </div>
 
       <div className="card p-5">
-        <h2 className="text-sm font-semibold text-white mb-4">Research One 2 governance model</h2>
+        <h2 className="text-sm font-semibold text-white mb-4">Deep Research governance model</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {STAGES.filter((s) => s.id !== 'done').map((stage) => (
             <div key={stage.id} className="flex items-start gap-2.5 p-3 bg-surface-200 rounded-lg">
