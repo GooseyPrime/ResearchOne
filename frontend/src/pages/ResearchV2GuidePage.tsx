@@ -100,12 +100,12 @@ export default function ResearchV2GuidePage() {
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <FlaskConical className="text-accent" size={24} />
-          Research One 2 — Research modes
+          Deep Research — Research modes
         </h1>
         <p className="text-slate-400 text-sm mt-1">
           Each mode changes orchestrator focus, red-team criteria, and report structure. Open-weights ensemble defaults are tuned per mode on{' '}
           <Link to="/app/research-v2" className="text-accent hover:underline">
-            Research One 2
+            Deep Research
           </Link>
           .
         </p>
@@ -114,7 +114,7 @@ export default function ResearchV2GuidePage() {
       <div className="card p-4 flex items-start gap-3 border border-indigo-900/30">
         <HelpCircle className="text-slate-500 flex-shrink-0 mt-0.5" size={18} />
         <p className="text-sm text-slate-400 leading-relaxed">
-          Research One 2 uses a reasoning-first epistemic policy: the platform shifts agent configurations and models by research mode to support literature rigor, investigative tracing, patent whitespace, applied feasibility, or cross-domain correlation—without assuming a single narrative by default.
+          Deep Research uses a reasoning-first epistemic policy: the platform shifts agent configurations and models by research mode to support literature rigor, investigative tracing, patent whitespace, applied feasibility, or cross-domain correlation—without assuming a single narrative by default.
         </p>
       </div>
 
@@ -168,7 +168,7 @@ export default function ResearchV2GuidePage() {
           <span className="text-slate-200"> Qwen/Qwen2.5-72B-Instruct</span>,
           <span className="text-slate-200"> deepseek-ai/DeepSeek-R1-Distill-Llama-70B</span>) remain
           allowlisted but are <span className="text-amber-200">user-opt-in fallbacks only</span>. They never
-          fire silently. If you enable a per-role fallback in the Research One 2 page, the live trace will
+          fire silently. If you enable a per-role fallback in the Deep Research page, the live trace will
           record <span className="font-mono">usedFallback=true</span> with the actual model so you can
           tell whether the report was generated through a refusal-aligned model.
         </p>
