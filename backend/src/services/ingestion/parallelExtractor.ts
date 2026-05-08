@@ -55,7 +55,7 @@ export async function extractWithParallel(url: string): Promise<ParallelExtractR
     text: data.text ?? '',
     canonical_url: data.canonical_url ?? data.url ?? url,
     title: data.title ?? '',
-    fetch_method: data.fetch_method ?? 'parallel',
+    fetch_method: data.fetch_method ?? 'parallel_extract_v1',
     original_mime_type: data.original_mime_type ?? data.mime_type ?? 'text/html',
   };
 }

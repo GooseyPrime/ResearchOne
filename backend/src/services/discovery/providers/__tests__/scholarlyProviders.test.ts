@@ -6,12 +6,12 @@ class SuccessProvider implements SearchProvider {
   name = 'success';
   private results: SearchResultCandidate[];
   constructor(results: SearchResultCandidate[]) { this.results = results; }
-  async search() { return this.results; }
+  async search(_query: SearchQuery) { return this.results; }
 }
 
 class FailProvider implements SearchProvider {
   name = 'fail';
-  async search(): Promise<SearchResultCandidate[]> { throw new Error('provider down'); }
+  async search(_query: SearchQuery): Promise<SearchResultCandidate[]> { throw new Error('provider down'); }
 }
 
 function makeResult(provider: string, url: string): SearchResultCandidate {

@@ -20,11 +20,17 @@ interface ContrastingPapersResponse {
   papers?: Array<{ doi?: string }>;
 }
 
+function sciteConfigured(): boolean {
+  return Boolean(config.discovery.sciteApiKey?.trim());
+}
+
 function sciteHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${config.discovery.sciteApiKey}`,
-    Accept: 'application/json',
-  };
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  const key = config.discovery.sciteApiKey?.trim();
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
 }
 
 function sciteUrl(path: string): string {
@@ -44,6 +50,10 @@ export async function getInstitutionalStatus(
     }
   } catch (err) {
     logger.warn('[scite] Redis cache read failed for status:', err);
+  }
+
+  if (!sciteConfigured()) {
+    return { status: 'active' };
   }
 
   try {
@@ -88,6 +98,10 @@ export async function getCitationCounts(
     logger.warn('[scite] Redis cache read failed for counts:', err);
   }
 
+  if (!sciteConfigured()) {
+    return { supporting: 0, contrasting: 0, mentioning: 0 };
+  }
+
   try {
     const response = await axios.get<CitationCountsResponse>(
       sciteUrl(`/papers/${encodeURIComponent(doi)}/tallies`),
@@ -128,6 +142,10 @@ export async function getContrastingPaperDois(doi: string): Promise<string[]> {
     }
   } catch (err) {
     logger.warn('[scite] Redis cache read failed for contrasting:', err);
+  }
+
+  if (!sciteConfigured()) {
+    return [];
   }
 
   try {

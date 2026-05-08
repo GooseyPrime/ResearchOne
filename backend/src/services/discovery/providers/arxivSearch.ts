@@ -26,6 +26,13 @@ const parser = new XMLParser({
   isArray: (name) => name === 'entry' || name === 'link',
 });
 
+/** Strip arxiv.org/abs/ prefix (http or https) and version suffix from Atom id URLs. */
+function arxivIdFromAbsUrl(absUrl: string): string {
+  return absUrl
+    .replace(/^https?:\/\/arxiv\.org\/abs\//i, '')
+    .replace(/v\d+$/, '');
+}
+
 export class ArxivSearchProvider implements SearchProvider {
   readonly name = 'arxiv';
 
@@ -34,7 +41,7 @@ export class ArxivSearchProvider implements SearchProvider {
 
     try {
       const response = await axios.get<string>(
-        `http://export.arxiv.org/api/query`,
+        'https://export.arxiv.org/api/query',
         {
           params: {
             search_query: `all:${query.text}`,
@@ -71,7 +78,7 @@ export class ArxivSearchProvider implements SearchProvider {
             ? entry.summary.replace(/\s+/g, ' ').trim().slice(0, 500)
             : '';
 
-          const arxivId = absUrl.replace('http://arxiv.org/abs/', '').replace(/v\d+$/, '');
+          const arxivId = arxivIdFromAbsUrl(absUrl);
 
           return {
             url,
