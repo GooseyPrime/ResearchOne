@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import type { LucideIcon } from 'lucide-react';
 import {
   FlaskConical,
   BookOpen,
@@ -35,11 +36,13 @@ import clsx from 'clsx';
 type NavItem = {
   to: string;
   label: string;
-  icon: typeof FlaskConical;
+  icon: LucideIcon;
   desc: string;
   requireAdmin?: boolean;
   requireTier?: 'pro';
 };
+
+const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/app/research', label: 'Standard Research', icon: FlaskConical, desc: 'Start investigation' },
@@ -81,7 +84,7 @@ export default function Layout() {
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
 
-  const { data: subscriptionData } = useQuery({
+  const { data: subscriptionData, isLoading: subLoading } = useQuery({
     queryKey: ['billing-subscription'],
     queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
     enabled: Boolean(authLoaded && isSignedIn),
@@ -89,12 +92,16 @@ export default function Layout() {
     retry: false,
   });
 
-  const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
-  const userTier = subscriptionData?.tier ?? 'free_demo';
-  const hasProAccess = isAllowlistedAdmin || PRO_PLUS_TIERS.includes(userTier);
+  const subIsActive = subscriptionData?.status === 'active';
+  const userTier = subIsActive ? subscriptionData.tier : 'free_demo';
+  const hasProAccess =
+    isAllowlistedAdmin ||
+    (PRO_PLUS_TIERS as readonly string[]).includes(userTier);
+  const tierResolved = isAllowlistedAdmin || !subLoading;
 
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.requireAdmin && !isAllowlistedAdmin) return false;
+    if (item.requireTier === 'pro' && !tierResolved) return false;
     if (item.requireTier === 'pro' && !hasProAccess) return false;
     return true;
   });

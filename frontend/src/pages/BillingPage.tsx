@@ -141,6 +141,12 @@ export default function BillingPage() {
             ))
           ) : topupOptionsQuery.isLoading ? (
             <p className="text-sm text-slate-500">Loading top-up options...</p>
+          ) : topupOptionsQuery.isError ? (
+            <div className="w-full rounded-md border border-red-700/30 bg-red-950/20 p-3">
+              <p className="text-sm text-red-400">
+                Failed to load top-up options. Please try refreshing the page.
+              </p>
+            </div>
           ) : (
             <div className="w-full rounded-md border border-white/5 bg-slate-800/30 p-3">
               <p className="text-sm text-slate-400">
