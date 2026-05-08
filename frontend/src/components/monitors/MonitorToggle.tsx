@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Radar } from 'lucide-react';
+import { Radar, Quote } from 'lucide-react';
 import {
   listReportMonitors,
   createMonitorCheckoutSession,
@@ -7,30 +7,48 @@ import {
   resumeUserMonitor,
   cancelUserMonitor,
   extractApiError,
+  type ReportMonitorRow,
 } from '../../utils/api';
 import { useStore } from '../../store/useStore';
 
-export default function MonitorToggle({
+type MonitorKind = 'living_report' | 'reverse_citation_watch';
+
+const KIND_META: Record<
+  MonitorKind,
+  { title: string; price: string; description: string; icon: typeof Radar }
+> = {
+  living_report: {
+    title: 'Living Report',
+    price: '$19/mo',
+    description:
+      'Continuous monitoring of new evidence. When Parallel Monitor signals a material change, we run the same revision pipeline as a manual request — PolicyOne, no shortcut prompts.',
+    icon: Radar,
+  },
+  reverse_citation_watch: {
+    title: 'Reverse-Citation Watch',
+    price: '$15/mo',
+    description:
+      'Get notified when this report or its sources are cited or referenced elsewhere. Useful for tracking whether your research is influencing downstream work.',
+    icon: Quote,
+  },
+};
+
+function MonitorKindCard({
+  kind,
   reportId,
-  reportStatus,
+  monitor,
 }: {
+  kind: MonitorKind;
   reportId: string;
-  reportStatus: string;
+  monitor?: ReportMonitorRow;
 }) {
   const qc = useQueryClient();
   const { addNotification } = useStore();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['report-monitors', reportId],
-    queryFn: () => listReportMonitors(reportId),
-    enabled: reportStatus === 'finalized',
-  });
-
-  const monitors = data?.monitors ?? [];
-  const living = monitors.find((m) => m.monitor_kind === 'living_report');
+  const meta = KIND_META[kind];
+  const Icon = meta.icon;
 
   const checkoutMut = useMutation({
-    mutationFn: () => createMonitorCheckoutSession(reportId, 'living_report'),
+    mutationFn: () => createMonitorCheckoutSession(reportId, kind),
     onSuccess: (session) => {
       const url = session.checkoutUrl;
       if (url) window.location.href = url;
@@ -40,54 +58,50 @@ export default function MonitorToggle({
   });
 
   const pauseMut = useMutation({
-    mutationFn: () => pauseUserMonitor(living!.id),
+    mutationFn: () => pauseUserMonitor(monitor!.id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['report-monitors', reportId] });
-      addNotification('info', 'Living Report monitor paused.');
+      addNotification('info', `${meta.title} paused.`);
     },
     onError: (e) => addNotification('error', extractApiError(e)),
   });
 
   const resumeMut = useMutation({
-    mutationFn: () => resumeUserMonitor(living!.id),
+    mutationFn: () => resumeUserMonitor(monitor!.id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['report-monitors', reportId] });
-      addNotification('info', 'Living Report monitor resumed.');
+      addNotification('info', `${meta.title} resumed.`);
     },
     onError: (e) => addNotification('error', extractApiError(e)),
   });
 
   const cancelMut = useMutation({
-    mutationFn: () => cancelUserMonitor(living!.id),
+    mutationFn: () => cancelUserMonitor(monitor!.id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['report-monitors', reportId] });
-      addNotification('info', 'Living Report monitor cancelled.');
+      addNotification('info', `${meta.title} cancelled.`);
     },
     onError: (e) => addNotification('error', extractApiError(e)),
   });
 
-  if (reportStatus !== 'finalized') return null;
-
   return (
     <div className="rounded-lg border border-indigo-900/40 bg-surface-200/80 p-4 space-y-3">
-      <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-        <Radar size={16} className="text-accent shrink-0" />
-        Living Report monitor
+      <div className="flex items-center justify-between gap-2 text-sm font-medium text-slate-200">
+        <span className="flex items-center gap-2">
+          <Icon size={16} className="text-accent shrink-0" />
+          {meta.title}
+        </span>
+        <span className="text-xs text-slate-500 font-normal">{meta.price}</span>
       </div>
-      <p className="text-xs text-slate-500 leading-relaxed">
-        Subscribe to keep this finalized report aligned with new evidence. When Parallel Monitor signals a material change,
-        we run the same revision pipeline as a manual request (PolicyOne — no shortcut prompts).
-      </p>
-      {isLoading ? (
-        <p className="text-xs text-slate-500">Loading monitor status…</p>
-      ) : living ? (
+      <p className="text-xs text-slate-500 leading-relaxed">{meta.description}</p>
+      {monitor ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="badge border border-slate-600 text-slate-300 capitalize">{living.status}</span>
-          {living.status === 'active' ? (
+          <span className="badge border border-slate-600 text-slate-300 capitalize">{monitor.status}</span>
+          {monitor.status === 'active' ? (
             <button type="button" className="btn-ghost text-xs" onClick={() => pauseMut.mutate()} disabled={pauseMut.isPending}>
               Pause
             </button>
-          ) : living.status === 'paused' ? (
+          ) : monitor.status === 'paused' ? (
             <button type="button" className="btn-ghost text-xs" onClick={() => resumeMut.mutate()} disabled={resumeMut.isPending}>
               Resume
             </button>
@@ -96,7 +110,7 @@ export default function MonitorToggle({
             type="button"
             className="btn-ghost text-xs text-red-400 hover:text-red-300"
             onClick={() => {
-              if (window.confirm('Cancel this monitor and end the Stripe subscription for this report?')) cancelMut.mutate();
+              if (window.confirm(`Cancel ${meta.title} and end the Stripe subscription for this report?`)) cancelMut.mutate();
             }}
             disabled={cancelMut.isPending}
           >
@@ -112,6 +126,42 @@ export default function MonitorToggle({
         >
           {checkoutMut.isPending ? 'Starting checkout…' : 'Subscribe via Stripe'}
         </button>
+      )}
+    </div>
+  );
+}
+
+export default function MonitorToggle({
+  reportId,
+  reportStatus,
+}: {
+  reportId: string;
+  reportStatus: string;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-monitors', reportId],
+    queryFn: () => listReportMonitors(reportId),
+    enabled: reportStatus === 'finalized',
+  });
+
+  if (reportStatus !== 'finalized') return null;
+
+  const monitors = data?.monitors ?? [];
+  const living = monitors.find((m) => m.monitor_kind === 'living_report');
+  const rcw = monitors.find((m) => m.monitor_kind === 'reverse_citation_watch');
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.
+      </p>
+      {isLoading ? (
+        <p className="text-xs text-slate-500">Loading monitor status…</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          <MonitorKindCard kind="living_report" reportId={reportId} monitor={living} />
+          <MonitorKindCard kind="reverse_citation_watch" reportId={reportId} monitor={rcw} />
+        </div>
       )}
     </div>
   );
