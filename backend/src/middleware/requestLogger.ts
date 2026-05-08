@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 
 export function requestLoggerMiddleware(req: Request, res: Response, next: NextFunction): void {
   const requestId = randomUUID();
-  (req as unknown as Record<string, unknown>).requestId = requestId;
+  req.requestId = requestId;
   res.setHeader('X-Request-ID', requestId);
 
   const start = Date.now();

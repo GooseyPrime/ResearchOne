@@ -108,9 +108,12 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
 
   const [parallelProbe, sciteProbe] = await Promise.all([
     timedCheck(async () => {
-      const url = process.env.PARALLEL_WEB_URL;
-      if (!url) throw new Error('PARALLEL_WEB_URL not configured');
-      await axios.get(`${url}/health`, { timeout: 5000 });
+      const key = process.env.PARALLEL_API_KEY;
+      if (!key) throw new Error('PARALLEL_API_KEY not configured');
+      await axios.get('https://api.parallel.ai/health', {
+        timeout: 5000,
+        headers: { Authorization: `Bearer ${key}` },
+      });
       return 'ok';
     }),
     timedCheck(async () => {
@@ -131,6 +134,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
       latencyMs: openrouterProbe.latencyMs,
       modelProbe: openrouterProbe.value,
     },
+    exports: { ok: exportsProbe.ok, writable: exportsProbe.ok },
+    websocket: websocketCheck,
     discovery: discoveryCheck,
     parallel: { ok: parallelProbe.ok, latencyMs: parallelProbe.latencyMs },
     scite: { ok: sciteProbe.ok, latencyMs: sciteProbe.latencyMs },

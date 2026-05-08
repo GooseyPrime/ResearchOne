@@ -18,7 +18,7 @@ export function redactPii(text: string): string {
 }
 
 export function centralErrorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
-  const requestId = (req as unknown as Record<string, unknown>).requestId as string | undefined;
+  const requestId = req.requestId;
   const userId = req.auth?.userId;
 
   const safeMessage = redactPii(err.message);

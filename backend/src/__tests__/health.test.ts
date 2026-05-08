@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbQuery = vi.fn();
 const redisPing = vi.fn();
@@ -91,6 +91,16 @@ vi.mock('../config', () => ({
 }));
 
 describe('health route payload', () => {
+  const origParallel = process.env.PARALLEL_API_KEY;
+  const origScite = process.env.SCITE_API_KEY;
+
+  afterEach(() => {
+    if (origParallel === undefined) delete process.env.PARALLEL_API_KEY;
+    else process.env.PARALLEL_API_KEY = origParallel;
+    if (origScite === undefined) delete process.env.SCITE_API_KEY;
+    else process.env.SCITE_API_KEY = origScite;
+  });
+
   beforeEach(() => {
     dbQuery.mockReset();
     redisPing.mockReset();
@@ -106,7 +116,7 @@ describe('health route payload', () => {
     mkdir.mockResolvedValueOnce(undefined);
     writeFile.mockResolvedValueOnce(undefined);
     unlink.mockResolvedValueOnce(undefined);
-    process.env.PARALLEL_WEB_URL = 'http://localhost:9999';
+    process.env.PARALLEL_API_KEY = 'test-parallel-key';
     process.env.SCITE_API_KEY = 'test-scite-key';
   });
 

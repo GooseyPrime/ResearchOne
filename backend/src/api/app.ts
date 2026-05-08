@@ -55,6 +55,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many authentication requests. Please try again later.' },
 });
+app.use(requestLoggerMiddleware);
 app.use('/api/auth', authLimiter);
 
 const defaultLimiter = rateLimit({
@@ -62,9 +63,8 @@ const defaultLimiter = rateLimit({
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.startsWith('/api/auth'),
+  skip: (req) => req.path.startsWith('/auth'),
 });
-app.use(requestLoggerMiddleware);
 app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
