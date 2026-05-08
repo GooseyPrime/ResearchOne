@@ -87,6 +87,6 @@ All must be provisioned in secure password manager. **Never commit.**
 - [ ] Verify Pipeline B job enqueues (check ingestion audit log)
 
 ## Launch Blockers
-- [ ] Lawyer review of Terms, Privacy, Acceptable Use pages ($2.5-5K budget)
-- [ ] Remove `LegalDraftBanner` after lawyer sign-off
+- [x] Lawyer review of Terms, Privacy, Acceptable Use pages ($2.5-5K budget)
+- [x] Remove `LegalDraftBanner` after lawyer sign-off
 - [ ] Lighthouse: Performance >= 80, Accessibility >= 95
