@@ -102,10 +102,12 @@ describe('health route payload', () => {
     dbQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
     redisPing.mockResolvedValueOnce('PONG');
     queueCounts.mockResolvedValue({ waiting: 0 });
-    axiosGet.mockResolvedValueOnce({ data: {} });
+    axiosGet.mockResolvedValue({ data: {} });
     mkdir.mockResolvedValueOnce(undefined);
     writeFile.mockResolvedValueOnce(undefined);
     unlink.mockResolvedValueOnce(undefined);
+    process.env.PARALLEL_WEB_URL = 'http://localhost:9999';
+    process.env.SCITE_API_KEY = 'test-scite-key';
   });
 
   it('returns structured health payload with checks', async () => {
