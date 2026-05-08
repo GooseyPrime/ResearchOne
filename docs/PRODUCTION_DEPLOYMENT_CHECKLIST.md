@@ -37,7 +37,15 @@ All must be provisioned in secure password manager. **Never commit.**
 | `VITE_SOCKET_URL` | Public Emma API origin (`https://api...`) | Pending |
 | `VITE_EXPORTS_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
 
-Optional (feature-flag/feature-specific): `HF_TOKEN`, `TOGETHER_API_KEY`, `FEATURED_REPORT_GITHUB_TOKEN`, `NOMIC_API_KEY`, `SEARCH_PROVIDER_API_KEY`, `SEARCH_PROVIDER_BASE_URL`, `OPENROUTER_DATA_COLLECTION`.
+Optional (feature-flag / deployment-specific):
+
+- `HF_TOKEN` — only needed when using HF-routed model IDs.
+- `TOGETHER_API_KEY` — only needed when enabling Together fallback for HF-routed IDs.
+- `FEATURED_REPORT_GITHUB_TOKEN` — only needed when publishing featured reports to GitHub.
+- `NOMIC_API_KEY` — only needed when enabling Nomic Atlas upload integration.
+- `SEARCH_PROVIDER_API_KEY` — required only for `SEARCH_PROVIDER=brave` or `SEARCH_PROVIDER=cascade`.
+- `SEARCH_PROVIDER_BASE_URL` — required only for `SEARCH_PROVIDER=generic` or `SEARCH_PROVIDER=cascade`.
+- `OPENROUTER_DATA_COLLECTION` — optional OpenRouter routing preference (`allow`/`deny`).
 
 ## 3. Database Backups
 - [ ] pg_basebackup configured on Emma Postgres VM
