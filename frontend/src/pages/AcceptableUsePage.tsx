@@ -1,7 +1,6 @@
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 
-
 export default function AcceptableUsePage() {
   return (
     <div className="min-h-screen bg-r1-bg text-r1-text">
