@@ -69,6 +69,7 @@ export async function mapAndPersistCitations(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
+  byokApiKeyOverride?: string;
 }): Promise<CitationMapResult> {
   const { runId, reportId, chunks, claims, reportSections, discoverySummary } = args;
 
@@ -96,6 +97,7 @@ export async function mapAndPersistCitations(args: {
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
       allowFallbackByRole: args.allowFallbackByRole,
+      byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
         { role: 'system', content: withPreamble(CITATION_MAPPER_PROMPT) },
         {

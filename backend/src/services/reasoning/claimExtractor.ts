@@ -63,6 +63,7 @@ export async function extractAndPersistClaims(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
+  byokApiKeyOverride?: string;
 }): Promise<ExtractedClaim[]> {
   const { runId, reportId, researchQuery, chunks, reasonerOutput, synthesizerOutput } = args;
 
@@ -81,6 +82,7 @@ export async function extractAndPersistClaims(args: {
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
       allowFallbackByRole: args.allowFallbackByRole,
+      byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
         { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
         {
