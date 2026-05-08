@@ -16,6 +16,13 @@ import { syncSubscription, markSubscriptionCanceled } from '../../services/billi
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
+import {
+  cancelMonitorByStripeSubscription,
+  monitorKindFromStripePriceId,
+  registerMonitor,
+  recordSubscriptionPastDueForMonitor,
+  subscriptionHasLivingReportsPrice,
+} from '../../services/monitoring/parallelMonitorService';
 
 const router = Router();
 
@@ -83,8 +90,10 @@ interface SubscriptionData {
   status: string;
   current_period_end: number;
   cancel_at_period_end: boolean;
-  metadata?: { user_id?: string; userId?: string };
-  items?: { data?: Array<{ price?: { lookup_key?: string | null } }> };
+  metadata?: { user_id?: string; userId?: string; report_id?: string; monitor_kind?: string };
+  items?: {
+    data?: Array<{ id?: string; price?: { id?: string | null; lookup_key?: string | null } }>;
+  };
 }
 
 /**
@@ -122,6 +131,38 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
       logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
     }
   }
+
+  const items = subscription.items?.data ?? [];
+  if (subscription.status === 'active' && subscriptionHasLivingReportsPrice(items)) {
+    const reportId = subscription.metadata?.report_id?.trim();
+    const rawKind = subscription.metadata?.monitor_kind?.trim();
+    const monitorKind =
+      rawKind === 'reverse_citation_watch' || rawKind === 'living_report' ? rawKind : null;
+    if (reportId && monitorKind) {
+      const priceEntry = items.find((it) => monitorKindFromStripePriceId(it.price?.id ?? '') === monitorKind);
+      const stripePriceId = priceEntry?.price?.id ?? '';
+      const expectedKind = monitorKindFromStripePriceId(stripePriceId);
+      if (expectedKind === monitorKind) {
+        try {
+          await registerMonitor({
+            reportId,
+            userId,
+            orgId: null,
+            monitorKind,
+            stripeSubscriptionId: subscription.id,
+            stripeSubscriptionItemId: priceEntry?.id ?? null,
+          });
+        } catch (regErr) {
+          logger.error('stripe_living_report_register_failed', {
+            eventId,
+            subscriptionId: subscription.id,
+            error: regErr instanceof Error ? regErr.message : 'Unknown',
+          });
+          throw regErr;
+        }
+      }
+    }
+  }
 };
 
 /**
@@ -132,6 +173,15 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
 const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (data) => {
   const subscription = data as unknown as SubscriptionData;
   await markSubscriptionCanceled(subscription.id);
+
+  try {
+    await cancelMonitorByStripeSubscription(subscription.id);
+  } catch (err) {
+    logger.warn('stripe_monitor_cancel_failed', {
+      subscriptionId: subscription.id,
+      error: err instanceof Error ? err.message : 'Unknown',
+    });
+  }
 
   const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
   if (userId) {
@@ -161,6 +211,17 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
      WHERE stripe_event_id = $1`,
     [eventId, JSON.stringify({ needs_notification: true, subscription_id: subscriptionId })]
   );
+
+  if (subscriptionId) {
+    try {
+      await recordSubscriptionPastDueForMonitor(subscriptionId);
+    } catch (err) {
+      logger.warn('stripe_monitor_past_due_event_failed', {
+        subscriptionId,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+  }
 
   logger.info('stripe_invoice_payment_failed_flagged', { eventId, subscriptionId });
 };

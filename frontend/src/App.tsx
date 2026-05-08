@@ -35,6 +35,7 @@ import OnboardingPage from './pages/OnboardingPage';
 import AccountPage from './pages/AccountPage';
 import BillingPage from './pages/BillingPage';
 import SampleReportPage from './pages/SampleReportPage';
+import MonitorsPage from './pages/MonitorsPage';
 
 export function AppRoutes() {
   return (
@@ -62,6 +63,7 @@ export function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
         <Route path="reports/:id" element={<ReportDetailPage />} />
+        <Route path="monitors" element={<MonitorsPage />} />
         <Route path="corpus" element={<CorpusPage />} />
         <Route path="atlas" element={<AtlasPage />} />
         <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
