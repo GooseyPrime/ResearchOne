@@ -100,8 +100,8 @@ export default function OnboardingPage() {
           <span className="font-medium text-r1-text">{signupTierLabel(initialTier)}</span>
           {initialTier === 'free_demo'
             ? ' — no checkout on this screen.'
-            : ' — pricing intent is recorded for billing; checkout happens from Billing when you are ready.'}{' '}
-          Upgrade paths unlock from billing later.
+            : ' — pricing intent is recorded; checkout happens from Account when you are ready.'}{' '}
+          Upgrade paths unlock from your Account page later.
         </p>
       </section>
 

@@ -47,8 +47,8 @@ type NavItem = {
 const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/app/research', label: 'Standard Research', icon: FlaskConical, desc: 'Start investigation' },
-  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Frontier ensemble (Pro+)', requireTier: 'pro' },
+  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
+  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Multi-model ensemble research' },
   { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
   { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence', requireTier: 'pro' },
@@ -57,7 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },
   { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources', requireTier: 'pro' },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
-  { to: '/app/billing', label: 'Billing', icon: Wallet, desc: 'Wallet and subscription' },
+  { to: '/app/billing', label: 'Account', icon: Wallet, desc: 'Account and subscription' },
   { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)', requireAdmin: true },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;

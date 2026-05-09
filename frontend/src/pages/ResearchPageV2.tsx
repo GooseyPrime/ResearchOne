@@ -201,10 +201,33 @@ function formatShortTime(iso?: string): string {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+const TIER_ALLOWED_OBJECTIVES: Record<string, readonly ResearchObjective[]> = {
+  free_demo: ['GENERAL_EPISTEMIC_RESEARCH'],
+  student: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS'],
+  wallet: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS'],
+  pro: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
+  team: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
+  byok: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
+  sovereign: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
+  admin: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
+};
+
 export default function ResearchPageV2() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
+
+  const cachedSub = qc.getQueryData<{ tier: string; status: string }>(['billing-subscription']);
+  const tierResolved = cachedSub !== undefined;
+  const userTier = tierResolved
+    ? (cachedSub.status === 'active' ? cachedSub.tier : 'free_demo')
+    : null;
+  const allowedObjectives = userTier
+    ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
+    : null;
+  const filteredObjectiveOptions = allowedObjectives
+    ? RESEARCH_OBJECTIVE_OPTIONS.filter((o) => allowedObjectives.includes(o.value))
+    : RESEARCH_OBJECTIVE_OPTIONS;
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
@@ -625,6 +648,19 @@ export default function ResearchPageV2() {
         </p>
       </div>
 
+      {tierResolved && userTier === 'free_demo' && (
+        <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
+          <p className="font-medium text-slate-200">Free tier — Deep Research</p>
+          <p className="mt-1 text-slate-400">
+            You have up to 3 lifetime research runs using the General Epistemic Research objective.
+            Deep Research uses the V2 multi-model ensemble for richer analysis.{' '}
+            <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
+              Upgrade for more objectives and higher limits.
+            </Link>
+          </p>
+        </div>
+      )}
+
       <div className="card-glow p-6 space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -647,7 +683,7 @@ export default function ResearchPageV2() {
               onChange={(e) => setResearchObjective(e.target.value as ResearchObjective)}
               disabled={mutation.isPending || !!trackingRunId}
             >
-              {RESEARCH_OBJECTIVE_OPTIONS.map((o) => (
+              {filteredObjectiveOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
