@@ -167,28 +167,54 @@ router.use(requireAuth);
 router.get('/', async (req, res, next) => {
   try {
     const { status, search } = req.query as { status?: string; search?: string };
-    let sql = `
-      SELECT r.id, r.title, r.query, r.status, r.executive_summary,
+
+    const baseCols = `r.id, r.title, r.query, r.status, r.executive_summary,
               r.source_count, r.chunk_count, r.contradiction_count,
               r.finalized_at, r.created_at, r.version_number,
-              r.root_report_id, r.parent_report_id
-      FROM reports r
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+              r.root_report_id, r.parent_report_id`;
 
-    if (status) {
-      params.push(status);
-      sql += ` AND r.status=$${params.length}`;
+    const retentionCols = `, r.report_expires_at, r.workspace_expires_at, r.workspace_purged_at, r.retention_status`;
+
+    const livingSubquery = `, EXISTS(SELECT 1 FROM report_monitors rm WHERE rm.report_id = r.id AND rm.monitor_kind = 'living_report' AND rm.status = 'active') AS has_active_living_report`;
+
+    function buildWhere(params: unknown[]): string {
+      let where = ' WHERE 1=1';
+      if (status) {
+        params.push(status);
+        where += ` AND r.status=$${params.length}`;
+      }
+      if (search) {
+        params.push(search);
+        where += ` AND to_tsvector('english', coalesce(r.title,'') || ' ' || coalesce(r.executive_summary,'')) @@ plainto_tsquery('english', $${params.length})`;
+      }
+      return where;
     }
 
-    if (search) {
-      params.push(search);
-      sql += ` AND to_tsvector('english', coalesce(r.title,'') || ' ' || coalesce(r.executive_summary,'')) @@ plainto_tsquery('english', $${params.length})`;
+    // Try with retention columns; fall back without on deploy skew (42703)
+    let rows: unknown[];
+    try {
+      const params: unknown[] = [];
+      const sql = `SELECT ${baseCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params)} ORDER BY r.created_at DESC LIMIT 100`;
+      rows = await query(sql, params);
+    } catch (err: unknown) {
+      const pgCode = (err as { code?: string }).code;
+      if (pgCode === '42703') {
+        const params: unknown[] = [];
+        const sql = `SELECT ${baseCols}${livingSubquery} FROM reports r${buildWhere(params)} ORDER BY r.created_at DESC LIMIT 100`;
+        const fallbackRows = await query(sql, params);
+        rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
+          ...r,
+          report_expires_at: null,
+          workspace_expires_at: null,
+          workspace_purged_at: null,
+          retention_status: null,
+        }));
+      } else {
+        throw err;
+      }
     }
 
-    sql += ' ORDER BY r.created_at DESC LIMIT 100';
-    res.json(await query(sql, params));
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -212,7 +238,18 @@ router.get('/:id', async (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ ...rows[0], sections });
+    let hasActiveLivingReport = false;
+    try {
+      const lrRows = await query(
+        `SELECT 1 FROM report_monitors WHERE report_id = $1 AND monitor_kind = 'living_report' AND status = 'active' LIMIT 1`,
+        [req.params.id],
+      );
+      hasActiveLivingReport = lrRows.length > 0;
+    } catch {
+      // best-effort; report_monitors may not exist yet
+    }
+
+    res.json({ ...rows[0], sections, has_active_living_report: hasActiveLivingReport });
   } catch (err) {
     next(err);
   }
