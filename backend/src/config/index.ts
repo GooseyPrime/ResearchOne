@@ -66,6 +66,8 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
 
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
+  /** Bind address for the HTTP server (default IPv4-all so curl 127.0.0.1 works when IPv6-only :: would not). */
+  listenHost: (process.env.LISTEN_HOST || '0.0.0.0').trim() || '0.0.0.0',
   nodeEnv: rawNodeEnv,
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, 'http://localhost:5173'),
 

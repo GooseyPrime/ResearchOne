@@ -134,17 +134,20 @@ fi
 
 pm2 save || true
 
-echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health (retry until ready)"
+echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health (retry until JSON body)"
+# Do not use curl --fail: /api/health returns 503 when dependency probes report status=down,
+# but the response body is still valid JSON — deploy checks JSON shape, not HTTP greenness.
 HEALTH_JSON=""
 for _ in {1..90}; do
-  if HEALTH_JSON=$(curl -sS --fail --max-time 5 "http://127.0.0.1:3001/api/health" 2>/dev/null); then
+  if HEALTH_JSON=$(curl -sS --max-time 5 "http://127.0.0.1:3001/api/health" 2>/dev/null) &&
+    [[ -n "${HEALTH_JSON}" ]]; then
     export HEALTH_JSON
     break
   fi
   sleep 1
 done
 if [[ -z "${HEALTH_JSON}" ]]; then
-  echo "[deploy] ERROR: health did not respond after PM2 start (waited ~90s)" >&2
+  echo "[deploy] ERROR: could not GET /api/health from 127.0.0.1:3001 after PM2 start (waited ~90s; connection refused, timeout, or empty body)" >&2
   exit 1
 fi
 
@@ -164,7 +167,14 @@ for bad in ("envFile", "env_file"):
     if bad in data:
         print("[deploy] ERROR: health must not expose env file path", file=sys.stderr)
         sys.exit(1)
-print("[deploy] smoke OK:", data.get("service"), data.get("version"), data.get("gitSha"), data.get("nodeEnv"))
+print(
+    "[deploy] smoke OK:",
+    data.get("service"),
+    data.get("version"),
+    data.get("gitSha"),
+    data.get("nodeEnv"),
+    "payload_status=" + str(data.get("status")),
+)
 PY
 
 echo "[deploy] done"
