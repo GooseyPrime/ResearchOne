@@ -35,8 +35,6 @@ const ADD_ONS = [
     description: 'Base floor for patent landscape, freedom-to-operate, and prior art analysis. Delivered as a structured report with cited claim mappings.',
   },
 ];
-const TEAM_MAILTO = 'mailto:hello@researchone.io?subject=Team%20tier%20inquiry';
-const PROVENANCE_MAILTO = 'mailto:hello@researchone.io?subject=Provenance%20Ledger%20enterprise%20inquiry';
 
 export default function PricingPage() {
   return (
@@ -75,86 +73,6 @@ export default function PricingPage() {
           <h2 className="font-serif text-2xl">Wallet credits</h2>
           <p className="mt-2 text-r1-text-muted">
             Don&apos;t want a subscription? Top up a wallet from $20 and pay $4 per Standard report or $10 per Deep report.
-        <p className="mt-4 text-r1-text-muted">Start free. Pay per report. Subscribe when it makes sense. Add monitoring on top of any plan.</p>
-
-        <h2 className="mt-12 font-serif text-3xl">Subscription tiers</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <PricingCard
-            title="Free Demo"
-            details="$0 — 3 reports lifetime — General Epistemic only — Watermarked"
-            cta="Start free"
-            to="/sign-up"
-          />
-          <PricingCard
-            title="Student"
-            details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports"
-            cta="Verify and start"
-            to="/sign-up?tier=student"
-          />
-          <PricingCard
-            title="Pro"
-            details="$29/mo or $290/yr — 25 reports/mo — All 5 modes — Priority queue — Living Reports available"
-            cta="Subscribe"
-            to="/sign-up?tier=pro"
-            featured
-          />
-          <PricingCard
-            title="BYOK"
-            details="$29/mo — Orchestration + exports — Bring your own model keys — Runs billed to your provider"
-            cta="Configure keys"
-            to="/byok"
-          />
-          <PricingCard
-            title="Team"
-            details="$99/seat/mo (3-seat min) — Pooled reports — Shared report library — Audit log — Living Reports available"
-            cta="Contact us"
-            to={TEAM_MAILTO}
-            badge="Coming soon"
-          />
-          <PricingCard
-            title="Sovereign Enterprise"
-            details="From $4,500/mo (annual) — dedicated stack and custom retention"
-            cta="Talk to sales"
-            to="/sovereign"
-          />
-        </div>
-
-        <h2 id="living-reports" className="mt-12 font-serif text-3xl">Add-ons</h2>
-        <p className="mt-2 text-sm text-r1-text-muted">
-          Add-ons attach to a finalized report. They require an active Pro, BYOK, Team, or Sovereign subscription. If your tier subscription ends, attached add-ons are cancelled automatically.
-        </p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <PricingCard
-            title="Living Reports"
-            details="$19/mo per report — Continuous monitoring of new evidence; auto-revise when something material changes."
-            cta="Add to a finalized report"
-            to="/app/reports"
-          />
-          <PricingCard
-            title="Reverse-Citation Watch"
-            details="$15/mo per report — Get notified when this report or its sources are cited or referenced elsewhere."
-            cta="Add to a finalized report"
-            to="/app/reports"
-          />
-          <PricingCard
-            title="Provenance Ledger"
-            details="Tamper-evident audit trail for every report — SHA-256 signed manifest with public verification endpoint. Required by defense-adjacent and journalism buyers."
-            cta="Contact us"
-            to={PROVENANCE_MAILTO}
-            badge="Coming soon"
-          />
-          <article className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
-            <h3 className="font-serif text-2xl text-r1-text">Adversarial Twin</h3>
-            <p className="mt-3 text-sm leading-7 text-r1-text-muted">
-              Dedicated full-attack skeptic that produces only contradictions, gaps, and falsification probes. Included in Sovereign Enterprise.
-            </p>
-          </article>
-        </div>
-
-        <h2 className="mt-12 font-serif text-3xl">Wallet credits</h2>
-        <div className="mt-4 rounded-xl border border-white/10 bg-r1-bg-deep p-6">
-          <p className="text-r1-text-muted">
-            Don&apos;t want a subscription? Top up a wallet from $20, $50, or $100 and pay per report: $4 per Standard, $10 per Deep. Wallet credits never expire and overflow Pro/Team monthly caps.
           </p>
           <Link to="/sign-up" className="mt-4 inline-flex text-r1-accent">Start with a wallet →</Link>
         </div>
