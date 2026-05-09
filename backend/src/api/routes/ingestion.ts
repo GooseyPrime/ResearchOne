@@ -236,7 +236,7 @@ router.get('/jobs', async (req, res, next) => {
                 s.imported_via, s.discovered_by_run_id
          FROM ingestion_jobs j
          LEFT JOIN sources s ON s.id = j.source_id
-         WHERE j.user_id = $1
+         WHERE (j.user_id = $1 OR j.user_id IS NULL)
          ORDER BY j.created_at DESC
          LIMIT 100`,
         [userId]
@@ -269,7 +269,7 @@ router.get('/jobs/:id', async (req, res, next) => {
     let jobs: unknown[];
     try {
       jobs = await query(
-        `SELECT * FROM ingestion_jobs WHERE id=$1 AND user_id = $2`,
+        `SELECT * FROM ingestion_jobs WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {

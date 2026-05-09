@@ -184,7 +184,7 @@ router.get('/', async (req, res, next) => {
       let where = ' WHERE 1=1';
       if (scoped) {
         params.push(userId, orgId);
-        where += ` AND (r.user_id = $${params.length - 1} OR (r.org_id IS NOT NULL AND r.org_id = $${params.length}))`;
+        where += ` AND (r.user_id = $${params.length - 1} OR (r.org_id IS NOT NULL AND r.org_id = $${params.length}) OR r.user_id IS NULL)`;
       }
       if (includeRetentionFilter) {
         where += ` AND (r.retention_status IS NULL OR r.retention_status NOT IN ('expired', 'deleted'))`;
@@ -254,7 +254,7 @@ router.get('/:id', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3))`,
+        `SELECT * FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
@@ -408,7 +408,7 @@ router.get('/:id/revisions', async (req, res, next) => {
     let ownerRows: unknown[];
     try {
       ownerRows = await query(
-        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3))`,
+        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
@@ -438,7 +438,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
     let ownerRows: unknown[];
     try {
       ownerRows = await query(
-        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3))`,
+        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
@@ -476,7 +476,7 @@ router.get('/:id/citations', async (req, res, next) => {
          FROM report_citations rc
          LEFT JOIN sources s ON s.id = rc.source_id
          JOIN reports rp ON rp.id = rc.report_id
-         WHERE rc.report_id=$1 AND (rp.user_id = $2 OR (rp.org_id IS NOT NULL AND rp.org_id = $3))`,
+         WHERE rc.report_id=$1 AND (rp.user_id = $2 OR (rp.org_id IS NOT NULL AND rp.org_id = $3) OR rp.user_id IS NULL)`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {

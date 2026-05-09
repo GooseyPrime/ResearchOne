@@ -132,3 +132,15 @@ drove the rules is at
   helper (already imported) instead of `error instanceof Error ?
   error.message : ...`. Axios wraps server `{error}` bodies; the
   helper unwraps them.
+- **NULL-after-migration visibility:** When adding a `WHERE user_id = $X`
+  predicate in the same PR as the migration that adds `user_id`, include
+  `OR user_id IS NULL` so legacy rows remain visible until backfilled.
+  The `42703` deploy-skew fallback only fires when the column does not
+  exist; once the migration runs, legacy rows have NULL user_id and are
+  silently excluded. PR #96 review (Codex P1).
+- **Multi-path ownership:** When restricting an action to "the user who
+  created this resource," enumerate every path through which ownership
+  is established. A source can be owned via `discovered_by_run_id` (auto
+  discovery) or via `ingestion_jobs.source_id` (manual ingest). Checking
+  only one path locks out users who created the resource through the
+  other. PR #96 review (Codex P2).

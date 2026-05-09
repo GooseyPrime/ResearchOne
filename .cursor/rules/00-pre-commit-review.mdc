@@ -151,6 +151,23 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     use `error instanceof Error ? error.message : ...` — Axios wraps
     server error bodies. The repo's `extractApiError` unwraps them.
 
+## L. NULL-after-migration visibility and multi-path ownership (PR #96)
+
+30. **New NULL columns added to existing tables leave legacy rows
+    NULL.** When adding a `WHERE user_id = $X` predicate in the same
+    PR as the migration that adds `user_id`, include `OR user_id IS
+    NULL` so legacy rows remain visible until backfilled. The `42703`
+    fallback only fires when the column does not exist at all; once the
+    migration runs, the column exists but is NULL on all legacy rows,
+    and the fallback never fires. PR #96 review (Codex P1).
+31. **Ownership may flow through multiple paths.** When restricting
+    an action to "the user who created this resource," enumerate every
+    path through which ownership is established. Sources can be owned
+    via `discovered_by_run_id -> research_runs.user_id` (autonomous
+    discovery) OR via `ingestion_jobs.source_id -> ingestion_jobs.user_id`
+    (manual ingest). Checking only one path silently locks out users who
+    created the resource through the other path. PR #96 review (Codex P2).
+
 ---
 
 If a finding from a code review surprises the agent, add it to

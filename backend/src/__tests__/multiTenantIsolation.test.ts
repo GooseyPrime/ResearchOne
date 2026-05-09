@@ -17,6 +17,10 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       expect(src).toContain('org_id IS NOT NULL AND org_id = $2');
     });
 
+    it('includes NULL grace path so legacy rows remain visible', () => {
+      expect(src).toContain('OR user_id IS NULL');
+    });
+
     it('reads userId from req.auth', () => {
       expect(src).toContain("req.auth?.userId");
     });
@@ -97,12 +101,13 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       'utf8'
     );
 
-    it('joins research_runs to resolve source owner', () => {
-      expect(src).toContain('JOIN research_runs r ON r.id = s.discovered_by_run_id');
+    it('joins research_runs and ingestion_jobs to resolve source owner', () => {
+      expect(src).toContain('LEFT JOIN research_runs r ON r.id = s.discovered_by_run_id');
+      expect(src).toContain('LEFT JOIN ingestion_jobs ij ON ij.source_id = s.id');
     });
 
-    it('compares row user_id against request userId', () => {
-      expect(src).toContain("row?.user_id === userId");
+    it('compares resolved owner_user_id against request userId', () => {
+      expect(src).toContain("row?.owner_user_id === userId");
     });
 
     it('returns 403 when the user is not the owner', () => {

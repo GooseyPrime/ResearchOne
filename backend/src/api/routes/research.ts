@@ -441,7 +441,7 @@ router.get('/', async (req, res, next) => {
     let rows: unknown[];
     try {
       const params: unknown[] = [];
-      let where = ' WHERE (user_id = $1 OR (org_id IS NOT NULL AND org_id = $2))';
+      let where = ' WHERE (user_id = $1 OR (org_id IS NOT NULL AND org_id = $2) OR user_id IS NULL)';
       params.push(userId, orgId);
       if (status) {
         params.push(status);
@@ -477,7 +477,7 @@ router.get('/:id', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3))`,
+        `SELECT * FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
@@ -520,7 +520,7 @@ router.get('/:id/artifacts', async (req, res, next) => {
     try {
       runMeta = await query<RunMetaRow>(
         `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
-           FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3))`,
+           FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
         [runId, userId, orgId]
       );
     } catch (selectErr) {

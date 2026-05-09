@@ -57,7 +57,10 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/sources/:id - Remove a source and all its data.
-// Restricted: admin-only, or the user who ingested the source (via discovered_by_run_id).
+// Restricted: admin-only, or the user who ingested the source.
+// Ownership is checked via two paths:
+//   1. discovered_by_run_id -> research_runs.user_id (autonomous discovery)
+//   2. ingestion_jobs.source_id -> ingestion_jobs.user_id (manual ingest via /url, /text, /file)
 router.delete('/:id', async (req, res, next) => {
   try {
     if (req.adminAuth) {
@@ -74,14 +77,16 @@ router.delete('/:id', async (req, res, next) => {
 
     let isOwner = false;
     try {
-      const row = await queryOne<{ user_id: string | null }>(
-        `SELECT r.user_id
+      const row = await queryOne<{ owner_user_id: string | null }>(
+        `SELECT COALESCE(r.user_id, ij.user_id) AS owner_user_id
          FROM sources s
-         JOIN research_runs r ON r.id = s.discovered_by_run_id
-         WHERE s.id = $1`,
+         LEFT JOIN research_runs r ON r.id = s.discovered_by_run_id
+         LEFT JOIN ingestion_jobs ij ON ij.source_id = s.id
+         WHERE s.id = $1
+         LIMIT 1`,
         [req.params.id]
       );
-      isOwner = row?.user_id === userId;
+      isOwner = row?.owner_user_id === userId;
     } catch (err) {
       const pgCode = (err as { code?: string })?.code;
       if (pgCode === '42703') {

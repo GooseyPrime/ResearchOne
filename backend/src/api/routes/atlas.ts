@@ -58,7 +58,7 @@ router.get('/exports', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM atlas_exports WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        `SELECT * FROM atlas_exports WHERE (user_id = $1 OR user_id IS NULL) ORDER BY created_at DESC LIMIT 50`,
         [userId]
       );
     } catch (scopeErr) {
@@ -81,7 +81,7 @@ router.get('/exports/:id/download', async (req, res, next) => {
     let rows: Array<{ export_path: string; label: string }>;
     try {
       rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND user_id = $2`,
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {
@@ -335,7 +335,7 @@ router.post('/exports/:id/nomic-upload', async (req, res, next) => {
     let rows: Array<{ export_path: string; label: string }>;
     try {
       rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND user_id = $2`,
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {
