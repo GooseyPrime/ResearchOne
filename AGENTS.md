@@ -95,6 +95,20 @@ drove the rules is at
   apply the same guard to every sibling function in the sweep. PR #92
   review: atlas export purge lacked the sovereign guard that the other
   three sweep functions had.
+- **Bootstrap / find-or-create must also update:** Any "find-or-create"
+  pattern against an external API (Stripe products, etc.) must apply
+  mutable field changes (name, description) on the existing-resource
+  path, not just on create. Returning the existing ID without checking
+  for drift means renames never propagate on re-runs. PR #95 review
+  (Codex) caught this on `findOrCreateProduct`. Compare spec fields
+  against the live resource and call update when they differ.
+- **Check deferred features before listing on public pages:** Before
+  rendering a product or feature on a public-facing page (pricing,
+  landing), grep `docs/roadmap/phase-2-deferred-features.md`. Features
+  listed there must show a "Coming soon" placeholder (badge + mailto),
+  never a live price or CTA. PR #95 review (Codex) caught Provenance
+  Ledger being presented as a $29/mo add-on while the roadmap doc
+  explicitly reserved it as Phase 2 with no backend implementation.
 - **Tier/subscription loading-state safety:** When deriving UI state
   from an async tier/subscription query, never fall back to `free_demo`
   while the query is loading or errored — paid users see a flash of
