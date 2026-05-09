@@ -31,9 +31,14 @@ const router = Router();
 
 router.use(requireAuth);
 
+const RESEARCH_MAX_FILES = (() => {
+  const raw = parseInt(process.env.RESEARCH_MAX_FILES_PER_RUN || '5', 10);
+  return Number.isFinite(raw) && raw >= 1 ? raw : 5;
+})();
+
 const uploadResearch = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: parseInt(process.env.RESEARCH_MAX_FILES_PER_RUN || '5', 10) },
+  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: RESEARCH_MAX_FILES },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/pdf',
@@ -74,7 +79,7 @@ router.post(
   (req, res, next) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('multipart/form-data')) {
-      uploadResearch.array('files', 25)(req, res, next);
+      uploadResearch.array('files', RESEARCH_MAX_FILES)(req, res, next);
     } else {
       next();
     }

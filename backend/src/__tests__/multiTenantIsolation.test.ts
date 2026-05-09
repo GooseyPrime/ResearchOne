@@ -115,8 +115,8 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       expect(src).toContain('You can only delete sources you ingested');
     });
 
-    it('admin bypass skips ownership check', () => {
-      expect(src).toContain('req.adminAuth');
+    it('admin bypass skips ownership check via admin userId list', () => {
+      expect(src).toContain('config.admin.userIds.includes(userId)');
     });
 
     it('deploy-skew fallback (42703) also returns 403 rather than 500', () => {

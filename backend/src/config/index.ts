@@ -227,7 +227,10 @@ const config = {
   },
 
   atlas: {
-    maxChunksPerExport: parseInt(process.env.ATLAS_EXPORT_MAX_CHUNKS || '50000', 10),
+    maxChunksPerExport: (() => {
+      const raw = parseInt(process.env.ATLAS_EXPORT_MAX_CHUNKS || '50000', 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 50000;
+    })(),
   },
 
   nomic: {
@@ -341,8 +344,9 @@ if (config.discovery.enabled) {
 
 if (config.nodeEnv === 'production') {
   const dbPw = process.env.DB_PASSWORD;
-  if (!dbPw || dbPw === 'changeme') {
-    throw new Error('DB_PASSWORD must be set (and not "changeme") in production');
+  const hasDbUrl = !!process.env.DATABASE_URL?.trim();
+  if (!hasDbUrl && (!dbPw || dbPw === 'changeme')) {
+    throw new Error('DB_PASSWORD must be set (and not "changeme") in production, or provide DATABASE_URL');
   }
   if (!config.clerk.secretKey.trim()) {
     throw new Error('CLERK_SECRET_KEY must be set in production');

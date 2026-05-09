@@ -69,7 +69,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   }
 
   const maxChunks = config.atlas.maxChunksPerExport;
-  sql += ` ORDER BY c.created_at DESC LIMIT ${maxChunks}`;
+  params.push(maxChunks);
+  sql += ` ORDER BY c.created_at DESC LIMIT $${params.length}`;
 
   const rows = await query<{
     id: string;
@@ -86,7 +87,7 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     source_rank: number | null;
     vector_str: string;
     evidence_tier: string | null;
-  }>(sql, params.length > 0 ? params : undefined);
+  }>(sql, params);
 
   if (rows.length >= maxChunks) {
     logger.warn('atlas_export_truncated', { exportId, maxChunks, fetchedRows: rows.length });

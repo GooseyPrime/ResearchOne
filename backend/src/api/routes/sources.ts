@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { query, queryOne } from '../../db/pool';
 import { logger } from '../../utils/logger';
+import { config } from '../../config';
 
 const router = Router();
 
@@ -63,13 +64,13 @@ router.get('/:id', async (req, res, next) => {
 //   2. ingestion_jobs.source_id -> ingestion_jobs.user_id (manual ingest via /url, /text, /file)
 router.delete('/:id', async (req, res, next) => {
   try {
-    if (req.adminAuth) {
+    const userId = req.auth?.userId;
+    const isAdmin = !!(userId && config.admin.userIds.includes(userId));
+    if (isAdmin) {
       await query(`DELETE FROM sources WHERE id=$1`, [req.params.id]);
       res.json({ deleted: true });
       return;
     }
-
-    const userId = req.auth?.userId;
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;

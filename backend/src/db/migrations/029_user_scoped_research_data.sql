@@ -5,7 +5,10 @@
 --
 -- Idempotent: uses ADD COLUMN IF NOT EXISTS and IF NOT EXISTS throughout.
 -- Does NOT delete any data. Existing rows keep user_id IS NULL until
--- backfilled; the runtime tolerates NULL as "legacy unscoped."
+-- backfilled. NOTE: RLS policies match on user_id/org_id, so NULL rows
+-- are invisible to application_role sessions. The route-layer predicates
+-- include OR user_id IS NULL as a grace path; once the backfill script
+-- has run, the NULL clause becomes a no-op.
 --
 -- Sources are intentionally NOT scoped here — they remain a shared corpus.
 -- DELETE protection on sources is enforced at the route layer.
@@ -102,7 +105,9 @@ END $$;
 -- 5. Partial indexes for user-scoped queries
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_research_runs_user_id ON research_runs(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_research_runs_org_id ON research_runs(org_id) WHERE org_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reports_org_id ON reports(org_id) WHERE org_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_user_id ON ingestion_jobs(user_id) WHERE user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_atlas_exports_user_id ON atlas_exports(user_id) WHERE user_id IS NOT NULL;
 
