@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen, Search, Filter, CheckCircle, Clock, FileText, XCircle, AlertTriangle } from 'lucide-react';
 import { getReports, getResearchRuns, Report, ResearchRun } from '../utils/api';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -132,7 +132,7 @@ export default function ReportsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="card p-5 animate-pulse h-40" />
+            <div key={`reports-skeleton-${i}`} className="card p-5 animate-pulse h-40" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -182,6 +182,17 @@ function ReportCard({ report, onClick }: { report: Report; onClick: () => void }
           {report.status}
         </span>
       </div>
+
+      {report.retention_status === 'workspace_purged' && report.report_expires_at && (
+        <p className="mt-1 text-xs text-amber-400/80">
+          Workspace cleared — report available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}
+        </p>
+      )}
+      {report.report_expires_at && report.status === 'finalized' && report.retention_status !== 'workspace_purged' && (
+        <p className="mt-1 text-xs text-r1-text-muted">
+          Available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}
+        </p>
+      )}
 
       {report.executive_summary && (
         <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">

@@ -154,6 +154,10 @@ export interface SystemHealth {
     exports: { ok: boolean; writable?: boolean };
     websocket: { ok: boolean };
   };
+  integrations?: {
+    parallel?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
+    scite?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
+  };
   restartAvailable: boolean;
 }
 
@@ -176,6 +180,11 @@ export interface Report {
   chunk_count: number;
   finalized_at?: string;
   created_at: string;
+  report_expires_at?: string | null;
+  workspace_expires_at?: string | null;
+  workspace_purged_at?: string | null;
+  retention_status?: string | null;
+  has_active_living_report?: boolean;
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;
@@ -685,6 +694,75 @@ export const getWalletSummary = () =>
 
 export const getSubscription = () =>
   api.get<UserSubscription>('/billing/subscription').then((r) => r.data);
+
+// ─── Living Reports / Parallel Monitor (WO T) ─────────────────────────────────
+
+export type ReportMonitorKind = 'living_report' | 'reverse_citation_watch';
+
+export interface ReportMonitorRow {
+  id: string;
+  report_id: string;
+  user_id: string;
+  org_id: string | null;
+  monitor_kind: ReportMonitorKind;
+  parallel_monitor_id: string;
+  query_def: Record<string, unknown>;
+  status: string;
+  stripe_subscription_id: string | null;
+  stripe_subscription_item_id: string | null;
+}
+
+export interface MonitorEventRow {
+  id: string;
+  event_kind: string;
+  webhook_event_id: string | null;
+  payload: Record<string, unknown> | null;
+  revision_id: string | null;
+  created_at: string;
+}
+
+export const listReportMonitors = (reportId: string) =>
+  api.get<{ monitors: ReportMonitorRow[] }>(`/reports/${reportId}/monitors`).then((r) => r.data);
+
+export const createMonitorCheckoutSession = (reportId: string, monitorKind: ReportMonitorKind) =>
+  api
+    .post<{ checkoutUrl: string | null; sessionId: string }>(`/reports/${reportId}/monitors`, {
+      monitorKind,
+    })
+    .then((r) => r.data);
+
+export const listUserMonitors = () =>
+  api.get<{ monitors: ReportMonitorRow[] }>('/monitors').then((r) => r.data);
+
+export const pauseUserMonitor = (monitorId: string) =>
+  api.post<{ ok: boolean }>(`/monitors/${monitorId}/pause`).then((r) => r.data);
+
+export const resumeUserMonitor = (monitorId: string) =>
+  api.post<{ ok: boolean }>(`/monitors/${monitorId}/resume`).then((r) => r.data);
+
+export const cancelUserMonitor = (monitorId: string) =>
+  api.delete<{ ok: boolean }>(`/monitors/${monitorId}`).then((r) => r.data);
+
+export const listMonitorEventsApi = (monitorId: string) =>
+  api.get<{ events: MonitorEventRow[] }>(`/monitors/${monitorId}/events`).then((r) => r.data);
+
+export type UserNotificationKind = 'payment_failed' | 'subscription_canceled' | 'system';
+
+export interface UserNotificationRow {
+  id: string;
+  kind: UserNotificationKind;
+  title: string;
+  body: string | null;
+  cta_path: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export const listUserNotificationsApi = () =>
+  api.get<{ notifications: UserNotificationRow[] }>('/notifications').then((r) => r.data);
+
+export const markNotificationReadApi = (id: string) =>
+  api.post<{ ok: boolean }>(`/notifications/${id}/read`).then((r) => r.data);
 
 /**
  * Resolve an export file download URL, supporting cross-origin Vercel + Emma deployments.

@@ -22,6 +22,13 @@ type Check = {
   reason?: string;
 };
 
+type IntegrationCheck = {
+  configured: boolean;
+  ok: boolean;
+  latencyMs?: number;
+  reason?: string;
+};
+
 function getDiscoveryReadinessCheck(): Check {
   if (!config.discovery.enabled) {
     return {
@@ -70,6 +77,26 @@ async function timedCheck<T>(fn: () => Promise<T>): Promise<{ ok: boolean; laten
   }
 }
 
+async function probeOptionalIntegration(
+  keyEnvVar: string,
+  healthUrl: string,
+): Promise<IntegrationCheck> {
+  const key = process.env[keyEnvVar]?.trim();
+  if (!key) {
+    return { configured: false, ok: true, reason: `${keyEnvVar} not set` };
+  }
+  const started = Date.now();
+  try {
+    await axios.get(healthUrl, {
+      timeout: 5000,
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    return { configured: true, ok: true, latencyMs: Date.now() - started };
+  } catch {
+    return { configured: true, ok: false, latencyMs: Date.now() - started, reason: 'probe failed' };
+  }
+}
+
 export async function buildHealth(req: { app: { get: (k: string) => unknown } }) {
   const apiCheck: Check = { ok: true, latencyMs: 0 };
 
@@ -106,7 +133,12 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   const websocketCheck: Check = { ok: Boolean(req.app.get('io')) };
   const discoveryCheck = getDiscoveryReadinessCheck();
 
-  const checks = {
+  const [parallelCheck, sciteCheck] = await Promise.all([
+    probeOptionalIntegration('PARALLEL_API_KEY', 'https://api.parallel.ai/health'),
+    probeOptionalIntegration('SCITE_API_KEY', 'https://api.scite.ai/health'),
+  ]);
+
+  const coreChecks = {
     api: apiCheck,
     db: { ok: dbProbe.ok, latencyMs: dbProbe.latencyMs },
     redis: { ok: redisProbe.ok, latencyMs: redisProbe.latencyMs },
@@ -116,13 +148,28 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
       latencyMs: openrouterProbe.latencyMs,
       modelProbe: openrouterProbe.value,
     },
-    discovery: discoveryCheck,
     exports: { ok: exportsProbe.ok, writable: exportsProbe.ok },
     websocket: websocketCheck,
+    discovery: discoveryCheck,
   };
 
-  const failed = Object.values(checks).filter((c) => !c.ok).length;
-  const status = failed === 0 ? 'ok' : failed <= 2 ? 'degraded' : 'down';
+  const integrations = {
+    parallel: parallelCheck,
+    scite: sciteCheck,
+  };
+
+  const INTEGRATION_LATENCY_THRESHOLD_MS = 2000;
+  const coreDown = Object.values(coreChecks).some((c) => !c.ok);
+  const integrationDegraded =
+    Object.values(integrations).some(
+      (c) => c.configured && (!c.ok || (c.latencyMs ?? 0) > INTEGRATION_LATENCY_THRESHOLD_MS)
+    );
+
+  const status: 'ok' | 'degraded' | 'down' = coreDown
+    ? 'down'
+    : integrationDegraded
+      ? 'degraded'
+      : 'ok';
 
   const meta = getBuildMeta();
   const gitSha = meta?.gitSha?.trim() || 'unknown';
@@ -137,7 +184,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
     nodeEnv: config.nodeEnv,
     status,
     timestamp: new Date().toISOString(),
-    checks,
+    checks: coreChecks,
+    integrations,
     restartAvailable: Boolean(config.admin.token || config.admin.userIds.length > 0),
   };
 }

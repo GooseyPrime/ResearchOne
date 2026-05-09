@@ -11,6 +11,7 @@ import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
 import { startTierResetCron } from './jobs/tierResetCron';
+import { startRetentionCleanupCron } from './jobs/retentionCleanupCron';
 
 async function main() {
   try {
@@ -67,6 +68,9 @@ async function main() {
 
     startTierResetCron();
     logger.info('Tier reset cron started');
+
+    startRetentionCleanupCron();
+    logger.info('Retention cleanup cron started');
 
     httpServer.listen(config.port, () => {
       logger.info(`ResearchOne API listening on port ${config.port}`);

@@ -4,6 +4,9 @@ import { parseResearchObjective, type ResearchObjective } from './reasoningModel
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { logger } from '../../utils/logger';
 
+/** Source of an automated revision (Work Order T). Same pipeline as user revisions; UI/reporting only. */
+export type RevisionTriggerSource = 'user' | 'parallel_monitor' | 'reverse_citation_watch';
+
 export interface RevisionProgress {
   reportId: string;
   revisionId?: string;
@@ -143,7 +146,14 @@ export async function createRevisionRequest(args: {
   rationale?: string;
   initiatedBy?: string;
   initiatedByType?: string;
+  revisionTriggeredBy?: RevisionTriggerSource;
 }): Promise<{ requestId: string }> {
+  const baseMeta = {
+    has_supplemental_context: false,
+    supplemental_context_chars: 0,
+    attachment_count: 0,
+    ...(args.revisionTriggeredBy ? { triggeredBy: args.revisionTriggeredBy } : {}),
+  };
   let requestRows: Array<{ id: string }>;
   try {
     requestRows = await query<{ id: string }>(
@@ -155,7 +165,7 @@ export async function createRevisionRequest(args: {
         args.rationale ?? '',
         args.initiatedBy ?? 'system',
         args.initiatedByType ?? 'user',
-        JSON.stringify({ has_supplemental_context: false, supplemental_context_chars: 0, attachment_count: 0 }),
+        JSON.stringify(baseMeta),
         JSON.stringify([]),
       ]
     );
@@ -184,6 +194,7 @@ export async function createReportRevision(args: {
   rationale?: string;
   initiatedBy?: string;
   initiatedByType?: string;
+  revisionTriggeredBy?: RevisionTriggerSource;
   /** Concatenated text extracted from user-attached files / URLs (built by
    *  `ingestSupplementalForRevision` at the route level). Spliced into the
    *  revision_intake / change_planner / section_rewriter prompts so the
@@ -262,6 +273,7 @@ export async function createReportRevision(args: {
     has_supplemental_context: Boolean(args.supplementalContext && args.supplementalContext.length > 0),
     supplemental_context_chars: args.supplementalContext?.length ?? 0,
     attachment_count: supplementalAttachments.length,
+    ...(args.revisionTriggeredBy ? { triggeredBy: args.revisionTriggeredBy } : {}),
   };
   let requestId: string;
   if (args.requestId) {
@@ -611,30 +623,66 @@ Return strict JSON.`,
       );
     }
 
-    const revision = await client.query<{ id: string }>(
-      `INSERT INTO report_revisions (
-         report_id, base_report_id, revised_report_id, parent_report_id, root_report_id,
-         revision_number, request_id, rationale, initiated_by, initiated_by_type, status,
-         change_plan, verifier_result, consistency_issues
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'applied', $11, $12, $13)
-       RETURNING id`,
-      [
-        baseReport.id,
-        baseReport.id,
-        revisedReportId,
-        baseReport.id,
-        rootReportId,
-        newVersion,
-        requestId,
-        args.rationale ?? '',
-        args.initiatedBy ?? 'system',
-        args.initiatedByType ?? 'user',
-        JSON.stringify(changePlan),
-        JSON.stringify(verifierPayload),
-        consistencyIssues,
-      ]
+    const revisionMetaJson = JSON.stringify(
+      args.revisionTriggeredBy ? { triggeredBy: args.revisionTriggeredBy } : {}
     );
+    let revision: { rows: Array<{ id: string }> };
+    await client.query('SAVEPOINT pre_metadata_insert');
+    try {
+      revision = await client.query<{ id: string }>(
+        `INSERT INTO report_revisions (
+           report_id, base_report_id, revised_report_id, parent_report_id, root_report_id,
+           revision_number, request_id, rationale, initiated_by, initiated_by_type, status,
+           change_plan, verifier_result, consistency_issues, metadata
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'applied', $11, $12, $13, $14::jsonb)
+         RETURNING id`,
+        [
+          baseReport.id,
+          baseReport.id,
+          revisedReportId,
+          baseReport.id,
+          rootReportId,
+          newVersion,
+          requestId,
+          args.rationale ?? '',
+          args.initiatedBy ?? 'system',
+          args.initiatedByType ?? 'user',
+          JSON.stringify(changePlan),
+          JSON.stringify(verifierPayload),
+          consistencyIssues,
+          revisionMetaJson,
+        ]
+      );
+    } catch (revErr) {
+      const code = (revErr as { code?: string } | null)?.code;
+      if (code !== '42703') throw revErr;
+      await client.query('ROLLBACK TO SAVEPOINT pre_metadata_insert');
+      revision = await client.query<{ id: string }>(
+        `INSERT INTO report_revisions (
+           report_id, base_report_id, revised_report_id, parent_report_id, root_report_id,
+           revision_number, request_id, rationale, initiated_by, initiated_by_type, status,
+           change_plan, verifier_result, consistency_issues
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'applied', $11, $12, $13)
+         RETURNING id`,
+        [
+          baseReport.id,
+          baseReport.id,
+          revisedReportId,
+          baseReport.id,
+          rootReportId,
+          newVersion,
+          requestId,
+          args.rationale ?? '',
+          args.initiatedBy ?? 'system',
+          args.initiatedByType ?? 'user',
+          JSON.stringify(changePlan),
+          JSON.stringify(verifierPayload),
+          consistencyIssues,
+        ]
+      );
+    }
     revisionId = revision.rows[0].id;
 
     const baseByType = new Map(baseSections.map((section) => [section.section_type, section]));

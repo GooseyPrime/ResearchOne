@@ -1,7 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { extractApiError } from '../utils/api';
+import { Link } from 'react-router-dom';
+import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
+
+const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
+  living_report: 'Living Report — $19/mo',
+  reverse_citation_watch: 'Reverse-Citation Watch — $15/mo',
+};
+
+const ADDON_KIND_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
+  living_report: 'Living Report',
+  reverse_citation_watch: 'Reverse-Citation Watch',
+};
 
 type WalletResponse = {
   balanceCents: number;
@@ -90,6 +101,12 @@ export default function BillingPage() {
     queryFn: async () => (await api.get<{ options: SubscriptionOption[] }>('/billing/subscription-options')).data,
   });
 
+  const monitorsQuery = useQuery({
+    queryKey: ['billing-monitors'],
+    queryFn: () => listUserMonitors(),
+    retry: false,
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post<{ success: boolean; error?: string }>('/billing/cancel-subscription', {});
@@ -124,20 +141,36 @@ export default function BillingPage() {
         </p>
         {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(topupOptionsQuery.data?.options ?? []).map((option) => (
-            <button
-              key={option.priceId}
-              className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
-              onClick={() => {
-                setCheckoutError(null);
-                void startCheckoutRedirect('/billing/checkout/topup', {
-                  priceId: option.priceId,
-                }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
+          {(topupOptionsQuery.data?.options ?? []).length > 0 ? (
+            (topupOptionsQuery.data?.options ?? []).map((option) => (
+              <button
+                key={option.priceId}
+                className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
+                onClick={() => {
+                  setCheckoutError(null);
+                  void startCheckoutRedirect('/billing/checkout/topup', {
+                    priceId: option.priceId,
+                  }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
+                }}
+              >
+                {option.label}
+              </button>
+            ))
+          ) : topupOptionsQuery.isLoading ? (
+            <p className="text-sm text-slate-500">Loading top-up options...</p>
+          ) : topupOptionsQuery.isError ? (
+            <div className="w-full rounded-md border border-red-700/30 bg-red-950/20 p-3">
+              <p className="text-sm text-red-400">
+                Failed to load top-up options. Please try refreshing the page.
+              </p>
+            </div>
+          ) : (
+            <div className="w-full rounded-md border border-white/5 bg-slate-800/30 p-3">
+              <p className="text-sm text-slate-400">
+                Wallet top-ups are not yet configured. Check back soon or contact support.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -229,6 +262,45 @@ export default function BillingPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium">Your add-ons</h2>
+          <Link to="/app/monitors" className="text-xs text-indigo-400 hover:text-indigo-300">
+            Manage all →
+          </Link>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Per-report subscriptions for Living Reports and Reverse-Citation Watch. Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.
+        </p>
+        {monitorsQuery.isLoading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading add-ons...</p>
+        ) : (() => {
+          const active = (monitorsQuery.data?.monitors ?? []).filter((m) => m.status === 'active' || m.status === 'paused');
+          if (active.length === 0) {
+            return (
+              <p className="mt-3 text-sm text-slate-400">
+                No add-ons yet. Open any finalized report to add Living Reports or Reverse-Citation Watch.
+              </p>
+            );
+          }
+          return (
+            <ul className="mt-3 space-y-2 text-sm text-slate-300">
+              {active.map((m) => (
+                <li key={m.id} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/app/reports/${m.report_id}`} className="text-slate-200 hover:text-white">
+                      {ADDON_KIND_LABEL[m.monitor_kind]}
+                    </Link>
+                    <span className="ml-2 text-xs text-slate-500 capitalize">{m.status}</span>
+                  </div>
+                  <span className="text-xs text-slate-500">{ADDON_PRICE_LABEL[m.monitor_kind]}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
       </section>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">

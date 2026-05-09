@@ -101,7 +101,16 @@ const config = {
       wallet20: process.env.STRIPE_PRICE_ID_WALLET_20 || '',
       wallet50: process.env.STRIPE_PRICE_ID_WALLET_50 || '',
       wallet100: process.env.STRIPE_PRICE_ID_WALLET_100 || '',
+      livingReportMonthly: process.env.STRIPE_PRICE_ID_LIVING_REPORT_MONTHLY || '',
+      reverseCitationWatchMonthly: process.env.STRIPE_PRICE_ID_REVERSE_CITATION_WATCH_MONTHLY || '',
     },
+  },
+
+  /** Parallel Monitor / Living Reports (Work Order T). Uses same API key as discovery Parallel unless overridden. */
+  parallelMonitor: {
+    apiKey: process.env.PARALLEL_MONITOR_API_KEY || process.env.PARALLEL_API_KEY || '',
+    webhookSecret: process.env.PARALLEL_MONITOR_WEBHOOK_SECRET || '',
+    baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
   redis: {
@@ -203,6 +212,12 @@ const config = {
     maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
     maxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '5', 10),
     ingestionWaitTimeoutMs: parseInt(process.env.DISCOVERY_INGEST_TIMEOUT_MS || '90000', 10),
+    parallelApiKey: process.env.PARALLEL_API_KEY || '',
+    parallelBaseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
+    sciteApiKey: process.env.SCITE_API_KEY || '',
+    sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
+    openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
+    crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
   },
 
   exports: {
@@ -368,3 +383,5 @@ validateReasoningModelPolicy({
 validateEnsemblePresetsAgainstAllowlist();
 
 export { config };
+export { retentionConfig } from './retention';
+export type { RetentionConfig } from './retention';

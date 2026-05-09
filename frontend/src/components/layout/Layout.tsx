@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import type { LucideIcon } from 'lucide-react';
 import {
   FlaskConical,
   BookOpen,
@@ -12,6 +13,7 @@ import {
   Cpu,
   Settings,
   Wallet,
+  Radar,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
@@ -28,23 +30,35 @@ import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
+import NotificationBanner from '../ui/NotificationBanner';
 import ActiveRunBadge from '../research/ActiveRunBadge';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
 
-const NAV_ITEMS = [
-  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
-  { to: '/app/research-v2', label: 'Research One 2', icon: FlaskConical, desc: 'V2 frontier ensemble' },
+type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  desc: string;
+  requireAdmin?: boolean;
+  requireTier?: 'pro';
+};
+
+const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
+
+const NAV_ITEMS: NavItem[] = [
+  { to: '/app/research', label: 'Standard Research', icon: FlaskConical, desc: 'Start investigation' },
+  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Frontier ensemble (Pro+)', requireTier: 'pro' },
   { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
-  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence' },
-  { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)' },
-  { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas' },
-  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph' },
-  { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources' },
+  { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
+  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence', requireTier: 'pro' },
+  { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
+  { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
+  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },
+  { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources', requireTier: 'pro' },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
-  { to: '/app/guide/research-v2', label: 'Research One 2 guide', icon: HelpCircle, desc: 'V2 research modes' },
   { to: '/app/billing', label: 'Billing', icon: Wallet, desc: 'Wallet and subscription' },
-  { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)' },
+  { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)', requireAdmin: true },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;
 const RESTART_POLL_INTERVAL_MS = 2500;
@@ -72,6 +86,28 @@ export default function Layout() {
   });
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
+
+  const { data: subscriptionData, isLoading: subLoading } = useQuery({
+    queryKey: ['billing-subscription'],
+    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
+    enabled: Boolean(authLoaded && isSignedIn),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const subIsActive = subscriptionData?.status === 'active';
+  const userTier = subIsActive ? subscriptionData.tier : 'free_demo';
+  const hasProAccess =
+    isAllowlistedAdmin ||
+    (PRO_PLUS_TIERS as readonly string[]).includes(userTier);
+  const tierResolved = isAllowlistedAdmin || !subLoading;
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.requireAdmin && !isAllowlistedAdmin) return false;
+    if (item.requireTier === 'pro' && !tierResolved) return false;
+    if (item.requireTier === 'pro' && !hasProAccess) return false;
+    return true;
+  });
 
   const { data } = useQuery({
     queryKey: ['stats'],
@@ -190,7 +226,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map(item => (
+          {visibleNavItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -252,6 +288,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto grid-bg">
+          <NotificationBanner />
           <Outlet />
         </main>
       </div>

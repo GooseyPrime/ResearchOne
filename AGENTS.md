@@ -27,6 +27,8 @@ drove the rules is at
 | [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` + V2 model selection criteria. |
 | [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention. |
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
+| [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
+| [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
 
 ## Repo-specific reading list (in priority order)
 
@@ -52,3 +54,44 @@ drove the rules is at
 - When a code review surfaces a finding the agent missed, treat it as a
   data point: extend the relevant rule (or add a new one) so the
   pattern doesn't recur.
+- **CSP (`vercel.json`):** If `script-src` includes `'unsafe-inline'`
+  for Clerk (or similar), keep **`script-src-attr 'none'`** so inline
+  event-handler attributes stay blocked (PR #84). See
+  `.cursor/rules/00-pre-commit-review.mdc` § G2.
+- **Migrations:** Before referencing a column in new DDL, grep prior
+  migrations for which table owns that column (`sources` vs `documents`,
+  etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
+- **Dependencies:** Do not add npm packages that no code path imports;
+  remove unused deps when review flags them.
+- **Query state coverage:** When writing a query that acts on "all X of
+  type Y," enumerate every state/source that qualifies. PR #91 review
+  caught two instances: (1) cascade-cancel queried `status='active'`
+  but paused monitors also have Stripe subscriptions attached; (2)
+  `resolveUserIdFromStripeSubscription` only checked `user_subscriptions`
+  but add-on subscriptions live in `report_monitors`. Both were
+  incomplete scope bugs. List the sources, confirm completeness.
+- **Internal link targets:** When a CTA or anchor link points to a
+  fragment (e.g. `/pricing#living-reports`), verify the target
+  `id="..."` attribute exists on the destination page. PR #93 review
+  caught a link to a non-existent anchor. Grep for the fragment before
+  pushing.
+- **Copy-code parity on interactions:** If marketing copy describes a
+  user interaction ("hover to see…", "click to expand…"), the
+  corresponding behavior must actually be implemented. PR #93 review
+  caught copy promising hover-driven card highlighting that was never
+  wired. See `.cursor/rules/15-doc-pr-and-code-parity.mdc`.
+- **Early-return cleanup:** When adding an early-return path (dedup,
+  validation skip, etc.), check whether the caller allocated resources
+  (staged files, temp buffers, DB locks) that the normal exit path
+  cleans up. PR #92 review: dedup early-return skipped staged file
+  cleanup. See `.cursor/rules/23-early-return-resource-cleanup.mdc`.
+- **Canonical path after file mutation:** After deleting, moving, or
+  compressing a file, update every variable and DB column that stored the
+  old path. PR #92 review: atlas export deleted the JSONL but DB still
+  stored the deleted path; backup/upload code also used the stale
+  variable. See `.cursor/rules/24-canonical-path-after-mutation.mdc`.
+- **Sovereign/exempt guard symmetry:** When adding a guard (sovereign
+  exempt, dry-run skip, Living Report check) to a sweep function,
+  apply the same guard to every sibling function in the sweep. PR #92
+  review: atlas export purge lacked the sovereign guard that the other
+  three sweep functions had.

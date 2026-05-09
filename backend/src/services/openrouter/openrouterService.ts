@@ -4,6 +4,7 @@ import { config } from '../../config';
 import { REASONING_FIRST_PREAMBLE, withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
+import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
 import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
 import {
   RED_TEAM_V2_SYSTEM_PREFIX,
@@ -224,6 +225,10 @@ function getHfClient(): InferenceClient | null {
   return hfClient;
 }
 
+function getModeOverlay(objective: string, role: string): string | undefined {
+  return MODE_OVERLAYS[objective as keyof typeof MODE_OVERLAYS]?.[role as AgentRole];
+}
+
 function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
   let msgs = options.messages;
   if (options.engineVersion?.trim() !== 'v2') return msgs;
@@ -239,6 +244,20 @@ function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
       );
     }
   }
+
+  // Apply mode overlays from WO M when research objective is available
+  if (options.researchObjective) {
+    const overlay = getModeOverlay(options.researchObjective, options.role);
+    if (overlay) {
+      const sysIdx = msgs.findIndex((m) => m.role === 'system');
+      if (sysIdx >= 0) {
+        msgs = msgs.map((msg, i) =>
+          i === sysIdx ? { ...msg, content: `${msg.content}\n\n--- MODE-SPECIFIC DIRECTIVES ---\n${overlay}` } : msg
+        );
+      }
+    }
+  }
+
   return msgs;
 }
 

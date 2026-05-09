@@ -28,6 +28,14 @@ When you call a third-party API for the first time in this codebase:
 3. **Test the edge case if it's a state transition** (locked job,
    missing key, expired token).
 
+## Rule — credentials
+
+Do not emit outbound requests with empty bearer tokens or placeholder
+auth when an API key is unset. **Guard first** (early-return defaults or
+skip the HTTP call); optionally omit `Authorization` entirely when the
+key is missing so operators do not get noisy 401s. PR #83 (Copilot):
+Scite client sent `Bearer ${empty}` when `SCITE_API_KEY` was unset.
+
 ## Rule — input normalization
 
 If a value (URL, slug, env-supplied path) needs normalization

@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { rateLimit } from 'express-rate-limit';
 import { config } from '../config';
-import { logger } from '../utils/logger';
+import { requestLoggerMiddleware } from '../middleware/requestLogger';
+import { centralErrorHandler } from '../middleware/errorHandler';
 
 import ingestionRoutes from './routes/ingestion';
 import researchRoutes from './routes/research';
@@ -18,12 +19,16 @@ import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import byokRoutes from './routes/byok';
+import monitorsRoutes from './routes/monitors';
+import notificationsRoutes from './routes/notifications';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
+import parallelMonitorWebhookRoutes from './webhooks/parallelMonitor';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // JSON API only — do not send Content-Security-Policy (Helmet default breaks
 // browser tooling that inspects responses; CSP belongs on the HTML document from Vercel).
@@ -40,18 +45,31 @@ app.use('/api/webhooks/clerk', webhookRawParser);
 app.use('/webhooks/clerk', webhookRawParser);
 app.use('/api/webhooks/stripe', webhookRawParser);
 app.use('/webhooks/stripe', webhookRawParser);
+app.use('/api/webhooks/parallel-monitor', webhookRawParser);
+app.use('/webhooks/parallel-monitor', webhookRawParser);
 // Global JSON parser for all other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
 
-const limiter = rateLimit({
+const authLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication requests. Please try again later.' },
+});
+app.use(requestLoggerMiddleware);
+app.use('/api/auth', authLimiter);
+
+const defaultLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/auth'),
 });
-app.use('/api', limiter);
+app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 
@@ -68,11 +86,16 @@ const routes: Array<[string, express.Router]> = [
   ['/auth', authRoutes],
   ['/billing', billingRoutes],
   ['/byok', byokRoutes],
+  ['/notifications', notificationsRoutes],
 ];
 
 // Webhooks - primary API prefix (compat mount below shares the same router instance)
 app.use('/api/webhooks/clerk', clerkWebhookRoutes);
 app.use('/api/webhooks/stripe', stripeWebhookRoutes);
+app.use('/api/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
+
+/** Monitor routes use `/api/reports/...` and `/api/monitors/...` — mount at `/api`, not `/api/monitors`. */
+app.use('/api', monitorsRoutes);
 
 for (const [path, router] of routes) {
   app.use(`/api${path}`, router);
@@ -81,6 +104,9 @@ for (const [path, router] of routes) {
 // Compatibility prefix for reverse proxies that strip /api (raw body parser registered above)
 app.use('/webhooks/clerk', clerkWebhookRoutes);
 app.use('/webhooks/stripe', stripeWebhookRoutes);
+app.use('/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
+
+app.use(monitorsRoutes);
 
 for (const [path, router] of routes) {
   app.use(path, router);
@@ -94,10 +120,7 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err.message });
-});
+// Central error handler with PII redaction
+app.use(centralErrorHandler);
 
 export default app;

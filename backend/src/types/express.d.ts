@@ -3,6 +3,7 @@ import type { JwtPayload } from '@clerk/backend';
 declare global {
   namespace Express {
     interface Request {
+      requestId?: string;
       auth?: {
         userId: string | null;
         orgId: string | null;

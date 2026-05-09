@@ -62,7 +62,7 @@ Section 14 of `docs/ResearchOne_Final_Report.md` is the canonical work-order lis
 | **`prompts.ts`** | `REASONING_FIRST_PREAMBLE` exported and used in wrappers |
 | **`reasoningModelPolicy.ts`** | `RED_TEAM_V2_SYSTEM_PREFIX` exported |
 | **`App.tsx` routing** | Matches Section 9 table (no commercial routes) |
-| **`.env.example` files** | `backend/.env.example` is pointer-only; real keys in `backend/.env.development.example`, `backend/.env.production.example`; frontend `frontend/.env.example` lists `VITE_*` |
+| **`.env.example` files** | `backend/.env.example` is a local-dev starter scaffold; production use `backend/.env.production.example`; both templates documented; frontend `frontend/.env.example` lists `VITE_*` |
 | **`vercel.json` ×2** | Both include SPA rewrite + CSP headers |
 | **`docker-compose.yml`** | Postgres+Redis+backend+frontend; Redis `appendonly yes` |
 | **`ecosystem.config.js`** | PM2 single app `researchone-api`, `cwd /opt/researchone`, `env_file ./backend/.env` |
