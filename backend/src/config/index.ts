@@ -383,3 +383,5 @@ validateReasoningModelPolicy({
 validateEnsemblePresetsAgainstAllowlist();
 
 export { config };
+export { retentionConfig } from './retention';
+export type { RetentionConfig } from './retention';
