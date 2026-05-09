@@ -20,7 +20,25 @@ CREATE INDEX IF NOT EXISTS idx_user_notifications_unread
 -- RLS: customer rows scoped by app.user_id session var.
 -- PR #91 review (Copilot) caught missing RLS which would have allowed
 -- cross-user reads/writes via application_role.
-ALTER TABLE user_notifications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY user_notifications_user_isolation ON user_notifications
-  FOR ALL TO application_role
-  USING (user_id = current_setting('app.user_id', true));
+-- Gated on application_role existence (same as 022/026/029).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'application_role') THEN
+    RAISE NOTICE '027_user_notifications: application_role does not exist — skipping RLS policy creation';
+    RETURN;
+  END IF;
+
+  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_notifications') THEN
+    EXECUTE 'ALTER TABLE user_notifications ENABLE ROW LEVEL SECURITY';
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'user_notifications'
+        AND policyname = 'user_notifications_user_isolation'
+    ) THEN
+      EXECUTE $p$CREATE POLICY user_notifications_user_isolation ON user_notifications
+        FOR ALL TO application_role
+        USING (user_id = current_setting('app.user_id', true))$p$;
+    END IF;
+  END IF;
+END $$;
