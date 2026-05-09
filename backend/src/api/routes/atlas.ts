@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import path from 'path';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
@@ -98,6 +99,12 @@ router.get('/exports/:id/download', async (req, res, next) => {
     }
 
     const filePath = rows[0].export_path;
+    const resolved = path.resolve(filePath);
+    const expected = path.resolve(config.exports.dir);
+    if (!resolved.startsWith(expected + path.sep) && resolved !== expected) {
+      res.status(400).json({ error: 'Export path outside exports directory' });
+      return;
+    }
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Export file not found' });
       return;

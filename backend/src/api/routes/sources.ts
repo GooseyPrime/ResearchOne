@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
-import { query } from '../../db/pool';
+import { query, queryOne } from '../../db/pool';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -55,9 +56,47 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/sources/:id - Remove a source and all its data
+// DELETE /api/sources/:id - Remove a source and all its data.
+// Restricted: admin-only, or the user who ingested the source (via discovered_by_run_id).
 router.delete('/:id', async (req, res, next) => {
   try {
+    if (req.adminAuth) {
+      await query(`DELETE FROM sources WHERE id=$1`, [req.params.id]);
+      res.json({ deleted: true });
+      return;
+    }
+
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    let isOwner = false;
+    try {
+      const row = await queryOne<{ user_id: string | null }>(
+        `SELECT r.user_id
+         FROM sources s
+         JOIN research_runs r ON r.id = s.discovered_by_run_id
+         WHERE s.id = $1`,
+        [req.params.id]
+      );
+      isOwner = row?.user_id === userId;
+    } catch (err) {
+      const pgCode = (err as { code?: string })?.code;
+      if (pgCode === '42703') {
+        logger.warn('legacy_unscoped_delete', { route: 'DELETE /api/sources/:id' });
+        res.status(403).json({ error: 'You can only delete sources you ingested' });
+        return;
+      }
+      throw err;
+    }
+
+    if (!isOwner) {
+      res.status(403).json({ error: 'You can only delete sources you ingested' });
+      return;
+    }
+
     await query(`DELETE FROM sources WHERE id=$1`, [req.params.id]);
     res.json({ deleted: true });
   } catch (err) {

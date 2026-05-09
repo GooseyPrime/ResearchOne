@@ -33,7 +33,7 @@ router.use(requireAuth);
 
 const uploadResearch = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
+  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: parseInt(process.env.RESEARCH_MAX_FILES_PER_RUN || '5', 10) },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/pdf',

@@ -226,6 +226,10 @@ const config = {
     autoExportOnEmbedding: process.env.ATLAS_AUTO_EXPORT_ON_EMBEDDING === 'true',
   },
 
+  atlas: {
+    maxChunksPerExport: parseInt(process.env.ATLAS_EXPORT_MAX_CHUNKS || '50000', 10),
+  },
+
   nomic: {
     apiKey: process.env.NOMIC_API_KEY || '',
     atlasDatasetSlug: process.env.NOMIC_ATLAS_DATASET_SLUG || 'intellme',
@@ -332,6 +336,29 @@ if (config.discovery.enabled) {
       );
     }
     assertHttpUrl(config.discovery.providerBaseUrl, 'SEARCH_PROVIDER_BASE_URL');
+  }
+}
+
+if (config.nodeEnv === 'production') {
+  const dbPw = process.env.DB_PASSWORD;
+  if (!dbPw || dbPw === 'changeme') {
+    throw new Error('DB_PASSWORD must be set (and not "changeme") in production');
+  }
+  if (!config.clerk.secretKey.trim()) {
+    throw new Error('CLERK_SECRET_KEY must be set in production');
+  }
+  if (!config.clerk.webhookSecret.trim()) {
+    throw new Error('CLERK_WEBHOOK_SECRET must be set in production');
+  }
+  if (!config.stripe.secretKey.trim()) {
+    throw new Error('STRIPE_SECRET_KEY must be set in production');
+  }
+  if (!config.stripe.webhookSecret.trim()) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be set in production');
+  }
+  const byokKey = process.env.BYOK_ENCRYPTION_KEY;
+  if (!byokKey || !byokKey.trim()) {
+    throw new Error('BYOK_ENCRYPTION_KEY must be set in production');
   }
 }
 

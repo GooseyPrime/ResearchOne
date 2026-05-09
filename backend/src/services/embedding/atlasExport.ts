@@ -68,7 +68,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     sql += ` AND s.tags && $${params.length}::text[]`;
   }
 
-  sql += ' ORDER BY c.created_at DESC LIMIT 50000';
+  const maxChunks = config.atlas.maxChunksPerExport;
+  sql += ` ORDER BY c.created_at DESC LIMIT ${maxChunks}`;
 
   const rows = await query<{
     id: string;
@@ -86,6 +87,10 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     vector_str: string;
     evidence_tier: string | null;
   }>(sql, params.length > 0 ? params : undefined);
+
+  if (rows.length >= maxChunks) {
+    logger.warn('atlas_export_truncated', { exportId, maxChunks, fetchedRows: rows.length });
+  }
 
   // Parse vectors from pgvector string format
   const points: AtlasPoint[] = rows.map(row => {
