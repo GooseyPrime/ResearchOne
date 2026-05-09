@@ -3,7 +3,15 @@ import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 import PricingCard from '../components/landing/PricingCard';
 
-const ADD_ONS = [
+type AddOn = {
+  name: string;
+  price: string;
+  description: string;
+  comingSoon?: boolean;
+  comingSoonCta?: { label: string; href: string };
+};
+
+const ADD_ONS: AddOn[] = [
   {
     name: 'Living Reports',
     price: '$19/mo',
@@ -23,11 +31,16 @@ const ADD_ONS = [
     name: 'Provenance Ledger',
     price: '$29/mo',
     description: 'Immutable, timestamped audit trail of every source retrieved, every reasoning step taken, and every export generated — suitable for regulatory and legal contexts.',
+    comingSoon: true,
+    comingSoonCta: {
+      label: 'Enterprise inquiry →',
+      href: 'mailto:hello@researchone.io?subject=Provenance%20Ledger%20enterprise%20inquiry',
+    },
   },
   {
     name: 'Score API Pro',
     price: '$99/mo',
-    description: 'Programmatic access to ResearchOne\'s compliance and policy scoring engine. REST API with webhooks, batch scoring, and structured JSON responses.',
+    description: "Programmatic access to ResearchOne's compliance and policy scoring engine. REST API with webhooks, batch scoring, and structured JSON responses.",
   },
   {
     name: 'Patent & IP Diligence',
@@ -53,7 +66,7 @@ export default function PricingPage() {
           <PricingCard title="Sovereign Enterprise" details="From $4,500/mo (annual) — dedicated stack and custom retention" cta="Talk to sales" to="/sovereign" />
         </div>
 
-        <div className="mt-16">
+        <div id="living-reports" className="mt-16">
           <h2 className="font-serif text-3xl">Add-ons</h2>
           <p className="mt-2 text-r1-text-muted">Available on Pro, Team, and Sovereign. Stack as many as you need.</p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -61,9 +74,23 @@ export default function PricingPage() {
               <article key={addon.name} className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
                 <div className="flex items-baseline justify-between gap-4">
                   <h3 className="font-serif text-xl text-r1-text">{addon.name}</h3>
-                  <span className="shrink-0 text-sm font-medium text-r1-accent">{addon.price}</span>
+                  {addon.comingSoon ? (
+                    <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-r1-text-muted">
+                      Coming soon — Enterprise
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-sm font-medium text-r1-accent">{addon.price}</span>
+                  )}
                 </div>
                 <p className="mt-3 text-sm leading-7 text-r1-text-muted">{addon.description}</p>
+                {addon.comingSoon && addon.comingSoonCta && (
+                  <a
+                    href={addon.comingSoonCta.href}
+                    className="mt-4 inline-flex text-sm text-r1-accent hover:underline"
+                  >
+                    {addon.comingSoonCta.label}
+                  </a>
+                )}
               </article>
             ))}
           </div>

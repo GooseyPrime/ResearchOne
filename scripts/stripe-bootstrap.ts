@@ -121,8 +121,18 @@ async function findOrCreateProduct(spec: ProductSpec): Promise<string> {
   });
 
   if (existing.data.length > 0) {
-    console.log(`  ✓ Product exists: ${spec.name}`);
-    return existing.data[0].id;
+    const existingProduct = existing.data[0];
+    // Apply name/description changes so renames propagate on re-runs.
+    if (existingProduct.name !== spec.name || existingProduct.description !== spec.description) {
+      await stripe.products.update(existingProduct.id, {
+        name: spec.name,
+        description: spec.description,
+      });
+      console.log(`  ↻ Updated product: ${spec.name}`);
+    } else {
+      console.log(`  ✓ Product exists: ${spec.name}`);
+    }
+    return existingProduct.id;
   }
 
   const product = await stripe.products.create({
