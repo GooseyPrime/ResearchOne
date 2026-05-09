@@ -166,8 +166,8 @@ export default function LandingPage() {
         <h2 className="font-serif text-3xl">Pricing that scales with how seriously you're researching.</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <PricingCard title="Free Demo" details="$0 — 3 reports lifetime — General Epistemic only — Watermarked." cta="Start free" to="/sign-up" />
-          <PricingCard title="Pro" details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — 10 GB corpus." cta="Subscribe" to="/sign-up?tier=pro" featured />
-          <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — 25 GB." cta="Configure keys" to="/byok" />
+          <PricingCard title="Pro" details="$29/mo or $290/yr — 25 reports/mo — All 5 modes — Priority queue — Living Reports available." cta="Subscribe" to="/sign-up?tier=pro" featured />
+          <PricingCard title="BYOK" details="$29/mo — Orchestration + exports — Bring your own model keys — Runs billed to your provider." cta="Configure keys" to="/byok" />
           <PricingCard title="Sovereign Enterprise" details="From $4,500/mo (annual) — single tenant deployment and contract isolation." cta="Talk to sales" to="/sovereign" />
         </div>
         <p className="mt-6 text-r1-text-muted">

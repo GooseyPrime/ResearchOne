@@ -36,7 +36,7 @@ import {
   ChevronUp,
   MessageSquareText,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
@@ -461,6 +461,30 @@ export default function ReportDetailPage() {
         </div>
 
         <MonitorToggle reportId={report.id} reportStatus={report.status} />
+
+        {(report.retention_status === 'living_active' || report.has_active_living_report) && (
+          <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2">
+            <AlertTriangle size={14} className="text-accent mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-slate-300">Living Report active — source set and monitoring state retained while active.</p>
+          </div>
+        )}
+        {report.workspace_purged_at && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+            <AlertTriangle size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-slate-300">
+              The temporary research workspace for this report has been cleared. The final report and citations remain available
+              {report.report_expires_at ? ` until ${format(new Date(report.report_expires_at), 'MMM d, yyyy')}` : ''}.
+            </p>
+          </div>
+        )}
+        {report.report_expires_at && report.status === 'finalized' && !report.has_active_living_report && report.retention_status !== 'living_active' && !report.workspace_purged_at && (
+          <div className="flex items-start gap-2 rounded-lg border border-indigo-900/20 bg-surface-200/50 px-3 py-2">
+            <FileText size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-r1-text-muted">
+              Available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}. Export or convert to a Living Report to keep monitoring active.
+            </p>
+          </div>
+        )}
 
         <div className="print:hidden">
           <button

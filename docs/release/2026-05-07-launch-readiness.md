@@ -90,6 +90,11 @@
 
 - [x] Legal review of Terms, Privacy, Acceptable Use ($2.5-5K budget)
 - [x] Remove LegalDraftBanner after lawyer sign-off
+- [x] Storage language removed from pricing (replaced with "Retention" column describing workspace policy, not GB allocations)
+- [x] Retention policy implemented (`retentionPolicy.ts`, `retentionService.ts`, `retention.ts` config, `retentionCleanupCron.ts`; deploy-skew safe via 42703 catch)
+- [x] Redis large payload fix (ingestion staging writes file to disk via `uploadStaging.ts` instead of inlining large buffers into BullMQ jobs; `textQueueInlineMaxBytes` config)
+- [x] Atlas export retention/compression (`purgeExpiredAtlasExports` in retention sweep; `atlas_exports.expires_at` + `purged_at` columns; compressed file unlink on purge)
+- [x] UI expiration visibility (report list shows `report_expires_at`; detail page shows retention status banners for living-active, workspace-purged, and standard-expiry states)
 - [ ] Production environment variables provisioned
 - [ ] Database backups configured and tested
 - [ ] Sentry DSN provisioned

@@ -118,6 +118,20 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     immutable.** Do not edit their content; do not skip their
     application.
 
+## J. Resource cleanup and path hygiene (PR #92)
+
+22. **Early returns must clean up allocated resources.** If the normal
+    path cleans up staged files / temp dirs / locks, every early
+    `return` / `continue` before that point must do the same. (See
+    `.cursor/rules/23-early-return-resource-cleanup.mdc`.)
+23. **After deleting / moving / compressing a file, update every
+    reference to the old path** — local variable, DB column, return
+    value, backup/upload call sites. (See
+    `.cursor/rules/24-canonical-path-after-mutation.mdc`.)
+24. **Guard symmetry in sweep functions.** When a sweep has N sibling
+    functions and one gets a new guard (sovereign exempt, living-report
+    skip), apply the same guard to all N siblings.
+
 ---
 
 If a finding from a code review surprises the agent, add it to

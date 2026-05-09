@@ -5,7 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
+import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
+import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
 
 const router = Router();
 
@@ -127,22 +129,44 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
     const filename = req.file.originalname.toLowerCase();
 
     let sourceType: 'text' | 'pdf' | 'markdown';
-    let fileData: { text?: string; fileBuffer?: string };
+    let jobPayload: Record<string, unknown>;
 
     if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
       sourceType = 'pdf';
-      fileData = { fileBuffer: req.file.buffer.toString('base64') };
+      const staged = stageFileBuffer(req.file.buffer, req.file.originalname);
+      jobPayload = {
+        stagedFilePath: staged.stagedFilePath,
+        stagedFileSha256: staged.stagedFileSha256,
+        stagedFileSizeBytes: staged.stagedFileSizeBytes,
+      };
     } else if (
       mime === 'text/markdown' ||
       mime === 'text/x-markdown' ||
       filename.endsWith('.md')
     ) {
       sourceType = 'markdown';
-      fileData = { text: req.file.buffer.toString('utf8') };
+      if (req.file.buffer.length > retentionConfig.textQueueInlineMaxBytes) {
+        const staged = stageFileBuffer(req.file.buffer, req.file.originalname);
+        jobPayload = {
+          stagedFilePath: staged.stagedFilePath,
+          stagedFileSha256: staged.stagedFileSha256,
+          stagedFileSizeBytes: staged.stagedFileSizeBytes,
+        };
+      } else {
+        jobPayload = { text: req.file.buffer.toString('utf8') };
+      }
     } else {
-      // plain text
       sourceType = 'text';
-      fileData = { text: req.file.buffer.toString('utf8') };
+      if (req.file.buffer.length > retentionConfig.textQueueInlineMaxBytes) {
+        const staged = stageFileBuffer(req.file.buffer, req.file.originalname);
+        jobPayload = {
+          stagedFilePath: staged.stagedFilePath,
+          stagedFileSha256: staged.stagedFileSha256,
+          stagedFileSizeBytes: staged.stagedFileSizeBytes,
+        };
+      } else {
+        jobPayload = { text: req.file.buffer.toString('utf8') };
+      }
     }
 
     await query(
@@ -153,7 +177,7 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
 
     await ingestionQueue.add('ingest-file', {
       ingestionJobId: id,
-      ...fileData,
+      ...jobPayload,
       fileName: req.file.originalname,
       sourceType,
       originalMimeType: req.file.mimetype,
