@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
+import { pipeline } from 'stream/promises';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
@@ -134,11 +136,42 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     });
   });
 
-  // Update export record with the canonical path
-  await query(
-    `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
-    [points.length, exportPath, exportId]
+  const uncompressedBytes = fs.statSync(exportPath).size;
+
+  // Gzip the JSONL for storage efficiency
+  const compressedPath = exportPath + '.gz';
+  await pipeline(
+    fs.createReadStream(exportPath),
+    zlib.createGzip(),
+    fs.createWriteStream(compressedPath),
   );
+  const compressedBytes = fs.statSync(compressedPath).size;
+
+  // Remove uncompressed file after successful compression
+  fs.unlinkSync(exportPath);
+
+  const ATLAS_EXPORT_RETENTION_DAYS = 30;
+  const expiresAt = new Date(Date.now() + ATLAS_EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+  try {
+    await query(
+      `UPDATE atlas_exports
+       SET chunk_count=$1, export_path=$2, compressed_path=$3,
+           uncompressed_bytes=$4, compressed_bytes=$5, expires_at=$6
+       WHERE id=$7`,
+      [points.length, exportPath, compressedPath, uncompressedBytes, compressedBytes, expiresAt.toISOString(), exportId],
+    );
+  } catch (updateErr: unknown) {
+    const pgCode = (updateErr as { code?: string }).code;
+    if (pgCode === '42703') {
+      await query(
+        `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
+        [points.length, compressedPath, exportId],
+      );
+    } else {
+      throw updateErr;
+    }
+  }
 
   // Optional DR copy for quick local disaster recovery.
   if (config.exports.atlasBackupDir.trim()) {
