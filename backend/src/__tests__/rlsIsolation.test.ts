@@ -110,6 +110,58 @@ describe('RLS isolation', () => {
     });
   });
 
+  describe('migration 026 — report_monitors RLS', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../db/migrations/026_report_monitors.sql'),
+      'utf8'
+    );
+
+    it('gates on application_role existence (degrades when 021 skipped)', () => {
+      expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'application_role')");
+      expect(sql).toContain(
+        "RAISE NOTICE '026_report_monitors: application_role does not exist — skipping RLS policy creation'"
+      );
+      expect(sql).toContain('RETURN');
+    });
+
+    it('creates policies via EXECUTE with pg_policies idempotency', () => {
+      expect(sql).toContain('EXECUTE $p$CREATE POLICY report_monitors_user_isolation ON report_monitors');
+      expect(sql).toContain('EXECUTE $p$CREATE POLICY report_monitor_events_via_monitor ON report_monitor_events');
+      expect(sql).toContain("policyname = 'report_monitors_user_isolation'");
+      expect(sql).toContain("policyname = 'report_monitor_events_via_monitor'");
+    });
+
+    it('policies target application_role inside dynamic SQL', () => {
+      const policyMatches = sql.match(/TO application_role/g);
+      expect(policyMatches).not.toBeNull();
+      expect(policyMatches!.length).toBe(2);
+    });
+  });
+
+  describe('migration 027 — user_notifications RLS', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../db/migrations/027_user_notifications.sql'),
+      'utf8'
+    );
+
+    it('gates on application_role existence (degrades when 021 skipped)', () => {
+      expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'application_role')");
+      expect(sql).toContain(
+        "RAISE NOTICE '027_user_notifications: application_role does not exist — skipping RLS policy creation'"
+      );
+      expect(sql).toContain('RETURN');
+    });
+
+    it('creates policy via EXECUTE with pg_policies idempotency', () => {
+      expect(sql).toContain('EXECUTE $p$CREATE POLICY user_notifications_user_isolation ON user_notifications');
+      expect(sql).toContain("policyname = 'user_notifications_user_isolation'");
+    });
+
+    it('policy targets application_role inside dynamic SQL', () => {
+      expect(sql).toContain('FOR ALL TO application_role');
+    });
+  });
+
   describe('pool.ts — exports and AsyncLocalStorage', () => {
     it('exports getPool, adminQuery, and rlsStore', async () => {
       const poolModule = await import('../db/pool');
