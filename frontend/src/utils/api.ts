@@ -163,6 +163,10 @@ export interface SystemHealth {
 
 export interface Report {
   id: string;
+  /** Present when migration 029 applied — creator's Clerk user id */
+  owner_user_id?: string | null;
+  /** Present when migration 029 applied — org scope for shared reports */
+  org_id?: string | null;
   root_report_id?: string;
   parent_report_id?: string;
   version_number?: number;

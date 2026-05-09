@@ -176,6 +176,8 @@ router.get('/', async (req, res, next) => {
               r.finalized_at, r.created_at, r.version_number,
               r.root_report_id, r.parent_report_id`;
 
+    const scopeCols = `, r.user_id AS owner_user_id, r.org_id`;
+
     const retentionCols = `, r.report_expires_at, r.workspace_expires_at, r.workspace_purged_at, r.retention_status`;
 
     const livingSubquery = `, EXISTS(SELECT 1 FROM report_monitors rm WHERE rm.report_id = r.id AND rm.monitor_kind = 'living_report' AND rm.status = 'active') AS has_active_living_report`;
@@ -203,7 +205,7 @@ router.get('/', async (req, res, next) => {
     let rows: unknown[];
     try {
       const params: unknown[] = [];
-      const sql = `SELECT ${baseCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params, true, true)} ORDER BY r.created_at DESC LIMIT 100`;
+      const sql = `SELECT ${baseCols}${scopeCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params, true, true)} ORDER BY r.created_at DESC LIMIT 100`;
       rows = await query(sql, params);
     } catch (err: unknown) {
       const pgCode = (err as { code?: string }).code;
@@ -215,6 +217,8 @@ router.get('/', async (req, res, next) => {
           const fallbackRows = await query(sql, params);
           rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
             ...r,
+            owner_user_id: null,
+            org_id: null,
             report_expires_at: null,
             workspace_expires_at: null,
             workspace_purged_at: null,
@@ -228,6 +232,8 @@ router.get('/', async (req, res, next) => {
           const fallbackRows = await query(sql, params);
           rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
             ...r,
+            owner_user_id: null,
+            org_id: null,
             report_expires_at: null,
             workspace_expires_at: null,
             workspace_purged_at: null,

@@ -24,62 +24,21 @@ import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
 import { incrementReportCount } from '../tier/tierService';
+import type {
+  ProgressCallback,
+  ResearchJobData,
+  ResearchProgress,
+  RunSummaryPayload,
+} from './researchOrchestratorTypes';
+import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
 
-export interface CreditChargeContext {
-  type: 'subscription' | 'wallet' | 'byok' | 'none';
-  costCents: number;
-  holdId?: string;
-  userId?: string;
-  subscriptionQuotaToDecrement?: number;
-}
-
-export interface ResearchJobData {
-  runId: string;
-  query: string;
-  supplemental?: string;
-  filterTags?: string[];
-  modelOverrides?: PerRunModelOverrides;
-  engineVersion?: string;
-  researchObjective?: ResearchObjective;
-  /** Optional total report length in words. Clamped server-side to a safe
-   *  range; routed into the synthesizer's per-section budget directives. */
-  targetWordCount?: number;
-  creditChargeContext?: CreditChargeContext;
-}
-
-export interface ResearchProgress {
-  stage: string;
-  percent: number;
-  message: string;
-  runId: string;
-  detail?: string;
-  substep?: string;
-  timestamp: string;
-  model?: string;
-  tokenUsage?: { prompt: number; completion: number };
-  sourceCount?: number;
-  chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
-  retryable?: boolean;
-  failureMeta?: Record<string, unknown>;
-}
-
-export interface RunSummaryPayload {
-  runId: string;
-  status: string;
-  totalDurationMs: number;
-  phaseDurations: Record<string, number>;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  retryCount: number;
-  failedStage?: string | null;
-  errorMessage?: string | null;
-  failureMeta?: Record<string, unknown> | null;
-  orchestratorHints?: string[];
-  modelUsage: Array<{ role: string; model: string; promptTokens: number; completionTokens: number; durationMs: number }>;
-}
-
-type ProgressCallback = (update: ResearchProgress) => void;
+export type {
+  CreditChargeContext,
+  ProgressCallback,
+  ResearchJobData,
+  ResearchProgress,
+  RunSummaryPayload,
+} from './researchOrchestratorTypes';
 
 async function assertNotCancelled(runId: string): Promise<void> {
   if (await isRunCancellationRequested(runId)) {
@@ -93,25 +52,6 @@ interface ResearchPlan {
   hypothesis: string;
   falsification_criteria: string[];
   investigation_angles: string[];
-}
-
-function normalizeRetrievalQueries(raw: unknown, fallback: string): string[] {
-  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  const out: string[] = [];
-  for (const item of list) {
-    if (typeof item === 'string') {
-      const t = item.trim();
-      if (t) out.push(t);
-    } else if (typeof item === 'number' || typeof item === 'boolean') {
-      out.push(String(item));
-    } else if (item && typeof item === 'object') {
-      const o = item as Record<string, unknown>;
-      const q = o.query ?? o.text ?? o.q;
-      if (typeof q === 'string' && q.trim()) out.push(q.trim());
-      else out.push(JSON.stringify(item));
-    }
-  }
-  return out.length > 0 ? out : [fallback];
 }
 
 interface VerificationResult {
