@@ -37,6 +37,7 @@ app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   })
 );
 // Webhook routes need raw body for signature verification - MUST be before JSON parser

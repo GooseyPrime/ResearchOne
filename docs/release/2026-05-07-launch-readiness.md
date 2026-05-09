@@ -46,7 +46,8 @@
 | HSTS header | Verified |
 | Rate limiting (auth 10/min, default 500/15min) | Verified |
 | Trust proxy configured | Verified |
-| RLS enabled on customer-data tables | Verified (migration 022) |
+| RLS enabled on billing/wallet/BYOK tables (migration 022) | Verified |
+| RLS enabled on research-data tables (migration 029) | Verified |
 | BYOK encryption (AES-256-GCM) | Verified |
 | Pipeline B sanitization (PII stripping) | Verified + tested |
 | 404 page on unknown routes | Verified |

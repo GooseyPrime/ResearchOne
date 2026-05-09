@@ -448,6 +448,7 @@ export async function runResearchJob(
       researchObjective,
       allowFallbackByRole,
       byokApiKeyOverride,
+      userId: creditCtx?.userId,
       onRoundComplete: async ({ round, candidatesAfter }) => {
         const pct = round === 1 ? 15 : 17;
         await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
@@ -714,6 +715,7 @@ export async function runResearchJob(
       supplementalAttachments: Array.isArray(prov?.supplemental_attachments)
         ? (prov.supplemental_attachments as Record<string, unknown>[])
         : [],
+      userId: creditCtx?.userId,
     });
     await saveRunCheckpoint({
       runId,
@@ -1265,6 +1267,7 @@ async function saveReport(args: {
   modelEnsemble?: Record<string, unknown>;
   supplementalText: string;
   supplementalAttachments: Record<string, unknown>[];
+  userId?: string;
 }): Promise<string> {
   const {
     runId,
@@ -1279,6 +1282,7 @@ async function saveReport(args: {
     modelEnsemble,
     supplementalText,
     supplementalAttachments,
+    userId,
   } = args;
 
   // Parse sections from synthesizer output
@@ -1291,20 +1295,33 @@ async function saveReport(args: {
       ? plan.falsification_criteria.filter((c) => typeof c === 'string').join('\n')
       : '';
     const safeChunks = Array.isArray(allChunks) ? allChunks : [];
-    const reportResult = await client.query(
-      `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
-       VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
-      [
-        runId,
-        researchQuery.slice(0, 200),
-        researchQuery,
-        sections.find(s => s.type === 'executive_summary')?.content ?? '',
-        sections.find(s => s.type === 'conclusion')?.content ?? '',
-        safeFalsification,
-        new Set(safeChunks.map((c) => c.source_url)).size,
-        safeChunks.length,
-      ]
-    );
+    const baseParams = [
+      runId,
+      researchQuery.slice(0, 200),
+      researchQuery,
+      sections.find(s => s.type === 'executive_summary')?.content ?? '',
+      sections.find(s => s.type === 'conclusion')?.content ?? '',
+      safeFalsification,
+      new Set(safeChunks.map((c) => c.source_url)).size,
+      safeChunks.length,
+    ];
+    let reportResult: { rows: Array<{ id: string }> };
+    await client.query('SAVEPOINT pre_report_insert');
+    try {
+      reportResult = await client.query(
+        `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at, user_id)
+         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW(), $9) RETURNING id`,
+        [...baseParams, userId ?? null]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await client.query('ROLLBACK TO SAVEPOINT pre_report_insert');
+      reportResult = await client.query(
+        `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
+         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
+        baseParams
+      );
+    }
     reportId = reportResult.rows[0].id;
 
     // Insert all sections

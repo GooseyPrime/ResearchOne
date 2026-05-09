@@ -29,8 +29,9 @@ export async function ingestSupplementalForRun(args: {
   runId: string;
   urls: string[];
   files: SupplementalFileItem[];
+  userId?: string;
 }): Promise<SupplementalIngestSummary> {
-  const { runId, urls, files } = args;
+  const { runId, urls, files, userId } = args;
   const jobIds: string[] = [];
   let urlsQueued = 0;
   let filesQueued = 0;
@@ -39,11 +40,21 @@ export async function ingestSupplementalForRun(args: {
     const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
     if (!url) continue;
     const id = uuidv4();
-    await query(
-      `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
-       VALUES ($1, $2, 'web_url', 'queued', $3)`,
-      [id, url, JSON.stringify(RESEARCH_META(runId))]
-    );
+    const meta = JSON.stringify(RESEARCH_META(runId));
+    try {
+      await query(
+        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
+         VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
+        [id, url, meta, userId ?? null]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
+         VALUES ($1, $2, 'web_url', 'queued', $3)`,
+        [id, url, meta]
+      );
+    }
     await ingestionQueue.add('ingest-url', {
       ingestionJobId: id,
       url,
@@ -82,11 +93,21 @@ export async function ingestSupplementalForRun(args: {
       continue;
     }
 
-    await query(
-      `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
-       VALUES ($1, $2, $3, 'queued', $4)`,
-      [id, file.originalname, sourceType, JSON.stringify(RESEARCH_META(runId))]
-    );
+    const fileMeta = JSON.stringify(RESEARCH_META(runId));
+    try {
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata, user_id)
+         VALUES ($1, $2, $3, 'queued', $4, $5)`,
+        [id, file.originalname, sourceType, fileMeta, userId ?? null]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
+         VALUES ($1, $2, $3, 'queued', $4)`,
+        [id, file.originalname, sourceType, fileMeta]
+      );
+    }
 
     await ingestionQueue.add('ingest-file', {
       ingestionJobId: id,
