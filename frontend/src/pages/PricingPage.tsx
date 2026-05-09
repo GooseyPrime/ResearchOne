@@ -30,20 +30,20 @@ export default function PricingPage() {
           />
           <PricingCard
             title="Pro"
-            details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — 10 GB corpus"
+            details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue"
             cta="Subscribe"
             to="/sign-up?tier=pro"
             featured
           />
           <PricingCard
             title="BYOK"
-            details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — 25 GB"
+            details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys"
             cta="Configure keys"
             to="/byok"
           />
           <PricingCard
             title="Team"
-            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Shared corpus, audit log, SSO"
+            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Shared audit log, SSO"
             cta="Contact us"
             to={TEAM_MAILTO}
             badge="Coming soon"

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingFooter from '../components/landing/LandingFooter';
+import ModeMatrix from '../components/landing/ModeMatrix';
 import PipelineDiagram from '../components/landing/PipelineDiagram';
 
 const PIPELINE_STAGES: Array<{ n: number; agent: string; role: string }> = [
@@ -105,6 +106,36 @@ export default function MethodologyPage() {
           <p className="mt-6 text-sm text-r1-text-muted">
             Each stage emits progress over the live socket so operators can trace revisions end-to-end.
           </p>
+        </section>
+
+        <section id="modes" className="mt-16">
+          <h2 className="font-serif text-3xl">Five modes. One pipeline.</h2>
+          <p className="mt-3 text-r1-text-muted">
+            Each mode runs the full ten-stage pipeline. The differences live in the mode-specific overlays on the
+            Planner, Skeptic, and Synthesizer.
+          </p>
+          <div className="mt-6">
+            <ModeMatrix />
+          </div>
+          <div className="mt-8 space-y-4 text-sm text-r1-text-muted">
+            <p>
+              Mode choice happens before run-time, not after. The planner needs to know which decomposition strategy
+              to use, the skeptic needs to know which attack surface to prioritize, and the synthesizer needs to know
+              which output format to target. Choosing a mode after retrieval would leave the planner blind to the
+              research objective.
+            </p>
+            <p>
+              A &quot;mode-specific overlay&quot; is a system-prompt prefix that adjusts agent behavior without replacing
+              the base pipeline. The Planner overlay changes decomposition strategy (e.g. actor-graph vs. balanced
+              sub-questions). The Skeptic overlay adjusts attack intensity and focus. The Synthesizer overlay adjusts
+              output structure and emphasis.
+            </p>
+            <p>
+              Adversarial Twin (Sovereign-only) runs the Skeptic at full attack intensity with no synthesis pass —
+              producing only contradictions, gaps, and falsification probes. Use it when you need a dedicated red-team
+              output alongside the standard report.
+            </p>
+          </div>
         </section>
 
         <p className="mt-12">
