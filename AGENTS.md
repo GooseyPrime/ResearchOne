@@ -68,3 +68,13 @@ drove the rules is at
   `resolveUserIdFromStripeSubscription` only checked `user_subscriptions`
   but add-on subscriptions live in `report_monitors`. Both were
   incomplete scope bugs. List the sources, confirm completeness.
+- **Internal link targets:** When a CTA or anchor link points to a
+  fragment (e.g. `/pricing#living-reports`), verify the target
+  `id="..."` attribute exists on the destination page. PR #93 review
+  caught a link to a non-existent anchor. Grep for the fragment before
+  pushing.
+- **Copy-code parity on interactions:** If marketing copy describes a
+  user interaction ("hover to see…", "click to expand…"), the
+  corresponding behavior must actually be implemented. PR #93 review
+  caught copy promising hover-driven card highlighting that was never
+  wired. See `.cursor/rules/15-doc-pr-and-code-parity.mdc`.
