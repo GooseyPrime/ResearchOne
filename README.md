@@ -265,7 +265,7 @@ MAX_EXTERNAL_INGEST_PER_RUN=10
 
 | File | Role |
 |------|------|
-| `backend/.env.example` | Pointer only — tells you to copy a real template |
+| `backend/.env.example` | Local-dev starter scaffold — copy to `backend/.env` for laptop work; for production use `backend/.env.production.example` instead |
 | `backend/.env.production.example` | **Committed template** for Emma/production — copy to `backend/.env` and edit |
 | `backend/.env.development.example` | **Committed template** for local backend dev — copy to `backend/.env` for laptop work |
 | `backend/.env` | **Real runtime secrets** — gitignored; this is what Node and PM2 use on the VM and locally |
@@ -431,7 +431,7 @@ ResearchOne/
 ├── backend/
 │   ├── .env.production.example     # Emma runtime production template (copy → .env)
 │   ├── .env.development.example    # Local backend development template (copy → .env)
-│   ├── .env.example                # Pointer — use one of the templates above
+│   ├── .env.example                # Local-dev starter scaffold (copy → .env for laptop work)
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── app.ts              # Express application

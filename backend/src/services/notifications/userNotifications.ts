@@ -96,17 +96,53 @@ export async function markNotificationRead(userId: string, id: string): Promise<
 }
 
 /**
- * Resolve a Stripe subscription_id to a user_id via user_subscriptions.
- * Returns null if no row matches.
+ * Resolve a Stripe subscription_id to a user_id.
+ *
+ * Checks both user_subscriptions (tier subscriptions) and report_monitors
+ * (add-on subscriptions like Living Reports / Reverse-Citation Watch).
+ * PR #91 review (Codex P2) caught that add-on subscription IDs are stored
+ * in report_monitors, not user_subscriptions, so invoice.payment_failed
+ * webhooks for add-ons couldn't resolve the user.
+ *
+ * Returns null if no row matches in either table.
+ * Only suppresses deploy-skew errors (42P01 undefined_table); logs and
+ * returns null for unexpected errors per PR #91 review (Copilot).
  */
 export async function resolveUserIdFromStripeSubscription(stripeSubscriptionId: string): Promise<string | null> {
   try {
-    const rows = await adminQuery<{ user_id: string }>(
+    const tierRows = await adminQuery<{ user_id: string }>(
       `SELECT user_id FROM user_subscriptions WHERE stripe_subscription_id = $1 LIMIT 1`,
       [stripeSubscriptionId]
     );
-    return rows[0]?.user_id ?? null;
-  } catch {
+    if (tierRows[0]?.user_id) {
+      return tierRows[0].user_id;
+    }
+  } catch (err) {
+    if (isMissingObjectError(err)) {
+      logger.warn('user_subscriptions_table_missing_for_resolve', { stripeSubscriptionId });
+    } else {
+      logger.error('resolve_user_from_subscription_tier_error', {
+        stripeSubscriptionId,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+  }
+
+  try {
+    const monitorRows = await adminQuery<{ user_id: string }>(
+      `SELECT user_id FROM report_monitors WHERE stripe_subscription_id = $1 LIMIT 1`,
+      [stripeSubscriptionId]
+    );
+    return monitorRows[0]?.user_id ?? null;
+  } catch (err) {
+    if (isMissingObjectError(err)) {
+      logger.warn('report_monitors_table_missing_for_resolve', { stripeSubscriptionId });
+    } else {
+      logger.error('resolve_user_from_subscription_monitor_error', {
+        stripeSubscriptionId,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
     return null;
   }
 }

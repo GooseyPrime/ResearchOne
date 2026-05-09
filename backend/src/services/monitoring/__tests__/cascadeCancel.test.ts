@@ -128,4 +128,52 @@ describe('cancelUserAddonSubscriptions (cascade-cancel add-ons when tier sub end
     );
     expect(updateCalls).toHaveLength(2);
   });
+
+  /**
+   * PR #91 review (Codex P1 + Copilot): paused monitors still have Stripe
+   * subscriptions attached (pauseMonitor() does not cancel Stripe). When a
+   * tier sub ends, paused add-on subs must also be cascade-cancelled.
+   *
+   * Per Rule 16: this test MUST fail if the fix is reverted — i.e. if the
+   * query only selects status='active' instead of status IN ('active','paused').
+   */
+  it('includes paused monitors in cascade cancel (PR #91 fix)', async () => {
+    const userId = 'user_with_paused_addon';
+    mocks.query
+      // SELECT monitors — the query selects both active and paused monitors
+      .mockResolvedValueOnce([
+        { id: 'mon_active', stripe_subscription_id: 'sub_active', parallel_monitor_id: 'pm_active' },
+        { id: 'mon_paused', stripe_subscription_id: 'sub_paused', parallel_monitor_id: 'pm_paused' },
+      ])
+      // UPDATE mon_active
+      .mockResolvedValueOnce([])
+      // INSERT event mon_active
+      .mockResolvedValueOnce([])
+      // UPDATE mon_paused
+      .mockResolvedValueOnce([])
+      // INSERT event mon_paused
+      .mockResolvedValueOnce([]);
+
+    await cancelUserAddonSubscriptions(userId);
+
+    // Both monitors should have their Stripe subscriptions cancelled
+    expect(mocks.stripeCancel).toHaveBeenCalledTimes(2);
+    expect(mocks.stripeCancel).toHaveBeenNthCalledWith(1, 'sub_active');
+    expect(mocks.stripeCancel).toHaveBeenNthCalledWith(2, 'sub_paused');
+
+    // Both monitors should be marked as cancelled locally
+    const updateCalls = mocks.query.mock.calls.filter((c) =>
+      typeof c[0] === 'string' && (c[0] as string).includes("UPDATE report_monitors SET status='cancelled'")
+    );
+    expect(updateCalls).toHaveLength(2);
+    const updatedIds = updateCalls.map((c) => (c[1] as unknown[])[0]).sort();
+    expect(updatedIds).toEqual(['mon_active', 'mon_paused']);
+
+    // Verify the SELECT query includes the paused status
+    const selectCall = mocks.query.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('SELECT') && (c[0] as string).includes('report_monitors')
+    );
+    expect(selectCall).toBeDefined();
+    expect(selectCall![0]).toContain("IN ('active', 'paused')");
+  });
 });

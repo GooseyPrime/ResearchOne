@@ -16,3 +16,11 @@ CREATE TABLE IF NOT EXISTS user_notifications (
 CREATE INDEX IF NOT EXISTS idx_user_notifications_unread
   ON user_notifications (user_id, created_at DESC)
   WHERE read_at IS NULL;
+
+-- RLS: customer rows scoped by app.user_id session var.
+-- PR #91 review (Copilot) caught missing RLS which would have allowed
+-- cross-user reads/writes via application_role.
+ALTER TABLE user_notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_notifications_user_isolation ON user_notifications
+  FOR ALL TO application_role
+  USING (user_id = current_setting('app.user_id', true));

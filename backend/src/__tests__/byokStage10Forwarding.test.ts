@@ -75,11 +75,11 @@ describe('Stage 10 BYOK key forwarding (WO-I)', () => {
       chunks: [],
       claims: [
         {
-          claim_id: 'c1',
           claim_text: 'test claim',
           evidence_tier: 'inference',
           confidence: 0.5,
-          source_chunk_ids: [],
+          supporting_chunk_ids: [],
+          source_ids: [],
           tags: [],
           is_conclusion_critical: false,
           stance_summary: '',
