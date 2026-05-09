@@ -16,6 +16,7 @@ describe('marketing pages', () => {
     const html = inRouter(<MethodologyPage />);
     expect(html).toContain('How ResearchOne works');
     expect(html).toContain('Ten stages');
+    expect(html).toContain('Five modes. One pipeline.');
   });
 
   it('SovereignPage — isolation story', () => {
