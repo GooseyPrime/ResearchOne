@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
-import api, {
+import {
   startResearch,
   getResearchRuns,
   getResearchRun,
@@ -217,18 +217,17 @@ export default function ResearchPageV2() {
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
 
-  const { data: subscriptionData } = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const userTier = subscriptionData?.status === 'active' ? subscriptionData.tier : 'free_demo';
-  const allowedObjectives = TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo;
-  const filteredObjectiveOptions = RESEARCH_OBJECTIVE_OPTIONS.filter(
-    (o) => allowedObjectives.includes(o.value),
-  );
+  const cachedSub = qc.getQueryData<{ tier: string; status: string }>(['billing-subscription']);
+  const tierResolved = cachedSub !== undefined;
+  const userTier = tierResolved
+    ? (cachedSub.status === 'active' ? cachedSub.tier : 'free_demo')
+    : null;
+  const allowedObjectives = userTier
+    ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
+    : null;
+  const filteredObjectiveOptions = allowedObjectives
+    ? RESEARCH_OBJECTIVE_OPTIONS.filter((o) => allowedObjectives.includes(o.value))
+    : RESEARCH_OBJECTIVE_OPTIONS;
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
@@ -649,7 +648,7 @@ export default function ResearchPageV2() {
         </p>
       </div>
 
-      {userTier === 'free_demo' && (
+      {tierResolved && userTier === 'free_demo' && (
         <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
           <p className="font-medium text-slate-200">Free tier — Deep Research</p>
           <p className="mt-1 text-slate-400">

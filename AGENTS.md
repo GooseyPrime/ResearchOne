@@ -85,3 +85,26 @@ drove the rules is at
   apply the same guard to every sibling function in the sweep. PR #92
   review: atlas export purge lacked the sovereign guard that the other
   three sweep functions had.
+- **Tier/subscription loading-state safety:** When deriving UI state
+  from an async tier/subscription query, never fall back to `free_demo`
+  while the query is loading or errored — paid users see a flash of
+  restricted UI. Either show all options until the tier is resolved
+  (permissive-until-known) or show a loading state. Use `getQueryData`
+  from the query client to read data already fetched by `Layout.tsx`
+  rather than creating a duplicate `useQuery` with potentially
+  different options. See PR #94 review (Codex P2 + Copilot ×3).
+- **Admin override parity:** When gating UI on tier access (e.g.
+  `hasProAccess`), always include the admin override check (`isAdmin`
+  from `/auth/me`), matching the pattern in `Layout.tsx`. PR #94
+  review: `BillingPage` computed `hasProAccess` purely from Stripe
+  subscription, hiding admin-only content from allowlisted admins.
+- **Conditional query `enabled`:** When UI gates rendering on a
+  condition (e.g. `hasProAccess`), set `enabled` on the backing
+  `useQuery` so it does not fire unnecessary requests for users who
+  will never see the result. PR #94 review: `monitorsQuery` fired for
+  all users despite the UI only showing results for pro+.
+- **Use `extractApiError` for error display:** When rendering error
+  messages from Axios/API responses, use the repo's `extractApiError`
+  helper (already imported) instead of `error instanceof Error ?
+  error.message : ...`. Axios wraps server `{error}` bodies; the
+  helper unwraps them.

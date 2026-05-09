@@ -132,6 +132,25 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     functions and one gets a new guard (sovereign exempt, living-report
     skip), apply the same guard to all N siblings.
 
+## K. Tier-gated UI and async query safety (PR #94)
+
+25. **Never fall back to `free_demo` while a tier query is loading.**
+    Paid users see a flash of restricted UI. Show all options until the
+    tier is resolved, or show a loading state.
+26. **Use `getQueryData` to read data already fetched by `Layout.tsx`**
+    rather than creating a duplicate `useQuery` with different options.
+    Duplicate observers on the same query key with different `enabled` /
+    `retry` / `staleTime` settings make caching behavior unpredictable.
+27. **Include admin overrides in every `hasProAccess` computation.**
+    If `Layout.tsx` checks `isAllowlistedAdmin`, the same check must
+    appear in any other component that gates on tier access.
+28. **Set `enabled` on queries whose results are gated in the UI.**
+    If the UI only renders data for pro+ users, the query must not
+    fire for free users.
+29. **Use `extractApiError` for user-visible error messages.** Do not
+    use `error instanceof Error ? error.message : ...` — Axios wraps
+    server error bodies. The repo's `extractApiError` unwraps them.
+
 ---
 
 If a finding from a code review surprises the agent, add it to

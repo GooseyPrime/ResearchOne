@@ -81,6 +81,9 @@ export default function BillingPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  const cachedAuthMe = queryClient.getQueryData<{ userId: string; isAdmin: boolean }>(['auth', 'me']);
+  const isAllowlistedAdmin = cachedAuthMe?.isAdmin === true;
+
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
     queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
@@ -99,12 +102,6 @@ export default function BillingPage() {
   const subscriptionOptionsQuery = useQuery({
     queryKey: ['billing-subscription-options'],
     queryFn: async () => (await api.get<{ options: SubscriptionOption[] }>('/billing/subscription-options')).data,
-  });
-
-  const monitorsQuery = useQuery({
-    queryKey: ['billing-monitors'],
-    queryFn: () => listUserMonitors(),
-    retry: false,
   });
 
   const cancelMutation = useMutation({
@@ -131,9 +128,16 @@ export default function BillingPage() {
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
   const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
-  const hasProAccess = subQuery.data
+  const hasProAccess = isAllowlistedAdmin || (subQuery.data
     ? PRO_PLUS_TIERS.includes(subQuery.data.tier) && subQuery.data.status === 'active'
-    : false;
+    : false);
+
+  const monitorsQuery = useQuery({
+    queryKey: ['billing-monitors'],
+    queryFn: () => listUserMonitors(),
+    retry: false,
+    enabled: hasProAccess,
+  });
 
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
@@ -152,9 +156,7 @@ export default function BillingPage() {
             <div className="w-full rounded-md border border-amber-700/30 bg-amber-950/20 p-3">
               <p className="text-sm text-amber-400">
                 Could not load top-up options.{' '}
-                {topupOptionsQuery.error instanceof Error
-                  ? topupOptionsQuery.error.message
-                  : 'An unexpected error occurred.'}
+                {extractApiError(topupOptionsQuery.error)}
               </p>
               <button
                 type="button"
@@ -197,7 +199,7 @@ export default function BillingPage() {
           <div className="mt-2 rounded-md border border-amber-700/30 bg-amber-950/20 p-3">
             <p className="text-sm text-amber-400">
               Could not load subscription info.{' '}
-              {subQuery.error instanceof Error ? subQuery.error.message : 'An unexpected error occurred.'}
+              {extractApiError(subQuery.error)}
             </p>
             <button
               type="button"

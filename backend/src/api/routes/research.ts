@@ -297,8 +297,12 @@ router.post(
             const withinMonthlyCap = rules.monthlyReportCap !== null &&
               userTier.current_period_reports_used < rules.monthlyReportCap;
 
+            const isLifetimeCapOnly = rules.lifetimeReportCap !== null && rules.monthlyReportCap === null && !rules.walletFallbackEnabled;
+
             if (withinMonthlyCap) {
               creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
+            } else if (isLifetimeCapOnly) {
+              creditChargeContext = { type: 'none', costCents: 0 };
             } else if (rules.walletFallbackEnabled || rules.monthlyReportCap === null) {
               const holdResult = await placeHold(userId, runId, costCents);
               if (!holdResult.success) {
