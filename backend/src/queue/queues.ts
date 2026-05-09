@@ -18,8 +18,8 @@ export const ingestionQueue = new Queue(QUEUE_NAMES.INGESTION, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: 100,
-    removeOnFail: 200,
+    removeOnComplete: { age: 3600, count: 50 },
+    removeOnFail: { age: 1209600, count: 100 },
   },
 });
 
@@ -28,8 +28,8 @@ export const embeddingQueue = new Queue(QUEUE_NAMES.EMBEDDING, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 3000 },
-    removeOnComplete: 100,
-    removeOnFail: 200,
+    removeOnComplete: { age: 3600, count: 100 },
+    removeOnFail: { age: 1209600, count: 200 },
   },
 });
 
@@ -44,8 +44,8 @@ export const researchQueue = new Queue(QUEUE_NAMES.RESEARCH, {
   connection,
   defaultJobOptions: {
     attempts: 1,
-    removeOnComplete: 50,
-    removeOnFail: 100,
+    removeOnComplete: { age: 86400, count: 50 },
+    removeOnFail: { age: 1209600, count: 100 },
   },
 });
 
@@ -54,8 +54,8 @@ export const pipelineBIngestionQueue = new Queue(QUEUE_NAMES.PIPELINE_B_INGESTIO
   defaultJobOptions: {
     attempts: 5,
     backoff: { type: 'exponential', delay: 10000 },
-    removeOnComplete: 100,
-    removeOnFail: 500,
+    removeOnComplete: { age: 3600, count: 100 },
+    removeOnFail: { age: 1209600, count: 500 },
   },
 });
 
@@ -64,8 +64,8 @@ export const intellmeDeletionQueue = new Queue(QUEUE_NAMES.INTELLME_DELETION, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: 50,
-    removeOnFail: 100,
+    removeOnComplete: { age: 3600, count: 50 },
+    removeOnFail: { age: 1209600, count: 100 },
   },
 });
 
@@ -74,8 +74,8 @@ export const atlasExportQueue = new Queue(QUEUE_NAMES.ATLAS_EXPORT, {
   defaultJobOptions: {
     attempts: 2,
     backoff: { type: 'fixed', delay: 5000 },
-    removeOnComplete: 20,
-    removeOnFail: 50,
+    removeOnComplete: { age: 86400, count: 20 },
+    removeOnFail: { age: 1209600, count: 50 },
   },
 });
 
@@ -88,7 +88,7 @@ export const livingReportRevisionQueue = new Queue(QUEUE_NAMES.LIVING_REPORT_REV
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: 50,
-    removeOnFail: 100,
+    removeOnComplete: { age: 86400, count: 50 },
+    removeOnFail: { age: 1209600, count: 100 },
   },
 });

@@ -7,12 +7,16 @@ import { config } from '../../config';
 import { chunkText } from './chunker';
 import { extractPdf } from './pdfExtractor';
 import { normalizeMarkdown } from './markdownNormalizer';
+import { readStagedFile, cleanupStagedFile } from './uploadStaging';
 
 export interface IngestionJobData {
   ingestionJobId: string;
   url?: string;
   text?: string;
-  fileBuffer?: string; // base64 encoded for binary files
+  fileBuffer?: string; // base64 encoded — DEPRECATED, kept for deploy-skew backward compat
+  stagedFilePath?: string;
+  stagedFileSha256?: string;
+  stagedFileSizeBytes?: number;
   fileName?: string;
   sourceType: 'web_url' | 'pdf' | 'text' | 'markdown' | 'arxiv' | 'doi' | 'youtube_transcript' | 'api_import';
   originalMimeType?: string;
@@ -72,26 +76,33 @@ export async function runIngestionJob(
       };
       parseMethod = 'html_extract';
     } else if (sourceType === 'pdf') {
-      if (data.fileBuffer) {
-        const buffer = Buffer.from(data.fileBuffer, 'base64');
-        const extracted = await extractPdf(buffer);
-        rawContent = extracted.text;
-        title = extracted.metadata.title || data.fileName || 'Imported PDF';
-        fetchMetadata = { ...extracted.metadata, fetch_method: 'pdf_parse' };
-        parseMethod = 'pdf_parse';
-      } else {
-        throw new Error('PDF ingestion requires fileBuffer');
+      let buffer: Buffer | null = null;
+      if (data.stagedFilePath) {
+        buffer = readStagedFile(data.stagedFilePath);
+      } else if (data.fileBuffer) {
+        buffer = Buffer.from(data.fileBuffer, 'base64');
       }
+      if (!buffer) throw new Error('PDF ingestion requires stagedFilePath or fileBuffer');
+      const extracted = await extractPdf(buffer);
+      rawContent = extracted.text;
+      title = extracted.metadata.title || data.fileName || 'Imported PDF';
+      fetchMetadata = { ...extracted.metadata, fetch_method: 'pdf_parse' };
+      parseMethod = 'pdf_parse';
     } else if (sourceType === 'markdown') {
-      const mdText = data.text || (data.fileBuffer ? Buffer.from(data.fileBuffer, 'base64').toString('utf8') : '');
-      if (!mdText) throw new Error('Markdown ingestion requires text or fileBuffer');
+      let mdText = data.text || '';
+      if (!mdText && data.stagedFilePath) {
+        mdText = readStagedFile(data.stagedFilePath).toString('utf8');
+      } else if (!mdText && data.fileBuffer) {
+        mdText = Buffer.from(data.fileBuffer, 'base64').toString('utf8');
+      }
+      if (!mdText) throw new Error('Markdown ingestion requires text, stagedFilePath, or fileBuffer');
       const normalized = normalizeMarkdown(mdText);
       rawContent = normalized.text;
       title = data.fileName?.replace(/\.md$/i, '') || 'Imported Markdown';
       fetchMetadata = { ...normalized.metadata, fetch_method: 'markdown_parse', parse_method: 'markdown_normalize' };
       parseMethod = 'markdown_normalize';
-    } else if (sourceType === 'text' && data.text) {
-      rawContent = data.text;
+    } else if (sourceType === 'text' && (data.text || data.stagedFilePath)) {
+      rawContent = data.text || readStagedFile(data.stagedFilePath!).toString('utf8');
       title = data.fileName ?? 'Imported Text';
       parseMethod = 'raw';
     } else if (sourceType === 'text' && data.fileBuffer) {
@@ -230,8 +241,10 @@ export async function runIngestionJob(
 
     onProgress({ stage: 'done', percent: 100, message: 'Ingestion complete' });
 
+    if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
     return { sourceId, chunkCount: chunks.length };
   } catch (err) {
+    if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
     const errMsg = err instanceof Error ? err.message : String(err);
     await query(
       `UPDATE ingestion_jobs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
