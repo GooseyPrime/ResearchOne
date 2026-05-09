@@ -52,7 +52,7 @@ export default function EvidenceProvenancePanel() {
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
       <h2 className="font-serif text-3xl">Every claim has a source. Every source has a reason.</h2>
       <p className="mt-3 text-r1-text-muted">
-        Citation integrity isn&apos;t a feature — it&apos;s the contract. Hover any claim to see the evidence card.
+        Citation integrity isn&apos;t a feature — it&apos;s the contract. Each claim maps to an evidence card.
       </p>
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">

@@ -2,7 +2,7 @@ const rows = [
   ['Output format', 'Chat thread (ephemeral)', 'Citation-grade report (durable, retained 120 days)'],
   ['Methodology choice', 'One implicit pipeline', 'Five explicit deep research modes'],
   ['Self-critique pass', 'Not exposed to user', 'Dedicated skeptic agent attacks every draft'],
-  ['Source role tagging', 'Aggregate citation list', 'Every claim tagged by evidence tier'],
+  ['Source role tagging', 'Aggregate citation list', 'Every source assigned a role; every claim tagged by evidence tier'],
   ['Contradiction handling', 'Smoothed into consensus', 'Preserved as named outputs'],
   ['Reports that update', 'Re-run from scratch', 'Living Reports — monitored, versioned, rollbackable'],
   ['Bring your own model', 'Vendor-locked', 'BYOK and Sovereign tiers'],

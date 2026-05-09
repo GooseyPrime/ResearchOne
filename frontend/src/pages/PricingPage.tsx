@@ -56,7 +56,7 @@ export default function PricingPage() {
           />
         </div>
 
-        <h2 className="mt-12 font-serif text-3xl">Add-ons</h2>
+        <h2 id="living-reports" className="mt-12 font-serif text-3xl">Add-ons</h2>
         <p className="mt-2 text-sm text-r1-text-muted">
           Add-ons attach to a finalized report. They require an active Pro, BYOK, Team, or Sovereign subscription. If your tier subscription ends, attached add-ons are cancelled automatically.
         </p>
