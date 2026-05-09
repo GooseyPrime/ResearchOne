@@ -19,7 +19,7 @@ function ensureStagingDir(dir: string): void {
 export function validateStagedPathInside(filePath: string, stagingDir: string): boolean {
   const resolved = path.resolve(filePath);
   const resolvedDir = path.resolve(stagingDir);
-  return resolved.startsWith(resolvedDir + path.sep) || resolved === resolvedDir;
+  return resolved.startsWith(resolvedDir + path.sep);
 }
 
 export function stageFileBuffer(
@@ -30,8 +30,9 @@ export function stageFileBuffer(
   ensureStagingDir(stagingDir);
 
   const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const uniqueId = crypto.randomUUID();
   const ext = path.extname(originalFileName) || '';
-  const safeName = `${Date.now()}_${hash.slice(0, 16)}${ext}`;
+  const safeName = `${Date.now()}_${uniqueId}_${hash.slice(0, 16)}${ext}`;
   const stagedFilePath = path.join(stagingDir, safeName);
 
   if (!validateStagedPathInside(stagedFilePath, stagingDir)) {

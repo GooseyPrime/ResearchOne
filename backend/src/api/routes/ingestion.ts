@@ -145,8 +145,7 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
       filename.endsWith('.md')
     ) {
       sourceType = 'markdown';
-      const textContent = req.file.buffer.toString('utf8');
-      if (Buffer.byteLength(textContent) > retentionConfig.textQueueInlineMaxBytes) {
+      if (req.file.buffer.length > retentionConfig.textQueueInlineMaxBytes) {
         const staged = stageFileBuffer(req.file.buffer, req.file.originalname);
         jobPayload = {
           stagedFilePath: staged.stagedFilePath,
@@ -154,12 +153,11 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
           stagedFileSizeBytes: staged.stagedFileSizeBytes,
         };
       } else {
-        jobPayload = { text: textContent };
+        jobPayload = { text: req.file.buffer.toString('utf8') };
       }
     } else {
       sourceType = 'text';
-      const textContent = req.file.buffer.toString('utf8');
-      if (Buffer.byteLength(textContent) > retentionConfig.textQueueInlineMaxBytes) {
+      if (req.file.buffer.length > retentionConfig.textQueueInlineMaxBytes) {
         const staged = stageFileBuffer(req.file.buffer, req.file.originalname);
         jobPayload = {
           stagedFilePath: staged.stagedFilePath,
@@ -167,7 +165,7 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
           stagedFileSizeBytes: staged.stagedFileSizeBytes,
         };
       } else {
-        jobPayload = { text: textContent };
+        jobPayload = { text: req.file.buffer.toString('utf8') };
       }
     }
 

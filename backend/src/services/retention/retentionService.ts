@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { retentionConfig, RetentionConfig } from '../../config/retention';
 import { query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
@@ -23,6 +24,7 @@ export interface RetentionSweepResult {
   purgedAtlasExports: number;
   skippedLivingReports: number;
   purgedFailedRuns: number;
+  purgedStagedFiles: number;
   errors: number;
 }
 
@@ -195,6 +197,11 @@ export async function expireOldReports(opts: RetentionSweepOptions = {}): Promis
 
   for (const report of candidates) {
     try {
+      const isLiving = await isLivingReportActive(report.id);
+      if (isLiving) {
+        continue;
+      }
+
       if (dryRun) {
         await recordRetentionEvent('report', report.id, 'report_expire', 'report retention period elapsed', {}, { retention_status: 'expired' }, true);
         expired++;
@@ -274,6 +281,8 @@ export async function purgeExpiredAtlasExports(opts: RetentionSweepOptions = {})
   const batchLimit = opts.batchLimit ?? retentionConfig.retentionBatchLimit;
   let purged = 0;
 
+  if (isSovereignRetentionExempt(opts.cfg)) return purged;
+
   const candidates = await query<{ id: string; export_path: string | null; compressed_path: string | null }>(
     `SELECT id, export_path, compressed_path FROM atlas_exports
      WHERE expires_at <= NOW()
@@ -308,6 +317,31 @@ export async function purgeExpiredAtlasExports(opts: RetentionSweepOptions = {})
   return purged;
 }
 
+export function purgeExpiredStagedFiles(cfg: RetentionConfig = retentionConfig, dryRun = false): number {
+  const stagingDir = cfg.uploadStagingDir;
+  if (!fs.existsSync(stagingDir)) return 0;
+
+  const maxAgeMs = cfg.tempUploadHours * 60 * 60 * 1000;
+  const now = Date.now();
+  let purged = 0;
+
+  for (const entry of fs.readdirSync(stagingDir)) {
+    const filePath = path.join(stagingDir, entry);
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+      if (now - stat.mtimeMs > maxAgeMs) {
+        if (!dryRun) fs.unlinkSync(filePath);
+        purged++;
+      }
+    } catch {
+      // best-effort: skip files we can't stat
+    }
+  }
+
+  return purged;
+}
+
 export async function runRetentionSweep(opts: RetentionSweepOptions = {}): Promise<RetentionSweepResult> {
   const result: RetentionSweepResult = {
     candidateReports: 0,
@@ -316,8 +350,17 @@ export async function runRetentionSweep(opts: RetentionSweepOptions = {}): Promi
     purgedAtlasExports: 0,
     skippedLivingReports: 0,
     purgedFailedRuns: 0,
+    purgedStagedFiles: 0,
     errors: 0,
   };
+
+  try {
+    const cfg = opts.cfg ?? retentionConfig;
+    result.purgedStagedFiles = purgeExpiredStagedFiles(cfg, opts.dryRun ?? false);
+  } catch (err) {
+    result.errors++;
+    logger.error('retention_sweep_staged_files_error', { error: err instanceof Error ? err.message : 'Unknown' });
+  }
 
   try {
     const workspace = await purgeExpiredWorkspaces(opts);

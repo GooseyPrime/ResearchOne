@@ -177,8 +177,11 @@ router.get('/', async (req, res, next) => {
 
     const livingSubquery = `, EXISTS(SELECT 1 FROM report_monitors rm WHERE rm.report_id = r.id AND rm.monitor_kind = 'living_report' AND rm.status = 'active') AS has_active_living_report`;
 
-    function buildWhere(params: unknown[]): string {
+    function buildWhere(params: unknown[], includeRetentionFilter: boolean): string {
       let where = ' WHERE 1=1';
+      if (includeRetentionFilter) {
+        where += ` AND (r.retention_status IS NULL OR r.retention_status NOT IN ('expired', 'deleted'))`;
+      }
       if (status) {
         params.push(status);
         where += ` AND r.status=$${params.length}`;
@@ -194,13 +197,13 @@ router.get('/', async (req, res, next) => {
     let rows: unknown[];
     try {
       const params: unknown[] = [];
-      const sql = `SELECT ${baseCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params)} ORDER BY r.created_at DESC LIMIT 100`;
+      const sql = `SELECT ${baseCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params, true)} ORDER BY r.created_at DESC LIMIT 100`;
       rows = await query(sql, params);
     } catch (err: unknown) {
       const pgCode = (err as { code?: string }).code;
       if (pgCode === '42703') {
         const params: unknown[] = [];
-        const sql = `SELECT ${baseCols}${livingSubquery} FROM reports r${buildWhere(params)} ORDER BY r.created_at DESC LIMIT 100`;
+        const sql = `SELECT ${baseCols}${livingSubquery} FROM reports r${buildWhere(params, false)} ORDER BY r.created_at DESC LIMIT 100`;
         const fallbackRows = await query(sql, params);
         rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
           ...r,

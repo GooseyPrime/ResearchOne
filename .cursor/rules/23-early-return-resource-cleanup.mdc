@@ -1,0 +1,30 @@
+# Early-return resource cleanup
+
+## Why this rule exists
+
+PR #92 (Codex P2): the ingestion dedup early-return path completed the
+job without reaching the `cleanupStagedFile(data.stagedFilePath)` call
+that both the success and error paths had. Re-uploading already-ingested
+large files left staged copies under `UPLOAD_STAGING_DIR` indefinitely.
+
+The pattern: a function allocates a resource at entry (staged file, temp
+dir, DB advisory lock, reservation), then an early `return` bypasses
+the cleanup that the normal/error exit paths perform.
+
+## Rule
+
+When adding an early `return`, `continue`, or `throw` inside a function
+that allocates resources:
+
+1. **List every resource the function opened before this point.** Staged
+   files, temp buffers, connections, locks, reservations.
+2. **Confirm each resource is cleaned up on this new exit path.** If
+   the normal exit has `cleanupStagedFile`, the early return must too.
+3. **Consider a `finally` block** if the resource must be cleaned up on
+   every exit (success, error, and early return).
+
+## Pre-commit check
+
+If you added an early return or continue:
+- [ ] Did you list every resource opened before it?
+- [ ] Is each one cleaned up on the new path?

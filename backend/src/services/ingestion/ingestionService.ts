@@ -136,6 +136,7 @@ export async function runIngestionJob(
     );
 
     if (existing) {
+      if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
       await query(
         `UPDATE ingestion_jobs SET status='completed', completed_at=NOW() WHERE id=$1`,
         [ingestionJobId]

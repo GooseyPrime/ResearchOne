@@ -27,6 +27,8 @@ drove the rules is at
 | [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` + V2 model selection criteria. |
 | [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention. |
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
+| [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
+| [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
 
 ## Repo-specific reading list (in priority order)
 
@@ -68,3 +70,18 @@ drove the rules is at
   `resolveUserIdFromStripeSubscription` only checked `user_subscriptions`
   but add-on subscriptions live in `report_monitors`. Both were
   incomplete scope bugs. List the sources, confirm completeness.
+- **Early-return cleanup:** When adding an early-return path (dedup,
+  validation skip, etc.), check whether the caller allocated resources
+  (staged files, temp buffers, DB locks) that the normal exit path
+  cleans up. PR #92 review: dedup early-return skipped staged file
+  cleanup. See `.cursor/rules/23-early-return-resource-cleanup.mdc`.
+- **Canonical path after file mutation:** After deleting, moving, or
+  compressing a file, update every variable and DB column that stored the
+  old path. PR #92 review: atlas export deleted the JSONL but DB still
+  stored the deleted path; backup/upload code also used the stale
+  variable. See `.cursor/rules/24-canonical-path-after-mutation.mdc`.
+- **Sovereign/exempt guard symmetry:** When adding a guard (sovereign
+  exempt, dry-run skip, Living Report check) to a sweep function,
+  apply the same guard to every sibling function in the sweep. PR #92
+  review: atlas export purge lacked the sovereign guard that the other
+  three sweep functions had.

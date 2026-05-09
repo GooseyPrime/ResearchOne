@@ -159,7 +159,7 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
        SET chunk_count=$1, export_path=$2, compressed_path=$3,
            uncompressed_bytes=$4, compressed_bytes=$5, expires_at=$6
        WHERE id=$7`,
-      [points.length, exportPath, compressedPath, uncompressedBytes, compressedBytes, expiresAt.toISOString(), exportId],
+      [points.length, compressedPath, compressedPath, uncompressedBytes, compressedBytes, expiresAt.toISOString(), exportId],
     );
   } catch (updateErr: unknown) {
     const pgCode = (updateErr as { code?: string }).code;
@@ -180,8 +180,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
       }
-      const backupPath = path.join(backupDir, path.basename(exportPath));
-      fs.copyFileSync(exportPath, backupPath);
+      const backupPath = path.join(backupDir, path.basename(compressedPath));
+      fs.copyFileSync(compressedPath, backupPath);
       logger.info(`Atlas export backup copy created: ${backupPath}`);
     } catch (backupErr) {
       logger.warn('Atlas backup copy failed', backupErr);
@@ -192,7 +192,7 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   if (config.nomic.autoUploadOnExport && config.nomic.apiKey.trim()) {
     try {
       const nomic = await uploadAtlasJsonlToNomic({
-        exportPath,
+        exportPath: compressedPath,
         datasetSlug: config.nomic.atlasDatasetSlug,
       });
       await query(
@@ -206,9 +206,9 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     }
   }
 
-  logger.info(`Atlas export complete: ${points.length} points -> ${exportPath}`);
+  logger.info(`Atlas export complete: ${points.length} points -> ${compressedPath}`);
 
-  return { exportId, count: points.length, path: exportPath };
+  return { exportId, count: points.length, path: compressedPath };
 }
 
 /**
