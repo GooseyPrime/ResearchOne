@@ -107,7 +107,7 @@ export async function purgeExpiredWorkspaces(opts: RetentionSweepOptions = {}): 
 
   if (isSovereignRetentionExempt(opts.cfg)) return { purged, skippedLiving };
 
-  const candidates = await query(
+  const candidates = await query<{ id: string; run_id: string | null }>(
     `SELECT id, run_id FROM reports
      WHERE workspace_expires_at <= NOW()
        AND workspace_purged_at IS NULL
@@ -117,7 +117,7 @@ export async function purgeExpiredWorkspaces(opts: RetentionSweepOptions = {}): 
     [batchLimit],
   );
 
-  for (const report of candidates.rows) {
+  for (const report of candidates) {
     try {
       const isLiving = await isLivingReportActive(report.id);
       if (isLiving) {
@@ -184,7 +184,7 @@ export async function expireOldReports(opts: RetentionSweepOptions = {}): Promis
 
   if (isSovereignRetentionExempt(opts.cfg)) return expired;
 
-  const candidates = await query(
+  const candidates = await query<{ id: string }>(
     `SELECT id FROM reports
      WHERE report_expires_at <= NOW()
        AND retention_status NOT IN ('expired', 'deleted', 'living_active', 'sovereign_custom')
@@ -193,7 +193,7 @@ export async function expireOldReports(opts: RetentionSweepOptions = {}): Promis
     [batchLimit],
   );
 
-  for (const report of candidates.rows) {
+  for (const report of candidates) {
     try {
       if (dryRun) {
         await recordRetentionEvent('report', report.id, 'report_expire', 'report retention period elapsed', {}, { retention_status: 'expired' }, true);
@@ -223,7 +223,7 @@ export async function purgeFailedOrCancelledRuns(opts: RetentionSweepOptions = {
 
   if (isSovereignRetentionExempt(opts.cfg)) return purged;
 
-  const candidates = await query(
+  const candidates = await query<{ id: string }>(
     `SELECT id FROM research_runs
      WHERE workspace_expires_at <= NOW()
        AND workspace_purged_at IS NULL
@@ -233,7 +233,7 @@ export async function purgeFailedOrCancelledRuns(opts: RetentionSweepOptions = {
     [batchLimit],
   );
 
-  for (const run of candidates.rows) {
+  for (const run of candidates) {
     try {
       if (dryRun) {
         await recordRetentionEvent('research_run', run.id, 'workspace_purge', 'failed/cancelled run', {}, { workspace_purged_at: 'NOW()' }, true);
@@ -274,7 +274,7 @@ export async function purgeExpiredAtlasExports(opts: RetentionSweepOptions = {})
   const batchLimit = opts.batchLimit ?? retentionConfig.retentionBatchLimit;
   let purged = 0;
 
-  const candidates = await query(
+  const candidates = await query<{ id: string; export_path: string | null; compressed_path: string | null }>(
     `SELECT id, export_path, compressed_path FROM atlas_exports
      WHERE expires_at <= NOW()
        AND purged_at IS NULL
@@ -283,7 +283,7 @@ export async function purgeExpiredAtlasExports(opts: RetentionSweepOptions = {})
     [batchLimit],
   );
 
-  for (const exp of candidates.rows) {
+  for (const exp of candidates) {
     try {
       if (dryRun) {
         await recordRetentionEvent('atlas_export', exp.id, 'purge', 'expired', {}, {}, true);
