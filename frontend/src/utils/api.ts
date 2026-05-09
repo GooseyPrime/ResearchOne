@@ -180,6 +180,11 @@ export interface Report {
   chunk_count: number;
   finalized_at?: string;
   created_at: string;
+  report_expires_at?: string | null;
+  workspace_expires_at?: string | null;
+  workspace_purged_at?: string | null;
+  retention_status?: string | null;
+  has_active_living_report?: boolean;
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;

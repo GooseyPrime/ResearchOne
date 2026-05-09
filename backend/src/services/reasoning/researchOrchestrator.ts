@@ -17,6 +17,7 @@ import { decideRunStateOnFailure } from './runStateMachine';
 import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
+import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
@@ -963,6 +964,19 @@ export async function runResearchJob(
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
       }
     }
+
+    // Best-effort: set workspace retention expiry for the terminal run.
+    // Deploy-skew safe — markRunTerminalRetention catches 42703.
+    try {
+      await markRunTerminalRetention(runId, finalStatus, new Date());
+    } catch (retErr) {
+      logger.warn('retention_mark_terminal_error', {
+        runId,
+        finalStatus,
+        error: retErr instanceof Error ? retErr.message : 'Unknown',
+      });
+    }
+
     await appendRunProgressEvent(runId, {
       runId,
       stage: finalStatus === 'aborted' ? 'aborted' : currentStage,
@@ -1326,6 +1340,19 @@ async function saveReport(args: {
       ]
     );
   });
+
+  // Best-effort: set retention expiry timestamps on the newly-finalized report.
+  // Deploy-skew safe — markReportFinalizedRetention catches 42703 if migration 028 hasn't applied.
+  try {
+    await markReportFinalizedRetention(reportId, new Date());
+    await markRunTerminalRetention(runId, 'completed', new Date());
+  } catch (retErr) {
+    logger.warn('retention_mark_finalized_error', {
+      reportId,
+      runId,
+      error: retErr instanceof Error ? retErr.message : 'Unknown',
+    });
+  }
 
   return reportId;
 }
