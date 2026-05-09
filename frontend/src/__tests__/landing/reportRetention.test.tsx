@@ -1,7 +1,13 @@
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@clerk/react', () => ({
+  useAuth: vi.fn(() => ({ isLoaded: true, isSignedIn: true, userId: 'user_ssr_test' })),
+}));
+
+import { useAuth } from '@clerk/react';
 import ReportsPage from '../../pages/ReportsPage';
 
 function render() {
@@ -18,6 +24,14 @@ function render() {
 }
 
 describe('ReportsPage — retention rendering', () => {
+  beforeEach(() => {
+    vi.mocked(useAuth).mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+      userId: 'user_ssr_test',
+    } as ReturnType<typeof useAuth>);
+  });
+
   it('renders the ReportsPage without crashing', () => {
     const html = render();
     expect(html).toContain('Report Library');

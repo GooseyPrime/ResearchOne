@@ -5,10 +5,15 @@
 --
 -- Idempotent: uses ADD COLUMN IF NOT EXISTS and IF NOT EXISTS throughout.
 -- Does NOT delete any data. Existing rows keep user_id IS NULL until
--- backfilled. NOTE: RLS policies match on user_id/org_id, so NULL rows
--- are invisible to application_role sessions. The route-layer predicates
--- include OR user_id IS NULL as a grace path; once the backfill script
--- has run, the NULL clause becomes a no-op.
+-- backfilled.
+--
+-- RLS vs legacy NULL: policies below allow rows where user_id matches
+-- current_setting('app.user_id') OR (org_id matches session org). For NULL
+-- user_id on the row, `user_id = current_setting(...)` evaluates to NULL in
+-- SQL (not TRUE), so those rows are NOT visible through application_role —
+-- route-handler SQL cannot widen visibility beyond RLS. Operators must run
+-- docs/RUNBOOKS/backfill-user-scopes.md (or equivalent) so legacy rows gain
+-- user_id/org_id before users expect continuity.
 --
 -- Sources are intentionally NOT scoped here — they remain a shared corpus.
 -- DELETE protection on sources is enforced at the route layer.
