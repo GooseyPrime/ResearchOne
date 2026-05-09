@@ -61,3 +61,10 @@ drove the rules is at
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
 - **Dependencies:** Do not add npm packages that no code path imports;
   remove unused deps when review flags them.
+- **Query state coverage:** When writing a query that acts on "all X of
+  type Y," enumerate every state/source that qualifies. PR #91 review
+  caught two instances: (1) cascade-cancel queried `status='active'`
+  but paused monitors also have Stripe subscriptions attached; (2)
+  `resolveUserIdFromStripeSubscription` only checked `user_subscriptions`
+  but add-on subscriptions live in `report_monitors`. Both were
+  incomplete scope bugs. List the sources, confirm completeness.

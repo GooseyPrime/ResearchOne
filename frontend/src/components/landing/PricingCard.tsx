@@ -6,19 +6,36 @@ type PricingCardProps = {
   cta: string;
   to: string;
   featured?: boolean;
+  badge?: string;
 };
 
-export default function PricingCard({ title, details, cta, to, featured = false }: PricingCardProps) {
+function isExternal(to: string): boolean {
+  return /^(mailto:|https?:\/\/|tel:)/i.test(to);
+}
+
+export default function PricingCard({ title, details, cta, to, featured = false, badge }: PricingCardProps) {
+  const ctaClass =
+    'mt-5 inline-flex rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep';
   return (
     <article className={`rounded-xl border p-6 ${featured ? 'border-r1-accent bg-r1-bg' : 'border-white/10 bg-r1-bg-deep'}`}>
-      <h3 className="font-serif text-2xl text-r1-text">{title}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-serif text-2xl text-r1-text">{title}</h3>
+        {badge ? (
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
+            {badge}
+          </span>
+        ) : null}
+      </div>
       <p className="mt-3 text-sm leading-7 text-r1-text-muted">{details}</p>
-      <Link
-        to={to}
-        className="mt-5 inline-flex rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep"
-      >
-        {cta}
-      </Link>
+      {isExternal(to) ? (
+        <a href={to} className={ctaClass}>
+          {cta}
+        </a>
+      ) : (
+        <Link to={to} className={ctaClass}>
+          {cta}
+        </Link>
+      )}
     </article>
   );
 }

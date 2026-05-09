@@ -13,6 +13,7 @@ import axios from 'axios';
 import { config } from '../../config';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
+import { getStripeClient } from '../billing/stripeClient';
 import type { RevisionTriggerSource } from '../reasoning/reportRevisionService';
 
 export type MonitorKind = 'living_report' | 'reverse_citation_watch';
@@ -436,6 +437,82 @@ export async function cancelMonitorByStripeSubscription(subscriptionId: string):
     `INSERT INTO report_monitor_events (monitor_id, event_kind, payload) VALUES ($1, 'subscription_cancelled', $2::jsonb)`,
     [row.id, JSON.stringify({ stripe_subscription_id: subscriptionId })]
   );
+}
+
+/**
+ * Cascade-cancel all of a user's billable add-on subscriptions when their
+ * primary tier subscription ends. Called from the customer.subscription.deleted
+ * webhook handler when the deleted subscription is a tier subscription.
+ *
+ * Includes both 'active' and 'paused' monitors: paused monitors still have
+ * Stripe subscriptions attached (pauseMonitor() does not cancel Stripe), so
+ * they must be cancelled to prevent orphaned billing. PR #91 review (Codex P1
+ * + Copilot) caught this gap.
+ *
+ * Best-effort per monitor: failures are warn-logged but do not propagate so
+ * one bad Stripe response does not poison the whole webhook handler. Each
+ * monitor row is also marked `cancelled` locally; the resulting Stripe
+ * subscription.deleted webhook will hit cancelMonitorByStripeSubscription
+ * which is idempotent on already-cancelled rows.
+ */
+export async function cancelUserAddonSubscriptions(userId: string): Promise<void> {
+  const rows = await query<{ id: string; stripe_subscription_id: string; parallel_monitor_id: string }>(
+    `SELECT id, stripe_subscription_id, parallel_monitor_id
+     FROM report_monitors
+     WHERE user_id=$1 AND status IN ('active', 'paused') AND stripe_subscription_id IS NOT NULL`,
+    [userId]
+  );
+  if (rows.length === 0) return;
+
+  let stripe: ReturnType<typeof getStripeClient> | null = null;
+  try {
+    stripe = getStripeClient();
+  } catch (err) {
+    logger.warn('cancel_addon_stripe_unavailable', {
+      userId,
+      error: err instanceof Error ? err.message : 'Unknown',
+    });
+  }
+
+  for (const row of rows) {
+    try {
+      if (stripe) {
+        await stripe.subscriptions.cancel(row.stripe_subscription_id);
+      }
+    } catch (err) {
+      logger.warn('cascade_addon_stripe_cancel_failed', {
+        userId,
+        monitorId: row.id,
+        subscriptionId: row.stripe_subscription_id,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+    try {
+      await deleteRemoteParallelMonitor(row.parallel_monitor_id);
+    } catch (err) {
+      logger.warn('cascade_addon_remote_delete_failed', {
+        monitorId: row.id,
+        parallelMonitorId: row.parallel_monitor_id,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+    try {
+      await query(
+        `UPDATE report_monitors SET status='cancelled', cancelled_at=NOW(), last_event_at=NOW()
+         WHERE id=$1 AND status<>'cancelled'`,
+        [row.id]
+      );
+      await query(
+        `INSERT INTO report_monitor_events (monitor_id, event_kind, payload) VALUES ($1, 'subscription_cancelled', $2::jsonb)`,
+        [row.id, JSON.stringify({ stripe_subscription_id: row.stripe_subscription_id, reason: 'tier_cascade' })]
+      );
+    } catch (err) {
+      logger.warn('cascade_addon_local_update_failed', {
+        monitorId: row.id,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+  }
 }
 
 export async function recordSubscriptionPastDueForMonitor(subscriptionId: string): Promise<void> {

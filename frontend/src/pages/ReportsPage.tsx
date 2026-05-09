@@ -132,7 +132,7 @@ export default function ReportsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="card p-5 animate-pulse h-40" />
+            <div key={`reports-skeleton-${i}`} className="card p-5 animate-pulse h-40" />
           ))}
         </div>
       ) : items.length === 0 ? (

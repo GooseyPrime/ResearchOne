@@ -13,6 +13,7 @@ import {
   Cpu,
   Settings,
   Wallet,
+  Radar,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
@@ -29,6 +30,7 @@ import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
+import NotificationBanner from '../ui/NotificationBanner';
 import ActiveRunBadge from '../research/ActiveRunBadge';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
@@ -48,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/research', label: 'Standard Research', icon: FlaskConical, desc: 'Start investigation' },
   { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Frontier ensemble (Pro+)', requireTier: 'pro' },
   { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
+  { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence', requireTier: 'pro' },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
@@ -285,6 +288,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto grid-bg">
+          <NotificationBanner />
           <Outlet />
         </main>
       </div>
