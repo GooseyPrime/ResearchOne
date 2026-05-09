@@ -19,7 +19,7 @@
  *   - Reverse-Citation Watch
  *   - Adversarial Twin
  *   - Provenance Ledger
- *   - PolicyOne Score API Pro
+ *   - Score API Pro
  *   - Patent IP Diligence Floor
  *   - Sovereign Onboarding
  *   - Sovereign Add-ons (Custom Corpus Adapter, Custom Model Weights, Priority SLA, Dedicated Success)
@@ -64,7 +64,7 @@ const PRODUCTS: ProductSpec[] = [
   { name: 'ResearchOne — Reverse-Citation Watch', description: 'Track when your research is cited or referenced', lookupKey: 'researchone_reverse_citation_watch' },
   { name: 'ResearchOne — Adversarial Twin', description: 'Dedicated adversarial analysis service', lookupKey: 'researchone_adversarial_twin' },
   { name: 'ResearchOne — Provenance Ledger', description: 'Immutable audit trail for research provenance', lookupKey: 'researchone_provenance_ledger' },
-  { name: 'ResearchOne — PolicyOne Score API Pro', description: 'API access to PolicyOne compliance scoring', lookupKey: 'researchone_policyone_api_pro' },
+  { name: 'ResearchOne — Score API Pro', description: "Programmatic access to ResearchOne's compliance and policy scoring engine", lookupKey: 'researchone_policyone_api_pro' },
   { name: 'ResearchOne — Patent IP Diligence Floor', description: 'Base fee for patent and IP diligence analysis', lookupKey: 'researchone_patent_ip_floor' },
   { name: 'ResearchOne — Sovereign Onboarding', description: 'One-time onboarding fee for Sovereign tier', lookupKey: 'researchone_sovereign_onboarding' },
   { name: 'ResearchOne — Sovereign: Custom Corpus Adapter', description: 'Custom corpus ingestion adapter for Sovereign clients', lookupKey: 'researchone_sovereign_corpus_adapter' },
