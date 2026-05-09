@@ -23,11 +23,6 @@ const ADD_ONS: AddOn[] = [
     description: 'Get notified when papers, patents, or policy documents cite work that appears in your reports — so you know when your research enters the conversation.',
   },
   {
-    name: 'Adversarial Twin',
-    price: '$49/mo',
-    description: 'Every report gets a dedicated counter-analysis that actively searches for disconfirming evidence, methodological weaknesses, and alternative interpretations.',
-  },
-  {
     name: 'Provenance Ledger',
     price: '$29/mo',
     description: 'Immutable, timestamped audit trail of every source retrieved, every reasoning step taken, and every export generated — suitable for regulatory and legal contexts.',
@@ -60,15 +55,28 @@ export default function PricingPage() {
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <PricingCard title="Free Demo" details="$0 — 3 reports lifetime — General Epistemic only — Watermarked" cta="Start free" to="/sign-up" />
           <PricingCard title="Student" details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports" cta="Verify and start" to="/sign-up?tier=student" />
-          <PricingCard title="Pro" details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — 10 GB corpus" cta="Subscribe" to="/sign-up?tier=pro" featured />
-          <PricingCard title="Team" details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Shared corpus, audit log, SSO" cta="Talk to us" to="/sovereign" />
-          <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — 25 GB" cta="Configure keys" to="/byok" />
-          <PricingCard title="Sovereign Enterprise" details="From $4,500/mo (annual) — dedicated stack and custom retention" cta="Talk to sales" to="/sovereign" />
+          <PricingCard title="Pro" details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — generous corpus quota" cta="Subscribe" to="/sign-up?tier=pro" featured />
+          <PricingCard
+            title="Team"
+            badge="Coming soon"
+            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Team-wide library, audit log, SSO"
+            cta="Contact us"
+            to="mailto:hello@researchone.io?subject=Team%20tier%20inquiry"
+          />
+          <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — expanded corpus quota" cta="Configure keys" to="/byok" />
+          <PricingCard
+            title="Sovereign Enterprise"
+            details="From $4,500/mo (annual) — dedicated stack and custom retention — Adversarial Twin: Included in Sovereign"
+            cta="Talk to sales"
+            to="/sovereign"
+          />
         </div>
 
         <div id="living-reports" className="mt-16">
           <h2 className="font-serif text-3xl">Add-ons</h2>
-          <p className="mt-2 text-r1-text-muted">Available on Pro, Team, and Sovereign. Stack as many as you need.</p>
+          <p className="mt-2 text-r1-text-muted">
+            Add-ons require an active Pro, BYOK, Team, or Sovereign subscription. Available on Pro, Team, and Sovereign. Stack as many as you need.
+          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {ADD_ONS.map((addon) => (
               <article key={addon.name} className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
@@ -99,7 +107,7 @@ export default function PricingPage() {
         <div className="mt-10 rounded-xl border border-white/10 bg-r1-bg-deep p-6">
           <h2 className="font-serif text-2xl">Wallet credits</h2>
           <p className="mt-2 text-r1-text-muted">
-            Don&apos;t want a subscription? Top up a wallet from $20 and pay $4 per Standard report or $10 per Deep report.
+            Don&apos;t want a subscription? Top up a wallet from $20 ($50 and $100 presets available) and pay $4 per Standard report or $10 per Deep report.
           </p>
           <Link to="/sign-up" className="mt-4 inline-flex text-r1-accent">Start with a wallet →</Link>
         </div>

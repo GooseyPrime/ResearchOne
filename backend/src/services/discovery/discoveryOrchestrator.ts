@@ -223,8 +223,11 @@ export async function runDiscoveryOrchestrator(args: {
       if (queriesExecuted.length >= totalQueryBudget) break;
       queriesExecuted.push(searchQuery);
 
-      for (const provider of orderedProviders) {
-        try {
+      // Fan out configured providers in parallel for this query. Dedup via `seenUrls` /
+      // `allCandidates` is still safe: each provider processes its results in one synchronous
+      // block before awaiting `persistDiscoveryEvent`, so no interleaved double-insert races.
+      const providerResults = await Promise.allSettled(
+        orderedProviders.map(async (provider) => {
           const results = await provider.search({
             text: searchQuery,
             maxResults: config.discovery.maxResults,
@@ -239,7 +242,6 @@ export async function runDiscoveryOrchestrator(args: {
             allCandidates.push(r);
             newCount++;
           }
-          roundNewCandidates += newCount;
 
           await persistDiscoveryEvent(runId, `search_round_${roundNumber}`, provider.name, searchQuery, results.length, newCount, {
             round: roundNumber,
@@ -249,8 +251,16 @@ export async function runDiscoveryOrchestrator(args: {
           });
 
           logger.debug(`[discovery:${runId}] r${roundNumber} ${provider.name} "${searchQuery}": ${results.length} results, ${newCount} new`);
-        } catch (err) {
-          logger.error(`[discovery:${runId}] r${roundNumber} provider ${provider.name} search failed:`, err);
+          return newCount;
+        })
+      );
+
+      for (const pr of providerResults) {
+        if (pr.status === 'fulfilled') {
+          roundNewCandidates += pr.value;
+        } else {
+          const reason = pr.reason;
+          logger.error(`[discovery:${runId}] r${roundNumber} provider fan-out search failed:`, reason);
         }
       }
     }

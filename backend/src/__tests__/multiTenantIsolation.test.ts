@@ -17,7 +17,7 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       expect(src).toContain('org_id IS NOT NULL AND org_id = $2');
     });
 
-    it('includes NULL grace path so legacy rows remain visible', () => {
+    it('includes OR user_id IS NULL in route SQL for legacy compatibility (RLS still hides NULL rows until backfill)', () => {
       expect(src).toContain('OR user_id IS NULL');
     });
 

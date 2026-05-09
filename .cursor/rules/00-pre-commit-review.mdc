@@ -151,15 +151,16 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     use `error instanceof Error ? error.message : ...` — Axios wraps
     server error bodies. The repo's `extractApiError` unwraps them.
 
-## L. NULL-after-migration visibility and multi-path ownership (PR #96)
+## L. RLS-first legacy NULL rows and multi-path ownership (PR #96 / PR #98)
 
-30. **New NULL columns added to existing tables leave legacy rows
-    NULL.** When adding a `WHERE user_id = $X` predicate in the same
-    PR as the migration that adds `user_id`, include `OR user_id IS
-    NULL` so legacy rows remain visible until backfilled. The `42703`
-    fallback only fires when the column does not exist at all; once the
-    migration runs, the column exists but is NULL on all legacy rows,
-    and the fallback never fires. PR #96 review (Codex P1).
+30. **RLS filters before route SQL for scoped tables.** When RLS policies
+    require `user_id = current_setting('app.user_id')` (migration 029 pattern),
+    legacy rows with `user_id IS NULL` are invisible through `application_role`
+    — adding `OR user_id IS NULL` in Express SQL does not override that. Plan a
+    backfill (`docs/RUNBOOKS/backfill-user-scopes.md`) for continuity; do not
+    document migrations as if route-layer OR-NULL clauses restore visibility
+    under RLS. PR #98 review (Copilot); supersedes the PR #96 note that missed
+    the RLS ordering.
 31. **Ownership may flow through multiple paths.** When restricting
     an action to "the user who created this resource," enumerate every
     path through which ownership is established. Sources can be owned

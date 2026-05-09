@@ -861,10 +861,24 @@ router.post('/:id/cancel', async (req, res, next) => {
 // DELETE /api/research/:id — remove terminal or queued run row
 router.delete('/:id', async (req, res, next) => {
   try {
-    const rows = await query<{ status: string; user_id: string }>(
-      `SELECT status, user_id FROM research_runs WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let rows: { status: string; user_id: string | null }[];
+    try {
+      rows = await query<{ status: string; user_id: string | null }>(
+        `SELECT status, user_id FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'DELETE /api/research/:id' });
+      rows = await query<{ status: string; user_id: string | null }>(
+        `SELECT status, user_id FROM research_runs WHERE id=$1`,
+        [req.params.id]
+      );
+    }
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
@@ -887,10 +901,11 @@ router.delete('/:id', async (req, res, next) => {
         [req.params.id]
       );
       const docId = ingestionRows[0]?.intellme_request_id;
-      if (docId) {
+      const deletionUserId = userId ?? user_id ?? null;
+      if (docId && deletionUserId) {
         await intellmeDeletionQueue.add(`delete-${req.params.id}`, {
           runId: req.params.id,
-          userId: user_id,
+          userId: deletionUserId,
           documentId: docId,
         });
       }

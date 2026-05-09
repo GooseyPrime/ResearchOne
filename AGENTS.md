@@ -132,12 +132,13 @@ drove the rules is at
   helper (already imported) instead of `error instanceof Error ?
   error.message : ...`. Axios wraps server `{error}` bodies; the
   helper unwraps them.
-- **NULL-after-migration visibility:** When adding a `WHERE user_id = $X`
-  predicate in the same PR as the migration that adds `user_id`, include
-  `OR user_id IS NULL` so legacy rows remain visible until backfilled.
-  The `42703` deploy-skew fallback only fires when the column does not
-  exist; once the migration runs, legacy rows have NULL user_id and are
-  silently excluded. PR #96 review (Codex P1).
+- **RLS-first legacy NULL rows:** With migration 029-style policies, Postgres
+  evaluates RLS before route SQL. Rows with `user_id IS NULL` do not satisfy
+  `user_id = current_setting('app.user_id')`, so they stay invisible to normal
+  authenticated traffic even if a route adds `OR user_id IS NULL`. Backfill
+  (`docs/RUNBOOKS/backfill-user-scopes.md`) is what restores access; migration
+  headers and internal docs must not imply route predicates bypass RLS for NULL
+  owners. PR #98 review (Copilot) clarifies PR #96 wording.
 - **Multi-path ownership:** When restricting an action to "the user who
   created this resource," enumerate every path through which ownership
   is established. A source can be owned via `discovered_by_run_id` (auto

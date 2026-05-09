@@ -39,6 +39,7 @@ import {
   type ResearchObjective,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
+import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
@@ -390,7 +391,7 @@ export default function ResearchPageV2() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => sortEventsChronological([...prev, polledEvt].slice(-500)));
+      setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, polledEvt, 500)));
     }
 
     if (polledRun.status === 'failed' || polledRun.status === 'aborted') {
@@ -434,7 +435,7 @@ export default function ResearchPageV2() {
       if (rid === trackingRunId) {
         setProgress(update);
         setActiveRun(update);
-        setTraceEvents((prev) => sortEventsChronological([...prev, update].slice(-500)));
+        setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, update, 500)));
       }
     });
 
