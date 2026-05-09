@@ -6,6 +6,7 @@ import { atlasExportQueue } from '../../queue/queues';
 import * as fs from 'fs';
 import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
 import { config } from '../../config';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -26,10 +27,19 @@ router.post('/export', async (req, res, next) => {
     }
 
     const exportId = uuidv4();
-    await query(
-      `INSERT INTO atlas_exports (id, label, description, filter_tags) VALUES ($1, $2, $3, $4)`,
-      [exportId, label, description ?? '', filterTags ?? []]
-    );
+    const exportUserId = req.auth?.userId ?? null;
+    try {
+      await query(
+        `INSERT INTO atlas_exports (id, label, description, filter_tags, user_id) VALUES ($1, $2, $3, $4, $5)`,
+        [exportId, label, description ?? '', filterTags ?? [], exportUserId]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO atlas_exports (id, label, description, filter_tags) VALUES ($1, $2, $3, $4)`,
+        [exportId, label, description ?? '', filterTags ?? []]
+      );
+    }
 
     await atlasExportQueue.add('atlas-export', { exportId, label, description, filterTags });
 
@@ -40,9 +50,23 @@ router.post('/export', async (req, res, next) => {
 });
 
 // GET /api/atlas/exports - List exports
-router.get('/exports', async (_req, res, next) => {
+router.get('/exports', async (req, res, next) => {
   try {
-    res.json(await query(`SELECT * FROM atlas_exports ORDER BY created_at DESC LIMIT 50`));
+    const userId = req.auth?.userId ?? null;
+
+    let rows: unknown[];
+    try {
+      rows = await query(
+        `SELECT * FROM atlas_exports WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [userId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/atlas/exports' });
+      rows = await query(`SELECT * FROM atlas_exports ORDER BY created_at DESC LIMIT 50`);
+    }
+
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -51,10 +75,22 @@ router.get('/exports', async (_req, res, next) => {
 // GET /api/atlas/exports/:id/download - Download export file
 router.get('/exports/:id/download', async (req, res, next) => {
   try {
-    const rows = await query<{ export_path: string; label: string }>(
-      `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+
+    let rows: Array<{ export_path: string; label: string }>;
+    try {
+      rows = await query<{ export_path: string; label: string }>(
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND user_id = $2`,
+        [req.params.id, userId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/atlas/exports/:id/download' });
+      rows = await query<{ export_path: string; label: string }>(
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
+        [req.params.id]
+      );
+    }
 
     if (rows.length === 0 || !rows[0].export_path) {
       res.status(404).json({ error: 'Export not found or not ready' });
@@ -287,10 +323,23 @@ function project(vec: number[], matrix: number[][]): number[] {
 // POST /api/atlas/exports/:id/nomic-upload - Upload existing atlas export to Nomic dataset
 router.post('/exports/:id/nomic-upload', async (req, res, next) => {
   try {
-    const rows = await query<{ export_path: string; label: string }>(
-      `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+
+    let rows: Array<{ export_path: string; label: string }>;
+    try {
+      rows = await query<{ export_path: string; label: string }>(
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND user_id = $2`,
+        [req.params.id, userId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'POST /api/atlas/exports/:id/nomic-upload' });
+      rows = await query<{ export_path: string; label: string }>(
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
+        [req.params.id]
+      );
+    }
+
     if (rows.length === 0 || !rows[0].export_path) {
       res.status(404).json({ error: 'Export not found or not ready' });
       return;

@@ -8,6 +8,7 @@ import { config } from '../../config';
 import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
 import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -53,11 +54,21 @@ router.post('/url', async (req, res, next) => {
     }
 
     const id = uuidv4();
-    await query(
-      `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
-       VALUES ($1, $2, 'web_url', 'queued', $3)`,
-      [id, url, JSON.stringify(metadata ?? {})]
-    );
+    const ingestionUserId = req.auth?.userId ?? null;
+    try {
+      await query(
+        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
+         VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
+        [id, url, JSON.stringify(metadata ?? {}), ingestionUserId]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
+         VALUES ($1, $2, 'web_url', 'queued', $3)`,
+        [id, url, JSON.stringify(metadata ?? {})]
+      );
+    }
 
     await ingestionQueue.add('ingest-url', {
       ingestionJobId: id,
@@ -90,11 +101,21 @@ router.post('/text', async (req, res, next) => {
     }
 
     const id = uuidv4();
-    await query(
-      `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
-       VALUES ($1, $2, 'text', 'queued', $3)`,
-      [id, title ?? 'Imported Text', JSON.stringify(metadata ?? {})]
-    );
+    const ingestionUserId = req.auth?.userId ?? null;
+    try {
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata, user_id)
+         VALUES ($1, $2, 'text', 'queued', $3, $4)`,
+        [id, title ?? 'Imported Text', JSON.stringify(metadata ?? {}), ingestionUserId]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
+         VALUES ($1, $2, 'text', 'queued', $3)`,
+        [id, title ?? 'Imported Text', JSON.stringify(metadata ?? {})]
+      );
+    }
 
     await ingestionQueue.add('ingest-text', {
       ingestionJobId: id,
@@ -169,11 +190,21 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
       }
     }
 
-    await query(
-      `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
-       VALUES ($1, $2, $3, 'queued', $4)`,
-      [id, req.file.originalname, sourceType, JSON.stringify(parsedMetadata)]
-    );
+    const ingestionUserId = req.auth?.userId ?? null;
+    try {
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata, user_id)
+         VALUES ($1, $2, $3, 'queued', $4, $5)`,
+        [id, req.file.originalname, sourceType, JSON.stringify(parsedMetadata), ingestionUserId]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await query(
+        `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
+         VALUES ($1, $2, $3, 'queued', $4)`,
+        [id, req.file.originalname, sourceType, JSON.stringify(parsedMetadata)]
+      );
+    }
 
     await ingestionQueue.add('ingest-file', {
       ingestionJobId: id,
@@ -193,17 +224,37 @@ router.post('/file', upload.single('file'), async (req, res, next) => {
 });
 
 // GET /api/ingestion/jobs - List recent ingestion jobs
-router.get('/jobs', async (_req, res, next) => {
+router.get('/jobs', async (req, res, next) => {
   try {
-    const jobs = await query(
-      `SELECT j.id, j.url, j.file_name, j.source_type, j.status, j.error_message,
-              j.started_at, j.completed_at, j.created_at, j.source_id, j.metadata,
-              s.imported_via, s.discovered_by_run_id
-       FROM ingestion_jobs j
-       LEFT JOIN sources s ON s.id = j.source_id
-       ORDER BY j.created_at DESC
-       LIMIT 100`
-    );
+    const userId = req.auth?.userId ?? null;
+
+    let jobs: unknown[];
+    try {
+      jobs = await query(
+        `SELECT j.id, j.url, j.file_name, j.source_type, j.status, j.error_message,
+                j.started_at, j.completed_at, j.created_at, j.source_id, j.metadata,
+                s.imported_via, s.discovered_by_run_id
+         FROM ingestion_jobs j
+         LEFT JOIN sources s ON s.id = j.source_id
+         WHERE j.user_id = $1
+         ORDER BY j.created_at DESC
+         LIMIT 100`,
+        [userId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/ingestion/jobs' });
+      jobs = await query(
+        `SELECT j.id, j.url, j.file_name, j.source_type, j.status, j.error_message,
+                j.started_at, j.completed_at, j.created_at, j.source_id, j.metadata,
+                s.imported_via, s.discovered_by_run_id
+         FROM ingestion_jobs j
+         LEFT JOIN sources s ON s.id = j.source_id
+         ORDER BY j.created_at DESC
+         LIMIT 100`
+      );
+    }
+
     res.json(jobs);
   } catch (err) {
     next(err);
@@ -213,10 +264,23 @@ router.get('/jobs', async (_req, res, next) => {
 // GET /api/ingestion/jobs/:id - Get a specific ingestion job
 router.get('/jobs/:id', async (req, res, next) => {
   try {
-    const jobs = await query(
-      `SELECT * FROM ingestion_jobs WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+
+    let jobs: unknown[];
+    try {
+      jobs = await query(
+        `SELECT * FROM ingestion_jobs WHERE id=$1 AND user_id = $2`,
+        [req.params.id, userId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/ingestion/jobs/:id' });
+      jobs = await query(
+        `SELECT * FROM ingestion_jobs WHERE id=$1`,
+        [req.params.id]
+      );
+    }
+
     if (jobs.length === 0) {
       res.status(404).json({ error: 'Job not found' });
       return;

@@ -128,12 +128,13 @@ export async function runDiscoveryOrchestrator(args: {
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
+  userId?: string;
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, onRoundComplete } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, onRoundComplete } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -373,11 +374,21 @@ export async function runDiscoveryOrchestrator(args: {
     // Enqueue ingestion
     const jobId = uuidv4();
     try {
-      await query(
-        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
-         VALUES ($1, $2, 'web_url', 'queued', $3)`,
-        [jobId, candidate.url, JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery })]
-      );
+      const ijMeta = JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery });
+      try {
+        await query(
+          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
+           VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
+          [jobId, candidate.url, ijMeta, userId ?? null]
+        );
+      } catch (ijErr) {
+        if ((ijErr as { code?: string })?.code !== '42703') throw ijErr;
+        await query(
+          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
+           VALUES ($1, $2, 'web_url', 'queued', $3)`,
+          [jobId, candidate.url, ijMeta]
+        );
+      }
 
       const finalUrl = await ensureReachableUrl(candidate.url);
       await ingestionQueue.add('ingest-url', {
