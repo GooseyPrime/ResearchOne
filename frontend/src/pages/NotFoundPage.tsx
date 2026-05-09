@@ -21,7 +21,7 @@ export default function NotFoundPage() {
             Reports
           </Link>
           <Link to="/app/billing" className="text-sm text-slate-400 hover:text-slate-200">
-            Billing
+            Account
           </Link>
         </div>
       </div>
