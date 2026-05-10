@@ -19,6 +19,8 @@ type Check = {
   modelProbe?: string;
   provider?: string;
   ready?: boolean;
+  /** When false, DB is reachable but Postgres role `application_role` is missing (migration 021). */
+  rlsReady?: boolean;
   reason?: string;
 };
 
@@ -100,7 +102,14 @@ async function probeOptionalIntegration(
 export async function buildHealth(req: { app: { get: (k: string) => unknown } }) {
   const apiCheck: Check = { ok: true, latencyMs: 0 };
 
-  const dbProbe = await timedCheck(async () => getPool().query('SELECT 1'));
+  const dbProbe = await timedCheck(async () => {
+    const result = await getPool().query<{ ok: number; application_role_exists: boolean }>(
+      "SELECT 1 AS ok, EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'application_role') AS application_role_exists",
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('db health probe returned no row');
+    return row;
+  });
   const redisProbe = await timedCheck(async () => getRedis().ping());
   const queueProbe = await timedCheck(async () => {
     await Promise.all([
@@ -138,9 +147,20 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
     probeOptionalIntegration('SCITE_API_KEY', 'https://api.scite.ai/health'),
   ]);
 
+  const dbRow = dbProbe.value;
+  const applicationRolePresent = dbRow?.application_role_exists ?? false;
+
   const coreChecks = {
     api: apiCheck,
-    db: { ok: dbProbe.ok, latencyMs: dbProbe.latencyMs },
+    db: {
+      ok: dbProbe.ok,
+      latencyMs: dbProbe.latencyMs,
+      rlsReady: dbProbe.ok ? applicationRolePresent : undefined,
+      reason:
+        dbProbe.ok && !applicationRolePresent
+          ? 'Postgres role application_role is missing — run migrations (021_rls_setup.sql)'
+          : undefined,
+    },
     redis: { ok: redisProbe.ok, latencyMs: redisProbe.latencyMs },
     queue: { ok: queueProbe.ok, latencyMs: queueProbe.latencyMs },
     openrouter: {
@@ -160,6 +180,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
 
   const INTEGRATION_LATENCY_THRESHOLD_MS = 2000;
   const coreDown = Object.values(coreChecks).some((c) => !c.ok);
+  const rlsDegraded = Boolean(coreChecks.db.ok && coreChecks.db.rlsReady === false);
   const integrationDegraded =
     Object.values(integrations).some(
       (c) => c.configured && (!c.ok || (c.latencyMs ?? 0) > INTEGRATION_LATENCY_THRESHOLD_MS)
@@ -167,7 +188,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
 
   const status: 'ok' | 'degraded' | 'down' = coreDown
     ? 'down'
-    : integrationDegraded
+    : integrationDegraded || rlsDegraded
       ? 'degraded'
       : 'ok';
 
