@@ -148,7 +148,7 @@ If deploy fails with SSH or permission errors, the fix is in **GitHub repository
 
 ### Backend (Emma runtime VM) — Production
 
-Canonical source of truth: `backend/.env.production.example`. Keep `backend/.env` on the VM synced to that template when new features ship.
+**Baseline:** copy `backend/.env.production.example` → `backend/.env` on the VM (see table below). The fenced block below is a **narrative superset** (optional integrations + examples); the committed template holds the maintained minimum — merge extra keys from here when you enable a feature.
 
 ```env
 NODE_ENV=production
@@ -162,10 +162,10 @@ DB_NAME=researchone
 DB_USER=researchone
 DB_PASSWORD=<password>
 
-# Redis
-REDIS_URL=redis://<redis-vm>:6379
+# Redis — runtime queue uses REDIS_HOST + REDIS_PORT (backend/src/queue/redis.ts)
 REDIS_HOST=<redis-vm>
 REDIS_PORT=6379
+REDIS_URL=redis://<redis-vm>:6379   # optional; not used by ioredis — host/port are authoritative
 REDIS_PASSWORD=            # set if requirepass is enabled
 REDIS_USERNAME=            # set if ACL username is enabled
 
@@ -274,6 +274,8 @@ INTELLME_API_URL=https://api.intellme.com/v1
 # See backend/src/config/index.ts for the full list of *_MODEL / *_FALLBACK keys.
 ```
 
+This fenced block is an **illustrative superset** (core keys + optional integrations). For Emma/production, **start from `backend/.env.production.example`**, then add any optional keys you need from this section or feature-specific docs — the committed template is the baseline file to copy.
+
 **Which `.env` file is which (do not confuse these):**
 
 | File | Role |
@@ -297,17 +299,17 @@ VITE_API_BASE_URL=https://<emma-runtime-vm-domain>
 VITE_SOCKET_URL=https://<emma-runtime-vm-domain>
 VITE_EXPORTS_BASE_URL=https://<emma-runtime-vm-domain>
 VITE_CLERK_PUBLISHABLE_KEY=pk_live_REPLACE
-VITE_CLERK_SIGN_IN_URL=/sign-in
-VITE_CLERK_SIGN_UP_URL=/sign-up
-VITE_CLERK_AFTER_SIGN_IN_URL=/app
-VITE_CLERK_AFTER_SIGN_UP_URL=/onboarding
 # Optional (currently unused by default checkout flow):
 # VITE_STRIPE_PUBLISHABLE_KEY=pk_live_REPLACE
 ```
 
-Set each `VITE_*` value to the **origin only** (scheme + host, no path): correct `https://api.example.com`, wrong `https://api.example.com/api`. The client code appends `/api` itself (`resolveApiBaseUrl` in `frontend/src/utils/api.ts`). Use the hostname nginx serves on the Emma VM, not the Vercel URL. **Redeploy the frontend after changing `VITE_*`** so Vite embeds them.
+**Origin-only (API base URLs):** `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, and `VITE_EXPORTS_BASE_URL` must be **origins only** (scheme + host, no path): correct `https://api.example.com`, wrong `https://api.example.com/api`. The client appends `/api` itself (`resolveApiBaseUrl` in `frontend/src/utils/api.ts`). Use the hostname nginx serves on the Emma VM, not the Vercel URL.
 
-If your VM only exposes **HTTP on port 80** (no TLS / no listener on 443), use `http://` in `VITE_*` until TLS is configured. Public `https://` smoke tests only work when HTTPS is actually terminated (443).
+**Not origins:** `VITE_CLERK_PUBLISHABLE_KEY` stays a Clerk **`pk_live_...` / `pk_test_...` key**, never a URL. Sign-in/up redirect paths are configured in the **Clerk Dashboard** — `VITE_CLERK_SIGN_IN_URL` / `VITE_CLERK_AFTER_SIGN_IN_URL` etc. in `frontend/.env.example` are for local/reference parity only; **`frontend/src/main.tsx` does not read them at build time.**
+
+**Redeploy the frontend** after changing any embedded `VITE_*` value.
+
+If your VM only exposes **HTTP on port 80** (no TLS / no listener on 443), use `http://` in the three API-related `VITE_*` URLs until TLS is configured. Public `https://` smoke tests only work when HTTPS is actually terminated (443).
 
 **Diagnosing “404” on research:** In the browser Network tab, check the host of `POST .../research`. If it is your Vercel domain, `VITE_API_BASE_URL` was missing at build time. If the host is correct but the path is `/api/api/...`, remove the extra `/api` or trailing slash from `VITE_API_BASE_URL`. If research starts but fails later, open “Show error details” on the run and read `failure_meta.endpoint`: an OpenRouter URL means fix `OPENROUTER_BASE_URL` on the Emma VM, not Vercel.
 

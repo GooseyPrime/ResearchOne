@@ -15,7 +15,8 @@ All must be provisioned in secure password manager. **Never commit.**
 | `JWT_SECRET` | Generated random 32+ char secret | Pending |
 | `CORS_ORIGINS` | Production frontend origins (`https://...`) | Pending |
 | `DATABASE_URL` | Emma VM Postgres | Pending |
-| `REDIS_URL` | Emma VM Redis | Pending |
+| `REDIS_HOST` | Emma VM Redis hostname | Pending |
+| `REDIS_PORT` | Redis port (typically `6379`) | Pending |
 | `CLERK_SECRET_KEY` | Clerk Dashboard | Pending |
 | `CLERK_WEBHOOK_SECRET` | Clerk Dashboard | Pending |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk Dashboard | Pending |
@@ -36,6 +37,8 @@ All must be provisioned in secure password manager. **Never commit.**
 | `VITE_API_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
 | `VITE_SOCKET_URL` | Public Emma API origin (`https://api...`) | Pending |
 | `VITE_EXPORTS_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
+
+`REDIS_URL` may appear in `.env` templates for documentation; **runtime BullMQ/ioredis uses `REDIS_HOST` + `REDIS_PORT`** (`backend/src/queue/redis.ts`). Set host/port in production.
 
 Optional (feature-flag / deployment-specific):
 

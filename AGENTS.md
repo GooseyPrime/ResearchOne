@@ -61,3 +61,9 @@ drove the rules is at
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
 - **Dependencies:** Do not add npm packages that no code path imports;
   remove unused deps when review flags them.
+- **Docs vs runtime env:** README and deployment checklists must match what
+  the backend actually reads (`grep process.env` / `config`). BullMQ/ioredis
+  uses `REDIS_HOST` + `REDIS_PORT` (`backend/src/queue/redis.ts`), not
+  `REDIS_URL` — PR #103 (Copilot). When documenting `VITE_*`, apply “origin
+  only” to API base URLs (`VITE_API_BASE_URL`, etc.), never to
+  `VITE_CLERK_PUBLISHABLE_KEY` — PR #103 (Codex).
