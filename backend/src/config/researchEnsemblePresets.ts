@@ -173,19 +173,20 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
  *   (b) Abliterated weights (refusal vector orthogonalized out) —
  *       `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`. Used as
  *       user-opt-in / emergency-sanity fallback.
- *   (c) Uncensored fine-tunes — `Dolphin*`, `Hermes-3` / `Hermes-4`,
- *       `Sao10K/Euryale*`. Required for adversarial roles
- *       (skeptic / internal_challenger).
+ *   (c) Low-refusal steerable instruct lines — Hermes-3 / Hermes-4 on
+ *       OpenRouter — used for adversarial roles when they pass the same
+ *       runtime `/chat/completions` probe as critical-path models.
+ *       Uncensored branding is not a substitute for reachability.
  *
  * Operational constraints layered on top of the behavioral test:
  *
  *   1. **Multi-provider redundancy is mandatory** for critical-path
- *      defaults (planner / reasoner / synthesizer / utility / verifier).
- *      ≥ 2 live OpenRouter upstreams per slug. The 2026-04-28-PM outage
- *      was caused by routing every default through a single-upstream
- *      slug (Nebius-only `nousresearch/hermes-4-70b`).
- *   2. **Adversarial roles** can use single-provider uncensored
- *      fine-tunes because their failures are recoverable mid-pipeline.
+ *      defaults (planner / reasoner / synthesizer / utility / verifier)
+ *      when we claim multi-upstream resilience; verify live, do not
+ *      infer from catalog alone.
+ *   2. **Adversarial roles** use slugs that pass the same runtime
+ *      `/chat/completions` probe as preflight; recoverable mid-pipeline
+ *      does not excuse catalog-only reachability (2026-05-10).
  *   3. **Forbidden as default**: closed-API moderation pipelines
  *      (Anthropic / OpenAI / Google / Mistral closed) and heavy-RLHF
  *      instruct bases without abliteration (`meta-llama/*-Instruct`,
@@ -248,20 +249,25 @@ const V2M = {
    */
   KIMI_K2_THINKING: 'moonshotai/kimi-k2-thinking',
   /**
-   * Dolphin Mistral 24B Venice Edition (Cognitive Computations,
-   * uncensored fine-tune). Single-provider on OpenRouter (Venice). Used
-   * as the primary skeptic / internal_challenger across all objectives
-   * because its training explicitly drops the "decline anomalies"
-   * objective. Acceptable single-provider risk for adversarial roles
-   * per criterion 3.
+   * Nous Hermes 4 70B (OpenRouter). Default adversarial primary after
+   * `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` and
+   * `sao10k/l3.3-euryale-70b` failed runtime routing under typical account
+   * provider policy (404 "No allowed providers...", 2026-05-10). Selected
+   * using the same `/chat/completions` smoke envelope as startup preflight.
    */
-  DOLPHIN_VENICE: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  HERMES_4_70B_OR: 'nousresearch/hermes-4-70b',
   /**
-   * Sao10K L3.3 Euryale 70B (uncensored Llama-3.3-70B fine-tune). 2
-   * OpenRouter upstreams (NextBit, DeepInfra). Used as the skeptic
-   * fallback and as the primary on the anomaly objective.
+   * Nous Hermes 3 70B Instruct (OpenRouter). Secondary adversarial fallback.
    */
-  EURYALE_70B: 'sao10k/l3.3-euryale-70b',
+  HERMES_3_70B_OR: 'nousresearch/hermes-3-llama-3.1-70b',
+  /**
+   * Experimental opt-in only — listed in OpenRouter catalog but returned 404
+   * "No allowed providers are available" under our runtime provider block in
+   * production (2026-05-10). Not wired into V2 defaults.
+   */
+  EXPERIMENTAL_DOLPHIN_VENICE_OR: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  /** @see EXPERIMENTAL_DOLPHIN_VENICE_OR — same runtime failure shape. */
+  EXPERIMENTAL_EURYALE_70B_OR: 'sao10k/l3.3-euryale-70b',
 } as const;
 
 const V2_UTILITIES: Record<
@@ -306,9 +312,9 @@ function v2Mode(
  *   - **Synthesis roles**: Qwen3-235B-Thinking (primary; 256k for corpus
  *     ingestion) → fallback DeepSeek V3.2 (all objectives). PATENT_GAP
  *     synthesizer uses Qwen3 → R1 for citation-dense reasoning.
- *   - **Adversarial** (skeptic / internal_challenger): uncensored fine-tunes
- *     (Dolphin Venice / Euryale 70B) — never a Thinking model here; these
- *     roles need a model whose baseline is already uncensored.
+ *   - **Adversarial** (skeptic / internal_challenger): low-refusal Hermes
+ *     OpenRouter line (Hermes 4 → Hermes 3 fallback) — validated by runtime
+ *     `/chat/completions` preflight, not catalog metadata alone.
  *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1).
  *
  * Preset fallbacks fire unconditionally on primary failure.
@@ -326,8 +332,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
-    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
   INVESTIGATIVE_SYNTHESIS: v2Mode({
@@ -340,8 +346,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
-    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
   PATENT_GAP_ANALYSIS: v2Mode({
@@ -357,8 +363,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
-    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
   NOVEL_APPLICATION_DISCOVERY: v2Mode({
@@ -371,14 +377,13 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
-    internal_challenger: pair(V2M.DOLPHIN_VENICE, V2M.EURYALE_70B),
+    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
   ANOMALY_CORRELATION: v2Mode({
-    // Anomaly objective uses Euryale as primary adversarial role (its
-    // training explicitly targets anomaly-finding) and Kimi K2 as planner
-    // for long-horizon agentic loop stability during deep correlation runs.
+    // Anomaly objective shares the same Hermes adversarial ladder as other
+    // objectives — Euryale/Dolphin Venice failed runtime probes (2026-05-10).
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
@@ -388,8 +393,8 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
-    internal_challenger: pair(V2M.EURYALE_70B, V2M.DOLPHIN_VENICE),
+    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 };
 

@@ -83,7 +83,7 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     corpusAccess: false,
     atlasAccess: false,
     knowledgeGraphAccess: false,
-    deepResearchAccess: false,
+    deepResearchAccess: true,
     exportFormats: ['markdown'],
   },
 
@@ -103,7 +103,7 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     corpusAccess: false,
     atlasAccess: false,
     knowledgeGraphAccess: false,
-    deepResearchAccess: false,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf'],
   },
 
@@ -123,7 +123,7 @@ export const TIER_RULES: Record<TierName, TierRule> = {
     corpusAccess: false,
     atlasAccess: false,
     knowledgeGraphAccess: false,
-    deepResearchAccess: false,
+    deepResearchAccess: true,
     exportFormats: ['markdown', 'pdf'],
   },
 

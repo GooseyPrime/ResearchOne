@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Search, Filter, CheckCircle, Clock, FileText, XCircle, AlertTriangle } from 'lucide-react';
+import { useAuth } from '@clerk/react';
+import { BookOpen, Search, Filter, CheckCircle, Clock, FileText, XCircle, AlertTriangle, Users } from 'lucide-react';
 import { getReports, getResearchRuns, Report, ResearchRun } from '../utils/api';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -25,6 +26,7 @@ type ListItem =
 
 export default function ReportsPage() {
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -132,7 +134,7 @@ export default function ReportsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="card p-5 animate-pulse h-40" />
+            <div key={`reports-skeleton-${i}`} className="card p-5 animate-pulse h-40" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -144,6 +146,7 @@ export default function ReportsPage() {
               <ReportCard
                 key={item.data.id}
                 report={item.data}
+                viewerUserId={userId ?? undefined}
                 onClick={() => navigate(`/reports/${item.data.id}`)}
               />
             ) : (
@@ -160,8 +163,21 @@ export default function ReportsPage() {
   );
 }
 
-function ReportCard({ report, onClick }: { report: Report; onClick: () => void }) {
+function ReportCard({
+  report,
+  viewerUserId,
+  onClick,
+}: {
+  report: Report;
+  viewerUserId?: string;
+  onClick: () => void;
+}) {
   const statusClass = STATUS_COLORS[report.status] ?? STATUS_COLORS.draft;
+  const orgShared =
+    !!report.org_id &&
+    !!report.owner_user_id &&
+    !!viewerUserId &&
+    report.owner_user_id !== viewerUserId;
 
   return (
     <div
@@ -177,11 +193,30 @@ function ReportCard({ report, onClick }: { report: Report; onClick: () => void }
             {formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}
           </p>
         </div>
-        <span className={clsx('badge border flex-shrink-0', statusClass)}>
-          {report.status === 'finalized' ? <CheckCircle size={10} /> : <Clock size={10} />}
-          {report.status}
-        </span>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className={clsx('badge border', statusClass)}>
+            {report.status === 'finalized' ? <CheckCircle size={10} /> : <Clock size={10} />}
+            {report.status}
+          </span>
+          {orgShared && (
+            <span className="badge border border-violet-500/40 text-violet-300 bg-violet-950/30 text-[10px] gap-1 inline-flex items-center">
+              <Users size={10} />
+              Team
+            </span>
+          )}
+        </div>
       </div>
+
+      {report.retention_status === 'workspace_purged' && report.report_expires_at && (
+        <p className="mt-1 text-xs text-amber-400/80">
+          Workspace cleared — report available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}
+        </p>
+      )}
+      {report.report_expires_at && report.status === 'finalized' && report.retention_status !== 'workspace_purged' && (
+        <p className="mt-1 text-xs text-r1-text-muted">
+          Available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}
+        </p>
+      )}
 
       {report.executive_summary && (
         <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">

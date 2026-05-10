@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
+import { pipeline } from 'stream/promises';
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
@@ -66,7 +68,9 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     sql += ` AND s.tags && $${params.length}::text[]`;
   }
 
-  sql += ' ORDER BY c.created_at DESC LIMIT 50000';
+  const maxChunks = config.atlas.maxChunksPerExport;
+  params.push(maxChunks);
+  sql += ` ORDER BY c.created_at DESC LIMIT $${params.length}`;
 
   const rows = await query<{
     id: string;
@@ -83,7 +87,11 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     source_rank: number | null;
     vector_str: string;
     evidence_tier: string | null;
-  }>(sql, params.length > 0 ? params : undefined);
+  }>(sql, params);
+
+  if (rows.length >= maxChunks) {
+    logger.warn('atlas_export_truncated', { exportId, maxChunks, fetchedRows: rows.length });
+  }
 
   // Parse vectors from pgvector string format
   const points: AtlasPoint[] = rows.map(row => {
@@ -134,11 +142,42 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     });
   });
 
-  // Update export record with the canonical path
-  await query(
-    `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
-    [points.length, exportPath, exportId]
+  const uncompressedBytes = fs.statSync(exportPath).size;
+
+  // Gzip the JSONL for storage efficiency
+  const compressedPath = exportPath + '.gz';
+  await pipeline(
+    fs.createReadStream(exportPath),
+    zlib.createGzip(),
+    fs.createWriteStream(compressedPath),
   );
+  const compressedBytes = fs.statSync(compressedPath).size;
+
+  // Remove uncompressed file after successful compression
+  fs.unlinkSync(exportPath);
+
+  const ATLAS_EXPORT_RETENTION_DAYS = 30;
+  const expiresAt = new Date(Date.now() + ATLAS_EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+  try {
+    await query(
+      `UPDATE atlas_exports
+       SET chunk_count=$1, export_path=$2, compressed_path=$3,
+           uncompressed_bytes=$4, compressed_bytes=$5, expires_at=$6
+       WHERE id=$7`,
+      [points.length, compressedPath, compressedPath, uncompressedBytes, compressedBytes, expiresAt.toISOString(), exportId],
+    );
+  } catch (updateErr: unknown) {
+    const pgCode = (updateErr as { code?: string }).code;
+    if (pgCode === '42703') {
+      await query(
+        `UPDATE atlas_exports SET chunk_count=$1, export_path=$2 WHERE id=$3`,
+        [points.length, compressedPath, exportId],
+      );
+    } else {
+      throw updateErr;
+    }
+  }
 
   // Optional DR copy for quick local disaster recovery.
   if (config.exports.atlasBackupDir.trim()) {
@@ -147,8 +186,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
       }
-      const backupPath = path.join(backupDir, path.basename(exportPath));
-      fs.copyFileSync(exportPath, backupPath);
+      const backupPath = path.join(backupDir, path.basename(compressedPath));
+      fs.copyFileSync(compressedPath, backupPath);
       logger.info(`Atlas export backup copy created: ${backupPath}`);
     } catch (backupErr) {
       logger.warn('Atlas backup copy failed', backupErr);
@@ -159,7 +198,7 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   if (config.nomic.autoUploadOnExport && config.nomic.apiKey.trim()) {
     try {
       const nomic = await uploadAtlasJsonlToNomic({
-        exportPath,
+        exportPath: compressedPath,
         datasetSlug: config.nomic.atlasDatasetSlug,
       });
       await query(
@@ -173,9 +212,9 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
     }
   }
 
-  logger.info(`Atlas export complete: ${points.length} points -> ${exportPath}`);
+  logger.info(`Atlas export complete: ${points.length} points -> ${compressedPath}`);
 
-  return { exportId, count: points.length, path: exportPath };
+  return { exportId, count: points.length, path: compressedPath };
 }
 
 /**

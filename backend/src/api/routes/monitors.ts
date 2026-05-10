@@ -18,8 +18,13 @@ import {
   type MonitorKind,
 } from '../../services/monitoring/parallelMonitorService';
 
-const router = Router();
-router.use(requireAuth);
+/** Report-scoped checkout + listing — mount at `/api/reports` (paths: `/:reportId/monitors`). */
+export const reportMonitorsRouter = Router();
+reportMonitorsRouter.use(requireAuth);
+
+/** User-level monitor CRUD — mount at `/api/monitors` (paths: `/`, `/:monitorId/events`, …). */
+export const userMonitorsRouter = Router();
+userMonitorsRouter.use(requireAuth);
 
 function blockedTierForMonitorCheckout(tier: string): boolean {
   return tier === 'free_demo' || tier === 'anonymous';
@@ -122,9 +127,9 @@ byReport.get('/', async (req, res, next) => {
   }
 });
 
-router.use('/reports/:reportId/monitors', byReport);
+reportMonitorsRouter.use('/:reportId/monitors', byReport);
 
-router.get('/monitors', async (req, res, next) => {
+userMonitorsRouter.get('/', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -138,7 +143,7 @@ router.get('/monitors', async (req, res, next) => {
   }
 });
 
-router.get('/monitors/:monitorId/events', async (req, res, next) => {
+userMonitorsRouter.get('/:monitorId/events', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -157,7 +162,7 @@ router.get('/monitors/:monitorId/events', async (req, res, next) => {
   }
 });
 
-router.post('/monitors/:monitorId/pause', async (req, res, next) => {
+userMonitorsRouter.post('/:monitorId/pause', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -176,7 +181,7 @@ router.post('/monitors/:monitorId/pause', async (req, res, next) => {
   }
 });
 
-router.post('/monitors/:monitorId/resume', async (req, res, next) => {
+userMonitorsRouter.post('/:monitorId/resume', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -195,7 +200,7 @@ router.post('/monitors/:monitorId/resume', async (req, res, next) => {
   }
 });
 
-router.delete('/monitors/:monitorId', async (req, res, next) => {
+userMonitorsRouter.delete('/:monitorId', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -237,4 +242,3 @@ router.delete('/monitors/:monitorId', async (req, res, next) => {
   }
 });
 
-export default router;

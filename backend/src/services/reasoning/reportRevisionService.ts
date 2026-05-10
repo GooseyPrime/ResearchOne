@@ -43,6 +43,7 @@ interface ReportRow {
   root_report_id: string | null;
   parent_report_id: string | null;
   version_number: number | null;
+  user_id: string | null;
 }
 
 interface ReportSectionRow {
@@ -532,50 +533,75 @@ Return strict JSON.`,
     const rootReportId = baseReport.root_report_id ?? baseReport.id;
     const newVersion = currentVersion + 1;
 
-    const newReport = await client.query<{ id: string }>(
-      `INSERT INTO reports (
-         run_id, title, query, status, executive_summary, conclusion, falsification_criteria,
-         unresolved_questions, recommended_queries, contradiction_count, source_count, chunk_count,
-         metadata, finalized_at, root_report_id, parent_report_id, version_number, revision_rationale, revised_by
-       )
-       VALUES (
-         (SELECT run_id FROM reports WHERE id=$1),
-         $2, $3, 'finalized', $4, $5, $6,
-         $7, $8, $9, $10, $11,
-         $12, NOW(), $13, $14, $15, $16, $17
-       )
-       RETURNING id`,
-      [
-        baseReport.id,
-        baseReport.title,
-        baseReport.query,
-        revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? '',
-        revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? '',
-        revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ??
-          baseReport.falsification_criteria ??
-          '',
-        baseReport.unresolved_questions ?? [],
-        baseReport.recommended_queries ?? [],
-        baseReport.contradiction_count,
-        baseReport.source_count,
-        baseReport.chunk_count,
-        JSON.stringify({
-          ...(baseReport.metadata ?? {}),
-          revision_request_id: requestId,
-          revision_verifier: verifierPayload,
-          consistency_issues: consistencyIssues,
-          citation_checks: citationChecks,
-          revision_impact_summary: revisionImpactSummary,
-          model_ensemble: reportRunModelEnsemble,
-          revision_model_ensemble: reportRunModelEnsemble,
-        }),
-        rootReportId,
-        baseReport.id,
-        newVersion,
-        args.rationale ?? '',
-        args.initiatedBy ?? 'system',
-      ]
-    );
+    const revisionReportBaseParams = [
+      baseReport.id,
+      baseReport.title,
+      baseReport.query,
+      revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? '',
+      revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? '',
+      revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ??
+        baseReport.falsification_criteria ??
+        '',
+      baseReport.unresolved_questions ?? [],
+      baseReport.recommended_queries ?? [],
+      baseReport.contradiction_count,
+      baseReport.source_count,
+      baseReport.chunk_count,
+      JSON.stringify({
+        ...(baseReport.metadata ?? {}),
+        revision_request_id: requestId,
+        revision_verifier: verifierPayload,
+        consistency_issues: consistencyIssues,
+        citation_checks: citationChecks,
+        revision_impact_summary: revisionImpactSummary,
+        model_ensemble: reportRunModelEnsemble,
+        revision_model_ensemble: reportRunModelEnsemble,
+      }),
+      rootReportId,
+      baseReport.id,
+      newVersion,
+      args.rationale ?? '',
+      args.initiatedBy ?? 'system',
+    ];
+    let newReport: { rows: Array<{ id: string }> };
+    await client.query('SAVEPOINT pre_revision_report_insert');
+    try {
+      newReport = await client.query<{ id: string }>(
+        `INSERT INTO reports (
+           run_id, title, query, status, executive_summary, conclusion, falsification_criteria,
+           unresolved_questions, recommended_queries, contradiction_count, source_count, chunk_count,
+           metadata, finalized_at, root_report_id, parent_report_id, version_number, revision_rationale, revised_by,
+           user_id
+         )
+         VALUES (
+           (SELECT run_id FROM reports WHERE id=$1),
+           $2, $3, 'finalized', $4, $5, $6,
+           $7, $8, $9, $10, $11,
+           $12, NOW(), $13, $14, $15, $16, $17,
+           $18
+         )
+         RETURNING id`,
+        [...revisionReportBaseParams, baseReport.user_id ?? null]
+      );
+    } catch (revReportErr) {
+      if ((revReportErr as { code?: string })?.code !== '42703') throw revReportErr;
+      await client.query('ROLLBACK TO SAVEPOINT pre_revision_report_insert');
+      newReport = await client.query<{ id: string }>(
+        `INSERT INTO reports (
+           run_id, title, query, status, executive_summary, conclusion, falsification_criteria,
+           unresolved_questions, recommended_queries, contradiction_count, source_count, chunk_count,
+           metadata, finalized_at, root_report_id, parent_report_id, version_number, revision_rationale, revised_by
+         )
+         VALUES (
+           (SELECT run_id FROM reports WHERE id=$1),
+           $2, $3, 'finalized', $4, $5, $6,
+           $7, $8, $9, $10, $11,
+           $12, NOW(), $13, $14, $15, $16, $17
+         )
+         RETURNING id`,
+        revisionReportBaseParams
+      );
+    }
     revisedReportId = newReport.rows[0].id;
 
     const insertedSections = new Map<string, string>();

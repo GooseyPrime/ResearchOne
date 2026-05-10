@@ -163,6 +163,10 @@ export interface SystemHealth {
 
 export interface Report {
   id: string;
+  /** Present when migration 029 applied — creator's Clerk user id */
+  owner_user_id?: string | null;
+  /** Present when migration 029 applied — org scope for shared reports */
+  org_id?: string | null;
   root_report_id?: string;
   parent_report_id?: string;
   version_number?: number;
@@ -180,6 +184,11 @@ export interface Report {
   chunk_count: number;
   finalized_at?: string;
   created_at: string;
+  report_expires_at?: string | null;
+  workspace_expires_at?: string | null;
+  workspace_purged_at?: string | null;
+  retention_status?: string | null;
+  has_active_living_report?: boolean;
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;
@@ -740,6 +749,24 @@ export const cancelUserMonitor = (monitorId: string) =>
 
 export const listMonitorEventsApi = (monitorId: string) =>
   api.get<{ events: MonitorEventRow[] }>(`/monitors/${monitorId}/events`).then((r) => r.data);
+
+export type UserNotificationKind = 'payment_failed' | 'subscription_canceled' | 'system';
+
+export interface UserNotificationRow {
+  id: string;
+  kind: UserNotificationKind;
+  title: string;
+  body: string | null;
+  cta_path: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export const listUserNotificationsApi = () =>
+  api.get<{ notifications: UserNotificationRow[] }>('/notifications').then((r) => r.data);
+
+export const markNotificationReadApi = (id: string) =>
+  api.post<{ ok: boolean }>(`/notifications/${id}/read`).then((r) => r.data);
 
 /**
  * Resolve an export file download URL, supporting cross-origin Vercel + Emma deployments.

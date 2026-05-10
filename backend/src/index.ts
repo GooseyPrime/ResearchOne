@@ -11,6 +11,7 @@ import { config } from './config';
 import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
 import { startTierResetCron } from './jobs/tierResetCron';
+import { startRetentionCleanupCron } from './jobs/retentionCleanupCron';
 
 async function main() {
   try {
@@ -62,15 +63,22 @@ async function main() {
       });
     });
 
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once('error', reject);
+      httpServer.listen(config.port, config.listenHost, () => {
+        logger.info(`ResearchOne API listening on ${config.listenHost}:${config.port}`);
+        resolve();
+      });
+    });
+
     await startWorkers(io);
     logger.info('BullMQ workers started');
 
     startTierResetCron();
     logger.info('Tier reset cron started');
 
-    httpServer.listen(config.port, () => {
-      logger.info(`ResearchOne API listening on port ${config.port}`);
-    });
+    startRetentionCleanupCron();
+    logger.info('Retention cleanup cron started');
 
     // Best-effort: probe OpenRouter to confirm every V2 default primary
     // has at least one live upstream for the configured account. Logs a

@@ -80,6 +80,15 @@ guidance for it.
 
 ## Fix
 
+**Supersedes adversarial defaults (2026-05-10):** The numbered fix below
+still describes the 2026-04-28-PM rollout. Production later observed
+`cognitivecomputations/dolphin-mistral-24b-venice-edition:free` and
+`sao10k/l3.3-euryale-70b` failing `/chat/completions` ("No allowed
+providers") under the app’s provider block despite catalog presence.
+Current default adversarial roles use Hermes-line slugs that pass that
+runtime probe; see `docs/V2_MODEL_SELECTION_CRITERIA.md` and
+`backend/src/config/researchEnsemblePresets.ts`.
+
 ### Code
 
 1. **Replace V2 critical-path default primaries** with verified-multi-provider open-weights reasoners:

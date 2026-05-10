@@ -42,9 +42,12 @@ export function startPipelineBWorker(_io: SocketIOServer): Worker {
         await writeAuditLog(runId, userId, 'intellme_response_received', { status: 'success' });
 
         try {
+          // Must match `document_id` / DELETE path: ingest uses `runId` as InTellMe document id
+          // (`intellmeClient.ingest({ documentId: runId })`). Store that id for deletion jobs —
+          // not the content hash (audit-only).
           await query(
             `UPDATE run_ingestion_state SET pipeline_b_status = 'completed', intellme_request_id = $2, updated_at = NOW() WHERE run_id = $1`,
-            [runId, contentHash]
+            [runId, runId]
           );
         } catch {
           // deploy-skew: table may not exist
@@ -56,8 +59,8 @@ export function startPipelineBWorker(_io: SocketIOServer): Worker {
           await writeAuditLog(runId, userId, 'intellme_deduplicated', { contentHash });
           try {
             await query(
-              `UPDATE run_ingestion_state SET pipeline_b_status = 'deduplicated', updated_at = NOW() WHERE run_id = $1`,
-              [runId]
+              `UPDATE run_ingestion_state SET pipeline_b_status = 'deduplicated', intellme_request_id = $2, updated_at = NOW() WHERE run_id = $1`,
+              [runId, runId]
             );
           } catch {
             // deploy-skew

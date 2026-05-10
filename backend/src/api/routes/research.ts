@@ -21,6 +21,7 @@ import {
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { getWalletSummary } from '../../services/billing/walletService';
+import { logger } from '../../utils/logger';
 import { computeRunCost, type CreditChargeContext } from '../../middleware/creditEnforcement';
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
@@ -30,9 +31,14 @@ const router = Router();
 
 router.use(requireAuth);
 
+const RESEARCH_MAX_FILES = (() => {
+  const raw = parseInt(process.env.RESEARCH_MAX_FILES_PER_RUN || '5', 10);
+  return Number.isFinite(raw) && raw >= 1 ? raw : 5;
+})();
+
 const uploadResearch = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: 25 },
+  limits: { fileSize: config.ingestion.maxFileSizeMb * 1024 * 1024, files: RESEARCH_MAX_FILES },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/pdf',
@@ -73,7 +79,7 @@ router.post(
   (req, res, next) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('multipart/form-data')) {
-      uploadResearch.array('files', 25)(req, res, next);
+      uploadResearch.array('files', RESEARCH_MAX_FILES)(req, res, next);
     } else {
       next();
     }
@@ -216,6 +222,7 @@ router.post(
         runId,
         urls: supplementalUrls,
         files: fileItems,
+        userId: userId ?? undefined,
       });
 
       const attachments: Array<
@@ -235,16 +242,15 @@ router.post(
         jobIdx += 1;
       }
 
-      // INSERT — try the new schema first (with target_word_count). If migration
-      // 013 has not yet been applied, fall back to the legacy column set so the
-      // route does not 500 during a deploy gap. Only the specific
-      // "undefined column" error (Postgres SQLSTATE 42703) is recovered;
-      // everything else (connectivity, constraint violations, etc.) is
-      // rethrown so real failures aren't masked (Copilot PR #50 review).
+      // INSERT — try with user_id + target_word_count first (migrations 029 + 013).
+      // If 029 has not yet applied, fall back without user_id. If 013 has not yet
+      // applied, fall back without target_word_count. Only Postgres 42703
+      // ("undefined column") is recovered; everything else is rethrown.
+      const orgId = req.auth?.orgId ?? null;
       try {
         await query(
-          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
-           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
+           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
           [
             runId,
             title,
@@ -255,25 +261,47 @@ router.post(
             eng === 'v2' ? 'v2' : null,
             researchObjective ?? null,
             targetWordCount ?? null,
+            userId ?? null,
+            orgId,
           ]
         );
       } catch (insertErr) {
         const code = (insertErr as { code?: string } | null)?.code;
         if (code !== '42703') throw insertErr;
-        await query(
-          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
-           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
-          [
-            runId,
-            title,
-            researchQuery,
-            supplemental ?? '',
-            JSON.stringify(normalizedOverrides),
-            JSON.stringify(attachments),
-            eng === 'v2' ? 'v2' : null,
-            researchObjective ?? null,
-          ]
-        );
+        try {
+          await query(
+            `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
+             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+            [
+              runId,
+              title,
+              researchQuery,
+              supplemental ?? '',
+              JSON.stringify(normalizedOverrides),
+              JSON.stringify(attachments),
+              eng === 'v2' ? 'v2' : null,
+              researchObjective ?? null,
+              targetWordCount ?? null,
+            ]
+          );
+        } catch (insertErr2) {
+          const code2 = (insertErr2 as { code?: string } | null)?.code;
+          if (code2 !== '42703') throw insertErr2;
+          await query(
+            `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
+             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
+            [
+              runId,
+              title,
+              researchQuery,
+              supplemental ?? '',
+              JSON.stringify(normalizedOverrides),
+              JSON.stringify(attachments),
+              eng === 'v2' ? 'v2' : null,
+              researchObjective ?? null,
+            ]
+          );
+        }
       }
 
       // Credit enforcement: compute cost, place wallet hold if needed
@@ -297,8 +325,12 @@ router.post(
             const withinMonthlyCap = rules.monthlyReportCap !== null &&
               userTier.current_period_reports_used < rules.monthlyReportCap;
 
+            const isLifetimeCapOnly = rules.lifetimeReportCap !== null && rules.monthlyReportCap === null && !rules.walletFallbackEnabled;
+
             if (withinMonthlyCap) {
               creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
+            } else if (isLifetimeCapOnly) {
+              creditChargeContext = { type: 'none', costCents: 0 };
             } else if (rules.walletFallbackEnabled || rules.monthlyReportCap === null) {
               const holdResult = await placeHold(userId, runId, costCents);
               if (!holdResult.success) {
@@ -404,17 +436,38 @@ router.get('/model-options', async (_req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const { status } = req.query as { status?: string };
-    let sql = `SELECT id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    const baseCols = `id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
-                      started_at, completed_at, created_at
-               FROM research_runs`;
-    const params: string[] = [];
-    if (status) {
-      params.push(status);
-      sql += ` WHERE status=$1`;
+                      started_at, completed_at, created_at`;
+
+    let rows: unknown[];
+    try {
+      const params: unknown[] = [];
+      let where = ' WHERE (user_id = $1 OR (org_id IS NOT NULL AND org_id = $2) OR user_id IS NULL)';
+      params.push(userId, orgId);
+      if (status) {
+        params.push(status);
+        where += ` AND status=$${params.length}`;
+      }
+      const sql = `SELECT ${baseCols} FROM research_runs${where} ORDER BY created_at DESC LIMIT 50`;
+      rows = await query(sql, params);
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/research' });
+      const params: unknown[] = [];
+      let sql = `SELECT ${baseCols} FROM research_runs`;
+      if (status) {
+        params.push(status);
+        sql += ` WHERE status=$1`;
+      }
+      sql += ' ORDER BY created_at DESC LIMIT 50';
+      rows = await query(sql, params);
     }
-    sql += ' ORDER BY created_at DESC LIMIT 50';
-    res.json(await query(sql, params));
+
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -423,10 +476,24 @@ router.get('/', async (req, res, next) => {
 // GET /api/research/:id - Get specific run
 router.get('/:id', async (req, res, next) => {
   try {
-    const rows = await query(
-      `SELECT * FROM research_runs WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let rows: unknown[];
+    try {
+      rows = await query(
+        `SELECT * FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/research/:id' });
+      rows = await query(
+        `SELECT * FROM research_runs WHERE id=$1`,
+        [req.params.id]
+      );
+    }
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
@@ -441,6 +508,8 @@ router.get('/:id', async (req, res, next) => {
 router.get('/:id/artifacts', async (req, res, next) => {
   try {
     const runId = req.params.id;
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
 
     type RunMetaRow = {
       id: string;
@@ -456,20 +525,27 @@ router.get('/:id/artifacts', async (req, res, next) => {
     try {
       runMeta = await query<RunMetaRow>(
         `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
-           FROM research_runs WHERE id=$1`,
-        [runId]
+           FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [runId, userId, orgId]
       );
     } catch (selectErr) {
-      // Tolerate deploy-skew where some columns above are not yet present
-      // (Postgres SQLSTATE 42703 — undefined_column). Any other error
-      // (connection loss, permission, etc.) is rethrown so operational
-      // problems aren't masked (Copilot PR #50 review).
       const code = (selectErr as { code?: string } | null)?.code;
       if (code !== '42703') throw selectErr;
-      runMeta = (await query<{ id: string }>(
-        `SELECT id FROM research_runs WHERE id=$1`,
-        [runId]
-      )) as RunMetaRow[];
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/research/:id/artifacts' });
+      try {
+        runMeta = await query<RunMetaRow>(
+          `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
+             FROM research_runs WHERE id=$1`,
+          [runId]
+        );
+      } catch (innerErr) {
+        const innerCode = (innerErr as { code?: string } | null)?.code;
+        if (innerCode !== '42703') throw innerErr;
+        runMeta = (await query<{ id: string }>(
+          `SELECT id FROM research_runs WHERE id=$1`,
+          [runId]
+        )) as RunMetaRow[];
+      }
     }
     if (runMeta.length === 0) {
       res.status(404).json({ error: 'Run not found' });
@@ -785,10 +861,24 @@ router.post('/:id/cancel', async (req, res, next) => {
 // DELETE /api/research/:id — remove terminal or queued run row
 router.delete('/:id', async (req, res, next) => {
   try {
-    const rows = await query<{ status: string; user_id: string }>(
-      `SELECT status, user_id FROM research_runs WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let rows: { status: string; user_id: string | null }[];
+    try {
+      rows = await query<{ status: string; user_id: string | null }>(
+        `SELECT status, user_id FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'DELETE /api/research/:id' });
+      rows = await query<{ status: string; user_id: string | null }>(
+        `SELECT status, user_id FROM research_runs WHERE id=$1`,
+        [req.params.id]
+      );
+    }
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
@@ -811,10 +901,11 @@ router.delete('/:id', async (req, res, next) => {
         [req.params.id]
       );
       const docId = ingestionRows[0]?.intellme_request_id;
-      if (docId) {
+      const deletionUserId = userId ?? user_id ?? null;
+      if (docId && deletionUserId) {
         await intellmeDeletionQueue.add(`delete-${req.params.id}`, {
           runId: req.params.id,
-          userId: user_id,
+          userId: deletionUserId,
           documentId: docId,
         });
       }

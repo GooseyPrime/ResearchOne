@@ -1,7 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { extractApiError } from '../utils/api';
+import { Link } from 'react-router-dom';
+import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
+
+const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
+  living_report: 'Living Report — $19/mo',
+  reverse_citation_watch: 'Reverse-Citation Watch — $15/mo',
+};
+
+const ADDON_KIND_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
+  living_report: 'Living Report',
+  reverse_citation_watch: 'Reverse-Citation Watch',
+};
 
 type WalletResponse = {
   balanceCents: number;
@@ -70,6 +81,9 @@ export default function BillingPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  const cachedAuthMe = queryClient.getQueryData<{ userId: string; isAdmin: boolean }>(['auth', 'me']);
+  const isAllowlistedAdmin = cachedAuthMe?.isAdmin === true;
+
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
     queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
@@ -113,9 +127,21 @@ export default function BillingPage() {
     subQuery.data && subQuery.data.status === 'active' && subQuery.data.tier !== 'free_demo';
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
+  const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
+  const hasProAccess = isAllowlistedAdmin || (subQuery.data
+    ? PRO_PLUS_TIERS.includes(subQuery.data.tier) && subQuery.data.status === 'active'
+    : false);
+
+  const monitorsQuery = useQuery({
+    queryKey: ['billing-monitors'],
+    queryFn: () => listUserMonitors(),
+    retry: false,
+    enabled: hasProAccess,
+  });
+
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
-      <h1 className="text-2xl font-semibold">Billing</h1>
+      <h1 className="text-2xl font-semibold">Account</h1>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <h2 className="text-lg font-medium">Wallet</h2>
@@ -124,7 +150,23 @@ export default function BillingPage() {
         </p>
         {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(topupOptionsQuery.data?.options ?? []).length > 0 ? (
+          {topupOptionsQuery.isLoading ? (
+            <p className="text-sm text-slate-500">Loading top-up options...</p>
+          ) : topupOptionsQuery.isError ? (
+            <div className="w-full rounded-md border border-amber-700/30 bg-amber-950/20 p-3">
+              <p className="text-sm text-amber-400">
+                Could not load top-up options.{' '}
+                {extractApiError(topupOptionsQuery.error)}
+              </p>
+              <button
+                type="button"
+                className="mt-2 rounded bg-amber-700/40 px-3 py-1 text-xs text-amber-200 hover:bg-amber-700/60 transition-colors"
+                onClick={() => void topupOptionsQuery.refetch()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : (topupOptionsQuery.data?.options ?? []).length > 0 ? (
             (topupOptionsQuery.data?.options ?? []).map((option) => (
               <button
                 key={option.priceId}
@@ -139,18 +181,10 @@ export default function BillingPage() {
                 {option.label}
               </button>
             ))
-          ) : topupOptionsQuery.isLoading ? (
-            <p className="text-sm text-slate-500">Loading top-up options...</p>
-          ) : topupOptionsQuery.isError ? (
-            <div className="w-full rounded-md border border-red-700/30 bg-red-950/20 p-3">
-              <p className="text-sm text-red-400">
-                Failed to load top-up options. Please try refreshing the page.
-              </p>
-            </div>
           ) : (
             <div className="w-full rounded-md border border-white/5 bg-slate-800/30 p-3">
               <p className="text-sm text-slate-400">
-                Wallet top-ups are not yet configured. Check back soon or contact support.
+                Wallet top-ups are not yet available on this deployment. Check back soon or contact support.
               </p>
             </div>
           )}
@@ -159,38 +193,90 @@ export default function BillingPage() {
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <h2 className="text-lg font-medium">Subscription</h2>
-        {subQuery.data && (
-          <div className="mt-2">
-            <p className="text-sm text-slate-400">
-              <span className="font-medium text-slate-200">Tier:</span>{' '}
-              <span className="capitalize">{subQuery.data.tier}</span>
-              {' · '}
-              <span className="font-medium text-slate-200">Status:</span>{' '}
-              <span className="capitalize">{subQuery.data.status}</span>
+        {subQuery.isLoading ? (
+          <p className="mt-2 text-sm text-slate-500">Loading subscription info...</p>
+        ) : subQuery.isError ? (
+          <div className="mt-2 rounded-md border border-amber-700/30 bg-amber-950/20 p-3">
+            <p className="text-sm text-amber-400">
+              Could not load subscription info.{' '}
+              {extractApiError(subQuery.error)}
             </p>
-            {subQuery.data.currentPeriodEnd && subQuery.data.status === 'active' && (
-              <p className="mt-1 text-sm text-slate-400">
-                {subQuery.data.cancelAtPeriodEnd ? (
-                  <span className="text-amber-400">
-                    Access until: {formatDate(subQuery.data.currentPeriodEnd)}
-                  </span>
-                ) : (
-                  <span>Renews: {formatDate(subQuery.data.currentPeriodEnd)}</span>
+            <button
+              type="button"
+              className="mt-2 rounded bg-amber-700/40 px-3 py-1 text-xs text-amber-200 hover:bg-amber-700/60 transition-colors"
+              onClick={() => void subQuery.refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : subQuery.data ? (
+          <div className="mt-2">
+            {subQuery.data.tier === 'free_demo' || (subQuery.data.status !== 'active' && !hasActiveSubscription) ? (
+              <div className="rounded-md border border-indigo-700/30 bg-indigo-950/20 p-3">
+                <p className="text-sm text-slate-200 font-medium">
+                  Free tier
+                </p>
+                <p className="mt-1 text-sm text-slate-400">
+                  You have access to 3 lifetime research runs using General Epistemic Research,
+                  available in both Research and Deep Research modes.
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Link
+                    to="/pricing"
+                    className="rounded bg-indigo-600 px-3 py-1.5 text-sm hover:bg-indigo-500 transition-colors"
+                  >
+                    View plans &amp; upgrade
+                  </Link>
+                  <Link
+                    to="/app/research-v2"
+                    className="text-sm text-indigo-400 hover:text-indigo-300"
+                  >
+                    Start researching
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-slate-400">
+                  <span className="font-medium text-slate-200">Tier:</span>{' '}
+                  <span className="capitalize">{subQuery.data.tier.replace(/_/g, ' ')}</span>
+                  {' · '}
+                  <span className="font-medium text-slate-200">Status:</span>{' '}
+                  <span className="capitalize">{subQuery.data.status}</span>
+                </p>
+                {subQuery.data.currentPeriodEnd && subQuery.data.status === 'active' && (
+                  <p className="mt-1 text-sm text-slate-400">
+                    {subQuery.data.cancelAtPeriodEnd ? (
+                      <span className="text-amber-400">
+                        Access until: {formatDate(subQuery.data.currentPeriodEnd)}
+                      </span>
+                    ) : (
+                      <span>Renews: {formatDate(subQuery.data.currentPeriodEnd)}</span>
+                    )}
+                  </p>
                 )}
-              </p>
-            )}
-            {cancelError && <p className="mt-2 text-sm text-red-400">{cancelError}</p>}
-            {canCancel && (
-              <button
-                className="mt-3 rounded border border-red-600 px-3 py-1.5 text-sm text-red-400 hover:bg-red-600/10 transition-colors disabled:opacity-50"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                {cancelMutation.isPending ? 'Canceling...' : 'Cancel subscription'}
-              </button>
+                {cancelError && <p className="mt-2 text-sm text-red-400">{cancelError}</p>}
+                {canCancel && (
+                  <button
+                    className="mt-3 rounded border border-red-600 px-3 py-1.5 text-sm text-red-400 hover:bg-red-600/10 transition-colors disabled:opacity-50"
+                    onClick={() => cancelMutation.mutate()}
+                    disabled={cancelMutation.isPending}
+                  >
+                    {cancelMutation.isPending ? 'Canceling...' : 'Cancel subscription'}
+                  </button>
+                )}
+                <div className="mt-3">
+                  <Link
+                    to="/pricing"
+                    className="text-sm text-indigo-400 hover:text-indigo-300"
+                  >
+                    Compare plans
+                  </Link>
+                </div>
+              </>
             )}
           </div>
-        )}
+        ) : null}
 
         {(!hasActiveSubscription && (subscriptionOptionsQuery.data?.options ?? []).length > 0) && (
           <div className="mt-4">
@@ -245,6 +331,60 @@ export default function BillingPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium">Your add-ons</h2>
+          {hasProAccess ? (
+            <Link to="/app/monitors" className="text-xs text-indigo-400 hover:text-indigo-300">
+              Manage add-ons →
+            </Link>
+          ) : (
+            <Link to="/pricing" className="text-xs text-indigo-400 hover:text-indigo-300">
+              Browse add-ons →
+            </Link>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Per-report subscriptions for Living Reports and Reverse-Citation Watch.
+        </p>
+        {!hasProAccess ? (
+          <div className="mt-3 rounded-md border border-white/5 bg-slate-800/30 p-3">
+            <p className="text-sm text-slate-400">
+              Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.{' '}
+              <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
+                Upgrade to unlock add-ons.
+              </Link>
+            </p>
+          </div>
+        ) : monitorsQuery.isLoading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading add-ons...</p>
+        ) : (() => {
+          const active = (monitorsQuery.data?.monitors ?? []).filter((m) => m.status === 'active' || m.status === 'paused');
+          if (active.length === 0) {
+            return (
+              <p className="mt-3 text-sm text-slate-400">
+                No add-ons yet. Open any finalized report to add Living Reports or Reverse-Citation Watch.
+              </p>
+            );
+          }
+          return (
+            <ul className="mt-3 space-y-2 text-sm text-slate-300">
+              {active.map((m) => (
+                <li key={m.id} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/app/reports/${m.report_id}`} className="text-slate-200 hover:text-white">
+                      {ADDON_KIND_LABEL[m.monitor_kind]}
+                    </Link>
+                    <span className="ml-2 text-xs text-slate-500 capitalize">{m.status}</span>
+                  </div>
+                  <span className="text-xs text-slate-500">{ADDON_PRICE_LABEL[m.monitor_kind]}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
       </section>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">

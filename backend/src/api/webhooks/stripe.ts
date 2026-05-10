@@ -18,11 +18,16 @@ import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
 import {
   cancelMonitorByStripeSubscription,
+  cancelUserAddonSubscriptions,
   monitorKindFromStripePriceId,
   registerMonitor,
   recordSubscriptionPastDueForMonitor,
   subscriptionHasLivingReportsPrice,
 } from '../../services/monitoring/parallelMonitorService';
+import {
+  createUserNotification,
+  resolveUserIdFromStripeSubscription,
+} from '../../services/notifications/userNotifications';
 
 const router = Router();
 
@@ -173,13 +178,26 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
 
 /**
  * Handler for customer.subscription.deleted events.
- * Marks the subscription as canceled. Access continues until current_period_end
- * (handled by daily cron, not immediate).
+ *
+ * Discriminates add-on subscriptions (Living Report / Reverse-Citation Watch)
+ * from tier subscriptions (Pro / Team / BYOK / Student) using the
+ * `monitor_kind` metadata that we set at add-on checkout time. This is the
+ * SAME discriminator we use on `subscription.created/updated` (PR #86 review
+ * fix). It is the canonical writer for "is this an add-on subscription?".
+ *
+ * Add-on cancel: only cancel the monitor — DO NOT downgrade the user's tier
+ * (they still have their Pro/Team/BYOK subscription separately).
+ *
+ * Tier cancel: downgrade to free_demo AND cascade-cancel all of the user's
+ * active add-on subscriptions, since the dependency invariant is "add-on
+ * requires an active qualifying tier".
  */
 const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (data) => {
   const subscription = data as unknown as SubscriptionData;
   await markSubscriptionCanceled(subscription.id);
 
+  // Always try to cancel a monitor whose stripe_subscription_id matches the
+  // deleted subscription. Idempotent on already-cancelled rows.
   try {
     await cancelMonitorByStripeSubscription(subscription.id);
   } catch (err) {
@@ -190,12 +208,30 @@ const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (d
   }
 
   const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
-  if (userId) {
-    try {
-      await setUserTier(userId, 'free_demo');
-    } catch (err) {
-      logger.warn('stripe_webhook_tier_downgrade_failed', { userId, error: err instanceof Error ? err.message : 'Unknown' });
-    }
+  if (!userId) return;
+
+  // Discriminate: add-on subscriptions carry monitor_kind in their metadata.
+  // Cancelling an add-on must NOT downgrade the user's tier.
+  const isAddonSubscription = Boolean(subscription.metadata?.monitor_kind);
+  if (isAddonSubscription) return;
+
+  // Tier subscription cancel: downgrade tier
+  try {
+    await setUserTier(userId, 'free_demo');
+  } catch (err) {
+    logger.warn('stripe_webhook_tier_downgrade_failed', { userId, error: err instanceof Error ? err.message : 'Unknown' });
+  }
+
+  // Cascade-cancel any of the user's active add-on subscriptions. Without
+  // this, the user keeps being charged for Living Reports that no longer
+  // have a qualifying tier behind them.
+  try {
+    await cancelUserAddonSubscriptions(userId);
+  } catch (err) {
+    logger.warn('stripe_addon_cascade_cancel_failed', {
+      userId,
+      error: err instanceof Error ? err.message : 'Unknown',
+    });
   }
 };
 
@@ -205,7 +241,17 @@ interface InvoiceData {
 
 /**
  * Handler for invoice.payment_failed events.
- * Flags the event in DB for later notification work (email notification out of scope per Work Order F).
+ *
+ * Two writers per Rule 10 (state-machine + multi-writer):
+ *  1. `stripe_webhook_events.payload.needs_notification` flag — operator/audit
+ *     trail. Kept for forensic queries.
+ *  2. `user_notifications` row of kind `payment_failed` — user-facing in-app
+ *     notification. Read by GET /api/notifications and the frontend
+ *     NotificationBanner.
+ *
+ * The notification insert is best-effort: if the user_id can't be resolved
+ * (subscription not yet synced) or the notifications table is missing
+ * (deploy skew), we still leave the audit flag in place and log.
  */
 const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const invoice = data as unknown as InvoiceData;
@@ -223,6 +269,27 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
       await recordSubscriptionPastDueForMonitor(subscriptionId);
     } catch (err) {
       logger.warn('stripe_monitor_past_due_event_failed', {
+        subscriptionId,
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
+    }
+
+    // Best-effort: surface an in-app notification so the user sees a banner.
+    try {
+      const userId = await resolveUserIdFromStripeSubscription(subscriptionId);
+      if (userId) {
+        await createUserNotification({
+          userId,
+          kind: 'payment_failed',
+          title: 'Payment failed',
+          body: 'We could not charge your card for this billing cycle. Update your payment method to avoid losing access.',
+          ctaPath: '/app/billing',
+        });
+      } else {
+        logger.warn('stripe_payment_failed_user_unresolved', { eventId, subscriptionId });
+      }
+    } catch (err) {
+      logger.warn('stripe_payment_failed_notification_insert_failed', {
         subscriptionId,
         error: err instanceof Error ? err.message : 'Unknown',
       });

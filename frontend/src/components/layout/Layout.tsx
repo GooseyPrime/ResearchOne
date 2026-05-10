@@ -13,6 +13,7 @@ import {
   Cpu,
   Settings,
   Wallet,
+  Radar,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
@@ -29,6 +30,7 @@ import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
+import NotificationBanner from '../ui/NotificationBanner';
 import ActiveRunBadge from '../research/ActiveRunBadge';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
@@ -45,16 +47,17 @@ type NavItem = {
 const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/app/research', label: 'Standard Research', icon: FlaskConical, desc: 'Start investigation' },
-  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Frontier ensemble (Pro+)', requireTier: 'pro' },
+  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
+  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Multi-model ensemble research' },
   { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
+  { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence', requireTier: 'pro' },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
   { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },
   { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources', requireTier: 'pro' },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
-  { to: '/app/billing', label: 'Billing', icon: Wallet, desc: 'Wallet and subscription' },
+  { to: '/app/billing', label: 'Account', icon: Wallet, desc: 'Account and subscription' },
   { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)', requireAdmin: true },
 ];
 const MAX_RESTART_POLL_ATTEMPTS = 12;
@@ -285,6 +288,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto grid-bg">
+          <NotificationBanner />
           <Outlet />
         </main>
       </div>

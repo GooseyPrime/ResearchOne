@@ -36,6 +36,7 @@ import AccountPage from './pages/AccountPage';
 import BillingPage from './pages/BillingPage';
 import SampleReportPage from './pages/SampleReportPage';
 import MonitorsPage from './pages/MonitorsPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 export function AppRoutes() {
   return (
@@ -79,7 +80,9 @@ export function AppRoutes() {
           <Route path="telemetry" element={<RunTelemetry />} />
           <Route path="audit" element={<AuditLogViewer />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

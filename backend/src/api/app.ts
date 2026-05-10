@@ -19,7 +19,8 @@ import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import byokRoutes from './routes/byok';
-import monitorsRoutes from './routes/monitors';
+import { reportMonitorsRouter, userMonitorsRouter } from './routes/monitors';
+import notificationsRoutes from './routes/notifications';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
 import parallelMonitorWebhookRoutes from './webhooks/parallelMonitor';
@@ -36,6 +37,7 @@ app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   })
 );
 // Webhook routes need raw body for signature verification - MUST be before JSON parser
@@ -72,8 +74,11 @@ app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 
+// Public health probes — must mount before any `/api/reports` or `/api/monitors` router that applies requireAuth.
+app.use('/api/health', healthRoutes);
+app.use('/health', healthRoutes);
+
 const routes: Array<[string, express.Router]> = [
-  ['/health', healthRoutes],
   ['/ingestion', ingestionRoutes],
   ['/research', researchRoutes],
   ['/reports', reportsRoutes],
@@ -85,6 +90,7 @@ const routes: Array<[string, express.Router]> = [
   ['/auth', authRoutes],
   ['/billing', billingRoutes],
   ['/byok', byokRoutes],
+  ['/notifications', notificationsRoutes],
 ];
 
 // Webhooks - primary API prefix (compat mount below shares the same router instance)
@@ -92,8 +98,9 @@ app.use('/api/webhooks/clerk', clerkWebhookRoutes);
 app.use('/api/webhooks/stripe', stripeWebhookRoutes);
 app.use('/api/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
 
-/** Monitor routes use `/api/reports/...` and `/api/monitors/...` — mount at `/api`, not `/api/monitors`. */
-app.use('/api', monitorsRoutes);
+// Parallel monitor checkout/listing — mount before generic `/api/reports/*` so `/:reportId/monitors` wins.
+app.use('/api/reports', reportMonitorsRouter);
+app.use('/api/monitors', userMonitorsRouter);
 
 for (const [path, router] of routes) {
   app.use(`/api${path}`, router);
@@ -104,7 +111,8 @@ app.use('/webhooks/clerk', clerkWebhookRoutes);
 app.use('/webhooks/stripe', stripeWebhookRoutes);
 app.use('/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
 
-app.use(monitorsRoutes);
+app.use('/reports', reportMonitorsRouter);
+app.use('/monitors', userMonitorsRouter);
 
 for (const [path, router] of routes) {
   app.use(path, router);

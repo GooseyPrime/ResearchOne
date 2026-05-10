@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { verifyToken } from '@clerk/backend';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -73,7 +74,8 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 
   const token = bearerOrAdminHeaderToken(req);
-  if (config.admin.token && token === config.admin.token) {
+  if (config.admin.token && token && token.length === config.admin.token.length &&
+      timingSafeEqual(Buffer.from(token), Buffer.from(config.admin.token))) {
     req.adminAuth = { method: 'token', userId: req.auth?.userId ?? null };
     logger.info('admin-auth-token-path', {
       endpoint: req.originalUrl,

@@ -51,24 +51,52 @@ COMMENT ON COLUMN report_revisions.metadata IS
   'Revision bookkeeping (e.g. triggeredBy: user | parallel_monitor | reverse_citation_watch).';
 
 -- RLS (WO-K pattern): customer rows scoped by app.user_id / app.org_id session vars.
-ALTER TABLE report_monitors ENABLE ROW LEVEL SECURITY;
-CREATE POLICY report_monitors_user_isolation ON report_monitors
-  FOR ALL TO application_role
-  USING (
-    user_id = current_setting('app.user_id', true)
-    OR (org_id IS NOT NULL AND org_id = current_setting('app.org_id', true))
-  );
+-- Gated on application_role existence (same as 022/029): static CREATE POLICY targeting that role
+-- raises 42704 when 021 skipped role creation (no CREATEROLE).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'application_role') THEN
+    RAISE NOTICE '026_report_monitors: application_role does not exist — skipping RLS policy creation';
+    RETURN;
+  END IF;
 
-ALTER TABLE report_monitor_events ENABLE ROW LEVEL SECURITY;
-CREATE POLICY report_monitor_events_via_monitor ON report_monitor_events
-  FOR ALL TO application_role
-  USING (
-    EXISTS (
-      SELECT 1 FROM report_monitors rm
-      WHERE rm.id = report_monitor_events.monitor_id
-        AND (
-          rm.user_id = current_setting('app.user_id', true)
-          OR (rm.org_id IS NOT NULL AND rm.org_id = current_setting('app.org_id', true))
-        )
-    )
-  );
+  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'report_monitors') THEN
+    EXECUTE 'ALTER TABLE report_monitors ENABLE ROW LEVEL SECURITY';
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'report_monitors'
+        AND policyname = 'report_monitors_user_isolation'
+    ) THEN
+      EXECUTE $p$CREATE POLICY report_monitors_user_isolation ON report_monitors
+        FOR ALL TO application_role
+        USING (
+          user_id = current_setting('app.user_id', true)
+          OR (org_id IS NOT NULL AND org_id = current_setting('app.org_id', true))
+        )$p$;
+    END IF;
+  END IF;
+
+  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'report_monitor_events') THEN
+    EXECUTE 'ALTER TABLE report_monitor_events ENABLE ROW LEVEL SECURITY';
+    IF NOT EXISTS (
+      SELECT FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'report_monitor_events'
+        AND policyname = 'report_monitor_events_via_monitor'
+    ) THEN
+      EXECUTE $p$CREATE POLICY report_monitor_events_via_monitor ON report_monitor_events
+        FOR ALL TO application_role
+        USING (
+          EXISTS (
+            SELECT 1 FROM report_monitors rm
+            WHERE rm.id = report_monitor_events.monitor_id
+              AND (
+                rm.user_id = current_setting('app.user_id', true)
+                OR (rm.org_id IS NOT NULL AND rm.org_id = current_setting('app.org_id', true))
+              )
+          )
+        )$p$;
+    END IF;
+  END IF;
+END $$;

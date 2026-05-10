@@ -177,10 +177,10 @@ export function isHfRepoModel(model: string): boolean {
  *           `huihui-ai/*-abliterated`, `DavidAU/*-abliterated*`) —
  *           admitted; mathematically refusal-incapable; typically
  *           single-provider so used as user-opt-in / emergency fallback.
- *       (c) Uncensored fine-tunes (`Dolphin*`, `Hermes-3` / `Hermes-4`,
- *           `Sao10K/Euryale*`) — required for adversarial roles (skeptic /
- *           internal_challenger) where the baseline must be uncensored
- *           *without* needing the preamble's nudge.
+ *       (c) Low-refusal steerable lines (`Hermes-3` / `Hermes-4` on OpenRouter)
+ *           — acceptable for adversarial roles when they pass the same runtime
+ *           `/chat/completions` probe as critical-path defaults. Catalog or
+ *           endpoint metadata alone is not sufficient (2026-05-10).
  *
  * Adding a new model? Read `ResearchOne PolicyOne` (repo root) and
  * `docs/V2_MODEL_SELECTION_CRITERIA.md` first. Closed-API moderation
@@ -222,25 +222,25 @@ const BASE_ALLOWLIST = [
   'moonshotai/kimi-k2-thinking',
   'qwen/qwen3-235b-a22b-thinking-2507',
 
-  // ── V2 / OpenRouter adversarial-role primaries (uncensored fine-tune) ────
-  // Single-provider (Venice) and dual-provider (NextBit + DeepInfra)
-  // respectively. Adversarial roles tolerate single-provider risk because
-  // skeptic failures are recoverable mid-pipeline.
+  // ── V2 / OpenRouter adversarial-role defaults (Hermes; runtime-probed) ────
+  // Default V2 skeptic / internal_challenger presets (2026-05-10). Chosen after
+  // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` and
+  // `sao10k/l3.3-euryale-70b` failed `/chat/completions` under typical OpenRouter
+  // provider policy despite appearing in the model catalog.
+  'nousresearch/hermes-4-70b',
+  'nousresearch/hermes-3-llama-3.1-70b',
+
+  // Experimental / legacy adversarial slugs — user-opt-in overrides only.
+  // Same runtime failure shape as above on production accounts (2026-05-10).
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   'sao10k/l3-euryale-70b',
   'sao10k/l3.1-euryale-70b',
   'sao10k/l3.3-euryale-70b',
 
-  // ── V2 / OpenRouter user-opt-in only (uncensored, single-provider) ──────
-  // Allowlisted for per-run override but not in any default preset because
-  // they're each single-upstream on OpenRouter (Nebius / DeepInfra /
-  // Venice). The 2026-04-28 outage was caused by routing every default
-  // through one of these.
+  // ── V2 / OpenRouter user-opt-in only (non-default presets) ────────────────
   'nousresearch/hermes-3-llama-3.1-405b',
   'nousresearch/hermes-3-llama-3.1-405b:free',
-  'nousresearch/hermes-3-llama-3.1-70b',
   'nousresearch/hermes-4-405b',
-  'nousresearch/hermes-4-70b',
 
   // ── V2 / uncensored / abliterated open-weights (HF Inference) ────────────
   // Allowlisted for user-opt-in via per-run model overrides. Not used as a

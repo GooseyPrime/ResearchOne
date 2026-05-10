@@ -17,68 +17,28 @@ import { decideRunStateOnFailure } from './runStateMachine';
 import { generateIterativeReport } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
+import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
 import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoModel } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
 import { incrementReportCount } from '../tier/tierService';
+import type {
+  ProgressCallback,
+  ResearchJobData,
+  ResearchProgress,
+  RunSummaryPayload,
+} from './researchOrchestratorTypes';
+import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
 
-export interface CreditChargeContext {
-  type: 'subscription' | 'wallet' | 'byok' | 'none';
-  costCents: number;
-  holdId?: string;
-  userId?: string;
-  subscriptionQuotaToDecrement?: number;
-}
-
-export interface ResearchJobData {
-  runId: string;
-  query: string;
-  supplemental?: string;
-  filterTags?: string[];
-  modelOverrides?: PerRunModelOverrides;
-  engineVersion?: string;
-  researchObjective?: ResearchObjective;
-  /** Optional total report length in words. Clamped server-side to a safe
-   *  range; routed into the synthesizer's per-section budget directives. */
-  targetWordCount?: number;
-  creditChargeContext?: CreditChargeContext;
-}
-
-export interface ResearchProgress {
-  stage: string;
-  percent: number;
-  message: string;
-  runId: string;
-  detail?: string;
-  substep?: string;
-  timestamp: string;
-  model?: string;
-  tokenUsage?: { prompt: number; completion: number };
-  sourceCount?: number;
-  chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
-  retryable?: boolean;
-  failureMeta?: Record<string, unknown>;
-}
-
-export interface RunSummaryPayload {
-  runId: string;
-  status: string;
-  totalDurationMs: number;
-  phaseDurations: Record<string, number>;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  retryCount: number;
-  failedStage?: string | null;
-  errorMessage?: string | null;
-  failureMeta?: Record<string, unknown> | null;
-  orchestratorHints?: string[];
-  modelUsage: Array<{ role: string; model: string; promptTokens: number; completionTokens: number; durationMs: number }>;
-}
-
-type ProgressCallback = (update: ResearchProgress) => void;
+export type {
+  CreditChargeContext,
+  ProgressCallback,
+  ResearchJobData,
+  ResearchProgress,
+  RunSummaryPayload,
+} from './researchOrchestratorTypes';
 
 async function assertNotCancelled(runId: string): Promise<void> {
   if (await isRunCancellationRequested(runId)) {
@@ -92,25 +52,6 @@ interface ResearchPlan {
   hypothesis: string;
   falsification_criteria: string[];
   investigation_angles: string[];
-}
-
-function normalizeRetrievalQueries(raw: unknown, fallback: string): string[] {
-  const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  const out: string[] = [];
-  for (const item of list) {
-    if (typeof item === 'string') {
-      const t = item.trim();
-      if (t) out.push(t);
-    } else if (typeof item === 'number' || typeof item === 'boolean') {
-      out.push(String(item));
-    } else if (item && typeof item === 'object') {
-      const o = item as Record<string, unknown>;
-      const q = o.query ?? o.text ?? o.q;
-      if (typeof q === 'string' && q.trim()) out.push(q.trim());
-      else out.push(JSON.stringify(item));
-    }
-  }
-  return out.length > 0 ? out : [fallback];
 }
 
 interface VerificationResult {
@@ -447,6 +388,7 @@ export async function runResearchJob(
       researchObjective,
       allowFallbackByRole,
       byokApiKeyOverride,
+      userId: creditCtx?.userId,
       onRoundComplete: async ({ round, candidatesAfter }) => {
         const pct = round === 1 ? 15 : 17;
         await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
@@ -713,6 +655,7 @@ export async function runResearchJob(
       supplementalAttachments: Array.isArray(prov?.supplemental_attachments)
         ? (prov.supplemental_attachments as Record<string, unknown>[])
         : [],
+      userId: creditCtx?.userId,
     });
     await saveRunCheckpoint({
       runId,
@@ -963,6 +906,19 @@ export async function runResearchJob(
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
       }
     }
+
+    // Best-effort: set workspace retention expiry for the terminal run.
+    // Deploy-skew safe — markRunTerminalRetention catches 42703.
+    try {
+      await markRunTerminalRetention(runId, finalStatus, new Date());
+    } catch (retErr) {
+      logger.warn('retention_mark_terminal_error', {
+        runId,
+        finalStatus,
+        error: retErr instanceof Error ? retErr.message : 'Unknown',
+      });
+    }
+
     await appendRunProgressEvent(runId, {
       runId,
       stage: finalStatus === 'aborted' ? 'aborted' : currentStage,
@@ -1251,6 +1207,7 @@ async function saveReport(args: {
   modelEnsemble?: Record<string, unknown>;
   supplementalText: string;
   supplementalAttachments: Record<string, unknown>[];
+  userId?: string;
 }): Promise<string> {
   const {
     runId,
@@ -1265,6 +1222,7 @@ async function saveReport(args: {
     modelEnsemble,
     supplementalText,
     supplementalAttachments,
+    userId,
   } = args;
 
   // Parse sections from synthesizer output
@@ -1277,20 +1235,33 @@ async function saveReport(args: {
       ? plan.falsification_criteria.filter((c) => typeof c === 'string').join('\n')
       : '';
     const safeChunks = Array.isArray(allChunks) ? allChunks : [];
-    const reportResult = await client.query(
-      `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
-       VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
-      [
-        runId,
-        researchQuery.slice(0, 200),
-        researchQuery,
-        sections.find(s => s.type === 'executive_summary')?.content ?? '',
-        sections.find(s => s.type === 'conclusion')?.content ?? '',
-        safeFalsification,
-        new Set(safeChunks.map((c) => c.source_url)).size,
-        safeChunks.length,
-      ]
-    );
+    const baseParams = [
+      runId,
+      researchQuery.slice(0, 200),
+      researchQuery,
+      sections.find(s => s.type === 'executive_summary')?.content ?? '',
+      sections.find(s => s.type === 'conclusion')?.content ?? '',
+      safeFalsification,
+      new Set(safeChunks.map((c) => c.source_url)).size,
+      safeChunks.length,
+    ];
+    let reportResult: { rows: Array<{ id: string }> };
+    await client.query('SAVEPOINT pre_report_insert');
+    try {
+      reportResult = await client.query(
+        `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at, user_id)
+         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW(), $9) RETURNING id`,
+        [...baseParams, userId ?? null]
+      );
+    } catch (insertErr) {
+      if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
+      await client.query('ROLLBACK TO SAVEPOINT pre_report_insert');
+      reportResult = await client.query(
+        `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
+         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
+        baseParams
+      );
+    }
     reportId = reportResult.rows[0].id;
 
     // Insert all sections
@@ -1326,6 +1297,19 @@ async function saveReport(args: {
       ]
     );
   });
+
+  // Best-effort: set retention expiry timestamps on the newly-finalized report.
+  // Deploy-skew safe — markReportFinalizedRetention catches 42703 if migration 028 hasn't applied.
+  try {
+    await markReportFinalizedRetention(reportId, new Date());
+    await markRunTerminalRetention(runId, 'completed', new Date());
+  } catch (retErr) {
+    logger.warn('retention_mark_finalized_error', {
+      reportId,
+      runId,
+      error: retErr instanceof Error ? retErr.message : 'Unknown',
+    });
+  }
 
   return reportId;
 }

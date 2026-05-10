@@ -128,12 +128,13 @@ export async function runDiscoveryOrchestrator(args: {
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
+  userId?: string;
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, onRoundComplete } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, onRoundComplete } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -222,8 +223,11 @@ export async function runDiscoveryOrchestrator(args: {
       if (queriesExecuted.length >= totalQueryBudget) break;
       queriesExecuted.push(searchQuery);
 
-      for (const provider of orderedProviders) {
-        try {
+      // Fan out configured providers in parallel for this query. Dedup via `seenUrls` /
+      // `allCandidates` is still safe: each provider processes its results in one synchronous
+      // block before awaiting `persistDiscoveryEvent`, so no interleaved double-insert races.
+      const providerResults = await Promise.allSettled(
+        orderedProviders.map(async (provider) => {
           const results = await provider.search({
             text: searchQuery,
             maxResults: config.discovery.maxResults,
@@ -238,7 +242,6 @@ export async function runDiscoveryOrchestrator(args: {
             allCandidates.push(r);
             newCount++;
           }
-          roundNewCandidates += newCount;
 
           await persistDiscoveryEvent(runId, `search_round_${roundNumber}`, provider.name, searchQuery, results.length, newCount, {
             round: roundNumber,
@@ -248,8 +251,16 @@ export async function runDiscoveryOrchestrator(args: {
           });
 
           logger.debug(`[discovery:${runId}] r${roundNumber} ${provider.name} "${searchQuery}": ${results.length} results, ${newCount} new`);
-        } catch (err) {
-          logger.error(`[discovery:${runId}] r${roundNumber} provider ${provider.name} search failed:`, err);
+          return newCount;
+        })
+      );
+
+      for (const pr of providerResults) {
+        if (pr.status === 'fulfilled') {
+          roundNewCandidates += pr.value;
+        } else {
+          const reason = pr.reason;
+          logger.error(`[discovery:${runId}] r${roundNumber} provider fan-out search failed:`, reason);
         }
       }
     }
@@ -373,11 +384,21 @@ export async function runDiscoveryOrchestrator(args: {
     // Enqueue ingestion
     const jobId = uuidv4();
     try {
-      await query(
-        `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
-         VALUES ($1, $2, 'web_url', 'queued', $3)`,
-        [jobId, candidate.url, JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery })]
-      );
+      const ijMeta = JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery });
+      try {
+        await query(
+          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
+           VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
+          [jobId, candidate.url, ijMeta, userId ?? null]
+        );
+      } catch (ijErr) {
+        if ((ijErr as { code?: string })?.code !== '42703') throw ijErr;
+        await query(
+          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
+           VALUES ($1, $2, 'web_url', 'queued', $3)`,
+          [jobId, candidate.url, ijMeta]
+        );
+      }
 
       const finalUrl = await ensureReachableUrl(candidate.url);
       await ingestionQueue.add('ingest-url', {

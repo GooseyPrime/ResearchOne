@@ -153,15 +153,15 @@ The market splits into four clusters:
 
 ## Tier ladder
 
-| Tier | Price | Included usage | Modes | Storage | Queue | BYOK | Notes |
+| Tier | Price | Included usage | Modes | Retention | Queue | BYOK | Notes |
 |---|---|---|---|---|---|---|---|
-| **Free Demo** | $0 | 3 reports lifetime, watermarked, no export | General Epistemic only | 100 MB | Lowest | No | Email-verified Clerk account; conversion funnel only |
-| **Student** | $9/mo (verified) | 15 Standard + 4 Deep reports/mo | All 5 modes | 1 GB | Standard | No | SheerID-verified students |
-| **Wallet** | $20 minimum top-up | $4/Standard report, $10/Deep report | All 5 modes | 1 GB | Standard | No | No subscription; convert to Pro at 6+ reports/mo |
-| **Pro** | $29/mo or $290/yr | 25 reports/mo (Deep counts as 2.4×) | All 5 modes | 10 GB | Priority | Optional | Overages billed against wallet |
-| **Team** | $99/seat/mo (3-seat min) or $990/seat/yr | 80 reports/seat/mo, pooled | All 5 modes + revision | 50 GB shared | High | Optional | Audit log, shared corpus, SSO via Clerk |
-| **BYOK** | $29/mo flat infra fee | Unlimited at user's token cost | All 5 modes | 25 GB | Standard | Required | Encrypted key vault |
-| **Sovereign** | $4,500/mo floor + $7,500 onboarding | Unlimited; isolated | All 5 + custom | Dedicated DB | Dedicated runtime | Optional | Single-tenant; opt-out of InTellMe contractually enforced |
+| **Free Demo** | $0 | 3 reports lifetime, watermarked, no export | General Epistemic only | Standard (120-day reports) | Lowest | No | Email-verified Clerk account; conversion funnel only |
+| **Student** | $9/mo (verified) | 15 Standard + 4 Deep reports/mo | All 5 modes | Standard (120-day reports) | Standard | No | SheerID-verified students |
+| **Wallet** | $20 minimum top-up | $4/Standard report, $10/Deep report | All 5 modes | Standard (120-day reports) | Standard | No | No subscription; convert to Pro at 6+ reports/mo |
+| **Pro** | $29/mo or $290/yr | 25 reports/mo (Deep counts as 2.4×) | All 5 modes | Standard + Living Reports available | Priority | Optional | Overages billed against wallet |
+| **Team** | $99/seat/mo (3-seat min) or $990/seat/yr | 80 reports/seat/mo, pooled | All 5 modes + revision | Standard + Living Reports available | High | Optional | Audit log, shared corpus, SSO via Clerk |
+| **BYOK** | $29/mo flat infra fee | Unlimited at user's token cost | All 5 modes | Standard + Living Reports available | Standard | Required | Encrypted key vault |
+| **Sovereign** | $4,500/mo floor + $7,500 onboarding | Unlimited; isolated | All 5 + custom | Custom by contract | Dedicated runtime | Optional | Single-tenant; opt-out of InTellMe contractually enforced |
 
 Annual discount: 17% on subscription tiers (matches Perplexity Enterprise Pro discount and Elicit's annual pattern). Nonprofit/journalism: 35% off Team with verification.
 
@@ -484,9 +484,9 @@ The homepage leads with **Standard mode** — the broad, conversion-friendly pro
 |---|---|---|
 | **Free Demo** | $0 — 3 reports lifetime — General Epistemic only — Watermarked | `Start free →` |
 | **Student** ("Verified students") | $9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports | `Verify and start →` |
-| **Pro** ("Most popular") | $29/mo or $290/yr (save 17%) — 25 reports/mo — All 5 modes, priority queue — 10 GB corpus | `Subscribe →` |
-| **Team** | $99/seat/mo (3-seat min) — 80 reports/seat pooled — Shared corpus, audit log, SSO — 50 GB | `Talk to us →` |
-| **BYOK** | $29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — 25 GB | `Configure keys →` |
+| **Pro** ("Most popular") | $29/mo or $290/yr (save 17%) — 25 reports/mo — All 5 modes, priority queue — Standard + Living Reports | `Subscribe →` |
+| **Team** | $99/seat/mo (3-seat min) — 80 reports/seat pooled — Shared corpus, audit log, SSO — Standard + Living Reports | `Talk to us →` |
+| **BYOK** | $29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — Standard + Living Reports | `Configure keys →` |
 | **Sovereign Enterprise** | From $4,500/mo (annual) — Single-tenant deployment — Dedicated Postgres + Redis — Custom retention; opt-out of global ingestion | `Talk to sales →` |
 
 **Wallet (separate, below cards):** Don't want a subscription? Top up a wallet from $20 and pay $4 per Standard report or $10 per Deep report. [Buy credits →]
@@ -2511,17 +2511,17 @@ Default tier on user creation: `free_demo`. Subscription webhooks update tier wh
 
 ## Tier rules
 
-| Tier | Modes | Monthly included | Files | Models | Storage | Exports | Queue | BYOK | InTellMe |
+| Tier | Modes | Monthly included | Files | Models | Retention | Exports | Queue | BYOK | InTellMe |
 |---|---|---|---|---|---|---|---|---|---|
-| **anonymous** | none | 0 | 0 | none | 0 | none | n/a | no | n/a |
-| **free_demo** | General Epistemic | 3 lifetime | 5 / 10 MB | Standard | 100 MB | watermarked PDF | lowest | no | opt-in |
-| **student** | All 5 modes | 15 Std + 4 Deep | 20 / 100 MB | Standard | 1 GB | PDF + MD | standard | no | opt-in |
-| **wallet** | All 5 modes | n/a (pay-per-report) | 30 / 200 MB | Standard | 1 GB | PDF + MD | standard | no | opt-in |
-| **pro** | All 5 modes | 25 (Deep counts 2.4×) | 50 / 500 MB | Std + Deep | 10 GB | PDF + MD + JSON | priority | optional | opt-in |
-| **team** | All 5 modes | 80/seat pooled | 100 / 2 GB | Std + Deep | 50 GB shared | full + audit log | high | optional | opt-in per-org |
-| **byok** | All 5 modes | unlimited (user tokens) | 50 / 500 MB | Std + Deep | 25 GB | PDF + MD + JSON | standard | required | opt-in |
-| **sovereign** | All 5 + custom | unlimited | unlimited | All + custom | dedicated DB | full + audit log | dedicated | optional | **disabled by contract** |
-| **admin** | All 5 modes | unlimited | unlimited | All | unlimited | full | priority | n/a | n/a |
+| **anonymous** | none | 0 | 0 | none | n/a | none | n/a | no | n/a |
+| **free_demo** | General Epistemic | 3 lifetime | 5 / 10 MB | Standard | Standard (120-day reports) | watermarked PDF | lowest | no | opt-in |
+| **student** | All 5 modes | 15 Std + 4 Deep | 20 / 100 MB | Standard | Standard (120-day reports) | PDF + MD | standard | no | opt-in |
+| **wallet** | All 5 modes | n/a (pay-per-report) | 30 / 200 MB | Standard | Standard (120-day reports) | PDF + MD | standard | no | opt-in |
+| **pro** | All 5 modes | 25 (Deep counts 2.4×) | 50 / 500 MB | Std + Deep | Standard + Living Reports available | PDF + MD + JSON | priority | optional | opt-in |
+| **team** | All 5 modes | 80/seat pooled | 100 / 2 GB | Std + Deep | Standard + Living Reports available | full + audit log | high | optional | opt-in per-org |
+| **byok** | All 5 modes | unlimited (user tokens) | 50 / 500 MB | Std + Deep | Standard + Living Reports available | PDF + MD + JSON | standard | required | opt-in |
+| **sovereign** | All 5 + custom | unlimited | unlimited | All + custom | Custom by contract | full + audit log | dedicated | optional | **disabled by contract** |
+| **admin** | All 5 modes | unlimited | unlimited | All | Standard (120-day reports) | full | priority | n/a | n/a |
 
 ## Tier middleware
 

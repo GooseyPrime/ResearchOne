@@ -1,0 +1,35 @@
+# Canonical path after file mutation
+
+## Why this rule exists
+
+PR #92 (Codex P2 + Copilot): atlas export deleted the uncompressed
+JSONL after gzipping it, but the DB UPDATE still stored the deleted
+path in `export_path`. Downstream code (download endpoint, backup copy,
+Nomic upload) all referenced the stale `exportPath` variable or the DB
+column, resulting in "file not found" errors.
+
+The pattern: a file is deleted/moved/compressed, but every reference
+(variable, DB column, config entry) that pointed to the old path is not
+updated to the new path.
+
+## Rule
+
+After deleting, moving, renaming, or compressing a file:
+
+1. **Grep every reference to the old path variable** in the same
+   function and any downstream consumers.
+2. **Update the DB column** that stores the canonical path to the new
+   path.
+3. **Update the local variable** so subsequent code in the same
+   function (backup, upload, logging, return value) uses the path that
+   actually exists.
+4. **If two paths coexist** (e.g. `export_path` and `compressed_path`),
+   decide which is canonical for reads and document it.
+
+## Pre-commit check
+
+If you deleted, moved, or compressed a file:
+- [ ] Did you grep the function for every use of the old path variable?
+- [ ] Does the DB column now point to the file that exists?
+- [ ] Does the return value use the file that exists?
+- [ ] Does any copy/upload/log line use the file that exists?

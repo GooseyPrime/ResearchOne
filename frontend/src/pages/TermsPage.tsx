@@ -70,7 +70,27 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="subscriptions-billing" title="4. Subscriptions and Billing">
+        <Section id="data-retention-workspace" title="4. Data Retention and Workspaces">
+          <p>
+            ResearchOne is a research-report generation and monitoring service, not a general-purpose file storage
+            or document hosting platform. Temporary workspaces may include uploaded files, extracted text, discovered
+            source snapshots, chunks, embeddings, and intermediate research artifacts. Unless a report is enrolled as
+            an active Living Report or governed by a separate enterprise agreement, temporary workspace data may be
+            purged after report finalization.
+          </p>
+          <p>
+            Final report outputs are ordinarily retained for 120 days so users may view, export, or delete them.
+            Living Reports retain the source set, monitoring configuration, revision history, and related workspace
+            data while the Living Report remains active. Sovereign and enterprise customers may define custom retention,
+            deletion, and isolation terms by contract.
+          </p>
+          <p>
+            You are responsible for exporting any reports or data you wish to retain beyond the applicable retention
+            period. We will make reasonable efforts to notify you before report content is scheduled for deletion.
+          </p>
+        </Section>
+
+        <Section id="subscriptions-billing" title="5. Subscriptions and Billing">
           <p>
             We offer paid subscription plans and wallet credits as described on our{' '}
             <a href="/pricing" className="text-r1-accent hover:underline">
@@ -99,7 +119,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="refunds" title="5. Refunds">
+        <Section id="refunds" title="6. Refunds">
           <p>
             Subscription fees are generally non-refundable. If you believe you were charged in error, contact{' '}
             <a href="mailto:billing@researchone.app" className="text-r1-accent hover:underline">
@@ -111,7 +131,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="acceptable-use" title="6. Acceptable Use">
+        <Section id="acceptable-use" title="7. Acceptable Use">
           <p>You agree not to use the Service to:</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>Violate any applicable law or regulation;</li>
@@ -133,7 +153,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="byok" title="7. Bring Your Own Keys (BYOK)">
+        <Section id="byok" title="8. Bring Your Own Keys (BYOK)">
           <p>
             Certain plans allow you to supply API keys for third-party AI providers ("BYOK"). By submitting a BYOK
             key you represent that you are authorized to use that key and that such use complies with the applicable
@@ -143,7 +163,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="intellectual-property" title="8. Intellectual Property">
+        <Section id="intellectual-property" title="9. Intellectual Property">
           <p>
             <strong className="text-r1-text">Our IP.</strong> The Service, including its software, design, trademarks,
             and underlying models, is owned by the Company or its licensors and is protected by intellectual property
@@ -162,7 +182,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="privacy" title="9. Privacy">
+        <Section id="privacy" title="10. Privacy">
           <p>
             Our collection and use of personal information is described in our{' '}
             <a href="/privacy" className="text-r1-accent hover:underline">
@@ -173,7 +193,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="third-party" title="10. Third-Party Services">
+        <Section id="third-party" title="11. Third-Party Services">
           <p>
             The Service may integrate with or link to third-party websites, APIs, or services. These third parties
             have their own terms and privacy policies, and we are not responsible for their content or practices. Your
@@ -181,7 +201,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="disclaimers" title="11. Disclaimers">
+        <Section id="disclaimers" title="12. Disclaimers">
           <p>
             THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
             IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
@@ -191,7 +211,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="limitation-of-liability" title="12. Limitation of Liability">
+        <Section id="limitation-of-liability" title="13. Limitation of Liability">
           <p>
             TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE COMPANY, ITS DIRECTORS,
             EMPLOYEES, AGENTS, OR LICENSORS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
@@ -209,7 +229,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="indemnification" title="13. Indemnification">
+        <Section id="indemnification" title="14. Indemnification">
           <p>
             You agree to indemnify, defend, and hold harmless the Company and its officers, directors, employees, and
             agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable legal
@@ -218,19 +238,19 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="termination" title="14. Termination">
+        <Section id="termination" title="15. Termination">
           <p>
             You may close your account at any time from account settings. We may suspend or terminate your access to
             the Service with or without notice if you violate these Terms, if we discontinue the Service, or for any
             other reason at our discretion.
           </p>
           <p>
-            Upon termination, your right to use the Service ceases immediately. Sections 8, 11, 12, 13, 15, and 16
+            Upon termination, your right to use the Service ceases immediately. Sections 9, 12, 13, 14, 16, and 17
             survive termination.
           </p>
         </Section>
 
-        <Section id="modifications" title="15. Modifications to Terms">
+        <Section id="modifications" title="16. Modifications to Terms">
           <p>
             We may update these Terms from time to time. We will post the revised Terms on this page and update the
             effective date. For material changes, we will provide at least 14 days' advance notice (e.g., by email or
@@ -239,7 +259,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="governing-law" title="16. Governing Law and Disputes">
+        <Section id="governing-law" title="17. Governing Law and Disputes">
           <p>
             These Terms are governed by and construed in accordance with the laws of the State of Delaware, United
             States, without regard to its conflict-of-law principles.
@@ -258,7 +278,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="general" title="17. General">
+        <Section id="general" title="18. General">
           <p>
             <strong className="text-r1-text">Entire agreement.</strong> These Terms, together with the Privacy Policy
             and any order forms or supplemental agreements you have signed, constitute the entire agreement between
@@ -278,7 +298,7 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section id="contact" title="18. Contact Us">
+        <Section id="contact" title="19. Contact Us">
           <p>
             Questions about these Terms should be directed to:{' '}
             <a href="mailto:legal@researchone.app" className="text-r1-accent hover:underline">

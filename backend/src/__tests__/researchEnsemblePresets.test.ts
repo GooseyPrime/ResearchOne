@@ -6,7 +6,11 @@ import {
   validateEnsemblePresetsAgainstAllowlist,
   validateV2ModePresetsAgainstAllowlist,
 } from '../config/researchEnsemblePresets';
-import { REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../services/reasoning/reasoningModelPolicy';
+import {
+  REASONING_MODEL_ROLES,
+  RESEARCH_OBJECTIVES,
+  type ReasoningModelRole,
+} from '../services/reasoning/reasoningModelPolicy';
 
 /**
  * Models that are allowlisted but FORBIDDEN as a V2 default primary (or
@@ -68,17 +72,18 @@ const V2_FORBIDDEN_DEFAULT_MODELS = new Set([
   'dphn/dolphin-2.9.2-qwen2-72b',
   'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
   'DavidAU/Llama-3.2-8X3B-MOE-Dark-Champion-Instruct-uncensored-abliterated-18.4B',
-  // Single-upstream OpenRouter slugs (Nebius / DeepInfra only). The
-  // 2026-04-28-PM second outage was caused by routing every default
-  // through nousresearch/hermes-4-70b which is Nebius-only and got 404
-  // "No allowed providers are available" on a typical OpenRouter
-  // account. After that post-mortem (PR #41) these too are demoted to
-  // user-opt-in only and forbidden as critical-path defaults.
-  'nousresearch/hermes-4-70b',
+  // Single-upstream OpenRouter slugs — forbidden on critical-path roles only.
+  // `nousresearch/hermes-4-70b` / `hermes-3-llama-3.1-70b` are allowed as V2
+  // adversarial defaults when they pass runtime preflight (2026-05-10).
   'nousresearch/hermes-4-405b',
-  'nousresearch/hermes-3-llama-3.1-70b',
   'nousresearch/hermes-3-llama-3.1-405b',
   'nousresearch/hermes-3-llama-3.1-405b:free',
+]);
+
+/** Slugs that must never appear as V2 default skeptic / internal_challenger. */
+const V2_FORBIDDEN_ADVERSARIAL_DEFAULT_MODELS = new Set([
+  'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+  'sao10k/l3.3-euryale-70b',
 ]);
 
 describe('researchEnsemblePresets', () => {
@@ -125,6 +130,7 @@ describe('researchEnsemblePresets', () => {
 
   it('V2_MODE_PRESETS never wires a refusal-aligned slug as a default primary or fallback', () => {
     const violations: string[] = [];
+    const adversarialRoles = new Set<ReasoningModelRole>(['skeptic', 'internal_challenger']);
     for (const obj of RESEARCH_OBJECTIVES) {
       const preset = V2_MODE_PRESETS[obj];
       for (const role of REASONING_MODEL_ROLES) {
@@ -134,6 +140,14 @@ describe('researchEnsemblePresets', () => {
         }
         if (fallback && V2_FORBIDDEN_DEFAULT_MODELS.has(fallback)) {
           violations.push(`${obj}.${role}.fallback = "${fallback}" (forbidden as V2 default)`);
+        }
+        if (adversarialRoles.has(role)) {
+          if (V2_FORBIDDEN_ADVERSARIAL_DEFAULT_MODELS.has(primary)) {
+            violations.push(`${obj}.${role}.primary = "${primary}" (forbidden adversarial V2 default)`);
+          }
+          if (fallback && V2_FORBIDDEN_ADVERSARIAL_DEFAULT_MODELS.has(fallback)) {
+            violations.push(`${obj}.${role}.fallback = "${fallback}" (forbidden adversarial V2 default)`);
+          }
         }
       }
     }

@@ -11,6 +11,7 @@ import {
   listReportRevisions,
 } from '../../services/reasoning/reportRevisionService';
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -167,28 +168,84 @@ router.use(requireAuth);
 router.get('/', async (req, res, next) => {
   try {
     const { status, search } = req.query as { status?: string; search?: string };
-    let sql = `
-      SELECT r.id, r.title, r.query, r.status, r.executive_summary,
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    const baseCols = `r.id, r.title, r.query, r.status, r.executive_summary,
               r.source_count, r.chunk_count, r.contradiction_count,
               r.finalized_at, r.created_at, r.version_number,
-              r.root_report_id, r.parent_report_id
-      FROM reports r
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+              r.root_report_id, r.parent_report_id`;
 
-    if (status) {
-      params.push(status);
-      sql += ` AND r.status=$${params.length}`;
+    const scopeCols = `, r.user_id AS owner_user_id, r.org_id`;
+
+    const retentionCols = `, r.report_expires_at, r.workspace_expires_at, r.workspace_purged_at, r.retention_status`;
+
+    const livingSubquery = `, EXISTS(SELECT 1 FROM report_monitors rm WHERE rm.report_id = r.id AND rm.monitor_kind = 'living_report' AND rm.status = 'active') AS has_active_living_report`;
+
+    function buildWhere(params: unknown[], includeRetentionFilter: boolean, scoped: boolean): string {
+      let where = ' WHERE 1=1';
+      if (scoped) {
+        params.push(userId, orgId);
+        where += ` AND (r.user_id = $${params.length - 1} OR (r.org_id IS NOT NULL AND r.org_id = $${params.length}) OR r.user_id IS NULL)`;
+      }
+      if (includeRetentionFilter) {
+        where += ` AND (r.retention_status IS NULL OR r.retention_status NOT IN ('expired', 'deleted'))`;
+      }
+      if (status) {
+        params.push(status);
+        where += ` AND r.status=$${params.length}`;
+      }
+      if (search) {
+        params.push(search);
+        where += ` AND to_tsvector('english', coalesce(r.title,'') || ' ' || coalesce(r.executive_summary,'')) @@ plainto_tsquery('english', $${params.length})`;
+      }
+      return where;
     }
 
-    if (search) {
-      params.push(search);
-      sql += ` AND to_tsvector('english', coalesce(r.title,'') || ' ' || coalesce(r.executive_summary,'')) @@ plainto_tsquery('english', $${params.length})`;
+    let rows: unknown[];
+    try {
+      const params: unknown[] = [];
+      const sql = `SELECT ${baseCols}${scopeCols}${retentionCols}${livingSubquery} FROM reports r${buildWhere(params, true, true)} ORDER BY r.created_at DESC LIMIT 100`;
+      rows = await query(sql, params);
+    } catch (err: unknown) {
+      const pgCode = (err as { code?: string }).code;
+      if (pgCode === '42703') {
+        logger.warn('legacy_unscoped_read', { route: 'GET /api/reports' });
+        try {
+          const params: unknown[] = [];
+          const sql = `SELECT ${baseCols}${livingSubquery} FROM reports r${buildWhere(params, false, false)} ORDER BY r.created_at DESC LIMIT 100`;
+          const fallbackRows = await query(sql, params);
+          rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
+            ...r,
+            owner_user_id: null,
+            org_id: null,
+            report_expires_at: null,
+            workspace_expires_at: null,
+            workspace_purged_at: null,
+            retention_status: null,
+          }));
+        } catch (fallbackErr: unknown) {
+          const fbCode = (fallbackErr as { code?: string }).code;
+          if (fbCode !== '42703') throw fallbackErr;
+          const params: unknown[] = [];
+          const sql = `SELECT ${baseCols} FROM reports r${buildWhere(params, false, false)} ORDER BY r.created_at DESC LIMIT 100`;
+          const fallbackRows = await query(sql, params);
+          rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
+            ...r,
+            owner_user_id: null,
+            org_id: null,
+            report_expires_at: null,
+            workspace_expires_at: null,
+            workspace_purged_at: null,
+            retention_status: null,
+          }));
+        }
+      } else {
+        throw err;
+      }
     }
 
-    sql += ' ORDER BY r.created_at DESC LIMIT 100';
-    res.json(await query(sql, params));
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -197,10 +254,23 @@ router.get('/', async (req, res, next) => {
 // GET /api/reports/:id - Get full report with sections
 router.get('/:id', async (req, res, next) => {
   try {
-    const rows = await query(
-      `SELECT * FROM reports WHERE id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let rows: unknown[];
+    try {
+      rows = await query(
+        `SELECT * FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id' });
+      rows = await query(
+        `SELECT * FROM reports WHERE id=$1`,
+        [req.params.id]
+      );
+    }
 
     if (rows.length === 0) {
       res.status(404).json({ error: 'Report not found' });
@@ -212,7 +282,18 @@ router.get('/:id', async (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ ...rows[0], sections });
+    let hasActiveLivingReport = false;
+    try {
+      const lrRows = await query(
+        `SELECT 1 FROM report_monitors WHERE report_id = $1 AND monitor_kind = 'living_report' AND status = 'active' LIMIT 1`,
+        [req.params.id],
+      );
+      hasActiveLivingReport = lrRows.length > 0;
+    } catch {
+      // best-effort; report_monitors may not exist yet
+    }
+
+    res.json({ ...(rows[0] as Record<string, unknown>), sections, has_active_living_report: hasActiveLivingReport });
   } catch (err) {
     next(err);
   }
@@ -297,6 +378,7 @@ router.post(
             mimetype: f.mimetype,
             buffer: f.buffer,
           })),
+          userId: req.auth?.userId ?? undefined,
         });
         supplementalContext = ingest.inlineContext;
         supplementalAttachments = ingest.attachments as Array<Record<string, unknown>>;
@@ -326,6 +408,26 @@ router.post(
 // GET /api/reports/:id/revisions - list revision history
 router.get('/:id/revisions', async (req, res, next) => {
   try {
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let ownerRows: unknown[];
+    try {
+      ownerRows = await query(
+        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/revisions' });
+      ownerRows = await query(`SELECT id FROM reports WHERE id=$1`, [req.params.id]);
+    }
+
+    if (ownerRows.length === 0) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+
     const revisions = await listReportRevisions(req.params.id);
     res.json(revisions);
   } catch (err) {
@@ -336,6 +438,26 @@ router.get('/:id/revisions', async (req, res, next) => {
 // GET /api/reports/:id/revisions/:revisionId - revision detail
 router.get('/:id/revisions/:revisionId', async (req, res, next) => {
   try {
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let ownerRows: unknown[];
+    try {
+      ownerRows = await query(
+        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/revisions/:revisionId' });
+      ownerRows = await query(`SELECT id FROM reports WHERE id=$1`, [req.params.id]);
+    }
+
+    if (ownerRows.length === 0) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+
     const revision = await getReportRevision(req.params.id, req.params.revisionId);
     if (!revision) {
       res.status(404).json({ error: 'Revision not found' });
@@ -350,13 +472,31 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
 // GET /api/reports/:id/citations - Get all citations for a report
 router.get('/:id/citations', async (req, res, next) => {
   try {
-    const citations = await query(
-      `SELECT rc.*, s.url AS source_url, s.title AS source_title
-       FROM report_citations rc
-       LEFT JOIN sources s ON s.id = rc.source_id
-       WHERE rc.report_id=$1`,
-      [req.params.id]
-    );
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let citations: unknown[];
+    try {
+      citations = await query(
+        `SELECT rc.*, s.url AS source_url, s.title AS source_title
+         FROM report_citations rc
+         LEFT JOIN sources s ON s.id = rc.source_id
+         JOIN reports rp ON rp.id = rc.report_id
+         WHERE rc.report_id=$1 AND (rp.user_id = $2 OR (rp.org_id IS NOT NULL AND rp.org_id = $3) OR rp.user_id IS NULL)`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/citations' });
+      citations = await query(
+        `SELECT rc.*, s.url AS source_url, s.title AS source_title
+         FROM report_citations rc
+         LEFT JOIN sources s ON s.id = rc.source_id
+         WHERE rc.report_id=$1`,
+        [req.params.id]
+      );
+    }
+
     res.json(citations);
   } catch (err) {
     next(err);

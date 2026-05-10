@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+Disallow: /app/
+Disallow: /onboarding
+Disallow: /account
+Disallow: /account/
+
+Sitemap: https://researchone.io/sitemap.xml

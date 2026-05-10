@@ -66,6 +66,8 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
 
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
+  /** Bind address for the HTTP server (default IPv4-all so curl 127.0.0.1 works when IPv6-only :: would not). */
+  listenHost: (process.env.LISTEN_HOST || '0.0.0.0').trim() || '0.0.0.0',
   nodeEnv: rawNodeEnv,
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS, 'http://localhost:5173'),
 
@@ -226,6 +228,13 @@ const config = {
     autoExportOnEmbedding: process.env.ATLAS_AUTO_EXPORT_ON_EMBEDDING === 'true',
   },
 
+  atlas: {
+    maxChunksPerExport: (() => {
+      const raw = parseInt(process.env.ATLAS_EXPORT_MAX_CHUNKS || '50000', 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 50000;
+    })(),
+  },
+
   nomic: {
     apiKey: process.env.NOMIC_API_KEY || '',
     atlasDatasetSlug: process.env.NOMIC_ATLAS_DATASET_SLUG || 'intellme',
@@ -335,6 +344,30 @@ if (config.discovery.enabled) {
   }
 }
 
+if (config.nodeEnv === 'production') {
+  const dbPw = process.env.DB_PASSWORD;
+  const hasDbUrl = !!process.env.DATABASE_URL?.trim();
+  if (!hasDbUrl && (!dbPw || dbPw === 'changeme')) {
+    throw new Error('DB_PASSWORD must be set (and not "changeme") in production, or provide DATABASE_URL');
+  }
+  if (!config.clerk.secretKey.trim()) {
+    throw new Error('CLERK_SECRET_KEY must be set in production');
+  }
+  if (!config.clerk.webhookSecret.trim()) {
+    throw new Error('CLERK_WEBHOOK_SECRET must be set in production');
+  }
+  if (!config.stripe.secretKey.trim()) {
+    throw new Error('STRIPE_SECRET_KEY must be set in production');
+  }
+  if (!config.stripe.webhookSecret.trim()) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be set in production');
+  }
+  const byokKey = process.env.BYOK_ENCRYPTION_KEY;
+  if (!byokKey || !byokKey.trim()) {
+    throw new Error('BYOK_ENCRYPTION_KEY must be set in production');
+  }
+}
+
 const reasoningModelsForPolicy = {
   planner: config.models.planner,
   retriever: config.models.retriever,
@@ -383,3 +416,5 @@ validateReasoningModelPolicy({
 validateEnsemblePresetsAgainstAllowlist();
 
 export { config };
+export { retentionConfig } from './retention';
+export type { RetentionConfig } from './retention';

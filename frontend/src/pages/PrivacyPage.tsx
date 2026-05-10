@@ -141,11 +141,36 @@ export default function PrivacyPage() {
 
         <Section id="data-retention" title="5. Data Retention">
           <p>
-            We retain your account information and User Content for as long as your account is active and for a
-            reasonable period thereafter to allow you to reactivate, comply with legal obligations, resolve
-            disputes, and enforce agreements. Research run data (queries, reports, citations) is retained for the
-            period of your subscription and up to 90 days after account deletion, after which it is purged from
-            production systems.
+            ResearchOne is a research-report generation and monitoring service, not a general-purpose file storage
+            or document hosting platform. Temporary workspaces may include uploaded files, extracted text, discovered
+            source snapshots, chunks, embeddings, and intermediate research artifacts.
+          </p>
+          <p>
+            Unless a report is enrolled as an active Living Report or governed by a separate enterprise agreement,
+            temporary workspace data is ordinarily purged within 30 days after report finalization. Failed or
+            cancelled research runs have their workspace data purged within 14 days. Temporary upload staging data
+            is purged within 72 hours.
+          </p>
+          <p>
+            Final report outputs (report text, sections, executive summary, citations) are ordinarily retained for
+            120 days after finalization so you may view, export, or delete them. We will make reasonable efforts to
+            notify you before report content is scheduled for deletion.
+          </p>
+          <p>
+            Living Reports retain the source set, monitoring configuration, revision history, and related workspace
+            data while the Living Report subscription remains active. If a Living Report subscription is cancelled
+            or payment fails, workspace data enters a 30-day grace period before purge. The final report output
+            remains available for the standard 120-day retention period from finalization or cancellation.
+          </p>
+          <p>
+            Sovereign and enterprise customers may define custom retention, deletion, and isolation terms by
+            contract.
+          </p>
+          <p>
+            We retain your account information for as long as your account is active and for a reasonable period
+            thereafter to allow you to reactivate, comply with legal obligations, resolve disputes, and enforce
+            agreements. Billing records, subscription metadata, wallet ledger entries, and security audit logs are
+            retained as required by law and are not deleted as part of workspace or report cleanup.
           </p>
           <p>
             Anonymized, aggregated analytics data may be retained indefinitely as it cannot reasonably be used to

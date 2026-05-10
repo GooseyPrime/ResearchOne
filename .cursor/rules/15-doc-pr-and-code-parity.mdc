@@ -79,3 +79,7 @@ Before `git push` on the final commit of a branch:
 - [ ] Did you re-read the PR body end-to-end against the final commit?
 - [ ] If the body / doc claims something about an external system, did
   you verify it live in this session?
+- [ ] If you added internal anchor links (`/path#fragment`), does the
+  target page contain `id="fragment"`?
+- [ ] If marketing copy describes a user interaction ("hover", "click",
+  "expand"), is the behavior actually implemented?
