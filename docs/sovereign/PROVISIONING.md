@@ -62,7 +62,7 @@ compile-time excluded from Sovereign builds.
 
 ## Verification
 
-10. **Health check:** `GET /health` returns 200.
+10. **Health check:** `GET /api/health` returns 200 (`/health` also works via compatibility mount).
 
 11. **InTellMe exclusion:** Verify that no `pipeline_b_ingestion` jobs
     are enqueued during a test research run.

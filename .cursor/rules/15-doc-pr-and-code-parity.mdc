@@ -30,6 +30,19 @@ Before pushing the final commit on a branch:
    "future work" / "follow-up".
 3. **Names in the PR body must match the final exported names.**
 
+## Rule — env / README parity (PR #103)
+
+1. **Operational variables:** Checklists and README tables must match what
+   the code reads (`grep process.env` / `config`). Example: Redis connects
+   via `REDIS_HOST` + `REDIS_PORT` in `backend/src/queue/redis.ts`, not
+   `REDIS_URL`.
+2. **Vite guidance:** “Origin only” applies to URL bases (`VITE_API_BASE_URL`,
+   etc.), **not** to `VITE_CLERK_PUBLISHABLE_KEY` (a key string) or optional
+   Clerk path vars that the app does not consume at runtime.
+3. **Template vs narrative:** `backend/.env.production.example` is the
+   copy-paste baseline; long README fenced blocks may be supersets — say so
+   explicitly to avoid “canonical” drift.
+
 ## Rule — external-system claims
 
 Any claim about an external system in a doc, PR body, or header
