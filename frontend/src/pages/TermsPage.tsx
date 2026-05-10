@@ -43,8 +43,8 @@ export default function TermsPage() {
           <p>
             You are responsible for maintaining the confidentiality of your account credentials and for all activity
             that occurs under your account. You agree to notify us immediately at{' '}
-            <a href="mailto:security@researchone.app" className="text-r1-accent hover:underline">
-              security@researchone.app
+            <a href="mailto:security@researchone.io" className="text-r1-accent hover:underline">
+              security@researchone.io
             </a>{' '}
             of any unauthorized use of your account. We will not be liable for any losses arising from unauthorized
             access due to your failure to safeguard your credentials.
@@ -122,8 +122,8 @@ export default function TermsPage() {
         <Section id="refunds" title="6. Refunds">
           <p>
             Subscription fees are generally non-refundable. If you believe you were charged in error, contact{' '}
-            <a href="mailto:billing@researchone.app" className="text-r1-accent hover:underline">
-              billing@researchone.app
+            <a href="mailto:billing@researchone.io" className="text-r1-accent hover:underline">
+              billing@researchone.io
             </a>{' '}
             within 14 days of the charge and we will review your request. We will issue a pro-rata refund if a
             material service outage lasting more than 24 consecutive hours occurs during your paid period and is
@@ -301,8 +301,8 @@ export default function TermsPage() {
         <Section id="contact" title="19. Contact Us">
           <p>
             Questions about these Terms should be directed to:{' '}
-            <a href="mailto:legal@researchone.app" className="text-r1-accent hover:underline">
-              legal@researchone.app
+            <a href="mailto:legal@researchone.io" className="text-r1-accent hover:underline">
+              legal@researchone.io
             </a>
             .
           </p>

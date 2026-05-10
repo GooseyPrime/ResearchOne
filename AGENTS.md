@@ -161,6 +161,11 @@ drove the rules is at
   discovery) or via `ingestion_jobs.source_id` (manual ingest). Checking
   only one path locks out users who created the resource through the
   other. PR #96 review (Codex P2).
+- **Production env validation ↔ runtime:** When README or `.env.*.example`
+  documents alternate connection variables (e.g. `REDIS_URL` vs `REDIS_HOST`),
+  boot-time production guards must accept those variables as explicit
+  configuration, and connection code must actually honor them — never validate
+  one shape while the client ignores it. PR #105 review (Codex).
 - **Readiness vs degraded health:** If the API could serve authenticated
   requests without intended RLS isolation (e.g. missing Postgres role
   `application_role`), core health must be **`down`** so `/health/ready`

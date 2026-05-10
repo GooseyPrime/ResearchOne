@@ -4,20 +4,37 @@ import { logger } from '../utils/logger';
 
 let redis: IORedis;
 
-function buildRedisOptions(): RedisOptions {
-  return {
+const BULLMQ_REDIS_OPTIONS = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+} as const satisfies Pick<RedisOptions, 'maxRetriesPerRequest' | 'enableReadyCheck'>;
+
+/**
+ * When `REDIS_URL` is set, ioredis connects via that string (per README / .env.production.example).
+ * Auth is expected to be embedded in the URL; do not also rely on REDIS_PASSWORD unless your
+ * provider documents both.
+ */
+function createRedis(lazyConnect: boolean): IORedis {
+  const url = config.redis.url?.trim();
+  if (url) {
+    return new IORedis(url, {
+      ...BULLMQ_REDIS_OPTIONS,
+      lazyConnect,
+    });
+  }
+  const opts: RedisOptions = {
     host: config.redis.host,
     port: config.redis.port,
     ...(config.redis.password ? { password: config.redis.password } : {}),
     ...(config.redis.username ? { username: config.redis.username } : {}),
-    maxRetriesPerRequest: null, // Required for BullMQ
-    enableReadyCheck: false,
-    lazyConnect: true,
+    ...BULLMQ_REDIS_OPTIONS,
+    lazyConnect,
   };
+  return new IORedis(opts);
 }
 
 export async function initRedis(): Promise<void> {
-  redis = new IORedis(buildRedisOptions());
+  redis = createRedis(true);
 
   redis.on('error', (err) => {
     logger.error('Redis error:', err);
@@ -36,7 +53,6 @@ export function getRedis(): IORedis {
 }
 
 export function createRedisConnection(): IORedis {
-  const opts = buildRedisOptions();
-  // createRedisConnection is used by BullMQ which manages its own lifecycle -- don't lazyConnect
-  return new IORedis({ ...opts, lazyConnect: false });
+  // BullMQ manages lifecycle — connect immediately (lazyConnect: false).
+  return createRedis(false);
 }

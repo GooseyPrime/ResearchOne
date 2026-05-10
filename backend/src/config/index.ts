@@ -7,6 +7,7 @@ import {
 import { validateEnsemblePresetsAgainstAllowlist } from './researchEnsemblePresets';
 import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
 import { parseCorsOrigins } from './corsOrigins';
+import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
 
 loadEnv();
 
@@ -89,8 +90,18 @@ const config = {
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
-    successUrl: process.env.STRIPE_CHECKOUT_SUCCESS_URL || 'http://localhost:5173/app/billing?checkout=success',
-    cancelUrl: process.env.STRIPE_CHECKOUT_CANCEL_URL || 'http://localhost:5173/app/billing?checkout=cancel',
+    successUrl: resolveStripeCheckoutRedirect(
+      process.env.STRIPE_CHECKOUT_SUCCESS_URL,
+      'STRIPE_CHECKOUT_SUCCESS_URL',
+      rawNodeEnv,
+      'http://localhost:5173/app/billing?checkout=success',
+    ),
+    cancelUrl: resolveStripeCheckoutRedirect(
+      process.env.STRIPE_CHECKOUT_CANCEL_URL,
+      'STRIPE_CHECKOUT_CANCEL_URL',
+      rawNodeEnv,
+      'http://localhost:5173/app/billing?checkout=cancel',
+    ),
     priceIds: {
       studentMonthly: process.env.STRIPE_PRICE_ID_STUDENT_MONTHLY || '',
       studentAnnual: process.env.STRIPE_PRICE_ID_STUDENT_ANNUAL || '',
@@ -218,8 +229,8 @@ const config = {
     parallelBaseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
     sciteApiKey: process.env.SCITE_API_KEY || '',
     sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
-    openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
-    crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:admin@researchone.ai)',
+    openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
+    crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
   },
 
   exports: {
@@ -245,8 +256,12 @@ const config = {
   /** Optional: publish full reports to GitHub for thenewontology.life Featured Reports workflow */
   featuredReportGithub: {
     token: process.env.FEATURED_REPORT_GITHUB_TOKEN || '',
-    owner: process.env.FEATURED_REPORT_GITHUB_OWNER || 'GooseyPrime',
-    repo: process.env.FEATURED_REPORT_GITHUB_REPO || 'newontology',
+    owner:
+      (process.env.FEATURED_REPORT_GITHUB_OWNER || '').trim() ||
+      (rawNodeEnv === 'production' ? '' : 'GooseyPrime'),
+    repo:
+      (process.env.FEATURED_REPORT_GITHUB_REPO || '').trim() ||
+      (rawNodeEnv === 'production' ? '' : 'newontology'),
     path: process.env.FEATURED_REPORT_GITHUB_PATH || 'content/featured-reports/latest.md',
     branch: process.env.FEATURED_REPORT_GITHUB_BRANCH || 'main',
   },
@@ -365,6 +380,22 @@ if (config.nodeEnv === 'production') {
   const byokKey = process.env.BYOK_ENCRYPTION_KEY;
   if (!byokKey || !byokKey.trim()) {
     throw new Error('BYOK_ENCRYPTION_KEY must be set in production');
+  }
+
+  const explicitRedis =
+    Boolean(process.env.REDIS_HOST?.trim()) || Boolean(process.env.REDIS_URL?.trim());
+  if (!explicitRedis && config.redis.host === '10.0.101.3') {
+    throw new Error(
+      'REDIS_HOST or REDIS_URL must be set in production — the fallback 10.0.101.3 is an internal Emma VM placeholder, not portable',
+    );
+  }
+
+  if (config.featuredReportGithub.token.trim()) {
+    if (!config.featuredReportGithub.owner.trim() || !config.featuredReportGithub.repo.trim()) {
+      throw new Error(
+        'FEATURED_REPORT_GITHUB_OWNER and FEATURED_REPORT_GITHUB_REPO must be set when FEATURED_REPORT_GITHUB_TOKEN is configured',
+      );
+    }
   }
 }
 

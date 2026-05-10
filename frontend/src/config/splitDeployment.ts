@@ -22,7 +22,7 @@ export function assertSplitDeploymentEnv(env: SplitDeploymentEnv = import.meta.e
   const list = missing.join(', ');
   throw new Error(
     `ResearchOne split deployment misconfiguration: set ${list} in the Vercel project ` +
-      '(Production and Preview), then redeploy. Example base: https://research-api.example.com ' +
+      '(Production and Preview), then redeploy. Example API origin: https://api.researchone.io ' +
       '(no trailing /api; the app appends /api for REST).'
   );
 }

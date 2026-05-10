@@ -169,9 +169,17 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     (manual ingest). Checking only one path silently locks out users who
     created the resource through the other path. PR #96 review (Codex P2).
 
+## M. Production env validation ↔ runtime parity (PR #105 Codex)
+
+32. **Alternate connection env vars must match validation and clients.**
+    If README or `.env.*.example` documents an alternate form (e.g.
+    `REDIS_URL` alongside `REDIS_HOST`), production boot guards must treat
+    that form as an explicit configuration, and every client that connects
+    must actually use `REDIS_URL` when set — never validate one shape and
+    connect with another.
 ## M. Health readiness vs tenant isolation (PR #104 review — Codex)
 
-32. **`/health/ready` must not succeed when isolation prerequisites fail.** If
+33. **`/health/ready` must not succeed when isolation prerequisites fail.** If
     authenticated traffic would run without intended RLS context (e.g. Postgres
     role `application_role` missing after migration 021), the **core DB check
     must be `down`**, not only `degraded`, so probes return **503** and load

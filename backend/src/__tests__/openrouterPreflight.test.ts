@@ -83,7 +83,7 @@ describe('preflightV2OpenRouterModels', () => {
     // Headers must match runtime (HTTP-Referer + X-Title).
     const opts = firstCall[2] as { headers?: Record<string, string> };
     expect(opts.headers).toBeTruthy();
-    expect(opts.headers!['HTTP-Referer']).toBe('https://researchone.app');
+    expect(opts.headers!['HTTP-Referer']).toBe('https://researchone.io');
     expect(opts.headers!['X-Title']).toBe('ResearchOne');
     expect(opts.headers!.Authorization).toMatch(/^Bearer /);
   });
