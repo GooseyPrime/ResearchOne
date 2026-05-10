@@ -382,9 +382,11 @@ if (config.nodeEnv === 'production') {
     throw new Error('BYOK_ENCRYPTION_KEY must be set in production');
   }
 
-  if (!process.env.REDIS_HOST?.trim() && config.redis.host === '10.0.101.3') {
+  const explicitRedis =
+    Boolean(process.env.REDIS_HOST?.trim()) || Boolean(process.env.REDIS_URL?.trim());
+  if (!explicitRedis && config.redis.host === '10.0.101.3') {
     throw new Error(
-      'REDIS_HOST must be set in production — the fallback 10.0.101.3 is an internal Emma VM placeholder, not portable',
+      'REDIS_HOST or REDIS_URL must be set in production — the fallback 10.0.101.3 is an internal Emma VM placeholder, not portable',
     );
   }
 
