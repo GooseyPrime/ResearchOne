@@ -11,7 +11,9 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "probe:openrouter-models": "tsx scripts/probe-openrouter-models.ts",
+    "benchmark:adversarial-smoke": "tsx scripts/adversarial-research-smoke.ts"
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",

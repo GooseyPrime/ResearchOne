@@ -13,6 +13,44 @@
 import { query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
 
+/** After migration 030: `wallet_holds.run_id` is UUID — compare directly to `research_runs.id`. */
+export const REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA = `UPDATE wallet_holds h
+       SET status = 'expired', released_at = NOW()
+       WHERE h.status = 'active'
+         AND h.expires_at <= NOW()
+         AND NOT EXISTS (
+           SELECT 1 FROM research_runs r
+           WHERE r.id = h.run_id
+             AND r.status IN ('queued', 'running')
+         )
+       RETURNING h.id, h.user_id, h.hold_cents::text`;
+
+/**
+ * Deploy-skew fallback when migration 030 has not applied (`run_id` still TEXT).
+ * Postgres error: `operator does not exist: uuid = text`.
+ * Remove this path once every environment has applied `030_harden_wallet_holds_run_id_uuid.sql`
+ * (no earlier than 2026-06-01).
+ */
+export const REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID = `UPDATE wallet_holds h
+       SET status = 'expired', released_at = NOW()
+       WHERE h.status = 'active'
+         AND h.expires_at <= NOW()
+         AND NOT EXISTS (
+           SELECT 1 FROM research_runs r
+           WHERE r.id::text = h.run_id
+             AND r.status IN ('queued', 'running')
+         )
+       RETURNING h.id, h.user_id, h.hold_cents::text`;
+
+function isUuidTextOperatorMismatch(err: unknown): boolean {
+  const pgCode = (err as { code?: string })?.code;
+  const msg = String((err as Error)?.message ?? '');
+  return (
+    pgCode === '42883' ||
+    (msg.includes('operator does not exist') && msg.includes('uuid') && msg.includes('text'))
+  );
+}
+
 export interface WalletHold {
   id: string;
   userId: string;
@@ -232,19 +270,22 @@ export async function releaseHold(holdId: string, userId: string): Promise<void>
  */
 export async function reapExpiredHolds(): Promise<number> {
   try {
-    const expired = await query<{ id: string; user_id: string; hold_cents: string }>(
-      `UPDATE wallet_holds h
-       SET status = 'expired', released_at = NOW()
-       WHERE h.status = 'active'
-         AND h.expires_at <= NOW()
-         AND NOT EXISTS (
-           SELECT 1 FROM research_runs r
-           WHERE r.id = h.run_id
-             AND r.status IN ('queued', 'running')
-         )
-       RETURNING h.id, h.user_id, h.hold_cents::text`,
-      []
-    );
+    let expired: Array<{ id: string; user_id: string; hold_cents: string }>;
+    try {
+      expired = await query<{ id: string; user_id: string; hold_cents: string }>(REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA, []);
+    } catch (firstErr: unknown) {
+      if (!isUuidTextOperatorMismatch(firstErr)) {
+        throw firstErr;
+      }
+      logger.warn('wallet_hold_reap_deploy_skew_legacy_text_run_id_column', {
+        message:
+          'Re-running expired-hold reap with r.id::text = h.run_id — migration 030 not applied yet; remove fallback after migrate',
+      });
+      expired = await query<{ id: string; user_id: string; hold_cents: string }>(
+        REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID,
+        []
+      );
+    }
 
     if (expired.length > 0) {
       const perUser = new Map<string, number>();

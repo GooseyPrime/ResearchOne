@@ -9,7 +9,15 @@ vi.mock('../db/pool', () => ({
 }));
 vi.mock('../utils/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { placeHold, consumeHold, releaseHold, getAvailableBalance, reapExpiredHolds } from '../services/billing/walletReservations';
+import {
+  placeHold,
+  consumeHold,
+  releaseHold,
+  getAvailableBalance,
+  reapExpiredHolds,
+  REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA,
+  REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID,
+} from '../services/billing/walletReservations';
 
 describe('walletReservations', () => {
   beforeEach(() => {
@@ -133,6 +141,28 @@ describe('walletReservations', () => {
         .mockResolvedValue([]);
       const count = await reapExpiredHolds();
       expect(count).toBe(2);
+    });
+
+    it('primary reap SQL compares uuid to uuid (no r.id::text in uuid-schema path)', () => {
+      expect(REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA).toContain('WHERE r.id = h.run_id');
+      expect(REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA).not.toContain('r.id::text');
+    });
+
+    it('legacy deploy-skew SQL uses text compare only in the documented fallback', () => {
+      expect(REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID).toContain('r.id::text = h.run_id');
+    });
+
+    it('retries with legacy SQL when Postgres reports uuid=text operator mismatch', async () => {
+      queryMock
+        .mockRejectedValueOnce(
+          Object.assign(new Error('operator does not exist: uuid = text'), { code: '42883' })
+        )
+        .mockResolvedValueOnce([{ id: 'h1', user_id: 'u1', hold_cents: '400' }])
+        .mockResolvedValue([]);
+      const count = await reapExpiredHolds();
+      expect(count).toBe(1);
+      expect(queryMock.mock.calls[0]?.[0]).toBe(REAP_EXPIRED_HOLDS_SQL_UUID_SCHEMA);
+      expect(queryMock.mock.calls[1]?.[0]).toBe(REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID);
     });
 
     it('tolerates missing table', async () => {

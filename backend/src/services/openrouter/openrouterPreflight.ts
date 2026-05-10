@@ -3,26 +3,7 @@ import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
 import { isHfRepoModel, REASONING_MODEL_ROLES, RESEARCH_OBJECTIVES } from '../reasoning/reasoningModelPolicy';
-
-/**
- * Build the OpenRouter `provider` block exactly as `callOpenRouter` does
- * at runtime. Kept as a copy in this module (not a re-export) because
- * importing from `openrouterService` would pull the whole HF / runtime
- * stack into preflight and complicate startup-order constraints. If the
- * runtime block ever changes shape, update both places. The
- * `openrouterRequestBody.test.ts` regression locks the runtime side; the
- * `openrouterPreflight.test.ts` suite locks this side.
- */
-function buildPreflightProviderBlock(): Record<string, unknown> {
-  const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
-  // Mirrors `buildOpenRouterProviderBlock` in openrouterService.ts exactly.
-  // `require_parameters` is omitted — see that function's comment for why.
-  return {
-    allow_fallbacks: true,
-    data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
-    sort: 'throughput',
-  };
-}
+import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 
 export interface PreflightModelStatus {
   slug: string;
@@ -169,17 +150,13 @@ export async function preflightV2OpenRouterModels(args?: {
   const timeout = args?.timeoutMs ?? 12000;
   const baseUrl = config.openrouter.baseUrl.replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
-  const provider = buildPreflightProviderBlock();
-  const headers = {
-    Authorization: `Bearer ${config.openrouter.apiKey}`,
-    'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://researchone.app',
-    'X-Title': 'ResearchOne',
+  const provider = buildOpenRouterProviderBlock(config.openrouter.dataCollection);
+  const headers = buildOpenRouterAppHeaders(config.openrouter.apiKey, {
     // Distinguishes startup smoke-test calls from live research calls in
     // OpenRouter's generation logs. Prevents operators from mistaking
     // intentional 1-token probes (finish_reason=length) for real run failures.
     'X-ResearchOne-Call-Type': 'preflight',
-  };
+  });
 
   await Promise.all(
     Array.from(slugToRoles.keys()).map(async (slug) => {

@@ -265,17 +265,20 @@ policy review:
 | `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | **Primary planner + synthesizer**: PATENT_GAP. **Fallback** for Qwen3 on reasoner / change_planner / synthesis roles. NOVEL planner fallback. |
 | `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | **Primary**: all utility roles (retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier). **Fallback**: planner (GENERAL/INVESTIGATIVE/ANOMALY) and synthesis roles. |
 | `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | **Fallback** for utility roles only. |
-| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice (1) | **Primary** skeptic / internal_challenger (GENERAL, INVESTIGATIVE, NOVEL, PATENT_GAP). Single-provider is acceptable — adversarial role failures are recoverable mid-pipeline. |
-| `sao10k/l3.3-euryale-70b` | NextBit, DeepInfra (2) | **Primary** skeptic / internal_challenger (ANOMALY). **Fallback** for adversarial roles elsewhere. |
+| `nousresearch/hermes-4-70b` | *verify live; provider count varies by account* | **Primary** skeptic / internal_challenger (all objectives) after Venice Dolphin + Euryale failed runtime `/chat/completions` under typical provider policy (2026-05-10). |
+| `nousresearch/hermes-3-llama-3.1-70b` | *verify live* | **Preset fallback** adversarial roles. |
+| `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice | **Experimental user-opt-in only** — catalog-listed but failed runtime probe in production (2026-05-10). |
+| `sao10k/l3.3-euryale-70b` | *varies* | **Experimental user-opt-in only** — same runtime failure shape as Dolphin Venice on production accounts (2026-05-10). |
 
 A pre-flight probe runs at backend startup
 (`backend/src/services/openrouter/openrouterPreflight.ts`) and logs a
 warning per (objective, role, slug, tier) if any default primary **or
-preset fallback** has zero live OpenRouter endpoints for the configured
-`OPENROUTER_API_KEY`. Both tiers are now probed because preset fallbacks
-fire automatically on primary failure — an unreachable fallback is a
-deploy-time signal, not a user-click-time surprise. The probe never
-blocks startup.
+preset fallback** fails a real **`/chat/completions`** smoke request
+under the same `provider` block as live traffic — **not** `/models` or
+`/models/<slug>/endpoints` metadata alone. Both tiers are probed because
+preset fallbacks fire automatically on primary failure. Operators can run
+`npm run probe:openrouter-models` from `backend/` for a JSON report. The
+probe never blocks startup.
 
 ## Currently-approved V2 USER-OPT-IN HF Inference allowlist
 

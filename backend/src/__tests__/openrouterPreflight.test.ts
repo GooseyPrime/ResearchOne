@@ -11,8 +11,8 @@ import { preflightV2OpenRouterModels } from '../services/openrouter/openrouterPr
  *
  * Post-PR41-review (2026-04-28-PM, Codex P1 + Copilot 5/6/7), the
  * probe issues a real `/chat/completions` request that mirrors
- * `callOpenRouter` exactly: same headers, same `provider` block
- * (including `data_collection`), same base URL. That way preflight
+ * `callOpenRouter` exactly: same headers, same `provider` block from
+ * `openrouterProviderBlock.ts` (including `data_collection`), same base URL. That way preflight
  * pass ⇔ runtime pass for the configured account / policy. Earlier
  * revisions of this probe used `/models/<slug>/endpoints` for
  * metadata only and missed account-side provider-filter rejections.

@@ -317,6 +317,16 @@ the user explicitly wants HF-only routing. They are not the default.
 
 ### 2.3 Concrete V2 ensemble (this PR)
 
+**Stale table — 2026-05-10:** The matrix below reflects this PR’s original
+ensemble. Adversarial defaults and several primaries have since moved to
+the DeepSeek / Kimi / Qwen Thinking line for critical paths and to
+Hermes 4 / Hermes 3 OpenRouter slugs for `skeptic` / `internal_challenger`
+when runtime `/chat/completions` probes pass. Dolphin Venice (free) and
+Sao10K Euryale 70B are experimental opt-ins only if routing fails under
+account policy. Authoritative current mapping:
+`backend/src/config/researchEnsemblePresets.ts` and
+`docs/V2_MODEL_SELECTION_CRITERIA.md`.
+
 | Role | Default primary | Default fallback (only fires on user opt-in) |
 |---|---|---|
 | `planner`, `outline_architect`, `section_drafter`, `synthesizer`, `coherence_refiner`, `section_rewriter` | `nousresearch/hermes-4-70b` (OR, multi-provider) | `nousresearch/hermes-3-llama-3.1-70b` (OR, multi-provider) |
