@@ -196,8 +196,8 @@ export default function PrivacyPage() {
           </ul>
           <p>
             No security system is impenetrable. If you discover a vulnerability, please report it responsibly to{' '}
-            <a href="mailto:security@researchone.app" className="text-r1-accent hover:underline">
-              security@researchone.app
+            <a href="mailto:security@researchone.io" className="text-r1-accent hover:underline">
+              security@researchone.io
             </a>
             .
           </p>
@@ -248,8 +248,8 @@ export default function PrivacyPage() {
           </ul>
           <p>
             To exercise any of these rights, contact us at{' '}
-            <a href="mailto:privacy@researchone.app" className="text-r1-accent hover:underline">
-              privacy@researchone.app
+            <a href="mailto:privacy@researchone.io" className="text-r1-accent hover:underline">
+              privacy@researchone.io
             </a>
             . We will respond within 30 days (or within any shorter period required by applicable law). We may need
             to verify your identity before acting on a request.
@@ -269,8 +269,8 @@ export default function PrivacyPage() {
             The Service is not directed to children under 13 (or under 16 in the EEA/UK). We do not knowingly
             collect personal information from children. If you believe a child has provided us with personal
             information, please contact us at{' '}
-            <a href="mailto:privacy@researchone.app" className="text-r1-accent hover:underline">
-              privacy@researchone.app
+            <a href="mailto:privacy@researchone.io" className="text-r1-accent hover:underline">
+              privacy@researchone.io
             </a>{' '}
             and we will delete it promptly.
           </p>
@@ -293,8 +293,8 @@ export default function PrivacyPage() {
           </p>
           <p>
             To submit a CCPA request, contact us at{' '}
-            <a href="mailto:privacy@researchone.app" className="text-r1-accent hover:underline">
-              privacy@researchone.app
+            <a href="mailto:privacy@researchone.io" className="text-r1-accent hover:underline">
+              privacy@researchone.io
             </a>{' '}
             or via account settings. We will respond within 45 days.
           </p>
@@ -317,8 +317,8 @@ export default function PrivacyPage() {
             <p>GooseyPrime, Inc.</p>
             <p>
               Email:{' '}
-              <a href="mailto:privacy@researchone.app" className="text-r1-accent hover:underline">
-                privacy@researchone.app
+              <a href="mailto:privacy@researchone.io" className="text-r1-accent hover:underline">
+                privacy@researchone.io
               </a>
             </p>
           </address>

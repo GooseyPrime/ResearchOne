@@ -501,7 +501,9 @@ export default function ResearchPage() {
                 <label className="section-title block mb-2">Supplemental URLs</label>
                 <textarea
                   className="textarea min-h-16 font-mono text-sm"
-                  placeholder={'https://example.com/paper\n(one URL per line, or comma-separated)'}
+                  placeholder={
+                    'https://arxiv.org/abs/2301.00001\n(one URL per line, or comma-separated)'
+                  }
                   value={supplementalUrlsText}
                   onChange={(e) => setSupplementalUrlsText(e.target.value)}
                   disabled={mutation.isPending || !!trackingRunId}

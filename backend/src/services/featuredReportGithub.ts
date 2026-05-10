@@ -7,8 +7,8 @@ interface GitHubFileContent {
 }
 
 /**
- * Commit full report markdown to GooseyPrime/newontology (or configured repo) for
- * the thenewontology.life Featured Report workflow.
+ * Commit full report markdown to the repo in `config.featuredReportGithub`
+ * (set via FEATURED_REPORT_GITHUB_* env) for optional featured-report workflows.
  */
 export async function publishReportToFeaturedRepo(args: {
   pathInRepo: string;

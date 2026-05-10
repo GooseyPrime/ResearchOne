@@ -28,7 +28,7 @@ export function buildOpenRouterAppHeaders(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://researchone.app',
+    'HTTP-Referer': 'https://researchone.io',
     'X-Title': 'ResearchOne',
   };
   if (extra) {

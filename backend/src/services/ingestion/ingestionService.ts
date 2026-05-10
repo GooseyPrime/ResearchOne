@@ -267,7 +267,7 @@ interface FetchResult {
 async function fetchUrl(url: string): Promise<FetchResult> {
   const response = await axios.get(url, {
     timeout: 30000,
-    headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.app)' },
+    headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.io)' },
     maxContentLength: 50 * 1024 * 1024,
   });
 
