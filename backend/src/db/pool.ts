@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { AsyncLocalStorage } from 'async_hooks';
 import { config } from '../config';
+import { isPostgresRoleDoesNotExist } from './pgRoleErrors';
 import { logger } from '../utils/logger';
 
 let pool: Pool;
@@ -53,8 +54,7 @@ async function applyRlsContext(client: PoolClient): Promise<void> {
       await client.query("SELECT set_config('app.org_id', $1, true)", [ctx.orgId]);
     }
   } catch (err) {
-    const pgCode = (err as { code?: string })?.code;
-    if (pgCode === '42704') {
+    if (isPostgresRoleDoesNotExist(err, 'application_role')) {
       logger.warn('application_role does not exist — RLS not active (migration 021 not applied)');
     } else {
       throw err;

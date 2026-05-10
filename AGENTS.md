@@ -73,6 +73,12 @@ drove the rules is at
   (Copilot).
 - **Dependencies:** Do not add npm packages that no code path imports;
   remove unused deps when review flags them.
+- **Docs vs runtime env:** README and deployment checklists must match what
+  the backend actually reads (`grep process.env` / `config`). BullMQ/ioredis
+  uses `REDIS_HOST` + `REDIS_PORT` (`backend/src/queue/redis.ts`), not
+  `REDIS_URL` — PR #103 (Copilot). When documenting `VITE_*`, apply “origin
+  only” to API base URLs (`VITE_API_BASE_URL`, etc.), never to
+  `VITE_CLERK_PUBLISHABLE_KEY` — PR #103 (Codex).
 - **Query state coverage:** When writing a query that acts on "all X of
   type Y," enumerate every state/source that qualifies. PR #91 review
   caught two instances: (1) cascade-cancel queried `status='active'`
@@ -160,3 +166,9 @@ drove the rules is at
   boot-time production guards must accept those variables as explicit
   configuration, and connection code must actually honor them — never validate
   one shape while the client ignores it. PR #105 review (Codex).
+- **Readiness vs degraded health:** If the API could serve authenticated
+  requests without intended RLS isolation (e.g. missing Postgres role
+  `application_role`), core health must be **`down`** so `/health/ready`
+  returns **503**, not merely `degraded` / 200. PR #104 review (Codex).
+  When changing `buildHealth`’s DB probe SQL, grep test mocks for stale row
+  shapes (`SELECT 1` vs `application_role_exists`).

@@ -109,7 +109,7 @@ describe('health route payload', () => {
     mkdir.mockReset();
     writeFile.mockReset();
     unlink.mockReset();
-    dbQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+    dbQuery.mockResolvedValueOnce({ rows: [{ ok: 1, application_role_exists: true }] });
     redisPing.mockResolvedValueOnce('PONG');
     queueCounts.mockResolvedValue({ waiting: 0 });
     axiosGet.mockResolvedValue({ data: {} });
@@ -129,6 +129,7 @@ describe('health route payload', () => {
     expect(result.gitSha).toBeDefined();
     expect(result.nodeEnv).toBeDefined();
     expect(result.checks.db.ok).toBe(true);
+    expect(result.checks.db.rlsReady).toBe(true);
     expect(result.checks.redis.ok).toBe(true);
     expect(result.checks.openrouter.modelProbe).toBe('planner-model');
     expect(result.checks.discovery.provider).toBe('tavily');
@@ -156,5 +157,29 @@ describe('health route payload', () => {
     const result = await buildHealth({ app: { get: () => ({}) } });
     expect(result.status).toBe('down');
     expect(result.checks.db.ok).toBe(false);
+  });
+
+  it('returns down when DB is reachable but application_role is missing (readiness)', async () => {
+    dbQuery.mockReset();
+    redisPing.mockReset();
+    queueCounts.mockReset();
+    axiosGet.mockReset();
+    mkdir.mockReset();
+    writeFile.mockReset();
+    unlink.mockReset();
+    dbQuery.mockResolvedValueOnce({ rows: [{ ok: 1, application_role_exists: false }] });
+    redisPing.mockResolvedValueOnce('PONG');
+    queueCounts.mockResolvedValue({ waiting: 0 });
+    axiosGet.mockResolvedValue({ data: {} });
+    mkdir.mockResolvedValueOnce(undefined);
+    writeFile.mockResolvedValueOnce(undefined);
+    unlink.mockResolvedValueOnce(undefined);
+
+    const { buildHealth } = await import('../api/routes/health');
+    const result = await buildHealth({ app: { get: () => ({}) } });
+    expect(result.status).toBe('down');
+    expect(result.checks.db.ok).toBe(false);
+    expect(result.checks.db.rlsReady).toBe(false);
+    expect(result.checks.db.reason).toContain('application_role');
   });
 });
