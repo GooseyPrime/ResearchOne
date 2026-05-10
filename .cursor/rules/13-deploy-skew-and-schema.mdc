@@ -87,7 +87,11 @@ earlier step changed the column type.
 2. **`DROP NOT NULL` for `ON DELETE SET NULL` FKs:** if the column might
    already be UUID while still `NOT NULL`, key off `is_nullable = 'NO'`,
    not only on “still TEXT”.
-3. **`IF NOT EXISTS` on `pg_constraint`:** scope by `conrelid` →
+3. **`ALTER COLUMN … TYPE … USING (expr)`:** Postgres forbids **subqueries**
+   in `expr` (`cannot use subquery in transform expression`). Use a prior
+   `UPDATE` (where subqueries are allowed) to null orphan / invalid values,
+   then keep `USING` row-local only (regex + cast). Migration 030 / `0A000`.
+4. **`IF NOT EXISTS` on `pg_constraint`:** scope by `conrelid` →
    `pg_class.relname` / schema — `conname` is not globally unique.
 
 ## Rule — non-transactional migrations

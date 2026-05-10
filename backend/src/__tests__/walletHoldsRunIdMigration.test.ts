@@ -19,6 +19,11 @@ describe('030_harden_wallet_holds_run_id_uuid migration', () => {
     expect(sql).toContain('ON DELETE SET NULL');
     expect(sql).toContain('idx_wallet_holds_run_id');
     expect(sql).toMatch(/USING\s*\(/i);
+    // Postgres forbids subqueries inside ALTER ... USING; orphans cleared via UPDATE first.
+    expect(sql).toContain('UPDATE wallet_holds h');
+    expect(sql).toContain('SET run_id = NULL');
+    // Disallowed in ALTER ... USING (Postgres): correlated EXISTS referencing research_runs.
+    expect(sql).not.toContain('WHERE r.id = run_id::uuid');
     expect(sql).toContain('pg_constraint');
     expect(sql).toContain('conrelid');
     expect(sql).toContain("rel.relname = 'wallet_holds'");
