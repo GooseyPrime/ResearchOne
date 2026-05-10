@@ -63,6 +63,14 @@ async function main() {
       });
     });
 
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once('error', reject);
+      httpServer.listen(config.port, config.listenHost, () => {
+        logger.info(`ResearchOne API listening on ${config.listenHost}:${config.port}`);
+        resolve();
+      });
+    });
+
     await startWorkers(io);
     logger.info('BullMQ workers started');
 
@@ -71,10 +79,6 @@ async function main() {
 
     startRetentionCleanupCron();
     logger.info('Retention cleanup cron started');
-
-    httpServer.listen(config.port, () => {
-      logger.info(`ResearchOne API listening on port ${config.port}`);
-    });
 
     // Best-effort: probe OpenRouter to confirm every V2 default primary
     // has at least one live upstream for the configured account. Logs a
