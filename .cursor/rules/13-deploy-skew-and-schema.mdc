@@ -74,6 +74,22 @@ vs. `documents`). PR #83 review (Codex/Copilot): migration 025 targeted
 migration 002; `sources` has `fetch_method`. Wrong-table DDL fails at
 migrate time and blocks deploy.
 
+## Rule — migration idempotency (replay after partial apply)
+
+PR #102 review (Codex/Copilot): a migration that fails mid-file may be
+re-run; statements that touch column expressions must stay valid after an
+earlier step changed the column type.
+
+1. **Guard data-fix `INSERT`/`UPDATE`** that use TEXT-only functions
+   (`trim`, regex) on a column that will become UUID — wrap in
+   `information_schema.columns` / `udt_name = 'text'` (or cast through
+   `::text` consistently) so replay does not call `trim(uuid)`.
+2. **`DROP NOT NULL` for `ON DELETE SET NULL` FKs:** if the column might
+   already be UUID while still `NOT NULL`, key off `is_nullable = 'NO'`,
+   not only on “still TEXT”.
+3. **`IF NOT EXISTS` on `pg_constraint`:** scope by `conrelid` →
+   `pg_class.relname` / schema — `conname` is not globally unique.
+
 ## Rule — non-transactional migrations
 
 If a migration uses any of:

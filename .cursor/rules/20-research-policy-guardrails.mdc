@@ -40,10 +40,17 @@ In 2026 three model categories pass the behavioral test:
    `DavidAU/*-abliterated*`. Refusal vector orthogonalized out.
    Mathematically refusal-incapable. Typically single-provider, so
    used as user-opt-in / emergency-sanity fallback.
-3. **Uncensored fine-tunes** — `Dolphin*`, `Hermes-3` / `Hermes-4`,
-   `Sao10K/Euryale*`. Required for adversarial roles (skeptic /
-   internal_challenger) because they need a model whose baseline is
-   already uncensored, not one that needs the preamble to bypass RLHF.
+3. **Low-refusal / steerable instruct fine-tunes** — Hermes 3 / Hermes 4
+   and similar lines can satisfy adversarial roles (`skeptic`,
+   `internal_challenger`) when they pass the **runtime** OpenRouter
+   routing check (same `/chat/completions` envelope and `provider`
+   block as production — see `openrouterProviderBlock.ts` and
+   `openrouterPreflight.ts`). Catalog listing or `/models/<slug>/endpoints`
+   alone is **not** deployability: some slugs fail with "No allowed
+   providers" under account policy. Older uncensored-brand slugs (e.g.
+   Dolphin Venice free, Sao10K Euryale 70B) may remain **experimental
+   user opt-ins** only when they fail that probe; they must not be V2
+   **defaults** if startup preflight marks them unreachable.
 
 Operational constraints layered on top:
 
@@ -62,8 +69,9 @@ The `V2_FORBIDDEN_DEFAULT_MODELS` set in
 `backend/src/__tests__/researchEnsemblePresets.test.ts` is the
 regression guard. If a future patch tries to wire a forbidden slug as
 a default, that test fails first. The startup pre-flight probe
-(`backend/src/services/openrouter/openrouterPreflight.ts`) is the
-deploy-time guard against single-upstream slugs slipping back in.
+(`backend/src/services/openrouter/openrouterPreflight.ts`), using the
+same `/chat/completions` smoke as live traffic, is the deploy-time guard
+against unreachable defaults and single-upstream slugs slipping back in.
 
 **Earlier framing was wrong.** PRs #39 and #40 banned "RLHF
 refusal-aligned bases" categorically as a hard rule. That conflated
@@ -86,6 +94,11 @@ Before adding a slug to a V2 default preset:
    fragile than a multi-upstream model. Document the count in
    `docs/V2_MODEL_SELECTION_CRITERIA.md` under "Currently-approved V2
    PRIMARIES."
+4. **Verify runtime routing** with the same `/api/v1/chat/completions`
+   probe (messages, `provider` block, headers) as
+   `openrouterPreflight.ts` / `npm run probe:openrouter-models`. A slug
+   can appear in `/api/v1/models` and still return 404 "No allowed
+   providers" for this account.
 
 Do not claim "multi-provider redundant" without a verified count.
 

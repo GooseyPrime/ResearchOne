@@ -13,6 +13,7 @@ import {
   type ResearchObjective,
 } from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
+import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble };
 
@@ -410,54 +411,12 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
     primaryModel: model,
   };
 }
-/**
- * Build the OpenRouter `provider` request block.
- *
- * Why: the 2026-04-28-PM V2 outage ("No allowed providers are available
- * for the selected model" 404 on `nousresearch/hermes-4-70b`) was caused
- * by OpenRouter applying the *account's* default provider filter — which
- * by default excludes providers that train on prompts. We now explicitly
- * tell OpenRouter:
- *   - `allow_fallbacks: true`   → if the first upstream rejects (rate
- *     limit, account-policy filter, hiccup), automatically try the next.
- *   - `data_collection: 'allow'` → explicitly opt this server into
- *     prompt-training-permitting providers, which broadens the upstream
- *     set most accounts have access to. Operators who need stricter
- *     policy can set OPENROUTER_DATA_COLLECTION=deny via env.
- *   - `sort: 'throughput'`      → prefer the fastest available upstream.
- *   - `require_parameters` is intentionally **omitted** — see the inline
- *     comment inside the function for the full rationale.
- *
- * Reference: https://openrouter.ai/docs/features/provider-routing
- */
-function buildOpenRouterProviderBlock(): Record<string, unknown> {
-  const dataCollection = (config.openrouter.dataCollection || 'allow').toLowerCase();
-  // `require_parameters` is intentionally omitted. Setting it to `true`
-  // excludes any upstream that reports a parameter restriction (e.g. the
-  // `temperature` field on thinking-class models: DeepSeek R1, Qwen3-235B
-  // Thinking, Kimi K2 Thinking). With `allow_fallbacks: true`, OpenRouter
-  // already tries the next provider if one rejects a request. Requiring
-  // full parameter support at the routing stage shrinks the candidate pool
-  // and can drop it to zero for thinking models — reproducing the
-  // "No allowed providers are available" 404 that PR #41 was meant to fix.
-  return {
-    allow_fallbacks: true,
-    data_collection: dataCollection === 'deny' ? 'deny' : 'allow',
-    sort: 'throughput',
-  };
-}
-
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
   const messages: ChatMessage[] = applyV2SystemAugmentations(options);
   const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
   const apiKey = options.byokApiKeyOverride ?? config.openrouter.apiKey;
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://researchone.app',
-    'X-Title': 'ResearchOne',
-  };
+  const headers = buildOpenRouterAppHeaders(apiKey);
 
   let accumulatedContent = '';
   let totalPromptTokens = 0;
@@ -475,7 +434,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
       messages: continuationMessages,
       temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
       max_tokens: maxTokens,
-      provider: buildOpenRouterProviderBlock(),
+      provider: buildOpenRouterProviderBlock(config.openrouter.dataCollection),
     };
     if (options.tools && attempt === 0) body.tools = options.tools;
 
@@ -760,12 +719,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       input: sanitized,
     },
     {
-      headers: {
-        'Authorization': `Bearer ${config.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://researchone.app',
-        'X-Title': 'ResearchOne',
-      },
+      headers: buildOpenRouterAppHeaders(config.openrouter.apiKey),
       timeout: 60000,
     }
   );

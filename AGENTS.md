@@ -61,6 +61,16 @@ drove the rules is at
 - **Migrations:** Before referencing a column in new DDL, grep prior
   migrations for which table owns that column (`sources` vs `documents`,
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
+  Partial reruns: guard data-fix SQL on column **type** (TEXT-only
+  expressions break after `ALTER TYPE`); scope `pg_constraint` checks to
+  the target table — PR #102 (Codex/Copilot).
+- **Postgres error branching:** Many distinct failures share the same
+  `sqlstate`. Do not trigger alternate query paths on code alone (e.g.
+  `42883`) — match the **message** for the specific operator mismatch you
+  handle — PR #102 (Copilot).
+- **OpenRouter:** Route chat + embeddings through
+  `buildOpenRouterAppHeaders` so runtime matches preflight — PR #102
+  (Copilot).
 - **Dependencies:** Do not add npm packages that no code path imports;
   remove unused deps when review flags them.
 - **Query state coverage:** When writing a query that acts on "all X of

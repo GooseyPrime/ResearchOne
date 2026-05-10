@@ -54,6 +54,14 @@ caller of either API runs through it (or `callRoleModel` which calls
 `callModel` which calls it). If you add a new id namespace, add it
 there, not in a parallel switch elsewhere.
 
+### OpenRouter headers (PR #102)
+
+Chat completions, embeddings, and preflight probes must use the same app
+headers (`buildOpenRouterAppHeaders` in
+`backend/src/services/openrouter/openrouterProviderBlock.ts`) so startup
+probes and live traffic do not drift when Referer/title/auth formatting
+changes.
+
 ## Concrete examples in this repo
 
 - ✅ `togetherChatEndpoint()` is the only function that builds the

@@ -489,7 +489,7 @@ Research direction and paper-building are restricted to reasoning-class models o
 
 The deployment allowlist lives in [`reasoningModelPolicy.ts`](backend/src/services/reasoning/reasoningModelPolicy.ts) and is split into a V1 / closed-weights side (OpenRouter slugs, used by the V1 ensemble) and a V2 / uncensored open-weights side (HF repo ids, used by the V2 ensemble). V2 has its own binding selection criteria — see [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md) and the [`ResearchOne PolicyOne`](ResearchOne%20PolicyOne) epistemic preamble (RLHF refusal-aligned primaries are forbidden in V2 because they cause drift back toward consensus-debunking and silent omission of anomalous findings, which the policy explicitly prohibits).
 
-Confirm V1 OpenRouter IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`. V2 HF repo ids are validated against the [HF Inference Providers](https://huggingface.co/inference/models) catalog.
+Confirm V1 OpenRouter IDs still exist in [OpenRouter’s model list](https://openrouter.ai/models) or `GET https://openrouter.ai/api/v1/models` — stale slugs return HTTP 404 from `/chat/completions`. **For V2 defaults, also require a successful runtime `/chat/completions` probe** (same envelope as production); catalog presence alone can still yield `No allowed providers are available` under account provider filters. V2 HF repo ids are validated against the [HF Inference Providers](https://huggingface.co/inference/models) catalog.
 
 ### V1 / closed-weights (OpenRouter)
 
@@ -524,10 +524,14 @@ verifier) — must have ≥ 2 live OpenRouter upstreams. Verified 2026-04-28-PM:
 - `qwen/qwen3-235b-a22b-thinking-2507` — 4 providers (Alibaba, DeepInfra, AtlasCloud, Novita). Reasoner / change_planner fallback.
 - `moonshotai/kimi-k2-thinking` — 3 providers (Novita, Google, AtlasCloud). Planner fallback / novel-application primary.
 
-**Adversarial roles** (skeptic / internal_challenger) — uncensored fine-tunes; single-provider is acceptable here because skeptic failures are recoverable mid-pipeline:
+**Adversarial roles** (skeptic / internal_challenger) — low-refusal Hermes line on OpenRouter, chosen after Venice Dolphin + Euryale slugs failed runtime `/chat/completions` under typical provider policy despite appearing in the catalog (2026-05-10). **Listing on `GET /api/v1/models` is not sufficient** — defaults must pass the same smoke probe as startup preflight (`openrouterPreflight.ts`). Operators can verify slugs with `npm run probe:openrouter-models` (backend dir).
 
-- `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` — Dolphin Venice Edition. Default skeptic across most objectives.
-- `sao10k/l3.3-euryale-70b` — Sao10K L3.3 Euryale 70B. 2 providers. Adversarial fallback / anomaly-objective primary.
+- `nousresearch/hermes-4-70b` — default adversarial primary.
+- `nousresearch/hermes-3-llama-3.1-70b` — default adversarial preset fallback.
+
+Experimental opt-in only (not defaults): `cognitivecomputations/dolphin-mistral-24b-venice-edition:free`, `sao10k/l3.3-euryale-70b` — allowlisted for per-run overrides.
+
+**Environment:** never Bash-source `backend/.env` in shell scripts; use dotenv (`src/bootstrap/loadEnv.ts`) or npm scripts that load it safely.
 
 V2 USER-OPT-IN HF Inference allowlist — single-provider on HF Inference (mostly featherless-ai-only). Admins can wire these in via per-run overrides on the Research One 2 page when HF routing is acceptable. The 2026-04-28 outage demonstrated they are not safe as defaults.
 
