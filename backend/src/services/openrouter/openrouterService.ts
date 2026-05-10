@@ -13,7 +13,7 @@ import {
   type ResearchObjective,
 } from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
-import { buildOpenRouterProviderBlock } from './openrouterProviderBlock';
+import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble };
 
@@ -416,12 +416,7 @@ async function callOpenRouter(model: string, options: ModelCallOptions): Promise
   const messages: ChatMessage[] = applyV2SystemAugmentations(options);
   const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
   const apiKey = options.byokApiKeyOverride ?? config.openrouter.apiKey;
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://researchone.app',
-    'X-Title': 'ResearchOne',
-  };
+  const headers = buildOpenRouterAppHeaders(apiKey);
 
   let accumulatedContent = '';
   let totalPromptTokens = 0;
@@ -724,12 +719,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       input: sanitized,
     },
     {
-      headers: {
-        'Authorization': `Bearer ${config.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://researchone.app',
-        'X-Title': 'ResearchOne',
-      },
+      headers: buildOpenRouterAppHeaders(config.openrouter.apiKey),
       timeout: 60000,
     }
   );

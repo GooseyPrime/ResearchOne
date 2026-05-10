@@ -19,5 +19,10 @@ describe('030_harden_wallet_holds_run_id_uuid migration', () => {
     expect(sql).toContain('ON DELETE SET NULL');
     expect(sql).toContain('idx_wallet_holds_run_id');
     expect(sql).toMatch(/USING\s*\(/i);
+    expect(sql).toContain('pg_constraint');
+    expect(sql).toContain('conrelid');
+    expect(sql).toContain("rel.relname = 'wallet_holds'");
+    expect(sql).toContain("is_nullable = 'NO'");
+    expect(sql).toMatch(/udt_name\s*=\s*'text'/i);
   });
 });

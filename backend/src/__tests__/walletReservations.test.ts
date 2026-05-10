@@ -165,6 +165,14 @@ describe('walletReservations', () => {
       expect(queryMock.mock.calls[1]?.[0]).toBe(REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID);
     });
 
+    it('does not retry with legacy SQL on generic 42883 (undefined operator)', async () => {
+      queryMock.mockRejectedValueOnce(
+        Object.assign(new Error('operator does not exist: unknown_fn'), { code: '42883' })
+      );
+      await expect(reapExpiredHolds()).rejects.toThrow('unknown_fn');
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
     it('tolerates missing table', async () => {
       queryMock.mockRejectedValueOnce(Object.assign(new Error('relation does not exist'), { code: '42P01' }));
       const count = await reapExpiredHolds();

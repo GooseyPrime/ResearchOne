@@ -42,12 +42,14 @@ export const REAP_EXPIRED_HOLDS_SQL_LEGACY_TEXT_RUN_ID = `UPDATE wallet_holds h
          )
        RETURNING h.id, h.user_id, h.hold_cents::text`;
 
+/** True only for the known deploy-skew shape `uuid = text` — not bare 42883 (undefined_function). */
 function isUuidTextOperatorMismatch(err: unknown): boolean {
-  const pgCode = (err as { code?: string })?.code;
   const msg = String((err as Error)?.message ?? '');
   return (
-    pgCode === '42883' ||
-    (msg.includes('operator does not exist') && msg.includes('uuid') && msg.includes('text'))
+    msg.includes('operator does not exist') &&
+    msg.includes('uuid') &&
+    msg.includes('text') &&
+    /\buuid\b.*\btext\b|\btext\b.*\buuid\b/i.test(msg)
   );
 }
 
@@ -264,9 +266,9 @@ export async function releaseHold(holdId: string, userId: string): Promise<void>
 
 /**
  * Reaps expired holds that don't belong to in-flight research runs.
- * Only expires holds whose run is no longer queued/running, or whose
- * expiry is more than 2x the default (indicating the run is truly stale).
- * Uses a single aggregated UPDATE per user to avoid N+1 queries.
+ * Expires holds where `expires_at <= now()` and no linked run is still
+ * `queued` or `running`. Aggregates released cents per user in follow-up
+ * UPDATEs (not N+1 per hold).
  */
 export async function reapExpiredHolds(): Promise<number> {
   try {
