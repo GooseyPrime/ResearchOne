@@ -19,7 +19,7 @@ type Check = {
   modelProbe?: string;
   provider?: string;
   ready?: boolean;
-  /** When false, DB is reachable but Postgres role `application_role` is missing (migration 021). */
+  /** When `false`, Postgres role `application_role` is missing (migration 021). Only defined when the DB probe query succeeded. */
   rlsReady?: boolean;
   reason?: string;
 };
@@ -153,7 +153,8 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   const coreChecks = {
     api: apiCheck,
     db: {
-      ok: dbProbe.ok,
+      // Missing application_role means authenticated traffic runs without RLS context — fail readiness (Codex PR #104).
+      ok: dbProbe.ok && applicationRolePresent,
       latencyMs: dbProbe.latencyMs,
       rlsReady: dbProbe.ok ? applicationRolePresent : undefined,
       reason:
@@ -180,7 +181,6 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
 
   const INTEGRATION_LATENCY_THRESHOLD_MS = 2000;
   const coreDown = Object.values(coreChecks).some((c) => !c.ok);
-  const rlsDegraded = Boolean(coreChecks.db.ok && coreChecks.db.rlsReady === false);
   const integrationDegraded =
     Object.values(integrations).some(
       (c) => c.configured && (!c.ok || (c.latencyMs ?? 0) > INTEGRATION_LATENCY_THRESHOLD_MS)
@@ -188,7 +188,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
 
   const status: 'ok' | 'degraded' | 'down' = coreDown
     ? 'down'
-    : integrationDegraded || rlsDegraded
+    : integrationDegraded
       ? 'degraded'
       : 'ok';
 

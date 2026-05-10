@@ -159,7 +159,7 @@ describe('health route payload', () => {
     expect(result.checks.db.ok).toBe(false);
   });
 
-  it('returns degraded when DB is up but application_role is missing', async () => {
+  it('returns down when DB is reachable but application_role is missing (readiness)', async () => {
     dbQuery.mockReset();
     redisPing.mockReset();
     queueCounts.mockReset();
@@ -177,8 +177,8 @@ describe('health route payload', () => {
 
     const { buildHealth } = await import('../api/routes/health');
     const result = await buildHealth({ app: { get: () => ({}) } });
-    expect(result.status).toBe('degraded');
-    expect(result.checks.db.ok).toBe(true);
+    expect(result.status).toBe('down');
+    expect(result.checks.db.ok).toBe(false);
     expect(result.checks.db.rlsReady).toBe(false);
     expect(result.checks.db.reason).toContain('application_role');
   });

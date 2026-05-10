@@ -169,6 +169,17 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     (manual ingest). Checking only one path silently locks out users who
     created the resource through the other path. PR #96 review (Codex P2).
 
+## M. Health readiness vs tenant isolation (PR #104 review — Codex)
+
+32. **`/health/ready` must not succeed when isolation prerequisites fail.** If
+    authenticated traffic would run without intended RLS context (e.g. Postgres
+    role `application_role` missing after migration 021), the **core DB check
+    must be `down`**, not only `degraded`, so probes return **503** and load
+    balancers stop routing. Reserve **`degraded`** for non-blocking signals
+    (optional integrations, slow probes). Copilot PR #104: when changing the DB
+    health query shape, **grep mocks** (`getPool().query`, `dbQuery.mockResolvedValue`)
+    so every test reflects the new row shape.
+
 ---
 
 If a finding from a code review surprises the agent, add it to
