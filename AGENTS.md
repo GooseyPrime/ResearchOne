@@ -161,3 +161,9 @@ drove the rules is at
   discovery) or via `ingestion_jobs.source_id` (manual ingest). Checking
   only one path locks out users who created the resource through the
   other. PR #96 review (Codex P2).
+- **Readiness vs degraded health:** If the API could serve authenticated
+  requests without intended RLS isolation (e.g. missing Postgres role
+  `application_role`), core health must be **`down`** so `/health/ready`
+  returns **503**, not merely `degraded` / 200. PR #104 review (Codex).
+  When changing `buildHealth`’s DB probe SQL, grep test mocks for stale row
+  shapes (`SELECT 1` vs `application_role_exists`).

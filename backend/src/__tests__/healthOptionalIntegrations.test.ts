@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../db/pool', () => ({
-  getPool: () => ({ query: vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] }) }),
+  getPool: () => ({
+    query: vi.fn().mockResolvedValue({ rows: [{ ok: 1, application_role_exists: true }] }),
+  }),
 }));
 vi.mock('../queue/redis', () => ({
   getRedis: () => ({ ping: vi.fn().mockResolvedValue('PONG') }),

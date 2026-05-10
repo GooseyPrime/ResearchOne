@@ -87,7 +87,7 @@ describe('Express app — public health vs authenticated monitors', () => {
     mkdir.mockReset();
     writeFile.mockReset();
     unlink.mockReset();
-    dbQuery.mockResolvedValue({ rows: [{ '?column?': 1 }] });
+    dbQuery.mockResolvedValue({ rows: [{ ok: 1, application_role_exists: true }] });
     redisPing.mockResolvedValue('PONG');
     queueCounts.mockResolvedValue({ waiting: 0 });
     axiosGet.mockResolvedValue({ data: {} });
