@@ -58,6 +58,11 @@ drove the rules is at
   for Clerk (or similar), keep **`script-src-attr 'none'`** so inline
   event-handler attributes stay blocked (PR #84). See
   `.cursor/rules/00-pre-commit-review.mdc` § G2.
+  PostHog reverse-proxy rewrites must include **`/static`**, **`/array`**
+  (remote config), then the API catch-all **before** the SPA fallback
+  (PR #107 Codex). Prefer minimal **`font-src`**: `fonts.gstatic.com` for
+  Google Fonts; `cdn.scite.ai` only for in-app Scite assets — not extra CDNs
+  to silence browser extensions (PR #107 Copilot).
 - **Migrations:** Before referencing a column in new DDL, grep prior
   migrations for which table owns that column (`sources` vs `documents`,
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).

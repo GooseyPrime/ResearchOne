@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.clerk.accounts.dev https://js.clerk.io https://challenges.cloudflare.com https://js.stripe.com; script-src-elem 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.clerk.accounts.dev https://js.clerk.io https://challenges.cloudflare.com https://js.stripe.com; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdn.scite.ai data:; img-src 'self' data: blob: https://img.clerk.com; connect-src 'self' https: wss:; frame-src https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com https://*.clerk.accounts.dev; worker-src 'self' blob:; frame-ancestors 'self'; object-src 'none'"
+          "value": "default-src 'self'; base-uri 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.clerk.accounts.dev https://js.clerk.io https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com; script-src-elem 'self' 'unsafe-inline' https://www.googletagmanager.com https://*.clerk.accounts.dev https://js.clerk.io https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com https://cdn.scite.ai; img-src 'self' data: blob: https://img.clerk.com; connect-src 'self' https: wss:; frame-src https://js.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com https://*.clerk.accounts.dev; worker-src 'self' blob:; frame-ancestors 'self'; object-src 'none'"
         },
         {
           "key": "Strict-Transport-Security",
@@ -15,6 +15,30 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/relay-H7rw/static/:path*",
+      "destination": "https://us-assets.i.posthog.com/static/:path*"
+    },
+    {
+      "source": "/relay-H7rw/array/:path*",
+      "destination": "https://us-assets.i.posthog.com/array/:path*"
+    },
+    {
+      "source": "/relay-H7rw/:path*",
+      "destination": "https://us.i.posthog.com/:path*"
+    },
+    {
+      "source": "/ingest/static/:path*",
+      "destination": "https://us-assets.i.posthog.com/static/:path*"
+    },
+    {
+      "source": "/ingest/array/:path*",
+      "destination": "https://us-assets.i.posthog.com/array/:path*"
+    },
+    {
+      "source": "/ingest/:path*",
+      "destination": "https://us.i.posthog.com/:path*"
+    },
     {
       "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.svg|og-image\\.png|assets/).*)",
       "destination": "/"

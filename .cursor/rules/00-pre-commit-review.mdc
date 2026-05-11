@@ -90,6 +90,10 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     CSP3 browsers fall back so inline **handler attributes** (`onclick=`,
     etc.) become allowed. PR #84 (Codex/Copilot).
 
+**PostHog reverse proxy on Vercel (PR #107 Codex).** PostHog’s documented proxy stack needs **three** rewrite tiers **before** the SPA fallback, in order: `(prefix)/static/:path*` → `https://us-assets.i.posthog.com/static/:path*`, `(prefix)/array/:path*` → `https://us-assets.i.posthog.com/array/:path*`, then `(prefix)/:path*` → `https://us.i.posthog.com/:path*`. Omitting `/array` sends remote-config / feature-flag assets to the API host (wrong cache headers; stale or broken SDK config). Mirror the same rules for `/ingest` if that prefix is used.
+
+**CSP `font-src` minimalism (PR #107 Copilot).** Keep Google Fonts CSS in `style-src` (`fonts.googleapis.com`); actual font files load from `fonts.gstatic.com` — include the latter in `font-src`, not the former. Add `cdn.scite.ai` only for in-app Scite widget/fonts tied to ResearchOne’s Scite integration — do not widen `font-src` solely to silence browser-extension injections.
+
 ## H. Doc / PR body parity
 
 17. **PR body and header docs must reference symbols that actually
