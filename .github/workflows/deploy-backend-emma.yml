@@ -96,6 +96,7 @@ jobs:
             "cd '${DEPLOY_PATH}' && export DEPLOY_SOURCE=github-actions RESEARCHONE_DEPLOY_PATH='${DEPLOY_PATH}' && bash ./scripts/deploy-runtime.sh"
 
       # Cannot use `secrets` in step `if:` — gate inside the script instead.
+            # Cannot use `secrets` in step `if:` — gate inside the script instead.
       - name: Optional public health check
         env:
           EMMA_PUBLIC_HEALTH_URL: ${{ secrets.EMMA_PUBLIC_HEALTH_URL }}
@@ -105,4 +106,25 @@ jobs:
             echo "Skipping public health check (EMMA_PUBLIC_HEALTH_URL not set)."
             exit 0
           fi
-          curl -sS --fail --max-time 30 "${EMMA_PUBLIC_HEALTH_URL}"
+
+          # Retry to absorb post-deploy warm-up (pm2 restart, proxy cache, TLS handshake).
+          attempts=12
+          sleep_s=5
+          for i in $(seq 1 "${attempts}"); do
+            http_code=$(curl -sS -o /tmp/health.out -w '%{http_code}' \
+              --max-time 30 "${EMMA_PUBLIC_HEALTH_URL}" || echo "000")
+            echo "Attempt ${i}/${attempts}: HTTP ${http_code}"
+            if [ "${http_code}" = "200" ]; then
+              echo "Health check OK."
+              cat /tmp/health.out || true
+              exit 0
+            fi
+            if [ "${i}" -lt "${attempts}" ]; then
+              sleep "${sleep_s}"
+            fi
+          done
+
+          echo "::error::Public health check failed after ${attempts} attempts (last HTTP ${http_code})."
+          echo "----- last response body -----"
+          cat /tmp/health.out || true
+          exit 1
