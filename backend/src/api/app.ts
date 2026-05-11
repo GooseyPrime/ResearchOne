@@ -19,7 +19,7 @@ import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
 import byokRoutes from './routes/byok';
-import { reportMonitorsRouter, userMonitorsRouter } from './routes/monitors';
+import monitorsRoutes from './routes/monitors';
 import notificationsRoutes from './routes/notifications';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
@@ -74,7 +74,7 @@ app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 
-// Public health probes — must mount before any `/api/reports` or `/api/monitors` router that applies requireAuth.
+// Mount public health endpoints explicitly before any broad /api router mounts.
 app.use('/api/health', healthRoutes);
 app.use('/health', healthRoutes);
 
@@ -98,9 +98,8 @@ app.use('/api/webhooks/clerk', clerkWebhookRoutes);
 app.use('/api/webhooks/stripe', stripeWebhookRoutes);
 app.use('/api/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
 
-// Parallel monitor checkout/listing — mount before generic `/api/reports/*` so `/:reportId/monitors` wins.
-app.use('/api/reports', reportMonitorsRouter);
-app.use('/api/monitors', userMonitorsRouter);
+/** Monitor routes use `/api/reports/...` and `/api/monitors/...` — mount at `/api`, not `/api/monitors`. */
+app.use('/api', monitorsRoutes);
 
 for (const [path, router] of routes) {
   app.use(`/api${path}`, router);
@@ -111,8 +110,7 @@ app.use('/webhooks/clerk', clerkWebhookRoutes);
 app.use('/webhooks/stripe', stripeWebhookRoutes);
 app.use('/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
 
-app.use('/reports', reportMonitorsRouter);
-app.use('/monitors', userMonitorsRouter);
+app.use(monitorsRoutes);
 
 for (const [path, router] of routes) {
   app.use(path, router);
