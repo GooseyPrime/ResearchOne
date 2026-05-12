@@ -34,7 +34,10 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
    `.cursor/rules/16-tests-must-fail-without-the-fix.mdc`.)
 5. **Order-sensitive tests must assert order**, not just call counts.
 6. Run `npx tsc --noEmit` and `npx vitest run` locally **after** each
-   meaningful edit, not just at the end.
+   meaningful edit, not just at the end. If a test file assigns
+   `globalThis.IntersectionObserver`, `window.matchMedia`, or similar,
+   save the prior value and restore it in `afterEach` — leaked globals
+   mask failures in later suites (PR #112 Copilot).
 
 ## C. Async / state correctness
 

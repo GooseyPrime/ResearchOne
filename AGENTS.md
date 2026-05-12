@@ -31,6 +31,7 @@ drove the rules is at
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
 | [`.cursor/rules/25-cost-sidecar-and-unit-economics.mdc`](.cursor/rules/25-cost-sidecar-and-unit-economics.mdc) | Cost telemetry sidecar: single emit site, run scope, idempotency, deploy skew. |
 | [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
+| [`.cursor/rules/27-animated-pipeline-hero.mdc`](.cursor/rules/27-animated-pipeline-hero.mdc) | WO-W animated pipeline hero + persona beams. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -44,6 +45,23 @@ drove the rules is at
 4. [`docs/V2_RELIABILITY_PLAN_2026-04-26.md`](docs/V2_RELIABILITY_PLAN_2026-04-26.md)
    — Earlier V2 reliability work. Historical but still in force.
 5. [`README.md`](README.md) — runtime topology.
+
+## Recurring review themes (Codex / Copilot, PR #112)
+
+- **Child state vs DOM-only reads:** When a parent updates `data-*` or
+  similar only after `useEffect`, children that read the DOM once on
+  mount stay stale — pass the resolved value as a React prop when the
+  parent already owns it (e.g. `resolvedPersona` into `AnimatedPipelineHero`).
+- **`display:none` is not a perf off-switch:** Heavy animated subtrees
+  (Framer Motion beam loops) should not rely on CSS hiding alone — gate
+  mounting or `active` from `matchMedia` / layout, without dropping the
+  whole desktop shell if that would break SSR hydration.
+- **Duplicated a11y strings:** Share `role="img"` labels via one exported
+  constant so static and animated paths cannot drift.
+- **SVG `<defs>` ids:** Use `useId()` (or equivalent) so duplicate mounts
+  do not collide on `url(#…)`.
+- **Test global hygiene:** Restore `globalThis.IntersectionObserver`,
+  `window.matchMedia`, etc. after tests that polyfill them.
 
 ## Etiquette
 

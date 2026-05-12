@@ -1,3 +1,5 @@
+import { HERO_PIPELINE_IMG_ARIA_LABEL } from './heroPipelineAria';
+
 const PHASES = [
   {
     label: 'PLAN',
@@ -22,7 +24,7 @@ export default function HeroPipelineVisual() {
     <div
       className="rounded-xl border border-white/10 bg-r1-bg-deep p-6"
       role="img"
-      aria-label="ResearchOne ten-stage pipeline grouped into four phases: Plan, Retrieve and Read, Reason and Challenge, Synthesize and Cite"
+      aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
     >
       <p className="sr-only">
         The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner and Discovery stages.
