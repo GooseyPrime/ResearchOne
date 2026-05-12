@@ -31,6 +31,7 @@ import type {
   RunSummaryPayload,
 } from './researchOrchestratorTypes';
 import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
+import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 
 export type {
   CreditChargeContext,
@@ -180,7 +181,33 @@ function v2CallOpts(
   };
 }
 
+/**
+ * Public entry point. Establishes the cost-telemetry run scope so all
+ * nested `callRoleModel` calls (orchestrator, discovery, report
+ * generator, extractors) emit `agent_executions` rows tagged with the
+ * correct run / user / org. The inner function is `runResearchJobInner`
+ * — do not call it directly.
+ *
+ * Per Rule 25 invariant I-2: only this function (plus the analogous
+ * wrappers in discoveryOrchestrator, reportRevisionService) may call
+ * `runScope.run`.
+ */
 export async function runResearchJob(
+  data: ResearchJobData,
+  onProgress: ProgressCallback
+): Promise<{ runId: string; reportId: string; summary?: RunSummaryPayload }> {
+  return runScope.run(
+    {
+      runId: data.runId,
+      userId: data.creditChargeContext?.userId ?? null,
+      orgId: null,
+      reportId: null,
+    },
+    () => runResearchJobInner(data, onProgress)
+  );
+}
+
+async function runResearchJobInner(
   data: ResearchJobData,
   onProgress: ProgressCallback
 ): Promise<{ runId: string; reportId: string; summary?: RunSummaryPayload }> {
@@ -708,6 +735,7 @@ export async function runResearchJob(
       `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1, report_id=$2, failed_stage=NULL, failure_meta='{}'::jsonb WHERE id=$3`,
       [JSON.stringify(modelLog), reportId, runId]
     );
+    patchAgentExecutionsReportIdForRun(runId, reportId);
 
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {

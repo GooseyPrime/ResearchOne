@@ -25,6 +25,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import UserLookup from './pages/admin/UserLookup';
 import RunTelemetry from './pages/admin/RunTelemetry';
 import AuditLogViewer from './pages/admin/AuditLogViewer';
+import CostAnalytics from './pages/admin/CostAnalytics';
 import SecurityPage from './pages/SecurityPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -78,6 +79,7 @@ export function AppRoutes() {
           <Route index element={<Navigate to="users" replace />} />
           <Route path="users" element={<UserLookup />} />
           <Route path="telemetry" element={<RunTelemetry />} />
+          <Route path="cost" element={<CostAnalytics />} />
           <Route path="audit" element={<AuditLogViewer />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />

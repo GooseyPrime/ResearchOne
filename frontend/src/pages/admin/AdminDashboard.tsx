@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router-dom';
 const NAV_ITEMS = [
   { path: 'users', label: 'User Lookup' },
   { path: 'telemetry', label: 'Run Telemetry' },
+  { path: 'cost', label: 'Cost Analytics' },
   { path: 'audit', label: 'Audit Log' },
 ];
 

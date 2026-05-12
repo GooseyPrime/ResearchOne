@@ -93,6 +93,10 @@ earlier step changed the column type.
    then keep `USING` row-local only (regex + cast). Migration 030 / `0A000`.
 4. **`IF NOT EXISTS` on `pg_constraint`:** scope by `conrelid` →
    `pg_class.relname` / schema — `conname` is not globally unique.
+5. **`CREATE TRIGGER` replay:** Postgres has no `CREATE TRIGGER IF NOT EXISTS`.
+   Partial reruns fail with "trigger already exists". Prefer
+   `DROP TRIGGER IF EXISTS ... ON <table>` before `CREATE TRIGGER`, or a
+   guarded `DO` block (PR #109 Codex — `030_cost_telemetry.sql`).
 
 ## Rule — non-transactional migrations
 

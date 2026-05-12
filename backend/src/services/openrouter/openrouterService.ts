@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import axios, { AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
 import { config } from '../../config';
@@ -14,6 +15,7 @@ import {
 } from '../reasoning/reasoningModelPolicy';
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
+import { emitCallTelemetry } from '../telemetry';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble };
 
@@ -537,11 +539,20 @@ async function callModel(
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
   const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(options);
   const fallbackModel = resolvedFallback;
+  const startedAtMs = Date.now();
+  const telemetryInvocationId = randomUUID();
 
   try {
     const { result, backend } = await callModel(primaryModel, options);
     logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-    return { ...result, usedFallback: false, primaryModel };
+    const augmented = { ...result, usedFallback: false, primaryModel };
+    emitCallTelemetry(augmented, {
+      role: options.role,
+      callPurpose: options.callPurpose,
+      startedAtMs,
+      telemetryInvocationId,
+    });
+    return augmented;
   } catch (err) {
     if (err instanceof NormalizedModelError) {
       logger.warn(`Model primary failed for [${options.role}]`, {
@@ -575,7 +586,14 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       try {
         const { result, backend } = await callModel(fallbackModel, options);
         logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-        return { ...result, usedFallback: true, primaryModel, errorClassification };
+        const augmentedFallback = { ...result, usedFallback: true, primaryModel, errorClassification };
+        emitCallTelemetry(augmentedFallback, {
+          role: options.role,
+          callPurpose: options.callPurpose,
+          startedAtMs,
+          telemetryInvocationId,
+        });
+        return augmentedFallback;
       } catch (fallbackErr) {
         if (fallbackErr instanceof NormalizedModelError) {
           logger.error(`Model fallback also failed for [${options.role}]`, {
