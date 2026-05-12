@@ -4,8 +4,8 @@
  *
  * Called by:
  *   - `reportExportWorker.ts` (BullMQ — the production path)
- *   - synchronous `/api/reports/:id/export?sync=true` (small reports
- *     where the user can wait — bounded to 10s)
+ *   - synchronous `/api/reports/:id/export` with `sync: true` (only
+ *     markdown and HTML; server-enforced short pandoc timeout)
  *
  * Per Cursor rule 28 invariants applied across this file:
  *   I-7 cslConverter is consulted as a pure function for the source
@@ -18,7 +18,6 @@
  * response or uploads to object storage. The pandocRunner tempdir is
  * already cleaned by the time orchestrator returns.
  */
-import { readFile } from 'fs/promises';
 import { adminQuery } from '../../db/pool';
 import { assignEvidenceAliases, aliasesToCslBibliography, rewriteAliasesForPandoc } from './evidenceAliaser';
 import { runPandoc, PandocError, type ExportFormat, type ExportStyle } from './pandocRunner';
@@ -31,6 +30,8 @@ export interface ExportJobInput {
   style: ExportStyle;
   /** User who initiated the export (for scope + audit). */
   userId?: string | null;
+  /** Override default pandoc wall-clock timeout (ms). */
+  pandocTimeoutMs?: number;
 }
 
 export interface ExportJobOutput {
@@ -40,12 +41,6 @@ export interface ExportJobOutput {
   outputBytes: number;
   pandocDurationMs: number;
   aliasCount: number;
-}
-
-interface ReportRow {
-  id: string;
-  title: string | null;
-  body_markdown: string | null;
 }
 
 /**
@@ -72,21 +67,9 @@ export async function exportReport(input: ExportJobInput): Promise<ExportJobOutp
 async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput> {
   const { reportId, format, style } = input;
 
-  // 1. Load the report body.
-  const reports = await adminQuery<ReportRow>(
-    `SELECT id, title, body_markdown
-       FROM reports
-      WHERE id = $1
-      LIMIT 1`,
-    [reportId]
-  );
-  if (reports.length === 0) {
-    throw new PandocError(`report not found: ${reportId}`, 'validation_error');
-  }
-  const report = reports[0];
-  if (!report.body_markdown) {
-    throw new PandocError(`report has no body content: ${reportId}`, 'validation_error');
-  }
+  // 1. Load report title + markdown body from real schema columns
+  //    (`report_sections`, not a fictional `reports.body_markdown`).
+  const { title, bodyMarkdown } = await loadReportMarkdownForExport(reportId);
 
   // 2. Assign / load evidence aliases for this report.
   const aliases = await assignEvidenceAliases(reportId);
@@ -97,12 +80,12 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   // 3. Rewrite the report body to use pandoc citation syntax.
   //    Input:  "... as shown in [E1] ..."
   //    Output: "... as shown in [@E1] ..."
-  const rewrittenBody = rewriteAliasesForPandoc(report.body_markdown);
+  const rewrittenBody = rewriteAliasesForPandoc(bodyMarkdown);
 
   // 4. Wrap the body in a minimal title-block so pandoc can produce
   //    a proper document.
-  const titleBlock = report.title
-    ? `---\ntitle: ${JSON.stringify(report.title)}\n---\n\n`
+  const titleBlock = title
+    ? `---\ntitle: ${JSON.stringify(title)}\n---\n\n`
     : '';
 
   // 5. Build the CSL-JSON bibliography from the aliases.
@@ -114,19 +97,71 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
     cslJson: bibliography,
     format,
     style,
+    timeoutMs: input.pandocTimeoutMs,
   });
-
-  // 7. Read the output file before pandocRunner cleans the tempdir.
-  //    pandocRunner's `finally` block removes the tempdir AFTER this
-  //    function returns, so we must read here.
-  const outputBuffer = await readFile(pandocResult.outputPath);
 
   return {
     format,
     style,
-    outputBuffer,
-    outputBytes: outputBuffer.length,
+    outputBuffer: pandocResult.outputBuffer,
+    outputBytes: pandocResult.outputBytes,
     pandocDurationMs: pandocResult.durationMs,
     aliasCount: aliases.length,
   };
+}
+
+interface ReportMetaRow {
+  title: string;
+  executive_summary: string | null;
+  conclusion: string | null;
+}
+
+interface SectionRow {
+  title: string;
+  content: string;
+  section_order: number;
+}
+
+async function loadReportMarkdownForExport(
+  reportId: string
+): Promise<{ title: string | null; bodyMarkdown: string }> {
+  const metaRows = await adminQuery<ReportMetaRow>(
+    `SELECT title, executive_summary, conclusion
+       FROM reports
+      WHERE id = $1
+      LIMIT 1`,
+    [reportId]
+  );
+  if (metaRows.length === 0) {
+    throw new PandocError(`report not found: ${reportId}`, 'validation_error');
+  }
+  const meta = metaRows[0];
+
+  const sectionRows = await adminQuery<SectionRow>(
+    `SELECT title, content, section_order
+       FROM report_sections
+      WHERE report_id = $1
+      ORDER BY section_order ASC`,
+    [reportId]
+  );
+
+  let body: string;
+  if (sectionRows.length > 0) {
+    body = sectionRows.map((s) => `## ${s.title}\n\n${s.content}`).join('\n\n');
+  } else {
+    const parts: string[] = [];
+    if (meta.executive_summary?.trim()) {
+      parts.push(`## Executive summary\n\n${meta.executive_summary}`);
+    }
+    if (meta.conclusion?.trim()) {
+      parts.push(`## Conclusion\n\n${meta.conclusion}`);
+    }
+    body = parts.join('\n\n');
+  }
+
+  if (!body.trim()) {
+    throw new PandocError(`report has no body content: ${reportId}`, 'validation_error');
+  }
+
+  return { title: meta.title ?? null, bodyMarkdown: body };
 }

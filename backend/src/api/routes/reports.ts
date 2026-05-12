@@ -1,3 +1,4 @@
+import { readFile } from 'fs/promises';
 import { Router, RequestHandler } from 'express';
 import { requireAdmin, requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
@@ -20,6 +21,7 @@ import {
   type ExportStyle,
 } from '../../services/formatting/pandocRunner';
 import { reportExportQueue } from '../../queue/queues';
+import { resolveLocalExportDiskPath } from '../../services/formatting/exportStorage';
 
 const router = Router();
 
@@ -173,6 +175,96 @@ router.post('/:id/publish-featured', requireAdmin, async (req, res, next) => {
 router.use(requireAuth);
 
 /**
+ * GET /api/reports/exports/engine-status
+ *
+ * Lightweight Pandoc availability probe for the export UI (Rule 28 I-6).
+ * Registered before `/exports/:exportId` so `engine-status` is not parsed
+ * as a UUID.
+ */
+router.get('/exports/engine-status', async (_req, res, next) => {
+  try {
+    const avail = await pandocAvailable();
+    res.json({ available: avail.available, version: avail.version });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/reports/exports/:exportId/download
+ *
+ * Auth-gated binary download for completed local exports (PR #115).
+ * Must be registered before `/exports/:exportId` (poll JSON).
+ */
+router.get('/exports/:exportId/download', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const orgId = req.auth?.orgId ?? null;
+    const exportId = req.params.exportId;
+
+    type PickRow = { format: string; status: string; style: string };
+    let rows: PickRow[];
+    try {
+      rows = await adminQuery<PickRow>(
+        `SELECT e.format, e.status, e.style
+           FROM report_exports e
+           JOIN reports r ON r.id = e.report_id
+          WHERE e.id = $1
+            AND e.user_id = $2
+            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
+          LIMIT 1`,
+        [exportId, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId/download' });
+      rows = await adminQuery<PickRow>(
+        `SELECT e.format, e.status, e.style
+           FROM report_exports e
+          WHERE e.id = $1 AND e.user_id = $2
+          LIMIT 1`,
+        [exportId, userId]
+      );
+    }
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'export not found' });
+      return;
+    }
+    if (rows[0].status !== 'completed') {
+      res.status(409).json({
+        error: 'export_not_ready',
+        detail: `Export status is "${rows[0].status}".`,
+      });
+      return;
+    }
+
+    const format = rows[0].format as ExportFormat;
+    const diskPath = resolveLocalExportDiskPath(exportId, format);
+    let buf: Buffer;
+    try {
+      buf = await readFile(diskPath);
+    } catch {
+      res.status(404).json({ error: 'export file missing' });
+      return;
+    }
+
+    res.setHeader('Content-Type', mimeForExportFormat(format));
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="report-export-${exportId.slice(0, 8)}-${rows[0].style}.${format}"`
+    );
+    res.send(buf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/reports/exports/:exportId
  *
  * Polling endpoint for async exports. Must be registered before
@@ -180,7 +272,12 @@ router.use(requireAuth);
  */
 router.get('/exports/:exportId', async (req, res, next) => {
   try {
-    const userId = req.auth?.userId ?? null;
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const orgId = req.auth?.orgId ?? null;
     let rows: Array<{
       id: string;
       status: string;
@@ -195,12 +292,15 @@ router.get('/exports/:exportId', async (req, res, next) => {
     }>;
     try {
       rows = await adminQuery(
-        `SELECT id, status, format, style, output_url, output_bytes,
-                error_class, error_detail, created_at, completed_at
-           FROM report_exports
-          WHERE id = $1 AND ($2::text IS NULL OR user_id = $2)
+        `SELECT e.id, e.status, e.format, e.style, e.output_url, e.output_bytes,
+                e.error_class, e.error_detail, e.created_at, e.completed_at
+           FROM report_exports e
+           JOIN reports r ON r.id = e.report_id
+          WHERE e.id = $1
+            AND e.user_id = $2
+            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
           LIMIT 1`,
-        [req.params.exportId, userId]
+        [req.params.exportId, userId, orgId]
       );
     } catch (dbErr) {
       if ((dbErr as { code?: string }).code === '42P01') {
@@ -210,7 +310,19 @@ router.get('/exports/:exportId', async (req, res, next) => {
         });
         return;
       }
-      throw dbErr;
+      if ((dbErr as { code?: string }).code === '42703') {
+        logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId' });
+        rows = await adminQuery(
+          `SELECT id, status, format, style, output_url, output_bytes,
+                  error_class, error_detail, created_at, completed_at
+             FROM report_exports
+            WHERE id = $1 AND user_id = $2
+            LIMIT 1`,
+          [req.params.exportId, userId]
+        );
+      } else {
+        throw dbErr;
+      }
     }
     if (rows.length === 0) {
       res.status(404).json({ error: 'export not found' });

@@ -79,7 +79,7 @@ export async function assignEvidenceAliases(
 
   // 2. Load all citations for this report in their canonical order.
   //
-  // Canonical order: by section position, then by created_at within a
+  // Canonical order: by section_order, then by created_at within a
   // section. This matches the order a reader encounters citations
   // when reading the report top-to-bottom.
   const citations = await adminQuery<ReportCitationRow>(
@@ -92,7 +92,7 @@ export async function assignEvidenceAliases(
      LEFT JOIN report_sections sec ON sec.id = rc.section_id
      WHERE rc.report_id = $1
        AND rc.source_id IS NOT NULL
-     ORDER BY COALESCE(sec.position, 999999) ASC, rc.created_at ASC`,
+     ORDER BY COALESCE(sec.section_order, 999999) ASC, rc.created_at ASC`,
     [reportId]
   );
 

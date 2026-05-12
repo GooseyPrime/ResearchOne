@@ -1,5 +1,5 @@
 ---
-description: Discipline for the academic formatting engine (Pandoc + xelatex + CSL + Lossless Evidence Aliases). Read before touching anything in backend/src/services/formatting/, the report export API, or the citation_formatter role.
+description: Discipline for the academic formatting engine (Pandoc + xelatex + CSL + Lossless Evidence Aliases). Read before touching anything in backend/src/services/formatting/, the report export API, or the citation_formatter role. Eleven numbered invariants (I-1 … I-11) plus pre-commit checks.
 alwaysApply: false
 globs:
   - "backend/src/services/formatting/**/*.ts"
@@ -153,6 +153,16 @@ leak filesystem paths).
 Per Rule 26 I-2 analogy: server-side enum validation, no free-text
 writes to a subprocess parameter.
 
+### I-11. Production build must copy vendored templates into `dist/`
+
+`tsc` emits only `.js` / `.d.ts`. CSL (`.csl`) and reference DOCX files
+live under `backend/src/services/formatting/templates/`. After
+`npm run build`, `scripts/copy-formatting-templates.mjs` recursively
+copies that tree to `dist/services/formatting/templates/` so
+`join(__dirname, 'templates', …)` in `pandocRunner.ts` resolves when
+running `node dist/index.js`. Removing or skipping this step breaks
+production exports with missing-template errors.
+
 ### I-10. Tests must fail without the fix (Cursor rule 16)
 
 The load-bearing assertions:
@@ -198,3 +208,5 @@ The load-bearing assertions:
 - [ ] No reference templates (.docx, .csl) ship from a non-vendored
       source. All ship from `backend/src/services/formatting/templates/`
       committed to the repo.
+- [ ] `npm run build` still runs `copy-formatting-templates.mjs` after
+      `tsc` so `dist/services/formatting/templates/` exists (I-11).

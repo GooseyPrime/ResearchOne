@@ -51,10 +51,9 @@ export interface PandocRunArgs {
 }
 
 export interface PandocRunResult {
-  /** Path to the generated file inside the per-job tempdir. Caller
-   *  must read & relocate before `tempdir` is cleaned. */
-  outputPath: string;
-  /** Bytes of the output file. */
+  /** Rendered file bytes — read before the per-job scratch dir is removed. */
+  outputBuffer: Buffer;
+  /** Same as `outputBuffer.length` (convenience for telemetry). */
   outputBytes: number;
   /** Subprocess wall-clock duration. */
   durationMs: number;
@@ -121,12 +120,8 @@ export function _resetAvailabilityCache(): void {
  *   3. Write markdown.md and bibliography.json inside the tempdir.
  *   4. spawn pandoc with hardcoded safe flags.
  *   5. Wait with timeout; SIGKILL on overrun.
- *   6. Read output file path; return it.
- *   7. `finally`: remove tempdir.
- *
- * The caller is responsible for COPYING the output file out of the
- * tempdir BEFORE this function returns, or for reading its bytes
- * immediately. After this function returns, the tempdir is gone.
+ *   6. Read output bytes into memory, return them.
+ *   7. `finally`: remove tempdir (after the successful read on the happy path).
  */
 export async function runPandoc(args: PandocRunArgs): Promise<PandocRunResult> {
   validateArgs(args);
@@ -202,9 +197,9 @@ export async function runPandoc(args: PandocRunArgs): Promise<PandocRunResult> {
     }
 
     const durationMs = Date.now() - start;
-    const outputBytes = (await readFile(outputPath)).length;
+    const outputBuffer = await readFile(outputPath);
 
-    return { outputPath, outputBytes, durationMs, stderr };
+    return { outputBuffer, outputBytes: outputBuffer.length, durationMs, stderr };
   } finally {
     // Always clean the tempdir. We intentionally do NOT await before
     // a potential throw above — the `finally` here runs after either
@@ -253,7 +248,9 @@ function pandocOutputFlag(format: ExportFormat): string {
 function resolveCslPath(style: ExportStyle): string {
   // __dirname at runtime is .../backend/dist/services/formatting/ or
   // .../backend/src/services/formatting/ depending on the build. Both
-  // resolve to a `templates/citation-styles/` sibling.
+  // resolve to a `templates/citation-styles/` sibling. Production
+  // `dist/` trees get templates via `npm run build` →
+  // `scripts/copy-formatting-templates.mjs` (Rule 28 I-11).
   return join(__dirname, 'templates', 'citation-styles', `${style}.csl`);
 }
 

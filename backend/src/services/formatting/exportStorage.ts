@@ -2,7 +2,8 @@
  * Storage abstraction for rendered export files.
  *
  * Three implementations behind one interface:
- *   - 'local':  writes under EXPORTS_DIR (see config.exports.dir) + `/exports/<id>.<ext>` URL
+ *   - 'local':  writes under EXPORTS_DIR; download via authenticated
+ *               `GET /api/reports/exports/:id/download` (not public static).
  *   - 's3':     uploads to S3 bucket, returns signed URL with TTL
  *   - 'r2':     same as S3 but Cloudflare R2 endpoint
  *
@@ -24,8 +25,13 @@ export interface UploadArgs {
 }
 
 const BACKEND = process.env.EXPORT_STORAGE_BACKEND ?? 'local';
-/** Align with `app.use('/exports', static(config.exports.dir))` unless overridden. */
+/** On-disk directory for `EXPORT_STORAGE_BACKEND=local` (see `resolveLocalExportDiskPath`). */
 const LOCAL_DIR = process.env.EXPORT_LOCAL_DIR ?? config.exports.dir;
+
+/** Absolute path to a vendored report export file on disk (local backend only). */
+export function resolveLocalExportDiskPath(exportId: string, format: string): string {
+  return join(LOCAL_DIR, `${exportId}.${format}`);
+}
 
 export async function uploadExportOutput(args: UploadArgs): Promise<string> {
   switch (BACKEND) {
@@ -44,9 +50,9 @@ export async function uploadExportOutput(args: UploadArgs): Promise<string> {
 }
 
 async function uploadLocal(args: UploadArgs): Promise<string> {
-  const path = join(LOCAL_DIR, `${args.exportId}.${args.format}`);
+  const path = resolveLocalExportDiskPath(args.exportId, args.format);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, args.buffer);
-  // Served by Express static at `/exports` (see api/app.ts).
-  return `/exports/${args.exportId}.${args.format}`;
+  // Auth-gated download — see `GET /api/reports/exports/:exportId/download`.
+  return `/api/reports/exports/${args.exportId}/download`;
 }

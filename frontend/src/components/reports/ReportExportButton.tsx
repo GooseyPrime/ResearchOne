@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, AlertCircle, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
 
@@ -6,9 +6,8 @@ import api from '../../utils/api';
  * Report export button — opens the format/style selector modal.
  *
  * Behavior:
- *   - Probes `pandocAvailable` on mount via a HEAD-style request to
- *     the export endpoint with a known-no-op body, OR by relying on
- *     the export endpoint's `available:false` response.
+ *   - Probes the export engine on mount via
+ *     `GET /api/reports/exports/engine-status` (Rule 28 I-6).
  *   - Renders disabled with a tooltip when pandoc is unavailable
  *     (Rule 28 I-6).
  *   - Modal handles sync vs async path; small markdown exports stream
@@ -49,6 +48,38 @@ export default function ReportExportButton({ reportId }: ReportExportButtonProps
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<'idle' | 'rendering' | 'polling' | 'done'>('idle');
   const [pandocUnavailable, setPandocUnavailable] = useState(false);
+  /** `loading` until the first engine-status probe finishes. */
+  const [engineProbe, setEngineProbe] = useState<'loading' | 'ok' | 'down' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{ available?: boolean; version?: string | null; detail?: string }>(
+          '/reports/exports/engine-status'
+        );
+        if (cancelled) return;
+        const available = res.data?.available === true;
+        if (!available) {
+          setEngineProbe('down');
+          setPandocUnavailable(true);
+          setError(
+            res.data?.detail ??
+              'Pandoc is not installed on this server. Contact your administrator.'
+          );
+        } else {
+          setEngineProbe('ok');
+        }
+      } catch {
+        if (cancelled) return;
+        // Do not hard-block exports if the probe route is temporarily broken.
+        setEngineProbe('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function startExport() {
     setSubmitting(true);
@@ -76,7 +107,7 @@ export default function ReportExportButton({ reportId }: ReportExportButtonProps
             setError(json.detail ?? 'Pandoc is not installed on this server.');
             return;
           }
-          setError(json.error ?? 'Export failed');
+          setError(json.detail ?? json.error ?? 'Export failed');
           return;
         }
 
@@ -127,12 +158,25 @@ export default function ReportExportButton({ reportId }: ReportExportButtonProps
     throw new Error('Export timed out polling');
   }
 
+  const exportBlocked = engineProbe === 'loading' || pandocUnavailable;
+  const exportTitle =
+    engineProbe === 'loading'
+      ? 'Checking whether the server export engine is available…'
+      : pandocUnavailable
+        ? (error ?? 'Academic export is not available on this server.')
+        : engineProbe === 'error'
+          ? 'Could not verify the export engine; you can still try — the check may have failed.'
+          : undefined;
+
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="btn-secondary inline-flex items-center gap-2"
         aria-label="Export this report"
+        disabled={exportBlocked}
+        title={exportTitle}
       >
         <Download className="w-4 h-4" />
         Export
