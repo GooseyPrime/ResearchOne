@@ -10,14 +10,20 @@ export const stripeCheckoutAllowPromotionCodes = {
 } as const;
 
 /**
- * Subscription Checkout: same promotion codes as {@link stripeCheckoutAllowPromotionCodes}, plus
- * `payment_method_collection: 'if_required'` so Stripe does not collect a card when the amount due
- * is $0 (e.g. 100% discount). Stripe documents this for subscription-mode Checkout Sessions.
+ * Subscription Checkout Session defaults: same promotion codes as
+ * {@link stripeCheckoutAllowPromotionCodes}, plus `payment_method_collection: 'if_required'`
+ * so Stripe does not collect a card when the amount due is $0 (e.g. 100% discount).
+ * Stripe documents this for subscription-mode Checkout Sessions.
  */
-export const stripeCheckoutSubscriptionCustomerDefaults = {
-  allow_promotion_codes: true,
+export const stripeCheckoutSubscriptionSessionDefaults = {
+  ...stripeCheckoutAllowPromotionCodes,
   payment_method_collection: 'if_required' as const,
 } as const;
+
+/**
+ * @deprecated Use {@link stripeCheckoutSubscriptionSessionDefaults}.
+ */
+export const stripeCheckoutSubscriptionCustomerDefaults = stripeCheckoutSubscriptionSessionDefaults;
 
 let stripeClient: InstanceType<typeof Stripe> | null = null;
 
