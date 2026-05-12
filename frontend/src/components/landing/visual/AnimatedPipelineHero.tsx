@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { HERO_PIPELINE_IMG_ARIA_LABEL } from '../heroPipelineAria';
 import HeroPipelineVisual from '../HeroPipelineVisual';
@@ -28,9 +28,10 @@ import {
  *        `data-persona` on a DOM ancestor. Unknown persona → default.
  *
  *   I-6  Animation is gated on viewport visibility via
- *        IntersectionObserver. Off-screen → paused. Desktop beam
- *        subtree mounts only at `md+` matchMedia so mobile does not
- *        run Framer Motion loops behind `display:none`.
+ *        IntersectionObserver. Off-screen → paused. `PipelineBeams`
+ *        mounts only after client layout when `matchMedia('(min-width:
+ *        768px)')` matches Tailwind `md:` so phones do not run the beam
+ *        loop behind `display:none`, while SSR markup stays stable.
  *
  *   I-8  ARIA preserved — same `role="img"` and label that
  *        `HeroPipelineVisual` exposes, applied to the wrapper here so
@@ -71,29 +72,26 @@ export default function AnimatedPipelineHero({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(alwaysAnimate);
-  const [isMdUp, setIsMdUp] = useState(false);
+  /** Client-only: true when viewport is Tailwind `md+`. Starts false for SSR/hydration parity. */
+  const [beamViewportOk, setBeamViewportOk] = useState(false);
   const [palette, setPalette] = useState<BeamPalette>(() =>
     getBeamPalette(forcePersona ?? resolvedPersona)
   );
 
-  // Match Tailwind `md:` — do not mount desktop animation subtree on narrow viewports.
-  useEffect(() => {
+  // Match Tailwind `md:` — defer mounting PipelineBeams until client knows width.
+  useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return;
     }
     const mq = window.matchMedia(MD_MIN_WIDTH_QUERY);
-    const update = () => setIsMdUp(mq.matches);
+    const update = () => setBeamViewportOk(mq.matches);
     update();
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  // IntersectionObserver gate (Rule 27 I-6) — desktop subtree only.
+  // IntersectionObserver gate (Rule 27 I-6).
   useEffect(() => {
-    if (!isMdUp) {
-      setIsVisible(false);
-      return;
-    }
     if (alwaysAnimate) {
       setIsVisible(true);
       return;
@@ -114,7 +112,7 @@ export default function AnimatedPipelineHero({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [alwaysAnimate, isMdUp]);
+  }, [alwaysAnimate]);
 
   // Persona palette: test override → React prop from PersonaAwareHero → DOM ancestor.
   useEffect(() => {
@@ -130,7 +128,7 @@ export default function AnimatedPipelineHero({
     if (!el) return;
     const ancestor = el.closest<HTMLElement>('[data-persona]');
     setPalette(getBeamPalette(ancestor?.dataset.persona));
-  }, [forcePersona, resolvedPersona, isMdUp]);
+  }, [forcePersona, resolvedPersona]);
 
   // ─── Reduced motion path — pure render of the static visual ────
   if (reducedMotion) {
@@ -142,39 +140,37 @@ export default function AnimatedPipelineHero({
   }
 
   return (
-    <div className="w-full">
+    <div ref={containerRef} className="w-full">
       {/* Mobile / narrow — fall back to the existing static layout. */}
       <div className="md:hidden" data-testid="pipeline-mobile-static">
         <HeroPipelineVisual />
       </div>
 
-      {/* Desktop — animated (unmounted below md to avoid off-screen Framer work). */}
-      {isMdUp && (
-        <div
-          ref={containerRef}
-          className="hidden md:block"
-          role="img"
-          aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
-          data-testid="pipeline-animated"
-        >
-          {/* Screen-reader description matches the static visual. */}
-          <p className="sr-only">
-            The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
-            and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
-            Retriever Analysis stages. Phase three, Reason and Challenge, includes the
-            Reasoner and Skeptic stages. The Skeptic is a dedicated adversarial agent that
-            attacks the draft before it proceeds. Phase four, Synthesize and Cite, includes
-            the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
-          </p>
+      {/* Desktop — animated (beams mount only at md+ after client layout). */}
+      <div
+        className="hidden md:block"
+        role="img"
+        aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
+        data-testid="pipeline-animated"
+      >
+        {/* Screen-reader description matches the static visual. */}
+        <p className="sr-only">
+          The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
+          and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
+          Retriever Analysis stages. Phase three, Reason and Challenge, includes the
+          Reasoner and Skeptic stages. The Skeptic is a dedicated adversarial agent that
+          attacks the draft before it proceeds. Phase four, Synthesize and Cite, includes
+          the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
+        </p>
 
-          <div
-            className="relative rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-6"
-            style={{
-              aspectRatio: `${PIPELINE_VIEWBOX.width} / ${PIPELINE_VIEWBOX.height}`,
-              minHeight: 260,
-            }}
-          >
-            <PipelineBeams palette={palette} active={isVisible} />
+        <div
+          className="relative rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-6"
+          style={{
+            aspectRatio: `${PIPELINE_VIEWBOX.width} / ${PIPELINE_VIEWBOX.height}`,
+            minHeight: 260,
+          }}
+        >
+          {beamViewportOk && <PipelineBeams palette={palette} active={isVisible} />}
 
             <div className="absolute inset-0">
               {PIPELINE_STAGES.map((stage) => {
@@ -241,7 +237,6 @@ export default function AnimatedPipelineHero({
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 }

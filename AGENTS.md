@@ -52,9 +52,10 @@ drove the rules is at
   similar only after `useEffect`, children that read the DOM once on
   mount stay stale — pass the resolved value as a React prop when the
   parent already owns it (e.g. `resolvedPersona` into `AnimatedPipelineHero`).
-- **`display:none` is not a perf off-switch:** Expensive subtrees
-  (Framer Motion, observers) may still run unless you unmount or gate
-  `active` at the source; match the breakpoint in JS when battery matters.
+- **`display:none` is not a perf off-switch:** Heavy animated subtrees
+  (Framer Motion beam loops) should not rely on CSS hiding alone — gate
+  mounting or `active` from `matchMedia` / layout, without dropping the
+  whole desktop shell if that would break SSR hydration.
 - **Duplicated a11y strings:** Share `role="img"` labels via one exported
   constant so static and animated paths cannot drift.
 - **SVG `<defs>` ids:** Use `useId()` (or equivalent) so duplicate mounts

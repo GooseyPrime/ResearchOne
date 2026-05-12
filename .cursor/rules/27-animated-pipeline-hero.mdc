@@ -118,9 +118,11 @@ laptop running hot from off-screen RAF" failure mode.
 
 Use `IntersectionObserver` directly, not a library. Pause by passing
 `active={false}` into `PipelineBeams` (Framer `animate` becomes a static
-hold) and by **not mounting** the desktop animated subtree below the
-Tailwind `md` breakpoint (`matchMedia('(min-width: 768px)')`) so
-`display:none` does not hide a still-running motion tree on phones.
+hold). **Also** gate mounting of `PipelineBeams` behind client
+`matchMedia('(min-width: 768px)')` (aligned with Tailwind `md:`) so
+phones never run the infinite beam loop while the desktop column is
+`display:none`. Keep the static node markup in the DOM for SSR/hydration
+parity with the pre-WO-W layout shell.
 
 ### I-7. No SVG filter chains on the critical path
 
