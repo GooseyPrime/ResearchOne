@@ -39,6 +39,8 @@ import {
   type ResearchObjective,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
+import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
+import { useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -217,11 +219,15 @@ export default function ResearchPageV2() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
+  const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
+    useBillingSubscriptionQuery();
 
-  const cachedSub = qc.getQueryData<{ tier: string; status: string }>(['billing-subscription']);
-  const tierResolved = cachedSub !== undefined;
+  const tierResolved =
+    authReady && !subLoading && (!subError || Boolean(subscriptionData));
   const userTier = tierResolved
-    ? (cachedSub.status === 'active' ? cachedSub.tier : 'free_demo')
+    ? stripeSubscriptionGrantsPaidPlan(subscriptionData?.status) && subscriptionData
+      ? subscriptionData.tier
+      : 'free_demo'
     : null;
   const allowedObjectives = userTier
     ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
@@ -455,7 +461,7 @@ export default function ResearchPageV2() {
         setTrackingRunId(null);
         addNotification('success', 'Deep Research complete — report generated!');
         qc.invalidateQueries({ queryKey: ['reports'] });
-        setTimeout(() => navigate(`/reports/${result.reportId}`), 1200);
+        setTimeout(() => navigate(`/app/reports/${result.reportId}`), 1200);
       }
     });
 
@@ -1194,7 +1200,7 @@ function RunRow({
 
   return (
     <div className="card p-3 space-y-2">
-      <div className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2" onClick={() => run.status === 'completed' && navigate(`/reports`)}>
+      <div className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2" onClick={() => run.status === 'completed' && navigate('/app/reports')}>
         <div className="flex items-center gap-3 min-w-0">
           <Icon size={14} className={cfg.color} />
           <div className="min-w-0">

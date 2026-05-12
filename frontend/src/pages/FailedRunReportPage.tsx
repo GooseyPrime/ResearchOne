@@ -576,7 +576,7 @@ export default function FailedRunReportPage() {
           <button
             type="button"
             className="btn-ghost text-xs"
-            onClick={() => navigate(`/reports/${artifacts.reportId}`)}
+            onClick={() => navigate(`/app/reports/${artifacts.reportId}`)}
           >
             Open report
           </button>

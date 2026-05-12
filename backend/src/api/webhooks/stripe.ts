@@ -13,6 +13,7 @@ import { logger } from '../../utils/logger';
 import { getStripeClient, getTopupAmountForPrice } from '../../services/billing/stripeClient';
 import { creditWallet } from '../../services/billing/walletService';
 import { syncSubscription, markSubscriptionCanceled } from '../../services/billing/subscriptionService';
+import { stripeSubscriptionStatusGrantsPlanAccess } from '../../services/billing/stripeSubscriptionStatus';
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
@@ -116,7 +117,7 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
 
   const items = subscription.items?.data ?? [];
   const isMonitorOnlySubscription =
-    subscription.status === 'active' && subscriptionHasLivingReportsPrice(items);
+    stripeSubscriptionStatusGrantsPlanAccess(subscription.status) && subscriptionHasLivingReportsPrice(items);
 
   // Monitor-only subscriptions must not corrupt the user's plan tier.
   // Handle them before tier sync and return early after registration.
@@ -167,7 +168,7 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
   );
 
   const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
-  if (tierFromLookup && subscription.status === 'active') {
+  if (tierFromLookup && stripeSubscriptionStatusGrantsPlanAccess(subscription.status)) {
     try {
       await setUserTier(userId, tierFromLookup);
     } catch (err) {

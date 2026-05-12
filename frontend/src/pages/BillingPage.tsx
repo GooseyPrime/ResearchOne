@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
+import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
+import {
+  BILLING_SUBSCRIPTION_QUERY_KEY,
+  useBillingSubscriptionQuery,
+} from '../hooks/useBillingSubscription';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
   living_report: 'Living Report — $19/mo',
@@ -25,13 +30,6 @@ type WalletResponse = {
     created_at: string;
     balance_after_cents?: number;
   }>;
-};
-
-type SubscriptionResponse = {
-  tier: string;
-  status: string;
-  cancelAtPeriodEnd: boolean;
-  currentPeriodEnd: string | null;
 };
 
 type TopupOption = {
@@ -78,8 +76,25 @@ function formatTimestamp(dateStr: string): string {
 
 export default function BillingPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success') {
+      void queryClient.invalidateQueries(
+        { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
+        { cancelRefetch: false },
+      );
+      void queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
+    }
+    if (checkout === 'success' || checkout === 'cancel') {
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      setSearchParams(next, { replace: true });
+    }
+  }, [queryClient, searchParams, setSearchParams]);
 
   const cachedAuthMe = queryClient.getQueryData<{ userId: string; isAdmin: boolean }>(['auth', 'me']);
   const isAllowlistedAdmin = cachedAuthMe?.isAdmin === true;
@@ -89,10 +104,7 @@ export default function BillingPage() {
     queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
   });
 
-  const subQuery = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: async () => (await api.get<SubscriptionResponse>('/billing/subscription')).data,
-  });
+  const subQuery = useBillingSubscriptionQuery();
 
   const topupOptionsQuery = useQuery({
     queryKey: ['billing-topup-options'],
@@ -113,7 +125,10 @@ export default function BillingPage() {
       return res.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      void queryClient.invalidateQueries(
+        { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
+        { cancelRefetch: false },
+      );
       setCancelError(null);
     },
     onError: (err: unknown) => {
@@ -124,12 +139,14 @@ export default function BillingPage() {
   const balance = useMemo(() => ((walletQuery.data?.balanceCents ?? 0) / 100).toFixed(2), [walletQuery.data]);
 
   const hasActiveSubscription =
-    subQuery.data && subQuery.data.status === 'active' && subQuery.data.tier !== 'free_demo';
+    subQuery.data &&
+    stripeSubscriptionGrantsPaidPlan(subQuery.data.status) &&
+    subQuery.data.tier !== 'free_demo';
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
   const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
   const hasProAccess = isAllowlistedAdmin || (subQuery.data
-    ? PRO_PLUS_TIERS.includes(subQuery.data.tier) && subQuery.data.status === 'active'
+    ? PRO_PLUS_TIERS.includes(subQuery.data.tier) && stripeSubscriptionGrantsPaidPlan(subQuery.data.status)
     : false);
 
   const monitorsQuery = useQuery({
@@ -249,7 +266,7 @@ export default function BillingPage() {
                   <span className="font-medium text-slate-200">Status:</span>{' '}
                   <span className="capitalize">{subQuery.data.status}</span>
                 </p>
-                {subQuery.data.currentPeriodEnd && subQuery.data.status === 'active' && (
+                {subQuery.data.currentPeriodEnd && stripeSubscriptionGrantsPaidPlan(subQuery.data.status) && (
                   <p className="mt-1 text-sm text-slate-400">
                     {subQuery.data.cancelAtPeriodEnd ? (
                       <span className="text-amber-400">

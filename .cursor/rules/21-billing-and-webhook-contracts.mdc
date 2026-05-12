@@ -88,6 +88,22 @@ PR #86 (Codex P1): A Living Report subscription was mapped to
 `free_demo` by `deriveTierFromLookupKey` and overwrote the user's
 real plan tier.
 
+## Rule — frontend subscription query (TanStack + tier UX)
+
+1. **Do not duplicate `useQuery(['billing-subscription'])` with different
+   `queryFn` / options across components.** Use the shared
+   `useBillingSubscriptionQuery()` hook so every observer shares one
+   configuration (PR #114 Copilot).
+2. **A failed `/billing/subscription` fetch must not downgrade paid users
+   to `free_demo` entitlements.** With `retry: false`, `isLoading` is false
+   on error; treat tier as unresolved until there is success data (or
+   accept cached success data from a prior fetch) — same family as PR
+   #94 "never flash restricted UI on transient failure" (PR #114 Codex).
+3. **After Stripe checkout return, `invalidateQueries` can race the
+   Billing page's initial mount fetch.** Pass `{ cancelRefetch: false }`
+   as the second argument to `invalidateQueries` so an in-flight request
+   is not cancelled and immediately restarted (PR #114 Copilot).
+
 ## Rule — savepoints for deploy-skew fallback inside transactions
 
 When a deploy-skew fallback catches a column-missing error (`42703`)
@@ -139,3 +155,6 @@ row without updating it.
   SAVEPOINT / ROLLBACK TO SAVEPOINT?
 - [ ] If a row has a unique constraint and can be cancelled/reactivated,
   does the register/create path handle the reactivation case?
+- [ ] For `/billing/subscription` reads in React, did you use
+  `useBillingSubscriptionQuery()` (or keep options identical) and avoid
+  treating query error as "resolved free tier"?

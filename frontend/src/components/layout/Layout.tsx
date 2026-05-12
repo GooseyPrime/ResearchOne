@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
+import { useBillingSubscriptionQuery } from '../../hooks/useBillingSubscription';
 import api, {
   getStats,
   getSystemHealth,
@@ -26,6 +27,7 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
+import { stripeSubscriptionGrantsPaidPlan } from '../../utils/stripeSubscriptionAccess';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -87,16 +89,11 @@ export default function Layout() {
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
 
-  const { data: subscriptionData, isLoading: subLoading } = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
-    enabled: Boolean(authLoaded && isSignedIn),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data: subscriptionData, isLoading: subLoading } = useBillingSubscriptionQuery();
 
-  const subIsActive = subscriptionData?.status === 'active';
-  const userTier = subIsActive ? subscriptionData.tier : 'free_demo';
+  const subGrantsPlan = stripeSubscriptionGrantsPaidPlan(subscriptionData?.status);
+  const userTier =
+    subGrantsPlan && subscriptionData ? subscriptionData.tier : 'free_demo';
   const hasProAccess =
     isAllowlistedAdmin ||
     (PRO_PLUS_TIERS as readonly string[]).includes(userTier);
