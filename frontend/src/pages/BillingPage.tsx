@@ -4,6 +4,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
 import { startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
+import {
+  BILLING_SUBSCRIPTION_QUERY_KEY,
+  useBillingSubscriptionQuery,
+} from '../hooks/useBillingSubscription';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
   living_report: 'Living Report — $19/mo',
@@ -26,13 +30,6 @@ type WalletResponse = {
     created_at: string;
     balance_after_cents?: number;
   }>;
-};
-
-type SubscriptionResponse = {
-  tier: string;
-  status: string;
-  cancelAtPeriodEnd: boolean;
-  currentPeriodEnd: string | null;
 };
 
 type TopupOption = {
@@ -86,8 +83,11 @@ export default function BillingPage() {
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
-      void queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
-      void queryClient.invalidateQueries({ queryKey: ['billing-wallet'] });
+      void queryClient.invalidateQueries(
+        { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
+        { cancelRefetch: false },
+      );
+      void queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
     }
     if (checkout === 'success' || checkout === 'cancel') {
       const next = new URLSearchParams(searchParams);
@@ -104,10 +104,7 @@ export default function BillingPage() {
     queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
   });
 
-  const subQuery = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: async () => (await api.get<SubscriptionResponse>('/billing/subscription')).data,
-  });
+  const subQuery = useBillingSubscriptionQuery();
 
   const topupOptionsQuery = useQuery({
     queryKey: ['billing-topup-options'],
@@ -128,7 +125,10 @@ export default function BillingPage() {
       return res.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
+      void queryClient.invalidateQueries(
+        { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
+        { cancelRefetch: false },
+      );
       setCancelError(null);
     },
     onError: (err: unknown) => {

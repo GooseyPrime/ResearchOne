@@ -63,6 +63,19 @@ drove the rules is at
 - **Test global hygiene:** Restore `globalThis.IntersectionObserver`,
   `window.matchMedia`, etc. after tests that polyfill them.
 
+## Recurring review themes (Codex / Copilot, PR #114 — billing UI)
+
+- **Single observer for `['billing-subscription']`:** Use
+  `useBillingSubscriptionQuery()` everywhere; do not register the same
+  key with different `queryFn` / options (TanStack ambiguity on refetch).
+- **Query error is not "free_demo resolved":** With `retry: false`, a
+  failed subscription fetch leaves `isLoading` false — keep tier-dependent
+  UI in an unresolved / permissive state unless there is success data (or
+  stale success data), aligned with PR #94 tier-loading guidance.
+- **Stripe return + `invalidateQueries`:** Prefer
+  `invalidateQueries(filters, { cancelRefetch: false })` when the page
+  mount may already be fetching the same queries.
+
 ## Etiquette
 
 - Do not modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`

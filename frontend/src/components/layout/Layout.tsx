@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
+import { useBillingSubscriptionQuery } from '../../hooks/useBillingSubscription';
 import api, {
   getStats,
   getSystemHealth,
@@ -88,13 +89,7 @@ export default function Layout() {
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
 
-  const { data: subscriptionData, isLoading: subLoading } = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
-    enabled: Boolean(authLoaded && isSignedIn),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data: subscriptionData, isLoading: subLoading } = useBillingSubscriptionQuery();
 
   const subGrantsPlan = stripeSubscriptionGrantsPaidPlan(subscriptionData?.status);
   const userTier =

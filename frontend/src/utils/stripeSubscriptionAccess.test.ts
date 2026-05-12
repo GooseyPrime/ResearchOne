@@ -9,4 +9,9 @@ describe('stripeSubscriptionGrantsPaidPlan', () => {
     expect(stripeSubscriptionGrantsPaidPlan('canceled')).toBe(false);
     expect(stripeSubscriptionGrantsPaidPlan(undefined)).toBe(false);
   });
+
+  it('is case-insensitive and rejects empty status', () => {
+    expect(stripeSubscriptionGrantsPaidPlan('TRIALING')).toBe(true);
+    expect(stripeSubscriptionGrantsPaidPlan('')).toBe(false);
+  });
 });

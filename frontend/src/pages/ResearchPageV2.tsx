@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@clerk/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FlaskConical,
@@ -27,7 +26,7 @@ import {
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
-import api, {
+import {
   startResearch,
   getResearchRuns,
   getResearchRun,
@@ -41,6 +40,7 @@ import api, {
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
+import { useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -219,17 +219,11 @@ export default function ResearchPageV2() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
+    useBillingSubscriptionQuery();
 
-  const { data: subscriptionData, isLoading: subLoading } = useQuery({
-    queryKey: ['billing-subscription'],
-    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
-    enabled: Boolean(authLoaded && isSignedIn),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const tierResolved = !subLoading;
+  const tierResolved =
+    authReady && !subLoading && (!subError || Boolean(subscriptionData));
   const userTier = tierResolved
     ? stripeSubscriptionGrantsPaidPlan(subscriptionData?.status) && subscriptionData
       ? subscriptionData.tier
