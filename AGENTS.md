@@ -202,3 +202,64 @@ drove the rules is at
   returns **503**, not merely `degraded` / 200. PR #104 review (Codex).
   When changing `buildHealth`’s DB probe SQL, grep test mocks for stale row
   shapes (`SELECT 1` vs `application_role_exists`).
+
+## Cursor Cloud specific instructions
+
+### Infrastructure services (Docker)
+
+Docker must be running before starting the backend. The development
+environment uses `docker compose up -d postgres redis` from the repo
+root to start PostgreSQL 16 (pgvector) on port 5432 and Redis 7 on
+port 6379. The Docker daemon requires the fuse-overlayfs storage
+driver and iptables-legacy in Cursor Cloud VMs (nested container
+environment). After starting containers, wait for health checks to
+pass before running migrations.
+
+### Starting the application
+
+1. `docker compose up -d postgres redis` — start infrastructure
+2. `cd backend && npm run migrate` — apply all DB migrations
+3. `cd backend && npm run dev` — start backend (Express + BullMQ workers on port 3001)
+4. `cd frontend && npm run dev` — start frontend (Vite on port 5173)
+
+The backend needs the exports directory to be writable:
+`sudo mkdir -p /opt/researchone/exports && sudo chmod 777 /opt/researchone/exports`
+
+### Environment files
+
+- Backend: copy `backend/.env.development.example` → `backend/.env`. Update
+  `DB_PASSWORD` to `devpassword` (matching docker-compose.yml).
+- Frontend: copy `frontend/.env.example` → `frontend/.env.local`. Leave
+  `VITE_API_BASE_URL` and `VITE_SOCKET_URL` blank for same-origin mode.
+
+### Key commands
+
+| Action | Command | Directory |
+|--------|---------|-----------|
+| Backend lint | `npm run lint` | `backend/` |
+| Backend tests | `npm run test` | `backend/` |
+| Backend typecheck | `npm run typecheck` | `backend/` |
+| Frontend lint | `npm run lint` | `frontend/` |
+| Frontend tests | `npm run test` | `frontend/` |
+| Frontend typecheck | `npm run typecheck` | `frontend/` |
+| Run migrations | `npm run migrate` | `backend/` |
+| Backend build | `npm run build` | `backend/` |
+| Frontend build | `npx vite build` | `frontend/` |
+
+### Authentication
+
+Most API routes require Clerk JWT authentication (`requireAuth` middleware).
+The `ADMIN_RUNTIME_TOKEN` in `.env` only works for `requireAdmin`-protected
+routes (admin panel, model overrides, cost analytics). To test authenticated
+user routes, you need valid Clerk keys configured.
+
+### Gotchas
+
+- The `EXPORTS_DIR` path (`/opt/researchone/exports`) must exist and be
+  writable; otherwise the health check reports `status: "down"`.
+- Backend lint has pre-existing warnings/errors (unused vars in test files);
+  these are not from agent changes.
+- Frontend lint uses `--max-warnings 0` so even one pre-existing warning
+  fails the command.
+- The `docker-compose.yml` `version` key triggers a deprecation warning
+  from Docker Compose v2+ — it is harmless.
