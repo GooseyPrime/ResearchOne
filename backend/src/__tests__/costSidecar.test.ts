@@ -200,15 +200,17 @@ describe('costSidecar — emitCallTelemetry', () => {
     // REVERT-CHECK: PATCH-03 — phaseOverride: 'Discovery' in discoveryOrchestrator.
   });
 
-  it('computes deterministic idempotency key', async () => {
+  it('computes deterministic idempotency key when invocation id matches', async () => {
     await runScope.run({ runId: 'r1' }, async () => {
       emitCallTelemetry(fakeResult(), {
         role: 'planner',
         startedAtMs: 1715000000000,
+        telemetryInvocationId: 'test-dedup-pin',
       });
       emitCallTelemetry(fakeResult(), {
         role: 'planner',
-        startedAtMs: 1715000000000,  // identical
+        startedAtMs: 1715000000000,  // identical wall clock + model
+        telemetryInvocationId: 'test-dedup-pin',
       });
       await flushMicrotasks();
     });
@@ -220,21 +222,46 @@ describe('costSidecar — emitCallTelemetry', () => {
     const key1 = (inserts[0][1] as unknown[])[18]; // idempotency_key ($19)
     const key2 = (inserts[1][1] as unknown[])[18];
     expect(key1).toBe(key2);
-    // The ON CONFLICT DO NOTHING in the INSERT statement is what makes
-    // this a single-row outcome at the DB layer; here we just verify
-    // the keys are identical so the conflict path triggers.
-    // REVERT-CHECK: costSidecar.ts:computeIdempotencyKey — the sha256 inputs.
+    // REVERT-CHECK: costSidecar.ts:computeIdempotencyKey — includes
+    // telemetryInvocationId so parallel calls differ; same pin => same key.
+  });
+
+  it('parallel invocations get distinct idempotency keys (different invocation ids)', async () => {
+    await runScope.run({ runId: 'r1' }, async () => {
+      emitCallTelemetry(fakeResult(), {
+        role: 'planner',
+        callPurpose: 'default',
+        startedAtMs: 1715000000000,
+        telemetryInvocationId: 'parallel-a',
+      });
+      emitCallTelemetry(fakeResult(), {
+        role: 'planner',
+        callPurpose: 'default',
+        startedAtMs: 1715000000000,
+        telemetryInvocationId: 'parallel-b',
+      });
+      await flushMicrotasks();
+    });
+
+    const inserts = mockedAdminQuery.mock.calls.filter(([sql]) =>
+      /INSERT INTO agent_executions/i.test(sql as string)
+    );
+    expect(inserts.length).toBe(2);
+    const key1 = (inserts[0][1] as unknown[])[18];
+    const key2 = (inserts[1][1] as unknown[])[18];
+    expect(key1).not.toBe(key2);
   });
 
   it('primary + fallback produce DIFFERENT idempotency keys (different model)', async () => {
     await runScope.run({ runId: 'r1' }, async () => {
+      const sharedInv = 'primary-fallback-inv';
       emitCallTelemetry(
         fakeResult({ model: 'model-A', usedFallback: false, primaryModel: 'model-A' }),
-        { role: 'planner', startedAtMs: 1715000000000 }
+        { role: 'planner', startedAtMs: 1715000000000, telemetryInvocationId: sharedInv }
       );
       emitCallTelemetry(
         fakeResult({ model: 'model-B', usedFallback: true, primaryModel: 'model-A' }),
-        { role: 'planner', startedAtMs: 1715000000000 }
+        { role: 'planner', startedAtMs: 1715000000000, telemetryInvocationId: sharedInv }
       );
       await flushMicrotasks();
     });

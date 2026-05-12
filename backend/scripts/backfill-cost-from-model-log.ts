@@ -10,10 +10,11 @@
  *
  *   1. `model_log` only stores durationMs per call. The real
  *      `started_at_ms` was not persisted at run-time. We approximate it
- *      by laying out calls sequentially backward from
- *      `research_runs.completed_at` (or `created_at` if completed_at is
- *      NULL). This is good enough for analytics but the per-row
- *      timestamps will not match wall-clock truth.
+ *      by laying out calls sequentially **forward** from
+ *      `research_runs.created_at`, advancing `started_at_ms` by each
+ *      entry's `durationMs` (anchor = `created_at`; not `completed_at`).
+ *      This is good enough for analytics but the per-row timestamps will
+ *      not match wall-clock truth.
  *
  *   2. `model_log` does not record `call_purpose`. Phase resolution
  *      falls back to `rolePhaseFor(role)` only — contradiction
@@ -77,11 +78,15 @@ function parseArgs(): { since: string; dryRun: boolean; limit: number | null } {
 function computeIdempotencyKey(args: {
   runId: string;
   agentRole: string;
+  callPurpose: string;
   startedAtMs: number;
   model: string;
+  logIndex: number;
 }): string {
   return createHash('sha256')
-    .update(`${args.runId}|${args.agentRole}|${args.startedAtMs}|${args.model}`)
+    .update(
+      `${args.runId}|${args.agentRole}|${args.callPurpose}|${args.startedAtMs}|${args.model}|backfill:${args.logIndex}`
+    )
     .digest('hex');
 }
 
@@ -104,7 +109,8 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
   let skipped = 0;
   let errors = 0;
 
-  for (const entry of run.model_log) {
+  for (let i = 0; i < run.model_log.length; i++) {
+    const entry = run.model_log[i];
     try {
       const role = entry.role ?? 'unknown';
       const model = entry.model ?? '';
@@ -123,8 +129,10 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
       const idempotencyKey = computeIdempotencyKey({
         runId: run.id,
         agentRole: role,
+        callPurpose: 'default',
         startedAtMs,
         model,
+        logIndex: i,
       });
 
       if (dryRun) {

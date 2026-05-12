@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import axios, { AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
 import { config } from '../../config';
@@ -539,6 +540,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(options);
   const fallbackModel = resolvedFallback;
   const startedAtMs = Date.now();
+  const telemetryInvocationId = randomUUID();
 
   try {
     const { result, backend } = await callModel(primaryModel, options);
@@ -548,6 +550,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       role: options.role,
       callPurpose: options.callPurpose,
       startedAtMs,
+      telemetryInvocationId,
     });
     return augmented;
   } catch (err) {
@@ -588,6 +591,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
           role: options.role,
           callPurpose: options.callPurpose,
           startedAtMs,
+          telemetryInvocationId,
         });
         return augmentedFallback;
       } catch (fallbackErr) {

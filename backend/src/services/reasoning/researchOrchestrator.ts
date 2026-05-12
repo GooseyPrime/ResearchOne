@@ -31,7 +31,7 @@ import type {
   RunSummaryPayload,
 } from './researchOrchestratorTypes';
 import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
-import { runScope } from '../telemetry';
+import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 
 export type {
   CreditChargeContext,
@@ -735,6 +735,7 @@ async function runResearchJobInner(
       `UPDATE research_runs SET status='completed', completed_at=NOW(), model_log=$1, report_id=$2, failed_stage=NULL, failure_meta='{}'::jsonb WHERE id=$3`,
       [JSON.stringify(modelLog), reportId, runId]
     );
+    patchAgentExecutionsReportIdForRun(runId, reportId);
 
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {

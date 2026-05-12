@@ -53,16 +53,21 @@ If you add a new pathway that calls an LLM **without** going through
 
 ### I-2. Run scope is set by the orchestrator, never by `callRoleModel`
 
-`runScope.run({ runId, userId?, orgId?, reportId?, callPurpose? }, fn)`
+`runScope.run({ runId, userId?, orgId?, reportId?, phaseOverride? }, fn)`
 is wrapped around the body of:
 
-- `runResearchPipeline` in `researchOrchestrator.ts`
-- `runDiscoveryOrchestrator` in `discoveryOrchestrator.ts` (nested call;
-  inherits parent scope if already inside one — `AsyncLocalStorage.getStore()`
-  returns the outer ctx, do not stomp it)
-- `runRevisionPipeline` in `reportRevisionService.ts`
-- `generateIterativeReport` in `reportGenerator.ts` (called from
-  orchestrator — inherits, do not re-wrap)
+- `runResearchJob` in `researchOrchestrator.ts` (public entry; inner body
+  is `runResearchJobInner` — do not call the inner function directly)
+- `runDiscoveryOrchestrator` in `discoveryOrchestrator.ts` (often nested;
+  inner scope shadows outer — spread parent ids into the inner ctx)
+- `createReportRevision` in `reportRevisionService.ts`
+- `generateIterativeReport` in `reportGenerator.ts` (called from the
+  orchestrator — inherits scope; do not re-wrap)
+
+After a successful pipeline completion, `researchOrchestrator` sets
+`research_runs.report_id` and calls **`patchAgentExecutionsReportIdForRun`**
+so existing `agent_executions` rows for that run get `report_id` backfilled
+(scope was opened before the report id existed).
 
 `callRoleModel` reads the current scope via `runScope.current()`. If
 there is no scope (test harness, ad-hoc admin script), the emission is
@@ -83,12 +88,17 @@ reports. Don't.
 
 ### I-4. Idempotency key prevents double-counting on retry/fallback
 
-The unique key is `idempotency_key = sha256(run_id || role || call_purpose || started_at_ms || model)`.
-A primary-then-fallback call produces **two** rows because the model
-differs; that's correct — both consumed budget. A bullmq retry that
-re-runs the same stage starts at a different `started_at_ms`, so it
-also produces a new row; the orchestrator's `retry_count` is computed
-separately. Do not collapse retries — the cost is real.
+The unique key is:
+
+`idempotency_key = sha256(run_id || role || call_purpose || started_at_ms || model || telemetry_invocation_id)`.
+
+`callRoleModel` generates one **`telemetryInvocationId`** (UUID) per
+invocation and passes it to both the primary and fallback `emitCallTelemetry`
+calls, so primary+fallback still produce **two** rows (different `model`).
+
+Parallel `callRoleModel` calls (e.g. `Promise.all`) get distinct invocation
+ids so rows never collide on `ON CONFLICT DO NOTHING` when wall-clock
+`started_at_ms` matches.
 
 `ON CONFLICT (idempotency_key) DO NOTHING` is mandatory in the INSERT.
 

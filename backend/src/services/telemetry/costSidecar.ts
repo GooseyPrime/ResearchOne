@@ -9,13 +9,13 @@
  *   I-1: only `callRoleModel` calls emitCallTelemetry.
  *   I-2: run scope is set by orchestrator/discovery/revision/generator only.
  *   I-3: writes are non-blocking and swallow errors.
- *   I-4: idempotency key prevents double-counting.
+ *   I-4: idempotency key (run + role + purpose + time + model + invocation id).
  *   I-6: deploy-skew tolerance — Postgres 42P01 logged at DEBUG.
  *
  * See: docs/COST_SIDECAR_DESIGN.md
  */
 import { AsyncLocalStorage } from 'async_hooks';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { adminQuery } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { computeCostUsd, getModelPrice } from './pricingCatalog';
@@ -142,24 +142,24 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * sha256(run_id || agent_role || started_at_ms || model). Hex-encoded.
+ * sha256(run_id || agent_role || call_purpose || started_at_ms || model
+ *        || telemetry_invocation_id). Hex-encoded.
  *
- * Per rule 25 (I-4): primary + fallback within the same call produce
- * different keys because `model` differs. BullMQ retries produce
- * different keys because `started_at_ms` differs. Both cases write
- * distinct rows — and that's correct, the cost was real.
- *
- * For scope-less calls (runId == null), we hash against an empty string
- * plus the rest; collisions are vanishingly unlikely because
- * `started_at_ms` carries millisecond entropy.
+ * Per rule 25 (I-4): primary + fallback within the same `callRoleModel`
+ * share one `telemetryInvocationId` but produce different keys because
+ * `model` differs. Parallel `callRoleModel` invocations get distinct
+ * invocation ids so `Promise.all` same-ms calls never collide on
+ * `ON CONFLICT DO NOTHING`.
  */
 function computeIdempotencyKey(args: {
   runId: string | null | undefined;
   agentRole: string;
+  callPurpose: string;
   startedAtMs: number;
   model: string;
+  telemetryInvocationId: string;
 }): string {
-  const payload = `${args.runId ?? ''}|${args.agentRole}|${args.startedAtMs}|${args.model}`;
+  const payload = `${args.runId ?? ''}|${args.agentRole}|${args.callPurpose}|${args.startedAtMs}|${args.model}|${args.telemetryInvocationId}`;
   return createHash('sha256').update(payload).digest('hex');
 }
 
@@ -172,6 +172,12 @@ export interface EmitOptions {
   role: string;
   /** Optional ModelCallPurpose. */
   callPurpose?: string;
+  /**
+   * Correlates primary + fallback emits from a single `callRoleModel`
+   * invocation. Parallel invocations must use distinct ids (generated in
+   * `callRoleModel`). Tests may pin this to assert duplicate-key paths.
+   */
+  telemetryInvocationId?: string;
   /**
    * Wall-clock ms when the call started. The orchestrator already
    * captures this via `Date.now()` at the top of `callRoleModel`; we
@@ -195,9 +201,11 @@ export function emitCallTelemetry(result: ModelCallResult, opts: EmitOptions): v
   // the parent function returns and the AsyncLocalStorage context
   // unwinds before the INSERT completes.
   const scope = runScope.current() ?? {};
+  const telemetryInvocationId = opts.telemetryInvocationId ?? randomUUID();
+  const optsResolved: EmitOptions = { ...opts, telemetryInvocationId };
 
   // Build the row payload off-thread; the actual DB call is fire-and-forget.
-  void writeRow(result, opts, scope).catch((err) => {
+  void writeRow(result, optsResolved, scope).catch((err) => {
     const pgCode = (err as { code?: string })?.code;
     if (pgCode === '42P01') {
       // Migration 030 not applied yet. Per rule 25 (I-6), this is a
@@ -237,11 +245,15 @@ async function writeRow(
   const price = await getModelPrice(result.model);
   const calculatedCost = computeCostUsd(result.promptTokens, result.completionTokens, price);
   const phase = scope.phaseOverride ?? rolePhaseFor(opts.role, opts.callPurpose);
+  const callPurpose = opts.callPurpose ?? 'default';
+  const telemetryInvocationId = opts.telemetryInvocationId ?? randomUUID();
   const idempotencyKey = computeIdempotencyKey({
     runId: scope.runId,
     agentRole: opts.role,
+    callPurpose,
     startedAtMs: opts.startedAtMs,
     model: result.model,
+    telemetryInvocationId,
   });
 
   // ON CONFLICT (idempotency_key) DO NOTHING — per rule 25 (I-4).
@@ -273,7 +285,7 @@ async function writeRow(
       scope.orgId ?? null,
       opts.role,
       phase,
-      opts.callPurpose ?? 'default',
+      callPurpose,
       result.model,
       result.usedFallback,
       result.primaryModel,
@@ -292,4 +304,30 @@ async function writeRow(
       }),
     ]
   );
+}
+
+/**
+ * After `research_runs.report_id` is set at completion, backfill
+ * `agent_executions.report_id` for that run so admin rollups and
+ * `distinct_reports` stay accurate. Fire-and-forget; deploy-skew safe.
+ */
+export function patchAgentExecutionsReportIdForRun(runId: string, reportId: string): void {
+  void adminQuery(
+    `UPDATE agent_executions SET report_id = $1::uuid WHERE run_id = $2::uuid`,
+    [reportId, runId]
+  ).catch((err) => {
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === '42P01' || pgCode === '42703') {
+      logger.debug('cost-sidecar: skip report_id patch (migration 030 pending or column missing)', {
+        runId,
+        pgCode,
+      });
+      return;
+    }
+    logger.warn('cost-sidecar: report_id patch failed', {
+      err: err instanceof Error ? err.message : String(err),
+      pgCode,
+      runId,
+    });
+  });
 }

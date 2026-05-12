@@ -29,6 +29,7 @@ drove the rules is at
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
+| [`.cursor/rules/25-cost-sidecar-and-unit-economics.mdc`](.cursor/rules/25-cost-sidecar-and-unit-economics.mdc) | Cost telemetry sidecar: single emit site, run scope, idempotency, deploy skew. |
 
 ## Repo-specific reading list (in priority order)
 
@@ -68,7 +69,16 @@ drove the rules is at
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
   Partial reruns: guard data-fix SQL on column **type** (TEXT-only
   expressions break after `ALTER TYPE`); scope `pg_constraint` checks to
-  the target table — PR #102 (Codex/Copilot).
+  the target table — PR #102 (Codex/Copilot). **`CREATE TRIGGER`** has no
+  `IF NOT EXISTS` — use `DROP TRIGGER IF EXISTS …` before `CREATE` so a
+  migration can replay after a partial failure (PR #109 Codex).
+- **Cost telemetry (`agent_executions`):** Idempotency keys must include
+  per-invocation entropy (`telemetryInvocationId` from `callRoleModel`) so
+  parallel LLM calls never collide on `UNIQUE(idempotency_key)`. After
+  `research_runs.report_id` is assigned at completion, backfill
+  `agent_executions.report_id` (`patchAgentExecutionsReportIdForRun`, PR #109).
+  Keep `.cursor/rules/25-cost-sidecar-and-unit-economics.mdc` aligned with the
+  hash formula in `costSidecar.ts` (PR #109 Copilot — doc/code drift).
 - **Postgres error branching:** Many distinct failures share the same
   `sqlstate`. Do not trigger alternate query paths on code alone (e.g.
   `42883`) — match the **message** for the specific operator mismatch you

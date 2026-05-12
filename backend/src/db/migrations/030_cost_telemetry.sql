@@ -69,6 +69,7 @@ BEGIN
   END IF;
 END $$;
 
+DROP TRIGGER IF EXISTS trg_model_pricing_updated_at ON model_pricing;
 CREATE TRIGGER trg_model_pricing_updated_at
   BEFORE UPDATE ON model_pricing FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
@@ -112,8 +113,8 @@ CREATE TABLE IF NOT EXISTS agent_executions (
   output_price_per_1m_usd     NUMERIC(12,6) NOT NULL DEFAULT 0,
   calculated_cost_usd         NUMERIC(14,8) NOT NULL DEFAULT 0,
 
-  -- Idempotency. sha256(run_id || agent_role || started_at_ms || model).
-  -- Hex-encoded, 64 chars.
+  -- Idempotency. sha256(run_id || agent_role || call_purpose || started_at_ms
+  -- || model || telemetry_invocation_id). Hex-encoded, 64 chars.
   idempotency_key             TEXT NOT NULL UNIQUE,
 
   -- Free-form. Whatever the future wants to grep on.

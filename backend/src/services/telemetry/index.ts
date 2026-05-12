@@ -9,6 +9,7 @@
 export {
   runScope,
   emitCallTelemetry,
+  patchAgentExecutionsReportIdForRun,
   rolePhaseFor,
   type RunScopeContext,
   type EmitOptions,

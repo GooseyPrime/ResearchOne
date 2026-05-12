@@ -92,6 +92,7 @@ export async function getModelPrice(model: string): Promise<ModelPrice> {
     // noise; the row is still written via emitCallTelemetry with the
     // cached price (or zero) and the operator can backfill.
     logger.debug('cost-sidecar: pricing lookup failed', { model, err });
+    cache.set(model, { price: ZERO_PRICE, loadedAt: Date.now() });
     return ZERO_PRICE;
   }
 }

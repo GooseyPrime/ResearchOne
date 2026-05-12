@@ -292,7 +292,7 @@ export default function CostAnalytics() {
                     cx="50%"
                     cy="50%"
                     outerRadius={90}
-                    label={(e) => e.bucket}
+                    label={({ name }) => String(name ?? '')}
                   >
                     {breakdown.data.buckets.map((b, i) => (
                       <Cell

@@ -719,8 +719,10 @@ router.get('/cost/breakdown', async (req, res, next) => {
 router.get('/cost/reports', async (req, res, next) => {
   try {
     const { days, sinceIso } = parseCostWindow(req);
-    const limit = Math.max(1, Math.min(200, parseInt(req.query.limit as string, 10) || 50));
-    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+    const rawLimit = parseInt(req.query.limit as string, 10);
+    const limit = Math.max(1, Math.min(200, Number.isFinite(rawLimit) ? rawLimit : 50));
+    const rawOffset = parseInt(req.query.offset as string, 10);
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
     const userFilter = (req.query.userId as string | undefined)?.trim() || null;
     const phaseFilter = (req.query.phase as string | undefined)?.trim() || null;
 
@@ -734,6 +736,8 @@ router.get('/cost/reports', async (req, res, next) => {
       // the per-run rollup. Document the semantics in the response.
       where.push(`ae.phase = $${p}`); params.push(phaseFilter); p++;
     }
+
+    const whereAe2 = where.map((clause) => clause.replace(/\bae\./g, 'ae2.'));
 
     const sql = `
       SELECT
@@ -750,11 +754,12 @@ router.get('/cost/reports', async (req, res, next) => {
         COUNT(*) FILTER (WHERE ae.used_fallback)::text AS fallback_calls,
         MIN(ae.created_at)                         AS first_call_at,
         MAX(ae.created_at)                         AS last_call_at,
-        -- "highest cost phase" per run, computed via a correlated subquery
+        -- Highest-cost phase for this run within the same window/filters as the outer query.
         (
           SELECT ae2.phase
             FROM agent_executions ae2
-           WHERE ae2.run_id = ae.run_id
+           WHERE ${whereAe2.join(' AND ')}
+             AND ae2.run_id = ae.run_id
            GROUP BY ae2.phase
            ORDER BY SUM(ae2.calculated_cost_usd) DESC NULLS LAST
            LIMIT 1
