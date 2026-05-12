@@ -14,6 +14,7 @@ import {
   type ResearchProgressEvent,
 } from '../utils/api';
 import MonitorToggle from '../components/monitors/MonitorToggle';
+import ReportExportButton from '../components/reports/ReportExportButton';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
@@ -409,6 +410,7 @@ export default function ReportDetailPage() {
       </button>
 
       <ReportActionBar
+        reportId={report.id}
         onPrint={handlePrint}
         onShare={handleShare}
         onDownload={handleDownload}
@@ -754,6 +756,7 @@ export default function ReportDetailPage() {
 
       <ReportActionBar
         className="print:hidden"
+        reportId={report.id}
         onPrint={handlePrint}
         onShare={handleShare}
         onDownload={handleDownload}
@@ -843,6 +846,7 @@ export default function ReportDetailPage() {
 }
 
 function ReportActionBar({
+  reportId,
   onPrint,
   onShare,
   onDownload,
@@ -852,6 +856,7 @@ function ReportActionBar({
   onOpenPlain,
   className,
 }: {
+  reportId: string;
   onPrint: () => void;
   onShare: () => void;
   onDownload: () => void;
@@ -878,6 +883,7 @@ function ReportActionBar({
       <button type="button" className="btn-ghost p-2 h-9 w-9" title="Download Markdown" onClick={onDownload}>
         <Download size={16} />
       </button>
+      <ReportExportButton reportId={reportId} />
       {showPlainLink && (
         <button type="button" className="btn-ghost p-2 h-9 w-9" title="Plain language" onClick={onOpenPlain}>
           <Sparkles size={16} />
