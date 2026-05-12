@@ -54,7 +54,9 @@ export default function PricingPage() {
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <PricingCard title="Free Demo" details="$0 — 3 reports lifetime — General Epistemic only — Watermarked" cta="Start free" to="/sign-up" />
-          <PricingCard title="Student" details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports" cta="Verify and start" to="/sign-up?tier=student" />
+          <div id="student" className="contents">
+            <PricingCard title="Student" details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports" cta="Verify and start" to="/sign-up?tier=student" />
+          </div>
           <PricingCard title="Pro" details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — generous corpus quota" cta="Subscribe" to="/sign-up?tier=pro" featured />
           <PricingCard
             title="Team"

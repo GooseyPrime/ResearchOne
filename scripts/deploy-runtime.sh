@@ -11,12 +11,30 @@
 #   RESEARCHONE_GIT_REF       (default origin/main)
 #   DEPLOY_SOURCE             (e.g. github-actions — recorded in build-meta.json)
 #   SKIP_PREFLIGHT            (set to 1 to skip preflight-runtime.sh)
+#   DATABASE_ADMIN_URL_B64    (optional; base64 of DATABASE_ADMIN_URL — decoded at start; never logged)
 
 set -euo pipefail
 
 DEPLOY_ROOT="${RESEARCHONE_DEPLOY_ROOT:-/opt/researchone}"
 GIT_REF="${RESEARCHONE_GIT_REF:-origin/main}"
 export DEPLOY_ROOT
+
+# Optional: GitHub Actions passes DATABASE_ADMIN_URL_B64 (privileged URL). Decode into a
+# deploy-local variable only — never export DATABASE_ADMIN_URL in this shell: PM2
+# `startOrReload … --update-env` inherits the deploy environment and could persist a
+# bootstrap-only secret into the API process (Codex/Copilot PR #110 review).
+_RO_DATABASE_ADMIN_URL_FROM_B64=""
+if [[ -n "${DATABASE_ADMIN_URL_B64:-}" ]]; then
+  if ! command -v base64 >/dev/null 2>&1; then
+    echo "[deploy] ERROR: base64 is required to decode DATABASE_ADMIN_URL_B64" >&2
+    exit 1
+  fi
+  _RO_DATABASE_ADMIN_URL_FROM_B64="$(printf '%s' "${DATABASE_ADMIN_URL_B64}" | base64 -d)" || {
+    echo "[deploy] ERROR: failed to decode DATABASE_ADMIN_URL_B64 (invalid base64?)" >&2
+    exit 1
+  }
+  unset DATABASE_ADMIN_URL_B64
+fi
 
 echo "[deploy] ResearchOne runtime deploy starting"
 echo "[deploy] DEPLOY_ROOT=${DEPLOY_ROOT} GIT_REF=${GIT_REF}"
@@ -79,6 +97,21 @@ echo "[deploy] npm run migrate"
   npm run migrate
 )
 
+echo "[deploy] npm run bootstrap:application-role (RLS role + grants; fails closed if role missing and DATABASE_ADMIN_URL unset)"
+if [[ -n "${_RO_DATABASE_ADMIN_URL_FROM_B64}" ]]; then
+  (
+    cd "${DEPLOY_ROOT}/backend"
+    DATABASE_ADMIN_URL="${_RO_DATABASE_ADMIN_URL_FROM_B64}" npm run bootstrap:application-role
+  )
+else
+  (
+    cd "${DEPLOY_ROOT}/backend"
+    npm run bootstrap:application-role
+  )
+fi
+unset _RO_DATABASE_ADMIN_URL_FROM_B64
+unset DATABASE_ADMIN_URL || true
+
 echo "[deploy] PM2 reconcile and start/reload"
 PM2_CHECK="$(DEPLOY_ROOT="${DEPLOY_ROOT}" node <<'NODE'
 const { execSync } = require('child_process');
@@ -134,18 +167,23 @@ fi
 
 pm2 save || true
 
-echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health (retry until JSON body)"
-# Do not use curl --fail: /api/health returns 503 when dependency probes report status=down,
-# but the response body is still valid JSON — deploy checks JSON shape, not HTTP greenness.
+echo "[deploy] smoke test: GET http://127.0.0.1:3001/api/health (HTTP 200 + payload status not down)"
 HEALTH_JSON=""
+HEALTH_HTTP_CODE=""
+HEALTH_TMP="${DEPLOY_ROOT}/.health-deploy-smoke.json"
 for _ in {1..90}; do
-  if HEALTH_JSON=$(curl -sS --max-time 5 "http://127.0.0.1:3001/api/health" 2>/dev/null) &&
-    [[ -n "${HEALTH_JSON}" ]]; then
-    export HEALTH_JSON
+  code="000"
+  code=$(curl -sS --max-time 5 -o "${HEALTH_TMP}" -w '%{http_code}' "http://127.0.0.1:3001/api/health" 2>/dev/null || echo "000")
+  if [[ -n "${code}" && "${code}" != "000" && -s "${HEALTH_TMP}" ]]; then
+    HEALTH_HTTP_CODE="${code}"
+    HEALTH_JSON="$(cat "${HEALTH_TMP}")"
+    export HEALTH_JSON HEALTH_HTTP_CODE
+    rm -f "${HEALTH_TMP}"
     break
   fi
   sleep 1
 done
+rm -f "${HEALTH_TMP}"
 if [[ -z "${HEALTH_JSON}" ]]; then
   echo "[deploy] ERROR: could not GET /api/health from 127.0.0.1:3001 after PM2 start (waited ~90s; connection refused, timeout, or empty body)" >&2
   exit 1
@@ -154,6 +192,10 @@ fi
 python3 <<'PY'
 import json, os, sys
 raw = os.environ.get("HEALTH_JSON", "")
+http_code = os.environ.get("HEALTH_HTTP_CODE", "")
+if http_code != "200":
+    print(f"[deploy] ERROR: /api/health must return HTTP 200 when ready (got {http_code})", file=sys.stderr)
+    sys.exit(1)
 try:
     data = json.loads(raw)
 except json.JSONDecodeError as e:
@@ -167,6 +209,10 @@ for bad in ("envFile", "env_file"):
     if bad in data:
         print("[deploy] ERROR: health must not expose env file path", file=sys.stderr)
         sys.exit(1)
+if data.get("status") == "down":
+    print("[deploy] ERROR: health payload status=down (core checks failed — do not ship this deploy)", file=sys.stderr)
+    print(json.dumps(data.get("checks", {}), indent=2)[:8000], file=sys.stderr)
+    sys.exit(1)
 print(
     "[deploy] smoke OK:",
     data.get("service"),

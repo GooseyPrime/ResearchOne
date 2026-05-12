@@ -55,7 +55,9 @@ async function applyRlsContext(client: PoolClient): Promise<void> {
     }
   } catch (err) {
     if (isPostgresRoleDoesNotExist(err, 'application_role')) {
-      logger.warn('application_role does not exist — RLS not active (migration 021 not applied)');
+      logger.warn(
+        'application_role does not exist — RLS not active; run `npm run bootstrap:application-role` with DATABASE_ADMIN_URL (see docs/RUNBOOKS/application-role-bootstrap.md)',
+      );
     } else {
       throw err;
     }

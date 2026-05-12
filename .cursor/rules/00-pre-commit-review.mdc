@@ -192,6 +192,18 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     health query shape, **grep mocks** (`getPool().query`, `dbQuery.mockResolvedValue`)
     so every test reflects the new row shape.
 
+## N. Emma deploy shell + privileged bootstrap (PR #110 follow-up — Codex / Copilot)
+
+34. **Never `export DATABASE_ADMIN_URL` in `deploy-runtime.sh` (or leave it set) before
+    `pm2 startOrReload … --update-env`.** PM2 can inherit the deploy shell environment;
+    a bootstrap-only superuser URL must not reach the API process. Pass the decoded URL
+    only into the **`npm run bootstrap:application-role` subshell**, then `unset
+    DATABASE_ADMIN_URL` before PM2.
+35. **`ALTER DEFAULT PRIVILEGES` in privileged bootstrap must use `FOR ROLE <object_owner>`**
+    when the session user is not the same as the migration/runtime role that creates new
+    tables. Otherwise defaults apply to the admin role only and new objects miss grants to
+    `application_role`.
+
 ---
 
 If a finding from a code review surprises the agent, add it to

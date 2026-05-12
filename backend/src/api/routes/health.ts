@@ -19,7 +19,7 @@ type Check = {
   modelProbe?: string;
   provider?: string;
   ready?: boolean;
-  /** When `false`, Postgres role `application_role` is missing (migration 021). Only defined when the DB probe query succeeded. */
+  /** When `false`, Postgres role `application_role` is missing or unusable for SET ROLE. Only defined when the DB probe query succeeded. */
   rlsReady?: boolean;
   reason?: string;
 };
@@ -159,7 +159,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
       rlsReady: dbProbe.ok ? applicationRolePresent : undefined,
       reason:
         dbProbe.ok && !applicationRolePresent
-          ? 'Postgres role application_role is missing — run migrations (021_rls_setup.sql)'
+          ? 'Postgres role application_role is missing or unusable — run `cd backend && npm run bootstrap:application-role` with DATABASE_ADMIN_URL (see docs/RUNBOOKS/application-role-bootstrap.md); migration 021 alone cannot fix this if it no-oped without CREATEROLE'
           : undefined,
     },
     redis: { ok: redisProbe.ok, latencyMs: redisProbe.latencyMs },

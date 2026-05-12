@@ -15,6 +15,7 @@ import atlasRoutes from './routes/atlas';
 import graphRoutes from './routes/graph';
 import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
+import landingRoutes from './routes/landing';
 import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
@@ -70,7 +71,19 @@ const defaultLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/auth'),
 });
+const landingPersonaEventLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 app.use('/api', defaultLimiter);
+
+// Public landing persona analytics — mount BEFORE Clerk so optional JWTs
+// are never attached to anonymous telemetry and request logs stay
+// userId-null (Rule 26 I-2). Extra-tight limiter; enum-validated writes.
+app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
+
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 

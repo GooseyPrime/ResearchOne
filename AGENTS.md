@@ -30,6 +30,8 @@ drove the rules is at
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
 | [`.cursor/rules/25-cost-sidecar-and-unit-economics.mdc`](.cursor/rules/25-cost-sidecar-and-unit-economics.mdc) | Cost telemetry sidecar: single emit site, run scope, idempotency, deploy skew. |
+| [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
+| [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
 
@@ -64,6 +66,13 @@ drove the rules is at
   (PR #107 Codex). Prefer minimal **`font-src`**: `fonts.gstatic.com` for
   Google Fonts; `cdn.scite.ai` only for in-app Scite assets — not extra CDNs
   to silence browser extensions (PR #107 Copilot).
+- **Emma deploy / PM2:** Never `export` bootstrap-only secrets (e.g. `DATABASE_ADMIN_URL`)
+  for the whole `deploy-runtime.sh` session before `pm2 … --update-env` — scope them to
+  the bootstrap command only, then `unset` before PM2 (PR #110 Codex/Copilot). See
+  `.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`.
+- **Postgres default privileges:** When a privileged session repairs grants, use
+  `ALTER DEFAULT PRIVILEGES FOR ROLE <migration/runtime login>` if that role owns new
+  objects — not bare `ALTER DEFAULT PRIVILEGES` as the admin user (PR #110 Copilot).
 - **Migrations:** Before referencing a column in new DDL, grep prior
   migrations for which table owns that column (`sources` vs `documents`,
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).
@@ -106,6 +115,12 @@ drove the rules is at
   `id="..."` attribute exists on the destination page. PR #93 review
   caught a link to a non-existent anchor. Grep for the fragment before
   pushing.
+- **Landing persona + sample links (PR #108):** Persona CTAs to
+  `/sample-report` must use `topic=` (see `resolveSampleReportTopic`).
+  Anonymous persona beacons must use `publicApi`, not the Clerk JWT
+  `api` client; mount `/api/landing` before `clerkAuthMiddleware` in
+  `app.ts`. In Vitest jsdom, prefer `history.replaceState` over
+  redefining `window.location`.
 - **Copy-code parity on interactions:** If marketing copy describes a
   user interaction ("hover to see…", "click to expand…"), the
   corresponding behavior must actually be implemented. PR #93 review

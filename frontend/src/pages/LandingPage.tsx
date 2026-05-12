@@ -1,9 +1,12 @@
+import { useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import ComparisonTable from '../components/landing/ComparisonTable';
 import EvidenceProvenancePanel from '../components/landing/EvidenceProvenancePanel';
 import FAQ from '../components/landing/FAQ';
 import FinalCTA from '../components/landing/FinalCTA';
-import Hero from '../components/landing/Hero';
+import PersonaAwareHero from '../components/landing/persona/PersonaAwareHero';
+import type { PersonaId } from '../components/landing/persona/personaResolver';
+import LabNotebookCanvas from '../components/landing/visual/LabNotebookCanvas';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 import LivingReportsSection from '../components/landing/LivingReportsSection';
@@ -11,6 +14,7 @@ import ModeCard from '../components/landing/ModeCard';
 import PipelineDiagram from '../components/landing/PipelineDiagram';
 import PricingCard from '../components/landing/PricingCard';
 import WhyResearchOne from '../components/landing/WhyResearchOne';
+import { publicApi } from '../utils/api';
 
 const SAMPLE_REPORTS = [
   {
@@ -104,11 +108,23 @@ const FAQ_ITEMS = [
 ];
 
 export default function LandingPage() {
+  const personaBeaconDedupeRef = useRef<{ key: string; at: number } | null>(null);
+  const onPersonaResolved = useCallback((persona: PersonaId, path: string) => {
+    const now = Date.now();
+    const key = `${persona}\0${path}`;
+    const prev = personaBeaconDedupeRef.current;
+    if (prev && prev.key === key && now - prev.at < 800) return;
+    personaBeaconDedupeRef.current = { key, at: now };
+    void publicApi
+      .post('/landing/persona-event', { persona, path, eventType: 'view' })
+      .catch(() => {});
+  }, []);
+
   return (
-    <div className="min-h-screen bg-r1-bg text-r1-text">
+    <LabNotebookCanvas className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
 
-      <Hero />
+      <PersonaAwareHero onPersonaResolved={onPersonaResolved} />
 
       <WhyResearchOne />
 
@@ -242,6 +258,6 @@ export default function LandingPage() {
       </section>
 
       <LandingFooter />
-    </div>
+    </LabNotebookCanvas>
   );
 }
