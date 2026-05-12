@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { adminQuery } from '../../db/pool';
-import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -28,11 +27,7 @@ router.post('/persona-event', async (req, res, next) => {
     const eventType = String(body.eventType ?? 'view').toLowerCase();
 
     if (!VALID_PERSONAS.has(persona)) {
-      // Silent reject — do not echo the bad value, do not 400 — we
-      // do not want to give attackers a probe surface for our enum.
-      // The frontend should not send invalid values; if it does, log
-      // at DEBUG and return 204 so the request silently no-ops.
-      logger.debug('persona-event: invalid persona, dropping', { persona });
+      // Silent reject — do not echo attacker-controlled strings in logs.
       res.status(204).end();
       return;
     }

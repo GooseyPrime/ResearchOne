@@ -78,16 +78,18 @@ const landingPersonaEventLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api', defaultLimiter);
+
+// Public landing persona analytics — mount BEFORE Clerk so optional JWTs
+// are never attached to anonymous telemetry and request logs stay
+// userId-null (Rule 26 I-2). Extra-tight limiter; enum-validated writes.
+app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
+
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 
 // Mount public health endpoints explicitly before any auth-protected routes.
 app.use('/api/health', healthRoutes);
 app.use('/health', healthRoutes);
-
-// Public landing persona analytics — extra-tight limiter, no auth,
-// enum-validated writes (Rule 26 I-2).
-app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
 
 const routes: Array<[string, express.Router]> = [
   ['/ingestion', ingestionRoutes],

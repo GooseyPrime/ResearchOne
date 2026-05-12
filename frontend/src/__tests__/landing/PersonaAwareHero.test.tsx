@@ -30,14 +30,11 @@ function renderHero(props: Parameters<typeof PersonaAwareHero>[0] = {}) {
 
 beforeEach(() => {
   _clearPersonaCache();
-  // Default fixture: clean URL, no referrer.
-  Object.defineProperty(window, 'location', {
-    value: new URL('http://localhost/'),
-    writable: true,
-  });
+  window.history.replaceState({}, '', '/');
   Object.defineProperty(document, 'referrer', {
     value: '',
     configurable: true,
+    writable: true,
   });
 });
 
@@ -111,10 +108,7 @@ describe('PersonaAwareHero — forcePersona', () => {
 describe('PersonaAwareHero — analytics callback', () => {
   it('onPersonaResolved fires exactly once with the resolved persona and path', async () => {
     const cb = vi.fn();
-    Object.defineProperty(window, 'location', {
-      value: new URL('http://localhost/?p=osint'),
-      writable: true,
-    });
+    window.history.replaceState({}, '', '/?p=osint');
     renderHero({ onPersonaResolved: cb });
     await waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
     expect(cb).toHaveBeenCalledWith('osint', '/');
@@ -130,10 +124,7 @@ describe('PersonaAwareHero — analytics callback', () => {
 
 describe('PersonaAwareHero — URL query param routes to persona variant', () => {
   it('?p=academic surfaces the academic copy', async () => {
-    Object.defineProperty(window, 'location', {
-      value: new URL('http://localhost/?p=academic'),
-      writable: true,
-    });
+    window.history.replaceState({}, '', '/?p=academic');
     renderHero();
     await waitFor(() => {
       expect(screen.getByText(/Citation-grade synthesis/i)).toBeInTheDocument();

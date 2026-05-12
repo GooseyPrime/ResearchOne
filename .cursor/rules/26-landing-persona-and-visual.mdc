@@ -11,7 +11,11 @@ globs:
   - "frontend/src/pages/LandingPage.tsx"
   - "frontend/src/components/landing/Hero.tsx"
   - "backend/src/api/routes/landing.ts"
+  - "backend/src/api/app.ts"
   - "backend/src/db/migrations/031_landing_persona_analytics.sql"
+  - "frontend/src/pages/PricingPage.tsx"
+  - "frontend/src/pages/SampleReportPage.tsx"
+  - "frontend/src/utils/api.ts"
 ---
 
 # Landing persona + visual architecture — invariants
@@ -59,6 +63,15 @@ user identifier.
 The analytics table is intentionally append-only with no FK to
 `users`. It tracks aggregate persona-conversion shape, nothing else.
 
+**Implementation (PR #108 review):** (1) POST from the SPA must use
+`publicApi` in `frontend/src/utils/api.ts` — not the default `api`
+instance that attaches Clerk JWTs when present. (2) Mount
+`/api/landing` in `backend/src/api/app.ts` **before**
+`clerkAuthMiddleware` so `request_completed` logs keep `userId: null`
+for this path even if a browser sends a bearer token. (3) Do not log
+raw rejected `persona` / `eventType` strings at any level — treat them
+as attacker-controlled.
+
 ### I-3. Default copy is the SAME copy that exists today
 
 The existing `Hero.tsx` lives unchanged. `PersonaAwareHero` ALWAYS
@@ -80,6 +93,12 @@ operational burden (cost, latency, downtime, schema drift).
 
 Editing a persona's copy is a code change with the standard PR
 review path. This is intentional: the words are the product.
+
+**CTA / deep-link parity:** Any `Link` `to=` that promises a specific
+sample mode must use query keys `SampleReportPage` actually reads
+(`topic=` as implemented in `resolveSampleReportTopic`). If you add a
+new sample variant, extend `TOPIC_LABELS` and the resolver in the same
+PR. PR #108 Codex.
 
 ### I-5. Lab-notebook background is CSS-only
 

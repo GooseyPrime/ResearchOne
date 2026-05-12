@@ -216,9 +216,15 @@
     }
   }
 
-  /* Users who prefer reduced motion or who explicitly disable the
-   * ruling via a body class can opt out. Useful for printing the
-   * landing as a PDF (the ruling photocopies poorly). */
+  /* Opt out of ruling lines: add class `no-ruling` on the canvas wrapper.
+   * Also hidden under `prefers-reduced-motion: reduce` (static background
+   * reads calmer for motion-sensitive users). Useful for PDFs (ruling
+   * photocopies poorly). */
+  @media (prefers-reduced-motion: reduce) {
+    .lab-notebook-canvas {
+      background-image: none;
+    }
+  }
   .lab-notebook-canvas.no-ruling {
     background-image: none;
   }

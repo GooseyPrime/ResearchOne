@@ -66,7 +66,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       'A dedicated Skeptic agent. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',
     ctas: [
-      { label: 'See the Investigative mode', to: '/sample-report?mode=investigative', variant: 'primary' },
+      { label: 'See the Investigative mode', to: '/sample-report?topic=investigative', variant: 'primary' },
       { label: 'Pricing',                    to: '/pricing',                          variant: 'secondary' },
     ],
     proofLine: 'PolicyOne epistemic doctrine \u00B7 Open-weight reasoning \u00B7 No corporate alignment filters on the critical path.',
@@ -84,7 +84,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       'Built on open-weight models with no alignment filter overriding what the evidence actually says. ' +
       'Anomaly Correlation mode: map weak signals, preserve contradictions, surface what the official story omits.',
     ctas: [
-      { label: 'See an Anomaly Correlation report', to: '/sample-report?mode=anomaly-correlation', variant: 'primary' },
+      { label: 'See an Anomaly Correlation report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
       { label: 'How it works',                       to: '/methodology',                            variant: 'secondary' },
     ],
     proofLine: 'Skeptic agent on every claim \u00B7 Five evidence tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
@@ -120,7 +120,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       'Patent / Technical Gap mode maps the prior-art landscape the same way an examiner does \u2014 ' +
       'but surfaces non-consensus and cross-discipline references the big patent databases miss.',
     ctas: [
-      { label: 'See a Patent Gap report',  to: '/sample-report?mode=patent', variant: 'primary' },
+      { label: 'See a Patent Gap report',  to: '/sample-report?topic=patent-gap', variant: 'primary' },
       { label: 'Sovereign / on-prem',      to: '/sovereign',                  variant: 'secondary' },
     ],
     proofLine: 'Citation Integrity Checker \u00B7 Lossless evidence aliases \u00B7 Source-diverse, not source-voluminous.',

@@ -97,6 +97,12 @@ drove the rules is at
   `id="..."` attribute exists on the destination page. PR #93 review
   caught a link to a non-existent anchor. Grep for the fragment before
   pushing.
+- **Landing persona + sample links (PR #108):** Persona CTAs to
+  `/sample-report` must use `topic=` (see `resolveSampleReportTopic`).
+  Anonymous persona beacons must use `publicApi`, not the Clerk JWT
+  `api` client; mount `/api/landing` before `clerkAuthMiddleware` in
+  `app.ts`. In Vitest jsdom, prefer `history.replaceState` over
+  redefining `window.location`.
 - **Copy-code parity on interactions:** If marketing copy describes a
   user interaction ("hover to see…", "click to expand…"), the
   corresponding behavior must actually be implemented. PR #93 review

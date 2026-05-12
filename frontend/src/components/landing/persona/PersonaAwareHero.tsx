@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import HeroPipelineVisual from '../HeroPipelineVisual';
 import { resolvePersona, type PersonaId } from './personaResolver';
@@ -14,9 +14,11 @@ import { getPersonaContent } from './personaContent';
  * variant from `personaContent.ts`, which is locked to match
  * `Hero.tsx`.
  *
- * Per Cursor rule 26 I-7: resolution is deterministic. The
- * `useEffect` runs once on mount; the result is stable for the life
- * of the component.
+ * Per Cursor rule 26 I-7: resolution is deterministic for a given
+ * (search, referrer, pathname) triple. After mount, `forcePersona`
+ * (if provided) or `resolvePersona()` sets the persona; the
+ * `onPersonaResolved` ref always sees the latest parent callback
+ * without re-running resolution when only the callback identity changes.
  *
  * Per Cursor rule 26 I-1: SSR-safe — the resolver returns 'default'
  * when `window` is undefined, and we render the default copy on the
@@ -50,21 +52,19 @@ export default function PersonaAwareHero({
 }: PersonaAwareHeroProps) {
   // SSR safety: start with 'default'. Re-resolve after mount.
   const [persona, setPersona] = useState<PersonaId>(forcePersona ?? 'default');
+  const onPersonaResolvedRef = useRef(onPersonaResolved);
+  onPersonaResolvedRef.current = onPersonaResolved;
 
   useEffect(() => {
     if (forcePersona) {
       setPersona(forcePersona);
-      onPersonaResolved?.(forcePersona, window.location.pathname);
+      onPersonaResolvedRef.current?.(forcePersona, window.location.pathname);
       return;
     }
     const resolved = resolvePersona();
     setPersona(resolved);
-    onPersonaResolved?.(resolved, window.location.pathname);
-    // Intentionally empty deps: resolve once on mount. forcePersona
-    // is captured by closure; if a parent changes it, that's an
-    // exceptional case we'd handle by adding it to deps deliberately.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    onPersonaResolvedRef.current?.(resolved, window.location.pathname);
+  }, [forcePersona]);
 
   const content = useMemo(() => getPersonaContent(persona), [persona]);
 

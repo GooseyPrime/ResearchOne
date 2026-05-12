@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS landing_persona_events (
   persona       TEXT NOT NULL CHECK (persona IN ('osint','uap','academic','patent','default')),
   path          TEXT NOT NULL,
   -- Bucketed to the minute so aggregates can be computed without
-  -- exposing individual visit timing. NOW() truncated to minute on
-  -- insert via the trigger below.
+  -- exposing individual visit timing. DEFAULT uses date_trunc on insert.
   bucketed_at   TIMESTAMPTZ NOT NULL DEFAULT date_trunc('minute', NOW()),
   -- Optional event type — 'view' is current; future could add
   -- 'cta_click' for in-page tracking. Keep enum tight.
