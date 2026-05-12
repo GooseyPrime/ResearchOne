@@ -154,5 +154,8 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
   const { startLivingReportRevisionWorker } = await import('./workers/livingReportRevisionWorker');
   startLivingReportRevisionWorker(io);
 
+  const { startReportExportWorker } = await import('./workers/reportExportWorker');
+  startReportExportWorker(io);
+
   logger.info('All BullMQ workers started');
 }

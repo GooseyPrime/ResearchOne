@@ -9,6 +9,7 @@ export const QUEUE_NAMES = {
   PIPELINE_B_INGESTION: 'pipeline-b-ingestion',
   INTELLME_DELETION: 'intellme-deletion',
   LIVING_REPORT_REVISION: 'living-report-revision',
+  REPORT_EXPORT: 'report_export',
 } as const;
 
 const connection = createRedisConnection();
@@ -90,5 +91,15 @@ export const livingReportRevisionQueue = new Queue(QUEUE_NAMES.LIVING_REPORT_REV
     backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: { age: 86400, count: 50 },
     removeOnFail: { age: 1209600, count: 100 },
+  },
+});
+
+export const reportExportQueue = new Queue(QUEUE_NAMES.REPORT_EXPORT, {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { age: 3600, count: 200 },
+    removeOnFail: { age: 86400, count: 100 },
   },
 });

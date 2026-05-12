@@ -177,6 +177,7 @@ const config = {
     sectionRewriter: process.env.SECTION_REWRITER_MODEL || CODE_DEFAULT_REASONING_MODELS.sectionRewriter,
     citationIntegrityChecker:
       process.env.CITATION_INTEGRITY_CHECKER_MODEL || CODE_DEFAULT_REASONING_MODELS.citationIntegrityChecker,
+    citationFormatter: process.env.CITATION_FORMATTER_MODEL || CODE_DEFAULT_REASONING_MODELS.citationFormatter,
     finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.finalRevisionVerifier,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
@@ -199,6 +200,7 @@ const config = {
       sectionRewriter: process.env.SECTION_REWRITER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.sectionRewriter,
       citationIntegrityChecker:
         process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationIntegrityChecker,
+      citationFormatter: process.env.CITATION_FORMATTER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationFormatter,
       finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.finalRevisionVerifier,
     },
   },
@@ -416,6 +418,7 @@ const reasoningModelsForPolicy = {
   change_planner: config.models.changePlanner,
   section_rewriter: config.models.sectionRewriter,
   citation_integrity_checker: config.models.citationIntegrityChecker,
+  citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
@@ -436,6 +439,7 @@ const reasoningFallbacksForPolicy = {
   change_planner: config.models.fallbacks.changePlanner,
   section_rewriter: config.models.fallbacks.sectionRewriter,
   citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+  citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 

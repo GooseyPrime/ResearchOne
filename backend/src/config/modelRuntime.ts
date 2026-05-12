@@ -73,6 +73,10 @@ export function baseModelsFromConfig(): ResolvedModels {
         primary: config.models.citationIntegrityChecker,
         fallback: config.models.fallbacks.citationIntegrityChecker,
       },
+      citation_formatter: {
+        primary: config.models.citationFormatter,
+        fallback: config.models.fallbacks.citationFormatter,
+      },
       final_revision_verifier: {
         primary: config.models.finalRevisionVerifier,
         fallback: config.models.fallbacks.finalRevisionVerifier,
