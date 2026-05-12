@@ -1,0 +1,186 @@
+---
+description: Discipline for the cost-telemetry sidecar (agent_executions, pricing catalog, admin cost analytics). Read before touching anything in backend/src/services/telemetry/ or any cost-related admin route.
+alwaysApply: false
+globs:
+  - "backend/src/services/telemetry/**/*.ts"
+  - "backend/src/services/openrouter/openrouterService.ts"
+  - "backend/src/services/reasoning/researchOrchestrator.ts"
+  - "backend/src/services/reasoning/reportRevisionService.ts"
+  - "backend/src/services/reasoning/reportGenerator.ts"
+  - "backend/src/services/discovery/discoveryOrchestrator.ts"
+  - "backend/src/db/migrations/030_cost_telemetry.sql"
+  - "backend/src/api/routes/admin.ts"
+  - "frontend/src/pages/admin/CostAnalytics.tsx"
+---
+
+# Cost telemetry sidecar — invariants
+
+## Why this rule exists
+
+The 10-stage pipeline (Planner → Discovery → Retriever → Reasoner →
+Skeptic → Synthesizer → Verifier → Report Generator → Revision Workflow
+→ Epistemic Persistence) makes per-report unit economics impossible to
+estimate from logs alone. Admin needs an exact `$X.XX` per report so we
+can: (a) tune the V2 reasoner-class defaults toward the cheapest model
+that still passes the forbidden-defaults regression, (b) cap reports
+that exceed budget, (c) price Sovereign deals against real cost rather
+than guesses, and (d) detect bottleneck agents (the Skeptic running
+twice in a recovery loop, a verifier eating 4× budget).
+
+This rule exists so the telemetry path itself cannot become the next
+bug-fountain — the same pattern that produced 22 PR #36–#40 reviewer
+findings is exactly the shape this code could take: async writes,
+multi-writer races, deploy-skew, fallback UPDATEs that drop fields.
+
+## Invariants
+
+### I-1. Single instrumentation point
+
+All token/duration/cost telemetry emission goes through **`callRoleModel`
+in `openrouter/openrouterService.ts`**, after a successful call (primary
+or fallback). Do NOT add `emitCallTelemetry` calls anywhere else
+(orchestrator, discovery, revision, generator, extractors). Every LLM
+call site already routes through `callRoleModel`; per Cursor rule 17,
+ripple-and-grep confirms no exceptions exist.
+
+If you add a new pathway that calls an LLM **without** going through
+`callRoleModel`, you must either:
+
+1. Route it through `callRoleModel` (preferred — gets fallback, model
+   policy, BYOK forwarding, telemetry for free), or
+2. Call `emitCallTelemetry` directly and write a regression test that
+   asserts the new pathway produces an `agent_executions` row.
+
+### I-2. Run scope is set by the orchestrator, never by `callRoleModel`
+
+`runScope.run({ runId, userId?, orgId?, reportId?, callPurpose? }, fn)`
+is wrapped around the body of:
+
+- `runResearchPipeline` in `researchOrchestrator.ts`
+- `runDiscoveryOrchestrator` in `discoveryOrchestrator.ts` (nested call;
+  inherits parent scope if already inside one — `AsyncLocalStorage.getStore()`
+  returns the outer ctx, do not stomp it)
+- `runRevisionPipeline` in `reportRevisionService.ts`
+- `generateIterativeReport` in `reportGenerator.ts` (called from
+  orchestrator — inherits, do not re-wrap)
+
+`callRoleModel` reads the current scope via `runScope.current()`. If
+there is no scope (test harness, ad-hoc admin script), the emission is
+tagged `run_id=NULL` and written to `agent_executions` with
+`run_id IS NULL` — this is intentional and lets us track unattributed
+calls. Do not throw when scope is missing.
+
+### I-3. Writes are best-effort and non-blocking
+
+`emitCallTelemetry` is `void` and `.catch(...)` swallows errors. A
+telemetry DB outage **must not** fail a research run. The orchestrator's
+existing `model_log` JSONB column remains the primary source of truth;
+`agent_executions` is the analytics-optimized denormalization.
+
+If you ever change `emitCallTelemetry` to throw or to `await` in the
+critical path, you have created a new failure mode for completing
+reports. Don't.
+
+### I-4. Idempotency key prevents double-counting on retry/fallback
+
+The unique key is `idempotency_key = sha256(run_id || role || call_purpose || started_at_ms || model)`.
+A primary-then-fallback call produces **two** rows because the model
+differs; that's correct — both consumed budget. A bullmq retry that
+re-runs the same stage starts at a different `started_at_ms`, so it
+also produces a new row; the orchestrator's `retry_count` is computed
+separately. Do not collapse retries — the cost is real.
+
+`ON CONFLICT (idempotency_key) DO NOTHING` is mandatory in the INSERT.
+
+### I-5. Pricing is a configuration table, not hardcoded
+
+`model_pricing` is a DB table seeded by the migration. Provider price
+changes are an admin UPDATE on that table, never a code change. The
+pricing catalog code reads pricing once per process start with a
+60-second TTL refresh — pricing changes do not require a redeploy.
+
+Models not present in `model_pricing` resolve to `(0, 0)` and the row
+is logged at `WARN` level with model id. Cost shows as `$0.00` but the
+row still exists with tokens — operators see "we used model X 14,200
+tokens but no price configured" and can backfill.
+
+### I-6. Deploy-skew tolerance (Cursor rule 13)
+
+Until migration 030 has applied, `emitCallTelemetry` will hit
+Postgres `42P01` (`relation "agent_executions" does not exist`) on
+its INSERT. The writer catches this exact code and logs at DEBUG.
+Do NOT escalate to WARN/ERROR until migration 030 is present in
+`schema_migrations` — operators tail logs during rollout and a 503-
+class error during this window is a known-tolerable state.
+
+Until migration 030 has applied, admin cost endpoints (`/admin/cost/*`)
+return `{ available: false, reason: "migration_pending" }` with HTTP
+200. They do not 500. This matches the precedent in admin `/audit-log`
+which catches `42P01` and returns `entries: []` with a `notice`.
+
+### I-7. Backfill from `model_log` is one-shot and idempotent
+
+`backend/scripts/backfill-cost-from-model-log.ts` reads
+`research_runs.model_log` JSONB for runs since a `--since` flag (default:
+beginning of the year) and inserts `agent_executions` rows using the
+same idempotency key. Re-running the script is safe — it is a no-op for
+rows already inserted. The script does NOT write to `model_log` (read
+only).
+
+The backfill cannot perfectly reconstruct `started_at_ms` for historical
+rows because `model_log` only stores `durationMs`. We use
+`research_runs.completed_at - (cumulative duration up to this row)` as
+a best-effort approximation, ordered by index in the array. Document
+this lossiness in the backfill output.
+
+### I-8. RLS does not apply to `agent_executions`
+
+`agent_executions` is admin-only data. The table is created without
+RLS enabled. Admin endpoints use `adminQuery` (same as `audit_log`,
+`telemetry/runs`). User-facing endpoints **must never** query this
+table; if a user wants their own cost data, expose a sanitized
+read-only view in a future WO, never the raw table.
+
+### I-9. Phase ≠ Role
+
+The Cost Sidecar spec mixes "phase" (Planner / Discovery / Retriever /
+Reasoner / Skeptic / Synthesizer / Verifier / Report / Persistence)
+with "role" (planner, retriever, reasoner, skeptic, synthesizer,
+verifier, plain_language_synthesizer, outline_architect, section_drafter,
+internal_challenger, coherence_refiner, revision_intake, report_locator,
+change_planner, section_rewriter, citation_integrity_checker,
+final_revision_verifier).
+
+`agent_executions.agent_role` stores the **role** (canonical, stable,
+machine-grade — `REASONING_MODEL_ROLES` in `reasoningModelPolicy.ts`).
+`agent_executions.phase` stores the **phase** (human-grouped pipeline
+stage). Compute the phase from `(role, call_purpose)` in the writer
+using a fixed mapping in `costSidecar.ts:rolePhaseFor()`. Do not let
+phase drift from role — if you add a new role, add its phase mapping
+in the same commit.
+
+### I-10. Tests must fail without the fix (Cursor rule 16)
+
+Every assertion in `costSidecar.test.ts` and `costSidecarApi.test.ts`
+must fail when the relevant production code is reverted. Specifically:
+
+- The idempotency test must insert the same (run_id, role, ts, model)
+  twice and assert exactly 1 row exists. Mentally revert the
+  `ON CONFLICT` clause — the test must fail.
+- The deploy-skew test must drop the `agent_executions` table and
+  assert the emit path neither throws nor produces a 500. Mentally
+  revert the 42P01 catch — the test must fail.
+- The price=0 test must call with a model not in `model_pricing` and
+  assert the row exists with tokens but `calculated_cost_usd=0`.
+
+## Pre-commit check
+
+- [ ] No new `emitCallTelemetry` call sites outside `openrouterService.ts`.
+- [ ] No `await` added to the emit path (it stays fire-and-forget).
+- [ ] If you added a new `ReasoningModelRole`, you added its phase
+      mapping in `costSidecar.ts:rolePhaseFor` in the same commit.
+- [ ] If you renamed a column on `agent_executions`, you grepped
+      every reader (admin routes, frontend, backfill script) per
+      Cursor rule 17.
+- [ ] If the migration adds an index or constraint, it is wrapped in
+      `IF NOT EXISTS` per Cursor rule 13.

