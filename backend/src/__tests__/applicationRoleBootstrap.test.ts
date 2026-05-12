@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveRuntimeDbLoginRoleFromEnv,
+  formatDefaultPrivilegesSequenceGrant,
+  formatDefaultPrivilegesTableGrant,
   getDatabaseAdminUrlFromEnv,
   resolveRuntimeDatabaseUrl,
 } from '../db/applicationRoleBootstrap';
@@ -62,6 +64,17 @@ describe('applicationRoleBootstrap', () => {
       expect(
         getDatabaseAdminUrlFromEnv({ DATABASE_ADMIN_URL: '  postgresql://a:b@h/db  ' }),
       ).toBe('postgresql://a:b@h/db');
+    });
+  });
+
+  describe('formatDefaultPrivileges* (FOR ROLE runtime login)', () => {
+    it('targets the runtime role for tables and sequences', () => {
+      expect(formatDefaultPrivilegesTableGrant('researchone')).toBe(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE researchone IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO application_role',
+      );
+      expect(formatDefaultPrivilegesSequenceGrant('researchone')).toBe(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE researchone IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO application_role',
+      );
     });
   });
 });

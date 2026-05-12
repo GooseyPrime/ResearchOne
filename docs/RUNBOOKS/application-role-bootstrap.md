@@ -15,7 +15,9 @@ That state **cannot** be repaired by re-running migration 021 once it is already
 | **Runtime** | `DATABASE_URL` (or `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`) | The Node API pool — **must not** be a superuser in production. |
 | **Privileged bootstrap** | `DATABASE_ADMIN_URL` | One-off / deploy-time only — a role that can `CREATE ROLE` and `GRANT … ON ALL TABLES IN SCHEMA public`. **Never** load this into the API process config. |
 
-`DATABASE_ADMIN_URL` is **only** read by `npm run bootstrap:application-role` and optional `DATABASE_ADMIN_URL_B64` injection from GitHub Actions (decoded in `scripts/deploy-runtime.sh`).
+`DATABASE_ADMIN_URL` is **only** read by `npm run bootstrap:application-role` and optional `DATABASE_ADMIN_URL_B64` injection from GitHub Actions. **`deploy-runtime.sh` does not `export` the decoded URL** for the whole script: it is passed only into the bootstrap `npm` subshell, then the shell unsets `DATABASE_ADMIN_URL` before PM2 (`--update-env`) so the API never inherits a bootstrap-only credential (PR #110 review).
+
+Bootstrap applies `ALTER DEFAULT PRIVILEGES FOR ROLE <runtime_login>` (tables and sequences) so defaults match migration **021** intent when the privileged session user is **not** the same role that runs migrations — future objects created by the runtime login still grant usage to `application_role`.
 
 ## Idempotent bootstrap (repo-supported)
 
@@ -32,7 +34,7 @@ Or from repo root:
 ./scripts/bootstrap-application-role.sh
 ```
 
-**Requires:** `backend/.env` (or `ENV_FILE`) with runtime DB settings **and** `DATABASE_ADMIN_URL` when the role is missing or the runtime user cannot `SET ROLE application_role`.
+**Requires:** `ENV_FILE` or `backend/.env` (via `loadEnv()`, same as the API) with runtime DB settings **and** `DATABASE_ADMIN_URL` when the role is missing or the runtime user cannot `SET ROLE application_role`.
 
 ## Production sequence (Emma)
 
@@ -74,7 +76,7 @@ jq '.status, .checks.db' /tmp/health.json
 
 ## GitHub Actions
 
-Optional repository secret **`DATABASE_ADMIN_URL`**: if set, the deploy workflow passes it to the VM as **`DATABASE_ADMIN_URL_B64`** (base64). The VM decodes it in-process only; the workflow does not print the decoded URL (GitHub masks the secret in logs).
+Optional repository secret **`DATABASE_ADMIN_URL`**: if set, the deploy workflow passes it to the VM as **`DATABASE_ADMIN_URL_B64`** (base64). The VM decodes into a **local variable** and passes it only to `npm run bootstrap:application-role` — it is not exported for PM2 (GitHub masks the secret in logs).
 
 **Automatic vs explicit:** Bootstrap runs **automatically** on every `deploy-runtime.sh` via `npm run bootstrap:application-role`. If the role is already OK, the script exits quickly. If not OK and `DATABASE_ADMIN_URL` is unset, **deploy fails** with the script’s error text (no silent skip).
 

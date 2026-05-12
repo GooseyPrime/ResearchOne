@@ -29,6 +29,7 @@ drove the rules is at
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
+| [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
 
@@ -63,6 +64,13 @@ drove the rules is at
   (PR #107 Codex). Prefer minimal **`font-src`**: `fonts.gstatic.com` for
   Google Fonts; `cdn.scite.ai` only for in-app Scite assets — not extra CDNs
   to silence browser extensions (PR #107 Copilot).
+- **Emma deploy / PM2:** Never `export` bootstrap-only secrets (e.g. `DATABASE_ADMIN_URL`)
+  for the whole `deploy-runtime.sh` session before `pm2 … --update-env` — scope them to
+  the bootstrap command only, then `unset` before PM2 (PR #110 Codex/Copilot). See
+  `.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`.
+- **Postgres default privileges:** When a privileged session repairs grants, use
+  `ALTER DEFAULT PRIVILEGES FOR ROLE <migration/runtime login>` if that role owns new
+  objects — not bare `ALTER DEFAULT PRIVILEGES` as the admin user (PR #110 Copilot).
 - **Migrations:** Before referencing a column in new DDL, grep prior
   migrations for which table owns that column (`sources` vs `documents`,
   etc.). See `.cursor/rules/13-deploy-skew-and-schema.mdc` (PR #83).

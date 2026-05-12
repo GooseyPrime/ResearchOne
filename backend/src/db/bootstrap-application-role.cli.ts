@@ -1,17 +1,16 @@
 /**
  * CLI: ensure `application_role` exists and the runtime login can SET ROLE to it.
- * Loads backend/.env from repo root (same layout as migrate.ts via cwd on Emma).
+ * Uses `loadEnv()` from bootstrap (same as the API: `ENV_FILE` or `backend/.env`, production missing-file rules).
  *
  * Env:
  * - DATABASE_URL or DB_* — runtime connection + login name derivation
  * - DATABASE_ADMIN_URL — privileged connection (CREATE ROLE, GRANT … ON ALL TABLES)
- * - DATABASE_ADMIN_URL_B64 — optional; base64-encoded DATABASE_ADMIN_URL (used by CI SSH inject)
+ * - DATABASE_ADMIN_URL_B64 — optional; base64-encoded DATABASE_ADMIN_URL (used by CI SSH inject).
+ *   Decode before `loadEnv()` so dotenv does not override an injected admin URL.
  */
 
-import path from 'path';
-import dotenv from 'dotenv';
 import { Client } from 'pg';
-import { getRepoRoot } from '../bootstrap/loadEnv';
+import { loadEnv } from '../bootstrap/loadEnv';
 import {
   applyApplicationRoleBootstrapAsAdmin,
   deriveRuntimeDbLoginRoleFromEnv,
@@ -20,12 +19,6 @@ import {
   resolveRuntimeDatabaseUrl,
   runtimeCanAssumeApplicationRole,
 } from './applicationRoleBootstrap';
-
-function loadBackendDotenv(): void {
-  const repoRoot = getRepoRoot();
-  const envPath = path.join(repoRoot, 'backend', '.env');
-  dotenv.config({ path: envPath });
-}
 
 function decodeInjectedAdminUrl(): void {
   const b64 = process.env.DATABASE_ADMIN_URL_B64?.trim();
@@ -40,8 +33,8 @@ function decodeInjectedAdminUrl(): void {
 }
 
 async function main(): Promise<void> {
-  loadBackendDotenv();
   decodeInjectedAdminUrl();
+  loadEnv();
 
   const runtimeUrl = resolveRuntimeDatabaseUrl(process.env);
   const runtimeLogin = deriveRuntimeDbLoginRoleFromEnv(process.env);

@@ -19,17 +19,20 @@ DEPLOY_ROOT="${RESEARCHONE_DEPLOY_ROOT:-/opt/researchone}"
 GIT_REF="${RESEARCHONE_GIT_REF:-origin/main}"
 export DEPLOY_ROOT
 
-# Optional: GitHub Actions passes DATABASE_ADMIN_URL_B64 so the privileged URL never
-# lands in server-side shell history as plain text; decoded only in-process for bootstrap.
+# Optional: GitHub Actions passes DATABASE_ADMIN_URL_B64 (privileged URL). Decode into a
+# deploy-local variable only — never export DATABASE_ADMIN_URL in this shell: PM2
+# `startOrReload … --update-env` inherits the deploy environment and could persist a
+# bootstrap-only secret into the API process (Codex/Copilot PR #110 review).
+_RO_DATABASE_ADMIN_URL_FROM_B64=""
 if [[ -n "${DATABASE_ADMIN_URL_B64:-}" ]]; then
   if ! command -v base64 >/dev/null 2>&1; then
     echo "[deploy] ERROR: base64 is required to decode DATABASE_ADMIN_URL_B64" >&2
     exit 1
   fi
-  if ! export DATABASE_ADMIN_URL="$(printf '%s' "${DATABASE_ADMIN_URL_B64}" | base64 -d)"; then
+  _RO_DATABASE_ADMIN_URL_FROM_B64="$(printf '%s' "${DATABASE_ADMIN_URL_B64}" | base64 -d)" || {
     echo "[deploy] ERROR: failed to decode DATABASE_ADMIN_URL_B64 (invalid base64?)" >&2
     exit 1
-  fi
+  }
   unset DATABASE_ADMIN_URL_B64
 fi
 
@@ -95,10 +98,19 @@ echo "[deploy] npm run migrate"
 )
 
 echo "[deploy] npm run bootstrap:application-role (RLS role + grants; fails closed if role missing and DATABASE_ADMIN_URL unset)"
-(
-  cd "${DEPLOY_ROOT}/backend"
-  npm run bootstrap:application-role
-)
+if [[ -n "${_RO_DATABASE_ADMIN_URL_FROM_B64}" ]]; then
+  (
+    cd "${DEPLOY_ROOT}/backend"
+    DATABASE_ADMIN_URL="${_RO_DATABASE_ADMIN_URL_FROM_B64}" npm run bootstrap:application-role
+  )
+else
+  (
+    cd "${DEPLOY_ROOT}/backend"
+    npm run bootstrap:application-role
+  )
+fi
+unset _RO_DATABASE_ADMIN_URL_FROM_B64
+unset DATABASE_ADMIN_URL || true
 
 echo "[deploy] PM2 reconcile and start/reload"
 PM2_CHECK="$(DEPLOY_ROOT="${DEPLOY_ROOT}" node <<'NODE'

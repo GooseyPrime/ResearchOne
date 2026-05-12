@@ -51,6 +51,22 @@ export function assertSafePostgresIdentifier(name: string, label: string): void 
   }
 }
 
+/**
+ * DDL for default privileges on objects created by the runtime login (migration user).
+ * Migration 021 runs as `current_user`; privileged bootstrap runs as admin — without
+ * `FOR ROLE <runtimeLogin>` new tables/sequences would not inherit grants to application_role.
+ * `runtimeLogin` must pass {@link assertSafePostgresIdentifier} before calling.
+ */
+export function formatDefaultPrivilegesTableGrant(runtimeLogin: string): string {
+  assertSafePostgresIdentifier(runtimeLogin, 'runtime login');
+  return `ALTER DEFAULT PRIVILEGES FOR ROLE ${runtimeLogin} IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APPLICATION_ROLE_NAME}`;
+}
+
+export function formatDefaultPrivilegesSequenceGrant(runtimeLogin: string): string {
+  assertSafePostgresIdentifier(runtimeLogin, 'runtime login');
+  return `ALTER DEFAULT PRIVILEGES FOR ROLE ${runtimeLogin} IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${APPLICATION_ROLE_NAME}`;
+}
+
 export function getDatabaseAdminUrlFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   const v = env.DATABASE_ADMIN_URL?.trim();
   return v || undefined;
@@ -141,16 +157,12 @@ export async function applyApplicationRoleBootstrapAsAdmin(
     await adminClient.query(
       `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${APPLICATION_ROLE_NAME}`,
     );
-    await adminClient.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${APPLICATION_ROLE_NAME}`,
-    );
+    await adminClient.query(formatDefaultPrivilegesTableGrant(runtimeLogin));
 
     await adminClient.query(
       `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APPLICATION_ROLE_NAME}`,
     );
-    await adminClient.query(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${APPLICATION_ROLE_NAME}`,
-    );
+    await adminClient.query(formatDefaultPrivilegesSequenceGrant(runtimeLogin));
 
     await adminClient.query(`REVOKE CREATE ON SCHEMA public FROM ${APPLICATION_ROLE_NAME}`);
 
