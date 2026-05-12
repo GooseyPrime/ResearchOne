@@ -25,7 +25,7 @@ export default function LivingReportsSection() {
         Pin the version your team agreed on. Get notified when a source retracts, a number moves, or new evidence lands.
       </p>
 
-      <div className="mt-8">
+      <div className="mt-8 r1-marketing-surface rounded-xl border border-white/10 p-4 sm:p-6">
         <LivingReportTimeline />
       </div>
 

@@ -51,6 +51,36 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://researchone.io/faq</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://researchone.io/compare</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://researchone.io/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+  </url>
+  <url>
+    <loc>https://researchone.io/contact</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+  </url>
+  <url>
+    <loc>https://researchone.io/docs</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+  </url>
+  <url>
+    <loc>https://researchone.io/changelog</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.45</priority>
+  </url>
+  <url>
     <loc>https://researchone.io/sign-in</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>

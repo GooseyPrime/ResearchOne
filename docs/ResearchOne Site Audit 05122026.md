@@ -808,3 +808,11 @@ Create with `LivingReportTimeline.data.ts` containing a sample version array (v0
 3. **Performance and accessibility numbers (Lighthouse, axe)** were not measurable from outside; the QA checklist in §3.12 captures the thresholds the Cursor agent must hit.
 4. **The line "We do not sanitize. We do not debunk by recall. We do not silently smooth contradictions." comes from your own meta description** and is the strongest sentence currently in the project. Surface it as the footer epigraph and let it anchor the voice.
 5. **No code is included anywhere in this brief**, per instruction. Every prescriptive statement is descriptive English aimed at a Cursor agent with autonomy. Where ambiguity is encountered, default to the convention named here, log the deviation in PR notes, and continue — do not pause for clarification.
+
+---
+
+## Implementation note — lab notebook ruling vs UI noise (2026-05-12)
+
+On the live marketing shell, the WO-V **lab notebook** background is a parent-level `background-image` (horizontal ruling + optional margin line). Any child that is **fully transparent**, **missing a background**, or uses a **very translucent** background (`bg-*\/10`, `bg-slate-900/50`, heavy `backdrop-blur` over nothing) lets those ruling lines show through. That becomes **visually noisy** when it **interferes with other line systems** — notably the **landing comparison table**, where horizontal table borders and the notebook ruling **beat against each other** (moiré-like clutter).
+
+**Rule of thumb for agents:** for tables, forms, dense card grids, and long text blocks on `LabNotebookCanvas`, use an **opaque surface** the same color as the notebook base (`#0A0E1A` / `r1-bg` / `r1-bg-deep`) or a deliberate elevated panel (`r1-bg-deep`), not glass-only. Prefer **solid header/footer bars** on marketing over `bg-r1-bg/90` if blur lets ruling show through. When in doubt, add `class="r1-marketing-surface"` (see `frontend/src/index.css`) to the section or table wrapper.

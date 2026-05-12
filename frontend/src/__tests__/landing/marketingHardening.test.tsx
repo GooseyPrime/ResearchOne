@@ -5,6 +5,12 @@ import LandingPage from '../../pages/LandingPage';
 import ComparisonTable from '../../components/landing/ComparisonTable';
 import MethodologyPage from '../../pages/MethodologyPage';
 import PricingPage from '../../pages/PricingPage';
+import ComparePage from '../../pages/ComparePage';
+import FaqPage from '../../pages/FaqPage';
+import AboutPage from '../../pages/AboutPage';
+import ChangelogPage from '../../pages/ChangelogPage';
+import ContactPage from '../../pages/ContactPage';
+import MarketingDocsPage from '../../pages/MarketingDocsPage';
 
 const COMPETITOR_NAMES_CASE_INSENSITIVE = [
   'Perplexity',
@@ -42,6 +48,12 @@ describe('marketing hardening — no competitor names', () => {
     { name: 'ComparisonTable', render: () => renderInRouter(<ComparisonTable />) },
     { name: 'MethodologyPage', render: () => renderInRouter(<MethodologyPage />) },
     { name: 'PricingPage', render: () => renderInRouter(<PricingPage />) },
+    { name: 'ComparePage', render: () => renderInRouter(<ComparePage />) },
+    { name: 'FaqPage', render: () => renderInRouter(<FaqPage />) },
+    { name: 'AboutPage', render: () => renderInRouter(<AboutPage />) },
+    { name: 'ChangelogPage', render: () => renderInRouter(<ChangelogPage />) },
+    { name: 'ContactPage', render: () => renderInRouter(<ContactPage />) },
+    { name: 'MarketingDocsPage', render: () => renderInRouter(<MarketingDocsPage />) },
   ];
 
   for (const page of pages) {
@@ -89,10 +101,20 @@ describe('marketing hardening — structural copy present', () => {
     expect(html).toContain('Every claim has a source. Every source has a reason.');
     expect(html).toContain('Stop arguing about what you found.');
     expect(html).toContain('Chat-style AI research');
+    expect(html).toContain('Citation-graded');
   });
 
   it('MethodologyPage contains Five modes. One pipeline.', () => {
     const html = renderInRouter(<MethodologyPage />);
     expect(html).toContain('Five modes. One pipeline.');
+  });
+});
+
+describe('marketing — comparison table opaque surface', () => {
+  it('wraps the comparison grid in r1-marketing-surface so lab-notebook ruling does not show through', () => {
+    const html = renderInRouter(<ComparisonTable />);
+    expect(html).toContain('data-testid="comparison-table-surface"');
+    expect(html).toContain('r1-marketing-surface');
+    expect(html).toContain('<caption');
   });
 });
