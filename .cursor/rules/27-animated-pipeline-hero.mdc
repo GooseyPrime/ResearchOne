@@ -1,0 +1,183 @@
+---
+description: Discipline for the animated multi-agent pipeline hero. Read before touching anything in frontend/src/components/landing/visual/AnimatedPipelineHero.tsx, pipelineBeams.tsx, pipelineLayout.ts, or personaBeamPalettes.ts.
+alwaysApply: false
+globs:
+  - "frontend/src/components/landing/visual/AnimatedPipelineHero.tsx"
+  - "frontend/src/components/landing/visual/pipelineBeams.tsx"
+  - "frontend/src/components/landing/visual/pipelineLayout.ts"
+  - "frontend/src/components/landing/visual/personaBeamPalettes.ts"
+  - "frontend/src/components/landing/HeroPipelineVisual.tsx"
+  - "frontend/src/components/landing/persona/PersonaAwareHero.tsx"
+---
+
+# Animated multi-agent pipeline hero — invariants
+
+## Why this rule exists
+
+The strategic doc identifies the animated 10-stage pipeline as the
+visual proof of ResearchOne's differentiation — every competitor shows
+a static block diagram. An animated, flowing pipeline that visibly
+hands off work between agents *is* the demo: it conveys "this is a
+real multi-agent system" in 3 seconds without copy.
+
+But animation is a place where well-meaning improvements destroy
+accessibility and ship broken on slow devices. This rule exists so
+the hero stays:
+
+1. **Accessible by default.** Reduced-motion users get the existing
+   static visual, NOT a degraded animation. Screen readers get the
+   same `aria-label` and `sr-only` description that exist today.
+2. **Performant on a 4-year-old Android.** No JS animation loop running
+   off-screen. No layout thrash. No SVG filter chains that drop frames.
+3. **Composable with WO-V.** The persona palette is read from
+   `data-persona` on the wrapping section element; WO-W does not
+   reach into WO-V's modules.
+
+## Invariants
+
+### I-1. Reduced motion renders the existing static visual verbatim
+
+`useReducedMotion()` from `framer-motion` is the sole arbiter. When
+it returns `true`, `AnimatedPipelineHero` renders `<HeroPipelineVisual />`
+— the EXACT existing component — and nothing else. No animations,
+no opacity transitions, no scale-in entrances. Zero motion.
+
+This is non-negotiable. The reduced-motion contract is binding under
+WCAG 2.1 SC 2.3.3, and the existing static visual is the validated
+fallback shape. Per Rule 26 I-3 / I-10 analogy: when motion is
+disabled, we get a known-good baseline.
+
+### I-2. Static visual stays in the codebase, unchanged
+
+`frontend/src/components/landing/HeroPipelineVisual.tsx` is not
+edited by this WO. It is imported by `AnimatedPipelineHero` and
+re-rendered when reduced motion is active. If you find yourself
+editing `HeroPipelineVisual.tsx`, you're outside this WO's scope —
+escalate.
+
+This serves two purposes: (a) the reduced-motion baseline stays
+known-good, (b) if `AnimatedPipelineHero` is ever rolled back via
+a one-line import revert, the page is immediately whole.
+
+### I-3. The 10 stages are canonical and named exactly as today
+
+The stage list:
+
+```
+Planner, Discovery, Retriever, Retriever Analysis, Reasoner, Skeptic,
+Synthesizer, Verifier, Report, Epistemic Persistence
+```
+
+These are the phases the Master Brief markets and the strategic doc
+specifies. They are the labels visible on the existing static visual.
+Do NOT rename, reorder, or collapse them in `pipelineLayout.ts`
+without coordinating with marketing — the stage names are referenced
+externally.
+
+Per Rule 25 I-9 reasoning by analogy: the canonical labels are the
+contract surface. WO-X may introduce new internal agent roles
+(`citation_formatter`) — those do NOT alter the hero's 10-stage
+public framing. The hero is marketing; the cost dashboard tracks
+implementation.
+
+### I-4. Skeptic node remains the visually distinguished step
+
+The existing static visual marks Skeptic with `animate-glow` and a
+brighter ring per the strategic doc's "Skeptic is the differentiator"
+positioning. The animated version must preserve this: Skeptic node
+gets a brighter background, larger ring, and beam handoffs in/out of
+Skeptic get extra emphasis (longer dwell, brighter beam head).
+
+If you de-emphasize Skeptic, you've broken the marketing visual.
+Don't.
+
+### I-5. Beam color palette is read from persona, not hardcoded
+
+The wrapping `<section data-persona="...">` element exposes the
+resolved persona. `AnimatedPipelineHero` reads `data-persona` from its
+ancestor (or via React context if WO-V exposes one in a later refactor)
+and looks up the palette in `personaBeamPalettes.ts`.
+
+Per Rule 26 I-9: persona content is WO-V's responsibility, visual
+variants are WO-W's. Adding beam colors to `personaContent.ts` or
+copy to `personaBeamPalettes.ts` violates the split.
+
+If `data-persona` cannot be resolved (rendering outside a
+`PersonaAwareHero`, or rendering during SSR), default palette wins.
+Never throw.
+
+### I-6. Animation runs only when visible (IntersectionObserver gate)
+
+`AnimatedPipelineHero` starts its beam loop ONLY when the component
+is at least 25% in viewport. When scrolled out, the loop pauses.
+This is cheap insurance against the "10 minutes scrolled to footer,
+laptop running hot from off-screen RAF" failure mode.
+
+Use `IntersectionObserver` directly, not a library. Pause via
+`framer-motion`'s `controls.stop()`.
+
+### I-7. No SVG filter chains on the critical path
+
+Drop-shadow / glow filters look beautiful on a developer's M3 MacBook
+and drop frames on a 2021 mid-range Android. The hero must hit 60 fps
+on `Moto G Power (2022)` or equivalent.
+
+The beam glow effect is achieved via:
+- A wider, lower-opacity stroke layer underneath the bright stroke
+- Optional `mix-blend-mode: screen` against the lab-notebook canvas
+
+NOT via:
+- `filter: drop-shadow()` (40% perf hit on the relevant test device)
+- `filter: blur()` (worse)
+- Multi-layer SVG `<feGaussianBlur>` chains (worst)
+
+If you reach for a filter, find a different way.
+
+### I-8. ARIA stays intact
+
+The wrapping element keeps `role="img"` and the exact `aria-label`
+and `<p className="sr-only">` description that exist today. The
+beam SVG element gets `aria-hidden="true"` because it is decorative.
+Screen reader users hear the structure, not the motion.
+
+The animated visual must convey the same information as the static
+one to a non-sighted user. Per WCAG 1.1.1 (Non-text Content).
+
+### I-9. Persona palettes pass color-blindness simulation
+
+Every persona palette in `personaBeamPalettes.ts` is selected such
+that the beam-vs-background contrast remains perceptible under
+deuteranopia, protanopia, and tritanopia simulations. The palette
+relies on BRIGHTNESS difference primarily, hue secondarily.
+
+Test by running the palette through `chrome://accessibility` or the
+"Emulate vision deficiencies" devtool. If the beam disappears, the
+palette is wrong — go back to the drawing board.
+
+### I-10. Tests must fail without the fix (Cursor rule 16)
+
+Test assertions for this WO:
+
+- `useReducedMotion()` mocked to true → rendered DOM contains
+  `data-testid="static-pipeline"`, no `motion.*` elements present.
+  Mentally revert the reduced-motion check — test fails.
+- `useReducedMotion()` false → DOM contains the animated SVG and
+  motion elements. Mentally revert — test fails.
+- Section has `role="img"` and the existing aria-label text. Mentally
+  remove aria — test fails.
+- Persona attribute on the parent section → matching palette applied
+  to the beam stops. Mentally remove palette lookup — test fails.
+
+## Pre-commit check
+
+- [ ] `useReducedMotion` is imported and used. Grep proves it.
+- [ ] No `filter: drop-shadow`, no `filter: blur` in the animated
+      pipeline modules. Grep proves it.
+- [ ] `HeroPipelineVisual.tsx` is imported (not duplicated). Grep
+      proves it.
+- [ ] If you added a new persona, you added its beam palette in
+      `personaBeamPalettes.ts` in the same commit. Per Rule 26 I-9
+      composition contract.
+- [ ] If you renamed any of the 10 canonical stages, you coordinated
+      with marketing first. Grep `pipelineLayout.ts` against the
+      marketing copy.

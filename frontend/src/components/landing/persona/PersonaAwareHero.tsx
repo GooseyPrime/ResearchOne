@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import HeroPipelineVisual from '../HeroPipelineVisual';
+import AnimatedPipelineHero from '../visual/AnimatedPipelineHero';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
 
@@ -104,7 +104,7 @@ export default function PersonaAwareHero({
           </p>
         )}
       </div>
-      <HeroPipelineVisual />
+      <AnimatedPipelineHero />
     </section>
   );
 }
