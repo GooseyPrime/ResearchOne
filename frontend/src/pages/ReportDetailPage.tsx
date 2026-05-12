@@ -325,7 +325,7 @@ export default function ReportDetailPage() {
       qc.invalidateQueries({ queryKey: ['report-revisions', id] });
       qc.invalidateQueries({ queryKey: ['reports'] });
       if (data.revisedReportId) {
-        navigate(`/reports/${data.revisedReportId}`);
+        navigate(`/app/reports/${data.revisedReportId}`);
       }
     },
     onError: (err: unknown) => {

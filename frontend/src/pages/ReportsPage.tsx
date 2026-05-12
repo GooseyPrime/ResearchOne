@@ -147,13 +147,13 @@ export default function ReportsPage() {
                 key={item.data.id}
                 report={item.data}
                 viewerUserId={userId ?? undefined}
-                onClick={() => navigate(`/reports/${item.data.id}`)}
+                onClick={() => navigate(`/app/reports/${item.data.id}`)}
               />
             ) : (
               <FailedRunCard
                 key={item.data.id}
                 run={item.data}
-                onClick={() => navigate(`/reports/run/${item.data.id}`)}
+                onClick={() => navigate(`/app/reports/run/${item.data.id}`)}
               />
             )
           )}

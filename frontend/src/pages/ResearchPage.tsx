@@ -327,7 +327,7 @@ export default function ResearchPage() {
         setTrackingRunId(null);
         addNotification('success', 'Research complete — report generated!');
         qc.invalidateQueries({ queryKey: ['reports'] });
-        setTimeout(() => navigate(`/reports/${result.reportId}`), 1200);
+        setTimeout(() => navigate(`/app/reports/${result.reportId}`), 1200);
       }
     });
 
@@ -917,7 +917,7 @@ function RunRow({
 
   return (
     <div className="card p-3 space-y-2">
-      <div className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2" onClick={() => run.status === 'completed' && navigate(`/reports`)}>
+      <div className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2" onClick={() => run.status === 'completed' && navigate('/app/reports')}>
         <div className="flex items-center gap-3 min-w-0">
           <Icon size={14} className={cfg.color} />
           <div className="min-w-0">
