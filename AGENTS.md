@@ -253,6 +253,14 @@ The `ADMIN_RUNTIME_TOKEN` in `.env` only works for `requireAdmin`-protected
 routes (admin panel, model overrides, cost analytics). To test authenticated
 user routes, you need valid Clerk keys configured.
 
+Required secrets (injected as env vars via Cursor Cloud Secrets):
+- `CLERK_PUBLISHABLE_KEY` — Clerk frontend + backend auth
+- `CLERK_SECRET_KEY` — Clerk backend JWT verification
+- `OPENROUTER_API_KEY` — LLM inference for the research pipeline
+
+Inject these into `backend/.env` and `frontend/.env.local` at startup.
+The `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` should match `CLERK_PUBLISHABLE_KEY`.
+
 ### Gotchas
 
 - The `EXPORTS_DIR` path (`/opt/researchone/exports`) must exist and be
