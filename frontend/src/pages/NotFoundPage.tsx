@@ -42,8 +42,7 @@ export default function NotFoundPage() {
       <main className="mx-auto max-w-2xl px-4 py-20 text-center sm:px-6">
         <h1 className="font-serif text-3xl text-r1-text">This claim could not be sourced.</h1>
         <p className="mt-3 text-r1-text-muted">
-          The page you requested is not in our index. Try the methodology, a sample report, or the Living Report section on
-          the home page.
+          The page you requested is not in our index. Try the methodology, a sample report, or the Living Report demo.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-sm">
           <Link to="/methodology" className="text-r1-accent hover:underline">

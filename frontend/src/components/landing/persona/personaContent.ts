@@ -2,7 +2,7 @@
  * Persona content map — typed hero copy variants.
  *
  * Per Cursor rule 26 I-3: the 'default' variant MUST match the
- * existing Hero.tsx copy character-for-character. If you change one,
+ * existing `Hero.tsx` copy character-for-character. If you change one,
  * change the other in the same PR.
  *
  * Per Cursor rule 26 I-4: this is a typed const map, NOT a CMS-driven
@@ -43,14 +43,13 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   // updating Hero.tsx in the same commit.
   // ──────────────────────────────────────────────────────────────
   default: {
-    eyebrow: 'Built for serious research',
-    headline: 'Deep research that defends itself.',
+    eyebrow: 'DEEP RESEARCH PLATFORM',
+    headline: 'Research that defends itself.',
     subhead:
-      'Five deep research modes. A ten-stage multi-agent pipeline with a dedicated skeptic agent. ' +
-      'Citation-grade reports you can defend in a meeting, a court filing, or a peer review.',
+      'ResearchOne runs a 10-stage, 7-agent pipeline — including a dedicated Skeptic — so every claim ships with the citation, the counter-claim, and the version it came from.',
     ctas: [
-      { label: 'Start free',           to: '/sign-up',       variant: 'primary' },
-      { label: 'See a sample report',  to: '/sample-report', variant: 'secondary' },
+      { label: 'Open a sample report', to: '/sample-report', variant: 'primary' },
+      { label: 'See the methodology', to: '/methodology', variant: 'secondary' },
     ],
   },
 

@@ -15,10 +15,10 @@ const CHANNELS = [
     label: 'security@researchone.io',
   },
   {
-    title: 'Privacy',
-    body: 'Data subject requests and privacy policy questions.',
-    href: 'mailto:privacy@researchone.io?subject=Privacy%20inquiry',
-    label: 'privacy@researchone.io',
+    title: 'Press',
+    body: 'Media kit requests, on-background briefings, and product fact-checking.',
+    href: 'mailto:press@researchone.io?subject=Press%20inquiry',
+    label: 'press@researchone.io',
   },
 ] as const;
 
@@ -27,7 +27,7 @@ export default function ContactPage() {
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h1 className="font-serif text-4xl">Contact</h1>
+        <h1 className="font-serif text-4xl">Talk to ResearchOne.</h1>
         <p className="mt-3 max-w-2xl text-r1-text-muted">
           Use the channel that matches your request. We route security and privacy mail separately from commercial
           conversations.

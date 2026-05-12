@@ -1,0 +1,71 @@
+Running axe-core 4.10.3 in chrome-headless
+
+Testing http://127.0.0.1:4173/ ... please wait, this may take a minute.
+
+  Violation of "aria-hidden-focus" with 1 occurrences!
+    Ensure aria-hidden elements are not focusable nor contain focusable elements. Correct invalid elements at:
+     - .h-auto
+    For details, see: https://dequeuniversity.com/rules/axe/4.10/aria-hidden-focus
+
+  Violation of "aria-prohibited-attr" with 3 occurrences!
+    Ensure ARIA attributes are not prohibited for an element's role. Correct invalid elements at:
+     - div[aria-label="Confidence: 3 of 4"]
+     - div[aria-label="Confidence: 2 of 4"]
+     - div[aria-label="Confidence: 1 of 4"]
+    For details, see: https://dequeuniversity.com/rules/axe/4.10/aria-prohibited-attr
+
+  Violation of "landmark-one-main" with 1 occurrences!
+    Ensure the document has a main landmark. Correct invalid elements at:
+     - html
+    For details, see: https://dequeuniversity.com/rules/axe/4.10/landmark-one-main
+
+  Violation of "nested-interactive" with 2 occurrences!
+    Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies. Correct invalid elements at:
+     - .overflow-visible
+     - .outline-none
+    For details, see: https://dequeuniversity.com/rules/axe/4.10/nested-interactive
+
+  Violation of "region" with 33 occurrences!
+    Ensure all page content is contained by landmarks. Correct invalid elements at:
+     - .space-y-6
+     - .w-full.relative > .md\:block.hidden
+     - .pb-10
+     - div[data-testid="landing-comparison-region"] > section > .text-3xl
+     - div[data-testid="landing-comparison-region"] > section > .max-w-3xl.mt-3.text-r1-text-muted
+     - caption
+     - thead
+     - .last\:border-b-0:nth-child(1) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(2) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(3) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(4) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(5) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(6) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(7) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - .last\:border-b-0:nth-child(8) > .left-0.z-10.shadow-\[4px_0_8px_-4px_rgba\(0\,0\,0\,0\.4\)\]
+     - section:nth-child(6)
+     - div[data-testid="landing-living-report-region"] > section > .text-3xl
+     - div[data-testid="landing-living-report-region"] > section > .max-w-3xl.mt-3.text-r1-text-muted
+     - .outline-none
+     - .gap-1\.5 > .font-medium
+     - .gap-1\.5 > span:nth-child(3)
+     - .min-h-\[200px\]
+     - .md\:grid-cols-3.mt-8.grid
+     - div[data-testid="landing-living-report-region"] > section > .mt-6.text-sm
+     - section:nth-child(8)
+     - section:nth-child(9)
+     - section:nth-child(10)
+     - section:nth-child(11)
+     - section:nth-child(12)
+     - .lab-notebook-canvas > .gap-6.md\:grid-cols-2.grid
+     - section:nth-child(14)
+     - section:nth-child(15)
+     - .mb-4
+    For details, see: https://dequeuniversity.com/rules/axe/4.10/region
+
+40 Accessibility issues detected.
+Testing complete of 1 pages
+
+Please note that only 20% to 50% of all accessibility issues can automatically be detected. 
+Manual testing is always required. For more information see:
+https://dequeuniversity.com/curriculum/courses/testingmethods
+

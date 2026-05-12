@@ -1,42 +1,77 @@
-/** Shared FAQ entries for landing and `/faq` — single source of truth. */
+/** Shared FAQ for landing inline section — questions avoid third-party product names (marketing hardening). */
 export const MARKETING_FAQ_ITEMS = [
   {
-    question: "What's the difference between ResearchOne and chat-style AI research?",
+    question: 'How is ResearchOne different from mainstream deep research assistants?',
     answer:
-      'Chat-style tools optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated skeptic agent and explicit evidence tiering, optimized for defensible long-form reports where contradictions matter and the output needs to outlive the conversation.',
+      'Mainstream assistants optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated Skeptic and explicit evidence tiering, built for defensible long-form reports where contradictions must survive and the output must outlive the chat.',
   },
   {
-    question: 'Which deep research mode should I use?',
+    question: 'What does the Skeptic agent actually do?',
     answer:
-      'General Epistemic for contested questions. Investigative for tracking incentives or narrative drift. Patent / Technical Gap for prior-art mapping. Novel Application Discovery for mechanism-to-application paths. Anomaly Correlation for weak-signal hypothesis testing.',
+      'The Skeptic is a dedicated adversarial pass: it attacks draft claims, surfaces counter-evidence, and preserves contradictions as named outputs rather than smoothing them away.',
   },
   {
-    question: 'How long does a report take?',
-    answer: 'Standard runs: 2–5 minutes. Deep runs: 8–20 minutes depending on mode, evidence-set size, and discovery scope.',
+    question: 'What happens when two high-tier sources disagree?',
+    answer:
+      'Both lines of evidence remain visible with tier labels. The report names the disagreement, cites each side, and leaves the judgment work to the reader — we do not silently pick a winner.',
   },
   {
-    question: 'What happens to my report after 120 days?',
+    question: 'Can ResearchOne forge or hallucinate a citation?',
     answer:
-      'Final reports are retained for 120 days by default. Export anytime, or attach a Living Report to keep the source set and monitoring config alive indefinitely. Sovereign Enterprise customers set custom retention by contract.',
+      'Every claim is bound to a source span in the Verifier and Citation Bind stages. If a span cannot be verified, the claim is blocked or downgraded — we do not ship uncited assertions as cited.',
   },
   {
-    question: 'How does ResearchOne handle citations and source verification?',
+    question: 'How do Living updates work — will my old report change under me?',
     answer:
-      'Every claim is tagged by evidence tier (established fact, strong evidence, testimony, inference, speculation). Every source is selected for a role — supporting, contrasting, primary, or regulatory — and recorded with inclusion reasoning. The Verifier agent gates publication on citation integrity.',
+      'Living Reports create new discrete versions when evidence changes. You keep prior versions for audit, citation, or rollback; nothing silently rewrites the version your team already agreed on.',
   },
   {
-    question: 'Can I edit a published report?',
+    question: "What's the difference between BYOK and the Sovereign tier?",
     answer:
-      'Yes. Every report supports a seven-agent revision workflow with structured intake, impact mapping, change planning, section rewriting, citation integrity checks, diff assembly, and a final verifier.',
+      'BYOK runs ResearchOne on your own model and search keys with orchestration billed here. Sovereign adds single-tenant deployment, contract isolation, and retention controls for workloads that cannot leave your perimeter.',
   },
   {
-    question: 'Can I bring my own model keys?',
+    question: 'Can I export a report and cite it like a static PDF?',
     answer:
-      'Yes. The BYOK tier lets you run all five modes on your own OpenRouter or direct-provider keys. Compute is billed to your provider; ResearchOne bills only for orchestration.',
+      'Yes. Exports carry the citation map and version metadata so a static snapshot remains defensible; Living mode is optional when you need ongoing monitoring.',
+  },
+] as const satisfies ReadonlyArray<{ question: string; answer: string }>;
+
+/** Site audit §2.10 FAQ questions verbatim — used on `/faq` only (Wave 2). */
+export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
+  {
+    question: 'How is this different from ChatGPT Deep Research or Claude Research?',
+    answer:
+      'ResearchOne exposes a named ten-stage pipeline with a Skeptic outside the single-model draft, per-claim citation bind, and explicit evidence tiers. The comparison is structural auditability versus a single chat-shaped pass.',
   },
   {
-    question: 'Is my data used to train any models?',
+    question: 'What does the Skeptic agent actually do?',
     answer:
-      'No. ResearchOne does not train on customer research data. BYOK and Sovereign Enterprise tiers add additional contractual data-use guarantees.',
+      'It receives the draft synthesis and attacks it: searches for counter-evidence, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
+  },
+  {
+    question: 'What happens when two high-tier sources disagree?',
+    answer:
+      'Both survive into the report with tier tags and a named contradiction block — no silent consensus synthesis.',
+  },
+  {
+    question: 'Can ResearchOne forge or hallucinate a citation?',
+    answer:
+      'Claims without a verified source span do not ship as cited. The Verifier gate blocks or downgrades them first.',
+  },
+  {
+    question: 'How do Living updates work — will my old report change under me?',
+    answer:
+      'Each update is a new version with a diff trail. You pin, compare, or roll back; prior agreed versions remain addressable.',
+  },
+  {
+    question: "What's the difference between BYOK and the Sovereign tier?",
+    answer:
+      'BYOK brings your keys into our orchestration plane. Sovereign runs the stack in your tenancy with contract isolation and custom retention.',
+  },
+  {
+    question: 'Can I export a report and cite it like a static PDF?',
+    answer:
+      'Exports include citations and version identifiers so a frozen PDF remains traceable to the evidence state at export time.',
   },
 ] as const satisfies ReadonlyArray<{ question: string; answer: string }>;

@@ -1,7 +1,7 @@
 import FAQ from '../components/landing/FAQ';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
-import { MARKETING_FAQ_ITEMS } from '../content/marketingFaqItems';
+import { FAQ_PAGE_AUDIT_VERBATIM_ITEMS } from '../content/marketingFaqItems';
 
 export default function FaqPage() {
   return (
@@ -13,7 +13,7 @@ export default function FaqPage() {
           Straight answers on pipeline depth, retention, BYOK, and how we treat citations and contradictions.
         </p>
         <div className="mt-10">
-          <FAQ items={MARKETING_FAQ_ITEMS} />
+          <FAQ items={FAQ_PAGE_AUDIT_VERBATIM_ITEMS} />
         </div>
       </main>
       <LandingFooter />

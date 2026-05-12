@@ -32,10 +32,9 @@ export default function MethodologyPage() {
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h1 className="font-serif text-5xl">How ResearchOne works</h1>
+        <h1 className="font-serif text-5xl">Ten stages. Seven agents. One adversary.</h1>
         <p className="mt-4 max-w-3xl text-r1-text-muted">
-          Every report follows the same disciplined 10-stage pipeline with planner, discovery, retriever, reasoner,
-          skeptic, synthesizer, verifier, and persistence layers.
+          Every stage is named. Every agent is auditable. The Skeptic exists outside the model.
         </p>
 
         <section className="mt-12">

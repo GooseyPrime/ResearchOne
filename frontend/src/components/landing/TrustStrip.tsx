@@ -1,5 +1,5 @@
 const PILLARS = [
-  'Citation-graded · evidence tiers',
+  'Citation-graded · Tier 1 → Tier 4',
   'Adversarial Skeptic pass',
   'Living, versioned reports',
 ] as const;

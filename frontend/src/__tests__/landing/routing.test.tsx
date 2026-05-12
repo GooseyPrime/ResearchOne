@@ -15,7 +15,7 @@ describe('App routing structure', () => {
 
   it('renders the landing page route under SSR', () => {
     const html = renderToString(<App />);
-    expect(html).toContain('Reasoning, not recall.');
+    expect(html).toContain('Research that defends itself.');
   });
 
   it('renders the public sample report route under SSR', () => {

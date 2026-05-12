@@ -7,7 +7,8 @@ export default function SignInPage() {
   const redirect = safeInternalPath(params.get('redirect'), '/app/research');
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-r1-bg px-4 py-12">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-r1-bg px-4 py-12">
+      <h1 className="sr-only">Sign in to keep your evidence chain.</h1>
       <SignIn fallbackRedirectUrl={redirect} signUpUrl="/sign-up" />
     </div>
   );

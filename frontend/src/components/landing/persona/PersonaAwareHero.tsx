@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import AnimatedPipelineHero from '../visual/AnimatedPipelineHero';
+import PipelineSchematic from '../PipelineSchematic';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
 
@@ -8,11 +8,9 @@ import { getPersonaContent } from './personaContent';
  * Persona-aware hero — wraps the existing Hero layout with a
  * client-side persona switch.
  *
- * Per Cursor rule 26 I-3: when persona resolves to 'default', the
- * rendered output is character-for-character identical to the
- * existing `Hero.tsx`. We achieve this by reading the 'default'
- * variant from `personaContent.ts`, which is locked to match
- * `Hero.tsx`.
+ * Default hero copy and CTAs are shared with `Hero.tsx` and the
+ * `default` entry in `personaContent.ts` (Wave 2 site audit §2.10,
+ * founder-authorized Rule 26 I-3 override, 2026-05-12).
  *
  * Per Cursor rule 26 I-7: resolution is deterministic for a given
  * (search, referrer, pathname) triple. After mount, `forcePersona`
@@ -104,7 +102,7 @@ export default function PersonaAwareHero({
           </p>
         )}
       </div>
-      <AnimatedPipelineHero resolvedPersona={persona} />
+      <PipelineSchematic resolvedPersona={persona} />
     </section>
   );
 }

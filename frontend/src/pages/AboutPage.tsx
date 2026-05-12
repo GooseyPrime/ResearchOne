@@ -7,10 +7,9 @@ export default function AboutPage() {
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
       <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <h1 className="font-serif text-4xl">About ResearchOne</h1>
+        <h1 className="font-serif text-4xl">Built by people who refuse to sanitize the evidence.</h1>
         <p className="mt-4 text-r1-text-muted">
-          ResearchOne is built for analysts and decision desks who need citation-grade reports, explicit evidence tiers,
-          and a dedicated skeptic pass before anything ships. We preserve contradictions instead of smoothing them away.
+          ResearchOne is engineered for analysts, decision desks, and researchers whose work has to survive scrutiny.
         </p>
         <p className="mt-4 text-r1-text-muted">
           Read the full methodology for stage-by-stage detail, or open a sample report to see the output shape.
