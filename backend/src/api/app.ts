@@ -15,6 +15,7 @@ import atlasRoutes from './routes/atlas';
 import graphRoutes from './routes/graph';
 import sourcesRoutes from './routes/sources';
 import healthRoutes from './routes/health';
+import landingRoutes from './routes/landing';
 import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import billingRoutes from './routes/billing';
@@ -70,6 +71,12 @@ const defaultLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/auth'),
 });
+const landingPersonaEventLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 app.use('/api', defaultLimiter);
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
@@ -77,6 +84,10 @@ app.use(rlsContextMiddleware);
 // Mount public health endpoints explicitly before any auth-protected routes.
 app.use('/api/health', healthRoutes);
 app.use('/health', healthRoutes);
+
+// Public landing persona analytics — extra-tight limiter, no auth,
+// enum-validated writes (Rule 26 I-2).
+app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
 
 const routes: Array<[string, express.Router]> = [
   ['/ingestion', ingestionRoutes],

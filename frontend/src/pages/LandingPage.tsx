@@ -3,7 +3,8 @@ import ComparisonTable from '../components/landing/ComparisonTable';
 import EvidenceProvenancePanel from '../components/landing/EvidenceProvenancePanel';
 import FAQ from '../components/landing/FAQ';
 import FinalCTA from '../components/landing/FinalCTA';
-import Hero from '../components/landing/Hero';
+import PersonaAwareHero from '../components/landing/persona/PersonaAwareHero';
+import LabNotebookCanvas from '../components/landing/visual/LabNotebookCanvas';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 import LivingReportsSection from '../components/landing/LivingReportsSection';
@@ -11,6 +12,7 @@ import ModeCard from '../components/landing/ModeCard';
 import PipelineDiagram from '../components/landing/PipelineDiagram';
 import PricingCard from '../components/landing/PricingCard';
 import WhyResearchOne from '../components/landing/WhyResearchOne';
+import api from '../utils/api';
 
 const SAMPLE_REPORTS = [
   {
@@ -105,10 +107,14 @@ const FAQ_ITEMS = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-r1-bg text-r1-text">
+    <LabNotebookCanvas className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
 
-      <Hero />
+      <PersonaAwareHero
+        onPersonaResolved={(persona, path) => {
+          api.post('/landing/persona-event', { persona, path, eventType: 'view' }).catch(() => {});
+        }}
+      />
 
       <WhyResearchOne />
 
@@ -242,6 +248,6 @@ export default function LandingPage() {
       </section>
 
       <LandingFooter />
-    </div>
+    </LabNotebookCanvas>
   );
 }

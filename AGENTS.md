@@ -29,6 +29,7 @@ drove the rules is at
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
+| [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
 
 ## Repo-specific reading list (in priority order)
 
