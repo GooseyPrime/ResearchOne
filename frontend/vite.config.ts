@@ -33,6 +33,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    environmentMatchGlobs: [['src/__tests__/auth/**', 'jsdom']],
+    environmentMatchGlobs: [
+      ['src/__tests__/auth/**', 'jsdom'],
+      ['src/__tests__/landing/**', 'jsdom'],
+    ],
   },
 });

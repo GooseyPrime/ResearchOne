@@ -29,6 +29,7 @@ drove the rules is at
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
+| [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -104,6 +105,12 @@ drove the rules is at
   `id="..."` attribute exists on the destination page. PR #93 review
   caught a link to a non-existent anchor. Grep for the fragment before
   pushing.
+- **Landing persona + sample links (PR #108):** Persona CTAs to
+  `/sample-report` must use `topic=` (see `resolveSampleReportTopic`).
+  Anonymous persona beacons must use `publicApi`, not the Clerk JWT
+  `api` client; mount `/api/landing` before `clerkAuthMiddleware` in
+  `app.ts`. In Vitest jsdom, prefer `history.replaceState` over
+  redefining `window.location`.
 - **Copy-code parity on interactions:** If marketing copy describes a
   user interaction ("hover to see…", "click to expand…"), the
   corresponding behavior must actually be implemented. PR #93 review

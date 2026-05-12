@@ -40,6 +40,17 @@ export default {
         'r1-text-muted': '#94A3B8',
         'r1-accent': '#5BCEFA',
         'r1-accent-deep': '#3AA8E0',
+
+        // Lab Notebook tokens — WO-V.
+        // Synchronized with index.css :root and labNotebookTokens.ts.
+        notebook: {
+          bg: '#0A0E1A',
+          body: '#E0E0E0',
+          heading: '#F0F2F5',
+          muted: '#94A3B8',
+          'rule-h': 'rgba(140, 171, 217, 0.08)',
+          'rule-v': 'rgba(167, 51, 43, 0.15)',
+        },
       },
       fontFamily: {
         serif: ['Fraunces', 'serif'],

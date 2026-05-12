@@ -1,0 +1,190 @@
+---
+description: Discipline for landing page persona detection, lab-notebook visual architecture, and the persona-adaptive hero. Read before touching anything in frontend/src/components/landing/persona/ or frontend/src/components/landing/visual/ or before changing the lab-notebook CSS variables in index.css.
+alwaysApply: false
+globs:
+  - "frontend/src/components/landing/persona/**/*.ts"
+  - "frontend/src/components/landing/persona/**/*.tsx"
+  - "frontend/src/components/landing/visual/**/*.ts"
+  - "frontend/src/components/landing/visual/**/*.tsx"
+  - "frontend/src/index.css"
+  - "frontend/tailwind.config.js"
+  - "frontend/src/pages/LandingPage.tsx"
+  - "frontend/src/components/landing/Hero.tsx"
+  - "backend/src/api/routes/landing.ts"
+  - "backend/src/api/app.ts"
+  - "backend/src/db/migrations/031_landing_persona_analytics.sql"
+  - "frontend/src/pages/PricingPage.tsx"
+  - "frontend/src/pages/SampleReportPage.tsx"
+  - "frontend/src/utils/api.ts"
+---
+
+# Landing persona + visual architecture — invariants
+
+## Why this rule exists
+
+The Master Brief (`ResearchOne — Market, Competitive, and GTM Master Brief (May 2026).md`)
+identifies four buyer tribes (OSINT / investigative journalism, UAP /
+paranormal disclosure, academic researchers, patent / IP) plus a
+default audience. The strategic doc (`Strategic Architectural and
+Go-To-Market Blueprint`) prescribes persona-adaptive landing copy and
+a lab-notebook visual aesthetic. Both surfaces are exposed-to-the-world
+brand decisions; mistakes here are visible publicly, undermine
+PolicyOne credibility (a tracking-heavy landing page contradicts the
+"reason over recall, no institutional surveillance" doctrine), and
+are difficult to roll back without harming SEO and ad campaigns.
+
+This rule exists so the persona layer does not become a surveillance
+vector, the visual layer does not regress accessibility, and both
+compose cleanly with the WO-W animated pipeline and WO-U cost
+analytics that ship adjacent to them.
+
+## Invariants
+
+### I-1. Persona detection is 100% client-side
+
+`personaResolver.resolve()` reads ONLY: URL search params, `document.referrer`,
+URL pathname, and (where present) a session-scoped `sessionStorage`
+cache. It NEVER reads cookies, never fingerprints the client, never
+issues a network call, and never passes referrer text to the backend.
+
+The Master Brief's positioning depends on credibility with privacy-
+sensitive audiences (OSINT journalists, IC analysts, UAP researchers).
+Sending raw referrer URLs to our backend would be the same kind of
+"institutional surveillance" we critique in our own doctrine. Don't.
+
+### I-2. Persona ID is the only thing that ever crosses the wire
+
+If WO-V's optional analytics endpoint is enabled, the ONLY field that
+goes to the backend is the resolved persona id (`'osint' | 'uap' |
+'academic' | 'patent' | 'default'`) plus the path that was visited.
+No referrer string. No UTM bag. No timestamp finer than minute. No
+user identifier.
+
+The analytics table is intentionally append-only with no FK to
+`users`. It tracks aggregate persona-conversion shape, nothing else.
+
+**Implementation (PR #108 review):** (1) POST from the SPA must use
+`publicApi` in `frontend/src/utils/api.ts` — not the default `api`
+instance that attaches Clerk JWTs when present. (2) Mount
+`/api/landing` in `backend/src/api/app.ts` **before**
+`clerkAuthMiddleware` so `request_completed` logs keep `userId: null`
+for this path even if a browser sends a bearer token. (3) Do not log
+raw rejected `persona` / `eventType` strings at any level — treat them
+as attacker-controlled.
+
+### I-3. Default copy is the SAME copy that exists today
+
+The existing `Hero.tsx` lives unchanged. `PersonaAwareHero` ALWAYS
+renders the existing Hero copy when persona resolves to `'default'`.
+Any visual regression in the default state means the persona layer
+broke unrelated logic — escalate.
+
+Rationale: SEO and ad campaigns drove inbound to specific copy. We
+preserve that copy for the segment of traffic that doesn't carry a
+persona signal. Persona variants are upside; default is hold-harmless.
+
+### I-4. Persona content is in code, not a CMS
+
+`personaContent.ts` is a typed const map. Each persona variant must
+type-check against the same `HeroContent` interface so a missing
+field cannot ship. No headless CMS, no Sanity, no Strapi for this
+WO — adding a content service is a separate decision with its own
+operational burden (cost, latency, downtime, schema drift).
+
+Editing a persona's copy is a code change with the standard PR
+review path. This is intentional: the words are the product.
+
+**CTA / deep-link parity:** Any `Link` `to=` that promises a specific
+sample mode must use query keys `SampleReportPage` actually reads
+(`topic=` as implemented in `resolveSampleReportTopic`). If you add a
+new sample variant, extend `TOPIC_LABELS` and the resolver in the same
+PR. PR #108 Codex.
+
+### I-5. Lab-notebook background is CSS-only
+
+The lab-notebook ruled-paper aesthetic ships as `repeating-linear-gradient`
+and `linear-gradient` layers driven by CSS custom properties — no
+image, no base64, no SVG. Per the strategic doc:
+
+- horizontal blue ruling: `rgba(140, 171, 217, 0.08)` default
+- vertical red margin: `rgba(167, 51, 43, 0.15)` default
+- line spacing: 40px
+- margin position: 80px from left
+- line thickness: 1px
+
+Operators can tune these via the `:root` custom properties; no
+component code touches the math.
+
+### I-6. Contrast and dark-mode typography are non-negotiable
+
+Default body text uses `#E0E0E0` (off-white, not `#FFFFFF`) on
+`#0A0E1A` (the existing `r1-bg`). Contrast ratio: 13.5:1 — well
+above WCAG AA (4.5:1) and AAA (7:1). The lab-notebook overlay must
+not reduce effective contrast below 7:1 — operators tune the line
+opacity if a new color combination drops below that. Test page is
+`/landing-contrast-check.html` (dev only, hidden from prod nav).
+
+Font weights shift +100 in dark mode per the strategic doc:
+`font-weight: 500` for body, `600` for headings. Do not override
+this with arbitrary `font-weight: 300` or `400` "for elegance" —
+the dark-mode legibility research that motivated the shift is in
+`docs/WO-V_VISUAL_DESIGN_NOTES.md`.
+
+### I-7. Persona resolution is deterministic for the same inputs
+
+Given identical (search params, referrer, pathname), `personaResolver.resolve()`
+returns the same persona id every time. This is testable, and the
+test suite asserts it for the documented input combinations.
+
+Why this matters: a non-deterministic resolver would mean the same
+user reloading the same URL sees different copy — a bizarre user
+experience and an analytics nightmare.
+
+### I-8. SessionStorage cache is opt-in and TTL'd
+
+The resolver caches the resolved persona in `sessionStorage` under
+key `r1.persona` so a user who arrives at `/` from `r/UFOs`, navigates
+to `/pricing`, and returns to `/`, still sees the UAP-tuned copy on
+return — without having to re-detect (the referrer is gone by then).
+
+Cache TTL is the browser session (sessionStorage clears on tab close).
+No localStorage. No cross-tab sync. If the user opens a new tab from
+a non-persona referrer, that tab's resolver returns `default` — which
+is correct, because their state of mind in the new tab is different.
+
+### I-9. WO-W composition: the animated hero is a LAYER over WO-V
+
+When WO-W ships the Framer Motion + Aceternity beam animation, it
+mounts INSIDE `LabNotebookCanvas` and INSIDE `PersonaAwareHero`. The
+animation reads `r1.persona` from `runtime context` (provided by the
+PersonaAwareHero via React context) to choose beam color palette
+per persona (OSINT = cyan/blue, UAP = purple/red, academic = teal/gold,
+patent = amber/green, default = the existing accent).
+
+Per Rule 25 I-9 reasoning by analogy: visual variants per persona are
+the WO-W responsibility, not WO-V. Don't put beam colors in
+`personaContent.ts`.
+
+### I-10. Tests must fail without the fix (Cursor rule 16)
+
+Persona resolver tests must:
+
+- Assert each documented (query param, UTM, referrer, path) → persona
+  mapping. Revert the resolver to always-return-default — the tests
+  must fail.
+- Assert deterministic output: same inputs → same persona, called 10×
+  in a row.
+- Assert sessionStorage cache hit returns the cached value WITHOUT
+  re-detecting (mock `document.referrer` to throw — should not throw).
+- Assert SSR safety: when `window` is undefined, resolve returns
+  `'default'` without throwing.
+
+## Pre-commit check
+
+- [ ] `grep -rn "fetch\|XMLHttpRequest\|axios" frontend/src/components/landing/persona/` — must be zero hits. The resolver is wire-silent.
+- [ ] `grep -rn "document.referrer" frontend/src/components/landing/persona/` — at most one hit, in `personaResolver.ts`. No copy-paste of referrer reading.
+- [ ] If you added a new persona id, you added its content in `personaContent.ts`, its detection rules in `personaResolver.ts`, and its tests in `personaResolver.test.ts` — all in the same commit.
+- [ ] If you changed the lab-notebook CSS variables, you re-ran the contrast check at `/landing-contrast-check.html` (dev page) and confirmed the body-text combination is ≥ 7:1.
+- [ ] If you added analytics for a new persona, the backend writer
+  validates the persona id against an enum (no free-text writes to
+  the analytics table).

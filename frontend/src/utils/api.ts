@@ -26,6 +26,19 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+/**
+ * Same base URL and rate-limit behavior as `api`, but **no** Clerk JWT
+ * interceptor. Use only for intentionally anonymous public telemetry
+ * (e.g. Rule 26 I-2 landing persona events).
+ */
+export const publicApi = axios.create({
+  baseURL: resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL),
+  timeout: 15000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+applyApiRateLimitInterceptor(publicApi);
+
 export default api;
 
 /** Idempotent: ensures `users` row exists / email refreshed (race with Clerk webhook). */
