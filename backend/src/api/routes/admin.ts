@@ -775,28 +775,6 @@ router.get('/cost/reports', async (req, res, next) => {
     params.push(limit, offset);
 
     const rows = await adminQuery<Record<string, unknown>>(sql, params);
-// ─── Persona conversion rollup ─────────────────────────────────────
-router.get('/landing/persona-rollup', async (req, res, next) => {
-  try {
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
-    const since = new Date();
-    since.setDate(since.getDate() - days);
-
-    const rows = await adminQuery<{
-      persona: string;
-      view_count: string;
-      cta_click_count: string;
-    }>(
-      `SELECT
-         persona,
-         COUNT(*) FILTER (WHERE event_type='view')::text       AS view_count,
-         COUNT(*) FILTER (WHERE event_type='cta_click')::text  AS cta_click_count
-       FROM landing_persona_events
-       WHERE bucketed_at >= $1
-       GROUP BY persona
-       ORDER BY view_count::bigint DESC`,
-      [since.toISOString()]
-    );
 
     res.json({
       available: true,
@@ -824,6 +802,38 @@ router.get('/landing/persona-rollup', async (req, res, next) => {
   } catch (err) {
     if (isMigrationPending(err)) {
       res.json({ available: false, reason: 'migration_pending', rows: [] });
+      return;
+    }
+    next(err);
+  }
+});
+
+// ─── Persona conversion rollup ─────────────────────────────────────
+router.get('/landing/persona-rollup', async (req, res, next) => {
+  try {
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const rows = await adminQuery<{
+      persona: string;
+      view_count: string;
+      cta_click_count: string;
+    }>(
+      `SELECT
+         persona,
+         COUNT(*) FILTER (WHERE event_type='view')::text       AS view_count,
+         COUNT(*) FILTER (WHERE event_type='cta_click')::text  AS cta_click_count
+       FROM landing_persona_events
+       WHERE bucketed_at >= $1
+       GROUP BY persona
+       ORDER BY view_count::bigint DESC`,
+      [since.toISOString()]
+    );
+
+    res.json({
+      available: true,
+      days,
       personas: rows.map((r) => ({
         persona: r.persona,
         viewCount: Number(r.view_count),
