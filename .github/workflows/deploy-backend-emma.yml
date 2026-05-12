@@ -5,7 +5,8 @@
 # If those live under Settings → Environments → production, the job must set
 # `environment: production` below (or duplicate secrets at repository level).
 # Optional: EMMA_PORT (default 22), EMMA_DEPLOY_PATH (default /opt/researchone),
-#           EMMA_KNOWN_HOSTS, EMMA_WRITE_BACKEND_ENV, EMMA_PUBLIC_HEALTH_URL
+#           EMMA_KNOWN_HOSTS, EMMA_WRITE_BACKEND_ENV, EMMA_PUBLIC_HEALTH_URL,
+#           DATABASE_ADMIN_URL (privileged Postgres URL for application_role bootstrap; passed as base64 on the wire)
 #
 # If ssh: connect to host … port 22: Connection timed out — the VM must accept inbound
 # SSH from GitHub-hosted runners (public IP, security group/firewall, sshd on EMMA_PORT).
@@ -76,6 +77,7 @@ jobs:
           EMMA_PORT: ${{ secrets.EMMA_PORT }}
           EMMA_DEPLOY_PATH: ${{ secrets.EMMA_DEPLOY_PATH }}
           EMMA_WRITE_BACKEND_ENV: ${{ secrets.EMMA_WRITE_BACKEND_ENV }}
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
         run: |
           set -euo pipefail
           DEPLOY_PATH="${EMMA_DEPLOY_PATH:-/opt/researchone}"
@@ -92,11 +94,15 @@ jobs:
             rm -f "${TMP}"
           fi
 
+          B64_EXPORT=""
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            B64_EXPORT=" DATABASE_ADMIN_URL_B64='$(printf '%s' "${DATABASE_ADMIN_URL}" | base64 | tr -d '\n')'"
+          fi
+
           ssh "${SSH_OPTS[@]}" "${REMOTE}" \
-            "cd '${DEPLOY_PATH}' && export DEPLOY_SOURCE=github-actions RESEARCHONE_DEPLOY_PATH='${DEPLOY_PATH}' && bash ./scripts/deploy-runtime.sh"
+            "cd '${DEPLOY_PATH}' && export DEPLOY_SOURCE=github-actions RESEARCHONE_DEPLOY_PATH='${DEPLOY_PATH}'${B64_EXPORT} && bash ./scripts/deploy-runtime.sh"
 
       # Cannot use `secrets` in step `if:` — gate inside the script instead.
-            # Cannot use `secrets` in step `if:` — gate inside the script instead.
       - name: Optional public health check
         env:
           EMMA_PUBLIC_HEALTH_URL: ${{ secrets.EMMA_PUBLIC_HEALTH_URL }}

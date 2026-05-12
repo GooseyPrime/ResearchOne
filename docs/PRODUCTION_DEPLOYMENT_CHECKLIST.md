@@ -15,6 +15,7 @@ All must be provisioned in secure password manager. **Never commit.**
 | `JWT_SECRET` | Generated random 32+ char secret | Pending |
 | `CORS_ORIGINS` | Production frontend origins (`https://...`) | Pending |
 | `DATABASE_URL` | Emma VM Postgres | Pending |
+| `DATABASE_ADMIN_URL` | Privileged Postgres (bootstrap `application_role` only — not read by the API; see `docs/RUNBOOKS/application-role-bootstrap.md`) | Pending |
 | `REDIS_HOST` | Emma VM Redis hostname | Pending |
 | `REDIS_PORT` | Redis port (typically `6379`) | Pending |
 | `CLERK_SECRET_KEY` | Clerk Dashboard | Pending |
@@ -39,6 +40,8 @@ All must be provisioned in secure password manager. **Never commit.**
 | `VITE_EXPORTS_BASE_URL` | Public Emma API origin (`https://api...`) | Pending |
 
 `REDIS_URL` may appear in `.env` templates for documentation; **runtime BullMQ/ioredis uses `REDIS_HOST` + `REDIS_PORT`** (`backend/src/queue/redis.ts`). Set host/port in production.
+
+**Postgres RLS:** `/api/health` stays **503** when `application_role` is missing. If migration `021_rls_setup.sql` no-oped (no `CREATEROLE`), set **`DATABASE_ADMIN_URL`** and run **`npm run bootstrap:application-role`** (also run automatically from `scripts/deploy-runtime.sh`). See **`docs/RUNBOOKS/application-role-bootstrap.md`**.
 
 Optional (feature-flag / deployment-specific):
 
