@@ -142,6 +142,10 @@ export default function BillingPage() {
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
       <h1 className="text-2xl font-semibold">Account</h1>
+      <p className="mt-2 max-w-2xl text-sm text-slate-400">
+        Checkout opens on Stripe, where you can enter a promotion code on any purchase. For subscriptions
+        (plans and report add-ons), Stripe omits payment details when the amount due is $0 after discounts.
+      </p>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <h2 className="text-lg font-medium">Wallet</h2>
