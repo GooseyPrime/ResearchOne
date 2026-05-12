@@ -817,7 +817,7 @@ Create with `LivingReportTimeline.data.ts` containing a sample version array (v0
 - **Founder identifier:** Michael Brandon Lane, InTellMe AI  
 - **Rules overridden (this PR only):** Cursor Rule **26 I-3** (default hero copy parity with `Hero.tsx`) and Rule **27** (animated pipeline hero invariants, including reduced-motion static visual and canonical stage naming in the marketing schematic).  
 - **Enumerated scope of override:** (1) Hero copy rewrite on the public landing hero (`PersonaAwareHero` / `personaContent.ts` default + `Hero.tsx`) per §2.10 verbatim strings; (2) Hero pipeline replacement with `PipelineSchematic` per §2.1.1 / §3.6; (3) `LivingReportTimeline` per §2.1.4 / §3.7; (4) strict-cap `FeatureCard` primitive per §2.1.3 / §3.4 and migration of landing feature grid; (5) related homepage assembly (methodology teaser, security teaser) and marketing route copy where already specified for Wave 2.  
-- **Pull request:** `GooseyPrime/ResearchOne` — search open PRs for branch `cursor/wave-2-marquee-visuals-05122026-c538` and paste the canonical PR URL here after merge (this line intentionally omits a guessed PR number).
+- **Pull request:** https://github.com/GooseyPrime/ResearchOne/pull/117
 
 ---
 

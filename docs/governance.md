@@ -16,7 +16,7 @@ The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above
 
 ### 2026-05-12 — Wave 2 marquee visual rebuild
 
-- **PR:** Assign the GitHub pull-request number after the Wave 2 branch is opened from `cursor/wave-2-marquee-visuals-05122026-c538` (see `docs/ResearchOne Site Audit 05122026.md`, section **Wave 2 — Authorized overrides recording**).
+- **PR:** https://github.com/GooseyPrime/ResearchOne/pull/117
 - **Founder:** Michael Brandon Lane, InTellMe AI (authorization recorded in project chat, 2026-05-12).
 - **Rules overridden (scope limited to the enumerated items in that authorization only):** **Rule 26 I-3** and **Rule 27** (see the audit doc for the exact enumerated list: hero copy, `PipelineSchematic`, `LivingReportTimeline`, strict `FeatureCard`, related homepage assembly, and specified marketing routes).
 - **Rule text:** Not amended. Overrides are **episodic** and **enumerated**; all other surfaces remain governed by the original `.mdc` files.
