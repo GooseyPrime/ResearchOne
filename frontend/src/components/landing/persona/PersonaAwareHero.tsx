@@ -104,7 +104,7 @@ export default function PersonaAwareHero({
           </p>
         )}
       </div>
-      <AnimatedPipelineHero />
+      <AnimatedPipelineHero resolvedPersona={persona} />
     </section>
   );
 }

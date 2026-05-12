@@ -13,12 +13,17 @@ import '@testing-library/jest-dom/vitest';
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { HERO_PIPELINE_IMG_ARIA_LABEL } from '../../components/landing/heroPipelineAria';
 import AnimatedPipelineHero from '../../components/landing/visual/AnimatedPipelineHero';
 import { BEAM_PALETTES } from '../../components/landing/visual/personaBeamPalettes';
 import { PIPELINE_STAGES } from '../../components/landing/visual/pipelineLayout';
 
+let prevIntersectionObserver: typeof globalThis.IntersectionObserver | undefined;
+let prevMatchMedia: typeof window.matchMedia | undefined;
+
 // Mock IntersectionObserver — vitest jsdom doesn't ship one.
 beforeEach(() => {
+  prevIntersectionObserver = globalThis.IntersectionObserver;
   // @ts-expect-error — jsdom doesn't include IntersectionObserver natively.
   globalThis.IntersectionObserver = class {
     constructor(private callback: IntersectionObserverCallback) {}
@@ -37,15 +42,41 @@ beforeEach(() => {
     }
     unobserve() {}
     disconnect() {}
-    takeRecords() { return []; }
+    takeRecords() {
+      return [];
+    }
     root = null;
     rootMargin = '';
     thresholds = [];
   };
+
+  prevMatchMedia = window.matchMedia;
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: typeof query === 'string' && query.includes('768px'),
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    onchange: null,
+  })) as unknown as typeof window.matchMedia;
 });
 
 afterEach(() => {
   cleanup();
+  if (prevIntersectionObserver === undefined) {
+    // @ts-expect-error — restore pre-test absence
+    delete globalThis.IntersectionObserver;
+  } else {
+    globalThis.IntersectionObserver = prevIntersectionObserver;
+  }
+  if (prevMatchMedia === undefined) {
+    // @ts-expect-error
+    delete window.matchMedia;
+  } else {
+    window.matchMedia = prevMatchMedia;
+  }
 });
 
 describe('AnimatedPipelineHero — reduced motion fallback (Rule 27 I-1)', () => {
@@ -188,6 +219,14 @@ describe('AnimatedPipelineHero — accessibility (Rule 27 I-8)', () => {
     // decorative beams. WCAG 1.1.1 violation.
   });
 
+  it('animated container aria-label matches HeroPipelineVisual (Rule 27 I-8)', () => {
+    render(<AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate />);
+    const container = screen.getByTestId('pipeline-animated');
+    expect(container.getAttribute('aria-label')).toBe(HERO_PIPELINE_IMG_ARIA_LABEL);
+    // REVERT-CHECK: heroPipelineAria.ts — shared string; animated hero must
+    // not drift from the static visual's accessible name.
+  });
+
   it('animated container has role="img"', () => {
     render(<AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate />);
     const container = screen.getByTestId('pipeline-animated');
@@ -208,6 +247,31 @@ describe('AnimatedPipelineHero — no banned filter usage (Rule 27 I-7)', () => 
     // via a wider stroke layer, not a filter. If someone adds
     // `filter: drop-shadow(...)` to make a "real glow," this test fails.
     // Rule 27 I-7 — filters cost ~40% framerate on mid-range Android.
+  });
+});
+
+describe('AnimatedPipelineHero — resolvedPersona prop (PR #112)', () => {
+  it('updates beam palette when resolvedPersona changes', () => {
+    const { container, rerender } = render(
+      <AnimatedPipelineHero
+        forceReducedMotion={false}
+        alwaysAnimate
+        resolvedPersona="default"
+      />
+    );
+    let skepticNode = container.querySelector('[data-stage-id="skeptic"]');
+    let style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.default.skepticRing);
+
+    rerender(
+      <AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate resolvedPersona="uap" />
+    );
+    skepticNode = container.querySelector('[data-stage-id="skeptic"]');
+    style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.uap.skepticRing);
+    // REVERT-CHECK: AnimatedPipelineHero.tsx — `resolvedPersona` in the
+    // palette `useEffect` dependency list. Without it, UAP beams stay
+    // on default after PersonaAwareHero resolves post-mount.
   });
 });
 

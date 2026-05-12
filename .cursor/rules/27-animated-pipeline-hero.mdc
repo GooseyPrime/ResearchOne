@@ -1,11 +1,12 @@
 ---
-description: Discipline for the animated multi-agent pipeline hero. Read before touching anything in frontend/src/components/landing/visual/AnimatedPipelineHero.tsx, pipelineBeams.tsx, pipelineLayout.ts, or personaBeamPalettes.ts.
+description: Discipline for the animated multi-agent pipeline hero. Read before touching anything in frontend/src/components/landing/visual/AnimatedPipelineHero.tsx, pipelineBeams.tsx, pipelineLayout.ts, personaBeamPalettes.ts, or heroPipelineAria.ts.
 alwaysApply: false
 globs:
   - "frontend/src/components/landing/visual/AnimatedPipelineHero.tsx"
   - "frontend/src/components/landing/visual/pipelineBeams.tsx"
   - "frontend/src/components/landing/visual/pipelineLayout.ts"
   - "frontend/src/components/landing/visual/personaBeamPalettes.ts"
+  - "frontend/src/components/landing/heroPipelineAria.ts"
   - "frontend/src/components/landing/HeroPipelineVisual.tsx"
   - "frontend/src/components/landing/persona/PersonaAwareHero.tsx"
 ---
@@ -93,10 +94,12 @@ Don't.
 
 ### I-5. Beam color palette is read from persona, not hardcoded
 
-The wrapping `<section data-persona="...">` element exposes the
-resolved persona. `AnimatedPipelineHero` reads `data-persona` from its
-ancestor (or via React context if WO-V exposes one in a later refactor)
-and looks up the palette in `personaBeamPalettes.ts`.
+`PersonaAwareHero` passes `resolvedPersona={persona}` so beam colors
+track React state when `data-persona` updates after mount (Codex PR
+#112). Without that prop (tests, Storybook), `AnimatedPipelineHero`
+falls back to reading `data-persona` from a DOM ancestor, then
+`forcePersona` for harness overrides, then the default palette in
+`personaBeamPalettes.ts`.
 
 Per Rule 26 I-9: persona content is WO-V's responsibility, visual
 variants are WO-W's. Adding beam colors to `personaContent.ts` or
@@ -113,8 +116,11 @@ is at least 25% in viewport. When scrolled out, the loop pauses.
 This is cheap insurance against the "10 minutes scrolled to footer,
 laptop running hot from off-screen RAF" failure mode.
 
-Use `IntersectionObserver` directly, not a library. Pause via
-`framer-motion`'s `controls.stop()`.
+Use `IntersectionObserver` directly, not a library. Pause by passing
+`active={false}` into `PipelineBeams` (Framer `animate` becomes a static
+hold) and by **not mounting** the desktop animated subtree below the
+Tailwind `md` breakpoint (`matchMedia('(min-width: 768px)')`) so
+`display:none` does not hide a still-running motion tree on phones.
 
 ### I-7. No SVG filter chains on the critical path
 
@@ -136,8 +142,10 @@ If you reach for a filter, find a different way.
 ### I-8. ARIA stays intact
 
 The wrapping element keeps `role="img"` and the exact `aria-label`
-and `<p className="sr-only">` description that exist today. The
-beam SVG element gets `aria-hidden="true"` because it is decorative.
+(`HERO_PIPELINE_IMG_ARIA_LABEL` in `heroPipelineAria.ts`, shared with
+`HeroPipelineVisual`) and the same `<p className="sr-only">` description
+that exist today. The beam SVG element gets `aria-hidden="true"`
+because it is decorative.
 Screen reader users hear the structure, not the motion.
 
 The animated visual must convey the same information as the static
@@ -159,7 +167,7 @@ palette is wrong — go back to the drawing board.
 Test assertions for this WO:
 
 - `useReducedMotion()` mocked to true → rendered DOM contains
-  `data-testid="static-pipeline"`, no `motion.*` elements present.
+  `data-testid="static-pipeline-fallback"`, no `motion.*` elements present.
   Mentally revert the reduced-motion check — test fails.
 - `useReducedMotion()` false → DOM contains the animated SVG and
   motion elements. Mentally revert — test fails.

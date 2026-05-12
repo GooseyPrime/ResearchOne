@@ -125,7 +125,13 @@ export const PIPELINE_EDGES: readonly PipelineEdge[] = [
     d: straight(byId('report'),             byId('persistence')) },
 ] as const;
 
-/** Total beam animation cycle in ms. The 9 beams stagger across this window. */
+/**
+ * Active sweep window in ms: staggered beam starts span
+ * `(edges - 1) * PIPELINE_STAGGER_MS`; each beam's draw duration is
+ * `PIPELINE_CYCLE_MS - (edges - 1) * PIPELINE_STAGGER_MS` so the last
+ * beam finishes at this boundary. `PIPELINE_LOOP_PAUSE_MS` is appended
+ * once per full loop (see `pipelineBeams.tsx`).
+ */
 export const PIPELINE_CYCLE_MS = 4500;
 
 /** Stagger between consecutive beams in ms. */

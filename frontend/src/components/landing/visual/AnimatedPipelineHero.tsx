@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { HERO_PIPELINE_IMG_ARIA_LABEL } from '../heroPipelineAria';
 import HeroPipelineVisual from '../HeroPipelineVisual';
 import PipelineBeams from './pipelineBeams';
 import {
@@ -22,12 +23,14 @@ import {
  *
  *   I-2  The static visual is imported, not duplicated.
  *
- *   I-5  Beam palette is read from the parent `[data-persona]`
- *        attribute (set by WO-V's `PersonaAwareHero`). Unknown or
- *        missing persona falls back to the default palette.
+ *   I-5  Beam palette follows `resolvedPersona` when passed (WO-V
+ *        `PersonaAwareHero`), else `forcePersona` for tests, else
+ *        `data-persona` on a DOM ancestor. Unknown persona → default.
  *
  *   I-6  Animation is gated on viewport visibility via
- *        IntersectionObserver. Off-screen → paused.
+ *        IntersectionObserver. Off-screen → paused. Desktop beam
+ *        subtree mounts only at `md+` matchMedia so mobile does not
+ *        run Framer Motion loops behind `display:none`.
  *
  *   I-8  ARIA preserved — same `role="img"` and label that
  *        `HeroPipelineVisual` exposes, applied to the wrapper here so
@@ -43,12 +46,11 @@ import {
  *   component.
  */
 
-const PIPELINE_ARIA_LABEL =
-  'ResearchOne ten-stage pipeline grouped into four phases: Plan, Retrieve and Read, ' +
-  'Reason and Challenge, Synthesize and Cite. The Skeptic is a dedicated adversarial ' +
-  'agent that attacks the draft before it proceeds.';
+const MD_MIN_WIDTH_QUERY = '(min-width: 768px)';
 
 export interface AnimatedPipelineHeroProps {
+  /** Resolved persona from `PersonaAwareHero` — keeps beam palette in sync when `data-persona` updates after mount. */
+  resolvedPersona?: string;
   /** Override persona detection for tests or A/B forced rendering. */
   forcePersona?: string;
   /** Override reduced-motion detection for tests. */
@@ -58,6 +60,7 @@ export interface AnimatedPipelineHeroProps {
 }
 
 export default function AnimatedPipelineHero({
+  resolvedPersona,
   forcePersona,
   forceReducedMotion,
   alwaysAnimate = false,
@@ -68,14 +71,34 @@ export default function AnimatedPipelineHero({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(alwaysAnimate);
-  const [palette, setPalette] = useState<BeamPalette>(() => getBeamPalette(forcePersona));
+  const [isMdUp, setIsMdUp] = useState(false);
+  const [palette, setPalette] = useState<BeamPalette>(() =>
+    getBeamPalette(forcePersona ?? resolvedPersona)
+  );
 
-  // IntersectionObserver gate (Rule 27 I-6).
+  // Match Tailwind `md:` — do not mount desktop animation subtree on narrow viewports.
   useEffect(() => {
-    if (alwaysAnimate) return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const mq = window.matchMedia(MD_MIN_WIDTH_QUERY);
+    const update = () => setIsMdUp(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // IntersectionObserver gate (Rule 27 I-6) — desktop subtree only.
+  useEffect(() => {
+    if (!isMdUp) {
+      setIsVisible(false);
+      return;
+    }
+    if (alwaysAnimate) {
+      setIsVisible(true);
+      return;
+    }
     if (typeof IntersectionObserver === 'undefined') {
-      // Old browser — fall back to always-on. Better than always-off
-      // which would silently disable the animation.
       setIsVisible(true);
       return;
     }
@@ -91,23 +114,23 @@ export default function AnimatedPipelineHero({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [alwaysAnimate]);
+  }, [alwaysAnimate, isMdUp]);
 
-  // Persona palette resolution.
-  // Reads `data-persona` from the nearest ancestor element that has
-  // it. WO-V's `PersonaAwareHero` sets `data-persona` on its <section>.
-  // Falls back to forcePersona prop, then to 'default'.
+  // Persona palette: test override → React prop from PersonaAwareHero → DOM ancestor.
   useEffect(() => {
-    if (forcePersona) {
+    if (forcePersona !== undefined && forcePersona !== '') {
       setPalette(getBeamPalette(forcePersona));
+      return;
+    }
+    if (resolvedPersona !== undefined) {
+      setPalette(getBeamPalette(resolvedPersona));
       return;
     }
     const el = containerRef.current;
     if (!el) return;
     const ancestor = el.closest<HTMLElement>('[data-persona]');
-    const persona = ancestor?.dataset.persona;
-    setPalette(getBeamPalette(persona));
-  }, [forcePersona]);
+    setPalette(getBeamPalette(ancestor?.dataset.persona));
+  }, [forcePersona, resolvedPersona, isMdUp]);
 
   // ─── Reduced motion path — pure render of the static visual ────
   if (reducedMotion) {
@@ -118,117 +141,107 @@ export default function AnimatedPipelineHero({
     );
   }
 
-  // ─── Mobile path — also use static visual ──────────────────────
-  // We render BOTH and let Tailwind's responsive utilities pick.
-  // The static visual on md+ is hidden; the animated one is hidden
-  // below md. This is the standard responsive-visual pattern in this
-  // codebase.
-
   return (
-    <div ref={containerRef} className="w-full">
+    <div className="w-full">
       {/* Mobile / narrow — fall back to the existing static layout. */}
       <div className="md:hidden" data-testid="pipeline-mobile-static">
         <HeroPipelineVisual />
       </div>
 
-      {/* Desktop — animated. */}
-      <div
-        className="hidden md:block"
-        role="img"
-        aria-label={PIPELINE_ARIA_LABEL}
-        data-testid="pipeline-animated"
-      >
-        {/* Screen-reader description matches the static visual. */}
-        <p className="sr-only">
-          The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
-          and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
-          Retriever Analysis stages. Phase three, Reason and Challenge, includes the
-          Reasoner and Skeptic stages. The Skeptic is a dedicated adversarial agent that
-          attacks the draft before it proceeds. Phase four, Synthesize and Cite, includes
-          the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
-        </p>
-
+      {/* Desktop — animated (unmounted below md to avoid off-screen Framer work). */}
+      {isMdUp && (
         <div
-          className="relative rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-6"
-          style={{
-            aspectRatio: `${PIPELINE_VIEWBOX.width} / ${PIPELINE_VIEWBOX.height}`,
-            // Min height ensures the animated visual doesn't collapse
-            // to zero if the parent has odd flex behavior.
-            minHeight: 260,
-          }}
+          ref={containerRef}
+          className="hidden md:block"
+          role="img"
+          aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
+          data-testid="pipeline-animated"
         >
-          {/* Beam layer (decorative). */}
-          <PipelineBeams palette={palette} active={isVisible} />
+          {/* Screen-reader description matches the static visual. */}
+          <p className="sr-only">
+            The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
+            and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
+            Retriever Analysis stages. Phase three, Reason and Challenge, includes the
+            Reasoner and Skeptic stages. The Skeptic is a dedicated adversarial agent that
+            attacks the draft before it proceeds. Phase four, Synthesize and Cite, includes
+            the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
+          </p>
 
-          {/* Node layer — positioned absolutely over the SVG. */}
-          <div className="absolute inset-0">
-            {PIPELINE_STAGES.map((stage) => {
-              // Convert SVG-space coords to percentage of the inset
-              // box so nodes track the SVG as it scales.
-              const leftPct = (stage.x / PIPELINE_VIEWBOX.width) * 100;
-              const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
-              const isSkeptic = stage.id === 'skeptic';
+          <div
+            className="relative rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-6"
+            style={{
+              aspectRatio: `${PIPELINE_VIEWBOX.width} / ${PIPELINE_VIEWBOX.height}`,
+              minHeight: 260,
+            }}
+          >
+            <PipelineBeams palette={palette} active={isVisible} />
 
-              const ringColor = isSkeptic
-                ? palette.skepticRing
-                : palette.nodeIdleRing;
-              const ringWidth = isSkeptic ? 2 : 1;
-              const bgOpacity = isSkeptic ? 0.25 : 0.05;
+            <div className="absolute inset-0">
+              {PIPELINE_STAGES.map((stage) => {
+                const leftPct = (stage.x / PIPELINE_VIEWBOX.width) * 100;
+                const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
+                const isSkeptic = stage.id === 'skeptic';
 
-              return (
-                <motion.div
-                  key={stage.id}
-                  className="absolute flex items-center justify-center"
-                  style={{
-                    left: `${leftPct}%`,
-                    top: `${topPct}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{
-                    delay: stage.x / 1000 * 0.4,
-                    duration: 0.4,
-                  }}
-                >
-                  <span
-                    data-stage-id={stage.id}
-                    data-emphasis={isSkeptic ? 'skeptic' : undefined}
-                    className="rounded-full px-3 py-1.5 text-[11px] font-medium whitespace-nowrap"
+                const ringColor = isSkeptic
+                  ? palette.skepticRing
+                  : palette.nodeIdleRing;
+                const ringWidth = isSkeptic ? 2 : 1;
+                const bgOpacity = isSkeptic ? 0.25 : 0.05;
+
+                return (
+                  <motion.div
+                    key={stage.id}
+                    className="absolute flex items-center justify-center"
                     style={{
-                      border: `${ringWidth}px solid ${ringColor}`,
-                      background: isSkeptic
-                        ? `rgba(255, 255, 255, ${bgOpacity})`
-                        : `rgba(255, 255, 255, ${bgOpacity})`,
-                      color: '#E0E0E0',
-                      boxShadow: isSkeptic
-                        ? `0 0 12px ${palette.skepticRing}55`
-                        : 'none',
+                      left: `${leftPct}%`,
+                      top: `${topPct}%`,
+                      transform: 'translate(-50%, -50%)',
                     }}
-                    aria-label={isSkeptic ? 'Skeptic, dedicated adversarial agent' : stage.label}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{
+                      delay: stage.x / 1000 * 0.4,
+                      duration: 0.4,
+                    }}
                   >
-                    {stage.label}
-                  </span>
-                </motion.div>
-              );
-            })}
-          </div>
+                    <span
+                      data-stage-id={stage.id}
+                      data-emphasis={isSkeptic ? 'skeptic' : undefined}
+                      className="rounded-full px-3 py-1.5 text-[11px] font-medium whitespace-nowrap"
+                      style={{
+                        border: `${ringWidth}px solid ${ringColor}`,
+                        background: isSkeptic
+                          ? `rgba(255, 255, 255, ${bgOpacity})`
+                          : `rgba(255, 255, 255, ${bgOpacity})`,
+                        color: '#E0E0E0',
+                        boxShadow: isSkeptic
+                          ? `0 0 12px ${palette.skepticRing}55`
+                          : 'none',
+                      }}
+                      aria-label={isSkeptic ? 'Skeptic, dedicated adversarial agent' : stage.label}
+                    >
+                      {stage.label}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </div>
 
-          {/* Phase labels along the top edge. */}
-          <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
-            {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'SYNTHESIZE & CITE'] as const).map(
-              (label) => (
-                <span
-                  key={label}
-                  className="font-mono text-[10px] uppercase tracking-wide text-r1-accent/70"
-                >
-                  {label}
-                </span>
-              )
-            )}
+            <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
+              {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'SYNTHESIZE & CITE'] as const).map(
+                (label) => (
+                  <span
+                    key={label}
+                    className="font-mono text-[10px] uppercase tracking-wide text-r1-accent/70"
+                  >
+                    {label}
+                  </span>
+                )
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

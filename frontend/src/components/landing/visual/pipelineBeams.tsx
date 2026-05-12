@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { motion } from 'framer-motion';
 import {
   PIPELINE_EDGES,
@@ -38,13 +39,17 @@ export interface PipelineBeamsProps {
 
 export default function PipelineBeams({ palette, active }: PipelineBeamsProps) {
   const { width, height } = PIPELINE_VIEWBOX;
-  const gradientId = 'r1-beam-gradient';
-  const haloGradientId = 'r1-beam-halo-gradient';
+  const uid = useId().replace(/:/g, '');
+  const gradientId = `r1-beam-gradient-${uid}`;
+  const haloGradientId = `r1-beam-halo-gradient-${uid}`;
 
-  // Per-edge total cycle: time to draw + time to fade + time waiting
-  // for the next staggered start. Framer Motion's `repeat: Infinity`
-  // with a `repeatDelay` handles the pause cleanly.
-  const drawDurationS = (PIPELINE_CYCLE_MS - PIPELINE_LOOP_PAUSE_MS) / 1000;
+  // Staggered beams must finish drawing within `PIPELINE_CYCLE_MS`; then
+  // `PIPELINE_LOOP_PAUSE_MS` is the quiet tail before the next loop.
+  const maxStaggerMs = (PIPELINE_EDGES.length - 1) * PIPELINE_STAGGER_MS;
+  const drawDurationS = Math.max(
+    0.28,
+    (PIPELINE_CYCLE_MS - maxStaggerMs) / 1000
+  );
   const totalLoopS = (PIPELINE_CYCLE_MS + PIPELINE_LOOP_PAUSE_MS) / 1000;
 
   return (
