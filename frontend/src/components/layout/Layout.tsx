@@ -26,6 +26,7 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
+import { stripeSubscriptionGrantsPaidPlan } from '../../utils/stripeSubscriptionAccess';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -95,8 +96,9 @@ export default function Layout() {
     retry: false,
   });
 
-  const subIsActive = subscriptionData?.status === 'active';
-  const userTier = subIsActive ? subscriptionData.tier : 'free_demo';
+  const subGrantsPlan = stripeSubscriptionGrantsPaidPlan(subscriptionData?.status);
+  const userTier =
+    subGrantsPlan && subscriptionData ? subscriptionData.tier : 'free_demo';
   const hasProAccess =
     isAllowlistedAdmin ||
     (PRO_PLUS_TIERS as readonly string[]).includes(userTier);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@clerk/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FlaskConical,
@@ -26,7 +27,7 @@ import {
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
-import {
+import api, {
   startResearch,
   getResearchRuns,
   getResearchRun,
@@ -39,6 +40,7 @@ import {
   type ResearchObjective,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
+import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -217,11 +219,21 @@ export default function ResearchPageV2() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
 
-  const cachedSub = qc.getQueryData<{ tier: string; status: string }>(['billing-subscription']);
-  const tierResolved = cachedSub !== undefined;
+  const { data: subscriptionData, isLoading: subLoading } = useQuery({
+    queryKey: ['billing-subscription'],
+    queryFn: () => api.get<{ tier: string; status: string }>('/billing/subscription').then((r) => r.data),
+    enabled: Boolean(authLoaded && isSignedIn),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const tierResolved = !subLoading;
   const userTier = tierResolved
-    ? (cachedSub.status === 'active' ? cachedSub.tier : 'free_demo')
+    ? stripeSubscriptionGrantsPaidPlan(subscriptionData?.status) && subscriptionData
+      ? subscriptionData.tier
+      : 'free_demo'
     : null;
   const allowedObjectives = userTier
     ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
