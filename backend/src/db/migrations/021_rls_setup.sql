@@ -1,6 +1,10 @@
 -- RLS Setup: application_role and grants.
 -- Stage 1 of the deploy-skew rollout: create role and grants BEFORE enabling RLS.
 --
+-- Repo bootstrap when CREATE ROLE is skipped: docs/RUNBOOKS/application-role-bootstrap.md
+-- (`npm run bootstrap:application-role` + DATABASE_ADMIN_URL). Do not rely on re-running
+-- this migration after it is recorded as applied.
+--
 -- Runtime model: the app connects as the normal login user, then does
 -- SET ROLE application_role inside each transaction for RLS enforcement.
 -- RESET ROLE restores the login user after the transaction.
