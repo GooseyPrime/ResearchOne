@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { runScope } from '../telemetry';
 import { parseResearchObjective, type ResearchObjective } from './reasoningModelPolicy';
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { logger } from '../../utils/logger';
@@ -189,6 +190,20 @@ export async function createRevisionRequest(args: {
   return { requestId: requestRows[0].id };
 }
 
+/**
+ * Public entry. Establishes telemetry scope for the revision pipeline.
+ *
+ * Revision-emitted `agent_executions` rows have:
+ *   run_id    = NULL    (revisions don't create research_runs rows)
+ *   report_id = args.reportId  (the report being revised)
+ *   user_id   = args.initiatedBy
+ *
+ * Per Rule 25 invariant I-2: only this function may call runScope.run
+ * inside the revision module. The seven revision agents (revision_intake,
+ * report_locator, change_planner, section_rewriter, citation_integrity_checker,
+ * final_revision_verifier — see REASONING_MODEL_ROLES) inherit this scope
+ * via AsyncLocalStorage.
+ */
 export async function createReportRevision(args: {
   reportId: string;
   requestText: string;
@@ -209,6 +224,29 @@ export async function createReportRevision(args: {
   /** Pre-created request id from `createRevisionRequest`. When provided the
    *  INSERT is skipped and this id is used directly; the row's metadata and
    *  supplemental_attachments are updated to reflect the final ingest result. */
+  requestId?: string;
+}): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
+  return runScope.run(
+    {
+      runId: null,
+      reportId: args.reportId,
+      userId: args.initiatedBy ?? null,
+      orgId: null,
+    },
+    () => createReportRevisionInner(args)
+  );
+}
+
+async function createReportRevisionInner(args: {
+  reportId: string;
+  requestText: string;
+  rationale?: string;
+  initiatedBy?: string;
+  initiatedByType?: string;
+  revisionTriggeredBy?: RevisionTriggerSource;
+  supplementalContext?: string;
+  supplementalAttachments?: Array<Record<string, unknown>>;
+  onProgress?: (update: RevisionProgress) => void;
   requestId?: string;
 }): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
   const emit = (stage: string, percent: number, message: string, revisionId?: string) => {

@@ -21,6 +21,7 @@ import axios from 'axios';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel } from '../openrouter/openrouterService';
+import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
@@ -117,7 +118,18 @@ function normalizeUrl(raw: string): string {
 }
 
 /**
- * Run the autonomous external discovery stage for a research run.
+ * Public entry. Wraps the discovery body in a nested telemetry scope
+ * that overrides `phase` to 'Discovery' so all `callRoleModel` calls
+ * here surface as Discovery in the admin cost dashboard, not Planning.
+ *
+ * The nested scope inherits `runId`, `userId`, `reportId`, `orgId`
+ * from the parent (set by `runResearchJob` per PATCH 02) via
+ * `runScope.current()` spread.
+ *
+ * Edge case: if Discovery is ever invoked outside a research run
+ * (e.g. a hypothetical "discovery-only" API), `runScope.current()`
+ * returns null. The OR-fallback below handles that — we still set
+ * runId from args.
  */
 export async function runDiscoveryOrchestrator(args: {
   runId: string;
@@ -132,6 +144,30 @@ export async function runDiscoveryOrchestrator(args: {
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
+  onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
+}): Promise<DiscoveryRunSummary> {
+  const parent = runScope.current();
+  return runScope.run(
+    {
+      ...(parent ?? {}),
+      runId: parent?.runId ?? args.runId,
+      userId: parent?.userId ?? args.userId ?? null,
+      phaseOverride: 'Discovery',
+    },
+    () => runDiscoveryOrchestratorInner(args)
+  );
+}
+
+async function runDiscoveryOrchestratorInner(args: {
+  runId: string;
+  researchQuery: string;
+  plan: Record<string, unknown>;
+  filterTags?: string[];
+  engineVersion?: string;
+  researchObjective?: ResearchObjective;
+  allowFallbackByRole?: Record<string, boolean>;
+  byokApiKeyOverride?: string;
+  userId?: string;
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, onRoundComplete } = args;
