@@ -118,14 +118,20 @@ function MonitorKindCard({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          className="btn text-sm"
-          onClick={() => checkoutMut.mutate()}
-          disabled={checkoutMut.isPending}
-        >
-          {checkoutMut.isPending ? 'Starting checkout…' : 'Subscribe via Stripe'}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="btn text-sm"
+            onClick={() => checkoutMut.mutate()}
+            disabled={checkoutMut.isPending}
+          >
+            {checkoutMut.isPending ? 'Starting checkout…' : 'Subscribe via Stripe'}
+          </button>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            On Stripe Checkout you can enter a promotion code. If your total is $0 after discounts, you will
+            not be asked for a payment method.
+          </p>
+        </div>
       )}
     </div>
   );

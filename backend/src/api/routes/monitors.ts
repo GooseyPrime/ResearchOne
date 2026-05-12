@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
-import { getStripeClient } from '../../services/billing/stripeClient';
+import { getStripeClient, stripeCheckoutSubscriptionCustomerDefaults } from '../../services/billing/stripeClient';
 import { query } from '../../db/pool';
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
@@ -84,6 +84,7 @@ byReport.post('/', async (req, res, next) => {
     const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
+      ...stripeCheckoutSubscriptionCustomerDefaults,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: config.stripe.successUrl,
       cancel_url: config.stripe.cancelUrl,

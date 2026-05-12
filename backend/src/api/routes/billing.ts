@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
-import { getStripeClient, getTopupAmountForPrice, getSubscriptionPriceOptions } from '../../services/billing/stripeClient';
+import {
+  getStripeClient,
+  getTopupAmountForPrice,
+  getSubscriptionPriceOptions,
+  stripeCheckoutAllowPromotionCodes,
+  stripeCheckoutSubscriptionCustomerDefaults,
+} from '../../services/billing/stripeClient';
 import { getUserSubscription, cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
 import { getWalletSummary, getWalletTransactions } from '../../services/billing/walletService';
 import { config } from '../../config';
@@ -71,6 +77,7 @@ router.post('/checkout/topup', async (req, res, next) => {
     const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      ...stripeCheckoutAllowPromotionCodes,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: config.stripe.successUrl,
       cancel_url: config.stripe.cancelUrl,
@@ -104,6 +111,7 @@ router.post('/checkout/subscription', async (req, res, next) => {
     const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
+      ...stripeCheckoutSubscriptionCustomerDefaults,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: config.stripe.successUrl,
       cancel_url: config.stripe.cancelUrl,

@@ -1,6 +1,30 @@
 import Stripe from 'stripe';
 import { config } from '../../config';
 
+/**
+ * Hosted Checkout: show “Add promotion code” for customer-entered coupons.
+ * See Stripe `allow_promotion_codes` on Session create.
+ */
+export const stripeCheckoutAllowPromotionCodes = {
+  allow_promotion_codes: true,
+} as const;
+
+/**
+ * Subscription Checkout Session defaults: same promotion codes as
+ * {@link stripeCheckoutAllowPromotionCodes}, plus `payment_method_collection: 'if_required'`
+ * so Stripe does not collect a card when the amount due is $0 (e.g. 100% discount).
+ * Stripe documents this for subscription-mode Checkout Sessions.
+ */
+export const stripeCheckoutSubscriptionSessionDefaults = {
+  ...stripeCheckoutAllowPromotionCodes,
+  payment_method_collection: 'if_required' as const,
+} as const;
+
+/**
+ * @deprecated Use {@link stripeCheckoutSubscriptionSessionDefaults}.
+ */
+export const stripeCheckoutSubscriptionCustomerDefaults = stripeCheckoutSubscriptionSessionDefaults;
+
 let stripeClient: InstanceType<typeof Stripe> | null = null;
 
 export function getStripeClient(): InstanceType<typeof Stripe> {
