@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "audit:snapshots:wave2": "node scripts/wave2-audit-snapshots.mjs"
+    "audit:snapshots:wave2": "node scripts/wave2-audit-snapshots.mjs",
+    "prerender:marketing": "node scripts/prerender-marketing.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.6.0",
