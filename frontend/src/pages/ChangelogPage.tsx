@@ -3,9 +3,10 @@ import LandingHeader from '../components/landing/LandingHeader';
 
 const ENTRIES = [
   {
-    version: '1.0.0',
+    version: 'Wave 2 (in progress)',
     date: '2026-05-12',
-    summary: 'Marketing shell: opaque surfaces on lab-notebook canvas, expanded public FAQ and compare pages, unified nav.',
+    summary:
+      'Marquee rebuild: PipelineSchematic hero, LivingReportTimeline, strict FeatureCard caps, §2.10 marketing copy refresh, governance override record.',
   },
   {
     version: '0.9.x',

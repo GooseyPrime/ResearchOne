@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "audit:snapshots:wave2": "node scripts/wave2-audit-snapshots.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.6.0",
@@ -47,6 +48,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "jsdom": "^26.1.0",
+    "playwright": "^1.49.1",
     "postcss": "^8.5.12",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",

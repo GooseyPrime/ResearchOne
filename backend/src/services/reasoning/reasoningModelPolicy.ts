@@ -20,6 +20,7 @@ export const REASONING_MODEL_ROLES = [
   'change_planner',
   'section_rewriter',
   'citation_integrity_checker',
+  'citation_formatter',
   'final_revision_verifier',
 ] as const;
 
@@ -209,6 +210,7 @@ const BASE_ALLOWLIST = [
   'openai/o3',
   'openai/o3-mini',
   'openai/o4-mini',
+  'openai/gpt-4o-mini',
   'qwen/qwen3-235b-a22b',
 
   // ── V2 / OpenRouter critical-path primaries (multi-provider) ─────────────

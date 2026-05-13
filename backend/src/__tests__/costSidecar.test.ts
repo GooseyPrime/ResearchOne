@@ -59,6 +59,8 @@ describe('costSidecar — rolePhaseFor', () => {
     expect(rolePhaseFor('citation_integrity_checker')).toBe('Verification');
     expect(rolePhaseFor('plain_language_synthesizer')).toBe('Plain Language');
     expect(rolePhaseFor('change_planner')).toBe('Revision');
+    expect(rolePhaseFor('citation_formatter')).toBe('Citation Mapping');
+    // REVERT-CHECK: costSidecar.ts:rolePhaseFor — case 'citation_formatter'.
   });
 
   it('callPurpose overrides role mapping for contradiction extraction', () => {

@@ -1,7 +1,8 @@
+import { readFile } from 'fs/promises';
 import { Router, RequestHandler } from 'express';
 import { requireAdmin, requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
-import { query } from '../../db/pool';
+import { query, adminQuery } from '../../db/pool';
 import { config } from '../../config';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
@@ -12,6 +13,15 @@ import {
 } from '../../services/reasoning/reportRevisionService';
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { logger } from '../../utils/logger';
+import { exportReport } from '../../services/formatting/exportOrchestrator';
+import {
+  pandocAvailable,
+  PandocError,
+  type ExportFormat,
+  type ExportStyle,
+} from '../../services/formatting/pandocRunner';
+import { reportExportQueue } from '../../queue/queues';
+import { resolveLocalExportDiskPath } from '../../services/formatting/exportStorage';
 
 const router = Router();
 
@@ -163,6 +173,166 @@ router.post('/:id/publish-featured', requireAdmin, async (req, res, next) => {
 });
 
 router.use(requireAuth);
+
+/**
+ * GET /api/reports/exports/engine-status
+ *
+ * Lightweight Pandoc availability probe for the export UI (Rule 28 I-6).
+ * Registered before `/exports/:exportId` so `engine-status` is not parsed
+ * as a UUID.
+ */
+router.get('/exports/engine-status', async (_req, res, next) => {
+  try {
+    const avail = await pandocAvailable();
+    res.json({ available: avail.available, version: avail.version });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/reports/exports/:exportId/download
+ *
+ * Auth-gated binary download for completed local exports (PR #115).
+ * Must be registered before `/exports/:exportId` (poll JSON).
+ */
+router.get('/exports/:exportId/download', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const orgId = req.auth?.orgId ?? null;
+    const exportId = req.params.exportId;
+
+    type PickRow = { format: string; status: string; style: string };
+    let rows: PickRow[];
+    try {
+      rows = await adminQuery<PickRow>(
+        `SELECT e.format, e.status, e.style
+           FROM report_exports e
+           JOIN reports r ON r.id = e.report_id
+          WHERE e.id = $1
+            AND e.user_id = $2
+            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
+          LIMIT 1`,
+        [exportId, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId/download' });
+      rows = await adminQuery<PickRow>(
+        `SELECT e.format, e.status, e.style
+           FROM report_exports e
+          WHERE e.id = $1 AND e.user_id = $2
+          LIMIT 1`,
+        [exportId, userId]
+      );
+    }
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'export not found' });
+      return;
+    }
+    if (rows[0].status !== 'completed') {
+      res.status(409).json({
+        error: 'export_not_ready',
+        detail: `Export status is "${rows[0].status}".`,
+      });
+      return;
+    }
+
+    const format = rows[0].format as ExportFormat;
+    const diskPath = resolveLocalExportDiskPath(exportId, format);
+    let buf: Buffer;
+    try {
+      buf = await readFile(diskPath);
+    } catch {
+      res.status(404).json({ error: 'export file missing' });
+      return;
+    }
+
+    res.setHeader('Content-Type', mimeForExportFormat(format));
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="report-export-${exportId.slice(0, 8)}-${rows[0].style}.${format}"`
+    );
+    res.send(buf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/reports/exports/:exportId
+ *
+ * Polling endpoint for async exports. Must be registered before
+ * `router.get('/:id', …)` so `exports` is not captured as a report id.
+ */
+router.get('/exports/:exportId', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const orgId = req.auth?.orgId ?? null;
+    let rows: Array<{
+      id: string;
+      status: string;
+      format: string;
+      style: string;
+      output_url: string | null;
+      output_bytes: number | null;
+      error_class: string | null;
+      error_detail: string | null;
+      created_at: string;
+      completed_at: string | null;
+    }>;
+    try {
+      rows = await adminQuery(
+        `SELECT e.id, e.status, e.format, e.style, e.output_url, e.output_bytes,
+                e.error_class, e.error_detail, e.created_at, e.completed_at
+           FROM report_exports e
+           JOIN reports r ON r.id = e.report_id
+          WHERE e.id = $1
+            AND e.user_id = $2
+            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
+          LIMIT 1`,
+        [req.params.exportId, userId, orgId]
+      );
+    } catch (dbErr) {
+      if ((dbErr as { code?: string }).code === '42P01') {
+        res.status(503).json({
+          error: 'export service unavailable',
+          detail: 'Database migration pending.',
+        });
+        return;
+      }
+      if ((dbErr as { code?: string }).code === '42703') {
+        logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId' });
+        rows = await adminQuery(
+          `SELECT id, status, format, style, output_url, output_bytes,
+                  error_class, error_detail, created_at, completed_at
+             FROM report_exports
+            WHERE id = $1 AND user_id = $2
+            LIMIT 1`,
+          [req.params.exportId, userId]
+        );
+      } else {
+        throw dbErr;
+      }
+    }
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'export not found' });
+      return;
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/reports - List reports
 router.get('/', async (req, res, next) => {
@@ -502,5 +672,157 @@ router.get('/:id/citations', async (req, res, next) => {
     next(err);
   }
 });
+
+const VALID_EXPORT_FORMATS: ReadonlySet<ExportFormat> = new Set(['docx', 'pdf', 'md', 'html']);
+const VALID_EXPORT_STYLES: ReadonlySet<ExportStyle> = new Set([
+  'mla',
+  'apa',
+  'chicago-author-date',
+  'chicago-note',
+  'ieee',
+  'harvard',
+]);
+
+/**
+ * POST /api/reports/:id/export
+ *
+ * Body: { format, style, sync?: boolean }
+ *
+ * Rule 28 I-6: when Pandoc is missing, returns 200 JSON
+ * `{ available: false, reason: 'pandoc_not_installed' }` (never 500).
+ */
+router.post('/:id/export', async (req, res, next) => {
+  try {
+    const reportId = req.params.id;
+    const body = req.body as Record<string, unknown>;
+    const format = String(body.format ?? '').toLowerCase() as ExportFormat;
+    const style = String(body.style ?? '').toLowerCase() as ExportStyle;
+    const sync = body.sync === true;
+
+    if (!VALID_EXPORT_FORMATS.has(format)) {
+      res.status(400).json({
+        error: 'invalid format',
+        validFormats: Array.from(VALID_EXPORT_FORMATS),
+      });
+      return;
+    }
+    if (!VALID_EXPORT_STYLES.has(style)) {
+      res.status(400).json({
+        error: 'invalid style',
+        validStyles: Array.from(VALID_EXPORT_STYLES),
+      });
+      return;
+    }
+
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let owned: { id: string }[];
+    try {
+      owned = await query(
+        `SELECT id FROM reports WHERE id=$1 AND (user_id=$2 OR (org_id IS NOT NULL AND org_id=$3) OR user_id IS NULL)`,
+        [reportId, userId, orgId]
+      );
+    } catch (scopeErr) {
+      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
+      logger.warn('legacy_unscoped_read', { route: 'POST /api/reports/:id/export' });
+      owned = await query(`SELECT id FROM reports WHERE id=$1`, [reportId]);
+    }
+    if (owned.length === 0) {
+      res.status(404).json({ error: 'report not found' });
+      return;
+    }
+
+    const avail = await pandocAvailable();
+    if (!avail.available) {
+      res.json({
+        available: false,
+        reason: 'pandoc_not_installed',
+        detail: 'Pandoc is not installed on this server. Contact your administrator.',
+      });
+      return;
+    }
+
+    if (sync) {
+      try {
+        const result = await exportReport({
+          reportId,
+          format,
+          style,
+          userId,
+        });
+        const mime = mimeForExportFormat(format);
+        res.setHeader('Content-Type', mime);
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="report-${reportId.slice(0, 8)}-${style}.${format}"`
+        );
+        res.send(result.outputBuffer);
+        return;
+      } catch (err) {
+        if (err instanceof PandocError) {
+          res.status(err.classification === 'timeout' ? 504 : 422).json({
+            error: err.classification,
+            detail: err.message,
+          });
+          return;
+        }
+        throw err;
+      }
+    }
+
+    let exportRows: { id: string }[];
+    try {
+      exportRows = await adminQuery<{ id: string }>(
+        `INSERT INTO report_exports (report_id, user_id, format, style, status)
+         VALUES ($1, $2, $3, $4, 'queued')
+         RETURNING id`,
+        [reportId, userId, format, style]
+      );
+    } catch (dbErr) {
+      if ((dbErr as { code?: string }).code === '42P01') {
+        res.status(503).json({
+          error: 'export service unavailable',
+          detail: 'Database migration pending.',
+        });
+        return;
+      }
+      throw dbErr;
+    }
+    const exportId = exportRows[0].id;
+
+    await reportExportQueue.add(
+      'export',
+      { exportId, reportId, format, style, userId },
+      {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: { age: 3600 },
+        removeOnFail: { age: 86400 },
+      }
+    );
+
+    res.status(202).json({
+      exportId,
+      status: 'queued',
+      pollUrl: `/api/reports/exports/${exportId}`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function mimeForExportFormat(format: ExportFormat): string {
+  switch (format) {
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'pdf':
+      return 'application/pdf';
+    case 'md':
+      return 'text/markdown; charset=utf-8';
+    case 'html':
+      return 'text/html; charset=utf-8';
+  }
+}
 
 export default router;

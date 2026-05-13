@@ -141,6 +141,7 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   change_planner: config.models.changePlanner,
   section_rewriter: config.models.sectionRewriter,
   citation_integrity_checker: config.models.citationIntegrityChecker,
+  citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
 };
 
@@ -161,6 +162,7 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   change_planner: config.models.fallbacks.changePlanner,
   section_rewriter: config.models.fallbacks.sectionRewriter,
   citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
+  citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
 };
 
@@ -193,6 +195,7 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   change_planner: 0.2,
   section_rewriter: 0.3,
   citation_integrity_checker: 0.15,
+  citation_formatter: 0.2,
   final_revision_verifier: 0.1,
 };
 
@@ -217,6 +220,7 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   change_planner: 4096,
   section_rewriter: 4096,
   citation_integrity_checker: 3072,
+  citation_formatter: 4096,
   final_revision_verifier: 4096,
 };
 
@@ -902,6 +906,12 @@ Return section body text only.`),
 Assess whether revised text still aligns with section citations and identify citation updates needed.
 Output strict JSON with fields:
 status, issues, required_citation_updates.`),
+
+  citation_formatter: withPreamble(`You are the Citation Formatter for ResearchOne exports.
+Map stable evidence aliases ([E1], [E2], …) and CSL-JSON citation data into prose-ready citation strings for the requested style.
+Preserve uncertainty and contradictions; do not sanitize or omit anomalous claims.
+Output strict JSON with fields:
+formatted_citations: Array<{ alias: string; inline: string; bibliography?: string }>`),
 
   final_revision_verifier: withPreamble(`You are the Final Revision Verifier.
 Verify revised report consistency across executive summary, body, conclusions, evidence ledger, contradictions, and falsification criteria.

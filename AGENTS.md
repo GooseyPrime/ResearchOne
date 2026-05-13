@@ -88,6 +88,16 @@ drove the rules is at
 - When a code review surfaces a finding the agent missed, treat it as a
   data point: extend the relevant rule (or add a new one) so the
   pattern doesn't recur.
+- **PR #115 / academic exports (recurring review themes):** verify SQL
+  column names against real migrations (`section_order` vs invented
+  `position`; no fictional `reports.body_markdown`). Routes using
+  `adminQuery` must require a non-null authenticated user and must not
+  treat `NULL` user id as a wildcard. `tsc`-only backend builds must
+  copy non-TypeScript runtime assets (CSL, DOCX) into `dist/` — see
+  `backend/scripts/copy-formatting-templates.mjs`. UI docstrings and
+  marketing copy must match implemented behavior (for example the export
+  engine-status probe before enabling Export). Prefer `detail` alongside
+  `error` in JSON error bodies surfaced to users.
 - **CSP (`vercel.json`):** If `script-src` includes `'unsafe-inline'`
   for Clerk (or similar), keep **`script-src-attr 'none'`** so inline
   event-handler attributes stay blocked (PR #84). See

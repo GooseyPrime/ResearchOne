@@ -11,9 +11,9 @@ describe('LandingPage', () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain('Deep research that defends itself.');
-    expect(markup).toContain('Start free');
-    expect(markup).toContain('See a sample report');
+    expect(markup).toContain('Research that defends itself.');
+    expect(markup).toContain('Open a sample report');
+    expect(markup).toContain('See the methodology');
     expect(markup).toContain('href="/sign-up"');
     expect(markup).not.toMatch(/href="\/app\/research"/);
   });

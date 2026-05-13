@@ -20,6 +20,7 @@ export const CODE_DEFAULT_REASONING_MODELS = {
   changePlanner: 'moonshotai/kimi-k2-thinking',
   sectionRewriter: 'google/gemini-2.5-pro',
   citationIntegrityChecker: 'mistralai/mistral-small-3.2-24b-instruct',
+  citationFormatter: 'openai/o4-mini',
   finalRevisionVerifier: 'anthropic/claude-sonnet-4',
   embedding: 'openai/text-embedding-3-small',
 } as const;
@@ -41,5 +42,6 @@ export const CODE_DEFAULT_REASONING_FALLBACKS = {
   changePlanner: 'deepseek/deepseek-r1',
   sectionRewriter: 'anthropic/claude-sonnet-4',
   citationIntegrityChecker: 'meta-llama/llama-3.3-70b-instruct',
+  citationFormatter: 'openai/gpt-4o-mini',
   finalRevisionVerifier: 'openai/o3-mini',
 } as const;

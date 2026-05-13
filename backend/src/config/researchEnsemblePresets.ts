@@ -32,6 +32,7 @@ const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   changePlanner: 'change_planner',
   sectionRewriter: 'section_rewriter',
   citationIntegrityChecker: 'citation_integrity_checker',
+  citationFormatter: 'citation_formatter',
   finalRevisionVerifier: 'final_revision_verifier',
 };
 
@@ -274,6 +275,7 @@ const V2_UTILITIES: Record<
   | 'retriever'
   | 'verifier'
   | 'citation_integrity_checker'
+  | 'citation_formatter'
   | 'revision_intake'
   | 'report_locator'
   | 'final_revision_verifier',
@@ -285,6 +287,7 @@ const V2_UTILITIES: Record<
   retriever: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   citation_integrity_checker: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  citation_formatter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   revision_intake: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   report_locator: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   final_revision_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),

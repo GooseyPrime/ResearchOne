@@ -811,8 +811,18 @@ Create with `LivingReportTimeline.data.ts` containing a sample version array (v0
 
 ---
 
+## Wave 2 — Authorized overrides recording
+
+- **Date:** 2026-05-12  
+- **Founder identifier:** Michael Brandon Lane, InTellMe AI  
+- **Rules overridden (this PR only):** Cursor Rule **26 I-3** (default hero copy parity with `Hero.tsx`) and Rule **27** (animated pipeline hero invariants, including reduced-motion static visual and canonical stage naming in the marketing schematic).  
+- **Enumerated scope of override:** (1) Hero copy rewrite on the public landing hero (`PersonaAwareHero` / `personaContent.ts` default + `Hero.tsx`) per §2.10 verbatim strings; (2) Hero pipeline replacement with `PipelineSchematic` per §2.1.1 / §3.6; (3) `LivingReportTimeline` per §2.1.4 / §3.7; (4) strict-cap `FeatureCard` primitive per §2.1.3 / §3.4 and migration of landing feature grid; (5) related homepage assembly (methodology teaser, security teaser) and marketing route copy where already specified for Wave 2.  
+- **Pull request:** https://github.com/GooseyPrime/ResearchOne/pull/117
+
+---
+
 ## Implementation note — lab notebook ruling vs UI noise (2026-05-12)
 
-On the live marketing shell, the WO-V **lab notebook** background is a parent-level `background-image` (horizontal ruling + optional margin line). Any child that is **fully transparent**, **missing a background**, or uses a **very translucent** background (`bg-*\/10`, `bg-slate-900/50`, heavy `backdrop-blur` over nothing) lets those ruling lines show through. That becomes **visually noisy** when it **interferes with other line systems** — notably the **landing comparison table**, where horizontal table borders and the notebook ruling **beat against each other** (moiré-like clutter).
+On the live marketing shell, the WO-V **lab notebook** background is a parent-level `background-image` (horizontal ruling + optional margin line). Any child that is **fully transparent**, **missing a background**, or uses a **very translucent** background (for example `bg-white/10`, `bg-slate-900/50`, or heavy `backdrop-blur` over nothing) lets those ruling lines show through. That becomes **visually noisy** when it **interferes with other line systems** — notably the **landing comparison table**, where horizontal table borders and the notebook ruling **beat against each other** (moiré-like clutter).
 
 **Rule of thumb for agents:** for tables, forms, dense card grids, and long text blocks on `LabNotebookCanvas`, use an **opaque surface** the same color as the notebook base (`#0A0E1A` / `r1-bg` / `r1-bg-deep`) or a deliberate elevated panel (`r1-bg-deep`), not glass-only. Prefer **solid header/footer bars** on marketing over `bg-r1-bg/90` if blur lets ruling show through. When in doubt, add `class="r1-marketing-surface"` (see `frontend/src/index.css`) to the section or table wrapper.

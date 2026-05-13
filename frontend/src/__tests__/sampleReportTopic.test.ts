@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSampleReportTopic } from '../pages/SampleReportPage';
+import { resolveSampleReportTopic } from '../utils/sampleReportTopic';
 
 describe('resolveSampleReportTopic', () => {
   it('prefers topic= over mode=', () => {

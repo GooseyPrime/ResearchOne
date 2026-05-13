@@ -72,7 +72,7 @@ afterEach(() => {
     globalThis.IntersectionObserver = prevIntersectionObserver;
   }
   if (prevMatchMedia === undefined) {
-    // @ts-expect-error
+    // @ts-expect-error — restore pre-test absence of window.matchMedia
     delete window.matchMedia;
   } else {
     window.matchMedia = prevMatchMedia;
