@@ -1,3 +1,4 @@
-# Markdownlint-cli2 defaults (MD013 off for contract / long-line docs)
+# Markdownlint-cli2 defaults. MD013 (line length) is off: contract docs use long
+# URLs, blockquotes, and tables where wrapping hurts readability.
 config:
   MD013: false
