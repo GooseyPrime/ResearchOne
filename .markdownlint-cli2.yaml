@@ -1,0 +1,3 @@
+# Markdownlint-cli2 defaults (MD013 off for contract / long-line docs)
+config:
+  MD013: false

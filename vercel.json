@@ -40,7 +40,7 @@
       "destination": "https://us.i.posthog.com/:path*"
     },
     {
-      "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.svg|og-image\\.png|assets/).*)",
+      "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.svg|og-image\\.png|assets/|methodology|pricing|faq|compare|about|contact|docs|changelog|security|sovereign|byok|terms|privacy|acceptable-use|sample-report|sign-in|sign-up).*)",
       "destination": "/"
     }
   ]
