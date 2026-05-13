@@ -32,6 +32,7 @@ drove the rules is at
 | [`.cursor/rules/25-cost-sidecar-and-unit-economics.mdc`](.cursor/rules/25-cost-sidecar-and-unit-economics.mdc) | Cost telemetry sidecar: single emit site, run scope, idempotency, deploy skew. |
 | [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
 | [`.cursor/rules/27-animated-pipeline-hero.mdc`](.cursor/rules/27-animated-pipeline-hero.mdc) | WO-W animated pipeline hero + persona beams. |
+| [`.cursor/rules/29-marketing-scope-doc-contracts.mdc`](.cursor/rules/29-marketing-scope-doc-contracts.mdc) | Contract-style marketing / a11y scope docs (conditional re-scan, cwd, Lighthouse gates, F-42 boundary). |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -62,6 +63,13 @@ drove the rules is at
   do not collide on `url(#…)`.
 - **Test global hygiene:** Restore `globalThis.IntersectionObserver`,
   `window.matchMedia`, etc. after tests that polyfill them.
+
+## Recurring review themes (Wave 2.5 scope / a11y contract PRs)
+
+- **Conditional secondary verification:** Re-scan extra marketing routes only when shared shell or cross-route imports change; page-local `landing/*` fixes should not automatically trigger full-route axe matrices — declare the bucket in the implementation PR.
+- **Fenced command cwd:** Contract docs must state the assumed working directory (`frontend/` vs repo root) and use explicit `cd .. &&` for repo-root paths (`docs/`, `audit-snapshots/`).
+- **Lighthouse + axe together:** If the contract lists axe rule IDs *and* a Lighthouse Accessibility threshold, a flat score after fixes is a **Rule 22** signal, not an automatic merge.
+- **markdownlint on scope files:** When `markdownlint-cli2` is listed for a scope doc, run it before merge; root `.markdownlint-cli2.yaml` may define shared defaults.
 
 ## Recurring review themes (Codex / Copilot, PR #114 — billing UI)
 

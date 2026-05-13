@@ -1,0 +1,23 @@
+---
+description: Contract-style marketing / a11y scope docs (Wave 2.5 pattern)
+---
+
+# Marketing scope doc contracts (Wave 2.5+)
+
+## Why this rule exists
+
+PR #119 review tightened how **scope-only** PRs lock the **implementation PR** so it cannot silently drift (conditional re-scans, numeric Lighthouse gates, cwd discipline, F-42 boundary).
+
+## When editing `docs/wave-2-5-a11y-scope.md` or similar contract docs
+
+1. **Conditional verification:** Do not require blanket secondary-page axe runs when fixes are page-local. Tie follow-up scans to **which shared shell files** changed (`Layout`, headers/footers, `marketingNav.ts`, global CSS, or cross-route imports), and require the implementing agent to **declare the bucket** in the implementation PR body.
+
+2. **Shell cwd honesty:** Open the Verification section with an explicit rule: commands assume **`frontend/`** unless prefixed with `cd <path> &&`. Every fenced command must match that rule (repo-root tools use `cd .. &&` from `frontend/`).
+
+3. **Numeric exit criteria:** When the contract ties axe rule IDs to Lighthouse Accessibility, state **thresholds** (e.g. ≥ 95) and the **baseline source file**. If scores do not move after rule fixes, **stop** and surface under **Rule 22** (`.cursor/rules/22-out-of-scope-discovery.mdc`) — do not merge on “rules green, score flat.”
+
+4. **F-42 / prerender boundary:** A pure a11y pass must not absorb head-tag, prerender, or SPA-empty-body work. If implementation discovers that need, **Rule 22** — schedule Wave 3 F-42 instead of expanding scope.
+
+5. **PolicyOne:** Marketing a11y is **not** a hook to change research prompts, model defaults, or inference policy. Conflicts → Rule 22, not silent scope creep.
+
+6. **Markdownlint:** If the contract lists `markdownlint-cli2` for the scope file, the file must pass before merge; repo root may ship `.markdownlint-cli2.yaml` so the command is reproducible.
