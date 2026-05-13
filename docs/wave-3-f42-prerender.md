@@ -37,9 +37,13 @@ PostHog **`/relay-*`** and **`/ingest/*`** proxy rewrites are unchanged and rema
 After **`npm run build`** (from `frontend/` with valid `VITE_*`):
 
 ```bash
-diff <(grep -E "<title>|og:title|og:description" dist/index.html) \
-     <(grep -E "<title>|og:title|og:description" dist/methodology/index.html)
+awk 'NR==1,/<\/head>/' dist/index.html | grep -E '<title>|og:title|og:description'
+awk 'NR==1,/<\/head>/' dist/methodology/index.html | grep -E '<title>|og:title|og:description'
+diff <(awk 'NR==1,/<\/head>/' dist/index.html | grep -E '<title>|og:title|og:description') \
+     <(awk 'NR==1,/<\/head>/' dist/methodology/index.html | grep -E '<title>|og:title|og:description')
 ```
+
+(Plain `grep` on the full file can false-positive if the page body quotes those tags.)
 
 The diff must **not** be empty. If it is, `applyMarketingDocumentHead` is not running for that route.
 
