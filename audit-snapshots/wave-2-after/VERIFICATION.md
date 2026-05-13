@@ -25,25 +25,8 @@ Captured with `npm run audit:snapshots:wave2` (Playwright, system Chrome) into t
 | `landing-comparison.png` | `[data-testid="landing-comparison-region"]` |
 | `landing-living-report.png` | `[data-testid="landing-living-report-region"]` |
 
-## Lighthouse (home `/`)
+## Lighthouse + axe (numeric)
 
-A full Lighthouse navigation run against `http://127.0.0.1:4173/` **did not complete** in the agent environment (Chrome/Lighthouse subprocess stalled past practical wall-clock). Re-run locally or in CI after `vite preview` is up:
+Completed in CI/agent with **`--chrome-flags="--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage"`** (plain `--headless` hit `PROTOCOL_TIMEOUT` here). Scores, axe impact counts, and `jq` snippets are in **`LIGHTHOUSE_AXE_SUMMARY.md`**. Raw JSON: `lighthouse-*.json`, `axe-*.json` in this directory.
 
-```bash
-npx lighthouse@11.4.0 http://127.0.0.1:4173/ \
-  --only-categories=performance,accessibility,best-practices \
-  --preset=desktop --chrome-flags="--headless --no-sandbox" \
-  --output=json --output-path=audit-snapshots/wave-2-after/lighthouse-home.json
-```
-
-Record **Performance**, **Best Practices**, and **Accessibility** category scores in the PR description when available.
-
-## axe (home `/`)
-
-Command:
-
-```bash
-npx @axe-core/cli@4.10.0 http://127.0.0.1:4173/ | tee audit-snapshots/wave-2-after/axe-home.txt
-```
-
-Human-readable output is saved as **`axe-home.txt`**. On this run, axe reported **40** automated findings across rules including `aria-hidden-focus`, `aria-prohibited-attr`, `landmark-one-main`, `nested-interactive`, and `region`. The CLI summary **did not list any “critical” impact** lines in the captured text; treat severity as **unverified in JSON** until a reporter exports violations with impact tags. Follow-up: add `<main>`, resolve `aria-label` on non-landmark roles in the comparison table, and tighten pipeline/timeline focus nesting in a dedicated a11y pass if product requires axe-clean **and** WCAG conformance beyond marketing smoke.
+Legacy human-readable axe log: **`axe-home.txt`** (pre-JSON run).
