@@ -19,13 +19,13 @@ const EXPLAINERS = [
 export default function LivingReportsSection() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-      <h2 className="font-serif text-3xl">When the world changes, your report knows.</h2>
+      <h2 className="font-serif text-3xl">A report that keeps its receipts.</h2>
       <p className="mt-3 max-w-3xl text-r1-text-muted">
-        Living Reports are the only way to keep a workspace working past 120 days. Pick your monitoring cadence.
-        Pin the version your team agreed on. Get notified when a source retracts, a number moves, or new evidence lands.
+        Citations get added. Sources get upgraded. Contradictions get flagged. Every change is a version you can scrub,
+        cite, or roll back.
       </p>
 
-      <div className="mt-8">
+      <div className="mt-8 r1-marketing-surface rounded-xl border border-white/10 p-4 sm:p-6">
         <LivingReportTimeline />
       </div>
 

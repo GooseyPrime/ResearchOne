@@ -808,3 +808,21 @@ Create with `LivingReportTimeline.data.ts` containing a sample version array (v0
 3. **Performance and accessibility numbers (Lighthouse, axe)** were not measurable from outside; the QA checklist in §3.12 captures the thresholds the Cursor agent must hit.
 4. **The line "We do not sanitize. We do not debunk by recall. We do not silently smooth contradictions." comes from your own meta description** and is the strongest sentence currently in the project. Surface it as the footer epigraph and let it anchor the voice.
 5. **No code is included anywhere in this brief**, per instruction. Every prescriptive statement is descriptive English aimed at a Cursor agent with autonomy. Where ambiguity is encountered, default to the convention named here, log the deviation in PR notes, and continue — do not pause for clarification.
+
+---
+
+## Wave 2 — Authorized overrides recording
+
+- **Date:** 2026-05-12  
+- **Founder identifier:** Michael Brandon Lane, InTellMe AI  
+- **Rules overridden (this PR only):** Cursor Rule **26 I-3** (default hero copy parity with `Hero.tsx`) and Rule **27** (animated pipeline hero invariants, including reduced-motion static visual and canonical stage naming in the marketing schematic).  
+- **Enumerated scope of override:** (1) Hero copy rewrite on the public landing hero (`PersonaAwareHero` / `personaContent.ts` default + `Hero.tsx`) per §2.10 verbatim strings; (2) Hero pipeline replacement with `PipelineSchematic` per §2.1.1 / §3.6; (3) `LivingReportTimeline` per §2.1.4 / §3.7; (4) strict-cap `FeatureCard` primitive per §2.1.3 / §3.4 and migration of landing feature grid; (5) related homepage assembly (methodology teaser, security teaser) and marketing route copy where already specified for Wave 2.  
+- **Pull request:** https://github.com/GooseyPrime/ResearchOne/pull/117
+
+---
+
+## Implementation note — lab notebook ruling vs UI noise (2026-05-12)
+
+On the live marketing shell, the WO-V **lab notebook** background is a parent-level `background-image` (horizontal ruling + optional margin line). Any child that is **fully transparent**, **missing a background**, or uses a **very translucent** background (for example `bg-white/10`, `bg-slate-900/50`, or heavy `backdrop-blur` over nothing) lets those ruling lines show through. That becomes **visually noisy** when it **interferes with other line systems** — notably the **landing comparison table**, where horizontal table borders and the notebook ruling **beat against each other** (moiré-like clutter).
+
+**Rule of thumb for agents:** for tables, forms, dense card grids, and long text blocks on `LabNotebookCanvas`, use an **opaque surface** the same color as the notebook base (`#0A0E1A` / `r1-bg` / `r1-bg-deep`) or a deliberate elevated panel (`r1-bg-deep`), not glass-only. Prefer **solid header/footer bars** on marketing over `bg-r1-bg/90` if blur lets ruling show through. When in doubt, add `class="r1-marketing-surface"` (see `frontend/src/index.css`) to the section or table wrapper.

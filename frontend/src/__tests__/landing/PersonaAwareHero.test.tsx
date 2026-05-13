@@ -6,7 +6,9 @@ import '@testing-library/jest-dom/vitest';
  * PersonaAwareHero — component tests.
  *
  * Asserts:
- *   - Default copy matches the existing Hero.tsx (rule 26 I-3).
+ *   - Default copy matches `Hero.tsx` / `personaContent.ts` default
+ *     (Wave 2 marquee charter; founder-authorized Rule 26 I-3 override
+ *     recorded in docs/governance.md).
  *   - data-persona attribute carries the resolved persona id (so
  *     downstream WO-W animations can read it via DOM query / CSS).
  *   - onPersonaResolved fires once with the resolved id and path.
@@ -42,25 +44,27 @@ afterEach(() => {
   cleanup();
 });
 
-describe('PersonaAwareHero — default state matches existing Hero copy', () => {
-  it('renders the existing eyebrow / headline / subhead verbatim', async () => {
+describe('PersonaAwareHero — default state matches Hero / personaContent default', () => {
+  it('renders the eyebrow / headline / subhead verbatim', async () => {
     renderHero();
     await waitFor(() => {
-      expect(screen.getByText('Built for serious research')).toBeInTheDocument();
-      expect(screen.getByText('Deep research that defends itself.')).toBeInTheDocument();
+      expect(screen.getByText('DEEP RESEARCH PLATFORM')).toBeInTheDocument();
+      expect(screen.getByText('Research that defends itself.')).toBeInTheDocument();
       expect(
-        screen.getByText(/Five deep research modes\. A ten-stage multi-agent pipeline/)
+        screen.getByText(
+          /ResearchOne runs a 10-stage, 7-agent pipeline — including a dedicated Skeptic/
+        )
       ).toBeInTheDocument();
     });
     // REVERT-CHECK: personaContent.ts:default — if this drifts from
-    // Hero.tsx the test fails. Rule 26 I-3 violation surfaces here.
+    // Hero.tsx the test fails.
   });
 
-  it('renders the two existing default CTAs', async () => {
+  it('renders the two default CTAs', async () => {
     renderHero();
     await waitFor(() => {
-      expect(screen.getByText('Start free')).toBeInTheDocument();
-      expect(screen.getByText('See a sample report')).toBeInTheDocument();
+      expect(screen.getByText('Open a sample report')).toBeInTheDocument();
+      expect(screen.getByText('See the methodology')).toBeInTheDocument();
     });
   });
 

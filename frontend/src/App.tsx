@@ -38,6 +38,12 @@ import BillingPage from './pages/BillingPage';
 import SampleReportPage from './pages/SampleReportPage';
 import MonitorsPage from './pages/MonitorsPage';
 import NotFoundPage from './pages/NotFoundPage';
+import FaqPage from './pages/FaqPage';
+import AboutPage from './pages/AboutPage';
+import ContactPage from './pages/ContactPage';
+import ComparePage from './pages/ComparePage';
+import ChangelogPage from './pages/ChangelogPage';
+import MarketingDocsPage from './pages/MarketingDocsPage';
 
 export function AppRoutes() {
   return (
@@ -45,6 +51,12 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/methodology" element={<MethodologyPage />} />
+      <Route path="/faq" element={<FaqPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/compare" element={<ComparePage />} />
+      <Route path="/changelog" element={<ChangelogPage />} />
+      <Route path="/docs" element={<MarketingDocsPage />} />
       <Route path="/sovereign" element={<SovereignPage />} />
       <Route path="/byok" element={<BYOKPage />} />
       <Route path="/security" element={<SecurityPage />} />

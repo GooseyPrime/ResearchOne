@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import ComparisonTable from '../components/landing/ComparisonTable';
 import EvidenceProvenancePanel from '../components/landing/EvidenceProvenancePanel';
 import FAQ from '../components/landing/FAQ';
+import FeatureCard from '../components/landing/FeatureCard';
 import FinalCTA from '../components/landing/FinalCTA';
 import PersonaAwareHero from '../components/landing/persona/PersonaAwareHero';
 import type { PersonaId } from '../components/landing/persona/personaResolver';
@@ -11,9 +12,10 @@ import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 import LivingReportsSection from '../components/landing/LivingReportsSection';
 import ModeCard from '../components/landing/ModeCard';
-import PipelineDiagram from '../components/landing/PipelineDiagram';
 import PricingCard from '../components/landing/PricingCard';
-import WhyResearchOne from '../components/landing/WhyResearchOne';
+import TrustStrip from '../components/landing/TrustStrip';
+import { LANDING_SIX_FEATURE_CARDS } from '../content/landingFeatureCards';
+import { MARKETING_FAQ_ITEMS } from '../content/marketingFaqItems';
 import { publicApi } from '../utils/api';
 
 const SAMPLE_REPORTS = [
@@ -65,48 +67,6 @@ const MODES = [
   },
 ];
 
-const FAQ_ITEMS = [
-  {
-    question: "What's the difference between ResearchOne and chat-style AI research?",
-    answer:
-      'Chat-style tools optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated skeptic agent and explicit evidence tiering, optimized for defensible long-form reports where contradictions matter and the output needs to outlive the conversation.',
-  },
-  {
-    question: 'Which deep research mode should I use?',
-    answer:
-      'General Epistemic for contested questions. Investigative for tracking incentives or narrative drift. Patent / Technical Gap for prior-art mapping. Novel Application Discovery for mechanism-to-application paths. Anomaly Correlation for weak-signal hypothesis testing.',
-  },
-  {
-    question: 'How long does a report take?',
-    answer: 'Standard runs: 2–5 minutes. Deep runs: 8–20 minutes depending on mode, evidence-set size, and discovery scope.',
-  },
-  {
-    question: 'What happens to my report after 120 days?',
-    answer:
-      'Final reports are retained for 120 days by default. Export anytime, or attach a Living Report to keep the source set and monitoring config alive indefinitely. Sovereign Enterprise customers set custom retention by contract.',
-  },
-  {
-    question: 'How does ResearchOne handle citations and source verification?',
-    answer:
-      'Every claim is tagged by evidence tier (established fact, strong evidence, testimony, inference, speculation). Every source is selected for a role — supporting, contrasting, primary, or regulatory — and recorded with inclusion reasoning. The Verifier agent gates publication on citation integrity.',
-  },
-  {
-    question: 'Can I edit a published report?',
-    answer:
-      'Yes. Every report supports a seven-agent revision workflow with structured intake, impact mapping, change planning, section rewriting, citation integrity checks, diff assembly, and a final verifier.',
-  },
-  {
-    question: 'Can I bring my own model keys?',
-    answer:
-      'Yes. The BYOK tier lets you run all five modes on your own OpenRouter or direct-provider keys. Compute is billed to your provider; ResearchOne bills only for orchestration.',
-  },
-  {
-    question: 'Is my data used to train any models?',
-    answer:
-      'No. ResearchOne does not train on customer research data. BYOK and Sovereign Enterprise tiers add additional contractual data-use guarantees.',
-  },
-];
-
 export default function LandingPage() {
   const personaBeaconDedupeRef = useRef<{ key: string; at: number } | null>(null);
   const onPersonaResolved = useCallback((persona: PersonaId, path: string) => {
@@ -124,11 +84,30 @@ export default function LandingPage() {
     <LabNotebookCanvas className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
 
-      <PersonaAwareHero onPersonaResolved={onPersonaResolved} />
+      <div data-testid="landing-hero-region">
+        <PersonaAwareHero onPersonaResolved={onPersonaResolved} />
+      </div>
 
-      <WhyResearchOne />
+      <TrustStrip />
 
-      <ComparisonTable />
+      <section
+        data-testid="landing-feature-cards"
+        className="mx-auto max-w-6xl px-4 py-16 sm:px-6"
+        aria-labelledby="landing-feature-cards-heading"
+      >
+        <h2 id="landing-feature-cards-heading" className="sr-only">
+          What ResearchOne delivers
+        </h2>
+        <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {LANDING_SIX_FEATURE_CARDS.map((card) => (
+            <FeatureCard key={card.headline} {...card} />
+          ))}
+        </div>
+      </section>
+
+      <div data-testid="landing-comparison-region">
+        <ComparisonTable />
+      </div>
 
       {/* Five modes section */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
@@ -144,20 +123,19 @@ export default function LandingPage() {
         </p>
       </section>
 
-      <LivingReportsSection />
+      <div data-testid="landing-living-report-region">
+        <LivingReportsSection />
+      </div>
 
-      {/* Pipeline section */}
+      {/* Methodology teaser — site audit §2.10 */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h2 className="mb-4 font-serif text-3xl">Ten stages. Seven specialized agents.</h2>
-        <p className="mb-2 font-mono text-sm text-r1-accent">Plan it. Read it. Cross-check it. Cite it.</p>
-        <p className="mb-6 text-r1-text-muted">
-          Every report follows the same disciplined ten-stage pipeline. You see it run live as it happens.
+        <h2 className="font-serif text-3xl">Ten stages. Seven agents. One adversary.</h2>
+        <p className="mt-3 max-w-3xl text-r1-text-muted">
+          Intake to Living state, every step is named, instrumented, and reviewable.
         </p>
-        <PipelineDiagram />
-        <p className="mt-6 text-sm text-r1-text-muted">
-          Want to revise a published report? Every report supports a 7-agent revision workflow.{' '}
+        <p className="mt-6">
           <Link to="/methodology" className="text-r1-accent hover:underline">
-            Read the methodology →
+            Walk the pipeline →
           </Link>
         </p>
       </section>
@@ -238,23 +216,35 @@ export default function LandingPage() {
         </article>
       </section>
 
-      {/* Security / privacy */}
+      {/* Security teaser — site audit §3.8.1 (H1/sub from §2.10 Security / Trust) */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h2 className="font-serif text-3xl">Your research, your data, your audit trail.</h2>
-        <ul className="mt-4 list-disc space-y-2 pl-5 text-r1-text-muted">
-          <li>Server-side model calls only; API keys never reach the browser.</li>
-          <li>Per-user isolation with row-level security.</li>
-          <li>Encrypted secrets for BYOK credentials.</li>
-          <li>Export and delete controls in account settings.</li>
-          <li>Per-mode, per-source, per-revision audit log on every report.</li>
-        </ul>
+        <h2 className="font-serif text-3xl">Defensible at the data layer, too.</h2>
+        <p className="mt-3 max-w-3xl text-r1-text-muted">
+          BYOK by default, sovereign-tier tenancy on request, full audit log on every report.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <span className="rounded-full border border-white/15 bg-r1-bg-deep px-3 py-1.5 text-xs font-medium text-r1-text">
+            BYOK by default
+          </span>
+          <span className="rounded-full border border-white/15 bg-r1-bg-deep px-3 py-1.5 text-xs font-medium text-r1-text">
+            Sovereign tenancy on request
+          </span>
+          <span className="rounded-full border border-white/15 bg-r1-bg-deep px-3 py-1.5 text-xs font-medium text-r1-text">
+            Per-report audit log
+          </span>
+        </div>
+        <p className="mt-6">
+          <Link to="/security" className="text-r1-accent hover:underline">
+            See trust posture →
+          </Link>
+        </p>
       </section>
 
       <FinalCTA />
 
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <h2 className="mb-4 font-serif text-3xl">FAQ</h2>
-        <FAQ items={FAQ_ITEMS} />
+        <FAQ items={MARKETING_FAQ_ITEMS} />
       </section>
 
       <LandingFooter />
