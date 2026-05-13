@@ -5,7 +5,7 @@ import LandingHeader from '../components/landing/LandingHeader';
 
 export default function NotFoundPage() {
   const { pathname } = useLocation();
-  const isApp = pathname.startsWith('/app');
+  const isApp = pathname === '/app' || pathname.startsWith('/app/');
 
   if (isApp) {
     return (
