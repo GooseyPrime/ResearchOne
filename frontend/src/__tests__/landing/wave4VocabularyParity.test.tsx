@@ -4,6 +4,7 @@
  * Wave 4 — competitor quote DOM contract + tier display label (Rule 31).
  */
 import { renderToString } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import WhatCompetitorsActuallySay, {
   WAVE4_COMPETITOR_QUOTE_URLS,
@@ -19,7 +20,11 @@ const TIER_DISPLAY: Record<string, string> = {
 
 describe('Wave 4 — WhatCompetitorsActuallySay', () => {
   it('renders five blockquotes each with cite equal to canonical URLs', () => {
-    const html = renderToString(<WhatCompetitorsActuallySay />);
+    const html = renderToString(
+      <MemoryRouter>
+        <WhatCompetitorsActuallySay />
+      </MemoryRouter>,
+    );
     expect(WAVE4_COMPETITOR_QUOTE_URLS).toHaveLength(5);
     for (const url of WAVE4_COMPETITOR_QUOTE_URLS) {
       expect(html).toContain(`cite="${url}"`);
