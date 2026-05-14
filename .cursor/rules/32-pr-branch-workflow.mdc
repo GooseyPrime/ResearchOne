@@ -1,9 +1,18 @@
 ---
-description: Every scoped work request ships via a PR branch; verify branch is open and unmerged before new commits.
+description: Unless the user directs otherwise in the same request, all work ships via a PR branch; verify open/unmerged before new commits.
 alwaysApply: true
 ---
 
 # Pull request branch workflow
+
+## Request-time default (binding)
+
+**Unless the user explicitly directs otherwise in the same message** that
+assigns the work (examples: “push straight to `main`”, “no PR”, “hotfix to
+default branch only”), **assume all work is to be completed on a pull
+request:** dedicated branch off fresh `origin/main` → commits → push → open
+or update a **PR** into `main` (draft is acceptable). Silence or omission is
+**not** permission to bypass a PR.
 
 ## Why this rule exists
 
@@ -15,15 +24,19 @@ this workflow rule.
 
 ## Rule — use a PR branch for new work
 
-1. **Default:** For any **new scoped request** (feature, WO, wave, bugfix,
+1. **Scoped work:** For any **new scoped request** (feature, WO, wave, bugfix,
+   refactor), do all implementation commits on a **dedicated branch** that will
+   back a **pull request** into the repo default branch (here: `main`), per the
+   request-time default above.
+2. **Default:** For any **new scoped request** (feature, WO, wave, bugfix,
    refactor), do all implementation commits on a **dedicated branch** that
    will back a **pull request** into the repo default branch (here: `main`).
-2. **Branch off current remote default:** Before the first commit,
+3. **Branch off current remote default:** Before the first commit,
    `git fetch origin` and create the branch from **`origin/main`** (or the
    user-specified base), not from a stale local `main`.
-3. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
+4. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
    `feat/<topic>`, `fix/<topic>` — consistent with sibling branches.
-4. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
+5. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
    as there is a meaningful first commit, unless the environment cannot create
    PRs — then leave explicit instructions for the human to open one.
 
@@ -47,15 +60,18 @@ verify with `git branch -r --merged origin/main` or compare PR state on GitHub.
 
 ## Exceptions
 
-- The user or **governance override** (`docs/governance.md`) **explicitly**
-  directs commits to `main` / another integration branch (e.g. emergency
-  hotfix). Log that exception in governance when it is material.
+- The user **states in the same request** that work may bypass a PR (e.g.
+  direct push to `main`), or **governance override** (`docs/governance.md`)
+  directs commits to `main` / another integration branch. Log material
+  governance exceptions when applicable.
 
 ## Pre-commit check
 
-- [ ] Am I on a **non-default** branch created from fresh `origin/main` (or
-      declared base)?
+- [ ] Unless the user directed otherwise **in this request**, am I on a
+      **non-default** branch created from fresh `origin/main` (or declared
+      base)?
 - [ ] If continuing prior work on a named branch: is its PR **still open** (or
       no PR yet and work is still part of the same scoped request)?
 - [ ] Have I pushed and opened (or instructed opening) a **PR** for this
-      branch, except when an explicit exception applies?
+      branch, except when an explicit same-request or governance exception
+      applies?

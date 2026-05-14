@@ -9,7 +9,7 @@ This document records **where** the binding Cursor rules for the marketing shell
 | Landing persona, default copy parity, lab notebook visual | `.cursor/rules/26-landing-persona-and-visual.mdc` |
 | Animated / schematic pipeline hero (reduced motion, canonical stages, performance) | `.cursor/rules/27-animated-pipeline-hero.mdc` |
 | Evidence vs. source vocabulary (marketing + public copy) | `.cursor/rules/31-evidence-vs-source-vocabulary.mdc` |
-| PR branch workflow (feature branches, open/unmerged check) | `.cursor/rules/32-pr-branch-workflow.mdc` |
+| PR branch workflow (default: all work via PR unless same-request exception) | `.cursor/rules/32-pr-branch-workflow.mdc` |
 | Master pre-commit checklist | `.cursor/rules/00-pre-commit-review.mdc` |
 
 The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above. This file only adds **override history** so reviewers can see that a given PR operated under an explicit, time-bounded exception.
