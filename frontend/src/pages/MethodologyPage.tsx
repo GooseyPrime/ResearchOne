@@ -3,6 +3,7 @@ import LandingHeader from '../components/landing/LandingHeader';
 import LandingFooter from '../components/landing/LandingFooter';
 import ModeMatrix from '../components/landing/ModeMatrix';
 import PipelineDiagram from '../components/landing/PipelineDiagram';
+import WhatCompetitorsActuallySay from '../components/landing/WhatCompetitorsActuallySay';
 
 const PIPELINE_STAGES: Array<{ n: number; agent: string; role: string }> = [
   { n: 1, agent: 'Planner', role: 'Decomposes your question into sub-questions, retrieval targets, falsification criteria' },
@@ -89,6 +90,8 @@ export default function MethodologyPage() {
 [speculation]      Mechanism via autophagy upregulation is plausible
                    but human-trial findings remain preliminary.`}</pre>
         </section>
+
+        <WhatCompetitorsActuallySay />
 
         <section className="mt-16">
           <h2 className="font-serif text-3xl">Post-publication revision workflow</h2>
