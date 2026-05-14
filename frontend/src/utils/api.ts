@@ -233,6 +233,88 @@ export interface Report {
   };
 }
 
+/** Wave 5.0 — aligns with `GET /api/dossiers` (backend `Dossier` type). */
+export interface DossierRequest {
+  query: string;
+  supplemental: string | null;
+  supplementalAttachments: unknown;
+  createdAt: string;
+}
+
+export interface DossierPlan {
+  planId: string | null;
+  intent: string;
+  planSummary: string | null;
+  planPayload: Record<string, unknown>;
+  planStatus: string | null;
+  refinementRounds: number | null;
+}
+
+export interface DossierReportLink {
+  reportId: string | null;
+  title: string | null;
+  status: string | null;
+  finalizedAt: string | null;
+}
+
+export interface DossierStats {
+  totalDurationMs: number | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  sourcesRetrievedCount: number | null;
+  sourcesCitedCount: number | null;
+  citationDensity: number | null;
+  skepticAnnotationsCount: number | null;
+  contradictionsCount: number | null;
+  refinementRounds: number | null;
+  agentsRan: unknown;
+  agentsSkipped: unknown;
+  stageDurations: unknown;
+  modelsUsed: unknown;
+  estimatedCostCents: number | null;
+  actualCostCents: number | null;
+  reportEvidenceTierSummary: Record<string, unknown> | null;
+}
+
+export interface Dossier {
+  dossierId: string;
+  runId: string;
+  runStatus: string;
+  request: DossierRequest;
+  plan: DossierPlan;
+  report: DossierReportLink;
+  stats: DossierStats;
+}
+
+export interface DossierListRow {
+  dossierId: string;
+  runId: string;
+  runStatus: string;
+  requestQuery: string;
+  planIntent: string | null;
+  dossierCreatedAt: string;
+  reportId: string | null;
+  reportTitle: string | null;
+  sourcesCitedCount: number | null;
+  totalDurationMs: number | null;
+}
+
+export interface DossierListResult {
+  rows: DossierListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type DossierListParams = {
+  page?: number;
+  pageSize?: number;
+  intent?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 export interface ReportRevision {
   id: string;
   report_id: string;
@@ -355,6 +437,11 @@ export const deleteSource = (id: string) => api.delete(`/sources/${id}`);
 
 export const getReports = (params?: { status?: string; search?: string }) =>
   api.get<Report[]>('/reports', { params }).then(r => r.data);
+
+export const getDossiers = (params?: DossierListParams) =>
+  api.get<DossierListResult>('/dossiers', { params }).then((r) => r.data);
+
+export const getDossier = (id: string) => api.get<Dossier>(`/dossiers/${id}`).then((r) => r.data);
 
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 

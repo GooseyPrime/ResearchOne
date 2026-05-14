@@ -20,7 +20,7 @@ describe('App routing structure', () => {
 
   it('renders the public sample report route under SSR', () => {
     const html = renderToString(<App initialEntries={['/sample-report']} />);
-    expect(html).toContain('Sample research report');
+    expect(html).toContain('Sample research dossier');
   });
 
   it('does not render signed-in research chrome when visiting /app/research signed out', () => {

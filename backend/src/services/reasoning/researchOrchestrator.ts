@@ -32,6 +32,7 @@ import type {
 } from './researchOrchestratorTypes';
 import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
+import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
 
 export type {
   CreditChargeContext,
@@ -738,6 +739,7 @@ async function runResearchJobInner(
       [JSON.stringify(modelLog), reportId, runId]
     );
     patchAgentExecutionsReportIdForRun(runId, reportId);
+    await aggregateAndPersistDossierStatistics(runId);
 
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {

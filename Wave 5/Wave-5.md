@@ -10,7 +10,7 @@ Dependencies: Wave 4 merged (Rule 31 present).
 
 Build:
 
-1. Migration 033:
+1. Migration 034 (`034_dossier_data_model.sql`; file **034** because `033_research_run_citation_style.sql` already exists):
    - Table `research_plans` (run_id FK, status enum legacy/draft/pending_confirmation/confirmed/superseded, intent text default 'legacy', plan_payload jsonb, plan_summary text, refinement_rounds int, timestamps). RLS mirroring research_runs. Unique partial index: one active plan per run.
    - Table `plan_revisions` (plan_id FK, revision_number int, refinement_prompt text, prior_plan_payload jsonb, new_plan_payload jsonb, diff_summary text, created_by FK).
    - Table `dossier_statistics` (run_id FK unique, duration_ms, tokens_in/out, sources_retrieved/cited counts, citation_density, skeptic_annotations_count, contradictions_count, refinement_rounds, agents_ran jsonb, agents_skipped jsonb, stage_durations jsonb, models_used jsonb, cost cents).

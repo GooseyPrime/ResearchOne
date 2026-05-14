@@ -1,0 +1,22 @@
+import clsx from 'clsx';
+
+const INTENT_LABELS: Record<string, string> = {
+  legacy: 'Legacy',
+};
+
+export default function IntentBadge({ intent }: { intent: string | null | undefined }) {
+  const key = intent?.trim() || 'legacy';
+  const label = INTENT_LABELS[key] ?? key.replace(/_/g, ' ');
+  return (
+    <span
+      className={clsx(
+        'badge border text-[10px] uppercase tracking-wide',
+        key === 'legacy'
+          ? 'border-slate-600/50 text-slate-400 bg-slate-900/40'
+          : 'border-accent/30 text-accent bg-accent/10',
+      )}
+    >
+      {label}
+    </span>
+  );
+}

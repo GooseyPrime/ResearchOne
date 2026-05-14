@@ -57,8 +57,8 @@ or (c) defer. Wait for the founder reply. No silent deferral.
 ## Dependency gate
 
 Wave 5.1 depends on Wave 5.0 merged. Specifically:
-- Migration 033 applied (research_plans, plan_revisions,
-  dossier_statistics, v_dossier all present).
+- Migration **034** applied (`research_plans`, `plan_revisions`,
+  `dossier_statistics`, `v_dossier` all present).
 - /api/dossiers routes operational.
 - Rule 32 file present.
 
@@ -158,9 +158,9 @@ imports a thin display-side mirror from
 
 ## In Scope
 
-### Data model — migration 034
+### Data model — migration 035
 
-Single new migration: `034_plan_intent_taxonomy_and_gate.sql`.
+Single new migration: `035_plan_intent_taxonomy_and_gate.sql` (renumbered because dossier DDL is **`034_dossier_data_model.sql`**).
 
 1. Update `research_plans.intent` CHECK constraint:
 ```
