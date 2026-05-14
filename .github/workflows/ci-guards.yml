@@ -1,0 +1,30 @@
+# Lightweight repo-wide checks that do not require npm install.
+# Keeps Vitest/Jest mock APIs out of application source trees that ship to production.
+
+name: CI – repository guards
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'backend/src/**'
+      - 'frontend/src/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/ci-guards.yml'
+  pull_request:
+    paths:
+      - 'backend/src/**'
+      - 'frontend/src/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/ci-guards.yml'
+
+jobs:
+  no-mocks-in-app-src:
+    name: No Vitest/Jest mocks in application src
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert no test mock APIs in backend/src or frontend/src
+        run: bash "${{ github.workspace }}/scripts/ci/assert-no-test-mocks-in-app-src.sh"

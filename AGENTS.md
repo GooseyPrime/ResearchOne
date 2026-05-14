@@ -25,7 +25,7 @@ drove the rules is at
 | [`.cursor/rules/16-tests-must-fail-without-the-fix.mdc`](.cursor/rules/16-tests-must-fail-without-the-fix.mdc) | A test that passes both with and without the fix is worse than no test. |
 | [`.cursor/rules/17-ripple-and-grep-callers.mdc`](.cursor/rules/17-ripple-and-grep-callers.mdc) | When you change a primitive, grep every caller. |
 | [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` + V2 model selection criteria. |
-| [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention. |
+| [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention, **no mocks in app `src/` (CI)**. |
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
 | [`.cursor/rules/24-canonical-path-after-mutation.mdc`](.cursor/rules/24-canonical-path-after-mutation.mdc) | After file delete/move/compress, update all path references (vars, DB, downstream). |
@@ -48,6 +48,19 @@ drove the rules is at
    — Earlier V2 reliability work. Historical but still in force.
 5. [`README.md`](README.md) — runtime topology.
 
+## Production application source — no test mocks (CI enforced)
+
+`backend/src/**` and `frontend/src/**` (excluding `__tests__/**` and
+`*.test.*` / `*.spec.*` files) must **not** contain Vitest/Jest mock APIs
+(`vi.mock`, `vi.fn`, `jest.mock`, etc.). Mocks belong only in unit test
+files and other CI-local harnesses — they are not part of runtime
+deployments, and must never be introduced into application modules that
+ship on `main`.
+
+**Enforcement:** `scripts/ci/assert-no-test-mocks-in-app-src.sh` runs in
+`.github/workflows/ci-guards.yml` (PRs / all branches) and again in
+`deploy-backend-emma.yml` before production SSH deploy to `main`.
+
 ## Recurring review themes (Codex / Copilot, PR #124 — Stripe tier sync)
 
 - **`setUserTier` is not a mirror of `syncSubscription`.** Only update
@@ -58,9 +71,10 @@ drove the rules is at
   (`living_report` / `reverse_citation_watch`), never drive `user_tiers`
   — unpaid add-on webhooks are not “monitor-only” (no grant) but still
   carry that metadata and must not fall through to plan-tier logic.
-- **Vitest partial mocks:** extending `subscriptionService` imports in
-  `stripe.ts` requires the same named export on the `vi.mock` factory
-  (`resolveSubscriptionPlanTier`, etc.).
+- **Unit tests that `vi.mock` a module:** the mock factory must export
+  every **named** symbol the production module imports, or Vitest fails at
+  load time — still test-only; never move that pattern into `src/` outside
+  `__tests__` / `*.test.*` (see “Production application source” above).
 - **V2 tier gate:** `POST /api/research` must pass `isDeep: true` into
   `checkTierAccess` when `engineVersion === 'v2'` so `monthlyDeepReportCap`
   is enforced (Copilot PR #124).

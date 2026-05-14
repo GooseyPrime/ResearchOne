@@ -164,11 +164,12 @@ row without updating it.
   errors but not unused imports in all cases.)
 - [ ] If a webhook handler processes multiple subscription types, does
   it discriminate and return early for non-tier subscriptions?
-- [ ] When mocking `../../api/webhooks/stripe` imports, does the
+- [ ] When mocking `../../api/webhooks/stripe` imports in **unit tests**, does the
   `subscriptionService` mock include **every** named export the webhook
   module imports (`syncSubscription`, `markSubscriptionCanceled`,
   `resolveSubscriptionPlanTier`, …) so Vitest does not throw on partial
-  mocks? (Copilot PR #124.)
+  mocks? (Copilot PR #124 — **test files only**; application `src/` must
+  not contain `vi.mock` / `jest.mock` — see `scripts/ci/assert-no-test-mocks-in-app-src.sh`.)
 - [ ] If a deploy-skew fallback is inside a transaction, does it use
   SAVEPOINT / ROLLBACK TO SAVEPOINT?
 - [ ] If a row has a unique constraint and can be cancelled/reactivated,
