@@ -53,7 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Multi-model ensemble research' },
   { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
   { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
-  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse evidence', requireTier: 'pro' },
+  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources', requireTier: 'pro' },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
   { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },

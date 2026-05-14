@@ -87,8 +87,8 @@ interface StageDescriptor {
 const STAGES: StageDescriptor[] = [
   { id: 'planning', icon: Brain, label: 'Planning', desc: 'Query decomposition and research framing', backendStages: ['planning'] },
   { id: 'discovery', icon: FileSearch, label: 'Discovery', desc: 'External source discovery and ingestion', backendStages: ['discovery'] },
-  { id: 'retrieval', icon: FileSearch, label: 'Retrieval', desc: 'Evidence retrieval and ranking', backendStages: ['retrieval', 'retriever_analysis'] },
-  { id: 'reasoning', icon: Zap, label: 'Reasoning', desc: 'Argument construction across evidence', backendStages: ['reasoning'] },
+  { id: 'retrieval', icon: FileSearch, label: 'Retrieval', desc: 'Source retrieval and ranking', backendStages: ['retrieval', 'retriever_analysis'] },
+  { id: 'reasoning', icon: Zap, label: 'Reasoning', desc: 'Argument construction across sources', backendStages: ['reasoning'] },
   { id: 'challenge', icon: Shield, label: 'Challenge', desc: 'Skeptic and counter-model pressure tests', backendStages: ['challenge'] },
   { id: 'synthesis', icon: PenLine, label: 'Synthesis', desc: 'Drafting report sections and coherence', backendStages: ['synthesis', 'plain_language'] },
   { id: 'verification', icon: Target, label: 'Verification', desc: 'Epistemic checks and persistence', backendStages: ['verification', 'saving', 'epistemic_persistence'] },
@@ -241,7 +241,7 @@ export default function ResearchPageV2() {
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
   // Supplemental files + URLs are ingested into the corpus on submit so the
-  // models can review them as evidence alongside the corpus search results.
+  // models can review them as sources alongside the corpus search results.
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
@@ -648,7 +648,7 @@ export default function ResearchPageV2() {
           <span className="text-gradient">Deep Research</span>
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
-          Frontier ensemble (V2 engine): evidence-tiered reporting with full-stage telemetry.{' '}
+          Frontier ensemble (V2 engine): source-corroboration-tiered reporting with full-stage telemetry.{' '}
           <Link to="/app/guide/research-v2" className="text-accent hover:underline">
             Research modes and capabilities
           </Link>
@@ -734,7 +734,7 @@ export default function ResearchPageV2() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              The synthesizer distributes this budget across sections (heavier weight on Reasoning and Evidence). It is steered to use the budget on substance — citing specific evidence — and to stop early rather than pad with filler.
+              The synthesizer distributes this budget across sections (heavier weight on Reasoning and Retrieval). It is steered to use the budget on substance — citing specific sources — and to stop early rather than pad with filler.
             </p>
           </div>
 

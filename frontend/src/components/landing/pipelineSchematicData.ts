@@ -46,7 +46,7 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agentKind: 'retriever',
     input: 'Sub-questions',
     output: 'Candidate sources',
-    rationale: 'Pulls candidate evidence from corpus and external sources with hybrid search.',
+    rationale: 'Pulls candidate sources from corpus and external feeds with hybrid search.',
   },
   {
     index: 4,
@@ -107,9 +107,9 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     stageName: 'Living State',
     agent: 'Curator',
     agentKind: 'curator',
-    input: 'Document + new evidence',
+    input: 'Document + new sources',
     output: 'Versioned updates',
-    rationale: 'Turns the report into a living artifact when monitoring and new evidence arrive.',
+    rationale: 'Turns the report into a living artifact when monitoring and new sources arrive.',
   },
 ] as const;
 

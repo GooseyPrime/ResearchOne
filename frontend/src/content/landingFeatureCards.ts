@@ -19,7 +19,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
   },
   {
     icon: Layers,
-    headline: 'Evidence tiers, surfaced',
+    headline: 'Source-corroboration tiers, surfaced',
     description: 'Each source carries its tier (1–4). Tier upgrades appear in the version history.',
     metric: 'Tier 1 → Tier 4',
   },

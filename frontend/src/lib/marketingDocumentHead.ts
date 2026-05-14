@@ -14,7 +14,7 @@ export type MarketingHeadEntry = {
 const DEFAULT: MarketingHeadEntry = {
   title: 'ResearchOne',
   description:
-    'ResearchOne — disciplined anomaly research. Reasoning-first epistemic policy: preserve contradictions, evidence-tier discipline, provenance you can verify.',
+    'ResearchOne — disciplined anomaly research. Reasoning-first epistemic policy: preserve contradictions, source-corroboration discipline, provenance you can verify.',
   ogTitle: 'ResearchOne — Disciplined Anomaly Research Platform',
 };
 

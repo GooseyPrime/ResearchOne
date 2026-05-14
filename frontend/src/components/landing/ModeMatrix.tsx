@@ -1,11 +1,11 @@
 const MODES = [
   {
     mode: 'General Epistemic',
-    bestFor: 'Contested questions where evidence is mixed',
+    bestFor: 'Contested questions where sources are mixed',
     runTime: '8–15 min',
     overlay: 'Balanced planner; tier-weighted synthesizer',
     skepticIntensity: 'Standard' as const,
-    outputEmphasis: 'Tiered evidence summary',
+    outputEmphasis: 'Tiered source summary',
   },
   {
     mode: 'Investigative',

@@ -137,7 +137,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
         >
           <p className="sr-only">
             Ten named stages from Intake through Living State. A Skeptic pass branches beneath the main spine
-            between Synthesis, Skeptic Pass, and Citation Bind. Ambient markers show evidence moving along the spine
+            between Synthesis, Skeptic Pass, and Citation Bind. Ambient markers show sources moving along the spine
             and counter-flow on the Skeptic loop when motion is enabled.
           </p>
           <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="h-auto w-full max-w-full">

@@ -28,7 +28,7 @@ const SAMPLE_REPORTS = [
   {
     slug: 'general-epistemic',
     mode: 'General Epistemic',
-    title: 'What the evidence supports on a disputed claim',
+    title: 'What the sources support on a disputed claim',
     summary: 'Balanced synthesis with explicit tiers — no forced consensus.',
   },
   {
@@ -42,8 +42,8 @@ const SAMPLE_REPORTS = [
 const MODES = [
   {
     mode: 'General Epistemic',
-    description: 'Balanced research with evidence tiering and contradiction preservation.',
-    example: 'What does the evidence support about [contested topic]?',
+    description: 'Balanced research with source-corroboration tiering and contradiction preservation.',
+    example: 'What do the sources support about [contested topic]?',
   },
   {
     mode: 'Investigative',
@@ -161,7 +161,7 @@ export default function LandingPage() {
                    are not isolated from selection effects.
 
 [speculation]      Mechanism via autophagy upregulation is plausible
-                   but human-trial evidence is preliminary.`}</pre>
+                   but human-trial findings remain preliminary.`}</pre>
         <p className="mt-4 text-sm text-r1-text-muted">
           Every claim carries its tier. Every contradiction has a name. The reader does the final judgment work.
         </p>

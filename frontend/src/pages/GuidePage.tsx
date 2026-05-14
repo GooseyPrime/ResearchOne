@@ -17,9 +17,9 @@ const SECTIONS = [
     icon: FlaskConical,
     color: 'text-accent',
     title: 'What is ResearchOne?',
-    content: `ResearchOne is a disciplined anomaly research platform. It is not a chatbot. It is not a hallucination machine. It is a structured evidence-gathering and reasoning system designed to investigate where mainstream corpora may be incomplete, filtered, distorted, or consensus-bound.
+    content: `ResearchOne is a disciplined anomaly research platform. It is not a chatbot. It is not a hallucination machine. It is a structured source-gathering and reasoning system designed to investigate where mainstream corpora may be incomplete, filtered, distorted, or consensus-bound.
 
-The system enforces strict epistemic discipline: every claim is tagged with an evidence tier, contradictions are first-class data, and reports are designed to attack their own conclusions before finalizing them.`,
+The system enforces strict epistemic discipline: every claim is tagged with a source-corroboration tier, contradictions are first-class data, and reports are designed to attack their own conclusions before finalizing them.`,
   },
   {
     icon: Brain,
@@ -28,23 +28,23 @@ The system enforces strict epistemic discipline: every claim is tagged with an e
     content: null,
     roles: [
       { icon: Brain, label: 'Planner', desc: 'Decomposes your query into sub-questions, retrieval targets, and a falsifiable hypothesis. Sets the investigation scope.' },
-      { icon: Database, label: 'Retriever', desc: 'Searches the corpus with hybrid vector + full-text search. The corpus can include sources the system ingested during your run (autonomous discovery), not only files you uploaded beforehand. Evaluates each chunk by evidence tier. Flags outliers and bridges.' },
-      { icon: Zap, label: 'Reasoner', desc: 'Builds structured argument chains from the evidence. Tags every claim. Reasons backward from anomalies to mechanisms.' },
+      { icon: Database, label: 'Retriever', desc: 'Searches the corpus with hybrid vector + full-text search. The corpus can include sources the system ingested during your run (autonomous discovery), not only files you uploaded beforehand. Evaluates each chunk by source-corroboration tier. Flags outliers and bridges.' },
+      { icon: Zap, label: 'Reasoner', desc: 'Builds structured argument chains from the sources. Tags every claim. Reasons backward from anomalies to mechanisms.' },
       { icon: Shield, label: 'Skeptic', desc: 'Attacks the conclusions. Finds alternative explanations. Asks what a careful critic would say.' },
-      { icon: BookOpen, label: 'Synthesizer', desc: 'Writes the full long-form report with all required sections. Never exceeds the evidence. Uses academic rigor.' },
+      { icon: BookOpen, label: 'Synthesizer', desc: 'Writes the full long-form report with all required sections. Never exceeds what the sources support. Uses academic rigor.' },
       { icon: Target, label: 'Verifier', desc: 'Quality gate. Checks that all claims are tiered, contradictions are acknowledged, and inferences are not presented as facts.' },
     ],
   },
   {
     icon: Database,
     color: 'text-research-teal',
-    title: 'Evidence Tiers — Critical Distinction',
+    title: 'Source-Corroboration Tiers — Critical Distinction',
     content: null,
     tiers: [
       { tier: 'established_fact', label: 'Established Fact', color: 'text-green-400', desc: 'Replicated findings, strong consensus, high evidentiary burden met.' },
-      { tier: 'strong_evidence', label: 'Strong Evidence', color: 'text-blue-400', desc: 'Good experimental or empirical support, not yet at consensus level.' },
+      { tier: 'strong_evidence', label: 'Strong corroboration', color: 'text-blue-400', desc: 'Good experimental or empirical support, not yet at consensus level.' },
       { tier: 'testimony', label: 'Testimony', color: 'text-amber-400', desc: 'Eyewitness, expert, or whistleblower accounts. Valuable but unverified.' },
-      { tier: 'inference', label: 'Inference', color: 'text-purple-400', desc: 'Logical conclusions drawn from evidence. Marked clearly as not empirically direct.' },
+      { tier: 'inference', label: 'Inference', color: 'text-purple-400', desc: 'Logical conclusions drawn from sources. Marked clearly as not empirically direct.' },
       { tier: 'speculation', label: 'Speculation', color: 'text-red-400', desc: 'Hypothesis, conjecture. Investigation target, not conclusion.' },
     ],
   },
@@ -73,7 +73,7 @@ The correct workflow: find interesting points in Atlas → bring those topics ba
 • It will NOT treat consensus density as a proxy for truth
 • It will NOT treat outliers as automatically correct
 • It will NOT generate reports without falsification criteria
-• It will NOT allow the synthesizer to exceed the evidence base
+• It will NOT allow the synthesizer to exceed the source base
 
 The Skeptic and Verifier roles exist specifically to prevent the system from becoming a sophisticated hallucination engine.`,
   },
@@ -88,7 +88,7 @@ The Skeptic and Verifier roles exist specifically to prevent the system from bec
       'In the query, say what you suspect may be neglected or suppressed, and what would falsify your angle.',
       'Let the 6-role pipeline run — complex queries can take several minutes.',
       'Review the report — especially Contradiction Analysis and Falsification Criteria.',
-      'Export to Atlas to visualize the evidence space and find follow-up leads.',
+      'Export to Atlas to visualize the source space and find follow-up leads.',
       'Run follow-up research on outliers and unresolved questions.',
     ],
   },
