@@ -47,11 +47,56 @@ diff <(awk 'NR==1,/<\/head>/' dist/index.html | grep -E '<title>|og:title|og:des
 
 The diff must **not** be empty. If it is, `applyMarketingDocumentHead` is not running for that route.
 
-## Spot-checks before declaring F-42 done
+## Production close-out — F-42 (canonical; after `www` deploy)
+
+Implementation merged in **PR #120** (prerender, `vercel.json` exclusions, per-route head). What remains is **production verification** and **recording it on the F-42 tracking ticket**. A **short comment on that issue** is enough — you do **not** need a separate “close-out PR” now that the engineering work lives in #120.
+
+### 1) Raw HTML includes body content (not only `<head>` meta)
+
+When production has the new build:
+
+```bash
+curl -sL 'https://www.researchone.io/methodology' | wc -c
+```
+
+**Pass:** the response includes substantive markup inside **`#root`** (and/or a `<main>` landmark) — visible marketing sections/copy, not an empty SPA shell. **Fail:** rich `<head>` tags but `#root` is empty or trivial.
+
+(Optional artifact for the ticket comment:)
+
+```bash
+curl -sL 'https://www.researchone.io/methodology' -o methodology-prod.html
+```
+
+### 2) Lighthouse **SEO** on production URLs
+
+Run the **SEO** category (distinct from Accessibility) against **production** for all three:
+
+- `https://www.researchone.io/`
+- `https://www.researchone.io/methodology`
+- `https://www.researchone.io/pricing`
+
+Example (repeat with each URL; set `--output-path` per route):
+
+```bash
+npx lighthouse@11.4.0 'https://www.researchone.io/methodology' \
+  --only-categories=seo \
+  --preset=desktop \
+  --chrome-flags="--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage" \
+  --output=json \
+  --output-path=./lighthouse-seo-methodology-prod.json \
+  --quiet
+```
+
+### 3) Record, then close F-42
+
+1. Paste **curl / body verification notes** and **Lighthouse SEO scores** (and/or attach JSON) into the **F-42** tracking ticket.
+2. **Close F-42** only after (1) and (2) pass on production.
+
+## Pre-deploy checks (optional; while iterating before `www`)
 
 - Open a generated `dist/<route>/index.html` and confirm **`http://127.0.0.1`** / preview host does not appear in `href`/`src` for app assets (the script rewrites the preview **origin** to `PRERENDER_PUBLIC_ORIGIN`).
 - Confirm prerender reads **`public/sitemap.xml`** (see script `sitemapPath`).
-- Re-run **Lighthouse SEO** against **`vite preview`** on a prerendered tree and paste the SEO score in the F-42 close-out PR; it should improve materially vs SPA-only.
+- For local smoke, you may run **Lighthouse SEO** against **`vite preview`** on a prerendered tree; production checks in § Production close-out remain authoritative for ticket close.
 
 ## Clerk on cold HTML (document only — do not fix in F-42)
 

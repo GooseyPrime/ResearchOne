@@ -2,6 +2,10 @@
 
 **Parent:** Wave 2 merged in **PR #117** (`audit-snapshots/wave-2-after/axe-home.json`, `@axe-core/cli@4.10.0`).
 
+**Scope contract merged:** **PR #119** (this file + marketing scope rules). **Implementation** is tracked in a **separate GitHub PR** whose body must link this document and declare axe re-scan buckets per § Secondary re-scan trigger.
+
+**F-42 baseline:** Marketing prerender shipped in **PR #120** (`docs/wave-3-f42-prerender.md`). Production crawlers should see body HTML; Wave 2.5 work still **must not** change prerender routing or head injection here (see § Explicit non-goals).
+
 **Goal:** Close the highest-signal automated axe gaps on the **marketing shell** without re-litigating Wave 2 visual or copy decisions. Small, fast PR.
 
 **PolicyOne / V2:** This pass is **marking and DOM accessibility only** (landmarks, ARIA correctness, focus nesting). It does **not** change research prompts, `REASONING_FIRST_PREAMBLE`, `RED_TEAM_V2_SYSTEM_PREFIX`, model defaults, or any inference-time research policy. If an a11y fix would require hiding or reframing research-visible claims, stop and escalate under **Rule 22** (out-of-scope discovery) instead of shipping it here.
@@ -91,5 +95,5 @@ cd .. && npx lighthouse@11.4.0 "http://127.0.0.1:4173/" \
 ## Explicit non-goals
 
 - No change to Wave 2 hero copy, pipeline art direction, or founder-authorized override scope.
-- **F-42 prerender / SPA empty-body fix** is out of scope for Wave 2.5 and is tracked in the **Wave 3 F-42 prerender PR** (see `docs/wave-3-f42-prerender.md`). The implementing agent must not expand this PR to include head-tag or prerender changes; if such a change appears necessary during a11y work, surface it under **Rule 22** (out-of-scope discovery) and stop.
+- **F-42 prerender / SPA empty-body fix** is out of scope for Wave 2.5 and was delivered in **PR #120** (see `docs/wave-3-f42-prerender.md`). The implementing agent must not expand this PR to include head-tag or prerender changes; if such a change appears necessary during a11y work, surface it under **Rule 22** (out-of-scope discovery) and stop.
 - No Wave 3 work beyond that F-42 track in this PR.
