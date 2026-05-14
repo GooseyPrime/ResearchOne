@@ -156,8 +156,11 @@ async function main() {
   }
 
   // Install the Playwright Chromium binary if it is not already present.
-  // This is a no-op when the binary is cached; required on Vercel / fresh CI.
-  execSync('npx playwright install --with-deps chromium', { stdio: 'inherit' });
+  // - Uses the locally-installed `playwright` bin to avoid npx PATH issues on Vercel.
+  // - Omits `--with-deps` because that requires root (apt-get/yum); Vercel's build
+  //   container already ships the system libraries needed by chromium_headless_shell.
+  const playwrightBin = path.join(frontendRoot, 'node_modules', '.bin', 'playwright');
+  execSync(`"${playwrightBin}" install chromium`, { stdio: 'inherit', cwd: frontendRoot });
 
   await access(distDir);
   await access(path.join(distDir, 'index.html'));
