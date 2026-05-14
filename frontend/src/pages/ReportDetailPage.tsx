@@ -411,6 +411,7 @@ export default function ReportDetailPage() {
 
       <ReportActionBar
         reportId={report.id}
+        runCitationStyle={sourceRun?.citation_style ?? null}
         onPrint={handlePrint}
         onShare={handleShare}
         onDownload={handleDownload}
@@ -757,6 +758,7 @@ export default function ReportDetailPage() {
       <ReportActionBar
         className="print:hidden"
         reportId={report.id}
+        runCitationStyle={sourceRun?.citation_style ?? null}
         onPrint={handlePrint}
         onShare={handleShare}
         onDownload={handleDownload}
@@ -847,6 +849,7 @@ export default function ReportDetailPage() {
 
 function ReportActionBar({
   reportId,
+  runCitationStyle,
   onPrint,
   onShare,
   onDownload,
@@ -857,6 +860,7 @@ function ReportActionBar({
   className,
 }: {
   reportId: string;
+  runCitationStyle?: string | null;
   onPrint: () => void;
   onShare: () => void;
   onDownload: () => void;
@@ -883,7 +887,7 @@ function ReportActionBar({
       <button type="button" className="btn-ghost p-2 h-9 w-9" title="Download Markdown" onClick={onDownload}>
         <Download size={16} />
       </button>
-      <ReportExportButton reportId={reportId} />
+      <ReportExportButton reportId={reportId} runCitationStyle={runCitationStyle} />
       {showPlainLink && (
         <button type="button" className="btn-ghost p-2 h-9 w-9" title="Plain language" onClick={onOpenPlain}>
           <Sparkles size={16} />

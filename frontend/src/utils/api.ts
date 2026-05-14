@@ -164,6 +164,8 @@ export interface ResearchRun {
   progress_events?: ResearchProgressEvent[];
   model_overrides?: Record<string, unknown>;
   model_ensemble?: Record<string, unknown>;
+  /** Bibliography style chosen at run start (`research_runs.citation_style`). */
+  citation_style?: string | null;
 }
 
 export interface SystemHealth {
