@@ -30,6 +30,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Main bundle is ~1.7 MB (single-SPA pattern); raise the limit to silence
+    // the "Some chunks are larger than 500 kB" warning without suppressing it
+    // for genuinely oversized future splits.
+    chunkSizeWarningLimit: 2000,
   },
   test: {
     environment: 'node',
