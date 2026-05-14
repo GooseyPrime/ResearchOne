@@ -130,7 +130,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
     <div ref={rootRef} className="relative w-full" onKeyDown={onKeyDown}>
       <div className="hidden md:block">
         <div
-          role="img"
+          role="group"
           aria-label={PIPELINE_SCHEMATIC_ARIA_LABEL}
           className="relative w-full overflow-visible"
           data-testid="pipeline-schematic"
@@ -140,11 +140,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
             between Synthesis, Skeptic Pass, and Citation Bind. Ambient markers show evidence moving along the spine
             and counter-flow on the Skeptic loop when motion is enabled.
           </p>
-          <svg
-            viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-            className="h-auto w-full max-w-full"
-            aria-hidden="true"
-          >
+          <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="h-auto w-full max-w-full">
             <defs>
               <linearGradient id={`${uid}-pkt`} x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#5BC0EB" stopOpacity="0.2" />

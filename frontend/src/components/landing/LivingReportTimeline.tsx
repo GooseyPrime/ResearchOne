@@ -142,14 +142,9 @@ export default function LivingReportTimeline() {
     <div data-testid="living-report-timeline">
       <div
         ref={railRef}
-        role="slider"
-        aria-valuemin={0}
-        aria-valuemax={lastIdx}
-        aria-valuenow={idx}
-        aria-valuetext={`${version.label}, ${version.date}`}
+        role="group"
         aria-labelledby={`${uid}-scrub-label`}
-        tabIndex={0}
-        className="relative h-16 rounded-lg border border-white/10 bg-r1-bg-deep px-2 outline-none focus-visible:ring-2 focus-visible:ring-r1-accent"
+        className="relative h-16 rounded-lg border border-white/10 bg-r1-bg-deep px-2 outline-none focus-within:ring-2 focus-within:ring-r1-accent"
         onKeyDown={onKeyDownRail}
         onMouseDown={() => setAutoplay(false)}
       >

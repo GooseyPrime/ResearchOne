@@ -67,7 +67,7 @@ export default function ModeMatrix() {
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                     row.skepticIntensity === 'Elevated'
-                      ? 'bg-tier-strong_evidence/20 text-tier-strong_evidence'
+                      ? 'bg-tier-strong_evidence/25 text-sky-200'
                       : 'bg-r1-text-muted/10 text-r1-text-muted'
                   }`}>
                     {row.skepticIntensity}

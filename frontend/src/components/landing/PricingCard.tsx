@@ -19,7 +19,7 @@ export default function PricingCard({ title, details, cta, to, featured = false,
   return (
     <article className={`rounded-xl border p-6 ${featured ? 'border-r1-accent bg-r1-bg' : 'border-white/10 bg-r1-bg-deep'}`}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="font-serif text-2xl text-r1-text">{title}</h3>
+        <h2 className="font-serif text-2xl text-r1-text">{title}</h2>
         {badge ? (
           <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
             {badge}

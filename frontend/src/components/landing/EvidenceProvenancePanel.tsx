@@ -33,7 +33,7 @@ const EVIDENCE_CARDS = [
 
 function ConfidenceDots({ filled }: { filled: number }) {
   return (
-    <div className="flex gap-1" aria-label={`Confidence: ${filled} of 4`}>
+    <div className="flex gap-1" role="group" aria-label={`Confidence: ${filled} of 4`}>
       {[1, 2, 3, 4].map((n) => (
         <span
           key={n}
