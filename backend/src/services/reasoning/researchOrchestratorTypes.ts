@@ -20,6 +20,8 @@ export interface ResearchJobData {
   /** Optional total report length in words. Clamped server-side to a safe
    *  range; routed into the synthesizer's per-section budget directives. */
   targetWordCount?: number;
+  /** Preferred export citation style (mla, apa, …) persisted on the run row. */
+  citationStyle?: string;
   creditChargeContext?: CreditChargeContext;
 }
 

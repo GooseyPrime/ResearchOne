@@ -36,11 +36,18 @@ const STYLE_LABELS: Record<ExportStyle, string> = {
   'harvard':              'Harvard',
 };
 
-export interface ReportExportButtonProps {
-  reportId: string;
+function coerceExportStyle(raw: string | null | undefined): ExportStyle | null {
+  if (raw == null || raw === '') return null;
+  return Object.prototype.hasOwnProperty.call(STYLE_LABELS, raw) ? (raw as ExportStyle) : null;
 }
 
-export default function ReportExportButton({ reportId }: ReportExportButtonProps) {
+export interface ReportExportButtonProps {
+  reportId: string;
+  /** `research_runs.citation_style` for the report's source run — default export citation style. */
+  runCitationStyle?: string | null;
+}
+
+export default function ReportExportButton({ reportId, runCitationStyle }: ReportExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('docx');
   const [style, setStyle] = useState<ExportStyle>('apa');
@@ -80,6 +87,11 @@ export default function ReportExportButton({ reportId }: ReportExportButtonProps
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const s = coerceExportStyle(runCitationStyle);
+    if (s) setStyle(s);
+  }, [runCitationStyle]);
 
   async function startExport() {
     setSubmitting(true);
@@ -172,7 +184,11 @@ export default function ReportExportButton({ reportId }: ReportExportButtonProps
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          const s = coerceExportStyle(runCitationStyle);
+          if (s) setStyle(s);
+          setOpen(true);
+        }}
         className="btn-secondary inline-flex items-center gap-2"
         aria-label="Export this report"
         disabled={exportBlocked}

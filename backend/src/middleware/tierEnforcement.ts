@@ -4,6 +4,8 @@ import { getWalletSummary } from '../services/billing/walletService';
 import { TIER_RULES } from '../config/tierRules';
 import { getUserTier } from '../services/tier/tierService';
 import { logger } from '../utils/logger';
+import { getUserSubscription } from '../services/billing/subscriptionService';
+import { resolveEffectiveEntitlementTier } from '../services/billing/entitlementTier';
 
 interface TierCheckOptions {
   objective?: string | null;
@@ -32,12 +34,13 @@ export function requireTier(
 
       if (options.requiresExportFormat && typeof options.requiresExportFormat === 'string') {
         const format = options.requiresExportFormat;
-        const userTier = await getUserTier(userId);
-        const rules = TIER_RULES[userTier.tier] ?? TIER_RULES.free_demo;
+        const [userTier, subscription] = await Promise.all([getUserTier(userId), getUserSubscription(userId)]);
+        const entitlementTier = resolveEffectiveEntitlementTier(subscription, userTier.tier);
+        const rules = TIER_RULES[entitlementTier] ?? TIER_RULES.free_demo;
 
         if (!(rules.exportFormats as readonly string[]).includes(format)) {
           res.status(403).json({
-            error: `Export format "${format}" is not available on the "${userTier.tier}" tier`,
+            error: `Export format "${format}" is not available on the "${entitlementTier}" tier`,
             upgrade_path: '/pricing',
           });
           return;
@@ -53,7 +56,8 @@ export function requireTier(
           // wallet service may not be available yet
         }
 
-        const check = await checkTierAccess(userId, options.objective, walletBalanceCents);
+        const subscription = await getUserSubscription(userId);
+        const check = await checkTierAccess(userId, options.objective, walletBalanceCents, false, subscription);
         if (!check.allowed) {
           const status = check.httpStatus ?? 403;
           const body: Record<string, unknown> = { error: check.reason };

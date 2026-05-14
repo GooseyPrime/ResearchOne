@@ -231,3 +231,25 @@ export const TIER_RULES: Record<TierName, TierRule> = {
 export function isTierName(value: string): value is TierName {
   return Object.hasOwn(TIER_RULES, value);
 }
+
+/** Higher index = broader research / export entitlements (preorder, not total order). */
+const TIER_ENTITLEMENT_RANK: Record<TierName, number> = {
+  anonymous: 0,
+  free_demo: 1,
+  student: 2,
+  wallet: 3,
+  pro: 4,
+  team: 5,
+  byok: 6,
+  sovereign: 7,
+  admin: 8,
+};
+
+export function tierNameFromUnknown(raw: string | null | undefined, fallback: TierName = 'free_demo'): TierName {
+  if (!raw) return fallback;
+  return isTierName(raw) ? raw : fallback;
+}
+
+export function maxTierByEntitlementRank(a: TierName, b: TierName): TierName {
+  return TIER_ENTITLEMENT_RANK[a] >= TIER_ENTITLEMENT_RANK[b] ? a : b;
+}

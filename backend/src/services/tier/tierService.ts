@@ -1,6 +1,8 @@
 import { query, queryOne } from '../../db/pool';
 import { TIER_RULES, type TierName, isTierName } from '../../config/tierRules';
 import { logger } from '../../utils/logger';
+import type { UserSubscription } from '../billing/subscriptionService';
+import { resolveEffectiveEntitlementTier } from '../billing/entitlementTier';
 
 export interface UserTierRow {
   user_id: string;
@@ -172,17 +174,22 @@ export async function checkTierAccess(
   userId: string,
   objective?: string | null,
   walletBalanceCents?: number,
-  isDeep?: boolean
+  isDeep?: boolean,
+  subscription?: UserSubscription | null
 ): Promise<TierCheckResult> {
   const userTier = await getUserTier(userId);
-  const rules = TIER_RULES[userTier.tier] ?? TIER_RULES.free_demo;
+  const entitlementTier =
+    subscription != null
+      ? resolveEffectiveEntitlementTier(subscription, userTier.tier)
+      : userTier.tier;
+  const rules = TIER_RULES[entitlementTier] ?? TIER_RULES.free_demo;
 
   if (objective) {
     const allowed = (rules.allowedObjectives as readonly string[]).includes(objective);
     if (!allowed) {
       return {
         allowed: false,
-        reason: `Tier "${userTier.tier}" does not have access to objective "${objective}"`,
+        reason: `Tier "${entitlementTier}" does not have access to objective "${objective}"`,
         httpStatus: 403,
         upgradePath: '/pricing',
       };

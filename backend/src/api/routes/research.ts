@@ -26,6 +26,9 @@ import { computeRunCost, type CreditChargeContext } from '../../middleware/credi
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
 import { placeHold } from '../../services/billing/walletReservations';
+import { getUserSubscription, type UserSubscription } from '../../services/billing/subscriptionService';
+import { resolveEffectiveEntitlementTier } from '../../services/billing/entitlementTier';
+import { parseExportStyleInput, VALID_EXPORT_STYLES } from '../../services/formatting/exportStyleGuards';
 
 const router = Router();
 
@@ -186,8 +189,29 @@ router.post(
         researchObjective = 'GENERAL_EPISTEMIC_RESEARCH';
       }
 
+      let citationStyle: string | undefined;
+      if (isMultipart) {
+        const rawCs = body.citation_style ?? body.citationStyle;
+        citationStyle = parseExportStyleInput(typeof rawCs === 'string' ? rawCs : undefined);
+      } else {
+        const jb = req.body as { citation_style?: unknown; citationStyle?: unknown };
+        citationStyle = parseExportStyleInput(jb.citation_style ?? jb.citationStyle);
+      }
+      const hadCitationStyleField = isMultipart
+        ? body.citation_style != null || body.citationStyle != null
+        : (req.body as { citation_style?: unknown }).citation_style != null ||
+          (req.body as { citationStyle?: unknown }).citationStyle != null;
+      if (hadCitationStyleField && !citationStyle) {
+        res.status(400).json({
+          error: 'invalid citation_style',
+          validStyles: Array.from(VALID_EXPORT_STYLES),
+        });
+        return;
+      }
+
       // Tier enforcement: check access before creating the run
       const userId = req.auth?.userId;
+      let subscriptionRow: UserSubscription | undefined;
       if (userId) {
         let walletBalanceCents = 0;
         try {
@@ -196,7 +220,14 @@ router.post(
         } catch {
           // wallet service may not be available yet
         }
-        const tierCheck = await checkTierAccess(userId, researchObjective ?? null, walletBalanceCents);
+        subscriptionRow = await getUserSubscription(userId);
+        const tierCheck = await checkTierAccess(
+          userId,
+          researchObjective ?? null,
+          walletBalanceCents,
+          eng === 'v2',
+          subscriptionRow
+        );
         if (!tierCheck.allowed) {
           const status = tierCheck.httpStatus ?? 403;
           const body: Record<string, unknown> = { error: tierCheck.reason };
@@ -304,18 +335,29 @@ router.post(
         }
       }
 
+      if (citationStyle) {
+        try {
+          await query(`UPDATE research_runs SET citation_style=$1 WHERE id=$2`, [citationStyle, runId]);
+        } catch (citeErr) {
+          const citeCode = (citeErr as { code?: string } | null)?.code;
+          if (citeCode !== '42703') throw citeErr;
+        }
+      }
+
       // Credit enforcement: compute cost, place wallet hold if needed
       let creditChargeContext: CreditChargeContext | undefined;
       if (userId) {
         try {
           const userTier = await getUserTier(userId);
-          const rules = TIER_RULES[userTier.tier] ?? TIER_RULES.free_demo;
+          const sub = subscriptionRow ?? (await getUserSubscription(userId));
+          const entitlementTier = resolveEffectiveEntitlementTier(sub, userTier.tier);
+          const rules = TIER_RULES[entitlementTier] ?? TIER_RULES.free_demo;
           const addons = (req.body as { addons?: string[] }).addons;
 
-          if (userTier.tier === 'byok' || userTier.tier === 'admin' || userTier.tier === 'sovereign') {
+          if (entitlementTier === 'byok' || entitlementTier === 'admin' || entitlementTier === 'sovereign') {
             creditChargeContext = { type: 'byok', costCents: 0, userId };
           } else {
-            const { costCents, errors } = computeRunCost(userTier.tier, researchObjective, addons);
+            const { costCents, errors } = computeRunCost(entitlementTier, researchObjective, addons);
             if (errors.length > 0) {
               const first = errors[0];
               res.status(first.status).json({ error: first.message, errors });
@@ -330,7 +372,9 @@ router.post(
             if (withinMonthlyCap) {
               creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
             } else if (isLifetimeCapOnly) {
-              creditChargeContext = { type: 'none', costCents: 0 };
+              // Lifetime-only tiers (e.g. free_demo) still need subscription-shaped
+              // credit context so `incrementReportCount` runs on successful completion.
+              creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
             } else if (rules.walletFallbackEnabled || rules.monthlyReportCap === null) {
               const holdResult = await placeHold(userId, runId, costCents);
               if (!holdResult.success) {
@@ -369,6 +413,7 @@ router.post(
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
           targetWordCount,
+          citationStyle,
           creditChargeContext,
         },
         { jobId: runId }

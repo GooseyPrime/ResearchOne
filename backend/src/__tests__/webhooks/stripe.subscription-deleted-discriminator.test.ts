@@ -53,6 +53,7 @@ vi.mock('../../services/tier/tierService', () => ({
 vi.mock('../../services/billing/subscriptionService', () => ({
   syncSubscription: mocks.syncSubscription,
   markSubscriptionCanceled: mocks.markSubscriptionCanceled,
+  resolveSubscriptionPlanTier: vi.fn(),
 }));
 vi.mock('../../services/monitoring/parallelMonitorService', () => ({
   cancelMonitorByStripeSubscription: mocks.cancelMonitorByStripeSubscription,

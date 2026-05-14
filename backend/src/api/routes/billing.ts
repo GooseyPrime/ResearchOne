@@ -7,7 +7,8 @@ import {
   stripeCheckoutAllowPromotionCodes,
   stripeCheckoutSubscriptionCustomerDefaults,
 } from '../../services/billing/stripeClient';
-import { getUserSubscription, cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
+import { cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
+import { getBillingSubscriptionView } from '../../services/billing/billingSubscriptionView';
 import { getWalletSummary, getWalletTransactions } from '../../services/billing/walletService';
 import { config } from '../../config';
 
@@ -38,7 +39,7 @@ router.get('/subscription', async (req, res, next) => {
       return;
     }
 
-    const subscription = await getUserSubscription(userId);
+    const subscription = await getBillingSubscriptionView(userId);
     res.json(subscription);
   } catch (err) {
     next(err);

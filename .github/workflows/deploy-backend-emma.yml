@@ -36,6 +36,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Block Vitest/Jest mocks in application source
+        run: bash "${{ github.workspace }}/scripts/ci/assert-no-test-mocks-in-app-src.sh"
+
       - name: Validate required secrets
         env:
           EMMA_HOST: ${{ secrets.EMMA_HOST }}

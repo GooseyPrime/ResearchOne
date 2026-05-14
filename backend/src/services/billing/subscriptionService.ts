@@ -1,6 +1,7 @@
 import { query, queryOne } from '../../db/pool';
-import { getStripeClient } from './stripeClient';
+import { getStripeClient, getTierForSubscriptionPrice } from './stripeClient';
 import { logger } from '../../utils/logger';
+import { isTierName } from '../../config/tierRules';
 
 export interface UserSubscription {
   tier: string;
@@ -93,6 +94,35 @@ function tierFromPriceLookupKey(lookupKey: string | null | undefined): string {
 }
 
 /**
+ * Resolves the catalog tier for a Stripe subscription when webhook payloads
+ * omit `price.lookup_key` (common). Falls back to configured price IDs, then
+ * Checkout `subscription_data.metadata.tier`.
+ */
+export function resolveSubscriptionPlanTier(input: {
+  priceLookupKey?: string | null;
+  stripePriceId?: string | null;
+  metadataTier?: string | null;
+}): string {
+  const fromLookup = tierFromPriceLookupKey(input.priceLookupKey);
+  if (fromLookup !== 'free_demo') return fromLookup;
+
+  const pid = input.stripePriceId?.trim();
+  if (pid) {
+    const fromPrice = getTierForSubscriptionPrice(pid);
+    if (fromPrice && isTierName(fromPrice) && fromPrice !== 'anonymous') {
+      return fromPrice;
+    }
+  }
+
+  const meta = input.metadataTier?.trim().toLowerCase();
+  if (meta && isTierName(meta) && meta !== 'anonymous') {
+    return meta;
+  }
+
+  return 'free_demo';
+}
+
+/**
  * Syncs a Stripe subscription object to the user_subscriptions table.
  * Called by webhook handlers on subscription created/updated events.
  */
@@ -103,9 +133,15 @@ export async function syncSubscription(
   status: string,
   currentPeriodEnd: Date,
   cancelAtPeriodEnd: boolean,
-  priceLookupKey?: string | null
+  priceLookupKey?: string | null,
+  stripePriceId?: string | null,
+  metadataTier?: string | null
 ): Promise<void> {
-  const tier = tierFromPriceLookupKey(priceLookupKey);
+  const tier = resolveSubscriptionPlanTier({
+    priceLookupKey,
+    stripePriceId,
+    metadataTier,
+  });
 
   await upsertUserSubscription({
     userId,

@@ -8,7 +8,18 @@ export type BillingSubscription = {
   status: string;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
+  stripeSubscriptionId?: string | null;
+  /** Merged Stripe subscription row + `user_tiers` — use for gating and objective allowlists. */
+  effectiveTier: string;
+  lifetimeReportsUsed: number;
+  lifetimeReportCap: number | null;
 };
+
+/** Canonical tier for product gating (subscription view always includes `effectiveTier` from the API). */
+export function effectiveEntitlementTier(row: BillingSubscription | undefined): string | undefined {
+  if (!row) return undefined;
+  return row.effectiveTier ?? row.tier;
+}
 
 /** Single observer config for `/billing/subscription` — do not duplicate `useQuery` options elsewhere. */
 export const BILLING_SUBSCRIPTION_QUERY_KEY = ['billing-subscription'] as const;
