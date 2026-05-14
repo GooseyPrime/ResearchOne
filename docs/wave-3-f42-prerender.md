@@ -56,12 +56,21 @@ Implementation merged in **PR #120** (prerender, `vercel.json` exclusions, per-r
 When production has the new build:
 
 ```bash
-curl -sL 'https://www.researchone.io/methodology' | wc -c
+# Count semantic body elements — must be ≥ 1; 0 means #root is still an empty SPA shell
+curl -sL 'https://www.researchone.io/methodology' \
+  | grep -cE '<(main|section|article|h1|h2)\b'
 ```
 
-**Pass:** the response includes substantive markup inside **`#root`** (and/or a `<main>` landmark) — visible marketing sections/copy, not an empty SPA shell. **Fail:** rich `<head>` tags but `#root` is empty or trivial.
+**Pass:** count ≥ 1 — substantive markup (`<main>`, `<section>`, headings) is present in the response body. **Fail:** 0 — only `<head>` meta tags were served; `#root` is empty or trivial.
 
-(Optional artifact for the ticket comment:)
+(Optional: inspect the first few lines of `#root` content visually)
+
+```bash
+curl -sL 'https://www.researchone.io/methodology' \
+  | awk '/id="root"/{p=1} p && ++n<=6{print}'
+```
+
+(Save artifact for the ticket comment:)
 
 ```bash
 curl -sL 'https://www.researchone.io/methodology' -o methodology-prod.html
