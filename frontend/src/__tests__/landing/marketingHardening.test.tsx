@@ -46,7 +46,6 @@ describe('marketing hardening — no competitor names', () => {
   const pages = [
     { name: 'LandingPage', render: () => renderInRouter(<LandingPage />) },
     { name: 'ComparisonTable', render: () => renderInRouter(<ComparisonTable />) },
-    { name: 'MethodologyPage', render: () => renderInRouter(<MethodologyPage />) },
     { name: 'PricingPage', render: () => renderInRouter(<PricingPage />) },
     { name: 'ComparePage', render: () => renderInRouter(<ComparePage />) },
     { name: 'AboutPage', render: () => renderInRouter(<AboutPage />) },
@@ -73,6 +72,30 @@ describe('marketing hardening — no competitor names', () => {
       }
     });
   }
+
+  /** Wave 4 — verbatim competitor attributions live only in this anchored section. */
+  it('MethodologyPage has no competitor names outside #what-competitors-say', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <MethodologyPage />
+      </MemoryRouter>,
+    );
+    const shell = container.cloneNode(true) as HTMLElement;
+    shell.querySelector('#what-competitors-say')?.remove();
+    const htmlLower = shell.textContent?.toLowerCase() ?? '';
+
+    for (const name of COMPETITOR_NAMES_CASE_INSENSITIVE) {
+      expect(htmlLower).not.toContain(name.toLowerCase());
+    }
+    for (const name of COMPETITOR_NAMES_WITH_TRAILING_SPACE) {
+      expect(htmlLower).not.toContain(name.toLowerCase());
+    }
+    for (const name of COMPETITOR_NAMES_CASE_SENSITIVE) {
+      expect(shell.textContent ?? '').not.toContain(name);
+    }
+
+    expect(container.querySelector('#what-competitors-say')).toBeTruthy();
+  });
 });
 
 describe('marketing hardening — no GB/storage language', () => {
