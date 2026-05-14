@@ -92,6 +92,24 @@ export type ResearchObjective =
   | 'PATENT_GAP_ANALYSIS'
   | 'ANOMALY_CORRELATION';
 
+/** Must stay aligned with `VALID_EXPORT_STYLES` / `ReportExportButton` export styles. */
+export type CitationStyleSlug =
+  | 'mla'
+  | 'apa'
+  | 'chicago-author-date'
+  | 'chicago-note'
+  | 'ieee'
+  | 'harvard';
+
+export const CITATION_STYLE_OPTIONS: { value: CitationStyleSlug; label: string }[] = [
+  { value: 'mla', label: 'MLA (9th ed.)' },
+  { value: 'apa', label: 'APA (7th ed.)' },
+  { value: 'chicago-author-date', label: 'Chicago — Author/Date' },
+  { value: 'chicago-note', label: 'Chicago — Notes & Bibliography' },
+  { value: 'ieee', label: 'IEEE' },
+  { value: 'harvard', label: 'Harvard' },
+];
+
 export interface ResearchProgressEvent {
   runId?: string;
   stage: string;
@@ -410,6 +428,8 @@ export interface StartResearchPayload {
   supplementalFiles?: File[];
   /** User-requested total report length in words. Server clamps to a safe range. */
   targetWordCount?: number;
+  /** Citation style for academic exports (stored on the run for downstream formatting). */
+  citationStyle?: CitationStyleSlug;
 }
 
 export const startResearch = (data: StartResearchPayload) => {
@@ -428,6 +448,9 @@ export const startResearch = (data: StartResearchPayload) => {
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (typeof rest.targetWordCount === 'number') {
       form.append('targetWordCount', String(rest.targetWordCount));
+    }
+    if (rest.citationStyle) {
+      form.append('citation_style', rest.citationStyle);
     }
     if (supplementalUrls?.length) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));

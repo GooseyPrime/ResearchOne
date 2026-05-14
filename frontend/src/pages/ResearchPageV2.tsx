@@ -37,10 +37,11 @@ import {
   ResearchRun,
   ResearchProgressEvent,
   type ResearchObjective,
+  CITATION_STYLE_OPTIONS,
+  type CitationStyleSlug,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
-import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
-import { useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
+import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -225,9 +226,7 @@ export default function ResearchPageV2() {
   const tierResolved =
     authReady && !subLoading && (!subError || Boolean(subscriptionData));
   const userTier = tierResolved
-    ? stripeSubscriptionGrantsPaidPlan(subscriptionData?.status) && subscriptionData
-      ? subscriptionData.tier
-      : 'free_demo'
+    ? effectiveEntitlementTier(subscriptionData) ?? 'free_demo'
     : null;
   const allowedObjectives = userTier
     ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
@@ -245,6 +244,7 @@ export default function ResearchPageV2() {
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
+  const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
   // Target report length (words). Standard preset; user can switch to "Custom" to
   // enter an arbitrary value. The backend clamps to a safe range either way.
   const [reportLengthPreset, setReportLengthPreset] = useState<'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('standard');
@@ -271,6 +271,14 @@ export default function ResearchPageV2() {
   const [modelRows, setModelRows] = useState<
     Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }>
   >({});
+
+  useEffect(() => {
+    if (!tierResolved || !userTier) return;
+    const allowed = TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo;
+    if (!allowed.includes(researchObjective)) {
+      setResearchObjective(allowed[0] ?? 'GENERAL_EPISTEMIC_RESEARCH');
+    }
+  }, [tierResolved, userTier, researchObjective]);
 
   const { data: ensembleData } = useQuery({
     queryKey: ['research-v2-ensemble-presets'],
@@ -309,6 +317,7 @@ export default function ResearchPageV2() {
       subscribeToJob(data.runId);
       addNotification('info', 'Deep Research started — tracking detailed progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
     },
     onError: (error) => {
       addNotification('error', extractStartResearchErrorMessage(error));
@@ -447,6 +456,7 @@ export default function ResearchPageV2() {
 
     socket.on('research:completed', (result: { runId: string; reportId: string }) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
       if (result.runId === trackingRunId) {
         const doneEvt: ResearchProgressEvent = {
           runId: result.runId,
@@ -613,6 +623,7 @@ export default function ResearchPageV2() {
       targetWordCount: resolvedTargetWordCount,
       supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
       supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
+      citationStyle,
     });
   };
 
@@ -633,6 +644,14 @@ export default function ResearchPageV2() {
   const isActiveRun =
     Boolean(trackingRunId) ||
     (current?.percent != null && current.percent > 0 && current.percent < 100);
+
+  const freeLifetimeQuota = useMemo(() => {
+    if (!tierResolved || userTier !== 'free_demo' || !subscriptionData) return null;
+    const cap = subscriptionData.lifetimeReportCap;
+    if (cap == null) return null;
+    const used = subscriptionData.lifetimeReportsUsed ?? 0;
+    return { cap, used, remaining: Math.max(0, cap - used) };
+  }, [tierResolved, userTier, subscriptionData]);
 
   return (
     <div
@@ -659,7 +678,17 @@ export default function ResearchPageV2() {
         <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
           <p className="font-medium text-slate-200">Free tier — Deep Research</p>
           <p className="mt-1 text-slate-400">
-            You have up to 3 lifetime research runs using the General Epistemic Research objective.
+            {freeLifetimeQuota ? (
+              <>
+                You have <span className="text-slate-200 font-medium">{freeLifetimeQuota.remaining}</span> of{' '}
+                <span className="text-slate-200 font-medium">{freeLifetimeQuota.cap}</span> lifetime research runs
+                remaining (General Epistemic Research). Completed runs update this count.
+              </>
+            ) : (
+              <>
+                Lifetime research runs on the free tier use the General Epistemic Research objective only.{' '}
+              </>
+            )}
             Deep Research uses the V2 multi-model ensemble for richer analysis.{' '}
             <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
               Upgrade for more objectives and higher limits.
@@ -735,6 +764,25 @@ export default function ResearchPageV2() {
             </div>
             <p className="text-xs text-slate-500 mt-1">
               The synthesizer distributes this budget across sections (heavier weight on Reasoning and Evidence). It is steered to use the budget on substance — citing specific evidence — and to stop early rather than pad with filler.
+            </p>
+          </div>
+
+          <div>
+            <label className="section-title block mb-2">Citation style</label>
+            <select
+              className="input w-full md:max-w-md"
+              value={citationStyle}
+              onChange={(e) => setCitationStyle(e.target.value as CitationStyleSlug)}
+              disabled={mutation.isPending || !!trackingRunId}
+            >
+              {CITATION_STYLE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              Preferred bibliography format for this run (used when generating academic exports).
             </p>
           </div>
 

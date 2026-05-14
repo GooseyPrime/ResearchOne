@@ -12,11 +12,16 @@ import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import { getStripeClient, getTopupAmountForPrice } from '../../services/billing/stripeClient';
 import { creditWallet } from '../../services/billing/walletService';
-import { syncSubscription, markSubscriptionCanceled } from '../../services/billing/subscriptionService';
+import {
+  syncSubscription,
+  markSubscriptionCanceled,
+  resolveSubscriptionPlanTier,
+} from '../../services/billing/subscriptionService';
 import { stripeSubscriptionStatusGrantsPlanAccess } from '../../services/billing/stripeSubscriptionStatus';
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
+import { isTierName, type TierName } from '../../config/tierRules';
 import {
   cancelMonitorByStripeSubscription,
   cancelUserAddonSubscriptions,
@@ -33,16 +38,6 @@ import {
 const router = Router();
 
 type StripeEventData = Record<string, unknown>;
-
-function deriveTierFromLookupKey(lookupKey: string | null | undefined): import('../../config/tierRules').TierName | null {
-  if (!lookupKey) return null;
-  const key = lookupKey.toLowerCase();
-  if (key.startsWith('student')) return 'student';
-  if (key.startsWith('pro')) return 'pro';
-  if (key.startsWith('team')) return 'team';
-  if (key.startsWith('byok')) return 'byok';
-  return null;
-}
 
 interface CheckoutSessionData {
   id: string;
@@ -96,7 +91,7 @@ interface SubscriptionData {
   status: string;
   current_period_end: number;
   cancel_at_period_end: boolean;
-  metadata?: { user_id?: string; userId?: string; report_id?: string; monitor_kind?: string };
+  metadata?: { user_id?: string; userId?: string; tier?: string; report_id?: string; monitor_kind?: string };
   items?: {
     data?: Array<{ id?: string; price?: { id?: string | null; lookup_key?: string | null } }>;
   };
@@ -156,6 +151,8 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
   // Normal tier subscription — sync plan state
   const item = subscription.items?.data?.[0];
   const priceLookupKey = item?.price?.lookup_key ?? null;
+  const stripePriceId = item?.price?.id ?? null;
+  const metadataTier = subscription.metadata?.tier ?? null;
 
   await syncSubscription(
     userId,
@@ -164,16 +161,25 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     subscription.status,
     new Date(subscription.current_period_end * 1000),
     subscription.cancel_at_period_end,
-    priceLookupKey
+    priceLookupKey,
+    stripePriceId,
+    metadataTier
   );
 
-  const tierFromLookup = deriveTierFromLookupKey(priceLookupKey);
-  if (tierFromLookup && stripeSubscriptionStatusGrantsPlanAccess(subscription.status)) {
-    try {
-      await setUserTier(userId, tierFromLookup);
-    } catch (err) {
-      logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
+  // `user_tiers` drives research caps and objective gates — keep it aligned with
+  // the same tier resolution as `user_subscriptions` (lookup_key is often absent).
+  const resolved = resolveSubscriptionPlanTier({ priceLookupKey, stripePriceId, metadataTier });
+  const grants = stripeSubscriptionStatusGrantsPlanAccess(subscription.status);
+  let tierToApply: TierName = 'free_demo';
+  if (grants) {
+    if (isTierName(resolved) && resolved !== 'anonymous') {
+      tierToApply = resolved;
     }
+  }
+  try {
+    await setUserTier(userId, tierToApply);
+  } catch (err) {
+    logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
   }
 };
 

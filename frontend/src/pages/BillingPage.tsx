@@ -6,6 +6,7 @@ import { startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
 import {
   BILLING_SUBSCRIPTION_QUERY_KEY,
+  effectiveEntitlementTier,
   useBillingSubscriptionQuery,
 } from '../hooks/useBillingSubscription';
 
@@ -138,16 +139,21 @@ export default function BillingPage() {
 
   const balance = useMemo(() => ((walletQuery.data?.balanceCents ?? 0) / 100).toFixed(2), [walletQuery.data]);
 
-  const hasActiveSubscription =
-    subQuery.data &&
-    stripeSubscriptionGrantsPaidPlan(subQuery.data.status) &&
-    subQuery.data.tier !== 'free_demo';
+  const subRow = subQuery.data;
+  const hasActiveSubscription = Boolean(
+    subRow &&
+      stripeSubscriptionGrantsPaidPlan(subRow.status) &&
+      subRow.stripeSubscriptionId,
+  );
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
   const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
-  const hasProAccess = isAllowlistedAdmin || (subQuery.data
-    ? PRO_PLUS_TIERS.includes(subQuery.data.tier) && stripeSubscriptionGrantsPaidPlan(subQuery.data.status)
-    : false);
+  const effectiveTier = effectiveEntitlementTier(subQuery.data);
+  const tierGateUnknown = subQuery.isLoading || (Boolean(subQuery.isError) && !subQuery.data);
+  const hasProAccess =
+    isAllowlistedAdmin ||
+    tierGateUnknown ||
+    Boolean(subQuery.data && effectiveTier && PRO_PLUS_TIERS.includes(effectiveTier));
 
   const monitorsQuery = useQuery({
     queryKey: ['billing-monitors'],
@@ -233,14 +239,27 @@ export default function BillingPage() {
           </div>
         ) : subQuery.data ? (
           <div className="mt-2">
-            {subQuery.data.tier === 'free_demo' || (subQuery.data.status !== 'active' && !hasActiveSubscription) ? (
+            {effectiveTier === 'free_demo' && !hasActiveSubscription ? (
               <div className="rounded-md border border-indigo-700/30 bg-indigo-950/20 p-3">
                 <p className="text-sm text-slate-200 font-medium">
                   Free tier
                 </p>
                 <p className="mt-1 text-sm text-slate-400">
-                  You have access to 3 lifetime research runs using General Epistemic Research,
-                  available in both Research and Deep Research modes.
+                  {typeof subQuery.data.lifetimeReportCap === 'number' ? (
+                    <>
+                      You have{' '}
+                      <span className="text-slate-200 font-medium">
+                        {Math.max(0, subQuery.data.lifetimeReportCap - (subQuery.data.lifetimeReportsUsed ?? 0))}
+                      </span>{' '}
+                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining (General Epistemic
+                      Research), available in both Research and Deep Research modes.
+                    </>
+                  ) : (
+                    <>
+                      You have access to limited lifetime research runs using General Epistemic Research, available in
+                      both Research and Deep Research modes.
+                    </>
+                  )}
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <Link
@@ -261,7 +280,7 @@ export default function BillingPage() {
               <>
                 <p className="text-sm text-slate-400">
                   <span className="font-medium text-slate-200">Tier:</span>{' '}
-                  <span className="capitalize">{subQuery.data.tier.replace(/_/g, ' ')}</span>
+                  <span className="capitalize">{(effectiveTier ?? subQuery.data.tier).replace(/_/g, ' ')}</span>
                   {' · '}
                   <span className="font-medium text-slate-200">Status:</span>{' '}
                   <span className="capitalize">{subQuery.data.status}</span>

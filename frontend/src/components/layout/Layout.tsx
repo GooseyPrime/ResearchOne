@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
-import { useBillingSubscriptionQuery } from '../../hooks/useBillingSubscription';
+import { useBillingSubscriptionQuery, effectiveEntitlementTier } from '../../hooks/useBillingSubscription';
 import api, {
   getStats,
   getSystemHealth,
@@ -27,7 +27,6 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
-import { stripeSubscriptionGrantsPaidPlan } from '../../utils/stripeSubscriptionAccess';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -89,19 +88,20 @@ export default function Layout() {
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
 
-  const { data: subscriptionData, isLoading: subLoading } = useBillingSubscriptionQuery();
+  const { data: subscriptionData, isLoading: subLoading, isError: subError } = useBillingSubscriptionQuery();
 
-  const subGrantsPlan = stripeSubscriptionGrantsPaidPlan(subscriptionData?.status);
-  const userTier =
-    subGrantsPlan && subscriptionData ? subscriptionData.tier : 'free_demo';
+  const effectiveTier = effectiveEntitlementTier(subscriptionData);
+  /** While the subscription query is in flight, do not treat the user as free_demo (paid users would see a flash of hidden nav). */
+  const tierGateUnknown =
+    !isAllowlistedAdmin && (subLoading || (Boolean(subError) && !subscriptionData));
   const hasProAccess =
     isAllowlistedAdmin ||
-    (PRO_PLUS_TIERS as readonly string[]).includes(userTier);
-  const tierResolved = isAllowlistedAdmin || !subLoading;
+    tierGateUnknown ||
+    (Boolean(subscriptionData) &&
+      (PRO_PLUS_TIERS as readonly string[]).includes(effectiveTier ?? 'free_demo'));
 
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.requireAdmin && !isAllowlistedAdmin) return false;
-    if (item.requireTier === 'pro' && !tierResolved) return false;
     if (item.requireTier === 'pro' && !hasProAccess) return false;
     return true;
   });

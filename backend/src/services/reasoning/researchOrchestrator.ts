@@ -220,6 +220,7 @@ async function runResearchJobInner(
     engineVersion,
     researchObjective,
     targetWordCount,
+    citationStyle,
   } = data;
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
@@ -248,6 +249,7 @@ async function runResearchJobInner(
     engineVersion,
     researchObjective,
     targetWordCount,
+    citationStyle,
     creditChargeContext: creditCtx,
   };
   const modelLog: ModelCallResult[] = [];
