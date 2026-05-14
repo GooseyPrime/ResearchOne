@@ -21,7 +21,7 @@ const TIER_COLORS: Record<string, string> = {
 
 const TIER_LABELS: Record<string, string> = {
   established_fact: 'Established Fact',
-  strong_evidence: 'Strong Evidence',
+  strong_evidence: 'Strong corroboration',
   testimony: 'Testimony',
   inference: 'Inference',
   speculation: 'Speculation',
