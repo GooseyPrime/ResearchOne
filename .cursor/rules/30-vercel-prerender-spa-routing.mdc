@@ -1,0 +1,22 @@
+---
+description: Vercel SPA rewrites vs prerendered static HTML (F-42)
+---
+
+# Vercel catch-all vs prerendered marketing HTML
+
+## Why this rule exists
+
+A catch-all rewrite **`"destination": "/"`** sends every unmatched path to the SPA shell. If that pattern is too broad, **`/methodology`** (and other marketing paths) never read **`dist/methodology/index.html`** even after prerender — crawlers and link previews keep seeing the home shell (F-42 stays open).
+
+## Rule
+
+1. **Static-first contract:** The SPA catch-all **`source`** must **exclude** every top-level path segment that has a prerendered **`dist/<segment>/`** tree (see `vercel.json` / `frontend/vercel.json` next to `assets/`, `sitemap.xml`, etc.).
+2. **Keep in sync with `public/sitemap.xml`:** When a new marketing URL is added under `https://researchone.io/<segment>`, add **`<segment>`** to that exclusion list (or routing will keep serving `/` for it).
+3. **PostHog proxy rewrites** (`/relay-*`, `/ingest/*`) stay **above** the catch-all; do not reorder them after the SPA rule.
+
+## Pre-commit check
+
+If you add a marketing route or change `public/sitemap.xml`:
+
+- [ ] Did you update the Vercel catch-all negative lookahead in **both** `vercel.json` files (if both exist)?
+- [ ] Did you confirm `npm run build` still runs prerender and writes `dist/<segment>/index.html`?

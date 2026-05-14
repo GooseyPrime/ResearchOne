@@ -33,6 +33,7 @@ drove the rules is at
 | [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
 | [`.cursor/rules/27-animated-pipeline-hero.mdc`](.cursor/rules/27-animated-pipeline-hero.mdc) | WO-W animated pipeline hero + persona beams. |
 | [`.cursor/rules/29-marketing-scope-doc-contracts.mdc`](.cursor/rules/29-marketing-scope-doc-contracts.mdc) | Contract-style marketing / a11y scope docs (conditional re-scan, cwd, Lighthouse gates, F-42 boundary). |
+| [`.cursor/rules/30-vercel-prerender-spa-routing.mdc`](.cursor/rules/30-vercel-prerender-spa-routing.mdc) | Vercel SPA catch-all must not shadow prerendered `dist/<segment>/`; sync exclusions with `public/sitemap.xml`. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -63,6 +64,13 @@ drove the rules is at
   do not collide on `url(#…)`.
 - **Test global hygiene:** Restore `globalThis.IntersectionObserver`,
   `window.matchMedia`, etc. after tests that polyfill them.
+
+## Recurring review themes (Codex / Copilot, PR #120 — F-42 prerender)
+
+- **Production build must run prerender:** `npm run build` must invoke the prerender step (or Vercel never ships nested `dist/<route>/index.html`).
+- **Prerender readiness:** Do not rely on a fixed sleep alone — wait for **`#root > *`** (and bounded `networkidle` where safe) before `page.content()`.
+- **Bounded preview probes:** Health-check `fetch` to `vite preview` must use **per-request timeouts** (`AbortController`) so CI cannot hang forever.
+- **Vercel catch-all vs static HTML:** SPA rewrite must exclude prerendered path segments (see rule 30).
 
 ## Recurring review themes (Wave 2.5 scope / a11y contract PRs)
 

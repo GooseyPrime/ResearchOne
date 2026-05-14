@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/prerender-marketing.mjs",
+    "build:no-prerender": "tsc && vite build",
     "lint": "eslint src --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "audit:snapshots:wave2": "node scripts/wave2-audit-snapshots.mjs"
+    "audit:snapshots:wave2": "node scripts/wave2-audit-snapshots.mjs",
+    "prerender:marketing": "node scripts/prerender-marketing.mjs"
   },
   "dependencies": {
     "@clerk/react": "^6.6.0",

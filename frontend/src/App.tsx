@@ -44,6 +44,7 @@ import ContactPage from './pages/ContactPage';
 import ComparePage from './pages/ComparePage';
 import ChangelogPage from './pages/ChangelogPage';
 import MarketingDocsPage from './pages/MarketingDocsPage';
+import MarketingDocumentEffect from './components/MarketingDocumentEffect';
 
 export function AppRoutes() {
   return (
@@ -110,12 +111,14 @@ export default function App({ initialEntries }: AppProps = {}) {
   if (typeof document === 'undefined') {
     return (
       <MemoryRouter initialEntries={initialEntries ?? ['/']}>
+        <MarketingDocumentEffect />
         <AppRoutes />
       </MemoryRouter>
     );
   }
   return (
     <BrowserRouter>
+      <MarketingDocumentEffect />
       <AppRoutes />
     </BrowserRouter>
   );
