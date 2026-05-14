@@ -8,6 +8,13 @@ export default function ComparePage() {
       <LandingHeader />
       <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
         <h1 className="font-serif text-4xl">Compare</h1>
+        <p className="mt-3 text-sm text-r1-text-muted">
+          A note on language: most AI research tools call retrieved papers &quot;evidence.&quot; We don&apos;t. See{' '}
+          <Link to="/methodology#what-competitors-say" className="text-r1-accent hover:underline">
+            What Competitors Actually Say
+          </Link>
+          .
+        </p>
         <p className="mt-3 text-r1-text-muted">
           The full capability matrix (Capability · ResearchOne · General-purpose deep research) lives on the homepage under
           &quot;Built for defensible decisions&quot; — same row labels as the site audit §2.10 brief.
