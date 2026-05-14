@@ -21,7 +21,7 @@ function MockDocument({ version }: { version: LivingVersionDef }) {
   return (
     <div className="rounded-lg border border-white/10 bg-[#0F1318] p-4 text-left text-sm text-r1-text shadow-inner">
       <p className="font-serif text-base font-semibold">Living report preview</p>
-      <p className="mt-2 text-xs text-r1-text-muted">Evidence state: {version.tierLabel}</p>
+      <p className="mt-2 text-xs text-r1-text-muted">Corroboration state: {version.tierLabel}</p>
       <p className="mt-3 leading-relaxed text-r1-text">
         Fasting insulin improved in adults with metabolic syndrome
         {version.citationCount >= 1 ? (

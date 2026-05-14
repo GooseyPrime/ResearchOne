@@ -9,7 +9,7 @@ const ROWS: Array<{ capability: string; researchOne: Cell; generalPurpose: Cell 
   { capability: 'Preserved contradictions', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Versioned, living updates', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'Cited counter-claims', researchOne: 'yes', generalPurpose: 'partial' },
-  { capability: 'Auditable evidence chain', researchOne: 'yes', generalPurpose: 'partial' },
+  { capability: 'Auditable citation-and-source chain', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'BYOK / sovereign tier', researchOne: 'yes', generalPurpose: 'no' },
 ];
 

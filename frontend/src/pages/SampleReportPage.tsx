@@ -36,7 +36,7 @@ export default function SampleReportPage() {
                    are not isolated from selection effects.
 
 [speculation]      Mechanism via autophagy upregulation is plausible
-                   but human-trial evidence is preliminary.`}</pre>
+                   but human-trial findings remain preliminary.`}</pre>
           <p className="mt-4 text-sm text-r1-text-muted">
             Every claim carries its tier. Every contradiction has a name. The reader does the final judgment work.
           </p>

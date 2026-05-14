@@ -5,8 +5,8 @@ import SourceProvenancePanel from '../../components/landing/SourceProvenancePane
 describe('SourceProvenancePanel', () => {
   const html = renderToString(<SourceProvenancePanel />);
 
-  it('renders all 3 evidence-tier badges', () => {
-    expect(html).toContain('Strong evidence');
+  it('renders all 3 source-corroboration tier badges', () => {
+    expect(html).toContain('Strong corroboration');
     expect(html).toContain('Contradiction');
     expect(html).toContain('Speculation');
   });

@@ -1,6 +1,6 @@
 # ResearchOne
 
-**Disciplined Anomaly Research Platform** — A structured evidence-gathering, reasoning, and long-form research reporting system built for deep scientific and ontological investigation.
+**Disciplined Anomaly Research Platform** — A structured source-gathering, reasoning, and long-form research reporting system that preserves the distinction between primary evidence and documented sources, built for deep scientific and ontological investigation.
 
 > Not a chatbot. Not a hallucination machine. A disciplined investigation engine with epistemic governance built in.
 
@@ -75,9 +75,9 @@ To use this mode: do not set `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, or `VITE_EX
 |-------|------|---------|
 | 1 | Planner | Decomposes query into sub-questions, retrieval targets, hypothesis, falsification criteria |
 | 2 | Discovery | Autonomously identifies and ingests external sources when corpus is sparse |
-| 3 | Retriever | Gathers evidence from enriched corpus via hybrid vector+FTS search |
-| 4 | Retriever Analysis | Evaluates evidence tiers, flags outliers and bridges |
-| 5 | Reasoner | Builds structured argument chains, tags all claims by evidence tier |
+| 3 | Retriever | Gathers sources from enriched corpus via hybrid vector+FTS search |
+| 4 | Retriever Analysis | Evaluates source-corroboration tiers, flags outliers and bridges |
+| 5 | Reasoner | Builds structured argument chains, tags all claims by source-corroboration tier |
 | 6 | Skeptic | Attacks conclusions, finds alternatives, prevents confirmation bias |
 | 7 | Synthesizer | Writes the complete long-form research report |
 | 8 | Verifier | Epistemic quality gate — ensures citation, contradiction, and tier standards are met |

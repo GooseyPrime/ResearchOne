@@ -7,12 +7,12 @@ import PipelineDiagram from '../components/landing/PipelineDiagram';
 const PIPELINE_STAGES: Array<{ n: number; agent: string; role: string }> = [
   { n: 1, agent: 'Planner', role: 'Decomposes your question into sub-questions, retrieval targets, falsification criteria' },
   { n: 2, agent: 'Discovery', role: 'Autonomously locates and ingests external sources when corpus is sparse' },
-  { n: 3, agent: 'Retriever', role: 'Pulls evidence from corpus and sources via hybrid vector + full-text search' },
-  { n: 4, agent: 'Retriever Analysis', role: 'Evaluates evidence by tier, flags outliers and bridges between concepts' },
-  { n: 5, agent: 'Reasoner', role: 'Builds structured argument chains, tags every claim by evidence tier' },
+  { n: 3, agent: 'Retriever', role: 'Pulls sources from corpus and external feeds via hybrid vector + full-text search' },
+  { n: 4, agent: 'Retriever Analysis', role: 'Evaluates sources by source-corroboration tier, flags outliers and bridges between concepts' },
+  { n: 5, agent: 'Reasoner', role: 'Builds structured argument chains, tags every claim by source-corroboration tier' },
   { n: 6, agent: 'Skeptic', role: "Attacks the reasoner's conclusions, surfaces alternatives, prevents confirmation bias" },
   { n: 7, agent: 'Synthesizer', role: 'Writes the long-form report, integrating reasoning and skeptical critique' },
-  { n: 8, agent: 'Verifier', role: 'Quality gate — checks citation integrity, evidence-tier consistency, contradiction completeness' },
+  { n: 8, agent: 'Verifier', role: 'Quality gate — checks citation integrity, source-corroboration-tier consistency, contradiction completeness' },
   { n: 9, agent: 'Report Save', role: 'Persists the report, sections, and verification metadata' },
   { n: 10, agent: 'Epistemic Persistence', role: 'Extracts and stores claims, contradictions, and citations into the knowledge graph' },
 ];
@@ -87,7 +87,7 @@ export default function MethodologyPage() {
                    are not isolated from selection effects.
 
 [speculation]      Mechanism via autophagy upregulation is plausible
-                   but human-trial evidence is preliminary.`}</pre>
+                   but human-trial findings remain preliminary.`}</pre>
         </section>
 
         <section className="mt-16">

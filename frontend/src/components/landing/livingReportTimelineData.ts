@@ -46,7 +46,7 @@ export const LIVING_REPORT_VERSIONS: readonly LivingVersionDef[] = [
   {
     label: 'v0.7',
     date: 'Day 14',
-    badges: [{ type: 'synthesis', text: 'Synthesis revised to name both lines of evidence.' }],
+    badges: [{ type: 'synthesis', text: 'Synthesis revised to name both lines of sources.' }],
     citationCount: 3,
     showContradiction: true,
     tierLabel: 'Tier 1 + conflict',

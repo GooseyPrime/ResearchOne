@@ -61,8 +61,8 @@ interface StageDescriptor {
 const STAGES: StageDescriptor[] = [
   { id: 'planning', icon: Brain, label: 'Planning', desc: 'Query decomposition and research framing', backendStages: ['planning'] },
   { id: 'discovery', icon: FileSearch, label: 'Discovery', desc: 'External source discovery and ingestion', backendStages: ['discovery'] },
-  { id: 'retrieval', icon: FileSearch, label: 'Retrieval', desc: 'Evidence retrieval and ranking', backendStages: ['retrieval', 'retriever_analysis'] },
-  { id: 'reasoning', icon: Zap, label: 'Reasoning', desc: 'Argument construction across evidence', backendStages: ['reasoning'] },
+  { id: 'retrieval', icon: FileSearch, label: 'Retrieval', desc: 'Source retrieval and ranking', backendStages: ['retrieval', 'retriever_analysis'] },
+  { id: 'reasoning', icon: Zap, label: 'Reasoning', desc: 'Argument construction across sources', backendStages: ['reasoning'] },
   { id: 'challenge', icon: Shield, label: 'Challenge', desc: 'Skeptic and counter-model pressure tests', backendStages: ['challenge'] },
   { id: 'synthesis', icon: PenLine, label: 'Synthesis', desc: 'Drafting report sections and coherence', backendStages: ['synthesis', 'plain_language'] },
   { id: 'verification', icon: Target, label: 'Verification', desc: 'Epistemic checks and persistence', backendStages: ['verification', 'saving', 'epistemic_persistence'] },
@@ -462,7 +462,7 @@ export default function ResearchPage() {
           <span className="text-gradient">Start Research</span>
         </h1>
         <p className="text-slate-400 mt-2 text-sm">
-          Disciplined anomaly research with evidence-tiered reporting and full-stage telemetry.
+          Disciplined anomaly research with source-corroboration-tiered reporting and full-stage telemetry.
         </p>
       </div>
 

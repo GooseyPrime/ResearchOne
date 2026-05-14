@@ -80,13 +80,13 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'For non-consensus research',
     headline: 'A research engine that doesn\u2019t suppress the anomaly.',
     subhead:
-      'Built on open-weight models with no alignment filter overriding what the evidence actually says. ' +
+      'Built on open-weight models with no alignment filter overriding what the sources actually say. ' +
       'Anomaly Correlation mode: map weak signals, preserve contradictions, surface what the official story omits.',
     ctas: [
       { label: 'See an Anomaly Correlation report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
       { label: 'How it works',                       to: '/methodology',                            variant: 'secondary' },
     ],
-    proofLine: 'Skeptic agent on every claim \u00B7 Five evidence tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
+    proofLine: 'Skeptic agent on every claim \u00B7 Five source-corroboration tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
   },
 
   // ──────────────────────────────────────────────────────────────
@@ -99,12 +99,12 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     headline: 'Citation-grade synthesis without the hallucinated bibliography.',
     subhead:
       'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every claim ' +
-      'to an evidence card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',
+      'to a source card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',
     ctas: [
       { label: 'Student plan \u2014 $9/mo', to: '/pricing#student',  variant: 'primary' },
       { label: 'Methodology',               to: '/methodology',      variant: 'secondary' },
     ],
-    proofLine: 'Evidence tiers \u00B7 Contradiction preservation \u00B7 Post-publication revision when the literature moves.',
+    proofLine: 'Source-corroboration tiers \u00B7 Contradiction preservation \u00B7 Post-publication revision when the literature moves.',
   },
 
   // ──────────────────────────────────────────────────────────────

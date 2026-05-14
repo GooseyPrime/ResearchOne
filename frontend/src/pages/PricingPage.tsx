@@ -15,7 +15,7 @@ const ADD_ONS: AddOn[] = [
   {
     name: 'Living Reports',
     price: '$19/mo',
-    description: 'Your published reports stay current. ResearchOne monitors the underlying literature and pushes diffs when the evidence meaningfully shifts.',
+    description: 'Your published reports stay current. ResearchOne monitors the underlying literature and pushes diffs when the sources meaningfully shift.',
   },
   {
     name: 'Reverse-Citation Watch',

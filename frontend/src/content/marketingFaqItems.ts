@@ -3,17 +3,17 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'How is ResearchOne different from mainstream deep research assistants?',
     answer:
-      'Mainstream assistants optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated Skeptic and explicit evidence tiering, built for defensible long-form reports where contradictions must survive and the output must outlive the chat.',
+      'Mainstream assistants optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated Skeptic and explicit source-corroboration tiering, built for defensible long-form reports where contradictions must survive and the output must outlive the chat.',
   },
   {
     question: 'What does the Skeptic agent actually do?',
     answer:
-      'The Skeptic is a dedicated adversarial pass: it attacks draft claims, surfaces counter-evidence, and preserves contradictions as named outputs rather than smoothing them away.',
+      'The Skeptic is a dedicated adversarial pass: it attacks draft claims, surfaces counter-sources, and preserves contradictions as named outputs rather than smoothing them away.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
     answer:
-      'Both lines of evidence remain visible with tier labels. The report names the disagreement, cites each side, and leaves the judgment work to the reader — we do not silently pick a winner.',
+      'Both lines of argument remain visible with tier labels. The report names the disagreement, cites each side, and leaves the judgment work to the reader — we do not silently pick a winner.',
   },
   {
     question: 'Can ResearchOne forge or hallucinate a citation?',
@@ -23,7 +23,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'How do Living updates work — will my old report change under me?',
     answer:
-      'Living Reports create new discrete versions when evidence changes. You keep prior versions for audit, citation, or rollback; nothing silently rewrites the version your team already agreed on.',
+      'Living Reports create new discrete versions when sources meaningfully shift. You keep prior versions for audit, citation, or rollback; nothing silently rewrites the version your team already agreed on.',
   },
   {
     question: "What's the difference between BYOK and the Sovereign tier?",
@@ -42,12 +42,12 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'How is this different from ChatGPT Deep Research or Claude Research?',
     answer:
-      'ResearchOne exposes a named ten-stage pipeline with a Skeptic outside the single-model draft, per-claim citation bind, and explicit evidence tiers. The comparison is structural auditability versus a single chat-shaped pass.',
+      'ResearchOne exposes a named ten-stage pipeline with a Skeptic outside the single-model draft, per-claim citation bind, and explicit source-corroboration tiers. The comparison is structural auditability versus a single chat-shaped pass.',
   },
   {
     question: 'What does the Skeptic agent actually do?',
     answer:
-      'It receives the draft synthesis and attacks it: searches for counter-evidence, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
+      'It receives the draft synthesis and attacks it: searches for counter-sources, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -72,6 +72,6 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'Can I export a report and cite it like a static PDF?',
     answer:
-      'Exports include citations and version identifiers so a frozen PDF remains traceable to the evidence state at export time.',
+      'Exports include citations and version identifiers so a frozen PDF remains traceable to the corroboration state at export time.',
   },
 ] as const satisfies ReadonlyArray<{ question: string; answer: string }>;

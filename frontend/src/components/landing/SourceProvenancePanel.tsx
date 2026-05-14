@@ -7,7 +7,7 @@ const CLAIMS = [
 const EVIDENCE_CARDS = [
   {
     claimId: 'claim-1',
-    tier: 'Strong evidence',
+    tier: 'Strong corroboration',
     tierColor: 'bg-tier-strong_evidence',
     sourceType: 'Peer-reviewed',
     reason: 'Largest sample (n=12,400) with reproducible methodology',
@@ -52,7 +52,7 @@ export default function SourceProvenancePanel() {
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
       <h2 className="font-serif text-3xl">Every claim has a source. Every source has a reason.</h2>
       <p className="mt-3 text-r1-text-muted">
-        Citation integrity isn&apos;t a feature — it&apos;s the contract. Each claim maps to an evidence card.
+        Citation integrity isn&apos;t a feature — it&apos;s the contract. Each claim maps to a source card.
       </p>
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -87,7 +87,7 @@ export default function SourceProvenancePanel() {
           </p>
         </div>
 
-        {/* Right: evidence cards */}
+        {/* Right: source cards */}
         <div className="flex flex-col gap-3">
           {EVIDENCE_CARDS.map((card) => (
             <div
