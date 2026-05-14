@@ -14,8 +14,8 @@ describe('LivingReportTimeline', () => {
     expect(html).toContain('v1.0');
   });
 
-  it('exposes an accessible version scrubber', () => {
-    expect(html).toContain('role="slider"');
+  it('exposes an accessible version scrubber (group + labelled instructions)', () => {
+    expect(html).toContain('role="group"');
     expect(html).toContain('Report version scrubber');
     expect(html).toContain('data-testid="living-report-timeline"');
   });

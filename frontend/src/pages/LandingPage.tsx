@@ -84,6 +84,7 @@ export default function LandingPage() {
     <LabNotebookCanvas className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
 
+      <main id="marketing-main">
       <div data-testid="landing-hero-region">
         <PersonaAwareHero onPersonaResolved={onPersonaResolved} />
       </div>
@@ -246,6 +247,7 @@ export default function LandingPage() {
         <h2 className="mb-4 font-serif text-3xl">FAQ</h2>
         <FAQ items={MARKETING_FAQ_ITEMS} />
       </section>
+      </main>
 
       <LandingFooter />
     </LabNotebookCanvas>
