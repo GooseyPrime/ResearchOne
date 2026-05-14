@@ -28,12 +28,15 @@ this workflow rule.
    refactor), do all implementation commits on a **dedicated branch** that will
    back a **pull request** into the repo default branch (here: `main`), per the
    request-time default above.
-2. **Branch off current remote default:** Before the first commit,
+2. **Default:** For any **new scoped request** (feature, WO, wave, bugfix,
+   refactor), do all implementation commits on a **dedicated branch** that
+   will back a **pull request** into the repo default branch (here: `main`).
+3. **Branch off current remote default:** Before the first commit,
    `git fetch origin` and create the branch from **`origin/main`** (or the
    user-specified base), not from a stale local `main`.
-3. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
+4. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
    `feat/<topic>`, `fix/<topic>` — consistent with sibling branches.
-4. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
+5. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
    as there is a meaningful first commit, unless the environment cannot create
    PRs — then leave explicit instructions for the human to open one.
 
