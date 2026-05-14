@@ -13,7 +13,6 @@ import LandingHeader from '../components/landing/LandingHeader';
 import LivingReportsSection from '../components/landing/LivingReportsSection';
 import ModeCard from '../components/landing/ModeCard';
 import PricingCard from '../components/landing/PricingCard';
-import TrustStrip from '../components/landing/TrustStrip';
 import { LANDING_SIX_FEATURE_CARDS } from '../content/landingFeatureCards';
 import { MARKETING_FAQ_ITEMS } from '../content/marketingFaqItems';
 import { publicApi } from '../utils/api';
@@ -88,8 +87,6 @@ export default function LandingPage() {
       <div data-testid="landing-hero-region">
         <PersonaAwareHero onPersonaResolved={onPersonaResolved} />
       </div>
-
-      <TrustStrip />
 
       <section
         data-testid="landing-feature-cards"
