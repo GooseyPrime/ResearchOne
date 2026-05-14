@@ -1,45 +1,63 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+/** Same-origin API host for split UI + API deploys (see `frontend/.env.example`). */
+const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
+
+export default defineConfig(({ mode }) => {
+  const fileEnv = loadEnv(mode, process.cwd(), '');
+  const useProdDefaults = mode === 'production';
+  const apiBase =
+    fileEnv.VITE_API_BASE_URL?.trim() ||
+    (useProdDefaults ? SPLIT_DEPLOYMENT_DEFAULT_ORIGIN : '');
+  const socketUrl =
+    fileEnv.VITE_SOCKET_URL?.trim() ||
+    (useProdDefaults ? SPLIT_DEPLOYMENT_DEFAULT_ORIGIN : '');
+
+  return {
+    plugins: [react()],
+    define: {
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBase),
+      'import.meta.env.VITE_SOCKET_URL': JSON.stringify(socketUrl),
     },
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/socket.io': {
-        target: 'http://localhost:3001',
-        ws: true,
-      },
-      '/exports': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       },
     },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-    // Main bundle is ~1.7 MB (single-SPA pattern); raise the limit to silence
-    // the "Some chunks are larger than 500 kB" warning without suppressing it
-    // for genuinely oversized future splits.
-    chunkSizeWarningLimit: 2000,
-  },
-  test: {
-    environment: 'node',
-    environmentMatchGlobs: [
-      ['src/__tests__/auth/**', 'jsdom'],
-      ['src/__tests__/landing/**', 'jsdom'],
-    ],
-  },
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+        '/socket.io': {
+          target: 'http://localhost:3001',
+          ws: true,
+        },
+        '/exports': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
+    },
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
+      // Main bundle is ~1.7 MB (single-SPA pattern); raise the limit to silence
+      // the "Some chunks are larger than 500 kB" warning without suppressing it
+      // for genuinely oversized future splits.
+      chunkSizeWarningLimit: 2000,
+    },
+    test: {
+      environment: 'node',
+      environmentMatchGlobs: [
+        ['src/__tests__/auth/**', 'jsdom'],
+        ['src/__tests__/landing/**', 'jsdom'],
+      ],
+    },
+  };
 });

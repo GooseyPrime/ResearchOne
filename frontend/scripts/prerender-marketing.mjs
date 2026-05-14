@@ -9,6 +9,8 @@
  * Optional: **`SKIP_PRERENDER=1`** exits 0 without doing work (escape hatch).
  */
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync, spawn } from 'node:child_process';
@@ -83,6 +85,19 @@ function rewriteCapturedOrigin(html, previewOrigin) {
   return html.split(previewOrigin).join(PUBLIC_ORIGIN);
 }
 
+function playwrightChromiumPresent() {
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim()
+    ? path.resolve(process.env.PLAYWRIGHT_BROWSERS_PATH.trim())
+    : path.join(os.homedir(), '.cache', 'ms-playwright');
+  try {
+    return readdirSync(root).some(
+      (name) => name.startsWith('chromium-') || name.startsWith('chromium_headless_shell-'),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function launchBrowser() {
   try {
     return await chromium.launch({ channel: 'chrome', headless: true });
@@ -99,7 +114,19 @@ async function prerenderRoutes(baseUrl, routes) {
       const page = await browser.newPage();
       const url = `${baseUrl.replace(/\/$/, '')}${route === '/' ? '/' : route}`;
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-      await page.waitForSelector('#root > *', { timeout: 120_000 });
+      try {
+        await page.waitForSelector('#root > *', { timeout: 120_000 });
+      } catch (e) {
+        if (e?.name === 'TimeoutError') {
+          throw new Error(
+            `${e.message} (route ${route}). ` +
+              'The production bundle did not mount into #root — often `assertSplitDeploymentEnv` threw at startup ' +
+              '(missing VITE_API_BASE_URL / VITE_SOCKET_URL at vite build time). Vite production builds default both to ' +
+              'https://api.researchone.io when unset; check the preview console for other errors.',
+          );
+        }
+        throw e;
+      }
       await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
       let html = await page.content();
       await page.close();
@@ -159,8 +186,12 @@ async function main() {
   // - Uses the locally-installed `playwright` bin to avoid npx PATH issues on Vercel.
   // - Omits `--with-deps` because that requires root (apt-get/yum); Vercel's build
   //   container already ships the system libraries needed by chromium_headless_shell.
-  const playwrightBin = path.join(frontendRoot, 'node_modules', '.bin', 'playwright');
-  execSync(`"${playwrightBin}" install chromium`, { stdio: 'inherit', cwd: frontendRoot });
+  if (!playwrightChromiumPresent()) {
+    const playwrightBin = path.join(frontendRoot, 'node_modules', '.bin', 'playwright');
+    execSync(`"${playwrightBin}" install chromium`, { stdio: 'inherit', cwd: frontendRoot });
+  } else {
+    process.stdout.write('Playwright Chromium already present — skipping install\n');
+  }
 
   await access(distDir);
   await access(path.join(distDir, 'index.html'));
