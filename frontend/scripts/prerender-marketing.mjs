@@ -85,25 +85,65 @@ function rewriteCapturedOrigin(html, previewOrigin) {
   return html.split(previewOrigin).join(PUBLIC_ORIGIN);
 }
 
-function playwrightChromiumPresent() {
+/** Chrome-for-Testing dir (`chromium-1234`), not `chromium_headless_shell-*` (minimal; often missing libnspr4 on Vercel). */
+function bundledCftChromiumPresent() {
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim()
     ? path.resolve(process.env.PLAYWRIGHT_BROWSERS_PATH.trim())
     : path.join(os.homedir(), '.cache', 'ms-playwright');
   try {
-    return readdirSync(root).some(
-      (name) => name.startsWith('chromium-') || name.startsWith('chromium_headless_shell-'),
-    );
+    return readdirSync(root).some((name) => /^chromium-\d/.test(name));
   } catch {
     return false;
   }
+}
+
+/**
+ * Vercel builds on Amazon Linux 2023. `playwright install --with-deps` falls back to apt-get, which is absent.
+ * Install the same runtime set Playwright expects on Fedora-like hosts so bundled Chromium can load (libnspr4, etc.).
+ * @see https://github.com/remcohaszing/rehype-mermaid/issues/25#issuecomment-2875691984
+ */
+function installVercelLinuxBrowserDepsIfNeeded() {
+  if (process.env.VERCEL !== '1' || process.platform !== 'linux') return;
+  try {
+    execSync('command -v dnf', { stdio: 'ignore' });
+  } catch {
+    return;
+  }
+  const pkgs = [
+    'libXcomposite',
+    'libXcursor',
+    'libXdamage',
+    'libXext',
+    'libXi',
+    'libXtst',
+    'cups-libs',
+    'libXScrnSaver',
+    'libXrandr',
+    'gtk3',
+    'pango',
+    'alsa-lib',
+    'atk',
+    'at-spi2-atk',
+    'at-spi2-core',
+    'libdrm',
+    'libxkbcommon',
+    'nss',
+    'xorg-x11-server-Xvfb',
+    'libgbm',
+  ].join(' ');
+  process.stdout.write('Vercel (Linux): installing Chromium runtime libraries via dnf...\n');
+  execSync(`dnf install -y ${pkgs}`, { stdio: 'inherit' });
 }
 
 async function launchBrowser() {
   try {
     return await chromium.launch({ channel: 'chrome', headless: true });
   } catch {
-    return await chromium.launch({ headless: true });
+    /* no system Chrome */
   }
+  // New headless uses full Chrome-for-Testing (`chromium-*`), not `chromium_headless_shell-*`, which needs NSS
+  // packages that are not present on minimal Vercel images until `installVercelLinuxBrowserDepsIfNeeded` runs.
+  return await chromium.launch({ channel: 'chromium', headless: true });
 }
 
 async function prerenderRoutes(baseUrl, routes) {
@@ -182,15 +222,18 @@ async function main() {
     return;
   }
 
-  // Install the Playwright Chromium binary if it is not already present.
-  // - Uses the locally-installed `playwright` bin to avoid npx PATH issues on Vercel.
-  // - Omits `--with-deps` because that requires root (apt-get/yum); Vercel's build
-  //   container already ships the system libraries needed by chromium_headless_shell.
-  if (!playwrightChromiumPresent()) {
+  // Install Chrome-for-Testing (full `chromium-*`, not headless_shell). Shell is smaller but commonly fails on
+  // Vercel with: libnspr4.so missing (AL2023 has no apt for `install --with-deps`; use dnf above instead).
+  installVercelLinuxBrowserDepsIfNeeded();
+  if (!bundledCftChromiumPresent()) {
     const playwrightBin = path.join(frontendRoot, 'node_modules', '.bin', 'playwright');
-    execSync(`"${playwrightBin}" install chromium`, { stdio: 'inherit', cwd: frontendRoot });
+    const args = ['install', 'chromium', '--no-shell'];
+    if (process.env.CI === 'true' && process.env.VERCEL !== '1') {
+      args.push('--with-deps');
+    }
+    execSync(`"${playwrightBin}" ${args.join(' ')}`, { stdio: 'inherit', cwd: frontendRoot });
   } else {
-    process.stdout.write('Playwright Chromium already present — skipping install\n');
+    process.stdout.write('Playwright Chrome-for-Testing already present — skipping install\n');
   }
 
   await access(distDir);
