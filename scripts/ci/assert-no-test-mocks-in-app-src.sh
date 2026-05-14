@@ -3,34 +3,17 @@
 # Production bundles must not ship mock harness calls; unit tests may use
 # mocks only under __tests__/** or in *.test.* / *.spec.* files.
 #
+# Uses find(1) + grep(1) so GitHub-hosted ubuntu-latest runners do not need
+# ripgrep installed.
+#
 # Usage: from repo root — bash scripts/ci/assert-no-test-mocks-in-app-src.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "::error::This script requires ripgrep (rg). Install ripgrep or use a runner image that includes it."
-  exit 1
-fi
-
 # Match common Vitest/Jest mock entry points (not plain English "mock" in comments).
 PATTERN='vi\.(mock|fn|importActual|hoisted|spyOn|stub)|jest\.(mock|fn|spyOn)'
-
-GLOBS=(
-  '--glob'
-  '!**/__tests__/**'
-  '--glob'
-  '!**/*.test.ts'
-  '--glob'
-  '!**/*.test.tsx'
-  '--glob'
-  '!**/*.spec.ts'
-  '--glob'
-  '!**/*.spec.tsx'
-  '--glob'
-  '!**/e2e/**'
-)
 
 scan_tree () {
   local label="$1"
@@ -38,11 +21,30 @@ scan_tree () {
   if [[ ! -d "$dir" ]]; then
     return 0
   fi
-  local hits
-  hits="$(rg --line-number "${GLOBS[@]}" "$PATTERN" "$dir" 2>/dev/null || true)"
-  if [[ -n "${hits}" ]]; then
-    echo "::error::Test mock APIs (${PATTERN}) found in ${label} application source (outside __tests__ and *.test.* / *.spec.*):"
-    echo "${hits}"
+
+  local found=false
+  while IFS= read -r -d '' f; do
+    if match=$(grep -nE "$PATTERN" "$f" 2>/dev/null); then
+      if [[ "$found" == false ]]; then
+        echo "::error::Test mock APIs (${PATTERN}) found in ${label} application source (outside __tests__ and *.test.* / *.spec.*):"
+        found=true
+      fi
+      echo "${f}"
+      echo "${match}"
+      echo ""
+    fi
+  done < <(
+    find "$dir" -type f \( -name '*.ts' -o -name '*.tsx' \) \
+      ! -path '*/__tests__/*' \
+      ! -path '*/e2e/*' \
+      ! -name '*.test.ts' \
+      ! -name '*.test.tsx' \
+      ! -name '*.spec.ts' \
+      ! -name '*.spec.tsx' \
+      -print0
+  )
+
+  if [[ "$found" == true ]]; then
     exit 1
   fi
 }
