@@ -1,9 +1,9 @@
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import EvidenceProvenancePanel from '../../components/landing/EvidenceProvenancePanel';
+import SourceProvenancePanel from '../../components/landing/SourceProvenancePanel';
 
-describe('EvidenceProvenancePanel', () => {
-  const html = renderToString(<EvidenceProvenancePanel />);
+describe('SourceProvenancePanel', () => {
+  const html = renderToString(<SourceProvenancePanel />);
 
   it('renders all 3 evidence-tier badges', () => {
     expect(html).toContain('Strong evidence');
