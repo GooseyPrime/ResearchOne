@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PipelineSchematic from '../PipelineSchematic';
+import TrustStrip from '../TrustStrip';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
 
@@ -69,13 +70,17 @@ export default function PersonaAwareHero({
   return (
     <section
       data-persona={persona}
-      className="mx-auto grid max-w-6xl gap-10 px-4 py-16 md:grid-cols-2 md:items-center sm:px-6"
+      className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6"
     >
       <div className="space-y-6">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">
           {content.eyebrow}
         </p>
-        <h1 className="font-serif text-4xl leading-tight text-r1-text sm:text-6xl">
+        <h1
+          className={`font-serif text-4xl leading-tight text-r1-text sm:text-5xl lg:text-6xl ${
+            persona === 'default' ? 'whitespace-nowrap sm:whitespace-normal' : ''
+          }`}
+        >
           {content.headline}
         </h1>
         <p className="max-w-xl text-base text-r1-text-muted sm:text-lg">
@@ -102,7 +107,14 @@ export default function PersonaAwareHero({
           </p>
         )}
       </div>
-      <PipelineSchematic resolvedPersona={persona} />
+
+      <div className="flex w-full justify-center overflow-x-auto pb-2">
+        <div className="origin-top scale-[2.2] sm:scale-[2.6] md:scale-[3]">
+          <PipelineSchematic resolvedPersona={persona} />
+        </div>
+      </div>
+
+      <TrustStrip />
     </section>
   );
 }
