@@ -11,7 +11,7 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -154,6 +154,10 @@ async function main() {
     process.stdout.write('SKIP_PRERENDER=1 — skipping marketing prerender\n');
     return;
   }
+
+  // Install the Playwright Chromium binary if it is not already present.
+  // This is a no-op when the binary is cached; required on Vercel / fresh CI.
+  execSync('npx playwright install --with-deps chromium', { stdio: 'inherit' });
 
   await access(distDir);
   await access(path.join(distDir, 'index.html'));
