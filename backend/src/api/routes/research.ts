@@ -225,7 +225,7 @@ router.post(
           userId,
           researchObjective ?? null,
           walletBalanceCents,
-          false,
+          eng === 'v2',
           subscriptionRow
         );
         if (!tierCheck.allowed) {

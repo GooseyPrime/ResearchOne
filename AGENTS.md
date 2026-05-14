@@ -48,6 +48,23 @@ drove the rules is at
    — Earlier V2 reliability work. Historical but still in force.
 5. [`README.md`](README.md) — runtime topology.
 
+## Recurring review themes (Codex / Copilot, PR #124 — Stripe tier sync)
+
+- **`setUserTier` is not a mirror of `syncSubscription`.** Only update
+  `user_tiers` from Stripe when the subscription status grants paid access
+  and tier resolution succeeds; never write `free_demo` on non-granting
+  updates (preserves admin/sovereign/manual entitlements).
+- **Add-on subs use `metadata.monitor_kind`:** when present
+  (`living_report` / `reverse_citation_watch`), never drive `user_tiers`
+  — unpaid add-on webhooks are not “monitor-only” (no grant) but still
+  carry that metadata and must not fall through to plan-tier logic.
+- **Vitest partial mocks:** extending `subscriptionService` imports in
+  `stripe.ts` requires the same named export on the `vi.mock` factory
+  (`resolveSubscriptionPlanTier`, etc.).
+- **V2 tier gate:** `POST /api/research` must pass `isDeep: true` into
+  `checkTierAccess` when `engineVersion === 'v2'` so `monthlyDeepReportCap`
+  is enforced (Copilot PR #124).
+
 ## Recurring review themes (Codex / Copilot, PR #112)
 
 - **Child state vs DOM-only reads:** When a parent updates `data-*` or

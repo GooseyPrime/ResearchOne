@@ -21,7 +21,7 @@ import { stripeSubscriptionStatusGrantsPlanAccess } from '../../services/billing
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
-import { isTierName, type TierName } from '../../config/tierRules';
+import { isTierName } from '../../config/tierRules';
 import {
   cancelMonitorByStripeSubscription,
   cancelUserAddonSubscriptions,
@@ -148,7 +148,11 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     return;
   }
 
-  // Normal tier subscription — sync plan state
+  const monitorKindMeta = subscription.metadata?.monitor_kind?.trim();
+  const isAddonSubscriptionMetadata =
+    monitorKindMeta === 'reverse_citation_watch' || monitorKindMeta === 'living_report';
+
+  // Normal tier subscription — sync Stripe row for this subscription id
   const item = subscription.items?.data?.[0];
   const priceLookupKey = item?.price?.lookup_key ?? null;
   const stripePriceId = item?.price?.id ?? null;
@@ -166,18 +170,30 @@ const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> =
     metadataTier
   );
 
-  // `user_tiers` drives research caps and objective gates — keep it aligned with
-  // the same tier resolution as `user_subscriptions` (lookup_key is often absent).
-  const resolved = resolveSubscriptionPlanTier({ priceLookupKey, stripePriceId, metadataTier });
-  const grants = stripeSubscriptionStatusGrantsPlanAccess(subscription.status);
-  let tierToApply: TierName = 'free_demo';
-  if (grants) {
-    if (isTierName(resolved) && resolved !== 'anonymous') {
-      tierToApply = resolved;
-    }
+  // Add-on subscriptions (Living Report / reverse-citation watch) must never
+  // call `setUserTier`. When status is unpaid/paused/incomplete, they are not
+  // handled by `isMonitorOnlySubscription` (no active grant) but still carry
+  // `metadata.monitor_kind` — without this guard they would fall through and
+  // downgrade the user's main plan tier (Codex PR #124).
+  if (isAddonSubscriptionMetadata) {
+    return;
   }
+
+  // `user_tiers` drives research caps — only update from Stripe when this
+  // subscription currently grants paid access. Non-granting statuses must not
+  // overwrite admin/sovereign/manual tiers or force `free_demo` (Copilot PR #124).
+  const grants = stripeSubscriptionStatusGrantsPlanAccess(subscription.status);
+  if (!grants) {
+    return;
+  }
+
+  const resolved = resolveSubscriptionPlanTier({ priceLookupKey, stripePriceId, metadataTier });
+  if (!isTierName(resolved) || resolved === 'anonymous') {
+    return;
+  }
+
   try {
-    await setUserTier(userId, tierToApply);
+    await setUserTier(userId, resolved);
   } catch (err) {
     logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
   }

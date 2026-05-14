@@ -82,7 +82,20 @@ subscriptions (monitor, credit packs). **Discriminate early**:
 1. Check whether the subscription contains a monitor/add-on price
    BEFORE running tier sync.
 2. If it's an add-on subscription, handle it and `return` early — do
-   NOT let it flow through `syncSubscription` / `setUserTier`.
+   NOT let it flow through `setUserTier` on the user. (You may still
+   `syncSubscription` for that Stripe subscription id so the
+   `user_subscriptions` row for the add-on stays current — PR #124.)
+3. **`metadata.monitor_kind`** (`living_report` / `reverse_citation_watch`)
+   marks add-on subs even when status is `unpaid` / `incomplete` / `paused`
+   (no active grant): those events must **never** call `setUserTier`, or a
+   failed add-on payment can downgrade the user's separate paid plan
+   (Codex PR #124).
+4. **`setUserTier` from Stripe `subscription.updated` / `created`:** only
+   when `stripeSubscriptionStatusGrantsPlanAccess(status)` is true **and**
+   `resolveSubscriptionPlanTier` returns a concrete non-`anonymous` tier.
+   Non-granting statuses must not overwrite `user_tiers` with `free_demo`
+   (Copilot PR #124) — preserve admin/sovereign/manual rows until
+   `customer.subscription.deleted` on the **plan** subscription.
 
 PR #86 (Codex P1): A Living Report subscription was mapped to
 `free_demo` by `deriveTierFromLookupKey` and overwrote the user's
@@ -151,6 +164,11 @@ row without updating it.
   errors but not unused imports in all cases.)
 - [ ] If a webhook handler processes multiple subscription types, does
   it discriminate and return early for non-tier subscriptions?
+- [ ] When mocking `../../api/webhooks/stripe` imports, does the
+  `subscriptionService` mock include **every** named export the webhook
+  module imports (`syncSubscription`, `markSubscriptionCanceled`,
+  `resolveSubscriptionPlanTier`, …) so Vitest does not throw on partial
+  mocks? (Copilot PR #124.)
 - [ ] If a deploy-skew fallback is inside a transaction, does it use
   SAVEPOINT / ROLLBACK TO SAVEPOINT?
 - [ ] If a row has a unique constraint and can be cancelled/reactivated,
