@@ -24,9 +24,9 @@ beforeEach(() => {
       takeRecords = vi.fn(() => []);
     },
   );
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -36,7 +36,7 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     })),
-  });
+  );
 });
 
 afterEach(() => {
