@@ -1,0 +1,45 @@
+---
+description: Evidence vs. source vocabulary on all public marketing copy — reserve "evidence" for primary artifacts; use "sources" and source-corroboration tiers elsewhere. Rule 28 tier identifiers never renamed.
+alwaysApply: true
+globs:
+  - "frontend/src/**/*.{ts,tsx}"
+  - "frontend/index.html"
+  - "README.md"
+  - "docs/**/*.md"
+---
+
+# Rule 31 — Evidence vs. source vocabulary (Wave 4)
+
+## Why this rule exists
+
+Marketing must not conflate **primary evidence** (artifacts attached to events) with **sources** (documented interpretations — what retrieval returns). The backend preambles already distinguish consensus, cited material, and primary checks; Wave 4 locks the same discipline on public surfaces. See `docs/wave-4-evidence-vocabulary-scope.md`.
+
+## Discipline
+
+1. Reserve **“evidence”** for **primary artifacts** directly attached to an event (FOIA returns, raw data, sensor traces, original documents, recordings). If the sentence is about papers, articles, or web text the model retrieved, use **“sources”** (or “source-corroboration tiers”, “source card”, etc.).
+2. Use **source-corroboration tiers** / **source card** / **citation-and-source chain** per the mapping table in the Wave 4 scope doc. Do not rename backend tier **identifiers** (`established_fact`, `strong_evidence`, `testimony`, `inference`, `speculation`) — Rule 28.
+3. **Display label** for `strong_evidence` is **“Strong corroboration”** on user-facing JSX; CSS/Tailwind classes may remain `tier-strong_evidence`, `.badge-strong_evidence`, etc.
+
+## Competitor comparison content
+
+When citing competitors: **verbatim** quotes only, with URL and accessed date; no characterization beyond what the source says. If a URL later fails, preserve a snapshot (Wayback, archive, or `docs/snapshots/`) and update the doc — per Wave 4 scope doc.
+
+## Trigger
+
+Any PR that adds, removes, or changes **marketing prose**; adds a new **public-facing** surface; or adds **competitor-comparison** content must conform to this rule and stay within the Wave 4 scope inventory unless governance extends scope.
+
+## Fences (do not amend via this rule)
+
+- **Rule 20:** `prompts.ts`, model defaults, inference paths — untouched.
+- **Rule 27:** `frontend/src/components/landing/visual/pipelineLayout.ts` stage names — untouched; caption prose around the schematic may change vocabulary.
+- **Rule 28:** Tier identifier strings, Lossless Evidence Aliases, CSL/evidence_aliases — identifiers untouched.
+
+## Cross-references
+
+Rules 20, 27, 28, 29. Governance override history: `docs/governance.md`.
+
+## Pre-commit check
+
+- [ ] Generic “evidence” in new marketing copy — did you mean **sources**?
+- [ ] Any new tier display string — identifiers still the five enum names?
+- [ ] Competitor quotes — verbatim + URL + reverifiable?
