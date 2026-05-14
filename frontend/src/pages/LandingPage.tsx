@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import ComparisonTable from '../components/landing/ComparisonTable';
-import EvidenceProvenancePanel from '../components/landing/EvidenceProvenancePanel';
+import SourceProvenancePanel from '../components/landing/SourceProvenancePanel';
 import FAQ from '../components/landing/FAQ';
 import FeatureCard from '../components/landing/FeatureCard';
 import FinalCTA from '../components/landing/FinalCTA';
@@ -167,7 +167,7 @@ export default function LandingPage() {
         </p>
       </section>
 
-      <EvidenceProvenancePanel />
+      <SourceProvenancePanel />
 
       {/* Sample reports */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">

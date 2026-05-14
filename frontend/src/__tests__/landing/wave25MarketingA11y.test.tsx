@@ -9,7 +9,7 @@ import { cleanup, render } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import EvidenceProvenancePanel from '../../components/landing/EvidenceProvenancePanel';
+import SourceProvenancePanel from '../../components/landing/SourceProvenancePanel';
 import LivingReportTimeline from '../../components/landing/LivingReportTimeline';
 import PipelineSchematic from '../../components/landing/PipelineSchematic';
 import LandingPage from '../../pages/LandingPage';
@@ -45,9 +45,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Wave 2.5 — EvidenceProvenancePanel confidence', () => {
+describe('Wave 2.5 — SourceProvenancePanel confidence', () => {
   it('uses role="group" for confidence dots so aria-label is permitted', () => {
-    const html = renderToString(<EvidenceProvenancePanel />);
+    const html = renderToString(<SourceProvenancePanel />);
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Confidence: 3 of 4"');
   });

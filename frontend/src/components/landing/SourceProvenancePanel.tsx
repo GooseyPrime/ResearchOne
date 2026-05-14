@@ -47,7 +47,7 @@ function ConfidenceDots({ filled }: { filled: number }) {
   );
 }
 
-export default function EvidenceProvenancePanel() {
+export default function SourceProvenancePanel() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
       <h2 className="font-serif text-3xl">Every claim has a source. Every source has a reason.</h2>
@@ -62,7 +62,7 @@ export default function EvidenceProvenancePanel() {
           <p>
             <button
               className="peer/claim1 group/claim1 inline cursor-default rounded bg-tier-strong_evidence/10 px-1 text-r1-text underline decoration-tier-strong_evidence/40 transition hover:bg-tier-strong_evidence/20 focus:bg-tier-strong_evidence/20 focus:outline-none focus:ring-1 focus:ring-tier-strong_evidence"
-              aria-label="Claim 1: performance gains on reasoning benchmarks — Strong evidence"
+              aria-label="Claim 1: performance gains on reasoning benchmarks — Strong corroboration"
               type="button"
             >
               {CLAIMS[0].text}
