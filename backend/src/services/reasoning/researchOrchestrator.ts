@@ -513,7 +513,7 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
-    await progress('reasoning', 50, 'Reasoning over evidence...', { substep: 'reasoner_started' });
+    await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });
 
     const reasonerResult = await callRoleModel({
       role: 'reasoner',
