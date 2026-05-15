@@ -2,6 +2,7 @@ import { config } from '../../config';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { IntentId } from './intentTaxonomy';
 import { getIntentById } from './intentTaxonomy';
+import { ORCHESTRATION_PROFILES } from './orchestrationProfiles';
 import type { PlanPayload } from './planTypes';
 import { PLAN_GENERATOR_PROMPT } from './prompts';
 import { parsePlanGeneratorJson } from './planJson';
@@ -19,8 +20,10 @@ export async function generatePlan(input: {
   };
 }): Promise<PlanPayload> {
   const def = getIntentById(input.intent);
-  const hasKey = Boolean(config.openrouter.apiKey?.trim());
-  if (!hasKey) {
+  const hasOpenRouterCredential = Boolean(
+    config.openrouter.apiKey?.trim() || input.llmOpts.byokApiKeyOverride?.trim()
+  );
+  if (!hasOpenRouterCredential) {
     return parsePlanGeneratorJson('{}', input.intent, input.intentConfidence);
   }
 
@@ -51,7 +54,7 @@ export async function generatePlan(input: {
     },
     orchestrationProfile: {
       ...plan.orchestrationProfile,
-      name: def?.defaultOrchestrationProfile ?? plan.orchestrationProfile.name,
+      name: ORCHESTRATION_PROFILES[input.intent]?.displayName ?? plan.orchestrationProfile.name,
     },
   };
   return plan;

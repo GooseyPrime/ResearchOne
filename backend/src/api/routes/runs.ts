@@ -13,6 +13,7 @@ import {
   cancelRunAtPlanGate,
   confirmGatePlan,
   getGatePlanRowForRun,
+  markRunRunningAfterPlanConfirm,
 } from '../../services/planning/planWriteService';
 import { refinePlan } from '../../services/planning/planRefinementService';
 import type { PlanPayload } from '../../services/planning/planTypes';
@@ -36,10 +37,10 @@ function ctxFromReq(req: Request): DossierAuthContext | null {
   return { userId, orgId: req.auth?.orgId ?? null };
 }
 
+/** Plan payloads are sensitive — never `io.emit` globally (PR #128 review). */
 function emitPlan(io: SocketIOServer | undefined, room: string, event: string, data: unknown): void {
   if (!io) return;
   io.to(room).emit(event, data);
-  io.emit(event, data);
 }
 
 async function loadRunForPlanGate(
@@ -52,7 +53,9 @@ async function loadRunForPlanGate(
   resume_job_payload: unknown;
 } | null> {
   try {
-    return queryOne(
+    // `await` so Postgres rejections (e.g. 42703 missing column) enter this `catch`
+    // instead of rejecting the outer promise (Codex PR #128).
+    return await queryOne(
       `SELECT id, status::text AS status, resume_job_payload
          FROM research_runs
         WHERE id = $1::uuid
@@ -61,11 +64,12 @@ async function loadRunForPlanGate(
     );
   } catch (e) {
     if ((e as { code?: string })?.code === '42703') {
-      return queryOne(
+      return await queryOne(
         `SELECT id, status::text AS status, resume_job_payload
            FROM research_runs
-          WHERE id = $1::uuid`,
-        [runId]
+          WHERE id = $1::uuid
+            AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        [runId, userId, orgId ?? null]
       );
     }
     throw e;
@@ -206,6 +210,36 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
       return;
     }
 
+    // Queue resume job before DB confirm so Redis hiccups never leave a confirmed plan
+    // with no worker (Rule 13). `resumeAfterPlanConfirmation` requires `status='confirmed'`;
+    // BullMQ retries cover the small window before confirm completes (PR #128 Codex).
+    const resumeJid = researchResumeJobId(runId);
+    const existingResume = await researchQueue.getJob(resumeJid);
+    if (!existingResume) {
+      try {
+        await researchQueue.add(
+          RESEARCH_JOB_RESUME_AFTER_PLAN,
+          { runId, confirmedPlanId: effectivePlanId },
+          {
+            jobId: resumeJid,
+            attempts: 8,
+            backoff: { type: 'exponential', delay: 750 },
+          }
+        );
+      } catch (queueErr) {
+        const raced = await researchQueue.getJob(resumeJid);
+        if (!raced) {
+          logger.error('plan_confirm_queue_failed', { runId, planId: effectivePlanId, err: queueErr });
+          res.status(503).json({
+            error: 'Failed to queue pipeline resume',
+            detail: 'No database changes were made; retry confirm when the queue is available.',
+            planId: effectivePlanId,
+          });
+          return;
+        }
+      }
+    }
+
     let confirmed = await confirmGatePlan({ planId: effectivePlanId, runId });
     if (!confirmed) {
       const already = await queryOne<{ id: string }>(
@@ -213,25 +247,21 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
         [effectivePlanId, runId]
       );
       if (!already) {
+        try {
+          const j = await researchQueue.getJob(resumeJid);
+          if (j) await j.remove();
+        } catch (removeErr) {
+          logger.warn('plan_confirm_rollback_job_remove', { runId, err: removeErr });
+        }
         res.status(409).json({ error: 'Plan could not be confirmed (wrong state or plan id)' });
         return;
       }
     }
 
     try {
-      await researchQueue.add(
-        RESEARCH_JOB_RESUME_AFTER_PLAN,
-        { runId, confirmedPlanId: effectivePlanId },
-        { jobId: researchResumeJobId(runId) }
-      );
-    } catch (queueErr) {
-      logger.error('plan_confirm_queue_failed', { runId, planId: effectivePlanId, err: queueErr });
-      res.status(503).json({
-        error: 'Failed to queue pipeline resume',
-        detail: 'Plan was confirmed; retry confirm or contact support if the run does not start.',
-        planId: effectivePlanId,
-      });
-      return;
+      await markRunRunningAfterPlanConfirm(runId);
+    } catch (markErr) {
+      logger.error('plan_confirm_mark_running_failed', { runId, err: markErr });
     }
 
     const io = req.app.get('io') as SocketIOServer | undefined;

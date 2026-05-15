@@ -1,5 +1,5 @@
 import type { DossierStats } from '../../utils/api';
-import { INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
+import { INTENT_DISPLAY_LABELS } from '../../constants/intentLabels';
 import { buildOrchestrationHeadline, parseJsonStringArray, profileDisplayNameFromStats } from '../../lib/dossierOrchestrationSummary';
 import SourceClassBadge from './SourceClassBadge';
 import { SOURCE_CLASS_IDS, sourceClassLabel } from './sourceClassIds';
@@ -35,7 +35,7 @@ function sourceClassEntries(breakdown: Record<string, unknown> | null): Array<{ 
 }
 
 export default function DossierStatisticsSection({ stats, planIntent }: Props) {
-  const headline = buildOrchestrationHeadline(stats, INTENT_SHORT_DESCRIPTIONS[planIntent] ?? null);
+  const headline = buildOrchestrationHeadline(stats, INTENT_DISPLAY_LABELS[planIntent] ?? null);
   const profile = profileDisplayNameFromStats(stats);
   const skipped = parseJsonStringArray(stats.agentsSkipped);
   const ran = parseJsonStringArray(stats.agentsRan);

@@ -19,8 +19,10 @@ export async function refinePlan(input: {
   diffSummary: string;
   intentChange: { detected: boolean; from: string | null; to: string | null; rationale: string };
 }> {
-  const hasKey = Boolean(config.openrouter.apiKey?.trim());
-  if (!hasKey) {
+  const hasOpenRouterCredential = Boolean(
+    config.openrouter.apiKey?.trim() || input.llmOpts.byokApiKeyOverride?.trim()
+  );
+  if (!hasOpenRouterCredential) {
     return {
       revisedPlan: input.currentPlan,
       diffSummary: 'OpenRouter key unavailable — no refinement applied.',

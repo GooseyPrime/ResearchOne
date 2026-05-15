@@ -54,6 +54,10 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     io.to(room).emit(event, data);
     io.emit(event, data); // also broadcast to all for dashboard updates
   };
+  /** Plan payloads are user-private — never broadcast globally (PR #128). */
+  const emitJobPrivate = (runId: string, event: string, data: unknown) => {
+    io.to(`job:${runId}`).emit(event, data);
+  };
 
   // ─── Ingestion Worker ─────────────────────────────────────────────────
   new Worker(
@@ -101,7 +105,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
             emit(`job:${runId}`, 'research:progress', update);
           });
           if (isResearchJobParkedAtPlanGate(result)) {
-            emit(`job:${result.runId}`, 'research:plan_ready_for_confirmation', {
+            emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
               runId: result.runId,
               planId: result.planId,
               planPayload: result.planPayload,
@@ -155,7 +159,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           emit(`job:${job.data.runId}`, 'research:progress', update);
         });
         if (isResearchJobParkedAtPlanGate(result)) {
-          emit(`job:${result.runId}`, 'research:plan_ready_for_confirmation', {
+          emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
             runId: result.runId,
             planId: result.planId,
             planPayload: result.planPayload,

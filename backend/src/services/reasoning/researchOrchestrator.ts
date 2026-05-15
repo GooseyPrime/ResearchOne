@@ -41,7 +41,10 @@ import {
 import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrchestratorNormalize';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
-import { resolveOrchestrationProfileFromJob } from '../planning/orchestrationRuntime';
+import {
+  mergePlanPayloadWithCanonicalProfile,
+  resolveOrchestrationProfileFromJob,
+} from '../planning/orchestrationRuntime';
 import {
   PIPELINE_STAGES,
   shouldRunPipelineStage,
@@ -55,6 +58,7 @@ import {
   dominantSourceClassesFromBreakdown,
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
+import type { PlanPayload } from '../planning/planTypes';
 
 export type {
   CreditChargeContext,
@@ -476,8 +480,8 @@ async function runResearchJobInner(
         };
       } catch (gateErr) {
         const code = (gateErr as { code?: string })?.code;
-        if (code === '42P01' || code === '42703') {
-          logger.warn(`[${runId}] plan gate skipped (deploy skew / missing tables)`, gateErr);
+        if (code === '42P01' || code === '42703' || code === '22P02') {
+          logger.warn(`[${runId}] plan gate skipped (deploy skew / missing tables / enum)`, gateErr);
         } else {
           throw gateErr;
         }
@@ -1770,6 +1774,10 @@ export async function resumeAfterPlanConfirmation(
       statusCode: 400,
     });
   }
+  const planPayloadRow = await queryOne<{ plan_payload: unknown }>(
+    `SELECT plan_payload FROM research_plans WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'confirmed'`,
+    [confirmedPlanId, runId]
+  );
   const row = await queryOne<{ resume_job_payload: unknown }>(
     `SELECT resume_job_payload FROM research_runs WHERE id = $1::uuid`,
     [runId]
@@ -1785,5 +1793,9 @@ export async function resumeAfterPlanConfirmation(
     throw Object.assign(new Error('Resume payload runId mismatch'), { code: 'PLAN_RESUME_INVALID', statusCode: 400 });
   }
   payload.skipPlanConfirmationGate = true;
+  const rawPlan = planPayloadRow?.plan_payload;
+  if (rawPlan && typeof rawPlan === 'object' && !Array.isArray(rawPlan)) {
+    payload.confirmedPlanPayload = mergePlanPayloadWithCanonicalProfile(rawPlan as PlanPayload);
+  }
   return runResearchJob(payload, onProgress);
 }

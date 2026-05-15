@@ -48,8 +48,10 @@ export async function classifyIntent(
     };
   }
 
-  const hasKey = Boolean(config.openrouter.apiKey?.trim());
-  if (!hasKey) {
+  const hasOpenRouterCredential = Boolean(
+    config.openrouter.apiKey?.trim() || llmOpts.byokApiKeyOverride?.trim()
+  );
+  if (!hasOpenRouterCredential) {
     return {
       intent: 'factual_report',
       confidence: 0.55,
