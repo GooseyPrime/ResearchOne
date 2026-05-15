@@ -1,6 +1,6 @@
 # ResearchOne
 
-**Disciplined Anomaly Research Platform** — A structured source-gathering, reasoning, and long-form research reporting system that preserves the distinction between primary evidence and documented sources, built for deep scientific and ontological investigation.
+**Deep research dossier platform** — A structured source-gathering, reasoning, and long-form research workflow that preserves the distinction between primary evidence and documented sources, built for rigorous scientific and investigative work.
 
 > Not a chatbot. Not a hallucination machine. A disciplined investigation engine with epistemic governance built in.
 
