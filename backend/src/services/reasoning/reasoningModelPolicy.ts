@@ -56,6 +56,18 @@ export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
 /** Prepended to skeptic / internal_challenger system prompts when `engineVersion === 'v2'`. */
 export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
 
+/** Wave 5.3 — reasoner operational constraint (editable via appendReasonerPolicyConstraint + openrouter SYSTEM_PROMPTS.reasoner body). */
+export const REASONER_CONSENSUS_CONSTRAINT = `
+EPISTEMIC CONSTRAINT (Wave 5.3):
+- Do not use "this contradicts consensus" or "mainstream rejects this" as a primary reason to downgrade a claim's evidence tier.
+- You may downgrade when cited material contradicts a structural/mechanistic necessity implied by the claim, or when the cited passages themselves warrant a lower tier.
+- Treat broad institutional agreement as testimony-tier institutional narrative unless primary artifacts in the corpus justify a higher tier.
+`.trim();
+
+export function appendReasonerPolicyConstraint(baseReasonerPrompt: string): string {
+  return `${baseReasonerPrompt.trim()}\n\n${REASONER_CONSENSUS_CONSTRAINT}`;
+}
+
 export type ModelCallPurpose =
   | 'pipeline_skeptic'
   | 'contradiction_extraction'

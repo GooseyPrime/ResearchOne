@@ -1,3 +1,5 @@
+import SourceClassBadge from '../dossiers/SourceClassBadge';
+
 const CLAIMS = [
   { id: 'claim-1', text: 'Multi-modal LLMs trained on synthetic data show measurable performance gains on reasoning benchmarks' },
   { id: 'claim-2', text: 'three independent evaluations report contradictory findings on out-of-distribution generalization' },
@@ -10,6 +12,7 @@ const EVIDENCE_CARDS = [
     tier: 'Strong corroboration',
     tierColor: 'bg-tier-strong_evidence',
     sourceType: 'Peer-reviewed',
+    sourceClass: 'consensus_held' as const,
     reason: 'Largest sample (n=12,400) with reproducible methodology',
     confidence: 3,
   },
@@ -18,6 +21,7 @@ const EVIDENCE_CARDS = [
     tier: 'Contradiction',
     tierColor: 'bg-tier-testimony',
     sourceType: 'Multi-source',
+    sourceClass: 'actively_contested' as const,
     reason: 'Three independent evals; protocol-level differences material',
     confidence: 2,
   },
@@ -26,6 +30,7 @@ const EVIDENCE_CARDS = [
     tier: 'Speculation',
     tierColor: 'bg-tier-speculation',
     sourceType: 'Mechanism',
+    sourceClass: 'consensus_collapsed' as const,
     reason: 'Mechanism unconfirmed; included as falsification target',
     confidence: 1,
   },
@@ -94,10 +99,11 @@ export default function SourceProvenancePanel() {
               key={card.claimId}
               className="rounded-lg border border-white/10 bg-r1-bg-deep p-4 transition"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold text-r1-bg ${card.tierColor}`}>
                   {card.tier}
                 </span>
+                <SourceClassBadge sourceClass={card.sourceClass} />
                 <span className="text-xs text-r1-text-muted">{card.sourceType}</span>
               </div>
               <p className="mt-2 text-xs text-r1-text-muted">{card.reason}</p>

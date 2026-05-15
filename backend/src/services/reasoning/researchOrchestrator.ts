@@ -46,6 +46,15 @@ import {
   PIPELINE_STAGES,
   shouldRunPipelineStage,
 } from '../planning/orchestrationProfiles';
+import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
+import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
+import {
+  aggregateSourceClassBreakdown,
+  buildReasonerSystemPrompt,
+  buildSkepticSystemPrompt,
+  dominantSourceClassesFromBreakdown,
+} from '../planning/wave53EpistemicPolicy';
+import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 
 export type {
   CreditChargeContext,
@@ -314,6 +323,11 @@ async function runResearchJobInner(
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
   const orchProfile = resolveOrchestrationProfileFromJob(data);
+
+  let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
+  let wave53SourceClassBreakdown: Record<string, number> = {};
+  let wave53SteelmanPassCount = 0;
+  let wave53SteelmanByClaimKey = new Map<string, string>();
 
   const progress = async (
     stage: string,
@@ -658,6 +672,14 @@ async function runResearchJobInner(
         checkpointKey: 'retriever_analysis',
         snapshot: { output: retrieverResult.content },
       });
+
+      wave53SourceClassMap = await classifyRetrievedSources({
+        chunks: allChunks,
+        researchQuery,
+        retrieverAnalysis: retrieverResult.content,
+        ...v2,
+      });
+      wave53SourceClassBreakdown = aggregateSourceClassBreakdown(wave53SourceClassMap.byChunkId);
     } else {
       await progress('retriever_analysis', 35, 'Retriever analysis skipped for this intent profile', {
         substep: 'stage_skipped',
@@ -678,7 +700,7 @@ async function runResearchJobInner(
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.reasoner },
+          { role: 'system', content: buildReasonerSystemPrompt() },
           {
             role: 'user',
             content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
@@ -696,6 +718,27 @@ async function runResearchJobInner(
       await progress('reasoning', 50, 'Reasoning skipped for this intent profile', { substep: 'stage_skipped' });
       reasonerResult = orchestrationStubModelResult('reasoner', stubReasoningFromRetriever(retrieverResult.content));
     }
+
+    // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
+    if (orchProfile.steelmanMode !== 'off') {
+      await progress('reasoning', 52, 'Steelman pass: strengthening formulations before critique...', {
+        substep: 'steelman_started',
+      });
+      const steel = await runSteelmanPass({
+        reasonerOutput: reasonerResult.content,
+        chunks: allChunks,
+        steelmanMode: orchProfile.steelmanMode,
+        sourceClassMap: wave53SourceClassMap,
+        ...v2,
+      });
+      wave53SteelmanByClaimKey = steel.steelmanByClaimKey;
+      wave53SteelmanPassCount = steel.passCount;
+      if (steel.modelResult) modelLog.push(steel.modelResult);
+    }
+
+    const wave53DominantSourceClasses = dominantSourceClassesFromBreakdown(wave53SourceClassBreakdown);
+    const skepticSystemPrompt = buildSkepticSystemPrompt(wave53DominantSourceClasses);
+    const wave53SteelmanUserBlock = formatSteelmanBlockForSkeptic(wave53SteelmanByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 6: SKEPTIC — challenge conclusions (off | gate | annotate)
@@ -716,14 +759,15 @@ async function runResearchJobInner(
         callPurpose: 'pipeline_skeptic',
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.skeptic },
+          { role: 'system', content: skepticSystemPrompt },
           {
             role: 'user',
             content:
               `Return ONLY a JSON array (no markdown, no prose outside the array) of objects with keys ` +
               `"topic", "critique", "suggested_checks". Each object is one sidebar note for reviewers. ` +
               `Base them on the reasoning below; do not duplicate the main report narrative.\n\n` +
-              `Research Query: ${researchQuery}\n\nReasoning:\n${reasonerResult.content}`,
+              `Research Query: ${researchQuery}\n\nReasoning:\n${reasonerResult.content}` +
+              wave53SteelmanUserBlock,
           },
         ],
       });
@@ -744,10 +788,12 @@ async function runResearchJobInner(
         callPurpose: 'pipeline_skeptic',
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.skeptic },
+          { role: 'system', content: skepticSystemPrompt },
           {
             role: 'user',
-            content: `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}\n\nChallenge these conclusions. Find weaknesses, alternatives, and counterevidence.`,
+            content:
+              `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}` +
+              `${wave53SteelmanUserBlock}\n\nChallenge these conclusions (attack the steelman where provided; do not argue against a weaker strawman). Find weaknesses, alternatives, and counterevidence.`,
           },
         ],
       });
@@ -962,6 +1008,10 @@ async function runResearchJobInner(
           chunks: allChunks,
           reasonerOutput: reasonerResult.content,
           synthesizerOutput: reportMarkdown,
+          wave53: {
+            sourceClassByChunkId: wave53SourceClassMap,
+            steelmanByClaimText: wave53SteelmanByClaimKey,
+          },
           ...v2,
         });
 
@@ -981,6 +1031,7 @@ async function runResearchJobInner(
           claims,
           reportSections,
           discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+          sourceClassByChunkId: wave53SourceClassMap,
           ...v2,
         });
       } catch (epistemicErr) {
@@ -1022,6 +1073,11 @@ async function runResearchJobInner(
       agentsSkipped: [...orchProfile.agentsToSkip],
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
+      sourceClassBreakdown:
+        shouldRunPipelineStage(orchProfile, 'retriever_analysis') && allChunks.length > 0
+          ? wave53SourceClassBreakdown
+          : null,
+      steelmanPassCount: wave53SteelmanPassCount,
     });
 
     // Credit charge: consume hold on success, decrement subscription quota

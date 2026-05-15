@@ -39,6 +39,11 @@ function parseTierSummary(raw: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function parseSourceClassBreakdown(raw: unknown): Record<string, unknown> | null {
+  const obj = parseTierSummary(raw);
+  return obj;
+}
+
 function mapRowToDossier(row: Record<string, unknown>): Dossier {
   const reportEvidenceTierSummary = parseTierSummary(row.report_evidence_tier_summary);
 
@@ -87,6 +92,8 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
     estimatedCostCents: row.estimated_cost_cents != null ? Number(row.estimated_cost_cents) : null,
     actualCostCents: row.actual_cost_cents != null ? Number(row.actual_cost_cents) : null,
     reportEvidenceTierSummary,
+    sourceClassBreakdown: parseSourceClassBreakdown(row.source_class_breakdown),
+    steelmanPassCount: row.steelman_pass_count != null ? Number(row.steelman_pass_count) : null,
   };
 
   return {

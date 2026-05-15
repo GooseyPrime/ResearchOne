@@ -14,6 +14,8 @@ import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { ExtractedClaim } from './claimExtractor';
 import { logger } from '../../utils/logger';
+import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
+import { resolveSourceClassForChunk } from '../planning/wave53EpistemicPolicy';
 
 export interface SectionCitation {
   section_type: string;
@@ -70,8 +72,12 @@ export async function mapAndPersistCitations(args: {
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
+  sourceClassMap?: SourceClassMap;
+  /** Alias for `sourceClassMap`. */
+  sourceClassByChunkId?: SourceClassMap;
 }): Promise<CitationMapResult> {
   const { runId, reportId, chunks, claims, reportSections, discoverySummary } = args;
+  const wave53Maps = args.sourceClassMap ?? args.sourceClassByChunkId;
 
   logger.info(`[citations:${runId}] Mapping citations for ${reportSections.length} sections`);
 
@@ -144,6 +150,7 @@ export async function mapAndPersistCitations(args: {
     [reportId]
   );
   const sectionIdByType = new Map<string, string>(sectionRows.map(r => [r.section_type, r.id]));
+  const chunkById = new Map(chunks.map((c) => [c.id, c]));
 
   await withTransaction(async (client) => {
     for (const citation of result.citations) {
@@ -156,24 +163,57 @@ export async function mapAndPersistCitations(args: {
         ? { ...discoverySummary, section_type: citation.section_type }
         : { section_type: citation.section_type };
 
-      await client.query(
-        `INSERT INTO report_citations (
-           report_id, section_id, chunk_id, source_id, claim_id,
-           chunk_quote, citation_order, discovery_origin
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT DO NOTHING`,
-        [
-          reportId,
-          sectionId,
-          citation.chunk_id,
-          citation.source_id ?? null,
-          claimId,
-          citation.chunk_quote ?? null,
-          citation.citation_order ?? 0,
-          JSON.stringify(origin),
-        ]
-      );
+      const srcUrl = chunkById.get(citation.chunk_id)?.source_url;
+      const sourceClass =
+        wave53Maps != null
+          ? resolveSourceClassForChunk(citation.chunk_id, wave53Maps, srcUrl)
+          : null;
+
+      try {
+        await client.query(
+          `INSERT INTO report_citations (
+             report_id, section_id, chunk_id, source_id, claim_id,
+             chunk_quote, citation_order, discovery_origin, source_class
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT DO NOTHING`,
+          [
+            reportId,
+            sectionId,
+            citation.chunk_id,
+            citation.source_id ?? null,
+            claimId,
+            citation.chunk_quote ?? null,
+            citation.citation_order ?? 0,
+            JSON.stringify(origin),
+            sourceClass,
+          ]
+        );
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === '42703') {
+          await client.query(
+            `INSERT INTO report_citations (
+               report_id, section_id, chunk_id, source_id, claim_id,
+               chunk_quote, citation_order, discovery_origin
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT DO NOTHING`,
+            [
+              reportId,
+              sectionId,
+              citation.chunk_id,
+              citation.source_id ?? null,
+              claimId,
+              citation.chunk_quote ?? null,
+              citation.citation_order ?? 0,
+              JSON.stringify(origin),
+            ]
+          );
+        } else {
+          throw err;
+        }
+      }
     }
   });
 

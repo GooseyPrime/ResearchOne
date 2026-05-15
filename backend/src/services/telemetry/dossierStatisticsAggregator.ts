@@ -13,6 +13,10 @@ export interface DossierOrchestrationStatsInput {
   agentsSkipped: readonly string[];
   stageDurations: Record<string, number | string | null>;
   skepticAnnotationsCount?: number | null;
+  /** Per-source-class chunk counts (Wave 5.3). */
+  sourceClassBreakdown?: Record<string, number> | null;
+  /** Completed steelman passes this run (0/1 today — reserved if modes batched later). */
+  steelmanPassCount?: number | null;
 }
 
 export async function aggregateAndPersistDossierStatistics(
@@ -108,6 +112,13 @@ export async function aggregateAndPersistDossierStatistics(
     const skepticAnnotationsCount =
       orchestration?.skepticAnnotationsCount != null ? orchestration.skepticAnnotationsCount : null;
 
+    const sourceClassBreakdownJson =
+      orchestration?.sourceClassBreakdown != null && typeof orchestration.sourceClassBreakdown === 'object'
+        ? JSON.stringify(orchestration.sourceClassBreakdown)
+        : null;
+    const steelmanPassCount =
+      orchestration?.steelmanPassCount != null ? orchestration.steelmanPassCount : null;
+
     try {
       await query(
         `INSERT INTO dossier_statistics (
@@ -115,8 +126,9 @@ export async function aggregateAndPersistDossierStatistics(
            sources_retrieved_count, sources_cited_count, citation_density,
            contradictions_count, refinement_rounds,
            agents_ran, agents_skipped, stage_durations, skeptic_annotations_count,
+           source_class_breakdown, steelman_pass_count,
            computed_at
-         ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
+         ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14::jsonb, $15, NOW())
          ON CONFLICT (run_id) DO UPDATE SET
            total_duration_ms = COALESCE(EXCLUDED.total_duration_ms, dossier_statistics.total_duration_ms),
            tokens_input = COALESCE(EXCLUDED.tokens_input, dossier_statistics.tokens_input),
@@ -130,6 +142,8 @@ export async function aggregateAndPersistDossierStatistics(
            agents_skipped = COALESCE(EXCLUDED.agents_skipped, dossier_statistics.agents_skipped),
            stage_durations = COALESCE(EXCLUDED.stage_durations, dossier_statistics.stage_durations),
            skeptic_annotations_count = COALESCE(EXCLUDED.skeptic_annotations_count, dossier_statistics.skeptic_annotations_count),
+           source_class_breakdown = COALESCE(EXCLUDED.source_class_breakdown, dossier_statistics.source_class_breakdown),
+           steelman_pass_count = COALESCE(EXCLUDED.steelman_pass_count, dossier_statistics.steelman_pass_count),
            computed_at = NOW()`,
         [
           runId,
@@ -145,6 +159,8 @@ export async function aggregateAndPersistDossierStatistics(
           agentsSkippedJson,
           stageDurationsJson,
           skepticAnnotationsCount,
+          sourceClassBreakdownJson,
+          steelmanPassCount,
         ],
       );
     } catch (wideErr) {
@@ -154,8 +170,10 @@ export async function aggregateAndPersistDossierStatistics(
           `INSERT INTO dossier_statistics (
              run_id, total_duration_ms, tokens_input, tokens_output,
              sources_retrieved_count, sources_cited_count, citation_density,
-             contradictions_count, refinement_rounds, computed_at
-           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+             contradictions_count, refinement_rounds,
+             agents_ran, agents_skipped, stage_durations, skeptic_annotations_count,
+             computed_at
+           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
            ON CONFLICT (run_id) DO UPDATE SET
              total_duration_ms = COALESCE(EXCLUDED.total_duration_ms, dossier_statistics.total_duration_ms),
              tokens_input = COALESCE(EXCLUDED.tokens_input, dossier_statistics.tokens_input),
@@ -165,6 +183,10 @@ export async function aggregateAndPersistDossierStatistics(
              citation_density = COALESCE(EXCLUDED.citation_density, dossier_statistics.citation_density),
              contradictions_count = COALESCE(EXCLUDED.contradictions_count, dossier_statistics.contradictions_count),
              refinement_rounds = COALESCE(EXCLUDED.refinement_rounds, dossier_statistics.refinement_rounds),
+             agents_ran = COALESCE(EXCLUDED.agents_ran, dossier_statistics.agents_ran),
+             agents_skipped = COALESCE(EXCLUDED.agents_skipped, dossier_statistics.agents_skipped),
+             stage_durations = COALESCE(EXCLUDED.stage_durations, dossier_statistics.stage_durations),
+             skeptic_annotations_count = COALESCE(EXCLUDED.skeptic_annotations_count, dossier_statistics.skeptic_annotations_count),
              computed_at = NOW()`,
           [
             runId,
@@ -176,6 +198,10 @@ export async function aggregateAndPersistDossierStatistics(
             citationDensity,
             contradictions,
             refinementRoundsForUpsert,
+            agentsRanJson,
+            agentsSkippedJson,
+            stageDurationsJson,
+            skepticAnnotationsCount,
           ],
         );
       } else {

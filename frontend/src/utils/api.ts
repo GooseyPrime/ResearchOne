@@ -288,6 +288,9 @@ export interface DossierStats {
   estimatedCostCents: number | null;
   actualCostCents: number | null;
   reportEvidenceTierSummary: Record<string, unknown> | null;
+  /** Wave 5.3 — source-class counts for retrieved chunks (orthogonal to tiers). */
+  sourceClassBreakdown: Record<string, unknown> | null;
+  steelmanPassCount: number | null;
 }
 
 export interface Dossier {
