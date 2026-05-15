@@ -70,6 +70,34 @@ export default function MethodologyPage() {
         </section>
 
         <section className="mt-16">
+          <h2 className="font-serif text-3xl">Four source classes (retrieval context)</h2>
+          <p className="mt-3 max-w-3xl text-r1-text-muted">
+            Beyond source-corroboration tiers on citations, ResearchOne tags retrieved sources along an orthogonal axis:
+            how each source relates to public controversy, institutional narratives, and shifting expert agreement. These
+            labels describe the corpus of retrieved sources — not primary evidence artifacts attached to events.
+          </p>
+          <ul className="mt-6 space-y-4 text-sm text-r1-text-muted">
+            <li>
+              <span className="font-semibold text-r1-text">Suppressed / recovered</span> — sources whose substantive claims
+              were delayed, buried, or unevenly surfaced in public channels; secrecy posture alone does not substitute for
+              stronger corroboration.
+            </li>
+            <li>
+              <span className="font-semibold text-r1-text">Actively contested</span> — sources where opposed narratives are
+              live and well-documented; interpret quoted passages carefully rather than assuming either camp is complete.
+            </li>
+            <li>
+              <span className="font-semibold text-r1-text">Broad-agreement framing</span> — sources aligned with a durable mainstream
+              framing; still subject to mechanism checks — popularity is not a substitute for cited substance.
+            </li>
+            <li>
+              <span className="font-semibold text-r1-text">Shifting agreement</span> — sources tied to topics where expert
+              agreement moved materially over time; older &quot;settled&quot; summaries may be misleading without revision.
+            </li>
+          </ul>
+        </section>
+
+        <section className="mt-16">
           <h2 className="font-serif text-3xl">What &quot;contradictions preserved&quot; looks like</h2>
           <p className="mt-3 text-r1-text-muted">
             Most tools sand contested findings into a clean narrative. ResearchOne names them.

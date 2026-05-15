@@ -134,6 +134,13 @@ ship on `main`.
   `invalidateQueries(filters, { cancelRefetch: false })` when the page
   mount may already be fetching the same queries.
 
+## Recurring review themes (Codex / Copilot, PR #128 — Wave 5 plan gate + `v_dossier`)
+
+- **Late migration overwrites `CREATE OR REPLACE VIEW`:** Filename order can apply an older migration after a newer one and drop `security_invoker` / columns — add a **trailing repair migration** (see `038_v_dossier_reapply_after_late_035.sql`) and document in Rule 33 §7.
+- **`async` + deploy-skew `catch`:** Use **`return await queryOne(...)`** inside `try` so Postgres rejections hit `catch` (Rule 33 §9).
+- **Sensitive sockets:** Plan payloads and gate events belong in **`job:${runId}`** only — not global `io.emit` (dashboards use minimal events like `runs:updated`).
+- **Queue-before-confirm for resume jobs:** Enqueue BullMQ **before** marking the plan confirmed so Redis outages never persist "confirmed with no worker" (Rule 33 §8).
+
 ## Etiquette
 
 - Do not modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`

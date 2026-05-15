@@ -12,6 +12,9 @@ import { withPreamble } from '../../constants/prompts';
 import { RetrievedChunk } from '../retrieval/retrievalService';
 import { logger } from '../../utils/logger';
 import { extractJsonArray } from '../../utils/jsonArrayExtractor';
+import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
+import { resolveSourceClassForChunk } from '../planning/wave53EpistemicPolicy';
+import { normalizeClaimKeyForSteelman } from './steelmanService';
 
 export interface ExtractedClaim {
   claim_text: string;
@@ -64,6 +67,13 @@ export async function extractAndPersistClaims(args: {
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
+  wave53?: {
+    /** Full classifier maps (chunk + canonical URL). */
+    sourceClassMap?: SourceClassMap;
+    /** Alias for `sourceClassMap` (Wave 5.3 task naming). */
+    sourceClassByChunkId?: SourceClassMap;
+    steelmanByClaimText?: Map<string, string>;
+  };
 }): Promise<ExtractedClaim[]> {
   const { runId, reportId, researchQuery, chunks, reasonerOutput, synthesizerOutput } = args;
 
@@ -107,34 +117,78 @@ export async function extractAndPersistClaims(args: {
     return [];
   }
 
+  const wave53Maps = args.wave53?.sourceClassMap ?? args.wave53?.sourceClassByChunkId;
+  const wave53Steelman = args.wave53?.steelmanByClaimText;
+  const chunkById = new Map(chunks.map((c) => [c.id, c]));
+
   // Persist claims
   await withTransaction(async (client) => {
     for (const claim of claims) {
       const chunkId = claim.supporting_chunk_ids?.[0] ?? null;
       const sourceId = claim.source_ids?.[0] ?? null;
+      const sourceUrl = chunkId ? chunkById.get(chunkId)?.source_url : undefined;
+      const sourceClass =
+        wave53Maps && chunkId
+          ? resolveSourceClassForChunk(chunkId, wave53Maps, sourceUrl)
+          : null;
+      const steelmanSummary =
+        wave53Steelman?.get(normalizeClaimKeyForSteelman(claim.claim_text)) ?? null;
 
-      await client.query(
-        `INSERT INTO claims (
-           chunk_id, source_id, claim_text, evidence_tier, confidence,
-           tags, run_id, report_id, stance_summary,
-           supporting_chunk_ids, contradicting_chunk_ids
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT DO NOTHING`,
-        [
-          chunkId,
-          sourceId,
-          claim.claim_text,
-          claim.evidence_tier,
-          Math.min(1, Math.max(0, claim.confidence)),
-          claim.tags ?? [],
-          runId,
-          reportId,
-          claim.stance_summary ?? null,
-          claim.supporting_chunk_ids ?? [],
-          [], // contradicting_chunk_ids populated by contradiction extractor
-        ]
-      );
+      try {
+        await client.query(
+          `INSERT INTO claims (
+             chunk_id, source_id, claim_text, evidence_tier, confidence,
+             tags, run_id, report_id, stance_summary,
+             supporting_chunk_ids, contradicting_chunk_ids,
+             source_class, steelman_summary
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           ON CONFLICT DO NOTHING`,
+          [
+            chunkId,
+            sourceId,
+            claim.claim_text,
+            claim.evidence_tier,
+            Math.min(1, Math.max(0, claim.confidence)),
+            claim.tags ?? [],
+            runId,
+            reportId,
+            claim.stance_summary ?? null,
+            claim.supporting_chunk_ids ?? [],
+            [], // contradicting_chunk_ids populated by contradiction extractor
+            sourceClass,
+            steelmanSummary,
+          ]
+        );
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === '42703') {
+          await client.query(
+            `INSERT INTO claims (
+               chunk_id, source_id, claim_text, evidence_tier, confidence,
+               tags, run_id, report_id, stance_summary,
+               supporting_chunk_ids, contradicting_chunk_ids
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT DO NOTHING`,
+            [
+              chunkId,
+              sourceId,
+              claim.claim_text,
+              claim.evidence_tier,
+              Math.min(1, Math.max(0, claim.confidence)),
+              claim.tags ?? [],
+              runId,
+              reportId,
+              claim.stance_summary ?? null,
+              claim.supporting_chunk_ids ?? [],
+              [],
+            ]
+          );
+        } else {
+          throw err;
+        }
+      }
     }
   });
 

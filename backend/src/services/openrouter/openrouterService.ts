@@ -805,6 +805,7 @@ CRITICAL RULES:
 - Build causal and mechanistic arguments, not just summaries
 - Preserve contradiction — do not bury it
 - Ask: what evidence would change this conclusion?
+- Consensus-alone-does-not-debunk: popularity or institutional agreement is never sufficient by itself to dismiss a claim that remains coherent with cited passages — downgrade tiers only with corpus-grounded mechanism clashes or weaker citation strength.
 
 Output reasoning chains with explicit evidence tier citations.`),
 
@@ -827,6 +828,10 @@ CRITICAL RULES:
 - Ask: what counterevidence would the mainstream cite?
 - Ask: what would a careful critic of this conclusion say?
 - Distinguish "mainstream consensus is wrong" from "this specific claim has good evidence"
+
+SOURCE-CLASS AWARENESS (Wave 5.3):
+- The system prompt may append additional overlays keyed to orthogonal source-class labels for retrieved sources (orthogonal to evidence tiers).
+- When STEELMAN CONTEXT appears in the user message, critique those strengthened formulations — do not argue against a weaker strawman.
 
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 

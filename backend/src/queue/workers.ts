@@ -5,7 +5,16 @@ import { QUEUE_NAMES } from './queues';
 import { logger } from '../utils/logger';
 import { runIngestionJob } from '../services/ingestion/ingestionService';
 import { runEmbeddingJob } from '../services/embedding/embeddingService';
-import { runResearchJob, type RunSummaryPayload } from '../services/reasoning/researchOrchestrator';
+import {
+  runResearchJob,
+  resumeAfterPlanConfirmation,
+  isResearchJobParkedAtPlanGate,
+  type RunSummaryPayload,
+} from '../services/reasoning/researchOrchestrator';
+import {
+  RESEARCH_JOB_RESUME_AFTER_PLAN,
+  type ResearchResumeAfterPlanJobData,
+} from './researchQueueJobs';
 import { runAtlasExport } from '../services/embedding/atlasExport';
 import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
@@ -45,6 +54,10 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     io.to(room).emit(event, data);
     io.emit(event, data); // also broadcast to all for dashboard updates
   };
+  /** Plan payloads are user-private — never broadcast globally (PR #128). */
+  const emitJobPrivate = (runId: string, event: string, data: unknown) => {
+    io.to(`job:${runId}`).emit(event, data);
+  };
 
   // ─── Ingestion Worker ─────────────────────────────────────────────────
   new Worker(
@@ -81,6 +94,63 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
   new Worker(
     QUEUE_NAMES.RESEARCH,
     async (job: Job) => {
+      if (job.name === RESEARCH_JOB_RESUME_AFTER_PLAN) {
+        const data = job.data as ResearchResumeAfterPlanJobData;
+        const { runId, confirmedPlanId } = data;
+        logger.info(`Research resume-after-plan job started: ${job.id}`);
+        emit(`job:${runId}`, 'research:progress', { stage: 'started', runId });
+        try {
+          const result = await resumeAfterPlanConfirmation(runId, confirmedPlanId, (update) => {
+            job.updateProgress(update);
+            emit(`job:${runId}`, 'research:progress', update);
+          });
+          if (isResearchJobParkedAtPlanGate(result)) {
+            emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
+              runId: result.runId,
+              planId: result.planId,
+              planPayload: result.planPayload,
+              refinementRounds: result.refinementRounds,
+            });
+            io.emit('runs:updated', {});
+            return result;
+          }
+          emit(`job:${runId}`, 'research:completed', result);
+          if (result.summary) {
+            emit(`job:${runId}`, 'run:summary', result.summary);
+          }
+          io.emit('reports:updated', {});
+          io.emit('runs:updated', {});
+          return result;
+        } catch (err) {
+          if (err instanceof ResearchCancelledError) {
+            emit(`job:${runId}`, 'research:cancelled', { runId });
+            const cancelledSummary = (err as Error & { summary?: RunSummaryPayload }).summary;
+            if (cancelledSummary) {
+              emit(`job:${runId}`, 'run:summary', cancelledSummary);
+            }
+            io.emit('runs:updated', {});
+            return { cancelled: true, runId };
+          }
+          const e = err as Error & {
+            runId?: string;
+            stage?: string;
+            percent?: number;
+            message?: string;
+            retryable?: boolean;
+            failureMeta?: Record<string, unknown>;
+            summary?: RunSummaryPayload;
+          };
+          const decision = classifyResearchFailureForSocket(e, runId);
+          emit(`job:${runId}`, decision.event, decision.payload);
+          if (e.summary) {
+            emit(`job:${runId}`, 'run:summary', e.summary);
+          }
+          io.emit('reports:updated', {});
+          io.emit('runs:updated', {});
+          throw err;
+        }
+      }
+
       logger.info(`Research job started: ${job.id}`);
       emit(`job:${job.data.runId}`, 'research:progress', { stage: 'started', runId: job.data.runId });
       try {
@@ -88,6 +158,16 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           job.updateProgress(update);
           emit(`job:${job.data.runId}`, 'research:progress', update);
         });
+        if (isResearchJobParkedAtPlanGate(result)) {
+          emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
+            runId: result.runId,
+            planId: result.planId,
+            planPayload: result.planPayload,
+            refinementRounds: result.refinementRounds,
+          });
+          io.emit('runs:updated', {});
+          return result;
+        }
         emit(`job:${job.data.runId}`, 'research:completed', result);
         if (result.summary) {
           emit(`job:${job.data.runId}`, 'run:summary', result.summary);

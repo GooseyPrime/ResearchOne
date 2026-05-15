@@ -146,7 +146,14 @@ export interface ResearchRun {
   supplemental_attachments?: ResearchSupplementalAttachment[];
   engine_version?: string | null;
   research_objective?: ResearchObjective | string | null;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'aborted';
+  status:
+    | 'queued'
+    | 'running'
+    | 'plan_pending_confirmation'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'aborted';
   retry_attempts?: number | null;
   retry_budget?: number | null;
   error_message?: string;
@@ -225,6 +232,11 @@ export interface Report {
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;
+    /** Wave 5.2 — intent output template id */
+    output_template_id?: string;
+    orchestration_intent?: string;
+    skeptic_mode?: string;
+    skeptic_annotations?: unknown[];
     research_request?: {
       query?: string;
       supplemental?: string;
@@ -244,6 +256,8 @@ export interface DossierRequest {
 export interface DossierPlan {
   planId: string | null;
   intent: string;
+  /** Wave 5.1+ — `research_plans.orchestration_profile` label */
+  orchestrationProfile?: string | null;
   planSummary: string | null;
   planPayload: Record<string, unknown>;
   planStatus: string | null;
@@ -274,6 +288,9 @@ export interface DossierStats {
   estimatedCostCents: number | null;
   actualCostCents: number | null;
   reportEvidenceTierSummary: Record<string, unknown> | null;
+  /** Wave 5.3 — source-class counts for retrieved chunks (orthogonal to tiers). */
+  sourceClassBreakdown: Record<string, unknown> | null;
+  steelmanPassCount: number | null;
 }
 
 export interface Dossier {
@@ -575,6 +592,38 @@ export const getResearchRuns = (params?: { status?: string }) =>
 
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
+
+/** Wave 5.1 — `GET /api/runs/:runId/plan` (dossier-shaped plan snapshot for the gate). */
+export interface RunPlanGateResponse {
+  runId: string;
+  runStatus: string;
+  plan: DossierPlan;
+}
+
+export const getRunPlanForGate = (runId: string) =>
+  api.get<RunPlanGateResponse>(`/runs/${runId}/plan`).then((r) => r.data);
+
+export const refineRunPlanAtGate = (runId: string, refinementInstruction: string) =>
+  api
+    .post<{
+      ok: boolean;
+      planId: string;
+      revisedPlan: Record<string, unknown>;
+      diffSummary?: string;
+      intentChange?: boolean;
+      refinementRounds: number;
+    }>(`/runs/${runId}/plan/refine`, { refinementInstruction })
+    .then((r) => r.data);
+
+export const confirmRunPlanAtGate = (runId: string, planId?: string) =>
+  api
+    .post<{ ok: boolean; runId: string; planId: string; status: string }>(`/runs/${runId}/plan/confirm`, {
+      ...(planId ? { planId } : {}),
+    })
+    .then((r) => r.data);
+
+export const cancelRunPlanAtGate = (runId: string) =>
+  api.post<{ ok: boolean; runId: string; status: string }>(`/runs/${runId}/plan/cancel`, {}).then((r) => r.data);
 
 export interface RunArtifacts {
   sources: Array<{

@@ -5,6 +5,7 @@ import {
   SYSTEM_PROMPTS,
   ModelCallResult,
   NormalizedModelError,
+  type ModelRole,
 } from '../openrouter/openrouterService';
 import { retrieveChunks, RetrievedChunk } from '../retrieval/retrievalService';
 import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
@@ -27,24 +28,97 @@ import { incrementReportCount } from '../tier/tierService';
 import type {
   ProgressCallback,
   ResearchJobData,
+  ResearchJobResult,
   ResearchProgress,
   RunSummaryPayload,
 } from './researchOrchestratorTypes';
-import { normalizeRetrievalQueries } from './researchOrchestratorNormalize';
+import { classifyIntent } from '../planning/intentClassifier';
+import { generatePlan } from '../planning/planGenerator';
+import {
+  insertGateResearchPlan,
+  parkRunAwaitingPlanConfirmation,
+} from '../planning/planWriteService';
+import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrchestratorNormalize';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
+import {
+  mergePlanPayloadWithCanonicalProfile,
+  resolveOrchestrationProfileFromJob,
+} from '../planning/orchestrationRuntime';
+import {
+  PIPELINE_STAGES,
+  shouldRunPipelineStage,
+} from '../planning/orchestrationProfiles';
+import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
+import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
+import {
+  aggregateSourceClassBreakdown,
+  buildReasonerSystemPrompt,
+  buildSkepticSystemPrompt,
+  dominantSourceClassesFromBreakdown,
+} from '../planning/wave53EpistemicPolicy';
+import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
+import type { PlanPayload } from '../planning/planTypes';
 
 export type {
   CreditChargeContext,
   ProgressCallback,
   ResearchJobData,
+  ResearchJobResult,
   ResearchProgress,
   RunSummaryPayload,
 } from './researchOrchestratorTypes';
+export { isResearchJobParkedAtPlanGate } from './researchOrchestratorTypes';
 
 async function assertNotCancelled(runId: string): Promise<void> {
   if (await isRunCancellationRequested(runId)) {
     throw new ResearchCancelledError();
+  }
+}
+
+function orchestrationStubModelResult(role: ModelRole, content: string): ModelCallResult {
+  return {
+    content,
+    model: 'skipped-by-profile',
+    role,
+    promptTokens: 0,
+    completionTokens: 0,
+    durationMs: 0,
+    usedFallback: false,
+    primaryModel: 'skipped-by-profile',
+  };
+}
+
+function emptyDiscoverySummary(runId: string) {
+  return {
+    runId,
+    discoveryEnabled: false,
+    planDecision: false,
+    planRationale: 'Discovery skipped by orchestration profile.',
+    queriesExecuted: 0,
+    candidatesFound: 0,
+    candidatesSelected: 0,
+    sourcesIngested: 0,
+    sourcesSkipped: 0,
+    sources: [] as unknown[],
+    durationMs: 0,
+  };
+}
+
+function stubReasoningFromRetriever(retrieverMarkdown: string): string {
+  return `Reasoning stage skipped by orchestration profile. Retriever analysis follows.\n\n${retrieverMarkdown}`;
+}
+
+function parseSkepticSidebarJson(raw: string): Array<Record<string, unknown>> {
+  try {
+    const m = raw.match(/\[[\s\S]*\]/);
+    if (!m) return [];
+    const parsed = JSON.parse(m[0]) as unknown;
+    return Array.isArray(parsed)
+      ? (parsed.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>)
+      : [];
+  } catch {
+    return [];
   }
 }
 
@@ -74,14 +148,6 @@ interface ReaderFrontMatter {
   overall_summary: string;
   conclusions_nutshell: string;
   metric_glosses: Array<{ label: string; narrative: string }>;
-}
-
-function normalizeRunOverrides(overrides: PerRunModelOverrides | undefined): PerRunModelOverrides {
-  if (!overrides || typeof overrides !== 'object') return { overrides: {} };
-  return {
-    overrides: overrides.overrides ?? {},
-    embedding: typeof overrides.embedding === 'string' ? overrides.embedding : undefined,
-  };
 }
 
 function runtimeOverrideForRole(
@@ -196,7 +262,7 @@ function v2CallOpts(
 export async function runResearchJob(
   data: ResearchJobData,
   onProgress: ProgressCallback
-): Promise<{ runId: string; reportId: string; summary?: RunSummaryPayload }> {
+): Promise<ResearchJobResult> {
   return runScope.run(
     {
       runId: data.runId,
@@ -211,7 +277,7 @@ export async function runResearchJob(
 async function runResearchJobInner(
   data: ResearchJobData,
   onProgress: ProgressCallback
-): Promise<{ runId: string; reportId: string; summary?: RunSummaryPayload }> {
+): Promise<ResearchJobResult> {
   const {
     runId,
     query: researchQuery,
@@ -260,6 +326,12 @@ async function runResearchJobInner(
   const runStartedAt = Date.now();
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
+  const orchProfile = resolveOrchestrationProfileFromJob(data);
+
+  let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
+  let wave53SourceClassBreakdown: Record<string, number> = {};
+  let wave53SteelmanPassCount = 0;
+  let wave53SteelmanByClaimKey = new Map<string, string>();
 
   const progress = async (
     stage: string,
@@ -284,7 +356,15 @@ async function runResearchJobInner(
     currentStage = stage;
     currentPercent = percent;
     currentMessage = message;
-    const payload = { stage, percent, message, runId, timestamp: new Date().toISOString(), ...extra };
+    const payload = {
+      stage,
+      percent,
+      message,
+      runId,
+      timestamp: new Date().toISOString(),
+      ...extra,
+      profileDisplayName: orchProfile.displayName,
+    };
     onProgress(payload);
     logger.info(`[${runId}] ${stage}: ${message}`);
     try {
@@ -336,6 +416,78 @@ async function runResearchJobInner(
   });
 
   try {
+    // ────────────────────────────────────────────────────────────────
+    // Wave 5.1 — Stage 0.5: intent classification + user-facing plan gate
+    // (skipped on resume-after-confirm; `skipPlanConfirmationGate` is set
+    // on the JSON payload stored by `parkRunAwaitingPlanConfirmation`).
+    // ────────────────────────────────────────────────────────────────
+    if (!data.skipPlanConfirmationGate) {
+      try {
+        await progress('plan_generation', 2, 'Detecting intent and generating plan...', {
+          substep: 'plan_started',
+        });
+
+        const intentResult = await classifyIntent(researchQuery, supplemental, {
+          engineVersion: engineVersion ?? undefined,
+          researchObjective: researchObjective ?? undefined,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+        });
+
+        const planPayload = await generatePlan({
+          query: researchQuery,
+          supplementalContext: supplemental,
+          intent: intentResult.intent,
+          intentConfidence: intentResult.confidence,
+          llmOpts: {
+            engineVersion: engineVersion ?? undefined,
+            researchObjective: researchObjective ?? undefined,
+            allowFallbackByRole,
+            byokApiKeyOverride,
+          },
+        });
+
+        const runScopeRow = await queryOne<{ user_id: string | null; org_id: string | null }>(
+          `SELECT user_id, org_id FROM research_runs WHERE id = $1`,
+          [runId]
+        );
+
+        const { planId } = await insertGateResearchPlan({
+          runId,
+          orgId: runScopeRow?.org_id ?? null,
+          userId: runScopeRow?.user_id ?? null,
+          intent: intentResult.intent,
+          intentConfidence: intentResult.confidence,
+          planPayload,
+          orchestrationProfile: planPayload.orchestrationProfile?.name ?? null,
+        });
+
+        await progress('plan_pending_confirmation', 4, 'Plan ready — awaiting your confirmation', {
+          substep: 'plan_ready',
+          planId,
+          intent: planPayload.intent.id,
+          confidence: planPayload.intent.confidence,
+        });
+
+        await parkRunAwaitingPlanConfirmation(runId, resumeJobPayload);
+
+        return {
+          outcome: 'parked_at_plan_gate',
+          runId,
+          planId,
+          planPayload,
+          refinementRounds: 0,
+        };
+      } catch (gateErr) {
+        const code = (gateErr as { code?: string })?.code;
+        if (code === '42P01' || code === '42703' || code === '22P02') {
+          logger.warn(`[${runId}] plan gate skipped (deploy skew / missing tables / enum)`, gateErr);
+        } else {
+          throw gateErr;
+        }
+      }
+    }
+
     // ────────────────────────────────────────────────────────────────
     // STAGE 1: PLANNER — decompose the research query
     // ────────────────────────────────────────────────────────────────
@@ -407,25 +559,31 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
-    await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
+    let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
+    if (shouldRunPipelineStage(orchProfile, 'discovery')) {
+      await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
 
-    const discoverySummary = await runDiscoveryOrchestrator({
-      runId,
-      researchQuery,
-      plan: plan as unknown as Record<string, unknown>,
-      filterTags,
-      engineVersion,
-      researchObjective,
-      allowFallbackByRole,
-      byokApiKeyOverride,
-      userId: creditCtx?.userId,
-      onRoundComplete: async ({ round, candidatesAfter }) => {
-        const pct = round === 1 ? 15 : 17;
-        await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
-          substep: `discovery_round_${round}_complete`,
-        });
-      },
-    });
+      discoverySummary = await runDiscoveryOrchestrator({
+        runId,
+        researchQuery,
+        plan: plan as unknown as Record<string, unknown>,
+        filterTags,
+        engineVersion,
+        researchObjective,
+        allowFallbackByRole,
+        byokApiKeyOverride,
+        userId: creditCtx?.userId,
+        onRoundComplete: async ({ round, candidatesAfter }) => {
+          const pct = round === 1 ? 15 : 17;
+          await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
+            substep: `discovery_round_${round}_complete`,
+          });
+        },
+      });
+    } else {
+      await progress('discovery', 12, 'Discovery skipped for this intent profile', { substep: 'stage_skipped' });
+      discoverySummary = emptyDiscoverySummary(runId) as unknown as Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
+    }
 
     await query(
       `UPDATE research_runs SET discovery_summary=$1 WHERE id=$2`,
@@ -443,29 +601,33 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
-    await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
-
     const allChunks: RetrievedChunk[] = [];
-    const seenIds = new Set<string>();
+    if (shouldRunPipelineStage(orchProfile, 'retrieval')) {
+      await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
-    for (const rq of plan.retrieval_queries.slice(0, 5)) {
-      const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
-      const chunks = await retrieveChunks({
-        query: rqStr,
-        topK: 15,
-        filterTags,
-        hybridSearch: true,
-      });
-      for (const c of chunks) {
-        if (!seenIds.has(c.id)) {
-          seenIds.add(c.id);
-          allChunks.push(c);
+      const seenIds = new Set<string>();
+
+      for (const rq of plan.retrieval_queries.slice(0, 5)) {
+        const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
+        const chunks = await retrieveChunks({
+          query: rqStr,
+          topK: 15,
+          filterTags,
+          hybridSearch: true,
+        });
+        for (const c of chunks) {
+          if (!seenIds.has(c.id)) {
+            seenIds.add(c.id);
+            allChunks.push(c);
+          }
         }
+        await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rqStr}`, {
+          substep: 'query_done',
+          chunkCount: allChunks.length,
+        });
       }
-      await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rqStr}`, {
-        substep: 'query_done',
-        chunkCount: allChunks.length,
-      });
+    } else {
+      await progress('retrieval', 20, 'Retrieval skipped for this intent profile', { substep: 'stage_skipped' });
     }
 
     logger.info(`[${runId}] Retrieved ${allChunks.length} unique chunks`);
@@ -485,170 +647,302 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
-    await progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
-      substep: 'analysis_started',
-      chunkCount: allChunks.length,
-      sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
-    });
-
     const evidenceContext = formatEvidenceContext(allChunks);
 
-    const retrieverResult = await callRoleModel({
-      role: 'retriever',
-      ...v2,
-      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.retriever },
-        {
-          role: 'user',
-          content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
-        },
-      ],
-    });
-    modelLog.push(retrieverResult);
-    await saveRunCheckpoint({
-      runId,
-      stage: 'retriever_analysis',
-      checkpointKey: 'retriever_analysis',
-      snapshot: { output: retrieverResult.content },
-    });
+    let retrieverResult: ModelCallResult;
+    if (shouldRunPipelineStage(orchProfile, 'retriever_analysis')) {
+      await progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
+        substep: 'analysis_started',
+        chunkCount: allChunks.length,
+        sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+      });
+
+      retrieverResult = await callRoleModel({
+        role: 'retriever',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.retriever },
+          {
+            role: 'user',
+            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
+          },
+        ],
+      });
+      modelLog.push(retrieverResult);
+      await saveRunCheckpoint({
+        runId,
+        stage: 'retriever_analysis',
+        checkpointKey: 'retriever_analysis',
+        snapshot: { output: retrieverResult.content },
+      });
+
+      wave53SourceClassMap = await classifyRetrievedSources({
+        chunks: allChunks,
+        researchQuery,
+        retrieverAnalysis: retrieverResult.content,
+        ...v2,
+      });
+      wave53SourceClassBreakdown = aggregateSourceClassBreakdown(wave53SourceClassMap.byChunkId);
+    } else {
+      await progress('retriever_analysis', 35, 'Retriever analysis skipped for this intent profile', {
+        substep: 'stage_skipped',
+        chunkCount: allChunks.length,
+      });
+      retrieverResult = orchestrationStubModelResult('retriever', 'Retriever analysis skipped by orchestration profile.');
+    }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
-    await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });
+    let reasonerResult: ModelCallResult;
+    if (shouldRunPipelineStage(orchProfile, 'reasoning')) {
+      await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });
 
-    const reasonerResult = await callRoleModel({
-      role: 'reasoner',
-      ...v2,
-      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.reasoner },
-        {
-          role: 'user',
-          content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
-        },
-      ],
-    });
-    modelLog.push(reasonerResult);
-    await saveRunCheckpoint({
-      runId,
-      stage: 'reasoning',
-      checkpointKey: 'reasoner_output',
-      snapshot: { output: reasonerResult.content },
-    });
+      reasonerResult = await callRoleModel({
+        role: 'reasoner',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
+        messages: [
+          { role: 'system', content: buildReasonerSystemPrompt() },
+          {
+            role: 'user',
+            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
+          },
+        ],
+      });
+      modelLog.push(reasonerResult);
+      await saveRunCheckpoint({
+        runId,
+        stage: 'reasoning',
+        checkpointKey: 'reasoner_output',
+        snapshot: { output: reasonerResult.content },
+      });
+    } else {
+      await progress('reasoning', 50, 'Reasoning skipped for this intent profile', { substep: 'stage_skipped' });
+      reasonerResult = orchestrationStubModelResult('reasoner', stubReasoningFromRetriever(retrieverResult.content));
+    }
+
+    // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
+    if (orchProfile.steelmanMode !== 'off') {
+      await progress('reasoning', 52, 'Steelman pass: strengthening formulations before critique...', {
+        substep: 'steelman_started',
+      });
+      const steel = await runSteelmanPass({
+        reasonerOutput: reasonerResult.content,
+        chunks: allChunks,
+        steelmanMode: orchProfile.steelmanMode,
+        sourceClassMap: wave53SourceClassMap,
+        ...v2,
+      });
+      wave53SteelmanByClaimKey = steel.steelmanByClaimKey;
+      wave53SteelmanPassCount = steel.passCount;
+      if (steel.modelResult) modelLog.push(steel.modelResult);
+    }
+
+    const wave53DominantSourceClasses = dominantSourceClassesFromBreakdown(wave53SourceClassBreakdown);
+    const skepticSystemPrompt = buildSkepticSystemPrompt(wave53DominantSourceClasses);
+    const wave53SteelmanUserBlock = formatSteelmanBlockForSkeptic(wave53SteelmanByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 6: SKEPTIC — challenge conclusions
+    // STAGE 6: SKEPTIC — challenge conclusions (off | gate | annotate)
     // ────────────────────────────────────────────────────────────────
-    await progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
+    let skepticResult: ModelCallResult;
+    const skepticAnnotations: Array<Record<string, unknown>> = [];
+    const skepticRuns =
+      shouldRunPipelineStage(orchProfile, 'challenge') && orchProfile.skepticMode !== 'off';
 
-    const skepticResult = await callRoleModel({
-      role: 'skeptic',
-      ...v2,
-      callPurpose: 'pipeline_skeptic',
-      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.skeptic },
-        {
-          role: 'user',
-          content: `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}\n\nChallenge these conclusions. Find weaknesses, alternatives, and counterevidence.`,
-        },
-      ],
-    });
-    modelLog.push(skepticResult);
-    await saveRunCheckpoint({
-      runId,
-      stage: 'challenge',
-      checkpointKey: 'skeptic_output',
-      snapshot: { output: skepticResult.content },
-    });
+    if (!skepticRuns) {
+      await progress('challenge', 65, 'Skeptic skipped for this intent profile', { substep: 'stage_skipped' });
+      skepticResult = orchestrationStubModelResult('skeptic', '');
+    } else if (orchProfile.skepticMode === 'annotate') {
+      await progress('challenge', 65, 'Collecting skeptical annotations (sidebar)...', { substep: 'skeptic_annotate' });
+      skepticResult = await callRoleModel({
+        role: 'skeptic',
+        ...v2,
+        callPurpose: 'pipeline_skeptic',
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
+        messages: [
+          { role: 'system', content: skepticSystemPrompt },
+          {
+            role: 'user',
+            content:
+              `Return ONLY a JSON array (no markdown, no prose outside the array) of objects with keys ` +
+              `"topic", "critique", "suggested_checks". Each object is one sidebar note for reviewers. ` +
+              `Base them on the reasoning below; do not duplicate the main report narrative.\n\n` +
+              `Research Query: ${researchQuery}\n\nReasoning:\n${reasonerResult.content}` +
+              wave53SteelmanUserBlock,
+          },
+        ],
+      });
+      modelLog.push(skepticResult);
+      skepticAnnotations.push(...parseSkepticSidebarJson(skepticResult.content));
+      await saveRunCheckpoint({
+        runId,
+        stage: 'challenge',
+        checkpointKey: 'skeptic_output',
+        snapshot: { output: skepticResult.content, annotate: true },
+      });
+    } else {
+      await progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
+
+      skepticResult = await callRoleModel({
+        role: 'skeptic',
+        ...v2,
+        callPurpose: 'pipeline_skeptic',
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
+        messages: [
+          { role: 'system', content: skepticSystemPrompt },
+          {
+            role: 'user',
+            content:
+              `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}` +
+              `${wave53SteelmanUserBlock}\n\nChallenge these conclusions (attack the steelman where provided; do not argue against a weaker strawman). Find weaknesses, alternatives, and counterevidence.`,
+          },
+        ],
+      });
+      modelLog.push(skepticResult);
+      await saveRunCheckpoint({
+        runId,
+        stage: 'challenge',
+        checkpointKey: 'skeptic_output',
+        snapshot: { output: skepticResult.content },
+      });
+    }
+
+    const challengesForSynthesis =
+      orchProfile.skepticMode === 'annotate'
+        ? 'Skeptical cross-checks were captured as structured sidebar annotations and are not inlined in this narrative.'
+        : skepticResult.content;
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 7: SYNTHESIZER — write the full report
     // ────────────────────────────────────────────────────────────────
-    await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
+    let generatedReport: { markdown: string };
+    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+      await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
-    const generatedReport = await generateIterativeReport({
-      query: researchQuery,
-      plan,
-      evidenceContext,
-      retrieverAnalysis: retrieverResult.content,
-      reasoningChains: reasonerResult.content,
-      challenges: skepticResult.content,
-      engineVersion: v2.engineVersion,
-      researchObjective: v2.researchObjective,
-      allowFallbackByRole: v2.allowFallbackByRole,
-      byokApiKeyOverride,
-      targetWordCount,
-      onSectionProgress: async ({ title, index, total }) => {
-        await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
-          substep: 'section_generated',
-          detail: title,
-        });
-        await saveRunCheckpoint({
-          runId,
-          stage: 'synthesis',
-          checkpointKey: `section_${index}`,
-          snapshot: { sectionTitle: title, index, total },
-        });
-      },
-    });
+      generatedReport = await generateIterativeReport({
+        query: researchQuery,
+        plan,
+        evidenceContext,
+        retrieverAnalysis: retrieverResult.content,
+        reasoningChains: reasonerResult.content,
+        challenges: challengesForSynthesis,
+        engineVersion: v2.engineVersion,
+        researchObjective: v2.researchObjective,
+        allowFallbackByRole: v2.allowFallbackByRole,
+        byokApiKeyOverride,
+        targetWordCount,
+        onSectionProgress: async ({ title, index, total }) => {
+          await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
+            substep: 'section_generated',
+            detail: title,
+          });
+          await saveRunCheckpoint({
+            runId,
+            stage: 'synthesis',
+            checkpointKey: `section_${index}`,
+            snapshot: { sectionTitle: title, index, total },
+          });
+        },
+      });
+    } else {
+      await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
+      const refSynth = await callRoleModel({
+        role: 'synthesizer',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'synthesizer'),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.synthesizer },
+          {
+            role: 'user',
+            content:
+              `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
+              `# Executive Summary\n(direct answer)\n# Evidence\n(short bullets tied to chunk IDs where possible)\n` +
+              `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
+              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\nEvidence:\n${evidenceContext.slice(0, 60000)}`,
+          },
+        ],
+      });
+      modelLog.push(refSynth);
+      generatedReport = { markdown: refSynth.content.trim() };
+      await saveRunCheckpoint({
+        runId,
+        stage: 'synthesis',
+        checkpointKey: 'synthesis_light',
+        snapshot: { mode: 'reference_lookup' },
+      });
+    }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 8: VERIFIER — epistemic quality gate
     // ────────────────────────────────────────────────────────────────
-    await progress('verification', 92, 'Verifying epistemic standards...');
-
-    const verifierResult = await callRoleModel({
-      role: 'verifier',
-      ...v2,
-      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.verifier },
-        {
-          role: 'user',
-          content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
-        },
-      ],
-    });
-    modelLog.push(verifierResult);
-
+    let verifierResult: ModelCallResult;
     let verification: VerificationResult = { passed: true, criteria: [], overall: 'PASS' };
-    try {
-      const jsonMatch = verifierResult.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        verification = JSON.parse(jsonMatch[0]) as VerificationResult;
+    if (shouldRunPipelineStage(orchProfile, 'verification')) {
+      await progress('verification', 92, 'Verifying epistemic standards...');
+
+      verifierResult = await callRoleModel({
+        role: 'verifier',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.verifier },
+          {
+            role: 'user',
+            content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+          },
+        ],
+      });
+      modelLog.push(verifierResult);
+
+      try {
+        const jsonMatch = verifierResult.content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          verification = JSON.parse(jsonMatch[0]) as VerificationResult;
+        }
+      } catch {
+        // Continue even if verification JSON parse fails
       }
-    } catch {
-      // Continue even if verification JSON parse fails
+    } else {
+      await progress('verification', 92, 'Verification skipped for this intent profile', { substep: 'stage_skipped' });
+      verifierResult = orchestrationStubModelResult(
+        'verifier',
+        JSON.stringify({ passed: true, criteria: [], overall: 'PASS' }),
+      );
     }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 8b: PLAIN LANGUAGE — sister report for general audiences
     // ────────────────────────────────────────────────────────────────
-    await progress('plain_language', 93, 'Writing plain-language version of the report...', { substep: 'plain_language_started' });
+    let plainLanguageMarkdown = '';
+    if (shouldRunPipelineStage(orchProfile, 'plain_language')) {
+      await progress('plain_language', 93, 'Writing plain-language version of the report...', { substep: 'plain_language_started' });
 
-    const plainLanguageResult = await callRoleModel({
-      role: 'plain_language_synthesizer',
-      ...v2,
-      runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'plain_language_synthesizer'),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
-        {
-          role: 'user',
-          content: `Rewrite the following research report in plain language for a general reader. Keep uncertainty and contradictions explicit.\n\n${(typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '').slice(0, 120000)}`,
-        },
-      ],
-    });
-    modelLog.push(plainLanguageResult);
-    await progress('plain_language', 93, 'Plain-language report drafted', {
-      substep: 'plain_language_done',
-      model: plainLanguageResult.model,
-      tokenUsage: { prompt: plainLanguageResult.promptTokens, completion: plainLanguageResult.completionTokens },
-    });
+      const plainLanguageResult = await callRoleModel({
+        role: 'plain_language_synthesizer',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'plain_language_synthesizer'),
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.plain_language_synthesizer },
+          {
+            role: 'user',
+            content: `Rewrite the following research report in plain language for a general reader. Keep uncertainty and contradictions explicit.\n\n${(typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '').slice(0, 120000)}`,
+          },
+        ],
+      });
+      modelLog.push(plainLanguageResult);
+      await progress('plain_language', 93, 'Plain-language report drafted', {
+        substep: 'plain_language_done',
+        model: plainLanguageResult.model,
+        tokenUsage: { prompt: plainLanguageResult.promptTokens, completion: plainLanguageResult.completionTokens },
+      });
 
-    const plainLanguageMarkdown = plainLanguageResult.content.trim();
+      plainLanguageMarkdown = plainLanguageResult.content.trim();
+    } else {
+      await progress('plain_language', 93, 'Plain-language pass skipped for this intent profile', { substep: 'stage_skipped' });
+    }
 
         // ────────────────────────────────────────────────────────────────
     // STAGE 9: SAVE REPORT
@@ -670,6 +964,10 @@ async function runResearchJobInner(
       supplemental_attachments: unknown;
     }>(`SELECT supplemental, supplemental_attachments FROM research_runs WHERE id=$1`, [runId]);
 
+    const outputTemplateId =
+      (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
+      orchProfile.outputTemplateId;
+
     const reportId = await saveReport({
       runId,
       query: researchQuery,
@@ -686,6 +984,12 @@ async function runResearchJobInner(
         ? (prov.supplemental_attachments as Record<string, unknown>[])
         : [],
       userId: creditCtx?.userId,
+      wave52Metadata: {
+        output_template_id: outputTemplateId,
+        orchestration_intent: orchProfile.intent,
+        skeptic_mode: orchProfile.skepticMode,
+        ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
+      },
     });
     await saveRunCheckpoint({
       runId,
@@ -697,40 +1001,51 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 10: EPISTEMIC PERSISTENCE — claims, contradictions, citations
     // ────────────────────────────────────────────────────────────────
-    await progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
+    if (shouldRunPipelineStage(orchProfile, 'epistemic_persistence')) {
+      await progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
 
-    try {
-      const claims = await extractAndPersistClaims({
-        runId,
-        reportId,
-        researchQuery,
-        chunks: allChunks,
-        reasonerOutput: reasonerResult.content,
-        synthesizerOutput: reportMarkdown,
-        ...v2,
-      });
+      try {
+        const claims = await extractAndPersistClaims({
+          runId,
+          reportId,
+          researchQuery,
+          chunks: allChunks,
+          reasonerOutput: reasonerResult.content,
+          synthesizerOutput: reportMarkdown,
+          wave53: {
+            sourceClassByChunkId: wave53SourceClassMap,
+            steelmanByClaimText: wave53SteelmanByClaimKey,
+          },
+          ...v2,
+        });
 
-      await extractAndPersistContradictions({
-        runId,
-        reportId,
-        chunks: allChunks,
-        claims,
-        skepticOutput: skepticResult.content,
-        ...v2,
-      });
+        await extractAndPersistContradictions({
+          runId,
+          reportId,
+          chunks: allChunks,
+          claims,
+          skepticOutput: skepticResult.content,
+          ...v2,
+        });
 
-      await mapAndPersistCitations({
-        runId,
-        reportId,
-        chunks: allChunks,
-        claims,
-        reportSections,
-        discoverySummary: discoverySummary as unknown as Record<string, unknown>,
-        ...v2,
+        await mapAndPersistCitations({
+          runId,
+          reportId,
+          chunks: allChunks,
+          claims,
+          reportSections,
+          discoverySummary: discoverySummary as unknown as Record<string, unknown>,
+          sourceClassByChunkId: wave53SourceClassMap,
+          ...v2,
+        });
+      } catch (epistemicErr) {
+        // Do not fail the run if epistemic persistence fails — log and continue
+        logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+      }
+    } else {
+      await progress('epistemic_persistence', 97, 'Epistemic persistence skipped for this intent profile', {
+        substep: 'stage_skipped',
       });
-    } catch (epistemicErr) {
-      // Do not fail the run if epistemic persistence fails — log and continue
-      logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
     }
 
     // Update run with model log, report_id, and completion
@@ -739,7 +1054,35 @@ async function runResearchJobInner(
       [JSON.stringify(modelLog), reportId, runId]
     );
     patchAgentExecutionsReportIdForRun(runId, reportId);
-    await aggregateAndPersistDossierStatistics(runId);
+
+    const preStatsNow = Date.now();
+    if (currentStage && phaseStartTimes[currentStage] != null) {
+      phaseDurations[currentStage] =
+        (phaseDurations[currentStage] ?? 0) + (preStatsNow - phaseStartTimes[currentStage]!);
+    }
+
+    const stageDurationPayload: Record<string, number | string | null> = {
+      _profileDisplayName: orchProfile.displayName,
+      _intentId: orchProfile.intent,
+    };
+    for (const s of PIPELINE_STAGES) {
+      stageDurationPayload[s] = shouldRunPipelineStage(orchProfile, s)
+        ? Math.round(phaseDurations[s] ?? 0)
+        : null;
+    }
+    await aggregateAndPersistDossierStatistics(runId, {
+      profileDisplayName: orchProfile.displayName,
+      intentId: orchProfile.intent,
+      agentsRan: [...orchProfile.agentsToRun],
+      agentsSkipped: [...orchProfile.agentsToSkip],
+      stageDurations: stageDurationPayload,
+      skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
+      sourceClassBreakdown:
+        shouldRunPipelineStage(orchProfile, 'retriever_analysis') && allChunks.length > 0
+          ? wave53SourceClassBreakdown
+          : null,
+      steelmanPassCount: wave53SteelmanPassCount,
+    });
 
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {
@@ -1240,6 +1583,8 @@ async function saveReport(args: {
   supplementalText: string;
   supplementalAttachments: Record<string, unknown>[];
   userId?: string;
+  /** Wave 5.2 — merged into `reports.metadata` (JSON-safe keys). */
+  wave52Metadata?: Record<string, unknown>;
 }): Promise<string> {
   const {
     runId,
@@ -1255,6 +1600,7 @@ async function saveReport(args: {
     supplementalText,
     supplementalAttachments,
     userId,
+    wave52Metadata,
   } = args;
 
   // Parse sections from synthesizer output
@@ -1324,6 +1670,7 @@ async function saveReport(args: {
             : {}),
           ...(readerFrontMatter ? { reader_front_matter: readerFrontMatter } : {}),
           ...(modelEnsemble ? { model_ensemble: modelEnsemble } : {}),
+          ...(wave52Metadata && Object.keys(wave52Metadata).length > 0 ? wave52Metadata : {}),
         }),
         reportId,
       ]
@@ -1405,4 +1752,50 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
   }
 
   return sections;
+}
+
+/**
+ * Wave 5.1 — resume the main pipeline after the user confirmed the gate plan.
+ * Reads `resume_job_payload` written at park time and re-enters `runResearchJob`
+ * with `skipPlanConfirmationGate: true` (Rule 33).
+ */
+export async function resumeAfterPlanConfirmation(
+  runId: string,
+  confirmedPlanId: string,
+  onProgress: ProgressCallback
+): Promise<ResearchJobResult> {
+  const planOk = await queryOne<{ id: string }>(
+    `SELECT id FROM research_plans WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'confirmed'`,
+    [confirmedPlanId, runId]
+  );
+  if (!planOk) {
+    throw Object.assign(new Error('Confirmed plan not found for this run'), {
+      code: 'PLAN_RESUME_INVALID',
+      statusCode: 400,
+    });
+  }
+  const planPayloadRow = await queryOne<{ plan_payload: unknown }>(
+    `SELECT plan_payload FROM research_plans WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'confirmed'`,
+    [confirmedPlanId, runId]
+  );
+  const row = await queryOne<{ resume_job_payload: unknown }>(
+    `SELECT resume_job_payload FROM research_runs WHERE id = $1::uuid`,
+    [runId]
+  );
+  if (!row?.resume_job_payload || typeof row.resume_job_payload !== 'object' || Array.isArray(row.resume_job_payload)) {
+    throw Object.assign(new Error('Missing resume job payload'), {
+      code: 'PLAN_RESUME_INVALID',
+      statusCode: 400,
+    });
+  }
+  const payload = row.resume_job_payload as ResearchJobData;
+  if (payload.runId !== runId) {
+    throw Object.assign(new Error('Resume payload runId mismatch'), { code: 'PLAN_RESUME_INVALID', statusCode: 400 });
+  }
+  payload.skipPlanConfirmationGate = true;
+  const rawPlan = planPayloadRow?.plan_payload;
+  if (rawPlan && typeof rawPlan === 'object' && !Array.isArray(rawPlan)) {
+    payload.confirmedPlanPayload = mergePlanPayloadWithCanonicalProfile(rawPlan as PlanPayload);
+  }
+  return runResearchJob(payload, onProgress);
 }

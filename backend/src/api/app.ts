@@ -11,6 +11,7 @@ import ingestionRoutes from './routes/ingestion';
 import researchRoutes from './routes/research';
 import reportsRoutes from './routes/reports';
 import dossiersRoutes from './routes/dossiers';
+import runsRoutes from './routes/runs';
 import corpusRoutes from './routes/corpus';
 import atlasRoutes from './routes/atlas';
 import graphRoutes from './routes/graph';
@@ -97,6 +98,7 @@ const routes: Array<[string, express.Router]> = [
   ['/research', researchRoutes],
   ['/reports', reportsRoutes],
   ['/dossiers', dossiersRoutes],
+  ['/runs', runsRoutes],
   ['/corpus', corpusRoutes],
   ['/atlas', atlasRoutes],
   ['/graph', graphRoutes],

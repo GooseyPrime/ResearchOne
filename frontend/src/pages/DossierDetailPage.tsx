@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, FileText, LayoutList, NotebookTabs, Sigma } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, FileText, LayoutList, NotebookTabs, Sigma } from 'lucide-react';
 import clsx from 'clsx';
-import { useDossier } from '../hooks/useDossiers';
+import { useDossier, useReport } from '../hooks/useDossiers';
 import IntentBadge from '../components/dossiers/IntentBadge';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
+import DossierReportSection from '../components/dossiers/DossierReportSection';
+import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSection';
 import { extractApiError } from '../utils/api';
 
 type TabId = 'request' | 'plan' | 'report' | 'stats';
@@ -26,6 +28,8 @@ export default function DossierDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, error } = useDossier(id);
+  const reportId = data?.report?.reportId ?? undefined;
+  const reportQuery = useReport(reportId);
   const [tab, setTab] = useState<TabId>(() => tabFromHash());
 
   useEffect(() => {
@@ -85,6 +89,11 @@ export default function DossierDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           <DossierStatusBadge status={data.runStatus} />
           <IntentBadge intent={data.plan.intent} />
+          {data.plan.orchestrationProfile ? (
+            <span className="text-xs rounded-md border border-slate-700 px-2 py-0.5 text-slate-400">
+              Profile: {data.plan.orchestrationProfile}
+            </span>
+          ) : null}
         </div>
         <h1 className="text-xl font-semibold text-white leading-snug">Research dossier</h1>
         <p className="text-sm text-slate-400 line-clamp-3">{data.request.query}</p>
@@ -138,50 +147,21 @@ export default function DossierDetailPage() {
           <div className="space-y-3">
             <h2 className="text-white font-medium">Report</h2>
             {data.report.reportId ? (
-              <>
-                <p className="text-slate-400">
-                  Title: <span className="text-slate-200">{data.report.title ?? '—'}</span>
-                </p>
-                <p className="text-slate-400">
-                  Status: <span className="text-slate-200">{data.report.status ?? '—'}</span>
-                </p>
-                <Link
-                  to={reportHref!}
-                  className="inline-flex items-center gap-2 text-accent hover:underline text-sm"
-                >
-                  Open full report
-                  <ExternalLink size={14} />
-                </Link>
-              </>
+              <DossierReportSection
+                plan={data.plan}
+                report={reportQuery.data}
+                reportLoading={reportQuery.isLoading}
+                reportError={reportQuery.error instanceof Error ? reportQuery.error : null}
+                fullReportHref={reportHref!}
+              />
             ) : (
               <p className="text-slate-500">No report is linked to this dossier yet.</p>
             )}
           </div>
         )}
 
-        {tab === 'stats' && (
-          <div className="space-y-2">
-            <h2 className="text-white font-medium">Statistics</h2>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-              <Stat label="Duration (ms)" value={data.stats.totalDurationMs} />
-              <Stat label="Tokens in" value={data.stats.tokensInput} />
-              <Stat label="Tokens out" value={data.stats.tokensOutput} />
-              <Stat label="Sources cited" value={data.stats.sourcesCitedCount} />
-              <Stat label="Sources retrieved" value={data.stats.sourcesRetrievedCount} />
-              <Stat label="Contradictions" value={data.stats.contradictionsCount} />
-            </ul>
-          </div>
-        )}
+        {tab === 'stats' && <DossierStatisticsSection stats={data.stats} planIntent={data.plan.intent} />}
       </section>
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number | null | undefined }) {
-  return (
-    <li className="flex justify-between gap-4 border border-slate-800/60 rounded-md px-3 py-2">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-slate-100 font-mono text-xs">{value ?? '—'}</span>
-    </li>
   );
 }

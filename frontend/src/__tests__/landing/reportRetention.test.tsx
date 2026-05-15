@@ -7,8 +7,17 @@ vi.mock('@clerk/react', () => ({
   useAuth: vi.fn(() => ({ isLoaded: true, isSignedIn: true, userId: 'user_ssr_test' })),
 }));
 
+vi.mock('../../hooks/useDossiers', () => ({
+  useDossiers: vi.fn(() => ({
+    data: { rows: [], total: 0, page: 1, pageSize: 50 },
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
+}));
+
 import { useAuth } from '@clerk/react';
-import ReportsPage from '../../pages/ReportsPage';
+import DossiersPage from '../../pages/DossiersPage';
 
 function render() {
   const queryClient = new QueryClient({
@@ -17,13 +26,13 @@ function render() {
   return renderToString(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <ReportsPage />
+        <DossiersPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe('ReportsPage — retention rendering', () => {
+describe('DossiersPage — retention rendering (replaces legacy Reports library)', () => {
   beforeEach(() => {
     vi.mocked(useAuth).mockReturnValue({
       isLoaded: true,
@@ -32,9 +41,9 @@ describe('ReportsPage — retention rendering', () => {
     } as ReturnType<typeof useAuth>);
   });
 
-  it('renders the ReportsPage without crashing', () => {
+  it('renders the Dossiers list shell without crashing', () => {
     const html = render();
-    expect(html).toContain('Report Library');
+    expect(html).toContain('Dossiers');
   });
 
   it('compiles with format import from date-fns (no runtime error)', () => {

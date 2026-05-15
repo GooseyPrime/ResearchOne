@@ -43,6 +43,9 @@ export interface DossierStats {
   estimatedCostCents: number | null;
   actualCostCents: number | null;
   reportEvidenceTierSummary: Record<string, unknown> | null;
+  /** Wave 5.3 — counts of retrieved chunks by orthogonal source-class axis (JSON from DB). */
+  sourceClassBreakdown: Record<string, unknown> | null;
+  steelmanPassCount: number | null;
 }
 
 export interface Dossier {
