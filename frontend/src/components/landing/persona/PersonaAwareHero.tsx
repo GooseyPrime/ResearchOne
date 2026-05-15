@@ -82,7 +82,7 @@ export default function PersonaAwareHero({
   return (
     <section
       data-persona={persona}
-      className="relative isolate w-full overflow-hidden bg-slate-950 text-r1-text"
+      className="relative isolate w-full overflow-x-hidden bg-slate-950 text-r1-text"
     >
       <div
         aria-hidden
@@ -126,7 +126,7 @@ export default function PersonaAwareHero({
           )}
         </div>
 
-        <div className="relative mx-auto w-full min-h-0 max-w-5xl overflow-hidden rounded-xl border border-white/12 bg-r1-bg-deep/40 p-3 backdrop-blur-sm sm:p-4 md:p-5">
+        <div className="relative z-20 mx-auto w-full min-h-0 max-w-6xl overflow-x-hidden rounded-xl border border-white/12 bg-r1-bg-deep/40 p-3 backdrop-blur-sm sm:p-4 md:p-5 xl:max-w-7xl">
           <PipelineSchematic resolvedPersona={persona} />
         </div>
       </div>
