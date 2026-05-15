@@ -1,4 +1,5 @@
 import type { PerRunModelOverrides } from '../runtimeModelStore';
+import type { PlanPayload } from '../planning/planTypes';
 import type { ResearchObjective } from './reasoningModelPolicy';
 
 export interface CreditChargeContext {
@@ -23,6 +24,10 @@ export interface ResearchJobData {
   /** Preferred export citation style (mla, apa, …) persisted on the run row. */
   citationStyle?: string;
   creditChargeContext?: CreditChargeContext;
+  /** When true, Wave 5.1 plan gate (Stage 0.5) is skipped — set after user confirms. */
+  skipPlanConfirmationGate?: boolean;
+  /** Confirmed gate plan (merged with canonical profile on resume). Wave 5.2. */
+  confirmedPlanPayload?: PlanPayload;
 }
 
 export interface ResearchProgress {
@@ -40,6 +45,12 @@ export interface ResearchProgress {
   eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
   retryable?: boolean;
   failureMeta?: Record<string, unknown>;
+  /** Wave 5.1 plan gate — echoed on progress / sockets when a draft plan is ready. */
+  planId?: string;
+  intent?: string;
+  confidence?: number;
+  /** Wave 5.2 — active orchestration profile label for live UI. */
+  profileDisplayName?: string;
 }
 
 export interface RunSummaryPayload {
@@ -58,3 +69,27 @@ export interface RunSummaryPayload {
 }
 
 export type ProgressCallback = (update: ResearchProgress) => void;
+
+/** Successful pipeline completion (report created). */
+export interface ResearchJobCompletedResult {
+  runId: string;
+  reportId: string;
+  summary?: RunSummaryPayload;
+}
+
+/** Wave 5.1: run parked after Stage 0.5 until the user confirms the plan. */
+export interface ResearchJobParkedAtPlanGateResult {
+  outcome: 'parked_at_plan_gate';
+  runId: string;
+  planId: string;
+  planPayload: PlanPayload;
+  refinementRounds: number;
+}
+
+export type ResearchJobResult = ResearchJobCompletedResult | ResearchJobParkedAtPlanGateResult;
+
+export function isResearchJobParkedAtPlanGate(
+  r: ResearchJobResult
+): r is ResearchJobParkedAtPlanGateResult {
+  return 'outcome' in r && r.outcome === 'parked_at_plan_gate';
+}

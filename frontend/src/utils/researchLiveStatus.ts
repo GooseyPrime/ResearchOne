@@ -18,6 +18,7 @@ export type LiveStatus =
   | 'queued'
   | 'running'
   | 'retrying'
+  | 'plan_pending_confirmation'
   | 'failed_retryable'
   | 'aborted'
   | 'cancelled'
@@ -64,6 +65,11 @@ export interface TransientFailureContext {
   terminal?: boolean;
   retryable?: boolean;
   failureMeta?: Record<string, unknown> | CanonicalFailureMeta;
+  /**
+   * `research:plan_ready_for_confirmation` can arrive before `GET /research/:id`
+   * shows `plan_pending_confirmation`. Treat as parked at the gate until the row catches up.
+   */
+  planGateAwaiting?: boolean;
 }
 
 export const LIVE_STATUS_COPY: Record<
@@ -75,6 +81,11 @@ export const LIVE_STATUS_COPY: Record<
     tone: 'idle',
   },
   running: { label: 'Running — pipeline is active.', tone: 'info' },
+  plan_pending_confirmation: {
+    label:
+      'Plan review — a draft research plan is ready. Confirm it to start retrieval and reasoning, refine it in natural language, or cancel.',
+    tone: 'warn',
+  },
   retrying: { label: 'Retrying after a previous failure.', tone: 'info' },
   failed_retryable: {
     label:
@@ -128,6 +139,13 @@ export function deriveRunState(
   if (runStatus === 'completed') return 'completed';
   if (runStatus === 'cancelled') return 'cancelled';
 
+  const progressStage = `${run?.progress_stage ?? ''}`.trim().toLowerCase();
+  const parkedByProgress =
+    (runStatus === 'running' || runStatus === 'queued') && progressStage === 'plan_pending_confirmation';
+  if (runStatus === 'plan_pending_confirmation' || transient?.planGateAwaiting === true || parkedByProgress) {
+    return 'plan_pending_confirmation';
+  }
+
   // A failure event from the websocket might arrive before the runs query
   // catches up. Recognize a "live" failure signal independent of
   // run.status and route it through the same retryable/aborted branches
@@ -174,6 +192,7 @@ export function badgeForState(state: LiveStatus): {
   if (state === 'failed_retryable') return { text: 'Retryable', variant: 'retryable' };
   if (state === 'aborted') return { text: 'Aborted', variant: 'terminal' };
   if (state === 'retrying') return { text: 'Resumed', variant: 'resumed' };
+  if (state === 'plan_pending_confirmation') return { text: 'Plan review', variant: 'active' };
   return null;
 }
 
@@ -185,8 +204,19 @@ export function badgeForState(state: LiveStatus): {
 export function classifyLiveStatus(
   runStatus: string | undefined,
   failure: TransientFailureContext | null,
-  retryContext?: { retryAttempts?: number | null; progressMessage?: string | null; progressStage?: string | null }
+  retryContext?: {
+    retryAttempts?: number | null;
+    progressMessage?: string | null;
+    progressStage?: string | null;
+    planGateAwaiting?: boolean;
+  }
 ): LiveStatus {
+  const planGateAwaiting = retryContext?.planGateAwaiting === true && failure == null;
+  const transient: TransientFailureContext | undefined = failure
+    ? { ...failure }
+    : planGateAwaiting
+      ? { planGateAwaiting: true }
+      : undefined;
   return deriveRunState(
     {
       status: runStatus,
@@ -195,7 +225,7 @@ export function classifyLiveStatus(
       progress_message: retryContext?.progressMessage ?? null,
       progress_stage: retryContext?.progressStage ?? null,
     },
-    failure ?? undefined
+    transient
   );
 }
 

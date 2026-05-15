@@ -1,12 +1,9 @@
 import clsx from 'clsx';
-
-const INTENT_LABELS: Record<string, string> = {
-  legacy: 'Legacy',
-};
+import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
 
 export default function IntentBadge({ intent }: { intent: string | null | undefined }) {
   const key = intent?.trim() || 'legacy';
-  const label = INTENT_LABELS[key] ?? key.replace(/_/g, ' ');
+  const label = INTENT_DISPLAY_LABELS[key] ?? key.replace(/_/g, ' ');
   return (
     <span
       className={clsx(

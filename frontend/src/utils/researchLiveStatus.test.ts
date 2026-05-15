@@ -58,6 +58,19 @@ describe('classifyLiveStatus', () => {
     expect(classifyLiveStatus('cancelled', null)).toBe('cancelled');
   });
 
+  it('plan_pending_confirmation passes through', () => {
+    expect(classifyLiveStatus('plan_pending_confirmation', null)).toBe('plan_pending_confirmation');
+  });
+
+  it('planGateAwaiting routes to plan_pending_confirmation while row still says running', () => {
+    expect(
+      classifyLiveStatus('running', null, {
+        planGateAwaiting: true,
+        progressStage: 'planning',
+      })
+    ).toBe('plan_pending_confirmation');
+  });
+
   it('every LiveStatus variant has copy', () => {
     for (const k of Object.keys(LIVE_STATUS_COPY)) {
       expect(LIVE_STATUS_COPY[k as keyof typeof LIVE_STATUS_COPY].label).toBeTruthy();
@@ -177,6 +190,25 @@ describe('deriveRunState — single source of truth', () => {
     expect(deriveRunState({ status: 'completed' })).toBe('completed');
     expect(deriveRunState({ status: 'cancelled' })).toBe('cancelled');
   });
+
+  it('plan_pending_confirmation from row status', () => {
+    expect(deriveRunState({ status: 'plan_pending_confirmation' })).toBe('plan_pending_confirmation');
+  });
+
+  it('plan_pending_confirmation from progress_stage before row status flips', () => {
+    expect(
+      deriveRunState({
+        status: 'running',
+        progress_stage: 'plan_pending_confirmation',
+      })
+    ).toBe('plan_pending_confirmation');
+  });
+
+  it('transient planGateAwaiting before poll catches plan_pending_confirmation', () => {
+    expect(deriveRunState({ status: 'running', progress_stage: 'planning' }, { planGateAwaiting: true })).toBe(
+      'plan_pending_confirmation'
+    );
+  });
 });
 
 describe('isResumeAvailable / failureCardHeadline / badgeForState', () => {
@@ -185,6 +217,7 @@ describe('isResumeAvailable / failureCardHeadline / badgeForState', () => {
     expect(isResumeAvailable('aborted')).toBe(false);
     expect(isResumeAvailable('running')).toBe(false);
     expect(isResumeAvailable('queued')).toBe(false);
+    expect(isResumeAvailable('plan_pending_confirmation')).toBe(false);
     expect(isResumeAvailable('completed')).toBe(false);
   });
 
@@ -193,6 +226,7 @@ describe('isResumeAvailable / failureCardHeadline / badgeForState', () => {
     expect(failureCardHeadline('failed_retryable')).toMatch(/recoverable/i);
     expect(failureCardHeadline('running')).toBeNull();
     expect(failureCardHeadline('queued')).toBeNull();
+    expect(failureCardHeadline('plan_pending_confirmation')).toBeNull();
     expect(failureCardHeadline('completed')).toBeNull();
   });
 
@@ -200,6 +234,7 @@ describe('isResumeAvailable / failureCardHeadline / badgeForState', () => {
     expect(badgeForState('aborted')?.variant).toBe('terminal');
     expect(badgeForState('failed_retryable')?.variant).toBe('retryable');
     expect(badgeForState('retrying')?.variant).toBe('resumed');
+    expect(badgeForState('plan_pending_confirmation')?.text).toMatch(/plan review/i);
     expect(badgeForState('running')).toBeNull();
   });
 });

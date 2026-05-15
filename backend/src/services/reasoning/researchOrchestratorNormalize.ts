@@ -1,3 +1,14 @@
+import type { PerRunModelOverrides } from '../runtimeModelStore';
+
+/** Normalize client-supplied per-run model overrides before persisting or enqueueing. */
+export function normalizeRunOverrides(overrides: PerRunModelOverrides | undefined): PerRunModelOverrides {
+  if (!overrides || typeof overrides !== 'object') return { overrides: {} };
+  return {
+    overrides: overrides.overrides ?? {},
+    embedding: typeof overrides.embedding === 'string' ? overrides.embedding : undefined,
+  };
+}
+
 /** Normalize planner-produced retrieval_queries into a non-empty string list. */
 export function normalizeRetrievalQueries(raw: unknown, fallback: string): string[] {
   const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw];

@@ -1,0 +1,26 @@
+---
+description: Plan confirmation gate (Wave 5.1 Rule 33)
+alwaysApply: true
+---
+
+# Rule 33 — Plan confirmation gate
+
+## Why this rule exists
+
+Wave 5.1 parks V2 runs in `plan_pending_confirmation` after intent classification and plan generation. Users confirm, refine, or cancel before retrieval and reasoning consume full pipeline cost. This state introduces new writers (plan rows, `resume_job_payload`, BullMQ resume jobs) and new readers (Research UI, `/api/runs/:runId/plan`, sockets). Without discipline, plan rows drift from `v_dossier`, or the orchestrator mutates plans ad hoc, producing contradictory UI and stuck runs.
+
+## Rule
+
+1. **Canonical plan writes** — Mutations to `research_plans`, `plan_revisions`, and gate transitions on `research_runs` go through `backend/src/services/planning/planWriteService.ts` (and the `/api/runs/:runId/plan/*` routes). The orchestrator **parks** via these helpers; it does not patch plan rows ad hoc from random catch blocks.
+2. **Canonical plan reads for dossier-shaped data** — Use `dossierReadService` / `v_dossier` (Rule 32). `GET /api/runs/:runId/plan` is a thin read wrapper over that path.
+3. **Parked state = no pipeline compute** — While `research_runs.status = plan_pending_confirmation`, workers must not continue Stage 1+ logic except via `resumeAfterPlanConfirmation` after confirm. Initial research jobs return a parked result; continuation uses `research:resume_after_plan` BullMQ jobs.
+4. **Sockets vs REST** — Emit `research:plan_ready_for_confirmation`, `research:plan_refined`, `research:plan_confirmed`, `research:plan_cancelled` on the same transitions as the DB writes. The frontend `deriveRunState` / `classifyLiveStatus` path must tolerate the race where the socket arrives before the polled run row updates (`planGateAwaiting` + `progress_stage` mirror).
+5. **Rule 20 fence** — Intent classification, plan generation, and refinement use `backend/src/services/planning/prompts.ts` and `PLANNING_MODEL_ID` — **not** `backend/src/constants/prompts.ts` preamble or `RED_TEAM_V2_SYSTEM_PREFIX`.
+6. **Deploy skew (Rule 13)** — Gate code that touches new enum values, columns, or views must catch Postgres `42P01` / `42703` / `22P02` and degrade safely until migrations apply.
+
+## Pre-commit check
+
+- [ ] Plan mutations: grep for `UPDATE research_plans` / `plan_revisions` outside `planWriteService` and the gate routes — there should be no new stragglers.
+- [ ] Did `deriveRunState` gain `plan_pending_confirmation` whenever the backend `CanonicalRunStatus` did (Rule 17)?
+- [ ] Cancel path: wallet hold release + `research:plan_cancelled` parity with `planWriteService.cancelRunAtPlanGate`.
+- [ ] Confirm / queue ordering documented if you change write-then-queue vs queue-then-write for resume jobs.

@@ -35,6 +35,7 @@
 export type CanonicalRunStatus =
   | 'queued'
   | 'running'
+  | 'plan_pending_confirmation'
   | 'completed'
   | 'failed'
   | 'aborted'

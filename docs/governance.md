@@ -10,11 +10,17 @@ This document records **where** the binding Cursor rules for the marketing shell
 | Animated / schematic pipeline hero (reduced motion, canonical stages, performance) | `.cursor/rules/27-animated-pipeline-hero.mdc` |
 | Evidence vs. source vocabulary (marketing + public copy) | `.cursor/rules/31-evidence-vs-source-vocabulary.mdc` |
 | Dossier canonical reads (`v_dossier` / Rule 32) | `.cursor/rules/32-dossier-canonical-read-path.mdc` |
+| Plan confirmation gate (Wave 5.1 / Rule 33) | `.cursor/rules/33-plan-confirmation-gate.mdc` |
 | Master pre-commit checklist | `.cursor/rules/00-pre-commit-review.mdc` |
 
 The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above. This file only adds **override history** so reviewers can see that a given PR operated under an explicit, time-bounded exception.
 
 ## Override history
+
+### 2026-05-14 — Wave 5.1 + Rule 33 (plan confirmation gate)
+
+- **Scope:** Migration `035_plan_intent_taxonomy_and_gate.sql`, planning module under `backend/src/services/planning/`, orchestrator Stage 0.5 + `resumeAfterPlanConfirmation`, BullMQ `research:resume_after_plan`, `/api/runs/:runId/plan/*` routes, socket events (`research:plan_*`), `PlanConfirmationPanel` on `ResearchPageV2`, `account_preferences` DDL (schema only in 5.1), **Rule 33** (always-apply).
+- **Fence:** Plan LLM prompts remain in `planning/prompts.ts`; **Rule 20** immutable preambles in `constants/prompts.ts` are not repurposed for planning copy.
 
 ### 2026-05-14 — Wave 5.0 + Rule 32 (dossier read path)
 
