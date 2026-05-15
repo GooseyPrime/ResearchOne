@@ -244,6 +244,31 @@ router.post(
       const runId = uuidv4();
       const title = researchQuery.slice(0, 200);
 
+      const orgIdClerk =
+        typeof req.auth?.orgId === 'string' && req.auth.orgId.trim() ? req.auth.orgId.trim() : null;
+      const profileIdRaw = (() => {
+        if (isMultipart) {
+          const raw = body.savedOrchestrationProfileId as string | undefined;
+          return typeof raw === 'string' ? raw.trim() : '';
+        }
+        const j = req.body as { savedOrchestrationProfileId?: unknown };
+        return typeof j.savedOrchestrationProfileId === 'string' ? j.savedOrchestrationProfileId.trim() : '';
+      })();
+
+      let savedOrchestrationProfileSeed: ResearchJobData['savedOrchestrationProfileSeed'];
+      if (userId && profileIdRaw) {
+        const row = await getSavedProfileVisibleToUser(userId, orgIdClerk, profileIdRaw);
+        if (!row) {
+          res.status(400).json({ error: 'Invalid or unavailable saved orchestration profile' });
+          return;
+        }
+        savedOrchestrationProfileSeed = {
+          baseIntent: row.baseIntent,
+          customizations: row.customizations,
+          profileName: row.name,
+        };
+      }
+
       const fileItems = files.map((f) => ({
         originalname: f.originalname,
         mimetype: f.mimetype,
@@ -347,30 +372,6 @@ router.post(
 
       // Credit enforcement: compute cost, place wallet hold if needed
       let creditChargeContext: CreditChargeContext | undefined;
-      let savedOrchestrationProfileSeed: ResearchJobData['savedOrchestrationProfileSeed'];
-      const orgIdClerk =
-        typeof req.auth?.orgId === 'string' && req.auth.orgId.trim() ? req.auth.orgId.trim() : null;
-      const profileIdRaw = (() => {
-        if (isMultipart) {
-          const raw = body.savedOrchestrationProfileId as string | undefined;
-          return typeof raw === 'string' ? raw.trim() : '';
-        }
-        const j = req.body as { savedOrchestrationProfileId?: unknown };
-        return typeof j.savedOrchestrationProfileId === 'string' ? j.savedOrchestrationProfileId.trim() : '';
-      })();
-      if (userId && profileIdRaw) {
-        const row = await getSavedProfileVisibleToUser(userId, orgIdClerk, profileIdRaw);
-        if (!row) {
-          res.status(400).json({ error: 'Invalid or unavailable saved orchestration profile' });
-          return;
-        }
-        savedOrchestrationProfileSeed = {
-          baseIntent: row.baseIntent,
-          customizations: row.customizations,
-          profileName: row.name,
-        };
-      }
-
       if (userId) {
         try {
           const userTier = await getUserTier(userId);

@@ -1,7 +1,7 @@
 -- Migration 039: Wave 5.4 — saved orchestration profiles (user/org scoped, RLS).
 
 CREATE TABLE IF NOT EXISTS saved_orchestration_profiles (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   org_id          TEXT NULL REFERENCES orgs(id) ON DELETE CASCADE,
   name            TEXT NOT NULL,

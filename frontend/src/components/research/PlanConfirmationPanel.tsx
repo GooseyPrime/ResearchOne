@@ -72,6 +72,14 @@ export default function PlanConfirmationPanel({
   const [countdownPaused, setCountdownPaused] = useState(false);
   const pauseRef = useRef(false);
   const firedRef = useRef(false);
+  const countdownCbRef = useRef({
+    onBusy,
+    onAfterConfirm,
+    onInvalidatePlanPrefs,
+    onNotify,
+    runId: snapshot.runId,
+    planId: localPlanId,
+  });
 
   useEffect(() => {
     pauseRef.current = countdownPaused;
@@ -92,6 +100,15 @@ export default function PlanConfirmationPanel({
   const autoConfirmActive =
     planPrefs != null && shouldStartPlanAutoConfirmCountdown(planPrefs, localPayload, rounds);
 
+  countdownCbRef.current = {
+    onBusy,
+    onAfterConfirm,
+    onInvalidatePlanPrefs,
+    onNotify,
+    runId: snapshot.runId,
+    planId: localPlanId,
+  };
+
   useEffect(() => {
     pauseRef.current = false;
     setCountdownPaused(false);
@@ -111,17 +128,18 @@ export default function PlanConfirmationPanel({
         if (s <= 1) {
           if (!firedRef.current) {
             firedRef.current = true;
+            const c = countdownCbRef.current;
             void (async () => {
-              onBusy(true);
+              c.onBusy(true);
               try {
-                await confirmRunPlanAtGate(snapshot.runId, localPlanId);
-                onInvalidatePlanPrefs?.();
-                onAfterConfirm();
-                onNotify('success', 'Plan auto-confirmed — resuming the research pipeline.');
+                await confirmRunPlanAtGate(c.runId, c.planId);
+                c.onInvalidatePlanPrefs?.();
+                c.onAfterConfirm();
+                c.onNotify('success', 'Plan auto-confirmed — resuming the research pipeline.');
               } catch (e) {
-                onNotify('error', extractApiError(e));
+                c.onNotify('error', extractApiError(e));
               } finally {
-                onBusy(false);
+                c.onBusy(false);
               }
             })();
           }
@@ -131,7 +149,7 @@ export default function PlanConfirmationPanel({
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [autoConfirmActive, busy, localPlanId, onAfterConfirm, onBusy, onInvalidatePlanPrefs, onNotify, snapshot.runId]);
+  }, [autoConfirmActive, busy, snapshot.planId, localPlanId]);
 
   const markInteraction = () => {
     if (autoConfirmActive && secLeft != null && secLeft > 0) {

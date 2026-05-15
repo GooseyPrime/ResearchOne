@@ -282,9 +282,9 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
     }
 
     try {
-      if (pendingMeta && pendingMeta.refinement_rounds === 0) {
+      if (confirmed && pendingMeta && pendingMeta.refinement_rounds === 0) {
         await bumpPlanConfirmationStreakIfCleanConfirm(ctx.userId);
-      } else if (pendingMeta) {
+      } else if (confirmed && pendingMeta) {
         await resetPlanConfirmationStreak(ctx.userId);
       }
     } catch (streakErr) {

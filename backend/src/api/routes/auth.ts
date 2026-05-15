@@ -11,6 +11,7 @@ import {
   createSavedProfile,
   deleteSavedProfile,
   listSavedProfiles,
+  isSavedProfileUuid,
 } from '../../services/planning/savedOrchestrationProfileService';
 
 const router = Router();
@@ -71,12 +72,23 @@ router.patch('/plan-preferences', async (req, res, next) => {
     if (typeof body.autoConfirmThreshold === 'number' && Number.isFinite(body.autoConfirmThreshold)) {
       patch.autoConfirmThreshold = body.autoConfirmThreshold;
     }
-    const prefs = await upsertAccountPlanPreferences(userId, patch);
+    let prefs;
+    try {
+      prefs = await upsertAccountPlanPreferences(userId, patch);
+    } catch (err) {
+      const code = (err as { statusCode?: number })?.statusCode;
+      if (code === 400) {
+        res.status(400).json({ error: (err as Error).message });
+        return;
+      }
+      throw err;
+    }
     const preview = await estimateAutoConfirmHitRate(userId, prefs.autoConfirmThreshold);
     res.json({
       autoConfirmEnabled: prefs.autoConfirmEnabled,
       autoConfirmThreshold: prefs.autoConfirmThreshold,
       confirmedStreak: prefs.confirmedStreak,
+      previewThreshold: prefs.autoConfirmThreshold,
       previewSampleSize: preview.sampleSize,
       previewHitRate: preview.hitRate,
     });
@@ -115,7 +127,6 @@ router.post('/saved-orchestration-profiles', async (req, res, next) => {
       baseIntent?: unknown;
       customizations?: unknown;
       isShared?: unknown;
-      orgId?: unknown;
     };
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) {
@@ -127,7 +138,14 @@ router.post('/saved-orchestration-profiles', async (req, res, next) => {
       res.status(400).json({ error: 'baseIntent is required' });
       return;
     }
-    const orgId = typeof body.orgId === 'string' && body.orgId.trim() ? body.orgId.trim() : null;
+    const authOrgId =
+      typeof req.auth?.orgId === 'string' && req.auth.orgId.trim() ? req.auth.orgId.trim() : null;
+    const wantShared = body.isShared === true;
+    if (wantShared && !authOrgId) {
+      res.status(400).json({ error: 'Active organization context is required for org-shared profiles' });
+      return;
+    }
+    const orgId = wantShared ? authOrgId : null;
     const description = typeof body.description === 'string' ? body.description : null;
     try {
       const row = await createSavedProfile({
@@ -137,7 +155,7 @@ router.post('/saved-orchestration-profiles', async (req, res, next) => {
         description,
         baseIntent,
         customizations: body.customizations ?? {},
-        isShared: body.isShared === true,
+        isShared: wantShared,
       });
       res.status(201).json(row);
     } catch (err) {
@@ -167,6 +185,10 @@ router.delete('/saved-orchestration-profiles/:id', async (req, res, next) => {
     }
     const id = String(req.params.id ?? '').trim();
     if (!id) {
+      res.status(400).json({ error: 'Invalid profile id' });
+      return;
+    }
+    if (!isSavedProfileUuid(id)) {
       res.status(400).json({ error: 'Invalid profile id' });
       return;
     }

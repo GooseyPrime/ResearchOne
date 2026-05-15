@@ -686,6 +686,7 @@ export const createSavedOrchestrationProfile = (body: {
   baseIntent: string;
   customizations?: unknown;
   isShared?: boolean;
+  /** Ignored by the server — org context comes from the authenticated Clerk session. */
   orgId?: string | null;
 }) => api.post<SavedOrchestrationProfile>('/auth/saved-orchestration-profiles', body).then((r) => r.data);
 

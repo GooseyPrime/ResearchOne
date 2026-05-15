@@ -5,6 +5,11 @@ import { query, queryOne } from '../../db/pool';
 import type { TierName } from '../../config/tierRules';
 import { getUserTier } from '../tier/tierService';
 
+/** RFC-4122 UUID v1–v5 string (avoids Postgres `22P02` on bad client input). */
+export function isSavedProfileUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim());
+}
+
 export interface SavedOrchestrationProfileRow {
   id: string;
   userId: string;
@@ -143,7 +148,7 @@ export async function getSavedProfileVisibleToUser(
   const { tier } = await getUserTier(userId);
   if (!tierAllowsSavedProfiles(tier)) return null;
   const id = profileId.trim();
-  if (!id) return null;
+  if (!id || !isSavedProfileUuid(id)) return null;
   try {
     const row = await queryOne<{
       id: string;
@@ -188,6 +193,7 @@ export async function getSavedProfileVisibleToUser(
 export async function deleteSavedProfile(userId: string, id: string): Promise<boolean> {
   const { tier } = await getUserTier(userId);
   if (!tierAllowsSavedProfiles(tier)) return false;
+  if (!isSavedProfileUuid(id)) return false;
   const r = await queryOne<{ id: string }>(
     `DELETE FROM saved_orchestration_profiles WHERE id = $1::uuid AND user_id = $2 RETURNING id`,
     [id, userId]

@@ -3,6 +3,9 @@
  */
 import { query, queryOne } from '../../db/pool';
 
+/** Matches Wave 5.4 UI: auto-confirm cannot be enabled until this many clean confirms. */
+export const PLAN_AUTO_CONFIRM_MIN_STREAK_TO_ENABLE = 5;
+
 export interface AccountPlanPreferences {
   autoConfirmEnabled: boolean;
   autoConfirmThreshold: number;
@@ -51,6 +54,15 @@ export async function upsertAccountPlanPreferences(
     typeof patch.autoConfirmThreshold === 'number' && Number.isFinite(patch.autoConfirmThreshold)
       ? Math.min(0.95, Math.max(0.7, patch.autoConfirmThreshold))
       : cur.autoConfirmThreshold;
+
+  if (enabled && cur.confirmedStreak < PLAN_AUTO_CONFIRM_MIN_STREAK_TO_ENABLE) {
+    throw Object.assign(
+      new Error(
+        `Auto-confirm cannot be enabled until ${PLAN_AUTO_CONFIRM_MIN_STREAK_TO_ENABLE} consecutive clean plan confirmations.`,
+      ),
+      { statusCode: 400 }
+    );
+  }
 
   await query(
     `INSERT INTO account_preferences (user_id, auto_confirm_enabled, auto_confirm_threshold, confirmed_streak)

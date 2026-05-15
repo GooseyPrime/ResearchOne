@@ -4,6 +4,7 @@ import { ClipboardCheck, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { extractApiError, getPlanPreferences } from '../../utils/api';
 import { usePatchPlanPreferencesMutation, usePlanPreferencesQuery } from '../../hooks/usePlanPreferences';
+import { PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT } from '../../utils/planAutoConfirm';
 
 export default function PlanConfirmationSettingsCard() {
   const { data, isLoading, isError, error, refetch } = usePlanPreferencesQuery();
@@ -67,8 +68,8 @@ export default function PlanConfirmationSettingsCard() {
           <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
             Current streak (clean confirms):{' '}
             <span className="text-slate-100 font-mono">{data.confirmedStreak}</span>
-            {data.confirmedStreak < 5 ? (
-              <span className="text-slate-500"> — enable auto-confirm after 5.</span>
+            {data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT ? (
+              <span className="text-slate-500"> — enable auto-confirm after {PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT}.</span>
             ) : (
               <span className="text-emerald-400/90"> — eligible to enable auto-confirm.</span>
             )}
@@ -79,7 +80,7 @@ export default function PlanConfirmationSettingsCard() {
               type="checkbox"
               className="rounded border-slate-600 bg-slate-900"
               checked={data.autoConfirmEnabled}
-              disabled={patch.isPending || data.confirmedStreak < 5}
+              disabled={patch.isPending || data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT}
               onChange={(e) => {
                 setActionError(null);
                 patch.mutate(
@@ -93,24 +94,26 @@ export default function PlanConfirmationSettingsCard() {
                 );
               }}
             />
-            <span className={clsx('text-sm', data.confirmedStreak < 5 ? 'text-slate-500' : 'text-slate-200')}>
+            <span className={clsx('text-sm', data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT ? 'text-slate-500' : 'text-slate-200')}>
               Auto-confirm high-confidence plans
             </span>
           </label>
-          {data.confirmedStreak < 5 ? (
+          {data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT ? (
             <p className="text-[11px] text-slate-500">
               Confirm plans from the{' '}
               <Link to="/app/research-v2" className="text-accent hover:underline">
                 Deep Research
               </Link>{' '}
-              page without using &quot;Apply refinement&quot; five times in a row to unlock this toggle.
+              page without using &quot;Apply refinement&quot; {PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT} times in a row to unlock this toggle.
             </p>
           ) : null}
 
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-slate-400">
-              <span>Confidence threshold</span>
-              <span className="font-mono text-slate-200">{(slider * 100).toFixed(0)}%</span>
+              <span id="plan-auto-confirm-threshold-label">Confidence threshold</span>
+              <span className="font-mono text-slate-200" aria-hidden>
+                {(slider * 100).toFixed(0)}%
+              </span>
             </div>
             <input
               type="range"
@@ -121,6 +124,7 @@ export default function PlanConfirmationSettingsCard() {
               disabled={patch.isPending}
               onChange={(e) => setSlider(Number(e.target.value))}
               className="w-full accent-amber-500"
+              aria-labelledby="plan-auto-confirm-threshold-label"
               aria-valuemin={0.7}
               aria-valuemax={0.95}
               aria-valuenow={slider}

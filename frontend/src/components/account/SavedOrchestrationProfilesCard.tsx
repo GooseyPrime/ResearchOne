@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
@@ -12,6 +13,7 @@ export const SAVED_ORCHESTRATION_PROFILES_QUERY_KEY = ['saved-orchestration-prof
 
 export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: { tierAllowsProfiles: boolean }) {
   const qc = useQueryClient();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const q = useQuery({
     queryKey: SAVED_ORCHESTRATION_PROFILES_QUERY_KEY,
     queryFn: () => listSavedOrchestrationProfiles().then((r) => r.profiles),
@@ -20,7 +22,9 @@ export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: {
 
   const del = useMutation({
     mutationFn: (id: string) => deleteSavedOrchestrationProfile(id),
+    onMutate: () => setDeleteError(null),
     onSuccess: () => void qc.invalidateQueries({ queryKey: SAVED_ORCHESTRATION_PROFILES_QUERY_KEY }),
+    onError: (err) => setDeleteError(extractApiError(err)),
   });
 
   if (!tierAllowsProfiles) {
@@ -52,6 +56,7 @@ export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: {
 
       {q.isLoading && <p className="text-xs text-slate-500">Loading profiles…</p>}
       {q.isError && <p className="text-xs text-red-300">{extractApiError(q.error)}</p>}
+      {deleteError ? <p className="text-xs text-red-300">{deleteError}</p> : null}
 
       {q.data && q.data.length === 0 && <p className="text-xs text-slate-500">No saved profiles yet.</p>}
 
