@@ -12,6 +12,7 @@ export interface DossierRequest {
 export interface DossierPlan {
   planId: string | null;
   intent: string;
+  orchestrationProfile: string | null;
   planSummary: string | null;
   planPayload: Record<string, unknown>;
   planStatus: string | null;
