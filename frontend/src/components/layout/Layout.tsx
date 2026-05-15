@@ -219,12 +219,12 @@ export default function Layout() {
         <div className="p-5 border-b border-indigo-900/20">
           <Link
             to="/app/research"
-            className="flex w-fit items-center rounded-lg p-1 -m-1 outline-offset-2 hover:bg-surface-200/40 transition-colors focus-visible:outline focus-visible:outline-accent"
-            aria-label="Go to Research"
+            className="flex items-center gap-3 rounded-lg p-1 -m-1 outline-offset-2 hover:bg-surface-200/40 transition-colors focus-visible:outline focus-visible:outline-accent"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-research-teal flex items-center justify-center glow-accent">
               <Cpu size={16} className="text-white" aria-hidden />
             </div>
+            <div className="font-bold text-white text-sm leading-tight">ResearchOne</div>
           </Link>
         </div>
 
@@ -264,7 +264,7 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-12 border-b border-indigo-900/20 flex items-center justify-between px-6 bg-surface-300/50 glass flex-shrink-0">
-          <div className="text-sm text-slate-400">{activeNavItem?.desc ?? 'Workspace'}</div>
+          <div className="text-sm text-slate-400">{activeNavItem?.desc ?? 'ResearchOne'}</div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
             {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}
