@@ -82,6 +82,14 @@ ship on `main`.
   `checkTierAccess` when `engineVersion === 'v2'` so `monthlyDeepReportCap`
   is enforced (Copilot PR #124).
 
+## Recurring review themes (Codex / Copilot, PR #127 — Dossier / Wave 5 reads)
+
+- **`v_dossier` + RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) when it selects from RLS-protected tables so policies run as the querying role, not the migration owner.
+- **Refreshing `v_dossier`:** when extending the dossier contract, preserve the **single-plan** `LATERAL` join from migration 035 (run status gates which plan statuses qualify; prefer `confirmed` over `legacy`); a plain `LEFT JOIN research_plans … IN ('confirmed','legacy')` can duplicate rows per run.
+- **Dossier read/list deploy skew:** catch Postgres `42P01` / `42703` in `dossierReadService` and return null / empty list (debug-log), not 500 — Rule 32 + Rule 13.
+- **List query dates:** validate `dateFrom` / `dateTo` as parseable timestamps in Zod before SQL `::timestamptz` casts so bad query strings return 400.
+- **Nullable rollup semantics:** do not write sentinel `0` into nullable stats columns when the source row is missing (e.g. `refinement_rounds` when no `research_plans` row); use SQL `NULL` so `COALESCE` preserves existing values.
+
 ## Recurring review themes (Codex / Copilot, PR #112)
 
 - **Child state vs DOM-only reads:** When a parent updates `data-*` or

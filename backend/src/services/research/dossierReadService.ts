@@ -2,6 +2,7 @@
  * Canonical dossier reads — SELECT from `v_dossier` only (Rule 32).
  */
 import { query, queryOne } from '../../db/pool';
+import { logger } from '../../utils/logger';
 import type {
   Dossier,
   DossierAuthContext,
@@ -16,6 +17,12 @@ import type {
 
 function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+/** Missing view/table or column — deploy ahead of migration (Rule 13 / Rule 32). */
+function isDossierDeploySkewPgError(err: unknown): boolean {
+  const code = (err as { code?: string })?.code;
+  return code === '42P01' || code === '42703';
 }
 
 function parseTierSummary(raw: unknown): Record<string, unknown> | null {
@@ -45,6 +52,7 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
   const plan: DossierPlan = {
     planId: row.plan_id != null ? String(row.plan_id) : null,
     intent: String(row.plan_intent ?? 'legacy'),
+    orchestrationProfile: row.plan_orchestration_profile != null ? String(row.plan_orchestration_profile) : null,
     planSummary: row.plan_summary != null ? String(row.plan_summary) : null,
     planPayload:
       row.plan_payload && typeof row.plan_payload === 'object'
@@ -94,12 +102,39 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
 
 export async function getDossierById(dossierId: string, _ctx: DossierAuthContext): Promise<Dossier | null> {
   if (!isUuid(dossierId)) return null;
-  const row = await queryOne<Record<string, unknown>>(
-    `SELECT * FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
-    [dossierId],
-  );
-  if (!row) return null;
-  return mapRowToDossier(row);
+  try {
+    const row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
+      [dossierId],
+    );
+    if (!row) return null;
+    return mapRowToDossier(row);
+  } catch (e) {
+    if (isDossierDeploySkewPgError(e)) {
+      logger.debug('dossier read: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
+      return null;
+    }
+    throw e;
+  }
+}
+
+/** Canonical dossier read keyed by `research_runs.id` (Wave 5.1 plan gate GET). */
+export async function getDossierByRunId(runId: string, _ctx: DossierAuthContext): Promise<Dossier | null> {
+  if (!isUuid(runId)) return null;
+  try {
+    const row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM v_dossier WHERE run_id = $1::uuid LIMIT 1`,
+      [runId],
+    );
+    if (!row) return null;
+    return mapRowToDossier(row);
+  } catch (e) {
+    if (isDossierDeploySkewPgError(e)) {
+      logger.debug('dossier read: v_dossier unavailable (deploy skew)', { runId, err: String(e) });
+      return null;
+    }
+    throw e;
+  }
 }
 
 export async function listDossiers(filters: DossierListFilters, _ctx: DossierAuthContext): Promise<DossierListResult> {
@@ -129,24 +164,34 @@ export async function listDossiers(filters: DossierListFilters, _ctx: DossierAut
   }
 
   const where = conds.join(' AND ');
-  const countRows = await query<{ c: string }>(
-    `SELECT COUNT(*)::text AS c FROM v_dossier WHERE ${where}`,
-    params,
-  );
-  const total = Number(countRows[0]?.c ?? 0);
-
-  params.push(pageSize, offset);
-  const limIdx = p++;
-  const offIdx = p++;
-  const rows = await query<Record<string, unknown>>(
-    `SELECT dossier_id, run_id, run_status, request_query, plan_intent, dossier_created_at,
+  let countRows: { c: string }[];
+  let rows: Record<string, unknown>[];
+  try {
+    countRows = await query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM v_dossier WHERE ${where}`,
+      params,
+    );
+    params.push(pageSize, offset);
+    const limIdx = p++;
+    const offIdx = p++;
+    rows = await query<Record<string, unknown>>(
+      `SELECT dossier_id, run_id, run_status, request_query, plan_intent, dossier_created_at,
             report_id, report_title, sources_cited_count, total_duration_ms
      FROM v_dossier
      WHERE ${where}
      ORDER BY dossier_created_at DESC
      LIMIT $${limIdx} OFFSET $${offIdx}`,
-    params,
-  );
+      params,
+    );
+  } catch (e) {
+    if (isDossierDeploySkewPgError(e)) {
+      logger.debug('dossier list: v_dossier unavailable (deploy skew)', { err: String(e) });
+      return { rows: [], total: 0, page, pageSize };
+    }
+    throw e;
+  }
+
+  const total = Number(countRows[0]?.c ?? 0);
 
   const mapped: DossierListRow[] = rows.map((r) => ({
     dossierId: String(r.dossier_id),

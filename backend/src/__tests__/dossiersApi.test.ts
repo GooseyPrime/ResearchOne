@@ -64,6 +64,12 @@ describe('GET /api/dossiers', () => {
     expect(res.status).toBe(400);
     expect(dossierServiceMocks.listDossiers).not.toHaveBeenCalled();
   });
+
+  it('returns 400 on unparsable dateFrom (avoid SQL cast 500)', async () => {
+    const res = await request(testApp).get('/api/dossiers?dateFrom=not-a-date');
+    expect(res.status).toBe(400);
+    expect(dossierServiceMocks.listDossiers).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/dossiers/:id', () => {
@@ -92,6 +98,7 @@ describe('GET /api/dossiers/:id', () => {
       plan: {
         planId: null,
         intent: 'legacy',
+        orchestrationProfile: null,
         planSummary: null,
         planPayload: {},
         planStatus: 'legacy',

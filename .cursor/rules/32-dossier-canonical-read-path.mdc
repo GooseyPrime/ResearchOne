@@ -15,6 +15,7 @@ Wave 5 introduces a first-class **Dossier** surface (`research_runs` + plan + la
 2. **Do not** build dossier list/detail payloads in route handlers by joining underlying tables.
 3. **Writers** (`research_plans`, `plan_revisions`, `dossier_statistics` mutations) live in dedicated services or routes — not in the read service. Wave 5.1+ plan mutations use a separate canonical writer (Rule 33).
 4. **Deploy skew:** readers should tolerate missing view/columns per `.cursor/rules/13-deploy-skew-and-schema.mdc` where applicable; prefer graceful 404/empty rather than 500 when the migration has not applied.
+5. **`v_dossier` RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) so row-level security on underlying tables is evaluated as the querying session role, not the view owner (PR #127 Codex).
 
 ## Pre-commit check
 
