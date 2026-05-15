@@ -124,7 +124,7 @@ describe('marketing hardening — structural copy present', () => {
     expect(html).toContain('A report that keeps its receipts.');
     expect(html).toContain('Source-corroboration tiers');
     expect(html).toMatch(
-      /data-testid="(?:pipeline-animated|pipeline-mobile-static|static-pipeline-fallback)"/
+      /data-testid="(?:pipeline-schematic|pipeline-animated|pipeline-mobile-static|static-pipeline-fallback)"/
     );
     expect(html).toContain('data-testid="living-report-timeline"');
     expect(html).toContain('Skeptic agent, by design');

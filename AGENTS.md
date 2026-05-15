@@ -95,7 +95,7 @@ ship on `main`.
 - **Child state vs DOM-only reads:** When a parent updates `data-*` or
   similar only after `useEffect`, children that read the DOM once on
   mount stay stale — pass the resolved value as a React prop when the
-  parent already owns it (e.g. `resolvedPersona` into `AnimatedPipelineHero`).
+  parent already owns it (e.g. `resolvedPersona` into pipeline hero surfaces).
 - **`display:none` is not a perf off-switch:** Heavy animated subtrees
   (Framer Motion beam loops) should not rely on CSS hiding alone — gate
   mounting or `active` from `matchMedia` / layout, without dropping the

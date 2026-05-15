@@ -71,7 +71,7 @@ Marketing prose layer:
 - `frontend/src/components/landing/ComparisonTable.tsx`
 - `frontend/src/components/landing/LivingReportTimeline.tsx`
 - `frontend/src/components/landing/livingReportTimelineData.ts`
-- `frontend/src/components/landing/PipelineSchematic.tsx` — **caption / sr-only prose only**; stage names in `pipelineLayout.ts` are **out of scope** (Rule 27)
+- `frontend/src/components/landing/PipelineSchematic.tsx` — **caption / sr-only prose only**; stage names in `pipelineSchematicData.ts` are **out of scope** (Rule 27)
 - `frontend/src/components/landing/pipelineSchematicData.ts` — **rationale prose only**
 - `frontend/src/components/landing/ModeMatrix.tsx`
 - `frontend/src/components/landing/persona/personaContent.ts`
@@ -92,7 +92,8 @@ Orchestrator telemetry (single line, not inference):
 - `backend/src/services/reasoning/reasoningModelPolicy.ts` and V2 model defaults — Rule 20
 - All backend uses of tier identifier strings as **identifiers** (schemas, agents, citation mapper, tests keyed by identifier, Tailwind `tier-*` / `.badge-*` keyed by identifier) — Rule 28
 - `evidence_aliases` storage and CSL output — Rule 28
-- `frontend/src/components/landing/visual/pipelineLayout.ts` — canonical stage names — Rule 27
+- `frontend/src/components/landing/pipelineSchematicData.ts` — canonical stage names (marquee schematic) — Rule 27
+- `frontend/src/components/landing/visual/pipelineLayout.ts` — WO-W animated layout stage coordinates/labels — Rule 27
 - Research inference, retrieval, ranking — Rule 20
 - SPA / prerender routing contract — Rule 30 (no routing changes for vocabulary)
 

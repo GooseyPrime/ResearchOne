@@ -1,8 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import AnimatedPipelineHero from '../visual/AnimatedPipelineHero';
+import PipelineSchematic from '../PipelineSchematic';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
+
+/**
+ * Layered hero depth — inline `backgroundImage` so gradients always
+ * resolve (Tailwind arbitrary `bg-[radial-gradient(...)]` with commas
+ * is easy to mis-parse / visually lose against a flat `bg-slate-950`).
+ */
+const PERSONA_HERO_DEPTH_LAYERS: CSSProperties = {
+  backgroundImage: [
+    'radial-gradient(ellipse 130% 100% at 50% -18%, rgba(148, 163, 184, 0.45) 0%, rgba(71, 85, 105, 0.24) 40%, transparent 68%)',
+    'radial-gradient(ellipse 115% 75% at 50% 108%, rgba(2, 6, 23, 0.96) 0%, rgba(15, 23, 42, 0.4) 48%, transparent 74%)',
+    'linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 11%, transparent 80%, rgba(2, 6, 23, 0.55) 100%)',
+  ].join(','),
+};
 
 /**
  * Persona-aware hero — wraps the existing Hero layout with a
@@ -67,8 +80,15 @@ export default function PersonaAwareHero({
   const content = useMemo(() => getPersonaContent(persona), [persona]);
 
   return (
-    <section data-persona={persona} className="relative w-full bg-slate-950">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_center,rgba(30,41,59,0.3),transparent_60%)] pointer-events-none" />
+    <section
+      data-persona={persona}
+      className="relative isolate w-full overflow-x-hidden bg-slate-950 text-r1-text"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={PERSONA_HERO_DEPTH_LAYERS}
+      />
       <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6">
         <div className="space-y-6">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">
@@ -106,8 +126,8 @@ export default function PersonaAwareHero({
           )}
         </div>
 
-        <div className="w-full max-w-5xl mx-auto aspect-video relative">
-          <AnimatedPipelineHero resolvedPersona={persona} />
+        <div className="relative z-20 mx-auto w-full min-h-0 max-w-6xl overflow-x-hidden rounded-xl border border-white/12 bg-r1-bg-deep/40 p-3 backdrop-blur-sm sm:p-4 md:p-5 xl:max-w-7xl">
+          <PipelineSchematic resolvedPersona={persona} />
         </div>
       </div>
     </section>

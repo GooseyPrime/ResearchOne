@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { PersonaId } from './persona/personaResolver';
 import {
   PIPELINE_CAPSULE_CENTERS_X,
   PIPELINE_SCHEMATIC_STAGES,
+  PIPELINE_SCHEMATIC_VIEWBOX,
   PIPELINE_SKEPTIC_APEX_Y,
   PIPELINE_SPINE_Y,
   STAGE_COLOR,
   type PipelineStageDef,
 } from './pipelineSchematicData';
 
-const VIEW_W = 1440;
-const VIEW_H = 420;
+const VIEW_W = PIPELINE_SCHEMATIC_VIEWBOX.width;
+const VIEW_H = PIPELINE_SCHEMATIC_VIEWBOX.height;
 
 export const PIPELINE_SCHEMATIC_ARIA_LABEL =
   'ResearchOne ten-stage pipeline from Intake through Living State, with a Skeptic adversarial loop between Synthesis, Skeptic Pass, and Citation Bind';
@@ -28,9 +29,9 @@ function hexPoints(cx: number, cy: number, r: number): string {
 function PipelineSchematicMobile() {
   return (
     <div
-      className="flex max-h-[min(70vh,560px)] snap-y snap-mandatory flex-col gap-3 overflow-y-auto md:hidden"
+      className="flex flex-col gap-3 md:hidden"
       role="list"
-      aria-label="Pipeline stages, vertical scroll"
+      aria-label="Pipeline stages"
     >
       {PIPELINE_SCHEMATIC_STAGES.map((s) => (
         <article
@@ -67,7 +68,25 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
   const [focused, setFocused] = useState<number | null>(null);
   const [inView, setInView] = useState(true);
   const rootRef = useRef<HTMLDivElement>(null);
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeCard = hovered ?? focused;
+
+  const cancelHoverClear = useCallback(() => {
+    if (hoverLeaveTimerRef.current != null) {
+      clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleHoverClear = useCallback(() => {
+    cancelHoverClear();
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      setHovered(null);
+      hoverLeaveTimerRef.current = null;
+    }, 200);
+  }, [cancelHoverClear]);
+
+  useEffect(() => () => cancelHoverClear(), [cancelHoverClear]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return;
@@ -108,31 +127,36 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
 
   const stageCard = (s: PipelineStageDef) => (
     <div
-      key={s.index}
-      className="pointer-events-auto absolute z-30 w-[240px] rounded-lg border border-white/15 bg-r1-bg-deep p-3 text-left text-xs shadow-xl"
-      style={{
-        left: '50%',
-        top: '100%',
-        marginTop: 12,
-        transform: 'translateX(-50%)',
-      }}
+      data-testid="pipeline-stage-detail-card"
+      className="pointer-events-auto z-[80] w-[min(22rem,calc(100vw-2.5rem))] min-w-[17rem] rounded-lg border border-white/20 bg-r1-bg-deep/95 p-3.5 text-left shadow-2xl ring-1 ring-black/30 backdrop-blur-md sm:min-w-[18.5rem] sm:p-4"
     >
       <p className="font-mono text-[10px] uppercase tracking-widest text-r1-accent">Stage {s.index}</p>
-      <p className="mt-1 font-semibold text-r1-text">{s.stageName}</p>
-      <p className="mt-1 text-r1-text-muted">Agent: {s.agent}</p>
-      <p className="mt-1 text-r1-text-muted">In: {s.input}</p>
-      <p className="mt-1 text-r1-text-muted">Out: {s.output}</p>
-      <p className="mt-2 leading-snug text-r1-text">{s.rationale}</p>
+      <p className="mt-1 text-base font-semibold text-r1-text">{s.stageName}</p>
+      <p className="mt-1.5 text-[13px] text-r1-text-muted">Agent: {s.agent}</p>
+      <p className="mt-1 text-[13px] text-r1-text-muted">In: {s.input}</p>
+      <p className="mt-1 text-[13px] text-r1-text-muted">Out: {s.output}</p>
+      <p className="mt-2.5 text-sm leading-relaxed text-r1-text">{s.rationale}</p>
     </div>
   );
 
+  /** Bottom of stage capsule; `clamp` keeps wide cards on-screen near diagram edges. */
+  const cardAnchorStyle = (cx: number): CSSProperties => {
+    const leftPct = (cx / VIEW_W) * 100;
+    const topPct = ((PIPELINE_SPINE_Y + 28) / VIEW_H) * 100;
+    return {
+      left: `clamp(0.75rem, ${leftPct}%, calc(100% - 0.75rem))`,
+      top: `${topPct}%`,
+      transform: 'translate(-50%, 0)',
+    };
+  };
+
   return (
     <div ref={rootRef} className="relative w-full" onKeyDown={onKeyDown}>
-      <div className="hidden md:block">
+      <div className="hidden w-full origin-top pb-1 md:block md:aspect-[1440/420] md:scale-[1.04] md:pb-2">
         <div
           role="group"
           aria-label={PIPELINE_SCHEMATIC_ARIA_LABEL}
-          className="relative w-full overflow-visible"
+          className="relative h-full w-full overflow-visible"
           data-testid="pipeline-schematic"
         >
           <p className="sr-only">
@@ -240,8 +264,11 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
                   tabIndex={0}
                   aria-expanded={open}
                   aria-label={`${s.stageName}, ${s.agent}`}
-                  onMouseEnter={() => setHovered(s.index)}
-                  onMouseLeave={() => setHovered(null)}
+                  onMouseEnter={() => {
+                    cancelHoverClear();
+                    setHovered(s.index);
+                  }}
+                  onMouseLeave={scheduleHoverClear}
                   onFocus={() => setFocused(s.index)}
                   onBlur={(e) => {
                     if (!e.currentTarget.contains(e.relatedTarget as Node)) setFocused(null);
@@ -281,21 +308,27 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
             })}
           </svg>
 
-          {/* HTML overlay for hover/focus cards (pointer positioned per stage) */}
-          <div className="pointer-events-none absolute inset-0">
+          {/* HTML overlay — cards open upward so they are not clipped by the frame below */}
+          <div className="pointer-events-none absolute inset-0 overflow-visible">
             {PIPELINE_SCHEMATIC_STAGES.map((s) => {
               const cx = PIPELINE_CAPSULE_CENTERS_X[s.index - 1];
-              const leftPct = (cx / VIEW_W) * 100;
-              const topPct = (PIPELINE_SPINE_Y / VIEW_H) * 100;
               const open = activeCard === s.index;
               if (!open) return null;
               return (
                 <div
                   key={`card-${s.index}`}
-                  className="pointer-events-none absolute z-20"
-                  style={{ left: `${leftPct}%`, top: `${topPct}%`, transform: 'translate(-50%, 0)' }}
+                  className="pointer-events-none absolute z-[70]"
+                  style={cardAnchorStyle(cx)}
                 >
-                  {stageCard(s)}
+                  <div className="pointer-events-auto relative">
+                    <div
+                      className="absolute bottom-full left-1/2 z-[80] mb-2 -translate-x-1/2"
+                      onMouseEnter={cancelHoverClear}
+                      onMouseLeave={scheduleHoverClear}
+                    >
+                      {stageCard(s)}
+                    </div>
+                  </div>
                 </div>
               );
             })}

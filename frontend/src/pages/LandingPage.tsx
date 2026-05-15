@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import ComparisonTable from '../components/landing/ComparisonTable';
 import SourceProvenancePanel from '../components/landing/SourceProvenancePanel';
@@ -7,7 +7,7 @@ import FeatureCard from '../components/landing/FeatureCard';
 import FinalCTA from '../components/landing/FinalCTA';
 import PersonaAwareHero from '../components/landing/persona/PersonaAwareHero';
 import type { PersonaId } from '../components/landing/persona/personaResolver';
-import LabNotebookCanvas from '../components/landing/visual/LabNotebookCanvas';
+import { MARKETING_SLATE_DEPTH_LAYERS } from '../components/landing/marketingSlateDepth';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
 import LivingReportsSection from '../components/landing/LivingReportsSection';
@@ -66,6 +66,8 @@ const MODES = [
   },
 ];
 
+const landingSlateShellStyle = MARKETING_SLATE_DEPTH_LAYERS as CSSProperties;
+
 export default function LandingPage() {
   const personaBeaconDedupeRef = useRef<{ key: string; at: number } | null>(null);
   const onPersonaResolved = useCallback((persona: PersonaId, path: string) => {
@@ -80,7 +82,13 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <LabNotebookCanvas className="min-h-screen bg-r1-bg text-r1-text">
+    <div className="relative isolate min-h-screen overflow-x-hidden bg-slate-950 text-r1-text">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={landingSlateShellStyle}
+      />
+      <div className="relative z-10 min-h-screen">
       <LandingHeader />
 
       <main id="marketing-main">
@@ -247,6 +255,7 @@ export default function LandingPage() {
       </main>
 
       <LandingFooter />
-    </LabNotebookCanvas>
+      </div>
+    </div>
   );
 }
