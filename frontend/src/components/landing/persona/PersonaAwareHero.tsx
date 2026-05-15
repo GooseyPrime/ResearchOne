@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import PipelineSchematic from '../PipelineSchematic';
-import TrustStrip from '../TrustStrip';
+import AnimatedPipelineHero from '../visual/AnimatedPipelineHero';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
 
@@ -68,53 +67,49 @@ export default function PersonaAwareHero({
   const content = useMemo(() => getPersonaContent(persona), [persona]);
 
   return (
-    <section
-      data-persona={persona}
-      className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6"
-    >
-      <div className="space-y-6">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">
-          {content.eyebrow}
-        </p>
-        <h1
-          className={`font-serif text-4xl leading-tight text-r1-text sm:text-5xl lg:text-6xl ${
-            persona === 'default' ? 'whitespace-nowrap sm:whitespace-normal' : ''
-          }`}
-        >
-          {content.headline}
-        </h1>
-        <p className="max-w-xl text-base text-r1-text-muted sm:text-lg">
-          {content.subhead}
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {content.ctas.map((cta) => (
-            <Link
-              key={cta.to}
-              to={cta.to}
-              className={
-                cta.variant === 'primary'
-                  ? 'rounded-md bg-r1-accent px-5 py-3 font-semibold text-r1-bg hover:bg-r1-accent-deep'
-                  : 'rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent'
-              }
-            >
-              {cta.label}
-            </Link>
-          ))}
-        </div>
-        {content.proofLine && (
-          <p className="max-w-xl text-xs text-r1-text-muted/80 pt-2">
-            {content.proofLine}
+    <section data-persona={persona} className="relative w-full bg-slate-950">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_center,theme(colors.slate.800/30),transparent_60%)] pointer-events-none" />
+      <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6">
+        <div className="space-y-6">
+          <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">
+            {content.eyebrow}
           </p>
-        )}
-      </div>
+          <h1
+            className={`font-serif text-4xl leading-tight text-r1-text sm:text-5xl lg:text-6xl ${
+              persona === 'default' ? 'whitespace-nowrap sm:whitespace-normal' : ''
+            }`}
+          >
+            {content.headline}
+          </h1>
+          <p className="max-w-xl text-base text-r1-text-muted sm:text-lg">
+            {content.subhead}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {content.ctas.map((cta) => (
+              <Link
+                key={cta.to}
+                to={cta.to}
+                className={
+                  cta.variant === 'primary'
+                    ? 'rounded-md bg-r1-accent px-5 py-3 font-semibold text-r1-bg hover:bg-r1-accent-deep'
+                    : 'rounded-md border border-white/20 px-5 py-3 font-semibold text-r1-text hover:border-r1-accent'
+                }
+              >
+                {cta.label}
+              </Link>
+            ))}
+          </div>
+          {content.proofLine && (
+            <p className="max-w-xl text-xs text-r1-text-muted/80 pt-2">
+              {content.proofLine}
+            </p>
+          )}
+        </div>
 
-      <div className="flex w-full justify-center overflow-x-auto pb-2">
-        <div className="origin-top scale-[2.2] sm:scale-[2.6] md:scale-[3]">
-          <PipelineSchematic resolvedPersona={persona} />
+        <div className="w-full max-w-5xl mx-auto aspect-video relative">
+          <AnimatedPipelineHero resolvedPersona={persona} />
         </div>
       </div>
-
-      <TrustStrip />
     </section>
   );
 }
