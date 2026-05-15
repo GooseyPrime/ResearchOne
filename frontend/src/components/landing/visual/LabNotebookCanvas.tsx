@@ -16,15 +16,9 @@ import { ReactNode } from 'react';
  * (`<LabNotebookCanvas>...</LabNotebookCanvas>`) rather than requiring
  * every consumer to remember a magic className.
  *
- * Per Cursor rule 26 I-9 (WO-W composition): the animated beams from
- * WO-W mount as a child of this component. They use `mix-blend-screen`
- * to interact with the ruling, illuminating grid lines as beams pass
- * over them.
- *
  * Use:
  *   <LabNotebookCanvas>
  *     <Hero />          // or <PersonaAwareHero />
- *     <AnimatedBeams /> // WO-W, optional, mounts inside
  *     ...rest of landing sections
  *   </LabNotebookCanvas>
  */
