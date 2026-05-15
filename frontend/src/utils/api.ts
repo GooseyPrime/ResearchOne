@@ -536,6 +536,8 @@ export interface StartResearchPayload {
   targetWordCount?: number;
   /** Citation style for academic exports (stored on the run for downstream formatting). */
   citationStyle?: CitationStyleSlug;
+  /** Wave 5.4 — optional saved orchestration profile (paid tiers). */
+  savedOrchestrationProfileId?: string;
 }
 
 export const startResearch = (data: StartResearchPayload) => {
@@ -557,6 +559,9 @@ export const startResearch = (data: StartResearchPayload) => {
     }
     if (rest.citationStyle) {
       form.append('citation_style', rest.citationStyle);
+    }
+    if (rest.savedOrchestrationProfileId) {
+      form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
     }
     if (supplementalUrls?.length) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
@@ -624,6 +629,69 @@ export const confirmRunPlanAtGate = (runId: string, planId?: string) =>
 
 export const cancelRunPlanAtGate = (runId: string) =>
   api.post<{ ok: boolean; runId: string; status: string }>(`/runs/${runId}/plan/cancel`, {}).then((r) => r.data);
+
+/** Wave 5.4 — plan refinement audit trail for a run. */
+export interface PlanRevisionRow {
+  id: string;
+  revisionNumber: number;
+  refinementPrompt: string | null;
+  diffSummary: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  createdByEmail: string | null;
+}
+
+export const getRunPlanRevisions = (runId: string) =>
+  api.get<{ runId: string; revisions: PlanRevisionRow[] }>(`/runs/${runId}/plan/revisions`).then((r) => r.data);
+
+/** Wave 5.4 — account plan auto-confirm preferences + preview. */
+export interface PlanPreferencesResponse {
+  autoConfirmEnabled: boolean;
+  autoConfirmThreshold: number;
+  confirmedStreak: number;
+  previewThreshold: number;
+  previewSampleSize: number;
+  previewHitRate: number | null;
+}
+
+export const getPlanPreferences = (previewThreshold?: number) =>
+  api
+    .get<PlanPreferencesResponse>('/auth/plan-preferences', {
+      params: previewThreshold != null ? { previewThreshold } : undefined,
+    })
+    .then((r) => r.data);
+
+export const patchPlanPreferences = (body: { autoConfirmEnabled?: boolean; autoConfirmThreshold?: number }) =>
+  api.patch<PlanPreferencesResponse>('/auth/plan-preferences', body).then((r) => r.data);
+
+export interface SavedOrchestrationProfile {
+  id: string;
+  userId: string;
+  orgId: string | null;
+  name: string;
+  description: string | null;
+  baseIntent: string;
+  customizations: unknown;
+  isShared: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const listSavedOrchestrationProfiles = () =>
+  api.get<{ profiles: SavedOrchestrationProfile[] }>('/auth/saved-orchestration-profiles').then((r) => r.data);
+
+export const createSavedOrchestrationProfile = (body: {
+  name: string;
+  description?: string | null;
+  baseIntent: string;
+  customizations?: unknown;
+  isShared?: boolean;
+  /** Ignored by the server — org context comes from the authenticated Clerk session. */
+  orgId?: string | null;
+}) => api.post<SavedOrchestrationProfile>('/auth/saved-orchestration-profiles', body).then((r) => r.data);
+
+export const deleteSavedOrchestrationProfile = (id: string) =>
+  api.delete<{ ok: boolean }>(`/auth/saved-orchestration-profiles/${encodeURIComponent(id)}`).then((r) => r.data);
 
 export interface RunArtifacts {
   sources: Array<{

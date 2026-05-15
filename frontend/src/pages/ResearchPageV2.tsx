@@ -32,6 +32,7 @@ import {
   getResearchRuns,
   getResearchRun,
   getRunPlanForGate,
+  listSavedOrchestrationProfiles,
   cancelResearchRun,
   deleteResearchRun,
   retryResearchRunFromFailure,
@@ -44,6 +45,7 @@ import {
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
+import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/usePlanPreferences';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -234,6 +236,8 @@ export default function ResearchPageV2() {
   const userTier = tierResolved
     ? effectiveEntitlementTier(subscriptionData) ?? 'free_demo'
     : null;
+  const planPrefsQuery = usePlanPreferencesQuery({ enabled: authReady && tierResolved });
+  const tierAllowsSavedProfiles = Boolean(userTier && userTier !== 'free_demo');
   const allowedObjectives = userTier
     ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
     : null;
@@ -251,6 +255,7 @@ export default function ResearchPageV2() {
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
+  const [savedOrchestrationProfileId, setSavedOrchestrationProfileId] = useState('');
   // Target report length (words). Standard preset; user can switch to "Custom" to
   // enter an arbitrary value. The backend clamps to a safe range either way.
   const [reportLengthPreset, setReportLengthPreset] = useState<'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('standard');
@@ -293,6 +298,12 @@ export default function ResearchPageV2() {
     queryKey: ['research-v2-ensemble-presets'],
     queryFn: getResearchV2EnsemblePresets,
     staleTime: 60000,
+  });
+
+  const { data: savedProfiles = [] } = useQuery({
+    queryKey: ['saved-orchestration-profiles'],
+    queryFn: () => listSavedOrchestrationProfiles().then((r) => r.profiles),
+    enabled: tierAllowsSavedProfiles,
   });
 
   const { data: runs = [] } = useQuery<ResearchRun[]>({
@@ -773,6 +784,9 @@ export default function ResearchPageV2() {
       supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
       supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
       citationStyle,
+      ...(savedOrchestrationProfileId.trim()
+        ? { savedOrchestrationProfileId: savedOrchestrationProfileId.trim() }
+        : {}),
     });
   };
 
@@ -935,6 +949,40 @@ export default function ResearchPageV2() {
               Preferred bibliography format for this run (used when generating academic exports).
             </p>
           </div>
+
+          {tierResolved && tierAllowsSavedProfiles && (
+            <div>
+              <label className="section-title block mb-2" htmlFor="saved-orch-profile">
+                Saved orchestration profile (optional)
+              </label>
+              <select
+                id="saved-orch-profile"
+                className="input w-full md:max-w-md"
+                value={savedOrchestrationProfileId}
+                onChange={(e) => setSavedOrchestrationProfileId(e.target.value)}
+                disabled={mutation.isPending || !!trackingRunId}
+              >
+                <option value="">None — use query-only defaults</option>
+                {savedProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.isShared ? ' (shared)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">
+                Seeds the planner with your saved orchestration customizations; the confirmation gate still appears
+                before retrieval runs.
+              </p>
+            </div>
+          )}
+
+          {tierResolved && userTier === 'free_demo' && (
+            <p className="text-xs text-slate-500 rounded-lg border border-slate-800/80 bg-slate-900/30 px-3 py-2">
+              Saved orchestration profiles are available on paid tiers. Free tier runs still use the same plan gate
+              and frontier planner; upgrade to save and reuse profiles.
+            </p>
+          )}
 
           <button type="button" className="btn-ghost text-xs" onClick={() => setShowSupplemental((v) => !v)}>
             {showSupplemental ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -1181,11 +1229,18 @@ export default function ResearchPageV2() {
                 snapshot={planGateLocal}
                 busy={planGateBusy}
                 onBusy={setPlanGateBusy}
+                planPrefs={planPrefsQuery.data}
+                tierAllowsSavedProfiles={tierAllowsSavedProfiles}
+                onInvalidatePlanPrefs={() => void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY })}
+                onInvalidateSavedProfiles={() =>
+                  void qc.invalidateQueries({ queryKey: ['saved-orchestration-profiles'] })
+                }
                 onAfterConfirm={() => {
                   setPlanGateLocal(null);
                   setPlanGateBusy(false);
                   void qc.invalidateQueries({ queryKey: ['research-runs'] });
                   void qc.invalidateQueries({ queryKey: ['research-run', trackingRunId] }, { cancelRefetch: false });
+                  void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY }, { cancelRefetch: false });
                 }}
                 onAfterCancel={() => {
                   setProgress(null);

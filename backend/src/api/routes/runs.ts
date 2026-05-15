@@ -9,10 +9,15 @@ import { queryOne } from '../../db/pool';
 import { getDossierByRunId } from '../../services/research/dossierReadService';
 import type { DossierAuthContext } from '../../types/dossier';
 import {
+  bumpPlanConfirmationStreakIfCleanConfirm,
+  resetPlanConfirmationStreak,
+} from '../../services/planning/accountPreferencesService';
+import {
   appendPlanRevision,
   cancelRunAtPlanGate,
   confirmGatePlan,
   getGatePlanRowForRun,
+  listPlanRevisionsForRun,
   markRunRunningAfterPlanConfirm,
 } from '../../services/planning/planWriteService';
 import { refinePlan } from '../../services/planning/planRefinementService';
@@ -166,6 +171,12 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
     });
     io?.emit('runs:updated', {});
 
+    try {
+      await resetPlanConfirmationStreak(ctx.userId);
+    } catch (streakErr) {
+      logger.warn('plan_refine_streak_reset_failed', { runId, err: streakErr });
+    }
+
     res.json({
       ok: true,
       planId: gatePlan.id,
@@ -209,6 +220,12 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
       res.status(404).json({ error: 'No pending plan to confirm' });
       return;
     }
+
+    const pendingMeta = await queryOne<{ refinement_rounds: number }>(
+      `SELECT refinement_rounds FROM research_plans
+        WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'pending_confirmation'`,
+      [effectivePlanId, runId]
+    );
 
     // Queue resume job before DB confirm so Redis hiccups never leave a confirmed plan
     // with no worker (Rule 13). `resumeAfterPlanConfirmation` requires `status='confirmed'`;
@@ -262,6 +279,16 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
       await markRunRunningAfterPlanConfirm(runId);
     } catch (markErr) {
       logger.error('plan_confirm_mark_running_failed', { runId, err: markErr });
+    }
+
+    try {
+      if (confirmed && pendingMeta && pendingMeta.refinement_rounds === 0) {
+        await bumpPlanConfirmationStreakIfCleanConfirm(ctx.userId);
+      } else if (confirmed && pendingMeta) {
+        await resetPlanConfirmationStreak(ctx.userId);
+      }
+    } catch (streakErr) {
+      logger.warn('plan_confirm_streak_update_failed', { runId, err: streakErr });
     }
 
     const io = req.app.get('io') as SocketIOServer | undefined;
@@ -322,11 +349,57 @@ router.post('/:runId/plan/cancel', async (req: Request, res: Response, next: Nex
 
     await cancelRunAtPlanGate(runId);
 
+    try {
+      await resetPlanConfirmationStreak(ctx.userId);
+    } catch (streakErr) {
+      logger.warn('plan_cancel_streak_reset_failed', { runId, err: streakErr });
+    }
+
     const io = req.app.get('io') as SocketIOServer | undefined;
     emitPlan(io, `job:${runId}`, 'research:plan_cancelled', { runId });
     io?.emit('runs:updated', {});
 
     res.json({ ok: true, runId, status: 'cancelled' });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** GET /api/runs/:runId/plan/revisions — plan refinement audit trail (Wave 5.4). */
+router.get('/:runId/plan/revisions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ctx = ctxFromReq(req);
+    if (!ctx) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const runId = String(req.params.runId ?? '');
+    const dossier = await getDossierByRunId(runId, ctx);
+    if (!dossier || dossier.runId !== runId) {
+      res.status(404).json({ error: 'Dossier not found for this run' });
+      return;
+    }
+    try {
+      const revisions = await listPlanRevisionsForRun(runId);
+      res.json({
+        runId,
+        revisions: revisions.map((r) => ({
+          id: r.id,
+          revisionNumber: r.revision_number,
+          refinementPrompt: r.refinement_prompt,
+          diffSummary: r.diff_summary,
+          createdAt: r.created_at.toISOString(),
+          createdBy: r.created_by,
+          createdByEmail: r.created_by_email,
+        })),
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === '42P01') {
+        res.json({ runId, revisions: [] });
+        return;
+      }
+      throw e;
+    }
   } catch (e) {
     next(e);
   }

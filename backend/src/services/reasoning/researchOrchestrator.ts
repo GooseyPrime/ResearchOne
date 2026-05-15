@@ -439,6 +439,7 @@ async function runResearchJobInner(
           supplementalContext: supplemental,
           intent: intentResult.intent,
           intentConfidence: intentResult.confidence,
+          savedProfile: data.savedOrchestrationProfileSeed,
           llmOpts: {
             engineVersion: engineVersion ?? undefined,
             researchObjective: researchObjective ?? undefined,
