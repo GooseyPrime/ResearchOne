@@ -12,6 +12,8 @@ export async function generatePlan(input: {
   supplementalContext?: string;
   intent: IntentId;
   intentConfidence: number;
+  /** Wave 5.4 — optional saved profile seed merged into the planner prompt. */
+  savedProfile?: { baseIntent: string; customizations: unknown; profileName?: string };
   llmOpts: {
     engineVersion?: string;
     researchObjective?: import('../reasoning/reasoningModelPolicy').ResearchObjective;
@@ -27,7 +29,13 @@ export async function generatePlan(input: {
     return parsePlanGeneratorJson('{}', input.intent, input.intentConfidence);
   }
 
-  const userBlock = `QUERY:\n${input.query}\n\nSUPPLEMENTAL:\n${input.supplementalContext ?? '(none)'}\n\nINTENT: ${input.intent} (${def?.displayLabel ?? input.intent})\nINTENT_CONFIDENCE: ${input.intentConfidence}\n`;
+  let profileBlock = '';
+  if (input.savedProfile) {
+    const label = input.savedProfile.profileName?.trim() || 'Saved profile';
+    profileBlock = `\nSAVED_ORCHESTRATION_PROFILE (${label} — starting point; reconcile with QUERY and current INTENT):\nBASE_INTENT: ${input.savedProfile.baseIntent}\nCUSTOMIZATIONS_JSON:\n${JSON.stringify(input.savedProfile.customizations ?? {}, null, 2)}\n`;
+  }
+
+  const userBlock = `QUERY:\n${input.query}\n\nSUPPLEMENTAL:\n${input.supplementalContext ?? '(none)'}\n\nINTENT: ${input.intent} (${def?.displayLabel ?? input.intent})\nINTENT_CONFIDENCE: ${input.intentConfidence}\n${profileBlock}`;
 
   const res = await callRoleModel({
     role: 'planner',

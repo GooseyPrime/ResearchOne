@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, LayoutList, NotebookTabs, Sigma } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, FileText, History, LayoutList, NotebookTabs, Sigma } from 'lucide-react';
 import clsx from 'clsx';
 import { useDossier, useReport } from '../hooks/useDossiers';
 import IntentBadge from '../components/dossiers/IntentBadge';
@@ -99,7 +99,7 @@ export default function DossierDetailPage() {
         <p className="text-sm text-slate-400 line-clamp-3">{data.request.query}</p>
       </header>
 
-      <nav className="flex flex-wrap gap-2 border-b border-slate-800/80 pb-2" aria-label="Dossier sections">
+      <nav className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-2" aria-label="Dossier sections">
         {TABS.map(({ id: tid, label, icon: Icon }) => (
           <button
             key={tid}
@@ -116,6 +116,13 @@ export default function DossierDetailPage() {
             {label}
           </button>
         ))}
+        <Link
+          to={`/app/dossiers/${id}/plan-history`}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm text-slate-400 border border-transparent hover:bg-slate-900/60 ml-auto"
+        >
+          <History size={16} aria-hidden />
+          Plan history
+        </Link>
       </nav>
 
       <section className="card p-5 space-y-4 text-sm text-slate-200">
@@ -135,7 +142,16 @@ export default function DossierDetailPage() {
 
         {tab === 'plan' && (
           <div className="space-y-2">
-            <h2 className="text-white font-medium">Plan</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-white font-medium m-0">Plan</h2>
+              <Link
+                to={`/app/dossiers/${id}/plan-history`}
+                className="text-xs text-accent hover:underline inline-flex items-center gap-1"
+              >
+                <History size={14} aria-hidden />
+                Refinement audit trail
+              </Link>
+            </div>
             {data.plan.planSummary && <p className="text-slate-300">{data.plan.planSummary}</p>}
             <pre className="text-xs bg-slate-950/50 p-3 rounded-md overflow-x-auto text-slate-400">
               {JSON.stringify(data.plan.planPayload, null, 2)}

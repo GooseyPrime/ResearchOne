@@ -29,6 +29,7 @@ import { placeHold } from '../../services/billing/walletReservations';
 import { getUserSubscription, type UserSubscription } from '../../services/billing/subscriptionService';
 import { resolveEffectiveEntitlementTier } from '../../services/billing/entitlementTier';
 import { parseExportStyleInput, VALID_EXPORT_STYLES } from '../../services/formatting/exportStyleGuards';
+import { getSavedProfileVisibleToUser } from '../../services/planning/savedOrchestrationProfileService';
 
 const router = Router();
 
@@ -346,6 +347,30 @@ router.post(
 
       // Credit enforcement: compute cost, place wallet hold if needed
       let creditChargeContext: CreditChargeContext | undefined;
+      let savedOrchestrationProfileSeed: ResearchJobData['savedOrchestrationProfileSeed'];
+      const orgIdClerk =
+        typeof req.auth?.orgId === 'string' && req.auth.orgId.trim() ? req.auth.orgId.trim() : null;
+      const profileIdRaw = (() => {
+        if (isMultipart) {
+          const raw = body.savedOrchestrationProfileId as string | undefined;
+          return typeof raw === 'string' ? raw.trim() : '';
+        }
+        const j = req.body as { savedOrchestrationProfileId?: unknown };
+        return typeof j.savedOrchestrationProfileId === 'string' ? j.savedOrchestrationProfileId.trim() : '';
+      })();
+      if (userId && profileIdRaw) {
+        const row = await getSavedProfileVisibleToUser(userId, orgIdClerk, profileIdRaw);
+        if (!row) {
+          res.status(400).json({ error: 'Invalid or unavailable saved orchestration profile' });
+          return;
+        }
+        savedOrchestrationProfileSeed = {
+          baseIntent: row.baseIntent,
+          customizations: row.customizations,
+          profileName: row.name,
+        };
+      }
+
       if (userId) {
         try {
           const userTier = await getUserTier(userId);
@@ -415,6 +440,7 @@ router.post(
           targetWordCount,
           citationStyle,
           creditChargeContext,
+          savedOrchestrationProfileSeed,
         },
         { jobId: runId }
       );

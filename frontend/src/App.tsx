@@ -8,6 +8,7 @@ import ResearchPageV2 from './pages/ResearchPageV2';
 import ReportsPage from './pages/ReportsPage';
 import DossiersPage from './pages/DossiersPage';
 import DossierDetailPage from './pages/DossierDetailPage';
+import DossierPlanHistoryPage from './pages/DossierPlanHistoryPage';
 import ReportDetailPage from './pages/ReportDetailPage';
 import FailedRunReportPage from './pages/FailedRunReportPage';
 import CorpusPage from './pages/CorpusPage';
@@ -78,6 +79,7 @@ export function AppRoutes() {
         <Route path="research-v2" element={<ResearchPageV2 />} />
         <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
         <Route path="dossiers" element={<DossiersPage />} />
+        <Route path="dossiers/:id/plan-history" element={<DossierPlanHistoryPage />} />
         <Route path="dossiers/:id" element={<DossierDetailPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/run/:runId" element={<FailedRunReportPage />} />

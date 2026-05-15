@@ -28,6 +28,15 @@ export interface ResearchJobData {
   skipPlanConfirmationGate?: boolean;
   /** Confirmed gate plan (merged with canonical profile on resume). Wave 5.2. */
   confirmedPlanPayload?: PlanPayload;
+  /**
+   * Resolved saved orchestration profile (Wave 5.4). Set at enqueue time from
+   * `savedOrchestrationProfileId` so the worker does not re-hit the DB for access checks.
+   */
+  savedOrchestrationProfileSeed?: {
+    baseIntent: string;
+    customizations: unknown;
+    profileName?: string;
+  };
 }
 
 export interface ResearchProgress {

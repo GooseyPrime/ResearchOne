@@ -73,14 +73,40 @@ export async function getGatePlanRowForRun(runId: string): Promise<{
   plan_payload: unknown;
   refinement_rounds: number;
   intent: string;
+  intent_confidence: string | null;
 } | null> {
   return queryOne(
-    `SELECT id, status, plan_payload, refinement_rounds, intent
+    `SELECT id, status, plan_payload, refinement_rounds, intent, intent_confidence::text AS intent_confidence
        FROM research_plans
       WHERE run_id = $1::uuid
         AND status IN ('pending_confirmation')
       ORDER BY updated_at DESC NULLS LAST
       LIMIT 1`,
+    [runId]
+  );
+}
+
+/** Plan refinement audit trail for a run (Wave 5.4). Caller must enforce run ACL. */
+export async function listPlanRevisionsForRun(runId: string): Promise<
+  Array<{
+    id: string;
+    revision_number: number;
+    refinement_prompt: string | null;
+    diff_summary: string | null;
+    created_at: Date;
+    created_by: string;
+    created_by_email: string | null;
+  }>
+> {
+  return query(
+    `SELECT pr.id, pr.revision_number, pr.refinement_prompt, pr.diff_summary, pr.created_at,
+            pr.created_by,
+            u.email AS created_by_email
+       FROM plan_revisions pr
+       JOIN research_plans rp ON rp.id = pr.plan_id
+       LEFT JOIN users u ON u.id = pr.created_by
+      WHERE rp.run_id = $1::uuid
+      ORDER BY pr.revision_number ASC`,
     [runId]
   );
 }
