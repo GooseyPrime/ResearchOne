@@ -7,7 +7,7 @@ import { getPersonaContent } from './personaContent';
 /**
  * Layered hero depth — inline `backgroundImage` so gradients always
  * resolve (Tailwind arbitrary `bg-[radial-gradient(...)]` with commas
- * is easy to mis-parse / visually lose against `LabNotebookCanvas`).
+ * is easy to mis-parse / visually lose against a flat `bg-slate-950`).
  */
 const PERSONA_HERO_DEPTH_LAYERS: CSSProperties = {
   backgroundImage: [
@@ -126,7 +126,7 @@ export default function PersonaAwareHero({
           )}
         </div>
 
-        <div className="relative mx-auto w-full max-w-5xl aspect-video">
+        <div className="relative mx-auto w-full min-h-0 max-w-5xl overflow-x-hidden">
           <AnimatedPipelineHero resolvedPersona={persona} />
         </div>
       </div>

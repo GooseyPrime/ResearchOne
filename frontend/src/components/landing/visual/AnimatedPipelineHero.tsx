@@ -164,10 +164,9 @@ export default function AnimatedPipelineHero({
         </p>
 
         <div
-          className="relative rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-6"
+          className="relative w-full max-w-full rounded-xl border border-white/10 bg-r1-bg-deep/40 backdrop-blur-sm p-4 sm:p-6"
           style={{
             aspectRatio: `${PIPELINE_VIEWBOX.width} / ${PIPELINE_VIEWBOX.height}`,
-            minHeight: 260,
           }}
         >
           {beamViewportOk && <PipelineBeams palette={palette} active={isVisible} />}
