@@ -4,7 +4,10 @@ import {
   validateReasoningModelPolicy,
   type ReasoningModelRole,
 } from '../services/reasoning/reasoningModelPolicy';
-import { validateEnsemblePresetsAgainstAllowlist } from './researchEnsemblePresets';
+import {
+  validateEnsemblePresetsAgainstAllowlist,
+  validateV2ModePresetsAgainstAllowlist,
+} from './researchEnsemblePresets';
 import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
 import { parseCorsOrigins } from './corsOrigins';
 import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
@@ -161,7 +164,10 @@ const config = {
   models: {
     planner: process.env.PLANNER_MODEL || CODE_DEFAULT_REASONING_MODELS.planner,
     retriever: process.env.RETRIEVER_MODEL || CODE_DEFAULT_REASONING_MODELS.retriever,
+    sourceClassClassifier:
+      process.env.SOURCE_CLASS_CLASSIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.sourceClassClassifier,
     reasoner: process.env.REASONER_MODEL || CODE_DEFAULT_REASONING_MODELS.reasoner,
+    steelman: process.env.STEELMAN_MODEL || CODE_DEFAULT_REASONING_MODELS.steelman,
     skeptic: process.env.SKEPTIC_MODEL || CODE_DEFAULT_REASONING_MODELS.skeptic,
     synthesizer: process.env.SYNTHESIZER_MODEL || CODE_DEFAULT_REASONING_MODELS.synthesizer,
     verifier: process.env.VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.verifier,
@@ -181,10 +187,16 @@ const config = {
     finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.finalRevisionVerifier,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
+    /** Wave 5.1 — intent/plan gate LLM; tier-uniform; env override for ops. */
+    planning: process.env.PLANNING_MODEL_ID?.trim() || CODE_DEFAULT_REASONING_MODELS.planner,
+
     fallbacks: {
       planner: process.env.PLANNER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.planner,
       retriever: process.env.RETRIEVER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.retriever,
+      sourceClassClassifier:
+        process.env.SOURCE_CLASS_CLASSIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.sourceClassClassifier,
       reasoner: process.env.REASONER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.reasoner,
+      steelman: process.env.STEELMAN_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.steelman,
       skeptic: process.env.SKEPTIC_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.skeptic,
       synthesizer: process.env.SYNTHESIZER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.synthesizer,
       verifier: process.env.VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.verifier,
@@ -404,7 +416,9 @@ if (config.nodeEnv === 'production') {
 const reasoningModelsForPolicy = {
   planner: config.models.planner,
   retriever: config.models.retriever,
+  source_class_classifier: config.models.sourceClassClassifier,
   reasoner: config.models.reasoner,
+  steelman: config.models.steelman,
   skeptic: config.models.skeptic,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
@@ -425,7 +439,9 @@ const reasoningModelsForPolicy = {
 const reasoningFallbacksForPolicy = {
   planner: config.models.fallbacks.planner,
   retriever: config.models.fallbacks.retriever,
+  source_class_classifier: config.models.fallbacks.sourceClassClassifier,
   reasoner: config.models.fallbacks.reasoner,
+  steelman: config.models.fallbacks.steelman,
   skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
@@ -449,6 +465,7 @@ validateReasoningModelPolicy({
 });
 
 validateEnsemblePresetsAgainstAllowlist();
+validateV2ModePresetsAgainstAllowlist();
 
 export { config };
 export { retentionConfig } from './retention';

@@ -15,7 +15,7 @@ export default function SampleReportPage() {
       <LandingHeader />
       <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">{topicNote}</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Sample research report</h1>
+        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Sample research dossier</h1>
         <p className="mt-4 text-r1-text-muted">
           Static preview of how ResearchOne preserves disagreement instead of smoothing it into a single narrative.
         </p>

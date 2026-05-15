@@ -105,13 +105,22 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
   // Call-purpose overrides win first.
   if (callPurpose === 'pipeline_skeptic') return 'Skeptic';
   if (callPurpose === 'contradiction_extraction') return 'Contradiction Extraction';
+  if (
+    callPurpose === 'wave5_intent_classification' ||
+    callPurpose === 'wave5_plan_generation' ||
+    callPurpose === 'wave5_plan_refinement'
+  ) {
+    return 'Planning';
+  }
 
   switch (role) {
     case 'planner':
       return 'Planning';
     case 'retriever':
+    case 'source_class_classifier':
       return 'Retrieval';
     case 'reasoner':
+    case 'steelman':
       return 'Reasoning';
     case 'skeptic':
     case 'internal_challenger':

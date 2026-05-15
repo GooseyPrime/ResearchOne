@@ -10,7 +10,9 @@ import {
 const REASONING_ROLES: { key: string; label: string }[] = [
   { key: 'planner', label: 'Planner' },
   { key: 'retriever', label: 'Retriever' },
+  { key: 'source_class_classifier', label: 'Source class classifier' },
   { key: 'reasoner', label: 'Reasoner' },
+  { key: 'steelman', label: 'Steelman' },
   { key: 'skeptic', label: 'Skeptic' },
   { key: 'synthesizer', label: 'Synthesizer' },
   { key: 'verifier', label: 'Verifier' },
@@ -64,7 +66,9 @@ export default function ModelsPage() {
   const roleToDefaultKey: Record<string, string> = {
     planner: 'planner',
     retriever: 'retriever',
+    source_class_classifier: 'sourceClassClassifier',
     reasoner: 'reasoner',
+    steelman: 'steelman',
     skeptic: 'skeptic',
     synthesizer: 'synthesizer',
     verifier: 'verifier',

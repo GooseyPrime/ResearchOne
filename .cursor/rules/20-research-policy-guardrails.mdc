@@ -5,6 +5,8 @@ alwaysApply: true
 
 # ResearchOne policy guardrails
 
+**SCOPE OF FENCE:** This rule fences `backend/src/constants/prompts.ts` **only** (the universal preambles + `withPreamble` composer). Agent-specific system prompts in `backend/src/services/openrouter/openrouterService.ts` (`SYSTEM_PROMPTS` map), mode overlays in `backend/src/constants/modeOverlays.ts`, and policy logic in `backend/src/services/reasoning/reasoningModelPolicy.ts` are **not** fenced and are editable under normal review.
+
 ## The reasoning-first epistemic policy
 
 The repo has a **strict, binding** policy in `ResearchOne PolicyOne`
@@ -112,7 +114,13 @@ If your patch touches a V2 default ensemble or the model allowlist:
 - [ ] Does `validateV2ModePresetsAgainstAllowlist()` and the
   forbidden-defaults test still pass?
 
-If your patch touches `REASONING_FIRST_PREAMBLE`,
-`RED_TEAM_V2_SYSTEM_PREFIX`, or any role's system prompt:
+If your patch touches `REASONING_FIRST_PREAMBLE` or
+`RED_TEAM_V2_SYSTEM_PREFIX` in `backend/src/constants/prompts.ts`:
 - [ ] Stop. Read the policy. These should not change without an
   explicit user request to change them.
+
+If your patch edits agent templates in `SYSTEM_PROMPTS` (OpenRouter
+service), `modeOverlays.ts`, or `reasoningModelPolicy.ts`:
+- [ ] Confirm the change still satisfies `ResearchOne PolicyOne` and
+  this rule’s behavioral requirements; normal PR review applies (not
+  a founder gate).

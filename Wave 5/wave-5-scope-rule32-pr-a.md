@@ -103,7 +103,7 @@ schema for the Plan that 5.1 will populate.
 
 ### Data model
 
-New migration: `033_dossier_data_model.sql`. Contents:
+New migration: `034_dossier_data_model.sql` (renumbered from an earlier “033” label; repo file `033` is citation_style). Contents:
 
 1. New table `research_plans`:
 ```
@@ -391,7 +391,7 @@ product narrative shifts to match).
 
 ## Acceptance Criteria (measurable)
 
-- Migration `033_dossier_data_model.sql` present, idempotent, and
+- Migration `034_dossier_data_model.sql` present, idempotent, and
   reversible (companion `down` script or in-migration rollback
   block).
 - Three new tables and one view present.

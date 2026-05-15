@@ -41,6 +41,16 @@ migration in the *same* PR (or a recent one):
    Defensive UPDATEs that just keep the row consistent should not be
    able to escalate the response severity.
 
+## Rule — views on RLS-protected tables
+
+User-facing reads through a **view** over tables with row-level security
+(for example `v_dossier` over `research_runs` / `reports`) should use
+`CREATE … VIEW … WITH (security_invoker = true)` on Postgres 15+ so RLS
+policies evaluate as the **session role** invoking the view (e.g.
+`application_role` with `app.user_id` / `app.org_id` set), not as the
+view owner from migrations. Reviewers have flagged the alternative as a
+cross-tenant exposure risk (PR #127 Codex).
+
 ## Rule — write-order
 
 If a row "promises" a downstream side effect (a queued job, an email,

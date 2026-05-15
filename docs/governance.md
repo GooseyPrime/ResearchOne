@@ -9,12 +9,18 @@ This document records **where** the binding Cursor rules for the marketing shell
 | Landing persona, default copy parity, lab notebook visual | `.cursor/rules/26-landing-persona-and-visual.mdc` |
 | Animated / schematic pipeline hero (reduced motion, canonical stages, performance) | `.cursor/rules/27-animated-pipeline-hero.mdc` |
 | Evidence vs. source vocabulary (marketing + public copy) | `.cursor/rules/31-evidence-vs-source-vocabulary.mdc` |
-| PR branch workflow (default: all work via PR unless same-request exception) | `.cursor/rules/32-pr-branch-workflow.mdc` |
+| Dossier canonical reads (`v_dossier` / Rule 32) | `.cursor/rules/32-dossier-canonical-read-path.mdc` |
 | Master pre-commit checklist | `.cursor/rules/00-pre-commit-review.mdc` |
 
 The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above. This file only adds **override history** so reviewers can see that a given PR operated under an explicit, time-bounded exception.
 
 ## Override history
+
+### 2026-05-14 — Wave 5.0 + Rule 32 (dossier read path)
+
+- **Scope:** Wave 5.0 dossier data model (`034_dossier_data_model.sql`), `/api/dossiers`, in-app `/app/dossiers` routes, Vercel redirects from `/app/reports` (list) to `/app/dossiers`, new **Rule 32** (always-apply).
+- **Migration numbering note:** Dossier DDL ships as **`034_*`** because **`033_research_run_citation_style.sql`** already occupied 033. Subsequent Wave 5 waves shift by one (e.g. plan gate migration is **`035_*`**, not `034_*`).
+- **Wave 5.3 founder checkpoint (prompt fence):** Any change to skeptic/reasoner **system** text in `backend/src/constants/prompts.ts` remains **Rule 20**–fenced and requires an explicit founder authorization recorded here before merge. Default implementation path for Wave 5.3 is **`backend/src/services/planning/prompts.ts`** (and policy surfaces) unless governance is amended.
 
 ### 2026-05-15 — Wave 4 vocabulary + Rule 31 + Rule 26 layout (enumerated)
 

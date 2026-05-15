@@ -357,7 +357,7 @@ export default function ReportDetailPage() {
     const url = window.location.href;
     try {
       if (navigator.share) {
-        await navigator.share({ title: report?.title ?? 'Research report', url });
+        await navigator.share({ title: report?.title ?? 'Research dossier', url });
       } else {
         await navigator.clipboard.writeText(url);
         addNotification('info', 'Link copied to clipboard.');

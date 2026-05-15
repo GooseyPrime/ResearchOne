@@ -50,7 +50,7 @@ const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 const NAV_ITEMS: NavItem[] = [
   { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
   { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Multi-model ensemble research' },
-  { to: '/app/reports', label: 'Reports', icon: BookOpen, desc: 'Report library' },
+  { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
   { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources', requireTier: 'pro' },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },

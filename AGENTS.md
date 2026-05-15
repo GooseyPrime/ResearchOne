@@ -34,6 +34,9 @@ drove the rules is at
 | [`.cursor/rules/27-animated-pipeline-hero.mdc`](.cursor/rules/27-animated-pipeline-hero.mdc) | WO-W animated pipeline hero + persona beams. |
 | [`.cursor/rules/29-marketing-scope-doc-contracts.mdc`](.cursor/rules/29-marketing-scope-doc-contracts.mdc) | Contract-style marketing / a11y scope docs (conditional re-scan, cwd, Lighthouse gates, F-42 boundary). |
 | [`.cursor/rules/30-vercel-prerender-spa-routing.mdc`](.cursor/rules/30-vercel-prerender-spa-routing.mdc) | Vercel SPA catch-all must not shadow prerendered `dist/<segment>/`; sync exclusions with `public/sitemap.xml`. |
+| [`.cursor/rules/31-evidence-vs-source-vocabulary.mdc`](.cursor/rules/31-evidence-vs-source-vocabulary.mdc) | Marketing / public copy: evidence vs. sources vocabulary (Wave 4). |
+| [`.cursor/rules/32-dossier-canonical-read-path.mdc`](.cursor/rules/32-dossier-canonical-read-path.mdc) | Dossier reads must use `v_dossier` / dossierReadService (Wave 5.0). |
+| [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (Wave 5.1). |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -78,6 +81,14 @@ ship on `main`.
 - **V2 tier gate:** `POST /api/research` must pass `isDeep: true` into
   `checkTierAccess` when `engineVersion === 'v2'` so `monthlyDeepReportCap`
   is enforced (Copilot PR #124).
+
+## Recurring review themes (Codex / Copilot, PR #127 — Dossier / Wave 5 reads)
+
+- **`v_dossier` + RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) when it selects from RLS-protected tables so policies run as the querying role, not the migration owner.
+- **Refreshing `v_dossier`:** when extending the dossier contract, preserve the **single-plan** `LATERAL` join from migration 035 (run status gates which plan statuses qualify; prefer `confirmed` over `legacy`); a plain `LEFT JOIN research_plans … IN ('confirmed','legacy')` can duplicate rows per run.
+- **Dossier read/list deploy skew:** catch Postgres `42P01` / `42703` in `dossierReadService` and return null / empty list (debug-log), not 500 — Rule 32 + Rule 13.
+- **List query dates:** validate `dateFrom` / `dateTo` as parseable timestamps in Zod before SQL `::timestamptz` casts so bad query strings return 400.
+- **Nullable rollup semantics:** do not write sentinel `0` into nullable stats columns when the source row is missing (e.g. `refinement_rounds` when no `research_plans` row); use SQL `NULL` so `COALESCE` preserves existing values.
 
 ## Recurring review themes (Codex / Copilot, PR #112)
 
@@ -126,9 +137,10 @@ ship on `main`.
 ## Etiquette
 
 - Do not modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`
-  in `backend/src/constants/prompts.ts` and
-  `backend/src/services/reasoning/reasoningModelPolicy.ts` without an
-  explicit user request to do so.
+  in `backend/src/constants/prompts.ts` without an explicit user request
+  to do so. Agent `SYSTEM_PROMPTS` (`openrouterService.ts`),
+  `modeOverlays.ts`, and `reasoningModelPolicy.ts` are outside that
+  fence — edit under normal policy + review, not a preamble gate.
 - Do not silently swap a V2 default to an RLHF refusal-aligned model —
   the forbidden-defaults regression test will fail first, but the rule
   exists upstream of the test for a reason.

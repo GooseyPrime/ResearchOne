@@ -69,9 +69,9 @@ Eight logical commits, in this order. Conventional Commits format.
 
 ---
 
-### Commit 1 — `feat(db): add dossier data model migration 033`
+### Commit 1 — `feat(db): add dossier data model migration 034`
 
-File: `backend/src/db/migrations/033_dossier_data_model.sql`
+File: `backend/src/db/migrations/034_dossier_data_model.sql`
 
 Migration contents per the scope doc. Specifically:
 
@@ -519,7 +519,7 @@ been met. Update PR description with:
 ## Acceptance criteria for PR-B
 
 - All eight commits land in the listed order.
-- Migration 033 applies cleanly on a fresh DB and on the
+- Migration 034 applies cleanly on a fresh DB and on the
   production schema snapshot.
 - All new tables have RLS enabled with policies mirroring
   research_runs.

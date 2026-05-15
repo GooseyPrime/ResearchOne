@@ -18,7 +18,9 @@ function pair(primary: string, fallback: string): RoleModelPair {
 const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   planner: 'planner',
   retriever: 'retriever',
+  sourceClassClassifier: 'source_class_classifier',
   reasoner: 'reasoner',
+  steelman: 'steelman',
   skeptic: 'skeptic',
   synthesizer: 'synthesizer',
   verifier: 'verifier',
@@ -209,7 +211,7 @@ const V2M = {
   /**
    * DeepSeek V3.1 (open-weights, chat variant). 11 OpenRouter upstreams.
    * Same low-refusal profile as V3.2. Used as fallback for **utility roles
-   * only** (retriever, verifier, citation_integrity_checker, revision_intake,
+   * only** (retriever, source_class_classifier, verifier, citation_integrity_checker, revision_intake,
    * report_locator, final_revision_verifier). These roles perform structured
    * analytical tasks on evidence provided to them, so the risk of knowledge-
    * recall drift is acceptably low. Synthesis/reasoning roles use
@@ -273,6 +275,7 @@ const V2M = {
 
 const V2_UTILITIES: Record<
   | 'retriever'
+  | 'source_class_classifier'
   | 'verifier'
   | 'citation_integrity_checker'
   | 'citation_formatter'
@@ -285,6 +288,7 @@ const V2_UTILITIES: Record<
   // 100% uptime, low-refusal under our reasoning-first preamble),
   // falling back to V3.1 (also 11 providers) on rate limit.
   retriever: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  source_class_classifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   citation_integrity_checker: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   citation_formatter: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
@@ -318,7 +322,10 @@ function v2Mode(
  *   - **Adversarial** (skeptic / internal_challenger): low-refusal Hermes
  *     OpenRouter line (Hermes 4 → Hermes 3 fallback) — validated by runtime
  *     `/chat/completions` preflight, not catalog metadata alone.
- *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1).
+ *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1), including
+ *     `retriever` and `source_class_classifier`.
+ *   - **Steelman**: same reasoner-class ladder as `reasoner` / `change_planner`
+ *     (Qwen3 Thinking → DeepSeek R1-0528).
  *
  * Preset fallbacks fire unconditionally on primary failure.
  * `allowFallbackForRole` only controls whether a user runtime-override
@@ -329,6 +336,7 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
@@ -343,6 +351,7 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
@@ -360,6 +369,7 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
@@ -374,6 +384,7 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_R1),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
@@ -390,6 +401,7 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),

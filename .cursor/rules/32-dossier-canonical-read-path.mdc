@@ -1,0 +1,23 @@
+---
+description: Dossier reads must use v_dossier (Wave 5.0 Rule 32)
+alwaysApply: true
+---
+
+# Rule 32 — Dossier canonical read path
+
+## Why this rule exists
+
+Wave 5 introduces a first-class **Dossier** surface (`research_runs` + plan + latest report + statistics) exposed through the `v_dossier` view. Ad hoc joins across `research_runs`, `reports`, `research_plans`, and `dossier_statistics` drift from the view definition and bypass RLS-aligned column contracts.
+
+## Rule
+
+1. **All authenticated API reads of dossier-shaped data** for `/api/dossiers` and any future dossier consumers MUST go through `backend/src/services/research/dossierReadService.ts`, which **only** runs `SELECT` against `v_dossier` (and may call helpers that themselves only read from `v_dossier`).
+2. **Do not** build dossier list/detail payloads in route handlers by joining underlying tables.
+3. **Writers** (`research_plans`, `plan_revisions`, `dossier_statistics` mutations) live in dedicated services or routes — not in the read service. Wave 5.1+ plan mutations use a separate canonical writer (Rule 33).
+4. **Deploy skew:** readers should tolerate missing view/columns per `.cursor/rules/13-deploy-skew-and-schema.mdc` where applicable; prefer graceful 404/empty rather than 500 when the migration has not applied.
+5. **`v_dossier` RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) so row-level security on underlying tables is evaluated as the querying session role, not the view owner (PR #127 Codex).
+
+## Pre-commit check
+
+- [ ] Does new dossier read SQL reference only `v_dossier`?
+- [ ] If you added a column to the dossier contract, is `v_dossier` updated in the same migration train and mapped in `dossierReadService.mapRowToDossier`?
