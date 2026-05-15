@@ -68,7 +68,7 @@ export default function PersonaAwareHero({
 
   return (
     <section data-persona={persona} className="relative w-full bg-slate-950">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_center,theme(colors.slate.800/30),transparent_60%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_center,rgba(30,41,59,0.3),transparent_60%)] pointer-events-none" />
       <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6">
         <div className="space-y-6">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">
