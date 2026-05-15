@@ -93,6 +93,7 @@ Orchestrator telemetry (single line, not inference):
 - All backend uses of tier identifier strings as **identifiers** (schemas, agents, citation mapper, tests keyed by identifier, Tailwind `tier-*` / `.badge-*` keyed by identifier) — Rule 28
 - `evidence_aliases` storage and CSL output — Rule 28
 - `frontend/src/components/landing/pipelineSchematicData.ts` — canonical stage names (marquee schematic) — Rule 27
+- `frontend/src/components/landing/visual/pipelineLayout.ts` — WO-W animated layout stage coordinates/labels — Rule 27
 - Research inference, retrieval, ranking — Rule 20
 - SPA / prerender routing contract — Rule 30 (no routing changes for vocabulary)
 

@@ -123,7 +123,9 @@ describe('marketing hardening — structural copy present', () => {
     expect(html).toContain('Side-by-side with general-purpose research assistants. We win where defense matters.');
     expect(html).toContain('A report that keeps its receipts.');
     expect(html).toContain('Source-corroboration tiers');
-    expect(html).toContain('data-testid="pipeline-skeptic-loop-path"');
+    expect(html).toMatch(
+      /data-testid="(?:pipeline-animated|pipeline-mobile-static|static-pipeline-fallback)"/
+    );
     expect(html).toContain('data-testid="living-report-timeline"');
     expect(html).toContain('Skeptic agent, by design');
     expect(html).toContain('Ten stages. Seven agents. One adversary.');

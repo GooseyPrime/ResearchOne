@@ -33,3 +33,16 @@ No Codex-authored review items were present on PR #131 for this pass; nothing to
 - **Remove** unused WO-W implementation from app source: `AnimatedPipelineHero.tsx`, `pipelineBeams.tsx`, `pipelineLayout.ts`, `personaBeamPalettes.ts`, and `AnimatedPipelineHero.test.tsx`.
 - Marketing hardening test again keys off `data-testid="pipeline-skeptic-loop-path"` from `PipelineSchematic`.
 - Docs: `governance.md` / `wave-4-evidence-vocabulary-scope.md` out-of-scope paths updated from deleted `pipelineLayout.ts` to **`pipelineSchematicData.ts`**; `LabNotebookCanvas` / `heroPipelineAria` comments de-WO-W’d; `AGENTS.md` example generalized.
+
+---
+
+## 2026-05-16 — Product correction (WO-W restored on follow-up PR)
+
+**Issue:** The founder clarified that the **WO-W animated pipeline** (`AnimatedPipelineHero` + `pipelineLayout.ts` / beams) is the intended hero graphic; the interim revert to `PipelineSchematic` was a misread of earlier feedback.
+
+**Actions:**
+
+- Restore **`AnimatedPipelineHero`** and its modules from the pre-revert tree; wire **`PersonaAwareHero`** with **`resolvedPersona={persona}`** inside **`w-full max-w-5xl mx-auto aspect-video`** (fluid frame, no fixed-height scroll trap).
+- Keep the **stacked inline `backgroundImage` depth** layer on the hero section (deterministic 3D-style wash).
+- Marketing hardening again asserts one of `pipeline-animated` | `pipeline-mobile-static` | `static-pipeline-fallback` via `toMatch`.
+- Docs: re-list **`visual/pipelineLayout.ts`** in governance / Wave 4 out-of-scope fences; restore WO-W composition notes on `LabNotebookCanvas` and `heroPipelineAria`.
