@@ -6,7 +6,9 @@
 export const CODE_DEFAULT_REASONING_MODELS = {
   planner: 'moonshotai/kimi-k2-thinking',
   retriever: 'deepseek/deepseek-v3.2',
+  sourceClassClassifier: 'deepseek/deepseek-v3.2',
   reasoner: 'deepseek/deepseek-r1',
+  steelman: 'deepseek/deepseek-r1',
   skeptic: 'moonshotai/kimi-k2-thinking',
   synthesizer: 'anthropic/claude-sonnet-4.5',
   verifier: 'anthropic/claude-sonnet-4',
@@ -28,7 +30,9 @@ export const CODE_DEFAULT_REASONING_MODELS = {
 export const CODE_DEFAULT_REASONING_FALLBACKS = {
   planner: 'deepseek/deepseek-r1',
   retriever: 'google/gemini-2.5-flash',
+  sourceClassClassifier: 'google/gemini-2.5-flash',
   reasoner: 'moonshotai/kimi-k2-thinking',
+  steelman: 'moonshotai/kimi-k2-thinking',
   skeptic: 'anthropic/claude-sonnet-4',
   synthesizer: 'google/gemini-2.5-pro',
   verifier: 'openai/o3-mini',

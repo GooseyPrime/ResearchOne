@@ -51,7 +51,9 @@ describe('costSidecar — rolePhaseFor', () => {
   it('maps canonical roles to correct phases', () => {
     expect(rolePhaseFor('planner')).toBe('Planning');
     expect(rolePhaseFor('retriever')).toBe('Retrieval');
+    expect(rolePhaseFor('source_class_classifier')).toBe('Retrieval');
     expect(rolePhaseFor('reasoner')).toBe('Reasoning');
+    expect(rolePhaseFor('steelman')).toBe('Reasoning');
     expect(rolePhaseFor('skeptic')).toBe('Skeptic');
     expect(rolePhaseFor('internal_challenger')).toBe('Skeptic');
     expect(rolePhaseFor('synthesizer')).toBe('Synthesis');
@@ -61,6 +63,7 @@ describe('costSidecar — rolePhaseFor', () => {
     expect(rolePhaseFor('change_planner')).toBe('Revision');
     expect(rolePhaseFor('citation_formatter')).toBe('Citation Mapping');
     // REVERT-CHECK: costSidecar.ts:rolePhaseFor — case 'citation_formatter'.
+    // REVERT-CHECK: costSidecar.ts:rolePhaseFor — source_class_classifier + steelman.
   });
 
   it('callPurpose overrides role mapping for contradiction extraction', () => {

@@ -6,7 +6,9 @@
 export const REASONING_MODEL_ROLES = [
   'planner',
   'retriever',
+  'source_class_classifier',
   'reasoner',
+  'steelman',
   'skeptic',
   'synthesizer',
   'verifier',
@@ -54,7 +56,13 @@ export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
 /** Prepended to skeptic / internal_challenger system prompts when `engineVersion === 'v2'`. */
 export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
 
-export type ModelCallPurpose = 'pipeline_skeptic' | 'contradiction_extraction' | 'default';
+export type ModelCallPurpose =
+  | 'pipeline_skeptic'
+  | 'contradiction_extraction'
+  | 'wave5_intent_classification'
+  | 'wave5_plan_generation'
+  | 'wave5_plan_refinement'
+  | 'default';
 
 /**
  * Decide whether a model id should route through the HF Inference Providers

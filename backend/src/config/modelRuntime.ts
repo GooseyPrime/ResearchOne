@@ -29,7 +29,12 @@ export function baseModelsFromConfig(): ResolvedModels {
     reasoning: {
       planner: { primary: config.models.planner, fallback: config.models.fallbacks.planner },
       retriever: { primary: config.models.retriever, fallback: config.models.fallbacks.retriever },
+      source_class_classifier: {
+        primary: config.models.sourceClassClassifier,
+        fallback: config.models.fallbacks.sourceClassClassifier,
+      },
       reasoner: { primary: config.models.reasoner, fallback: config.models.fallbacks.reasoner },
+      steelman: { primary: config.models.steelman, fallback: config.models.fallbacks.steelman },
       skeptic: { primary: config.models.skeptic, fallback: config.models.fallbacks.skeptic },
       synthesizer: { primary: config.models.synthesizer, fallback: config.models.fallbacks.synthesizer },
       verifier: { primary: config.models.verifier, fallback: config.models.fallbacks.verifier },

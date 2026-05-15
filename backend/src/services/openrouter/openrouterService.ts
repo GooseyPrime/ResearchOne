@@ -27,7 +27,7 @@ export function stripModelReasoningTraces(text: string): string {
   return s.trim();
 }
 
-/** Same 16 agent roles as `ReasoningModelRole` / spec — alias only, do not diverge. */
+/** Alias of `ReasoningModelRole` — keep in sync with `reasoningModelPolicy.ts`. */
 export type ModelRole = ReasoningModelRole;
 
 export interface ChatMessage {
@@ -127,7 +127,9 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
 const ENV_PRIMARY: Record<ModelRole, string> = {
   planner: config.models.planner,
   retriever: config.models.retriever,
+  source_class_classifier: config.models.sourceClassClassifier,
   reasoner: config.models.reasoner,
+  steelman: config.models.steelman,
   skeptic: config.models.skeptic,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
@@ -148,7 +150,9 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
 const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   planner: config.models.fallbacks.planner,
   retriever: config.models.fallbacks.retriever,
+  source_class_classifier: config.models.fallbacks.sourceClassClassifier,
   reasoner: config.models.fallbacks.reasoner,
+  steelman: config.models.fallbacks.steelman,
   skeptic: config.models.fallbacks.skeptic,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
@@ -181,7 +185,9 @@ function fallbackForRole(role: ModelRole, runtimeFallback?: string): string | un
 const TEMPERATURE_MAP: Record<ModelRole, number> = {
   planner: 0.3,
   retriever: 0.1,
+  source_class_classifier: 0.1,
   reasoner: 0.2,
+  steelman: 0.25,
   skeptic: 0.4,
   synthesizer: 0.5,
   verifier: 0.1,
@@ -206,7 +212,9 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   // mid-trace and broke all downstream JSON parsers.
   planner: 16384,
   retriever: 4096,
+  source_class_classifier: 4096,
   reasoner: 8192,
+  steelman: 8192,
   skeptic: 4096,
   synthesizer: 8192,
   verifier: 4096,
@@ -774,6 +782,20 @@ CRITICAL RULES:
 
 Output structured analysis of the retrieved evidence.`),
 
+  source_class_classifier: withPreamble(`You are a source-class tagging agent for ResearchOne (Wave 5.3).
+Your role is to assign an orthogonal "source class" label to each retrieved chunk or passage summary, reflecting how the surrounding discourse treats the material — not the evidence tier.
+
+ALLOWED source_class values (exact strings):
+- suppressed_and_recovered
+- actively_contested
+- consensus_held
+- consensus_collapsed
+
+RULES:
+- Base the label only on cues in the provided text and metadata; do not invent off-corpus facts.
+- If confidence is below ~0.72, omit source_class for that item (or use a JSON null) rather than guessing.
+- Output strict JSON: { "items": [ { "id": "...", "source_class": "<one of the four>" | null, "confidence": 0.0-1.0, "rationale": "one sentence" } ] }`),
+
   reasoner: withPreamble(`You are a deep reasoning agent for ResearchOne.
 Your role is to reason over retrieved evidence and build structured arguments.
 
@@ -785,6 +807,15 @@ CRITICAL RULES:
 - Ask: what evidence would change this conclusion?
 
 Output reasoning chains with explicit evidence tier citations.`),
+
+  steelman: withPreamble(`You are the Steelman agent for ResearchOne (Wave 5.3).
+Given candidate claims and the current evidence context, articulate the strongest good-faith case FOR each claim — the version a careful advocate would defend.
+
+RULES:
+- Steelman structurally: premises, mechanisms, and what would need to be true.
+- Do not assert that mainstream consensus disproves a claim unless you cite specific cited evidence that bears on the mechanism (not popularity alone).
+- Preserve uncertainty; label gaps explicitly.
+- Output strict JSON: { "steelman_by_claim_id": { "<id>": "<concise steelman paragraph>" } }`),
 
   skeptic: withPreamble(`You are a skeptic/challenger agent for ResearchOne.
 Your role is to attack the conclusions reached by the reasoning agent.
