@@ -121,6 +121,9 @@ export const PIPELINE_CAPSULE_CENTERS_X: readonly number[] = [
 export const PIPELINE_SPINE_Y = 220;
 export const PIPELINE_SKEPTIC_APEX_Y = 340;
 
+/** SVG viewBox — keep `PipelineSchematic` and hero framing in sync. */
+export const PIPELINE_SCHEMATIC_VIEWBOX = { width: 1440, height: 420 } as const;
+
 export const STAGE_COLOR: Record<StageAgentKind, string> = {
   planner: '#7C8FA1',
   retriever: '#5BC0EB',

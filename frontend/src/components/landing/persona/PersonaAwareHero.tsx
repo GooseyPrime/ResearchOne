@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import AnimatedPipelineHero from '../visual/AnimatedPipelineHero';
+import PipelineSchematic from '../PipelineSchematic';
 import { resolvePersona, type PersonaId } from './personaResolver';
 import { getPersonaContent } from './personaContent';
 
@@ -126,8 +126,8 @@ export default function PersonaAwareHero({
           )}
         </div>
 
-        <div className="relative mx-auto w-full min-h-0 max-w-5xl overflow-x-hidden">
-          <AnimatedPipelineHero resolvedPersona={persona} />
+        <div className="relative mx-auto w-full min-h-0 max-w-5xl overflow-hidden rounded-xl border border-white/12 bg-r1-bg-deep/40 p-3 backdrop-blur-sm sm:p-4 md:p-5">
+          <PipelineSchematic resolvedPersona={persona} />
         </div>
       </div>
     </section>

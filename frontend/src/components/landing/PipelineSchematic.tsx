@@ -4,14 +4,15 @@ import type { PersonaId } from './persona/personaResolver';
 import {
   PIPELINE_CAPSULE_CENTERS_X,
   PIPELINE_SCHEMATIC_STAGES,
+  PIPELINE_SCHEMATIC_VIEWBOX,
   PIPELINE_SKEPTIC_APEX_Y,
   PIPELINE_SPINE_Y,
   STAGE_COLOR,
   type PipelineStageDef,
 } from './pipelineSchematicData';
 
-const VIEW_W = 1440;
-const VIEW_H = 420;
+const VIEW_W = PIPELINE_SCHEMATIC_VIEWBOX.width;
+const VIEW_H = PIPELINE_SCHEMATIC_VIEWBOX.height;
 
 export const PIPELINE_SCHEMATIC_ARIA_LABEL =
   'ResearchOne ten-stage pipeline from Intake through Living State, with a Skeptic adversarial loop between Synthesis, Skeptic Pass, and Citation Bind';
@@ -28,9 +29,9 @@ function hexPoints(cx: number, cy: number, r: number): string {
 function PipelineSchematicMobile() {
   return (
     <div
-      className="flex max-h-[min(70vh,560px)] snap-y snap-mandatory flex-col gap-3 overflow-y-auto md:hidden"
+      className="flex flex-col gap-3 md:hidden"
       role="list"
-      aria-label="Pipeline stages, vertical scroll"
+      aria-label="Pipeline stages"
     >
       {PIPELINE_SCHEMATIC_STAGES.map((s) => (
         <article
@@ -128,11 +129,11 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
 
   return (
     <div ref={rootRef} className="relative w-full" onKeyDown={onKeyDown}>
-      <div className="hidden md:block">
+      <div className="hidden w-full md:block md:aspect-[1440/420]">
         <div
           role="group"
           aria-label={PIPELINE_SCHEMATIC_ARIA_LABEL}
-          className="relative w-full overflow-visible"
+          className="relative h-full w-full overflow-visible"
           data-testid="pipeline-schematic"
         >
           <p className="sr-only">
