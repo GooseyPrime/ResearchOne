@@ -148,8 +148,8 @@ export default function FailedRunReportPage() {
       <div className="max-w-3xl mx-auto px-6 py-12 text-center space-y-3">
         <XCircle size={40} className="mx-auto text-red-400" />
         <p className="text-white">Run not found or could not be loaded.</p>
-        <button type="button" className="btn-ghost text-sm" onClick={() => navigate('/app/reports')}>
-          Back to Reports
+        <button type="button" className="btn-ghost text-sm" onClick={() => navigate('/app/dossiers')}>
+          Back to dossiers
         </button>
       </div>
     );
@@ -171,10 +171,10 @@ export default function FailedRunReportPage() {
       <button
         type="button"
         className="btn-ghost text-xs flex items-center gap-1.5"
-        onClick={() => navigate('/app/reports')}
+        onClick={() => navigate('/app/dossiers')}
       >
         <ArrowLeft size={13} />
-        Back to Reports
+        Back to dossiers
       </button>
 
       {/* Failed banner */}

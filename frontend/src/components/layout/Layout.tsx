@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
   FlaskConical,
@@ -28,7 +28,7 @@ import api, {
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
 import { useStore } from '../../store/useStore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
 import NotificationBanner from '../ui/NotificationBanner';
@@ -69,6 +69,12 @@ const EMPTY_RESEARCH_RUNS: ResearchRun[] = [];
 
 export default function Layout() {
   const location = useLocation();
+  /** Prefer the longest matching `to` so `/app/research-v2` does not match `/app/research` first. */
+  const activeNavItem = useMemo(() => {
+    const matches = NAV_ITEMS.filter((n) => location.pathname.startsWith(n.to));
+    if (matches.length === 0) return undefined;
+    return matches.reduce((a, b) => (a.to.length >= b.to.length ? a : b));
+  }, [location.pathname]);
   const queryClient = useQueryClient();
   const { setStats, stats, setActiveRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
@@ -211,15 +217,15 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
       <aside className="w-60 flex-shrink-0 border-r border-indigo-900/20 flex flex-col bg-surface-300">
         <div className="p-5 border-b border-indigo-900/20">
-          <div className="flex items-center gap-3">
+          <Link
+            to="/app/research"
+            className="flex items-center gap-3 rounded-lg p-1 -m-1 outline-offset-2 hover:bg-surface-200/40 transition-colors focus-visible:outline focus-visible:outline-accent"
+          >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-research-teal flex items-center justify-center glow-accent">
-              <Cpu size={16} className="text-white" />
+              <Cpu size={16} className="text-white" aria-hidden />
             </div>
-            <div>
-              <div className="font-bold text-white text-sm leading-tight">ResearchOne</div>
-              <div className="text-xs text-slate-500 leading-tight">Anomaly Intelligence</div>
-            </div>
-          </div>
+            <div className="font-bold text-white text-sm leading-tight">ResearchOne</div>
+          </Link>
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
@@ -258,9 +264,7 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-12 border-b border-indigo-900/20 flex items-center justify-between px-6 bg-surface-300/50 glass flex-shrink-0">
-          <div className="text-sm text-slate-400">
-            {NAV_ITEMS.find(n => location.pathname.startsWith(n.to))?.desc ?? 'ResearchOne'}
-          </div>
+          <div className="text-sm text-slate-400">{activeNavItem?.desc ?? 'ResearchOne'}</div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
             {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}

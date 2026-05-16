@@ -25,6 +25,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
+import LiveResearchTraceLog from '../components/research/LiveResearchTraceLog';
+import LiveStatusBanner from '../components/research/LiveStatusBanner';
+import ResearchRunFailureCard from '../components/research/ResearchRunFailureCard';
 import PlanConfirmationPanel, { type PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import {
@@ -35,7 +38,6 @@ import {
   listSavedOrchestrationProfiles,
   cancelResearchRun,
   deleteResearchRun,
-  retryResearchRunFromFailure,
   getResearchV2EnsemblePresets,
   ResearchRun,
   ResearchProgressEvent,
@@ -46,7 +48,10 @@ import {
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/usePlanPreferences';
+import { formatFailureReason } from '../utils/researchFailureFormat';
+import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
@@ -71,15 +76,6 @@ interface ResearchFailureEvent {
   terminal?: boolean;
   failureMeta?: Record<string, unknown>;
 }
-
-import {
-  classifyLiveStatus,
-  LIVE_STATUS_COPY,
-  deriveRunState,
-  isResumeAvailable,
-  failureCardHeadline,
-  type LiveStatus,
-} from '../utils/researchLiveStatus';
 
 interface StageDescriptor {
   id: string;
@@ -131,87 +127,6 @@ function sortEventsChronological(events: ResearchProgressEvent[]): ResearchProgr
   return [...events].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
 }
 
-
-function retryBadgeForEvent(evt: ResearchProgressEvent): { text: string; variant: 'retryable' | 'resumed' | 'terminal' } | null {
-  if (evt.eventType === 'run_resumed') {
-    return { text: 'Resumed', variant: 'resumed' };
-  }
-  if (evt.eventType === 'run_aborted' || evt.stage === 'aborted') {
-    return { text: 'Aborted', variant: 'terminal' };
-  }
-  if (evt.eventType === 'run_failed' || evt.stage === 'failed') {
-    const retryable = evt.failure?.retryable === true;
-    return { text: retryable ? 'Retryable' : 'Stopped', variant: retryable ? 'retryable' : 'terminal' };
-  }
-  if (evt.failure?.retryable === true) {
-    return { text: 'Retryable', variant: 'retryable' };
-  }
-  const msg = `${evt.message} ${evt.substep || ''}`.toLowerCase();
-  if (/\b(retry|retried|resum|backoff)\b/.test(msg)) {
-    return { text: 'Retry', variant: 'retryable' };
-  }
-  return null;
-}
-
-function LiveStatusBanner({
-  runStatus,
-  failure,
-  retryAttempts,
-  progressMessage,
-  progressStage,
-  planGateAwaiting,
-}: {
-  runStatus?: string;
-  failure: ResearchFailureEvent | null;
-  retryAttempts?: number | null;
-  progressMessage?: string | null;
-  progressStage?: string | null;
-  /** True while `research:plan_ready_for_confirmation` raced ahead of polled `research_runs.status`. */
-  planGateAwaiting?: boolean;
-}) {
-  const live = classifyLiveStatus(runStatus, failure, {
-    retryAttempts,
-    progressMessage,
-    progressStage,
-    planGateAwaiting: planGateAwaiting === true,
-  });
-  const copy = LIVE_STATUS_COPY[live];
-  const toneClass =
-    copy.tone === 'good'
-      ? 'border-green-800/40 bg-green-950/30 text-green-300'
-      : copy.tone === 'warn'
-        ? 'border-amber-700/40 bg-amber-950/30 text-amber-200'
-        : copy.tone === 'bad'
-          ? 'border-red-700/40 bg-red-950/30 text-red-200'
-          : copy.tone === 'info'
-            ? 'border-accent/40 bg-accent/10 text-accent'
-            : 'border-surface-100 bg-surface-200 text-slate-400';
-
-  const Icon =
-    copy.tone === 'good'
-      ? CheckCircle2
-      : copy.tone === 'warn'
-        ? AlertCircle
-        : copy.tone === 'bad'
-          ? XCircle
-          : copy.tone === 'info'
-            ? Zap
-            : Clock;
-
-  return (
-    <div className={clsx('rounded-lg border px-3 py-2 flex items-start gap-2', toneClass)}>
-      <Icon size={16} className="mt-0.5 flex-shrink-0" />
-      <p className="text-xs leading-snug">{copy.label}</p>
-    </div>
-  );
-}
-
-function formatShortTime(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
 
 const TIER_ALLOWED_OBJECTIVES: Record<string, readonly ResearchObjective[]> = {
   free_demo: ['GENERAL_EPISTEMIC_RESEARCH'],
@@ -539,7 +454,7 @@ export default function ResearchPageV2() {
         setTrackingRunId(null);
         addNotification('success', 'Deep Research complete — report generated!');
         qc.invalidateQueries({ queryKey: ['reports'] });
-        setTimeout(() => navigate(`/app/reports/${result.reportId}`), 1200);
+        setTimeout(() => navigate(dossierReportUrlForRun(result.runId)), 1200);
       }
     });
 
@@ -1259,107 +1174,13 @@ export default function ResearchPageV2() {
             )}
             </div>
 
-            <div className="lg:col-span-3 lg:flex lg:flex-col lg:min-h-0 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="section-title">Live research trace ({traceEvents.length})</span>
-              <span className="text-[10px] text-slate-500">Chronological · newest at bottom</span>
-            </div>
-
-            <div
-              ref={traceScrollRef}
-              className="lg:flex-1 max-h-[28rem] lg:max-h-[80vh] lg:min-h-[40rem] overflow-y-auto rounded-lg border border-surface-100 bg-[#0b0d14] font-mono text-[11px] leading-5"
-            >
-              {traceEvents.length === 0 && (
-                <p className="text-slate-500 px-3 py-3">Waiting for events…</p>
-              )}
-              {traceEvents.map((evt, idx) => {
-                const isError = evt.eventType === 'run_failed' || evt.eventType === 'run_aborted' || evt.stage === 'failed' || evt.stage === 'aborted';
-                const isDone = evt.eventType === 'run_completed' || evt.stage === 'done';
-                const isResumed = evt.eventType === 'run_resumed';
-                const isModel = Boolean(evt.model || evt.tokenUsage);
-                const rowKey = `${evt.timestamp ?? idx}-${evt.stage}-${idx}`;
-                const retryBadge = retryBadgeForEvent(evt);
-
-                return (
-                  <div
-                    key={rowKey}
-                    className={clsx(
-                      'flex gap-2 px-3 py-1 border-b border-surface-100/20 last:border-0',
-                      isError && 'bg-red-950/20',
-                      isDone && 'bg-green-950/15',
-                      isResumed && 'bg-blue-950/15',
-                      isModel && !isError && !isDone && 'bg-indigo-950/10'
-                    )}
-                  >
-                    {/* Timestamp */}
-                    <span className="text-slate-600 tabular-nums flex-shrink-0 select-none w-[7ch]">
-                      {formatShortTime(evt.timestamp)}
-                    </span>
-
-                    {/* Stage tag */}
-                    <span
-                      className={clsx(
-                        'flex-shrink-0 w-[12ch] truncate',
-                        isError ? 'text-red-400' : isDone ? 'text-green-400' : isResumed ? 'text-blue-400' : 'text-indigo-400'
-                      )}
-                    >
-                      {evt.stage.replace(/_/g, ' ')}
-                    </span>
-
-                    {/* Percent */}
-                    <span className="text-slate-600 flex-shrink-0 w-[5ch] tabular-nums text-right">{evt.percent}%</span>
-
-                    {/* Message + inline details */}
-                    <span className="flex-1 min-w-0 text-slate-300 break-words">
-                      {evt.message}
-                      {retryBadge && (
-                        <span className={clsx(
-                          'ml-2 inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-medium uppercase tracking-wide',
-                          retryBadge.variant === 'resumed' && 'bg-blue-950/60 text-blue-300',
-                          retryBadge.variant === 'retryable' && 'bg-amber-950/60 text-amber-200',
-                          retryBadge.variant === 'terminal' && 'bg-slate-800 text-slate-400'
-                        )}>
-                          {retryBadge.text}
-                        </span>
-                      )}
-                      {evt.model && (
-                        <span className="ml-2 text-indigo-400/70">[{evt.model}]</span>
-                      )}
-                      {evt.tokenUsage && (
-                        <span className="ml-1 text-slate-500">
-                          {evt.tokenUsage.prompt}p+{evt.tokenUsage.completion}c tok
-                        </span>
-                      )}
-                      {(evt.chunkCount != null || evt.sourceCount != null) && (
-                        <span className="ml-1 text-slate-500">
-                          {typeof evt.chunkCount === 'number' ? `${evt.chunkCount} chunks` : ''}
-                          {typeof evt.chunkCount === 'number' && typeof evt.sourceCount === 'number' ? ' · ' : ''}
-                          {typeof evt.sourceCount === 'number' ? `${evt.sourceCount} sources` : ''}
-                        </span>
-                      )}
-                      {evt.failure?.errorMessage && (
-                        <span className="ml-1 text-red-300/90">{evt.failure.errorMessage}</span>
-                      )}
-                      {evt.substep && (
-                        <span className="ml-1 text-slate-500">({evt.substep})</span>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            </div>
+            <LiveResearchTraceLog traceEvents={traceEvents} traceScrollRef={traceScrollRef} />
           </div>
         )}
 
         {failure && (
-          <FailureCard
+          <ResearchRunFailureCard
             failure={failure}
-            // Read once from the canonical state machine. The card never
-            // recomputes retryable/terminal/aborted; it just renders the
-            // result. This eliminates the post-merge UI contradiction
-            // (Retryable badge + 'not recoverable' headline + Aborted
-            // banner all on the same screen).
             derivedState={deriveRunState(trackedRun ?? null, {
               terminal: failure.terminal,
               retryable: failure.retryable,
@@ -1367,8 +1188,13 @@ export default function ResearchPageV2() {
             })}
             onRetried={(rid) => {
               setFailure(null);
+              lastKnownRunIdRef.current = rid;
+              runSummaryReceivedRef.current = false;
+              setRunSummary(null);
               setTrackingRunId(rid);
-              qc.invalidateQueries({ queryKey: ['research-runs'] });
+              subscribeToJob(rid);
+              void qc.invalidateQueries({ queryKey: ['research-runs'] });
+              void qc.invalidateQueries({ queryKey: ['research-run', rid] }, { cancelRefetch: false });
               addNotification('info', 'Retry queued from last failure.');
             }}
             onError={(msg) => addNotification('error', msg)}
@@ -1415,6 +1241,7 @@ export default function ResearchPageV2() {
                     setTrackingRunId(null);
                     setProgress(null);
                     setFailure(null);
+                    setRunSummary(null);
                   }
                 }}
               />
@@ -1486,7 +1313,10 @@ function RunRow({
 
   return (
     <div className="card p-3 space-y-2">
-      <div className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2" onClick={() => run.status === 'completed' && navigate('/app/reports')}>
+      <div
+        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2"
+        onClick={() => run.status === 'completed' && navigate(dossierReportUrlForRun(run.id))}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <Icon size={14} className={cfg.color} />
           <div className="min-w-0">
@@ -1530,208 +1360,6 @@ function RunRow({
       )}
     </div>
   );
-}
-
-function FailureCard({
-  failure,
-  derivedState,
-  onRetried,
-  onError,
-  onInfo,
-}: {
-  failure: ResearchFailureEvent;
-  /**
-   * Canonical state from `deriveRunState`. The card NEVER computes its own
-   * retryable/terminal flags — it just renders what the state machine says.
-   * This is what fixes the "Retryable badge + Aborted banner + 'not
-   * recoverable' headline all on the same screen" failure mode reported on
-   * 2026-04-28.
-   */
-  derivedState: LiveStatus;
-  onRetried: (runId: string) => void;
-  onError: (message: string) => void;
-  /**
-   * Used for non-error post-action messages (e.g. "2 retries remaining after
-   * this attempt"). Wired to an info-level notification by the parent so we
-   * do not surface a false error toast on a successful retry queue
-   * (PR #39 Copilot review).
-   */
-  onInfo: (message: string) => void;
-}) {
-  const fmeta = failure.failureMeta ?? {};
-  const role = typeof fmeta.role === 'string' ? fmeta.role : undefined;
-  const model = typeof fmeta.model === 'string' ? fmeta.model : undefined;
-  const upstream = typeof fmeta.upstream === 'string' ? fmeta.upstream : undefined;
-  const classification =
-    typeof fmeta.classification === 'string' ? fmeta.classification : undefined;
-  const retryAttempts = typeof fmeta.retryAttempts === 'number' ? fmeta.retryAttempts : undefined;
-  const retryBudget = typeof fmeta.retryBudget === 'number' ? fmeta.retryBudget : undefined;
-  const attemptsRemaining =
-    typeof fmeta.attemptsRemaining === 'number' ? fmeta.attemptsRemaining : undefined;
-  const abortReason = typeof fmeta.abortReason === 'string' ? fmeta.abortReason : undefined;
-
-  const isTerminal = derivedState === 'aborted';
-  const showResume = isResumeAvailable(derivedState);
-
-  const tone = isTerminal ? 'red' : 'amber';
-  const headlineClass = isTerminal ? 'text-red-300' : 'text-amber-300';
-  const containerClass = isTerminal
-    ? 'border-red-700/40 bg-red-950/30'
-    : 'border-amber-700/40 bg-amber-950/30';
-
-  const reason = formatFailureReason(failure.error || failure.message, fmeta);
-  const headline =
-    failureCardHeadline(derivedState) ?? 'Run encountered an error.';
-
-  const guidance: string[] = [];
-  if (isTerminal) {
-    if (abortReason === 'auth_error') {
-      guidance.push(
-        'The upstream rejected the call as unauthenticated. The server-side OPENROUTER_API_KEY / HF_TOKEN may be missing or expired — contact the operator.'
-      );
-    } else if (abortReason === 'invalid_request') {
-      guidance.push(
-        'The orchestrator classified this request as malformed. Inspect the query / supplemental files and start a new run.'
-      );
-    } else if (abortReason === 'budget_exhausted') {
-      guidance.push(
-        `The retry budget (${retryBudget ?? 3}) is exhausted. Start a new run with the same query if you want to try again.`
-      );
-    } else {
-      guidance.push(
-        'The orchestrator marked this failure non-recoverable. Start a new run with the same query if you want to try again.'
-      );
-    }
-  } else if (showResume) {
-    guidance.push(
-      'Click "Resume from last failure" to re-queue this run from the saved checkpoint with the same models, ensemble, and supplemental context.'
-    );
-    if (typeof retryAttempts === 'number' && typeof retryBudget === 'number') {
-      guidance.push(`Retries used so far: ${retryAttempts} of ${retryBudget}.`);
-    }
-  }
-  if (classification === 'provider_unavailable' && upstream === 'huggingface_inference') {
-    guidance.push(
-      'The Hugging Face Inference Provider for this exact repo was temporarily unavailable. If this keeps happening, switch the role to a different model in the per-run model panel above.'
-    );
-  }
-  if (classification === 'auth_error') {
-    guidance.push(
-      'The upstream rejected the call as unauthenticated. The server-side OPENROUTER_API_KEY / HF_TOKEN may be missing or expired — contact the operator.'
-    );
-  }
-  if (classification === 'rate_limited') {
-    guidance.push(
-      'You are being rate-limited by the upstream provider. Wait briefly before resuming.'
-    );
-  }
-
-  return (
-    <div className={clsx('border rounded-lg p-4 space-y-2', containerClass)}>
-      <div className="flex items-center gap-2">
-        {isTerminal ? (
-          <XCircle size={16} className="text-red-400" />
-        ) : (
-          <AlertCircle size={16} className="text-amber-400" />
-        )}
-        <p className={clsx('text-sm font-medium', headlineClass)}>{headline}</p>
-      </div>
-
-      <div className={clsx('text-xs space-y-1', tone === 'red' ? 'text-red-200' : 'text-amber-200')}>
-        <p>
-          <span className="text-slate-400">Stage:</span> {failure.stage || 'unknown'}
-          {role ? <span> · <span className="text-slate-400">Role:</span> {role}</span> : null}
-          {model ? <span> · <span className="text-slate-400">Model:</span> {model}</span> : null}
-          {upstream ? <span> · <span className="text-slate-400">Upstream:</span> {upstream}</span> : null}
-          {classification ? (
-            <span> · <span className="text-slate-400">Class:</span> {classification}</span>
-          ) : null}
-        </p>
-        <p className="opacity-90">{reason}</p>
-        {typeof retryAttempts === 'number' && typeof retryBudget === 'number' && (
-          <p className="text-slate-400">
-            Retries used: <span className="text-slate-300">{retryAttempts}</span> of{' '}
-            <span className="text-slate-300">{retryBudget}</span>
-            {typeof attemptsRemaining === 'number' && attemptsRemaining > 0 ? (
-              isTerminal ? (
-                <span>
-                  {' '}· <span className="text-slate-500">{attemptsRemaining} unused (budget locked: {abortReason ?? 'non-recoverable'})</span>
-                </span>
-              ) : (
-                <span> · <span className="text-slate-300">{attemptsRemaining}</span> remaining</span>
-              )
-            ) : null}
-          </p>
-        )}
-      </div>
-
-      {guidance.length > 0 && (
-        <ul className="text-xs space-y-1 text-slate-300 pl-4 list-disc">
-          {guidance.map((g, idx) => (
-            <li key={idx}>{g}</li>
-          ))}
-        </ul>
-      )}
-
-      {showResume && (
-        <button
-          type="button"
-          className="btn-ghost text-xs mt-1"
-          onClick={async () => {
-            if (!failure.runId) return;
-            try {
-              const result = await retryResearchRunFromFailure(failure.runId);
-              onRetried(failure.runId);
-              if (typeof result?.attemptsRemaining === 'number') {
-                onInfo(
-                  `${result.attemptsRemaining} ${
-                    result.attemptsRemaining === 1 ? 'retry' : 'retries'
-                  } remaining after this attempt.`
-                );
-              }
-            } catch (err) {
-              if (axios.isAxiosError(err)) {
-                const d = err.response?.data as
-                  | { error?: string; reason?: string; hint?: string; terminal?: boolean }
-                  | undefined;
-                const detail = [d?.error, d?.reason, d?.hint].filter(Boolean).join(' — ');
-                onError(detail || err.message || 'Failed to queue retry');
-              } else {
-                onError(err instanceof Error ? err.message : 'Failed to queue retry');
-              }
-            }
-          }}
-        >
-          <RotateCcw size={12} />
-          Resume from last failure
-        </button>
-      )}
-    </div>
-  );
-}
-
-function formatFailureReason(message: string, failureMeta?: Record<string, unknown>): string {
-  if (!failureMeta) return message;
-  const providerMessage = typeof failureMeta.providerMessage === 'string' ? failureMeta.providerMessage : undefined;
-  const status = typeof failureMeta.status === 'number' ? String(failureMeta.status) : undefined;
-  const classification = typeof failureMeta.classification === 'string' ? failureMeta.classification : undefined;
-  const endpoint = typeof failureMeta.endpoint === 'string' ? failureMeta.endpoint : undefined;
-  const hint = typeof failureMeta.hint === 'string' ? failureMeta.hint : undefined;
-  const reason = typeof failureMeta.reason === 'string' ? failureMeta.reason : undefined;
-  const orchestratorHints = Array.isArray(failureMeta.orchestratorHints)
-    ? failureMeta.orchestratorHints.filter((h) => typeof h === 'string').join(' | ')
-    : undefined;
-
-  const details = [
-    classification ? `classification=${classification}` : '',
-    status ? `status=${status}` : '',
-    endpoint ? `endpoint=${endpoint}` : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  if (!providerMessage && !details && !orchestratorHints && !hint && !reason) return message;
-  return [message, providerMessage, details, reason, hint, orchestratorHints].filter(Boolean).join(' | ');
 }
 
 function extractStartResearchErrorMessage(error: unknown): string {

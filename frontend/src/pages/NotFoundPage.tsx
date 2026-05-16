@@ -24,8 +24,8 @@ export default function NotFoundPage() {
             >
               Go to Research
             </Link>
-            <Link to="/app/reports" className="text-sm text-slate-400 hover:text-slate-200">
-              Reports
+            <Link to="/app/dossiers" className="text-sm text-slate-400 hover:text-slate-200">
+              Dossiers
             </Link>
             <Link to="/app/billing" className="text-sm text-slate-400 hover:text-slate-200">
               Account
