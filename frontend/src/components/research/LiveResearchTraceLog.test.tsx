@@ -11,6 +11,19 @@ describe('LiveResearchTraceLog', () => {
     expect(screen.getByText('Nothing yet')).toBeInTheDocument();
   });
 
+  it('renders optional progress detail for diagnostics (PR #133 Codex)', () => {
+    const evt: ResearchProgressEvent = {
+      runId: 'run-1',
+      stage: 'synthesis',
+      percent: 40,
+      message: 'Drafting section',
+      detail: 'Section: Introduction',
+      timestamp: '2025-06-01T12:00:00.000Z',
+    };
+    render(<LiveResearchTraceLog traceEvents={[evt]} />);
+    expect(screen.getByText('Section: Introduction')).toBeInTheDocument();
+  });
+
   it('renders multiple events in array order (chronological, newest at bottom)', () => {
     const first: ResearchProgressEvent = {
       runId: 'run-1',

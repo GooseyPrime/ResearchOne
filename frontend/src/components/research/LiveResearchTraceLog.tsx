@@ -96,6 +96,9 @@ export default function LiveResearchTraceLog({
 
               <span className="flex-1 min-w-0 text-slate-300 break-words">
                 {evt.message}
+                {evt.detail ? (
+                  <span className="mt-0.5 block text-[10px] text-slate-500 whitespace-pre-wrap break-words">{evt.detail}</span>
+                ) : null}
                 {retryBadge && (
                   <span
                     className={clsx(

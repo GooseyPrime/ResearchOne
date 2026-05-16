@@ -140,15 +140,16 @@ export default function ResearchPage() {
   });
 
   const trackedRun = runs.find((r) => r.id === trackingRunId);
-  const pollEnabled =
-    Boolean(trackingRunId) &&
-    (trackedRun?.status === 'running' || trackedRun?.status === 'queued' || trackedRun?.status === 'failed');
+  /** Poll quickly only while work is in flight; keep query enabled so cache can refresh on invalidate (PR #133 Copilot + Rule 10). */
+  const runPollCadenceActive =
+    trackedRun?.status === 'running' || trackedRun?.status === 'queued';
 
   const { data: polledRun } = useQuery({
     queryKey: ['research-run', trackingRunId],
     queryFn: () => getResearchRun(trackingRunId!),
-    enabled: pollEnabled,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(4_000),
+    enabled: Boolean(trackingRunId),
+    refetchInterval: () =>
+      runPollCadenceActive ? getAdaptiveRefetchIntervalMs(4_000) : false,
   });
 
   const mutation = useMutation({
@@ -216,6 +217,12 @@ export default function ResearchPage() {
       clearTimeout(timer);
     };
   }, [failure, trackingRunId]);
+
+  useEffect(() => {
+    if (!trackingRunId || !trackedRun) return;
+    if (trackedRun.status !== 'failed' && trackedRun.status !== 'aborted') return;
+    void qc.invalidateQueries({ queryKey: ['research-run', trackingRunId] }, { cancelRefetch: false });
+  }, [trackingRunId, trackedRun?.status, qc]);
 
   useEffect(() => {
     if (!modelOptions) return;
@@ -333,6 +340,7 @@ export default function ResearchPage() {
 
     socket.on('research:failed', (failed: ResearchFailureEvent) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      void qc.invalidateQueries({ queryKey: ['research-run', failed.runId] }, { cancelRefetch: false });
       if (failed.runId === trackingRunId) {
         const failureReason = formatFailureReason(failed.error || failed.message, failed.failureMeta);
         setFailure(failed);
@@ -368,6 +376,7 @@ export default function ResearchPage() {
 
     socket.on('research:aborted', (failed: ResearchFailureEvent) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      void qc.invalidateQueries({ queryKey: ['research-run', failed.runId] }, { cancelRefetch: false });
       if (failed.runId === trackingRunId) {
         const failureReason = formatFailureReason(failed.error || failed.message, failed.failureMeta);
         const finalFailure: ResearchFailureEvent = { ...failed, terminal: true, retryable: false };
@@ -677,8 +686,13 @@ export default function ResearchPage() {
             })}
             onRetried={(rid) => {
               setFailure(null);
+              lastKnownRunIdRef.current = rid;
+              runSummaryReceivedRef.current = false;
+              setRunSummary(null);
               setTrackingRunId(rid);
-              qc.invalidateQueries({ queryKey: ['research-runs'] });
+              subscribeToJob(rid);
+              void qc.invalidateQueries({ queryKey: ['research-runs'] });
+              void qc.invalidateQueries({ queryKey: ['research-run', rid] }, { cancelRefetch: false });
               addNotification('info', 'Retry queued from last failure.');
             }}
             onError={(msg) => addNotification('error', msg)}

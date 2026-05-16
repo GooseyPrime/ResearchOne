@@ -1188,8 +1188,13 @@ export default function ResearchPageV2() {
             })}
             onRetried={(rid) => {
               setFailure(null);
+              lastKnownRunIdRef.current = rid;
+              runSummaryReceivedRef.current = false;
+              setRunSummary(null);
               setTrackingRunId(rid);
-              qc.invalidateQueries({ queryKey: ['research-runs'] });
+              subscribeToJob(rid);
+              void qc.invalidateQueries({ queryKey: ['research-runs'] });
+              void qc.invalidateQueries({ queryKey: ['research-run', rid] }, { cancelRefetch: false });
               addNotification('info', 'Retry queued from last failure.');
             }}
             onError={(msg) => addNotification('error', msg)}
@@ -1236,6 +1241,7 @@ export default function ResearchPageV2() {
                     setTrackingRunId(null);
                     setProgress(null);
                     setFailure(null);
+                    setRunSummary(null);
                   }
                 }}
               />
