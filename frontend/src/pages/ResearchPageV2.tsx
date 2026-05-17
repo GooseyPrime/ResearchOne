@@ -46,6 +46,7 @@ import {
   type CitationStyleSlug,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
+import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/usePlanPreferences';
 import { formatFailureReason } from '../utils/researchFailureFormat';
@@ -724,14 +725,6 @@ export default function ResearchPageV2() {
     Boolean(planGateLocal) ||
     (current?.percent != null && current.percent > 0 && current.percent < 100);
 
-  const freeLifetimeQuota = useMemo(() => {
-    if (!tierResolved || userTier !== 'free_demo' || !subscriptionData) return null;
-    const cap = subscriptionData.lifetimeReportCap;
-    if (cap == null) return null;
-    const used = subscriptionData.lifetimeReportsUsed ?? 0;
-    return { cap, used, remaining: Math.max(0, cap - used) };
-  }, [tierResolved, userTier, subscriptionData]);
-
   return (
     <div
       className={clsx(
@@ -753,28 +746,7 @@ export default function ResearchPageV2() {
         </p>
       </div>
 
-      {tierResolved && userTier === 'free_demo' && (
-        <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
-          <p className="font-medium text-slate-200">Free tier — Deep Research</p>
-          <p className="mt-1 text-slate-400">
-            {freeLifetimeQuota ? (
-              <>
-                You have <span className="text-slate-200 font-medium">{freeLifetimeQuota.remaining}</span> of{' '}
-                <span className="text-slate-200 font-medium">{freeLifetimeQuota.cap}</span> lifetime research runs
-                remaining (General Epistemic Research). Completed runs update this count.
-              </>
-            ) : (
-              <>
-                Lifetime research runs on the free tier use the General Epistemic Research objective only.{' '}
-              </>
-            )}
-            Deep Research uses the V2 multi-model ensemble for richer analysis.{' '}
-            <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
-              Upgrade for more objectives and higher limits.
-            </Link>
-          </p>
-        </div>
-      )}
+      <FreeLifetimeQuotaBanner variant="deep-research" />
 
       <div className="card-glow p-6 space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4">

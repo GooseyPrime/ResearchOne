@@ -71,11 +71,11 @@ describe('tierService', () => {
       expect(result.upgradePath).toBe('/pricing');
     });
 
-    it('denies after lifetime cap of 3 is reached', async () => {
+    it('denies after lifetime cap of 2 is reached', async () => {
       queryOneMock.mockResolvedValueOnce({
         user_id: 'u1', tier: 'free_demo', org_id: null,
-        current_period_reports_used: 3, current_period_deep_reports_used: 0,
-        lifetime_reports_used: 3, current_period_resets_at: null, updated_at: '',
+        current_period_reports_used: 2, current_period_deep_reports_used: 0,
+        lifetime_reports_used: 2, current_period_resets_at: null, updated_at: '',
       });
       const result = await checkTierAccess('u1', 'GENERAL_EPISTEMIC_RESEARCH');
       expect(result.allowed).toBe(false);
@@ -85,8 +85,8 @@ describe('tierService', () => {
     it('allows when lifetime reports used is below cap', async () => {
       queryOneMock.mockResolvedValueOnce({
         user_id: 'u1', tier: 'free_demo', org_id: null,
-        current_period_reports_used: 2, current_period_deep_reports_used: 0,
-        lifetime_reports_used: 2, current_period_resets_at: null, updated_at: '',
+        current_period_reports_used: 1, current_period_deep_reports_used: 0,
+        lifetime_reports_used: 1, current_period_resets_at: null, updated_at: '',
       });
       const result = await checkTierAccess('u1', 'GENERAL_EPISTEMIC_RESEARCH');
       expect(result.allowed).toBe(true);
@@ -207,26 +207,24 @@ describe('tierService', () => {
   });
 
   describe('incrementReportCount', () => {
-    it('increments both current and lifetime for non-deep reports', async () => {
+    it('upserts user_tiers and increments lifetime for non-deep reports', async () => {
       queryMock.mockResolvedValueOnce([]);
       await incrementReportCount('u1', false);
-      expect(queryMock).toHaveBeenCalledWith(
-        expect.stringContaining('lifetime_reports_used = lifetime_reports_used + 1'),
-        ['u1']
-      );
-      expect(queryMock).not.toHaveBeenCalledWith(
-        expect.stringContaining('current_period_deep_reports_used'),
-        expect.anything()
-      );
+      const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('INSERT INTO user_tiers');
+      expect(sql).toContain('ON CONFLICT (user_id) DO UPDATE');
+      expect(sql).toContain('lifetime_reports_used = user_tiers.lifetime_reports_used + 1');
+      expect(params[0]).toBe('u1');
+      expect(params[2]).toBe(0);
     });
 
-    it('increments deep counter for deep reports', async () => {
+    it('upserts with deep counter increment for deep reports', async () => {
       queryMock.mockResolvedValueOnce([]);
       await incrementReportCount('u1', true);
-      expect(queryMock).toHaveBeenCalledWith(
-        expect.stringContaining('current_period_deep_reports_used = current_period_deep_reports_used + 1'),
-        ['u1']
-      );
+      const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('INSERT INTO user_tiers');
+      expect(sql).toContain('current_period_deep_reports_used');
+      expect(params[2]).toBe(1);
     });
   });
 });

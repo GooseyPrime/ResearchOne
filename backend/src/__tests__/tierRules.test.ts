@@ -36,8 +36,8 @@ describe('TIER_RULES', () => {
     it('denies INVESTIGATIVE_SYNTHESIS', () => {
       expect(rules.allowedObjectives).not.toContain('INVESTIGATIVE_SYNTHESIS');
     });
-    it('has lifetime cap of 3', () => {
-      expect(rules.lifetimeReportCap).toBe(3);
+    it('has lifetime cap of 2', () => {
+      expect(rules.lifetimeReportCap).toBe(2);
     });
     it('has no wallet fallback', () => {
       expect(rules.walletFallbackEnabled).toBe(false);
