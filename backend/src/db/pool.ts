@@ -69,7 +69,6 @@ async function resetRole(client: PoolClient): Promise<void> {
     await client.query('RESET ROLE');
   } catch (_err) {
     // Best effort
-    return;
   }
 }
 
