@@ -9,7 +9,7 @@
  *
  * Run: npx vitest run formatting
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { sourceToCslJson, type SourceRow } from '../services/formatting/cslConverter';
 import { rewriteAliasesForPandoc } from '../services/formatting/evidenceAliaser';
 

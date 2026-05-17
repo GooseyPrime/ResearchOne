@@ -49,7 +49,7 @@ async function main(): Promise<void> {
       return;
     }
   } finally {
-    await runtimeClient.end().catch(() => {});
+    await runtimeClient.end().catch(() => undefined);
   }
 
   const adminUrl = getDatabaseAdminUrlFromEnv(process.env);
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     );
     await applyApplicationRoleBootstrapAsAdmin(adminClient, runtimeLogin);
   } finally {
-    await adminClient.end().catch(() => {});
+    await adminClient.end().catch(() => undefined);
   }
 
   const verify = new Client({ connectionString: runtimeUrl });
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
   } finally {
-    await verify.end().catch(() => {});
+    await verify.end().catch(() => undefined);
   }
 
   console.info('[bootstrap-application-role] OK: bootstrap applied and verified.');

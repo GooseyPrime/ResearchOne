@@ -47,9 +47,13 @@ describe('Postgres RLS context propagation', () => {
     const req = {
       auth: { userId: 'user_scope', orgId: null, sessionId: null },
     } as unknown as Request;
+    const nextCalls: number[] = [];
 
-    rlsContextMiddleware(req, {} as Response, () => {});
+    rlsContextMiddleware(req, {} as Response, () => {
+      nextCalls.push(1);
+    });
 
+    expect(nextCalls).toHaveLength(1);
     expect(rlsStore.getStore()).toBeUndefined();
   });
 });

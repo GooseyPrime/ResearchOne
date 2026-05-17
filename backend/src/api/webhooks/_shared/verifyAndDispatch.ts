@@ -98,7 +98,7 @@ export async function dispatchWebhookEvent<T>(
   handlers: Record<string, WebhookEventHandler<T>>,
   providerName: string
 ): Promise<{ status: 'processed' | 'already_processed' | 'unhandled' | 'error'; error?: string }> {
-  const { isNew, alreadyProcessed } = await checkAndRecordWebhookEvent(eventId, eventType, rawPayload);
+  const { alreadyProcessed } = await checkAndRecordWebhookEvent(eventId, eventType, rawPayload);
 
   if (alreadyProcessed) {
     logger.info(`${providerName}_webhook_already_processed`, { eventId, eventType });

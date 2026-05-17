@@ -8,7 +8,7 @@
  *
  * Run: npx vitest run costSidecar
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runScope, emitCallTelemetry, rolePhaseFor } from '../services/telemetry';
 import { _resetPricingCache, computeCostUsd } from '../services/telemetry/pricingCatalog';
 import type { ModelCallResult } from '../services/openrouter/openrouterService';

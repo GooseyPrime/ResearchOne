@@ -67,8 +67,9 @@ async function applyRlsContext(client: PoolClient): Promise<void> {
 async function resetRole(client: PoolClient): Promise<void> {
   try {
     await client.query('RESET ROLE');
-  } catch {
+  } catch (_err) {
     // Best effort
+    return;
   }
 }
 
@@ -86,7 +87,7 @@ export async function query<T = Record<string, unknown>>(
       await client.query('COMMIT');
       return result.rows as T[];
     } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
+      await client.query('ROLLBACK').catch(() => undefined);
       throw err;
     } finally {
       await resetRole(client);
