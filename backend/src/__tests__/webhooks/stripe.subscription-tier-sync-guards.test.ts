@@ -1,20 +1,14 @@
 /**
- * PR #124 follow-up: `customer.subscription.created/updated` must not downgrade
- * `user_tiers` on non-granting Stripe statuses or on add-on subscriptions.
- *
- * Per Rule 16: assert the absence of `setUserTier` when the bug would fire.
+ * Webhook routes subscription events through `syncStripeSubscriptionToUser`.
  */
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as parallelMonitorService from '../../services/monitoring/parallelMonitorService';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   constructEvent: vi.fn(),
-  setUserTier: vi.fn(),
-  syncSubscription: vi.fn(),
-  markSubscriptionCanceled: vi.fn(),
-  resolveSubscriptionPlanTier: vi.fn(),
+  syncStripeSubscriptionToUser: vi.fn(),
+  resolveUserIdForSubscription: vi.fn(),
 }));
 
 vi.mock('../../db/pool', () => ({ query: mocks.query, queryOne: vi.fn() }));
@@ -42,13 +36,18 @@ vi.mock('stripe', () => ({
     webhooks = { constructEvent: mocks.constructEvent };
   },
 }));
-vi.mock('../../services/tier/tierService', () => ({
-  setUserTier: mocks.setUserTier,
-}));
-vi.mock('../../services/billing/subscriptionService', () => ({
-  syncSubscription: mocks.syncSubscription,
-  markSubscriptionCanceled: mocks.markSubscriptionCanceled,
-  resolveSubscriptionPlanTier: mocks.resolveSubscriptionPlanTier,
+vi.mock('../../services/billing/syncStripeSubscription', () => ({
+  syncStripeSubscriptionToUser: mocks.syncStripeSubscriptionToUser,
+  resolveUserIdForSubscription: mocks.resolveUserIdForSubscription,
+  StripeSubscriptionUserUnresolvedError: class StripeSubscriptionUserUnresolvedError extends Error {
+    constructor(
+      public readonly subscriptionId: string,
+      public readonly eventId?: string
+    ) {
+      super(`unresolved subscription ${subscriptionId}`);
+      this.name = 'StripeSubscriptionUserUnresolvedError';
+    }
+  },
 }));
 vi.mock('../../services/monitoring/parallelMonitorService', () => ({
   cancelMonitorByStripeSubscription: vi.fn(),
@@ -64,6 +63,9 @@ type StripeWebhookRouterLayer = { route?: { stack: Array<{ handle: RequestHandle
 async function dispatchSubscriptionUpdated(body: Record<string, unknown>) {
   mocks.constructEvent.mockReturnValueOnce(body);
   mocks.query.mockResolvedValue([]);
+  mocks.resolveUserIdForSubscription.mockResolvedValueOnce(
+    (body.data as { object: { metadata?: { user_id?: string } } }).object.metadata?.user_id ?? null
+  );
 
   const router = (await import('../../api/webhooks/stripe')).default as unknown as {
     stack: StripeWebhookRouterLayer[];
@@ -81,65 +83,13 @@ async function dispatchSubscriptionUpdated(body: Record<string, unknown>) {
   await layer(req, res, vi.fn() as NextFunction);
 }
 
-describe('stripe subscription.updated tier sync guards (PR #124)', () => {
+describe('stripe subscription.updated → syncStripeSubscriptionToUser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveSubscriptionPlanTier.mockReturnValue('free_demo');
-    vi.mocked(parallelMonitorService.subscriptionHasLivingReportsPrice).mockReturnValue(false);
+    mocks.syncStripeSubscriptionToUser.mockResolvedValue(undefined);
   });
 
-  it('does not call setUserTier for unpaid add-on with monitor_kind (non-granting)', async () => {
-    vi.mocked(parallelMonitorService.subscriptionHasLivingReportsPrice).mockReturnValue(true);
-
-    await dispatchSubscriptionUpdated({
-      id: 'evt_addon_unpaid',
-      type: 'customer.subscription.updated',
-      data: {
-        object: {
-          id: 'sub_addon_unpaid',
-          customer: 'cus_addon',
-          status: 'unpaid',
-          current_period_end: Math.floor(Date.now() / 1000) + 86400,
-          cancel_at_period_end: false,
-          metadata: {
-            user_id: 'user_keeps_pro',
-            monitor_kind: 'living_report',
-            report_id: 'rep1',
-          },
-          items: { data: [{ id: 'si_1', price: { id: 'price_living_report', lookup_key: null } }] },
-        },
-      },
-    });
-
-    expect(mocks.syncSubscription).toHaveBeenCalled();
-    expect(mocks.setUserTier).not.toHaveBeenCalled();
-    expect(mocks.resolveSubscriptionPlanTier).not.toHaveBeenCalled();
-  });
-
-  it('does not call setUserTier when main plan subscription is unpaid', async () => {
-    await dispatchSubscriptionUpdated({
-      id: 'evt_plan_unpaid',
-      type: 'customer.subscription.updated',
-      data: {
-        object: {
-          id: 'sub_pro_main',
-          customer: 'cus_pro',
-          status: 'unpaid',
-          current_period_end: Math.floor(Date.now() / 1000) + 86400,
-          cancel_at_period_end: false,
-          metadata: { user_id: 'user_unpaid' },
-          items: { data: [{ price: { id: 'price_pro_monthly', lookup_key: 'pro_monthly' } }] },
-        },
-      },
-    });
-
-    expect(mocks.syncSubscription).toHaveBeenCalled();
-    expect(mocks.setUserTier).not.toHaveBeenCalled();
-  });
-
-  it('calls setUserTier when subscription grants access and tier resolves', async () => {
-    mocks.resolveSubscriptionPlanTier.mockReturnValue('pro');
-
+  it('invokes canonical sync when user_id resolves from metadata', async () => {
     await dispatchSubscriptionUpdated({
       id: 'evt_plan_active',
       type: 'customer.subscription.updated',
@@ -156,8 +106,11 @@ describe('stripe subscription.updated tier sync guards (PR #124)', () => {
       },
     });
 
-    expect(mocks.syncSubscription).toHaveBeenCalled();
-    expect(mocks.resolveSubscriptionPlanTier).toHaveBeenCalled();
-    expect(mocks.setUserTier).toHaveBeenCalledWith('user_active', 'pro');
+    expect(mocks.syncStripeSubscriptionToUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user_active',
+        source: 'webhook',
+      })
+    );
   });
 });

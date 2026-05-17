@@ -1,10 +1,12 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 type PricingCardProps = {
   title: string;
   details: string;
   cta: string;
-  to: string;
+  to?: string;
+  ctaSlot?: ReactNode;
   featured?: boolean;
   badge?: string;
 };
@@ -13,7 +15,15 @@ function isExternal(to: string): boolean {
   return /^(mailto:|https?:\/\/|tel:)/i.test(to);
 }
 
-export default function PricingCard({ title, details, cta, to, featured = false, badge }: PricingCardProps) {
+export default function PricingCard({
+  title,
+  details,
+  cta,
+  to,
+  ctaSlot,
+  featured = false,
+  badge,
+}: PricingCardProps) {
   const ctaClass =
     'mt-5 inline-flex rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep';
   return (
@@ -27,15 +37,17 @@ export default function PricingCard({ title, details, cta, to, featured = false,
         ) : null}
       </div>
       <p className="mt-3 text-sm leading-7 text-r1-text-muted">{details}</p>
-      {isExternal(to) ? (
-        <a href={to} className={ctaClass}>
-          {cta}
-        </a>
-      ) : (
-        <Link to={to} className={ctaClass}>
-          {cta}
-        </Link>
-      )}
+      {ctaSlot ??
+        (to &&
+          (isExternal(to) ? (
+            <a href={to} className={ctaClass}>
+              {cta}
+            </a>
+          ) : (
+            <Link to={to} className={ctaClass}>
+              {cta}
+            </Link>
+          )))}
     </article>
   );
 }

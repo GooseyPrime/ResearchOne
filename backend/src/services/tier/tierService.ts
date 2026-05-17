@@ -3,6 +3,7 @@ import { TIER_RULES, type TierName, isTierName } from '../../config/tierRules';
 import { logger } from '../../utils/logger';
 import type { UserSubscription } from '../billing/subscriptionService';
 import { resolveEffectiveEntitlementTier } from '../billing/entitlementTier';
+import { ensureUserAndTierRow } from '../users/ensureUserRow';
 
 export interface UserTierRow {
   user_id: string;
@@ -56,6 +57,34 @@ export async function getUserTier(userId: string): Promise<UserTierRow> {
     current_period_resets_at: null,
     updated_at: new Date().toISOString(),
   };
+}
+
+/** True when a persisted `user_tiers` row exists (not the synthetic default). */
+export async function userTierRowExists(userId: string): Promise<boolean> {
+  try {
+    const row = await queryOne<{ user_id: string }>(
+      'SELECT user_id FROM user_tiers WHERE user_id = $1',
+      [userId]
+    );
+    return Boolean(row);
+  } catch (err: unknown) {
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === '42P01' || pgCode === '42703') {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Ensures local rows exist, then returns the real DB tier row (never synthetic).
+ */
+export async function getOrCreateUserTier(userId: string, email?: string | null): Promise<UserTierRow> {
+  const exists = await userTierRowExists(userId);
+  if (!exists) {
+    await ensureUserAndTierRow(userId, email ?? null);
+  }
+  return getUserTier(userId);
 }
 
 /**
@@ -180,7 +209,7 @@ export async function checkTierAccess(
   isDeep?: boolean,
   subscription?: UserSubscription | null
 ): Promise<TierCheckResult> {
-  const userTier = await getUserTier(userId);
+  const userTier = await getOrCreateUserTier(userId);
   const entitlementTier =
     subscription != null
       ? resolveEffectiveEntitlementTier(subscription, userTier.tier)

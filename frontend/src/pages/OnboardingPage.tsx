@@ -37,7 +37,9 @@ export default function OnboardingPage() {
           initialTier,
         },
       });
-      navigate('/app/research', { replace: true });
+      const afterOnboarding =
+        initialTier === 'free_demo' ? '/app/research' : `/app/billing?intent=${initialTier}`;
+      navigate(afterOnboarding, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not complete onboarding');
     } finally {
@@ -100,8 +102,8 @@ export default function OnboardingPage() {
           <span className="font-medium text-r1-text">{signupTierLabel(initialTier)}</span>
           {initialTier === 'free_demo'
             ? ' — no checkout on this screen.'
-            : ' — pricing intent is recorded; checkout happens from Account when you are ready.'}{' '}
-          Upgrade paths unlock from your Account page later.
+            : ' — continue to Account to complete Stripe checkout for this plan.'}{' '}
+          You can change plans anytime from Account.
         </p>
       </section>
 
@@ -113,7 +115,11 @@ export default function OnboardingPage() {
         className="mt-8 inline-flex w-fit rounded-lg bg-r1-accent px-5 py-3 font-semibold text-r1-bg disabled:opacity-50"
         onClick={() => void complete()}
       >
-        {saving ? 'Saving…' : 'Continue to research workspace'}
+        {saving
+          ? 'Saving…'
+          : initialTier === 'free_demo'
+            ? 'Continue to research workspace'
+            : 'Continue to checkout'}
       </button>
     </div>
   );

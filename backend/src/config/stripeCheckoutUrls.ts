@@ -1,3 +1,22 @@
+const CHECKOUT_SESSION_ID_TEMPLATE = '{CHECKOUT_SESSION_ID}';
+
+/**
+ * Stripe Checkout success URL must include Stripe's session id template so the
+ * confirm endpoint can reconcile entitlement on return (WO-Y).
+ */
+export function assertStripeCheckoutSuccessUrlHasSessionTemplate(
+  url: string,
+  envName: string,
+  nodeEnv: string
+): void {
+  if (nodeEnv !== 'production') return;
+  if (!url.includes(CHECKOUT_SESSION_ID_TEMPLATE)) {
+    throw new Error(
+      `${envName} must include "${CHECKOUT_SESSION_ID_TEMPLATE}" in production (see backend/.env.production.example)`,
+    );
+  }
+}
+
 /**
  * Stripe Checkout success/cancel URLs must match Dashboard allow-list entries.
  * Production refuses localhost fallbacks so VM deploys cannot silently redirect users to dev URLs.
@@ -33,6 +52,10 @@ export function resolveStripeCheckoutRedirect(
   const host = parsed.hostname.toLowerCase();
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
     throw new Error(`${envName} cannot use localhost in production`);
+  }
+
+  if (envName === 'STRIPE_CHECKOUT_SUCCESS_URL') {
+    assertStripeCheckoutSuccessUrlHasSessionTemplate(trimmed, envName, nodeEnv);
   }
 
   return trimmed;

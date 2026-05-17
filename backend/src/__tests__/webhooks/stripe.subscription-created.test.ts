@@ -255,7 +255,7 @@ describe('stripe webhook customer.subscription.created', () => {
     }
   });
 
-  it('handles missing user_id in subscription metadata', async () => {
+  it('returns 500 when user_id cannot be resolved from subscription metadata', async () => {
     const eventId = 'evt_sub_no_user';
     const subscriptionId = 'sub_no_user_123';
 
@@ -294,7 +294,7 @@ describe('stripe webhook customer.subscription.created', () => {
 
     await layer!(req, res, vi.fn() as NextFunction);
 
-    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.status).toHaveBeenCalledWith(500);
 
     const upsertCalls = query.mock.calls.filter((call) =>
       typeof call[0] === 'string' && call[0].includes('INSERT INTO user_subscriptions')
