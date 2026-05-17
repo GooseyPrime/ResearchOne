@@ -28,11 +28,9 @@ export default function DossierPlanHistoryPage() {
   const runId = dossierQuery.data?.runId;
   const revisionsQuery = usePlanRevisions(runId);
 
-  const rows = revisionsQuery.data?.revisions ?? [];
-
   const sortedDesc = useMemo(
-    () => [...rows].sort((a, b) => b.revisionNumber - a.revisionNumber),
-    [rows],
+    () => [...(revisionsQuery.data?.revisions ?? [])].sort((a, b) => b.revisionNumber - a.revisionNumber),
+    [revisionsQuery.data?.revisions],
   );
 
   if (dossierQuery.isLoading) {

@@ -222,7 +222,7 @@ export default function ResearchPage() {
     if (!trackingRunId || !trackedRun) return;
     if (trackedRun.status !== 'failed' && trackedRun.status !== 'aborted') return;
     void qc.invalidateQueries({ queryKey: ['research-run', trackingRunId] }, { cancelRefetch: false });
-  }, [trackingRunId, trackedRun?.status, qc]);
+  }, [trackingRunId, trackedRun, qc]);
 
   useEffect(() => {
     if (!modelOptions) return;
