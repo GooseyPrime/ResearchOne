@@ -14,7 +14,20 @@ export interface GraphNode {
   evidence_tier?: string | null;
   tags?: string[];
   url?: string;
+  /** Publisher / org bucket (hostname) for source differentiation in the graph UI. */
+  group_key?: string;
+  source_type?: string;
   weight?: number;
+}
+
+function graphGroupKeyFromUrl(url: string | undefined): string | undefined {
+  if (!url?.trim()) return undefined;
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+    return host || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface GraphEdge {
@@ -45,10 +58,12 @@ router.get('/', async (req, res, next) => {
       id: string;
       title: string;
       url: string;
+      source_type: string;
       tags: string[];
       chunk_count: number;
     }>(
-      `SELECT s.id, s.title, s.url, COALESCE(s.tags, '{}') AS tags,
+      `SELECT s.id, s.title, s.url, s.source_type::text AS source_type,
+              COALESCE(s.tags, '{}') AS tags,
               COUNT(c.id)::int AS chunk_count
        FROM sources s
        LEFT JOIN chunks c ON c.source_id = s.id
@@ -103,15 +118,22 @@ router.get('/', async (req, res, next) => {
 
     // ── Assemble nodes & edges ────────────────────────────────────────────────
     const nodes: GraphNode[] = [
-      ...sources.map((s) => ({
-        id: s.id,
-        type: 'source' as const,
-        label: (s.title || s.url || 'Untitled').slice(0, 60),
-        sub: `${s.chunk_count} chunks`,
-        tags: s.tags,
-        url: s.url,
-        weight: Math.log1p(s.chunk_count),
-      })),
+      ...sources.map((s) => {
+        const groupKey = graphGroupKeyFromUrl(s.url);
+        return {
+          id: s.id,
+          type: 'source' as const,
+          label: (s.title || s.url || 'Untitled').slice(0, 60),
+          sub: groupKey
+            ? `${groupKey} · ${s.chunk_count} chunks`
+            : `${s.chunk_count} chunks`,
+          tags: s.tags,
+          url: s.url,
+          group_key: groupKey,
+          source_type: s.source_type,
+          weight: Math.log1p(s.chunk_count),
+        };
+      }),
       ...claims.map((c) => ({
         id: c.id,
         type: 'claim' as const,
