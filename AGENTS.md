@@ -378,3 +378,14 @@ The `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` should match `CLERK_PUBLISHABLE
   fails the command.
 - The `docker-compose.yml` `version` key triggers a deprecation warning
   from Docker Compose v2+ — it is harmless.
+- **Fresh-database migration gotcha:** Migrations 035 and 036 use
+  `CREATE OR REPLACE VIEW v_dossier` with new columns inserted in the
+  middle of the SELECT list. PostgreSQL rejects column renames via
+  `CREATE OR REPLACE VIEW`. On a fresh database, run:
+  `docker compose exec postgres psql -U researchone -d researchone -c "DROP VIEW IF EXISTS v_dossier;"`
+  after migration 034 fails on 035, then re-run `npm run migrate`.
+  The same drop-and-retry is needed if 036 fails after 035 succeeds.
+  Once both 035 and 036 are recorded in `schema_migrations`, subsequent
+  runs are clean.
+- Also update `DATABASE_URL` in `backend/.env` to use `devpassword`
+  (the template ships with `changeme`).
