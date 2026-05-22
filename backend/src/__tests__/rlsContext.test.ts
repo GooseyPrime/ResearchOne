@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 import { rlsStore } from '../db/pool';
@@ -46,9 +46,13 @@ describe('rlsContextMiddleware', () => {
     const req = {
       auth: { userId: 'user_inside', orgId: null, sessionId: null },
     } as unknown as Request;
+    const nextCalls: number[] = [];
 
-    rlsContextMiddleware(req, {} as Response, () => {});
+    rlsContextMiddleware(req, {} as Response, () => {
+      nextCalls.push(1);
+    });
 
+    expect(nextCalls).toHaveLength(1);
     expect(rlsStore.getStore()).toBeUndefined();
   });
 

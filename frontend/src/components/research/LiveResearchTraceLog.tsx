@@ -9,7 +9,7 @@ function formatShortTime(iso?: string): string {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export function retryBadgeForEvent(evt: ResearchProgressEvent): {
+function retryBadgeForEvent(evt: ResearchProgressEvent): {
   text: string;
   variant: 'retryable' | 'resumed' | 'terminal';
 } | null {

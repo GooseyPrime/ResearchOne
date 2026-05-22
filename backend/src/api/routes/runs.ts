@@ -257,7 +257,7 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
       }
     }
 
-    let confirmed = await confirmGatePlan({ planId: effectivePlanId, runId });
+    const confirmed = await confirmGatePlan({ planId: effectivePlanId, runId });
     if (!confirmed) {
       const already = await queryOne<{ id: string }>(
         `SELECT id FROM research_plans WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'confirmed'`,

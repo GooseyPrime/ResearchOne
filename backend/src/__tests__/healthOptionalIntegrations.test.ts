@@ -33,7 +33,6 @@ vi.mock('../config', () => ({
   },
 }));
 
-import fs from 'fs/promises';
 vi.mock('fs/promises', async () => {
   return {
     default: { mkdir: vi.fn().mockResolvedValue(undefined), writeFile: vi.fn().mockResolvedValue(undefined), unlink: vi.fn().mockResolvedValue(undefined) },

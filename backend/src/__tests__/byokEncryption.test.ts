@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'crypto';
 
 const TEST_KEY_HEX = randomBytes(32).toString('hex');
