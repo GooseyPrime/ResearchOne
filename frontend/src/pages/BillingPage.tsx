@@ -88,6 +88,30 @@ export default function BillingPage() {
 
   const billingIntent = searchParams.get('intent');
 
+  const applyCheckoutConfirmSuccess = async (data: BillingSubscription) => {
+    queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
+    await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
+    await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
+    await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
+    setConfirming('idle');
+    setConfirmError(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('checkout');
+    next.delete('session_id');
+    setSearchParams(next, { replace: true });
+  };
+
+  const runCheckoutConfirm = async (sessionId: string) => {
+    setConfirming('in_progress');
+    try {
+      const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
+      await applyCheckoutConfirmSuccess(data);
+    } catch (e) {
+      setConfirming('error');
+      setConfirmError(extractApiError(e));
+    }
+  };
+
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     const sessionId = searchParams.get('session_id');
@@ -114,25 +138,7 @@ export default function BillingPage() {
       return;
     }
 
-    setConfirming('in_progress');
-    void (async () => {
-      try {
-        const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
-        queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
-        await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
-        await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
-        await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
-        setConfirming('idle');
-        setConfirmError(null);
-        const next = new URLSearchParams(searchParams);
-        next.delete('checkout');
-        next.delete('session_id');
-        setSearchParams(next, { replace: true });
-      } catch (e) {
-        setConfirming('error');
-        setConfirmError(extractApiError(e));
-      }
-    })();
+    void runCheckoutConfirm(sessionId);
   }, [queryClient, searchParams, setSearchParams]);
 
   const historyQuery = useBillingHistory(25);
@@ -232,18 +238,7 @@ export default function BillingPage() {
             onClick={() => {
               const sessionId = searchParams.get('session_id');
               if (!sessionId) return;
-              setConfirming('in_progress');
-              void api
-                .post<BillingSubscription>('/billing/checkout/confirm', { sessionId })
-                .then(({ data }) => {
-                  queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
-                  setConfirming('idle');
-                  setConfirmError(null);
-                })
-                .catch((e) => {
-                  setConfirming('error');
-                  setConfirmError(extractApiError(e));
-                });
+              void runCheckoutConfirm(sessionId);
             }}
           >
             Retry confirmation

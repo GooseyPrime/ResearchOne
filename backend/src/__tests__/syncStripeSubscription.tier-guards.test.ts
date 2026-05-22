@@ -74,7 +74,7 @@ describe('syncStripeSubscriptionToUser tier sync guards (PR #124)', () => {
       },
     });
 
-    expect(mocks.syncSubscription).toHaveBeenCalled();
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
     expect(mocks.setUserTier).not.toHaveBeenCalled();
   });
 

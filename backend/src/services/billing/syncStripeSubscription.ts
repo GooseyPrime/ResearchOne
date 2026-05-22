@@ -115,6 +115,11 @@ export async function syncStripeSubscriptionToUser(args: {
   const isAddonSubscriptionMetadata =
     monitorKindMeta === 'reverse_citation_watch' || monitorKindMeta === 'living_report';
 
+  // Add-on subs must not overwrite the user's main plan row in user_subscriptions.
+  if (isAddonSubscriptionMetadata) {
+    return;
+  }
+
   const item = items[0];
   const priceLookupKey = item?.price?.lookup_key ?? null;
   const stripePriceId = item?.price?.id ?? null;
@@ -153,10 +158,6 @@ export async function syncStripeSubscriptionToUser(args: {
     stripePriceId,
     metadataTier
   );
-
-  if (isAddonSubscriptionMetadata) {
-    return;
-  }
 
   const grants = stripeSubscriptionStatusGrantsPlanAccess(subscription.status);
   if (!grants) {

@@ -128,8 +128,10 @@ const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (d
     });
   }
 
-  const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
-  if (!userId) return;
+  const userId = await resolveUserIdForSubscription(subscription);
+  if (!userId) {
+    throw new StripeSubscriptionUserUnresolvedError(subscription.id, eventId);
+  }
 
   const isAddonSubscription = Boolean(subscription.metadata?.monitor_kind);
   if (isAddonSubscription) {
@@ -281,7 +283,6 @@ const STRIPE_EVENT_HANDLERS: Record<string, WebhookEventHandler<StripeEventData>
   'customer.subscription.updated': handleSubscriptionCreatedOrUpdated,
   'customer.subscription.deleted': handleSubscriptionDeleted,
   'invoice.payment_succeeded': handleInvoicePaymentSucceeded,
-  'invoice.paid': handleInvoicePaymentSucceeded,
   'invoice.payment_failed': handleInvoicePaymentFailed,
 };
 

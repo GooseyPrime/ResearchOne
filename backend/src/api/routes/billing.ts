@@ -263,9 +263,17 @@ router.post('/checkout/confirm', async (req, res, next) => {
       await syncStripeSubscriptionToUser({
         subscription: toSubscriptionLike(subscriptionLike),
         userId,
+        eventId: `checkout_confirm:${sessionId}`,
         source: 'confirm-endpoint',
       });
     } else if (session.mode === 'payment') {
+      if (session.status !== 'complete' || session.payment_status !== 'paid') {
+        res.status(402).json({
+          error: 'Checkout session is not paid yet',
+          detail: `status=${session.status} payment_status=${session.payment_status ?? 'unknown'}`,
+        });
+        return;
+      }
       await creditWalletFromCheckoutSession(sessionId, {
         user_id: session.metadata?.user_id,
         userId: session.metadata?.userId,
