@@ -70,7 +70,7 @@ export const TIER_RULES: Record<TierName, TierRule> = {
   free_demo: {
     label: 'Free Demo',
     allowedObjectives: ['GENERAL_EPISTEMIC_RESEARCH'],
-    lifetimeReportCap: 3,
+    lifetimeReportCap: 2,
     monthlyReportCap: null,
     monthlyDeepReportCap: null,
     walletFallbackEnabled: false,

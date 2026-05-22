@@ -40,6 +40,8 @@ import { formatFailureReason } from '../utils/researchFailureFormat';
 import { deriveRunState } from '../utils/researchLiveStatus';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
+import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import { formatDistanceToNow } from 'date-fns';
@@ -314,6 +316,7 @@ export default function ResearchPage() {
 
     socket.on('research:completed', (result: { runId: string; reportId: string }) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
       if (result.runId === trackingRunId) {
         const doneEvt: ResearchProgressEvent = {
           runId: result.runId,
@@ -482,6 +485,8 @@ export default function ResearchPage() {
           Disciplined anomaly research with source-corroboration-tiered reporting and full-stage telemetry.
         </p>
       </div>
+
+      <FreeLifetimeQuotaBanner variant="research" />
 
       <div className="card-glow p-6 space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -95,31 +95,35 @@ export async function ensureUserTierRow(userId: string): Promise<void> {
   await setUserTier(userId, DEFAULT_TIER);
 }
 
+function defaultPeriodResetsAtIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0)).toISOString();
+}
+
 /**
  * Increments report usage counters. Called after a research run completes.
+ * Uses INSERT … ON CONFLICT so missing user_tiers rows are created (D10).
  */
 export async function incrementReportCount(userId: string, isDeep: boolean): Promise<void> {
+  const deepInc = isDeep ? 1 : 0;
+  const periodResetsAt = defaultPeriodResetsAtIso();
   try {
-    if (isDeep) {
-      await query(
-        `UPDATE user_tiers
-         SET current_period_reports_used = current_period_reports_used + 1,
-             current_period_deep_reports_used = current_period_deep_reports_used + 1,
-             lifetime_reports_used = lifetime_reports_used + 1,
-             updated_at = NOW()
-         WHERE user_id = $1`,
-        [userId]
-      );
-    } else {
-      await query(
-        `UPDATE user_tiers
-         SET current_period_reports_used = current_period_reports_used + 1,
-             lifetime_reports_used = lifetime_reports_used + 1,
-             updated_at = NOW()
-         WHERE user_id = $1`,
-        [userId]
-      );
-    }
+    await query(
+      `INSERT INTO user_tiers (
+         user_id, tier, current_period_reports_used,
+         current_period_deep_reports_used, lifetime_reports_used,
+         current_period_resets_at, updated_at
+       )
+       VALUES ($1, $2, 1, $3, 1, $4, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         current_period_reports_used = user_tiers.current_period_reports_used + 1,
+         current_period_deep_reports_used =
+           user_tiers.current_period_deep_reports_used + EXCLUDED.current_period_deep_reports_used,
+         lifetime_reports_used = user_tiers.lifetime_reports_used + 1,
+         current_period_resets_at = COALESCE(user_tiers.current_period_resets_at, EXCLUDED.current_period_resets_at),
+         updated_at = NOW()`,
+      [userId, DEFAULT_TIER, deepInc, periodResetsAt]
+    );
   } catch (err: unknown) {
     const pgCode = (err as { code?: string })?.code;
     if (pgCode === '42P01') {

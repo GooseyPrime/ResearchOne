@@ -12,6 +12,11 @@ function render() {
 }
 
 describe('PricingPage', () => {
+  it('shows free demo lifetime cap of 2 reports', () => {
+    const html = render();
+    expect(html).toContain('2 reports lifetime');
+  });
+
   it('shows all self-serve subscription tiers', () => {
     const html = render();
     expect(html).toContain('Free Demo');

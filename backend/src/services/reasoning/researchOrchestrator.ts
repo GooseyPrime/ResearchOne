@@ -1092,7 +1092,7 @@ async function runResearchJobInner(
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
         }
         if (creditCtx.type === 'subscription' && creditCtx.userId) {
-          await incrementReportCount(creditCtx.userId, false);
+          await incrementReportCount(creditCtx.userId, engineVersion === 'v2');
         }
       } catch (creditErr) {
         logger.error('credit_charge_on_completion_failed', {
