@@ -10,7 +10,6 @@ describe('Stripe Checkout session customer defaults', () => {
     expect(stripeCheckoutAllowPromotionCodes).toEqual({ allow_promotion_codes: true });
     expect(stripeCheckoutPaymentSessionDefaults).toEqual({
       allow_promotion_codes: true,
-      payment_method_collection: 'if_required',
     });
   });
 

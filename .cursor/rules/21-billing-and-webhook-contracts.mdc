@@ -182,23 +182,23 @@ Without this, conflict paths leave NULL resets and quota windows never roll.
    `payment_status` is `paid` **or** `no_payment_required` (100% coupon /
    $0 due) — use `checkoutSessionPaymentSettled()`; not on incomplete
    subscription checkouts.
-6. **100% promotion codes on Hosted Checkout:** every
+3. **100% promotion codes on Hosted Checkout:** every
    `checkout.sessions.create` for plan or monitor **subscription** must go
    through `build*SubscriptionCheckoutSessionCreateParams` in
    `stripeCheckoutSessionParams.ts`, spreading
    `payment_method_collection: 'if_required'` plus `allow_promotion_codes`.
    Without `if_required`, Stripe shows “Something went wrong” when a coupon
-   zeroes the amount due. Payment-mode top-ups use the same `if_required`
-   default via `buildWalletTopupCheckoutSessionCreateParams`.
-3. **`customer.subscription.deleted`:** resolve user via
+   zeroes the amount due. Payment-mode top-ups should only spread
+   `allow_promotion_codes`.
+4. **`customer.subscription.deleted`:** resolve user via
    `resolveUserIdForSubscription` (DB + metadata), not metadata alone;
    throw `StripeSubscriptionUserUnresolvedError` when unresolved (Codex).
-4. **Add-on subs (`metadata.monitor_kind`):** return before any plan-tier
+5. **Add-on subs (`metadata.monitor_kind`):** return before any plan-tier
    `syncSubscription` / `setUserTier` path — unpaid add-ons must not touch
    `user_subscriptions` plan rows (Copilot tier-guards test).
-5. **Stripe invoice events:** handle `invoice.payment_succeeded` only;
+6. **Stripe invoice events:** handle `invoice.payment_succeeded` only;
    do not also map `invoice.paid` (duplicate processing).
-6. **`/auth/sync` bootstrap:** retry with backoff on transient failure
+7. **`/auth/sync` bootstrap:** retry with backoff on transient failure
    (`useEnsureUserSynced`).
 
 ## Pre-commit check

@@ -1,6 +1,6 @@
 /**
- * Billing checkout routes — assert Stripe Session create uses promotion-code +
- * payment_method_collection defaults required for 100% coupons (Rule 16).
+ * Billing checkout routes — assert Stripe Session create uses expected
+ * promotion-code defaults.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -73,7 +73,7 @@ describe('POST /api/billing/checkout/subscription', () => {
 });
 
 describe('POST /api/billing/checkout/topup', () => {
-  it('creates payment Checkout with if_required payment method collection', async () => {
+  it('creates payment Checkout with promotion codes enabled', async () => {
     const res = await request(testApp)
       .post('/api/billing/checkout/topup')
       .send({ priceId: 'price_wallet_20' });
@@ -82,7 +82,7 @@ describe('POST /api/billing/checkout/topup', () => {
     expect(stripeMocks.sessionsCreate).toHaveBeenCalledTimes(1);
     const createArgs = stripeMocks.sessionsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(createArgs.mode).toBe('payment');
-    expect(createArgs.payment_method_collection).toBe('if_required');
+    expect(createArgs.payment_method_collection).toBeUndefined();
     expect(createArgs.allow_promotion_codes).toBe(true);
   });
 });

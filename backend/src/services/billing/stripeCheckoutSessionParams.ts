@@ -5,13 +5,10 @@ import {
 } from './stripeClient';
 
 /**
- * Payment-mode Checkout defaults: promotion codes plus
- * `payment_method_collection: 'if_required'` so a 100% coupon can complete
- * without card entry when amount due is $0.
+ * Payment-mode Checkout defaults: promotion codes.
  */
 export const stripeCheckoutPaymentSessionDefaults = {
   ...stripeCheckoutAllowPromotionCodes,
-  payment_method_collection: 'if_required' as const,
 } as const;
 
 /**
@@ -97,8 +94,6 @@ export function buildMonitorSubscriptionCheckoutSessionCreateParams(args: {
     cancel_url: config.stripe.cancelUrl,
     metadata: {
       user_id: args.userId,
-      userId: args.userId,
-      purpose: 'living_report_monitor',
       report_id: args.reportId,
       monitor_kind: args.monitorKind,
     },

@@ -35,7 +35,7 @@ describe('stripeCheckoutSessionParams', () => {
     expect(params).toMatchObject(stripeCheckoutSubscriptionSessionDefaults);
   });
 
-  it('wallet top-up sessions use payment-mode defaults with if_required', () => {
+  it('wallet top-up sessions use payment-mode defaults', () => {
     const params = buildWalletTopupCheckoutSessionCreateParams({
       customerId: 'cus_test',
       userId: 'user_test',
@@ -43,7 +43,6 @@ describe('stripeCheckoutSessionParams', () => {
       topupAmountCents: 2000,
     });
     expect(params.mode).toBe('payment');
-    expect(params.payment_method_collection).toBe('if_required');
     expect(params.allow_promotion_codes).toBe(true);
     expect(params).toMatchObject(stripeCheckoutPaymentSessionDefaults);
   });
@@ -60,6 +59,8 @@ describe('stripeCheckoutSessionParams', () => {
     expect(params.payment_method_collection).toBe('if_required');
     expect(params.customer).toBe('cus_test');
     expect(params.client_reference_id).toBe('user_test');
+    expect(params.metadata).not.toHaveProperty('userId');
+    expect(params.metadata).not.toHaveProperty('purpose');
     expect(params.metadata?.monitor_kind).toBe('living_report');
   });
 });
