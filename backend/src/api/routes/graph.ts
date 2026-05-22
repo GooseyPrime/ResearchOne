@@ -128,7 +128,7 @@ router.get('/', async (req, res, next) => {
             ? `${groupKey} · ${s.chunk_count} chunks`
             : `${s.chunk_count} chunks`,
           tags: s.tags,
-          url: s.url,
+          url: s.url ?? undefined,
           group_key: groupKey,
           source_type: s.source_type,
           weight: Math.log1p(s.chunk_count),
