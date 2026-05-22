@@ -85,7 +85,7 @@ export function useResearchRunTracking(deps: ResearchRunTrackingDeps) {
     [attachRunInner, attachArgs]
   );
 
-  const { setUrlRunId } = useResearchRunUrlSync({
+  const { setUrlRunId, dismissUrlReattach } = useResearchRunUrlSync({
     trackingRunId,
     onRunIdFromUrl: (runId) => {
       void attachRun({ runId });
@@ -93,19 +93,22 @@ export function useResearchRunTracking(deps: ResearchRunTrackingDeps) {
   });
 
   const detachRun = useCallback(() => {
+    dismissUrlReattach(trackingRunId);
+    setUrlRunId(null);
     setProgress(null);
     setTrackingRunId(null);
     setActiveRun(null);
     setPlanGateLocal(null);
     setPlanGateBusy(false);
-    setUrlRunId(null);
   }, [
+    trackingRunId,
+    dismissUrlReattach,
+    setUrlRunId,
     setProgress,
     setTrackingRunId,
     setActiveRun,
     setPlanGateLocal,
     setPlanGateBusy,
-    setUrlRunId,
   ]);
 
   usePlanGateSockets({

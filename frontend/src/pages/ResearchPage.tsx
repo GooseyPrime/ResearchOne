@@ -218,18 +218,17 @@ export default function ResearchPage() {
     mutationFn: startResearch,
     onSuccess: (data) => {
       setPlanGateLocal(null);
-      void attachRun({ runId: data.runId }).then(() => {
-        const queuedEvt: ResearchProgressEvent = {
-          runId: data.runId,
-          stage: 'planning',
-          percent: 0,
-          message: 'Research queued...',
-          timestamp: new Date().toISOString(),
-        };
-        setProgress(queuedEvt);
-        setActiveRun(queuedEvt);
-        setTraceEvents([queuedEvt]);
-      });
+      const queuedEvt: ResearchProgressEvent = {
+        runId: data.runId,
+        stage: 'planning',
+        percent: 0,
+        message: 'Research queued...',
+        timestamp: new Date().toISOString(),
+      };
+      setProgress(queuedEvt);
+      setActiveRun(queuedEvt);
+      setTraceEvents([queuedEvt]);
+      void attachRun({ runId: data.runId });
       const ing = data.supplementalIngest;
       if (ing && (ing.urlsQueued > 0 || ing.filesQueued > 0)) {
         addNotification(

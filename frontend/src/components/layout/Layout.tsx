@@ -28,6 +28,7 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
+import { hasInFlightResearchRuns, IN_FLIGHT_RUN_STATUSES } from '../../utils/researchRuns';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -130,13 +131,16 @@ export default function Layout() {
   const { data: allRuns } = useQuery<ResearchRun[]>({
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(6_000),
+    refetchInterval: (query) =>
+      hasInFlightResearchRuns(query.state.data)
+        ? getAdaptiveRefetchIntervalMs(6_000)
+        : false,
   });
 
   useEffect(() => {
     const runs = allRuns ?? EMPTY_RESEARCH_RUNS;
     const inFlight = runs.filter((r) =>
-      ['running', 'queued', 'plan_pending_confirmation'].includes(r.status)
+      (IN_FLIGHT_RUN_STATUSES as readonly string[]).includes(r.status)
     );
     if (inFlight.length === 0) {
       setActiveRun(null);
@@ -304,7 +308,7 @@ export default function Layout() {
 
         <main className="flex-1 overflow-y-auto grid-bg">
           <NotificationBanner />
-          <PlanReviewBanner />
+          <PlanReviewBanner runs={allRuns ?? EMPTY_RESEARCH_RUNS} />
           <Outlet />
         </main>
       </div>

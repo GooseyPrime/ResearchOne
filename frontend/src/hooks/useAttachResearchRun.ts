@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { getResearchRun, type ResearchProgressEvent, type ResearchRun } from '../utils/api';
 import { subscribeToJob } from '../utils/socket';
 import type { PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
+import type { RunSummaryData } from '../components/research/RunSummaryReport';
 
 function normalizeProgressEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
   return {
@@ -42,15 +43,20 @@ export type AttachResearchRunArgs = {
   setActiveRun: (evt: ResearchProgressEvent | null) => void;
   setTraceEvents: React.Dispatch<React.SetStateAction<ResearchProgressEvent[]>>;
   setFailure: (f: null) => void;
-  setRunSummary: (s: null) => void;
+  setRunSummary: (s: RunSummaryData | null) => void;
   runSummaryReceivedRef: React.MutableRefObject<boolean>;
   setPlanGateLocal: React.Dispatch<React.SetStateAction<PlanGateSnapshot | null>>;
   setPlanGateBusy: (v: boolean) => void;
 };
 
+export type AttachResearchRunResult = {
+  /** True when progress/trace were hydrated from API or run row (not loading placeholder). */
+  hydratedFromApi: boolean;
+};
+
 /** Hydrate client tracking state from API + subscribe to job room. */
 export function useAttachResearchRun() {
-  const attachRun = useCallback(async (args: AttachResearchRunArgs) => {
+  const attachRun = useCallback(async (args: AttachResearchRunArgs): Promise<AttachResearchRunResult> => {
     const {
       runId,
       runRow,
@@ -95,18 +101,20 @@ export function useAttachResearchRun() {
       if (run.status !== 'plan_pending_confirmation') {
         setPlanGateLocal(null);
       }
-    } else {
-      const queuedEvt: ResearchProgressEvent = {
-        runId,
-        stage: 'planning',
-        percent: 0,
-        message: 'Loading run…',
-        timestamp: new Date().toISOString(),
-      };
-      setProgress(queuedEvt);
-      setActiveRun(queuedEvt);
-      setTraceEvents([queuedEvt]);
+      return { hydratedFromApi: true };
     }
+
+    const queuedEvt: ResearchProgressEvent = {
+      runId,
+      stage: 'planning',
+      percent: 0,
+      message: 'Loading run…',
+      timestamp: new Date().toISOString(),
+    };
+    setProgress(queuedEvt);
+    setActiveRun(queuedEvt);
+    setTraceEvents([queuedEvt]);
+    return { hydratedFromApi: false };
   }, []);
 
   return { attachRun };

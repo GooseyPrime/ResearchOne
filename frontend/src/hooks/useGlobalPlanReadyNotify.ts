@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '../utils/socket';
@@ -15,11 +15,16 @@ type PlanReadyPayload = {
 
 /**
  * When the user is away from research pages, surface plan-ready with a deep link CTA.
+ * `runs` is read from a ref so the socket listener is not re-registered on every poll.
  */
 export function useGlobalPlanReadyNotify(runs: ResearchRun[] | undefined) {
   const location = useLocation();
   const qc = useQueryClient();
   const addNotification = useStore((s) => s.addNotification);
+  const runsRef = useRef<ResearchRun[]>([]);
+  const pathnameRef = useRef(location.pathname);
+  runsRef.current = runs ?? [];
+  pathnameRef.current = location.pathname;
 
   useEffect(() => {
     const socket = getSocket();
@@ -28,10 +33,9 @@ export function useGlobalPlanReadyNotify(runs: ResearchRun[] | undefined) {
       if (!payload?.runId || !payload.planId) return;
       void qc.invalidateQueries({ queryKey: ['research-runs'] });
 
-      const path = location.pathname;
-      if (path.startsWith('/app/research')) return;
+      if (pathnameRef.current.startsWith('/app/research')) return;
 
-      const row = runs?.find((r) => r.id === payload.runId);
+      const row = runsRef.current.find((r) => r.id === payload.runId);
       addNotification('info', 'Research plan is ready — review and confirm to continue.', {
         label: 'Review plan',
         to: liveResearchUrl(payload.runId, {
@@ -45,5 +49,5 @@ export function useGlobalPlanReadyNotify(runs: ResearchRun[] | undefined) {
     return () => {
       socket.off('research:plan_ready_for_confirmation', onPlanReady);
     };
-  }, [location.pathname, runs, qc, addNotification]);
+  }, [qc, addNotification]);
 }

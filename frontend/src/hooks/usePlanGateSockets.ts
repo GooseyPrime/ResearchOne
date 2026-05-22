@@ -86,7 +86,7 @@ export function usePlanGateSockets({
         setPlanGateLocal(null);
         setPlanGateBusy(false);
         onDetachAfterCancel?.();
-        addNotification('info', 'Research run cancelled at the plan gate.');
+        // PlanConfirmationPanel already toasts on successful cancel; avoid duplicate.
       }
     };
 

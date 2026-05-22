@@ -1,0 +1,59 @@
+---
+description: Research run URL sync, attach hydration, socket subscriptions, and layout polling (PR #140 review themes).
+globs:
+  - frontend/src/hooks/useResearchRunUrlSync.ts
+  - frontend/src/hooks/useAttachResearchRun.ts
+  - frontend/src/hooks/useGlobalPlanReadyNotify.ts
+  - frontend/src/hooks/usePlanGateSockets.ts
+  - frontend/src/hooks/useResearchRunTracking.ts
+  - frontend/src/components/layout/Layout.tsx
+  - frontend/src/pages/ResearchPage*.tsx
+---
+
+# Run URL sync, attach hydration, sockets, layout polling
+
+## Why this rule exists
+
+PR #140 review (Codex P1 + Copilot) caught recurring frontend lifecycle bugs:
+detach cleared tracking but left `?runId=`, causing immediate re-attach;
+`attachRun().then()` overwrote API-hydrated progress with a 0% queued placeholder;
+socket `useEffect` deps included polled `runs[]` and re-subscribed every poll;
+duplicate plan-cancel toasts (panel + socket); Layout polled full run lists every 6s.
+
+## Rule — `?runId=` sync
+
+When `trackingRunId` becomes `null` **intentionally** (detach, cancel, terminal):
+
+1. **Suppress** auto-attach for that run id until the URL changes or the user explicitly resumes.
+2. **Clear** `runId` from the query string in the same detach path (`dismissUrlReattach` then `setUrlRunId(null)`).
+3. Walk through: cancel at plan gate → tracking cleared → URL must not re-open the same run.
+
+## Rule — `attachRun` hydration
+
+1. **Do not** overwrite progress/trace in a `.then()` after `attachRun` unless attach did not hydrate.
+2. For instant feedback on **new** submits, set a queued placeholder **before** `await attachRun`, so API hydration can replace it.
+3. Prefer `attachRun` returning `{ hydratedFromApi }` when callers need conditional UI.
+
+## Rule — socket listeners
+
+1. Register global/plan socket handlers in `useEffect` with **stable** deps (`[]` or query client only).
+2. Read `runs`, `pathname`, and `trackingRunId` from **refs** updated each render.
+3. Never put a fresh `runs` array in the effect dependency list.
+
+## Rule — duplicate notifications (Rule 11)
+
+If the UI component already calls `onNotify('info', …)` on success, the socket handler for the same event must **not** emit the same toast unless it is a different severity or audience (e.g. global-only when off-page).
+
+## Rule — layout / global polling
+
+1. Share one React Query key (`['research-runs']`) across Layout, banner, and research pages.
+2. Use `refetchInterval: (query) => hasInFlightResearchRuns(query.state.data) ? interval : false` so idle users do not poll the full list every 6s.
+3. Pass polled data into presentational children (e.g. `PlanReviewBanner`) instead of spawning duplicate queries.
+
+## Pre-commit check
+
+- [ ] Detach path: URL cleared + suppressed re-attach?
+- [ ] New run submit: placeholder before attach, no post-attach regression?
+- [ ] Socket hook: stable subscription?
+- [ ] Cancel/info toasts: single writer per user-visible message?
+- [ ] Layout polling: backs off when no in-flight runs?

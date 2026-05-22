@@ -257,18 +257,17 @@ export default function ResearchPageV2() {
     mutationFn: startResearch,
     onSuccess: (data) => {
       setPlanGateLocal(null);
-      void attachRun({ runId: data.runId }).then(() => {
-        const queuedEvt: ResearchProgressEvent = {
-          runId: data.runId,
-          stage: 'planning',
-          percent: 0,
-          message: 'Deep Research queued...',
-          timestamp: new Date().toISOString(),
-        };
-        setProgress(queuedEvt);
-        setActiveRun(queuedEvt);
-        setTraceEvents([queuedEvt]);
-      });
+      const queuedEvt: ResearchProgressEvent = {
+        runId: data.runId,
+        stage: 'planning',
+        percent: 0,
+        message: 'Deep Research queued...',
+        timestamp: new Date().toISOString(),
+      };
+      setProgress(queuedEvt);
+      setActiveRun(queuedEvt);
+      setTraceEvents([queuedEvt]);
+      void attachRun({ runId: data.runId });
       addNotification('info', 'Deep Research started — tracking detailed progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });

@@ -78,6 +78,18 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
     "newest-at-bottom, drop oldest." (See
     `.cursor/rules/12-event-window-math.mdc`.)
 
+## F2. Research run URL sync / attach / sockets (frontend)
+
+15. **Detach + `?runId=`:** intentional detach must suppress URL
+    re-attach and clear the query param in the same flow. (See
+    `.cursor/rules/34-run-url-sync-and-live-polling.mdc`.)
+16. **`attachRun().then()` overwriting hydration:** placeholder before
+    attach, not after. (Same rule.)
+17. **Socket listeners:** stable `useEffect` deps; read polled data from
+    refs. (Same rule.)
+18. **Layout `research-runs` poll:** backoff when no in-flight runs;
+    avoid duplicate queries for the same key. (Same rule.)
+
 ## G. Third-party APIs
 
 15. **Read the contract of any third-party API you call**. BullMQ

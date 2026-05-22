@@ -1,20 +1,12 @@
 import { Link } from 'react-router-dom';
 import { ClipboardCheck } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { getResearchRuns, type ResearchRun } from '../../utils/api';
-import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
 import { liveResearchUrl } from '../../utils/researchRunRoutes';
+import type { ResearchRun } from '../../utils/api';
 
 /**
  * Global amber banner when any run is waiting at the plan confirmation gate.
  */
-export default function PlanReviewBanner() {
-  const { data: runs = [] } = useQuery<ResearchRun[]>({
-    queryKey: ['research-runs'],
-    queryFn: () => getResearchRuns(),
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(8_000),
-  });
-
+export default function PlanReviewBanner({ runs }: { runs: ResearchRun[] }) {
   const pending = runs.filter((r) => r.status === 'plan_pending_confirmation');
   if (pending.length === 0) return null;
 
