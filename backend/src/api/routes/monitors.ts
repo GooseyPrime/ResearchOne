@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { logger } from '../../utils/logger';
-import { config } from '../../config';
-import { getStripeClient, stripeCheckoutSubscriptionCustomerDefaults } from '../../services/billing/stripeClient';
+import { getStripeClient } from '../../services/billing/stripeClient';
+import { buildMonitorSubscriptionCheckoutSessionCreateParams } from '../../services/billing/stripeCheckoutSessionParams';
+import { ensureUserAndTierRow } from '../../services/users/ensureUserRow';
+import { getOrCreateStripeCustomer } from '../../services/billing/stripeCustomer';
 import { query } from '../../db/pool';
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
@@ -81,27 +83,20 @@ byReport.post('/', async (req, res, next) => {
       return;
     }
 
+    const email = (req.auth?.payload?.email as string | undefined) ?? null;
+    await ensureUserAndTierRow(userId, email);
+    const customerId = await getOrCreateStripeCustomer(userId, email);
+
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      ...stripeCheckoutSubscriptionCustomerDefaults,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: config.stripe.successUrl,
-      cancel_url: config.stripe.cancelUrl,
-      metadata: {
+    const session = await stripe.checkout.sessions.create(
+      buildMonitorSubscriptionCheckoutSessionCreateParams({
+        customerId,
         userId,
-        purpose: 'living_report_monitor',
-        report_id: reportId,
-        monitor_kind: monitorKind,
-      },
-      subscription_data: {
-        metadata: {
-          user_id: userId,
-          report_id: reportId,
-          monitor_kind: monitorKind,
-        },
-      },
-    });
+        reportId,
+        monitorKind,
+        priceId,
+      }),
+    );
 
     res.json({ checkoutUrl: session.url ?? null, sessionId: session.id });
   } catch (err) {

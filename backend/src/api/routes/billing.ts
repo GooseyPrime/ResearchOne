@@ -5,9 +5,12 @@ import {
   getTopupAmountForPrice,
   getSubscriptionPriceOptions,
   getTierForSubscriptionPrice,
-  stripeCheckoutAllowPromotionCodes,
-  stripeCheckoutSubscriptionCustomerDefaults,
 } from '../../services/billing/stripeClient';
+import {
+  buildPlanSubscriptionCheckoutSessionCreateParams,
+  buildWalletTopupCheckoutSessionCreateParams,
+  checkoutSessionPaymentSettled,
+} from '../../services/billing/stripeCheckoutSessionParams';
 import { cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
 import { getBillingSubscriptionView } from '../../services/billing/billingSubscriptionView';
 import { getWalletSummary, getWalletTransactions } from '../../services/billing/walletService';
@@ -111,21 +114,14 @@ router.post('/checkout/topup', async (req, res, next) => {
     const customerId = await getOrCreateStripeCustomer(userId, email);
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer: customerId,
-      client_reference_id: userId,
-      ...stripeCheckoutAllowPromotionCodes,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: config.stripe.successUrl,
-      cancel_url: config.stripe.cancelUrl,
-      metadata: {
-        user_id: userId,
-        price_id: priceId,
-        topup_amount_cents: String(amount),
-        checkout_kind: 'topup',
-      },
-    });
+    const session = await stripe.checkout.sessions.create(
+      buildWalletTopupCheckoutSessionCreateParams({
+        customerId,
+        userId,
+        priceId,
+        topupAmountCents: amount,
+      }),
+    );
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
   } catch (err) {
@@ -167,28 +163,14 @@ router.post('/checkout/subscription', async (req, res, next) => {
     const customerId = await getOrCreateStripeCustomer(userId, email);
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: customerId,
-      client_reference_id: userId,
-      ...stripeCheckoutSubscriptionCustomerDefaults,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: config.stripe.successUrl,
-      cancel_url: config.stripe.cancelUrl,
-      metadata: {
-        user_id: userId,
+    const session = await stripe.checkout.sessions.create(
+      buildPlanSubscriptionCheckoutSessionCreateParams({
+        customerId,
+        userId,
+        priceId,
         tier,
-        price_id: priceId,
-        checkout_kind: 'subscription',
-      },
-      subscription_data: {
-        metadata: {
-          user_id: userId,
-          tier,
-          price_id: priceId,
-        },
-      },
-    });
+      }),
+    );
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
   } catch (err) {
@@ -238,11 +220,26 @@ router.post('/checkout/confirm', async (req, res, next) => {
       return;
     }
 
-    if (session.mode === 'subscription' && session.subscription) {
+    if (session.mode === 'subscription') {
+      if (session.status !== 'complete') {
+        res.status(402).json({
+          error: 'Checkout session is not complete yet',
+          detail: `status=${session.status ?? 'unknown'} payment_status=${session.payment_status ?? 'unknown'}`,
+        });
+        return;
+      }
+      const subscriptionRef = session.subscription;
+      if (!subscriptionRef) {
+        res.status(402).json({
+          error: 'Checkout session has no subscription yet',
+          detail: `status=${session.status} payment_status=${session.payment_status ?? 'unknown'}`,
+        });
+        return;
+      }
       const sub =
-        typeof session.subscription === 'string'
-          ? await stripe.subscriptions.retrieve(session.subscription)
-          : session.subscription;
+        typeof subscriptionRef === 'string'
+          ? await stripe.subscriptions.retrieve(subscriptionRef)
+          : subscriptionRef;
       const periodEnd =
         (sub as { current_period_end?: number }).current_period_end ??
         Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
@@ -267,7 +264,7 @@ router.post('/checkout/confirm', async (req, res, next) => {
         source: 'confirm-endpoint',
       });
     } else if (session.mode === 'payment') {
-      if (session.status !== 'complete' || session.payment_status !== 'paid') {
+      if (!checkoutSessionPaymentSettled(session)) {
         res.status(402).json({
           error: 'Checkout session is not paid yet',
           detail: `status=${session.status} payment_status=${session.payment_status ?? 'unknown'}`,

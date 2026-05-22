@@ -92,8 +92,13 @@ ship on `main`.
   rows get a reset boundary (PR #135).
 - **Checkout confirm idempotency:** `eventId: checkout_confirm:${sessionId}`
   on `syncStripeSubscriptionToUser` (PR #136).
-- **Wallet credit guard:** only `mode === 'payment'` + `complete` + `paid`
+- **Wallet credit guard:** only `mode === 'payment'` + `complete` +
+  `payment_status` `paid` or `no_payment_required` (`checkoutSessionPaymentSettled`)
   before `creditWalletFromCheckoutSession` (PR #136).
+- **100% Stripe coupons:** subscription (and payment) Checkout Sessions must
+  set `payment_method_collection: 'if_required'` via
+  `stripeCheckoutSessionParams.ts` builders — otherwise Hosted Checkout errors
+  when a promotion code zeroes amount due.
 - **Add-on Stripe subs:** early return when `metadata.monitor_kind` is set —
   do not call plan-tier `syncSubscription` (PR #136).
 - **Invoice webhooks:** `invoice.payment_succeeded` only — not `invoice.paid`
