@@ -44,7 +44,8 @@ ALTER TABLE dossier_statistics
 
 -- Refresh v_dossier: Wave 5.3 stats + restore 035 single-plan LATERAL + orchestration_profile.
 -- WITH (security_invoker = true): RLS on underlying tables runs as querying role (PG15+; dev/prod pg16).
-CREATE OR REPLACE VIEW v_dossier
+DROP VIEW IF EXISTS v_dossier;
+CREATE VIEW v_dossier
 WITH (security_invoker = true)
 AS
 SELECT

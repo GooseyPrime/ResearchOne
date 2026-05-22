@@ -63,7 +63,9 @@ END $$;
 -- ============================================================
 -- 5. v_dossier — gate plan + orchestration_profile; run_status includes new enum
 -- ============================================================
-CREATE OR REPLACE VIEW v_dossier AS
+-- PG rejects CREATE OR REPLACE when inserting/reordering columns (42P16); drop first.
+DROP VIEW IF EXISTS v_dossier;
+CREATE VIEW v_dossier AS
 SELECT
   rr.id                    AS dossier_id,
   rr.id                    AS run_id,

@@ -2,7 +2,8 @@
 -- without security_invoker / plan LATERAL (PR #127 Codex + Copilot).
 -- Idempotent. Safe on pg16 (security_invoker requires PG15+).
 
-CREATE OR REPLACE VIEW v_dossier
+DROP VIEW IF EXISTS v_dossier;
+CREATE VIEW v_dossier
 WITH (security_invoker = true)
 AS
 SELECT

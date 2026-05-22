@@ -2,7 +2,8 @@
 -- Late 035's `CREATE OR REPLACE VIEW` could drop `security_invoker` and Wave 5.3 stats columns.
 -- Idempotent — matches 037's canonical definition (PG15+ security_invoker).
 
-CREATE OR REPLACE VIEW v_dossier
+DROP VIEW IF EXISTS v_dossier;
+CREATE VIEW v_dossier
 WITH (security_invoker = true)
 AS
 SELECT
