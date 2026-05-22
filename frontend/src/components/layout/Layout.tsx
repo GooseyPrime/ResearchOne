@@ -28,12 +28,15 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
+import { hasInFlightResearchRuns, IN_FLIGHT_RUN_STATUSES } from '../../utils/researchRuns';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
 import Notifications from '../ui/Notifications';
 import NotificationBanner from '../ui/NotificationBanner';
 import ActiveRunBadge from '../research/ActiveRunBadge';
+import PlanReviewBanner from './PlanReviewBanner';
+import { useGlobalPlanReadyNotify } from '../../hooks/useGlobalPlanReadyNotify';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
 
@@ -125,27 +128,40 @@ export default function Layout() {
   }, [data, setStats]);
 
 
-  const { data: liveRuns } = useQuery<ResearchRun[]>({
-    queryKey: ['layout-active-runs'],
-    queryFn: () => getResearchRuns({ status: 'running' }),
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(6_000),
+  const { data: allRuns } = useQuery<ResearchRun[]>({
+    queryKey: ['research-runs'],
+    queryFn: () => getResearchRuns(),
+    refetchInterval: (query) =>
+      hasInFlightResearchRuns(query.state.data)
+        ? getAdaptiveRefetchIntervalMs(6_000)
+        : false,
   });
 
   useEffect(() => {
-    const runs = liveRuns ?? EMPTY_RESEARCH_RUNS;
-    if (runs.length === 0) {
+    const runs = allRuns ?? EMPTY_RESEARCH_RUNS;
+    const inFlight = runs.filter((r) =>
+      (IN_FLIGHT_RUN_STATUSES as readonly string[]).includes(r.status)
+    );
+    if (inFlight.length === 0) {
       setActiveRun(null);
       return;
     }
-    const top = runs[0];
+    const priority = (s: string) =>
+      s === 'plan_pending_confirmation' ? 0 : s === 'running' ? 1 : 2;
+    const top = [...inFlight].sort((a, b) => priority(a.status) - priority(b.status))[0];
     setActiveRun({
       runId: top.id,
-      stage: top.progress_stage || 'running',
+      stage: top.progress_stage || top.status || 'running',
       percent: top.progress_percent ?? 0,
-      message: top.progress_message || 'Running…',
+      message:
+        top.status === 'plan_pending_confirmation'
+          ? top.progress_message || 'Plan ready — review required'
+          : top.progress_message || 'Running…',
       timestamp: top.progress_updated_at || new Date().toISOString(),
     });
-  }, [liveRuns, setActiveRun]);
+  }, [allRuns, setActiveRun]);
+
+  useGlobalPlanReadyNotify(allRuns);
 
   const {
     data: health,
@@ -292,6 +308,7 @@ export default function Layout() {
 
         <main className="flex-1 overflow-y-auto grid-bg">
           <NotificationBanner />
+          <PlanReviewBanner runs={allRuns ?? EMPTY_RESEARCH_RUNS} />
           <Outlet />
         </main>
       </div>

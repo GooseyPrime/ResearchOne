@@ -7,22 +7,17 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
-  AlertCircle,
   CheckCircle2,
-  Clock,
   Zap,
   Brain,
   Shield,
   FileSearch,
   PenLine,
   Target,
-  Trash2,
-  Ban,
   Settings2,
   RotateCcw,
   CheckSquare,
   Square,
-  XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import LiveResearchTraceLog from '../components/research/LiveResearchTraceLog';
@@ -34,10 +29,7 @@ import {
   startResearch,
   getResearchRuns,
   getResearchRun,
-  getRunPlanForGate,
   listSavedOrchestrationProfiles,
-  cancelResearchRun,
-  deleteResearchRun,
   getResearchV2EnsemblePresets,
   ResearchRun,
   ResearchProgressEvent,
@@ -53,9 +45,10 @@ import { formatFailureReason } from '../utils/researchFailureFormat';
 import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
+import ResearchRunRow from '../components/research/ResearchRunRow';
+import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
-import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
 const RESEARCH_OBJECTIVE_OPTIONS: { value: ResearchObjective; label: string }[] = [
@@ -196,6 +189,7 @@ export default function ResearchPageV2() {
   /** Wave 5.1 — draft plan at the confirmation gate (socket + GET `/runs/:id/plan` refresh path). */
   const [planGateLocal, setPlanGateLocal] = useState<PlanGateSnapshot | null>(null);
   const [planGateBusy, setPlanGateBusy] = useState(false);
+  const planGateRef = useRef<HTMLDivElement>(null);
 
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<
@@ -229,45 +223,51 @@ export default function ResearchPageV2() {
   });
 
   const trackedRun = runs.find((r) => r.id === trackingRunId);
-  const pollEnabled =
-    Boolean(trackingRunId) &&
-    (trackedRun?.status === 'running' ||
-      trackedRun?.status === 'queued' ||
-      trackedRun?.status === 'plan_pending_confirmation');
+  const trackedStatus = trackedRun?.status;
+  const runPollCadenceActive =
+    trackedStatus === 'running' ||
+    trackedStatus === 'queued' ||
+    trackedStatus === 'plan_pending_confirmation';
 
   const { data: polledRun } = useQuery({
     queryKey: ['research-run', trackingRunId],
     queryFn: () => getResearchRun(trackingRunId!),
-    enabled: pollEnabled,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(4_000),
+    enabled: Boolean(trackingRunId),
+    refetchInterval: () =>
+      runPollCadenceActive ? getAdaptiveRefetchIntervalMs(4_000) : false,
   });
 
-  const needsGatePlanPoll =
-    Boolean(trackingRunId) &&
-    (trackedRun?.status === 'plan_pending_confirmation' || polledRun?.status === 'plan_pending_confirmation');
-
-  const { data: gatePlanResponse } = useQuery({
-    queryKey: ['run-plan-gate', trackingRunId],
-    queryFn: () => getRunPlanForGate(trackingRunId!),
-    enabled: needsGatePlanPoll,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(12_000),
+  const { attachRun, detachRun: detachTracking } = useResearchRunTracking({
+    trackingRunId,
+    setTrackingRunId,
+    lastKnownRunIdRef,
+    setProgress,
+    setActiveRun,
+    setTraceEvents,
+    setFailure: () => setFailure(null),
+    setRunSummary,
+    runSummaryReceivedRef,
+    setPlanGateLocal,
+    setPlanGateBusy,
+    runStatus: trackedRun?.status ?? polledRun?.status,
+    engineVersionHint: trackedRun?.engine_version ?? polledRun?.engine_version,
   });
 
   const mutation = useMutation({
     mutationFn: startResearch,
     onSuccess: (data) => {
-      setTrackingRunId(data.runId);
-      lastKnownRunIdRef.current = data.runId;
       setPlanGateLocal(null);
-      setPlanGateBusy(false);
-      const queuedEvt: ResearchProgressEvent = { runId: data.runId, stage: 'planning', percent: 0, message: 'Deep Research queued...', timestamp: new Date().toISOString() };
+      const queuedEvt: ResearchProgressEvent = {
+        runId: data.runId,
+        stage: 'planning',
+        percent: 0,
+        message: 'Deep Research queued...',
+        timestamp: new Date().toISOString(),
+      };
       setProgress(queuedEvt);
       setActiveRun(queuedEvt);
-      setFailure(null);
-      setRunSummary(null);
-      runSummaryReceivedRef.current = false;
       setTraceEvents([queuedEvt]);
-      subscribeToJob(data.runId);
+      void attachRun({ runId: data.runId });
       addNotification('info', 'Deep Research started — tracking detailed progress...');
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
@@ -396,33 +396,6 @@ export default function ResearchPageV2() {
   }, [polledRun, trackingRunId, setActiveRun]);
 
   useEffect(() => {
-    if (!trackingRunId || !gatePlanResponse?.plan?.planId) return;
-    if (gatePlanResponse.runStatus !== 'plan_pending_confirmation') {
-      setPlanGateLocal((prev) => (prev?.runId === trackingRunId ? null : prev));
-      return;
-    }
-    const p = gatePlanResponse.plan;
-    const planId = p.planId;
-    if (!planId) return;
-    setPlanGateLocal((prev) => {
-      const basePayload = (p.planPayload ?? {}) as Record<string, unknown>;
-      if (!prev || prev.runId !== trackingRunId) {
-        return {
-          runId: trackingRunId,
-          planId,
-          planPayload: basePayload,
-          refinementRounds: p.refinementRounds ?? 0,
-        };
-      }
-      const pr = p.refinementRounds ?? 0;
-      if (pr > prev.refinementRounds) {
-        return { ...prev, planPayload: basePayload, refinementRounds: pr, planId };
-      }
-      return prev;
-    });
-  }, [gatePlanResponse, trackingRunId]);
-
-  useEffect(() => {
     const socket = getSocket();
 
     socket.on('research:progress', (raw: ResearchProgressEvent) => {
@@ -541,59 +514,6 @@ export default function ResearchPageV2() {
       }
     });
 
-    socket.on(
-      'research:plan_ready_for_confirmation',
-      (payload: { runId: string; planId: string; planPayload: unknown; refinementRounds?: number }) => {
-        qc.invalidateQueries({ queryKey: ['research-runs'] });
-        if (payload.runId === trackingRunId && payload.planId) {
-          setPlanGateLocal({
-            runId: payload.runId,
-            planId: payload.planId,
-            planPayload: (payload.planPayload ?? {}) as Record<string, unknown>,
-            refinementRounds: Number(payload.refinementRounds ?? 0),
-          });
-          addNotification('info', 'Research plan is ready — review and confirm to continue.');
-        }
-      }
-    );
-
-    socket.on(
-      'research:plan_refined',
-      (payload: { runId: string; revisedPlan?: Record<string, unknown>; refinementRounds?: number }) => {
-        qc.invalidateQueries({ queryKey: ['research-runs'] });
-        if (payload.runId !== trackingRunId) return;
-        setPlanGateLocal((prev) => {
-          if (!prev || prev.runId !== payload.runId) return prev;
-          return {
-            ...prev,
-            planPayload: (payload.revisedPlan ?? prev.planPayload) as Record<string, unknown>,
-            refinementRounds: Number(payload.refinementRounds ?? prev.refinementRounds),
-          };
-        });
-      }
-    );
-
-    socket.on('research:plan_confirmed', (payload: { runId: string }) => {
-      qc.invalidateQueries({ queryKey: ['research-runs'] });
-      void qc.invalidateQueries({ queryKey: ['research-run', payload.runId] }, { cancelRefetch: false });
-      if (payload.runId === trackingRunId) {
-        setPlanGateLocal(null);
-        setPlanGateBusy(false);
-      }
-    });
-
-    socket.on('research:plan_cancelled', (payload: { runId: string }) => {
-      qc.invalidateQueries({ queryKey: ['research-runs'] });
-      if (payload.runId === trackingRunId) {
-        setPlanGateLocal(null);
-        setPlanGateBusy(false);
-        setProgress(null);
-        setTrackingRunId(null);
-        setActiveRun(null);
-        addNotification('info', 'Research run cancelled at the plan gate.');
-      }
-    });
-
     socket.on('run:summary', (summary: RunSummaryData) => {
       // Use the ref rather than the closed-over state: trackingRunId and
       // progress may already be null (cleared on cancellation/completion)
@@ -611,10 +531,6 @@ export default function ResearchPageV2() {
       socket.off('research:failed');
       socket.off('research:aborted');
       socket.off('research:cancelled');
-      socket.off('research:plan_ready_for_confirmation');
-      socket.off('research:plan_refined');
-      socket.off('research:plan_confirmed');
-      socket.off('research:plan_cancelled');
       socket.off('run:summary');
     };
   }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
@@ -657,12 +573,26 @@ export default function ResearchPageV2() {
     }
   }, [reportLengthPreset, reportLengthCustom]);
 
+  const runStatusForGate = trackedRun?.status ?? polledRun?.status;
+  const showPlanGatePanel =
+    Boolean(trackingRunId) &&
+    (runStatusForGate === 'plan_pending_confirmation' || planGateLocal?.runId === trackingRunId);
+
   const planGateAwaitingForBanner = Boolean(
-    planGateLocal &&
-      trackingRunId &&
-      planGateLocal.runId === trackingRunId &&
-      (trackedRun?.status === 'running' || trackedRun?.status === 'queued')
+    showPlanGatePanel ||
+      (planGateLocal &&
+        trackingRunId &&
+        planGateLocal.runId === trackingRunId &&
+        (trackedRun?.status === 'running' || trackedRun?.status === 'queued'))
   );
+
+  useEffect(() => {
+    if (!showPlanGatePanel || !planGateRef.current) return;
+    const hash = window.location.hash;
+    if (hash === '#plan' || runStatusForGate === 'plan_pending_confirmation') {
+      planGateRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [showPlanGatePanel, runStatusForGate, planGateLocal?.planId]);
 
   const trackedRunLiveStatus = useMemo(
     () =>
@@ -1111,38 +1041,55 @@ export default function ResearchPageV2() {
               progressStage={trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null}
               planGateAwaiting={planGateAwaitingForBanner}
             />
-            {planGateLocal && planGateLocal.runId === trackingRunId && (
-              <PlanConfirmationPanel
-                snapshot={planGateLocal}
-                busy={planGateBusy}
-                onBusy={setPlanGateBusy}
-                planPrefs={planPrefsQuery.data}
-                tierAllowsSavedProfiles={tierAllowsSavedProfiles}
-                onInvalidatePlanPrefs={() => void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY })}
-                onInvalidateSavedProfiles={() =>
-                  void qc.invalidateQueries({ queryKey: ['saved-orchestration-profiles'] })
-                }
-                onAfterConfirm={() => {
-                  setPlanGateLocal(null);
-                  setPlanGateBusy(false);
-                  void qc.invalidateQueries({ queryKey: ['research-runs'] });
-                  void qc.invalidateQueries({ queryKey: ['research-run', trackingRunId] }, { cancelRefetch: false });
-                  void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY }, { cancelRefetch: false });
-                }}
-                onAfterCancel={() => {
-                  setProgress(null);
-                  setTrackingRunId(null);
-                  setActiveRun(null);
-                  void qc.invalidateQueries({ queryKey: ['research-runs'] });
-                }}
-                onNotify={(kind, message) => addNotification(kind, message)}
-                onGatePlanMutated={() => {
-                  void qc.invalidateQueries({ queryKey: ['research-runs'] });
-                  if (trackingRunId) {
-                    void qc.invalidateQueries({ queryKey: ['run-plan-gate', trackingRunId] }, { cancelRefetch: false });
-                  }
-                }}
-              />
+            {showPlanGatePanel && (
+              <div ref={planGateRef} id="plan">
+                {planGateLocal && planGateLocal.runId === trackingRunId ? (
+                  <PlanConfirmationPanel
+                    snapshot={planGateLocal}
+                    busy={planGateBusy}
+                    onBusy={setPlanGateBusy}
+                    planPrefs={planPrefsQuery.data}
+                    tierAllowsSavedProfiles={tierAllowsSavedProfiles}
+                    onInvalidatePlanPrefs={() =>
+                      void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY })
+                    }
+                    onInvalidateSavedProfiles={() =>
+                      void qc.invalidateQueries({ queryKey: ['saved-orchestration-profiles'] })
+                    }
+                    onAfterConfirm={() => {
+                      setPlanGateLocal(null);
+                      setPlanGateBusy(false);
+                      void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                      void qc.invalidateQueries(
+                        { queryKey: ['research-run', trackingRunId] },
+                        { cancelRefetch: false }
+                      );
+                      void qc.invalidateQueries(
+                        { queryKey: PLAN_PREFERENCES_QUERY_KEY },
+                        { cancelRefetch: false }
+                      );
+                    }}
+                    onAfterCancel={() => {
+                      detachTracking();
+                      void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                    }}
+                    onNotify={(kind, message) => addNotification(kind, message)}
+                    onGatePlanMutated={() => {
+                      void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                      if (trackingRunId) {
+                        void qc.invalidateQueries(
+                          { queryKey: ['run-plan-gate', trackingRunId] },
+                          { cancelRefetch: false }
+                        );
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="rounded-xl border border-amber-700/35 bg-amber-950/20 p-4 text-sm text-amber-100/90">
+                    Loading research plan…
+                  </div>
+                )}
+              </div>
             )}
             </div>
 
@@ -1204,130 +1151,23 @@ export default function ResearchPageV2() {
           <h2 className="section-title mb-3">Recent runs</h2>
           <div className="space-y-2">
             {runs.slice(0, 10).map((run) => (
-              <RunRow
+              <ResearchRunRow
                 key={run.id}
                 run={run}
                 onRunsChanged={() => qc.invalidateQueries({ queryKey: ['research-runs'] })}
                 onRemoved={(id) => {
                   if (id === trackingRunId) {
-                    setTrackingRunId(null);
-                    setProgress(null);
+                    detachTracking();
                     setFailure(null);
                     setRunSummary(null);
                   }
                 }}
+                onResumeRun={(r) => {
+                  void attachRun({ runId: r.id, runRow: r });
+                }}
               />
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RunRow({
-  run,
-  onRunsChanged,
-  onRemoved,
-}: {
-  run: ResearchRun;
-  onRunsChanged: () => void;
-  onRemoved?: (id: string) => void;
-}) {
-  const navigate = useNavigate();
-  const [showError, setShowError] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
-    queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
-    running: { icon: Zap, color: 'text-accent animate-pulse', label: 'Running' },
-    completed: { icon: CheckCircle2, color: 'text-green-400', label: 'Completed' },
-    failed: { icon: AlertCircle, color: 'text-amber-400', label: 'Needs review' },
-    cancelled: { icon: AlertCircle, color: 'text-slate-500', label: 'Cancelled' },
-    aborted: { icon: XCircle, color: 'text-red-400', label: 'Aborted' },
-  };
-
-  const cfg = STATUS_CONFIG[run.status] ?? STATUS_CONFIG.failed;
-  const Icon = cfg.icon;
-
-  const latestEvent = Array.isArray(run.progress_events) && run.progress_events.length > 0
-    ? run.progress_events[run.progress_events.length - 1]
-    : null;
-
-  const handleCancel = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm('Cancel this run?')) return;
-    setBusy(true);
-    try {
-      await cancelResearchRun(run.id);
-      onRunsChanged();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Cancel failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm('Remove this run from the list?')) return;
-    setBusy(true);
-    try {
-      await deleteResearchRun(run.id);
-      onRemoved?.(run.id);
-      onRunsChanged();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Delete failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="card p-3 space-y-2">
-      <div
-        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2"
-        onClick={() => run.status === 'completed' && navigate(dossierReportUrlForRun(run.id))}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <Icon size={14} className={cfg.color} />
-          <div className="min-w-0">
-            <p className="text-sm text-white truncate">{run.title}</p>
-            <p className="text-xs text-slate-500">{formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}</p>
-            {(run.status === 'running' || run.status === 'queued' || latestEvent) && (
-              <p className="text-xs text-accent/90 mt-1 line-clamp-2">
-                {typeof run.progress_percent === 'number' ? `${run.progress_percent}% · ` : ''}
-                {run.progress_message || latestEvent?.message || 'Awaiting updates...'}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <span className={clsx('text-xs font-medium', cfg.color)}>{cfg.label}</span>
-          {(run.status === 'queued' || run.status === 'running') && (
-            <button type="button" className="btn-ghost p-1.5 text-amber-400" title="Cancel run" disabled={busy} onClick={handleCancel}>
-              <Ban size={14} />
-            </button>
-          )}
-          {(run.status === 'queued' || run.status === 'failed' || run.status === 'cancelled' || run.status === 'aborted') && (
-            <button type="button" className="btn-ghost p-1.5 text-slate-400" title="Remove from list" disabled={busy} onClick={handleDelete}>
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {(run.status === 'failed' || run.status === 'aborted') && (run.error_message || run.failed_stage) && (
-        <div>
-          <button type="button" className="text-xs text-amber-300 hover:text-amber-200" onClick={() => setShowError((v) => !v)}>
-            {showError ? 'Hide error details' : 'Show error details'}
-          </button>
-          {showError && (
-            <p className="text-xs text-amber-200 mt-1">
-              {run.failed_stage ? `Stage: ${run.failed_stage} · ` : ''}
-              {formatFailureReason(run.error_message || 'Unknown failure', run.failure_meta)}
-            </p>
-          )}
         </div>
       )}
     </div>
