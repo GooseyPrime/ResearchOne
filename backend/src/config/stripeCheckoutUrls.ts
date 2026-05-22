@@ -1,13 +1,32 @@
 const CHECKOUT_SESSION_ID_TEMPLATE = '{CHECKOUT_SESSION_ID}';
 
 /**
+ * Stripe substitutes `{CHECKOUT_SESSION_ID}` on redirect. Used for:
+ * - payment-mode wallet top-ups (`/billing/checkout/topup`)
+ * - subscription-mode plan upgrades (`/billing/checkout/subscription`)
+ * - subscription-mode monitor add-ons (report monitors checkout)
+ */
+export function appendStripeCheckoutSessionIdTemplate(url: string): string {
+  if (url.includes(CHECKOUT_SESSION_ID_TEMPLATE)) {
+    return url;
+  }
+  const parsed = new URL(url);
+  parsed.searchParams.set('session_id', CHECKOUT_SESSION_ID_TEMPLATE);
+  return parsed.toString();
+}
+
+/**
  * Stripe Checkout success URL must include Stripe's session id template so the
  * confirm endpoint can reconcile entitlement on return (WO-Y).
+ *
+ * @deprecated Prefer {@link appendStripeCheckoutSessionIdTemplate} via
+ * `resolveStripeCheckoutRedirect` — production envs missing the template are
+ * normalized instead of failing boot/migrate.
  */
 export function assertStripeCheckoutSuccessUrlHasSessionTemplate(
   url: string,
   envName: string,
-  nodeEnv: string
+  nodeEnv: string,
 ): void {
   if (nodeEnv !== 'production') return;
   if (!url.includes(CHECKOUT_SESSION_ID_TEMPLATE)) {
@@ -55,7 +74,7 @@ export function resolveStripeCheckoutRedirect(
   }
 
   if (envName === 'STRIPE_CHECKOUT_SUCCESS_URL') {
-    assertStripeCheckoutSuccessUrlHasSessionTemplate(trimmed, envName, nodeEnv);
+    return appendStripeCheckoutSessionIdTemplate(trimmed);
   }
 
   return trimmed;

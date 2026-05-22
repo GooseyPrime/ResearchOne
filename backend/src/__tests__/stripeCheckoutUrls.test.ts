@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  appendStripeCheckoutSessionIdTemplate,
   assertStripeCheckoutSuccessUrlHasSessionTemplate,
   resolveStripeCheckoutRedirect,
 } from '../config/stripeCheckoutUrls';
@@ -44,14 +45,19 @@ describe('resolveStripeCheckoutRedirect', () => {
         devDefault,
       ),
     ).toThrow(/localhost/);
-    expect(() =>
+  });
+
+  it('appends session_id template when legacy production success URL omits it', () => {
+    expect(
       resolveStripeCheckoutRedirect(
         'https://researchone.io/app/billing?checkout=success',
         'STRIPE_CHECKOUT_SUCCESS_URL',
         'production',
         devDefault,
       ),
-    ).toThrow(/CHECKOUT_SESSION_ID/);
+    ).toBe(
+      'https://researchone.io/app/billing?checkout=success&session_id=%7BCHECKOUT_SESSION_ID%7D',
+    );
 
     expect(
       resolveStripeCheckoutRedirect(
@@ -61,6 +67,17 @@ describe('resolveStripeCheckoutRedirect', () => {
         devDefault,
       ),
     ).toBe('https://researchone.io/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}');
+  });
+
+  it('appendStripeCheckoutSessionIdTemplate is idempotent', () => {
+    const withTemplate =
+      'https://researchone.io/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}';
+    expect(appendStripeCheckoutSessionIdTemplate(withTemplate)).toBe(withTemplate);
+    const appended = appendStripeCheckoutSessionIdTemplate(
+      'https://researchone.io/app/billing?checkout=success',
+    );
+    expect(appended).toContain('session_id');
+    expect(decodeURIComponent(appended)).toContain('{CHECKOUT_SESSION_ID}');
   });
 
   it('assertStripeCheckoutSuccessUrlHasSessionTemplate is a no-op outside production', () => {
