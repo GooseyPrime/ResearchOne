@@ -149,6 +149,7 @@ export async function incrementReportCount(userId: string, isDeep: boolean): Pro
          current_period_deep_reports_used =
            user_tiers.current_period_deep_reports_used + EXCLUDED.current_period_deep_reports_used,
          lifetime_reports_used = user_tiers.lifetime_reports_used + 1,
+         current_period_resets_at = COALESCE(user_tiers.current_period_resets_at, EXCLUDED.current_period_resets_at),
          updated_at = NOW()`,
       [userId, DEFAULT_TIER, deepInc, periodResetsAt]
     );
