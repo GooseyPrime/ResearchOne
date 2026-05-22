@@ -8,7 +8,9 @@ import {
   BILLING_SUBSCRIPTION_QUERY_KEY,
   effectiveEntitlementTier,
   useBillingSubscriptionQuery,
+  type BillingSubscription,
 } from '../hooks/useBillingSubscription';
+import { BILLING_HISTORY_QUERY_KEY, useBillingHistory } from '../hooks/useBillingHistory';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
   living_report: 'Living Report — $19/mo',
@@ -80,22 +82,66 @@ export default function BillingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<'idle' | 'in_progress' | 'error'>('idle');
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [legacyCheckoutWarning, setLegacyCheckoutWarning] = useState(false);
+
+  const billingIntent = searchParams.get('intent');
+
+  const applyCheckoutConfirmSuccess = async (data: BillingSubscription) => {
+    queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
+    await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
+    await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
+    await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
+    setConfirming('idle');
+    setConfirmError(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('checkout');
+    next.delete('session_id');
+    setSearchParams(next, { replace: true });
+  };
+
+  const runCheckoutConfirm = async (sessionId: string) => {
+    setConfirming('in_progress');
+    try {
+      const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
+      await applyCheckoutConfirmSuccess(data);
+    } catch (e) {
+      setConfirming('error');
+      setConfirmError(extractApiError(e));
+    }
+  };
 
   useEffect(() => {
     const checkout = searchParams.get('checkout');
-    if (checkout === 'success') {
+    const sessionId = searchParams.get('session_id');
+
+    if (checkout !== 'success') {
+      if (checkout === 'cancel') {
+        const next = new URLSearchParams(searchParams);
+        next.delete('checkout');
+        setSearchParams(next, { replace: true });
+      }
+      return;
+    }
+
+    if (!sessionId) {
+      setLegacyCheckoutWarning(true);
       void queryClient.invalidateQueries(
         { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
         { cancelRefetch: false },
       );
       void queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
-    }
-    if (checkout === 'success' || checkout === 'cancel') {
       const next = new URLSearchParams(searchParams);
       next.delete('checkout');
       setSearchParams(next, { replace: true });
+      return;
     }
+
+    void runCheckoutConfirm(sessionId);
   }, [queryClient, searchParams, setSearchParams]);
+
+  const historyQuery = useBillingHistory(25);
 
   const cachedAuthMe = queryClient.getQueryData<{ userId: string; isAdmin: boolean }>(['auth', 'me']);
   const isAllowlistedAdmin = cachedAuthMe?.isAdmin === true;
@@ -170,6 +216,41 @@ export default function BillingPage() {
         purchase. For subscriptions (plans and report add-ons), Stripe omits payment details when the
         amount due is $0 after discounts.
       </p>
+
+      {billingIntent === 'pro' || billingIntent === 'student' ? (
+        <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
+          Continue your {billingIntent === 'student' ? 'Student' : 'Pro'} subscription below — checkout opens on
+          Stripe.
+        </p>
+      ) : null}
+
+      {confirming === 'in_progress' ? (
+        <p className="mt-4 rounded-md border border-indigo-700/30 bg-indigo-950/20 px-4 py-3 text-sm text-indigo-200">
+          Finalizing your subscription…
+        </p>
+      ) : null}
+      {confirming === 'error' && confirmError ? (
+        <div className="mt-4 rounded-md border border-red-700/40 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+          <p>{confirmError}</p>
+          <button
+            type="button"
+            className="mt-2 rounded bg-red-800/40 px-3 py-1 text-xs hover:bg-red-800/60"
+            onClick={() => {
+              const sessionId = searchParams.get('session_id');
+              if (!sessionId) return;
+              void runCheckoutConfirm(sessionId);
+            }}
+          >
+            Retry confirmation
+          </button>
+        </div>
+      ) : null}
+      {legacyCheckoutWarning ? (
+        <p className="mt-4 rounded-md border border-amber-700/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
+          Checkout succeeded, but this return URL did not include a session id. Refresh in a minute or open Account
+          again if your plan has not updated.
+        </p>
+      ) : null}
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <h2 className="text-lg font-medium">Wallet</h2>
@@ -306,6 +387,19 @@ export default function BillingPage() {
                     {cancelMutation.isPending ? 'Canceling...' : 'Cancel subscription'}
                   </button>
                 )}
+                {hasActiveSubscription ? (
+                  <button
+                    type="button"
+                    className="mt-3 rounded border border-white/20 px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5 transition-colors"
+                    onClick={() => {
+                      void api.post<{ url: string }>('/billing/portal-session', {}).then(({ data }) => {
+                        if (data.url) window.location.assign(data.url);
+                      });
+                    }}
+                  >
+                    Manage billing in Stripe
+                  </button>
+                ) : null}
                 <div className="mt-3">
                   <Link
                     to="/pricing"
@@ -429,29 +523,58 @@ export default function BillingPage() {
       </section>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
-        <h2 className="text-lg font-medium">Recent transactions</h2>
-        {(walletQuery.data?.history ?? []).length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No transactions yet</p>
+        <h2 className="text-lg font-medium">Billing history</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Subscription invoices and wallet credits in one timeline.
+        </p>
+        {historyQuery.isLoading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading billing history…</p>
+        ) : historyQuery.isError ? (
+          <div className="mt-3 rounded-md border border-amber-700/30 bg-amber-950/20 p-3">
+            <p className="text-sm text-amber-400">
+              Could not load billing history. {extractApiError(historyQuery.error)}
+            </p>
+            <button
+              type="button"
+              className="mt-2 rounded bg-amber-700/40 px-3 py-1 text-xs text-amber-200 hover:bg-amber-700/60 transition-colors"
+              onClick={() => void historyQuery.refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : (historyQuery.data?.items ?? []).length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No billing events yet</p>
         ) : (
           <ul className="mt-3 space-y-2 text-sm text-slate-300">
-            {(walletQuery.data?.history ?? []).map((row) => (
-              <li key={row.id} className="flex items-center justify-between py-1 border-b border-white/5 last:border-0">
-                <div className="flex-1 min-w-0">
-                  <span>{row.description}</span>
-                  <span className="ml-2 text-xs text-slate-500">{formatTimestamp(row.created_at)}</span>
-                </div>
-                <div className="flex items-center gap-3 text-right">
-                  <span className={row.entry_type === 'credit' ? 'text-emerald-400' : 'text-red-400'}>
-                    {row.entry_type === 'credit' ? '+' : '-'}${(row.amount_cents / 100).toFixed(2)}
-                  </span>
-                  {row.balance_after_cents != null && (
-                    <span className="text-xs text-slate-500 w-16">
-                      ${(row.balance_after_cents / 100).toFixed(2)}
+            {(historyQuery.data?.items ?? []).map((row) => {
+              const amount =
+                row.amount_cents != null
+                  ? `${row.status === 'credit' || row.status === 'paid' ? '+' : row.status === 'debit' || row.status === 'failed' ? '-' : ''}$${(Math.abs(row.amount_cents) / 100).toFixed(2)}`
+                  : null;
+              const statusClass =
+                row.status === 'paid' || row.status === 'credit'
+                  ? 'text-emerald-400'
+                  : row.status === 'failed' || row.status === 'debit'
+                    ? 'text-red-400'
+                    : 'text-slate-400';
+              return (
+                <li
+                  key={`${row.kind}-${row.id}`}
+                  className="flex items-center justify-between gap-3 py-1 border-b border-white/5 last:border-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span>{row.description}</span>
+                    <span className="ml-2 text-xs text-slate-500">{formatTimestamp(row.occurred_at)}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-right">
+                    {amount ? <span className={statusClass}>{amount}</span> : null}
+                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-xs capitalize text-slate-400">
+                      {row.status}
                     </span>
-                  )}
-                </div>
-              </li>
-            ))}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

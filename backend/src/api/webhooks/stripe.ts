@@ -10,30 +10,28 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
-import { getStripeClient, getTopupAmountForPrice } from '../../services/billing/stripeClient';
-import { creditWallet } from '../../services/billing/walletService';
-import {
-  syncSubscription,
-  markSubscriptionCanceled,
-  resolveSubscriptionPlanTier,
-} from '../../services/billing/subscriptionService';
-import { stripeSubscriptionStatusGrantsPlanAccess } from '../../services/billing/stripeSubscriptionStatus';
+import { getStripeClient } from '../../services/billing/stripeClient';
 import { dispatchWebhookEvent, type WebhookEventHandler } from './_shared/verifyAndDispatch';
 import { query } from '../../db/pool';
 import { setUserTier } from '../../services/tier/tierService';
-import { isTierName } from '../../config/tierRules';
 import {
   cancelMonitorByStripeSubscription,
   cancelUserAddonSubscriptions,
-  monitorKindFromStripePriceId,
-  registerMonitor,
-  recordSubscriptionPastDueForMonitor,
-  subscriptionHasLivingReportsPrice,
 } from '../../services/monitoring/parallelMonitorService';
 import {
   createUserNotification,
   resolveUserIdFromStripeSubscription,
 } from '../../services/notifications/userNotifications';
+import { recordSubscriptionPastDueForMonitor } from '../../services/monitoring/parallelMonitorService';
+import { creditWalletFromCheckoutSession } from '../../services/billing/checkoutWalletTopup';
+import {
+  resolveUserIdForSubscription,
+  syncStripeSubscriptionToUser,
+  StripeSubscriptionUserUnresolvedError,
+  type StripeSubscriptionLike,
+} from '../../services/billing/syncStripeSubscription';
+import { recordBillingEvent } from '../../services/billing/billingEventsService';
+import { markSubscriptionCanceled } from '../../services/billing/subscriptionService';
 
 const router = Router();
 
@@ -41,48 +39,54 @@ type StripeEventData = Record<string, unknown>;
 
 interface CheckoutSessionData {
   id: string;
-  metadata?: { userId?: string; user_id?: string; topupAmountCents?: string; price_id?: string };
-  amount_total?: number;
+  mode?: string;
+  subscription?: string | StripeSubscriptionLike | null;
+  metadata?: {
+    userId?: string;
+    user_id?: string;
+    topupAmountCents?: string;
+    topup_amount_cents?: string;
+    price_id?: string;
+  };
+  client_reference_id?: string | null;
 }
 
-/**
- * Handler for checkout.session.completed events (wallet top-ups).
- * Credits the user's wallet based on the checkout session metadata.
- *
- * The billing route writes metadata as { userId, topupAmountCents }.
- * We also accept { user_id, price_id } for forward compatibility.
- */
 const handleCheckoutSessionCompleted: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const session = data as unknown as CheckoutSessionData;
-  const userId = session.metadata?.userId ?? session.metadata?.user_id;
-  const topupAmountStr = session.metadata?.topupAmountCents;
-  const priceId = session.metadata?.price_id;
 
-  if (!userId) {
-    logger.warn('stripe_checkout_missing_metadata', { eventId, sessionId: session.id });
+  if (session.mode === 'subscription') {
+    const stripe = getStripeClient();
+    const subId =
+      typeof session.subscription === 'string'
+        ? session.subscription
+        : session.subscription?.id;
+    if (!subId) {
+      logger.warn('stripe_checkout_subscription_missing', { eventId, sessionId: session.id });
+      return;
+    }
+    const subscription = await stripe.subscriptions.retrieve(subId);
+    const userId = await resolveUserIdForSubscription(
+      subscription as unknown as StripeSubscriptionLike,
+      session.client_reference_id
+    );
+    if (!userId) {
+      throw new StripeSubscriptionUserUnresolvedError(subId, eventId);
+    }
+    await syncStripeSubscriptionToUser({
+      subscription: subscription as unknown as StripeSubscriptionLike,
+      userId,
+      eventId,
+      source: 'webhook',
+    });
     return;
   }
 
-  let amountCents: number | null = null;
-  if (topupAmountStr) {
-    amountCents = parseInt(topupAmountStr, 10) || null;
-  } else if (priceId) {
-    amountCents = getTopupAmountForPrice(priceId);
-  }
-
-  if (amountCents === null) {
-    logger.warn('stripe_checkout_unknown_amount', { eventId, sessionId: session.id });
-    return;
-  }
-
-  await creditWallet({
-    userId,
-    amountCents,
-    description: `Wallet top-up via Stripe checkout`,
-    idempotencyKey: `stripe_checkout_${session.id}`,
-    stripeCheckoutSessionId: session.id,
-    metadata: { eventId, priceId },
-  });
+  await creditWalletFromCheckoutSession(session.id, {
+    userId: session.metadata?.userId,
+    user_id: session.metadata?.user_id,
+    topupAmountCents: session.metadata?.topupAmountCents ?? session.metadata?.topup_amount_cents,
+    price_id: session.metadata?.price_id,
+  }, eventId);
 };
 
 interface SubscriptionData {
@@ -97,130 +101,24 @@ interface SubscriptionData {
   };
 }
 
-/**
- * Handler for customer.subscription.created and customer.subscription.updated events.
- * Syncs the subscription state to the local database.
- */
 const handleSubscriptionCreatedOrUpdated: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const subscription = data as unknown as SubscriptionData;
-  const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
-
+  const userId = await resolveUserIdForSubscription(subscription);
   if (!userId) {
-    logger.warn('stripe_subscription_missing_user_id', { eventId, subscriptionId: subscription.id });
-    return;
+    throw new StripeSubscriptionUserUnresolvedError(subscription.id, eventId);
   }
-
-  const items = subscription.items?.data ?? [];
-  const isMonitorOnlySubscription =
-    stripeSubscriptionStatusGrantsPlanAccess(subscription.status) && subscriptionHasLivingReportsPrice(items);
-
-  // Monitor-only subscriptions must not corrupt the user's plan tier.
-  // Handle them before tier sync and return early after registration.
-  if (isMonitorOnlySubscription) {
-    const reportId = subscription.metadata?.report_id?.trim();
-    const rawKind = subscription.metadata?.monitor_kind?.trim();
-    const monitorKind =
-      rawKind === 'reverse_citation_watch' || rawKind === 'living_report' ? rawKind : null;
-    if (reportId && monitorKind) {
-      const priceEntry = items.find((it) => monitorKindFromStripePriceId(it.price?.id ?? '') === monitorKind);
-      const stripePriceId = priceEntry?.price?.id ?? '';
-      const expectedKind = monitorKindFromStripePriceId(stripePriceId);
-      if (expectedKind === monitorKind) {
-        try {
-          await registerMonitor({
-            reportId,
-            userId,
-            orgId: null,
-            monitorKind,
-            stripeSubscriptionId: subscription.id,
-            stripeSubscriptionItemId: priceEntry?.id ?? null,
-          });
-        } catch (regErr) {
-          logger.error('stripe_living_report_register_failed', {
-            eventId,
-            subscriptionId: subscription.id,
-            error: regErr instanceof Error ? regErr.message : 'Unknown',
-          });
-          throw regErr;
-        }
-      }
-    }
-    return;
-  }
-
-  const monitorKindMeta = subscription.metadata?.monitor_kind?.trim();
-  const isAddonSubscriptionMetadata =
-    monitorKindMeta === 'reverse_citation_watch' || monitorKindMeta === 'living_report';
-
-  // Normal tier subscription — sync Stripe row for this subscription id
-  const item = subscription.items?.data?.[0];
-  const priceLookupKey = item?.price?.lookup_key ?? null;
-  const stripePriceId = item?.price?.id ?? null;
-  const metadataTier = subscription.metadata?.tier ?? null;
-
-  await syncSubscription(
+  await syncStripeSubscriptionToUser({
+    subscription,
     userId,
-    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-    subscription.id,
-    subscription.status,
-    new Date(subscription.current_period_end * 1000),
-    subscription.cancel_at_period_end,
-    priceLookupKey,
-    stripePriceId,
-    metadataTier
-  );
-
-  // Add-on subscriptions (Living Report / reverse-citation watch) must never
-  // call `setUserTier`. When status is unpaid/paused/incomplete, they are not
-  // handled by `isMonitorOnlySubscription` (no active grant) but still carry
-  // `metadata.monitor_kind` — without this guard they would fall through and
-  // downgrade the user's main plan tier (Codex PR #124).
-  if (isAddonSubscriptionMetadata) {
-    return;
-  }
-
-  // `user_tiers` drives research caps — only update from Stripe when this
-  // subscription currently grants paid access. Non-granting statuses must not
-  // overwrite admin/sovereign/manual tiers or force `free_demo` (Copilot PR #124).
-  const grants = stripeSubscriptionStatusGrantsPlanAccess(subscription.status);
-  if (!grants) {
-    return;
-  }
-
-  const resolved = resolveSubscriptionPlanTier({ priceLookupKey, stripePriceId, metadataTier });
-  if (!isTierName(resolved) || resolved === 'anonymous') {
-    return;
-  }
-
-  try {
-    await setUserTier(userId, resolved);
-  } catch (err) {
-    logger.warn('stripe_webhook_tier_sync_failed', { eventId, userId, error: err instanceof Error ? err.message : 'Unknown' });
-  }
+    eventId,
+    source: 'webhook',
+  });
 };
 
-/**
- * Handler for customer.subscription.deleted events.
- *
- * Discriminates add-on subscriptions (Living Report / Reverse-Citation Watch)
- * from tier subscriptions (Pro / Team / BYOK / Student) using the
- * `monitor_kind` metadata that we set at add-on checkout time. This is the
- * SAME discriminator we use on `subscription.created/updated` (PR #86 review
- * fix). It is the canonical writer for "is this an add-on subscription?".
- *
- * Add-on cancel: only cancel the monitor — DO NOT downgrade the user's tier
- * (they still have their Pro/Team/BYOK subscription separately).
- *
- * Tier cancel: downgrade to free_demo AND cascade-cancel all of the user's
- * active add-on subscriptions, since the dependency invariant is "add-on
- * requires an active qualifying tier".
- */
-const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (data) => {
+const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const subscription = data as unknown as SubscriptionData;
   await markSubscriptionCanceled(subscription.id);
 
-  // Always try to cancel a monitor whose stripe_subscription_id matches the
-  // deleted subscription. Idempotent on already-cancelled rows.
   try {
     await cancelMonitorByStripeSubscription(subscription.id);
   } catch (err) {
@@ -230,24 +128,46 @@ const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (d
     });
   }
 
-  const userId = subscription.metadata?.user_id ?? subscription.metadata?.userId;
-  if (!userId) return;
+  const userId = await resolveUserIdForSubscription(subscription);
+  if (!userId) {
+    throw new StripeSubscriptionUserUnresolvedError(subscription.id, eventId);
+  }
 
-  // Discriminate: add-on subscriptions carry monitor_kind in their metadata.
-  // Cancelling an add-on must NOT downgrade the user's tier.
   const isAddonSubscription = Boolean(subscription.metadata?.monitor_kind);
-  if (isAddonSubscription) return;
+  if (isAddonSubscription) {
+    await recordBillingEvent({
+      userId,
+      stripeEventId: eventId,
+      stripeSubscriptionId: subscription.id,
+      eventKind: 'addon_canceled',
+      addonKind:
+        subscription.metadata?.monitor_kind === 'reverse_citation_watch'
+          ? 'reverse_citation_watch'
+          : 'living_report',
+      description: 'Add-on canceled',
+      occurredAt: new Date(),
+    });
+    return;
+  }
 
-  // Tier subscription cancel: downgrade tier
   try {
     await setUserTier(userId, 'free_demo');
   } catch (err) {
-    logger.warn('stripe_webhook_tier_downgrade_failed', { userId, error: err instanceof Error ? err.message : 'Unknown' });
+    logger.warn('stripe_webhook_tier_downgrade_failed', {
+      userId,
+      error: err instanceof Error ? err.message : 'Unknown',
+    });
   }
 
-  // Cascade-cancel any of the user's active add-on subscriptions. Without
-  // this, the user keeps being charged for Living Reports that no longer
-  // have a qualifying tier behind them.
+  await recordBillingEvent({
+    userId,
+    stripeEventId: eventId,
+    stripeSubscriptionId: subscription.id,
+    eventKind: 'subscription_canceled',
+    description: 'Subscription canceled',
+    occurredAt: new Date(),
+  });
+
   try {
     await cancelUserAddonSubscriptions(userId);
   } catch (err) {
@@ -259,26 +179,51 @@ const handleSubscriptionDeleted: WebhookEventHandler<StripeEventData> = async (d
 };
 
 interface InvoiceData {
+  id?: string;
   subscription?: string | { id?: string } | null;
+  amount_paid?: number;
+  amount_due?: number;
+  currency?: string;
+  created?: number;
 }
 
-/**
- * Handler for invoice.payment_failed events.
- *
- * Two writers per Rule 10 (state-machine + multi-writer):
- *  1. `stripe_webhook_events.payload.needs_notification` flag — operator/audit
- *     trail. Kept for forensic queries.
- *  2. `user_notifications` row of kind `payment_failed` — user-facing in-app
- *     notification. Read by GET /api/notifications and the frontend
- *     NotificationBanner.
- *
- * The notification insert is best-effort: if the user_id can't be resolved
- * (subscription not yet synced) or the notifications table is missing
- * (deploy skew), we still leave the audit flag in place and log.
- */
+const handleInvoicePaymentSucceeded: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
+  const invoice = data as unknown as InvoiceData;
+  const subscriptionId =
+    typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+  if (!subscriptionId) return;
+
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const userId = await resolveUserIdForSubscription(subscription as unknown as StripeSubscriptionLike);
+  if (!userId) {
+    throw new StripeSubscriptionUserUnresolvedError(subscriptionId, eventId);
+  }
+
+  await syncStripeSubscriptionToUser({
+    subscription: subscription as unknown as StripeSubscriptionLike,
+    userId,
+    eventId,
+    source: 'webhook',
+  });
+
+  await recordBillingEvent({
+    userId,
+    stripeEventId: eventId,
+    stripeInvoiceId: invoice.id ?? null,
+    stripeSubscriptionId: subscriptionId,
+    eventKind: 'invoice_paid',
+    amountCents: invoice.amount_paid ?? null,
+    currency: invoice.currency ?? null,
+    description: 'Invoice paid',
+    occurredAt: invoice.created ? new Date(invoice.created * 1000) : new Date(),
+  });
+};
+
 const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (data, eventId) => {
   const invoice = data as unknown as InvoiceData;
-  const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+  const subscriptionId =
+    typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
 
   await query(
     `UPDATE stripe_webhook_events
@@ -297,7 +242,6 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
       });
     }
 
-    // Best-effort: surface an in-app notification so the user sees a banner.
     try {
       const userId = await resolveUserIdFromStripeSubscription(subscriptionId);
       if (userId) {
@@ -307,6 +251,17 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
           title: 'Payment failed',
           body: 'We could not charge your card for this billing cycle. Update your payment method to avoid losing access.',
           ctaPath: '/app/billing',
+        });
+        await recordBillingEvent({
+          userId,
+          stripeEventId: eventId,
+          stripeInvoiceId: invoice.id ?? null,
+          stripeSubscriptionId: subscriptionId,
+          eventKind: 'invoice_payment_failed',
+          amountCents: invoice.amount_due ?? null,
+          currency: invoice.currency ?? null,
+          description: 'Invoice payment failed',
+          occurredAt: invoice.created ? new Date(invoice.created * 1000) : new Date(),
         });
       } else {
         logger.warn('stripe_payment_failed_user_unresolved', { eventId, subscriptionId });
@@ -327,6 +282,7 @@ const STRIPE_EVENT_HANDLERS: Record<string, WebhookEventHandler<StripeEventData>
   'customer.subscription.created': handleSubscriptionCreatedOrUpdated,
   'customer.subscription.updated': handleSubscriptionCreatedOrUpdated,
   'customer.subscription.deleted': handleSubscriptionDeleted,
+  'invoice.payment_succeeded': handleInvoicePaymentSucceeded,
   'invoice.payment_failed': handleInvoicePaymentFailed,
 };
 

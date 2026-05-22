@@ -9,7 +9,19 @@ vi.mock('../db/pool', () => ({
 }));
 vi.mock('../utils/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { checkTierAccess, getUserTier, resetMonthlyCounters, incrementReportCount } from '../services/tier/tierService';
+import {
+  checkTierAccess,
+  getUserTier,
+  resetMonthlyCounters,
+  incrementReportCount,
+  type UserTierRow,
+} from '../services/tier/tierService';
+
+/** `checkTierAccess` uses `getOrCreateUserTier` → exists probe then full row. */
+function mockPersistedUserTier(row: UserTierRow): void {
+  queryOneMock.mockResolvedValueOnce({ user_id: row.user_id });
+  queryOneMock.mockResolvedValueOnce(row);
+}
 
 describe('tierService', () => {
   beforeEach(() => {
@@ -50,7 +62,7 @@ describe('tierService', () => {
 
   describe('checkTierAccess — free_demo', () => {
     it('allows GENERAL_EPISTEMIC_RESEARCH', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u1', tier: 'free_demo', org_id: null,
         current_period_reports_used: 0, current_period_deep_reports_used: 0,
         lifetime_reports_used: 0, current_period_resets_at: null, updated_at: '',
@@ -60,7 +72,7 @@ describe('tierService', () => {
     });
 
     it('denies INVESTIGATIVE_SYNTHESIS with 403 and upgrade_path', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u1', tier: 'free_demo', org_id: null,
         current_period_reports_used: 0, current_period_deep_reports_used: 0,
         lifetime_reports_used: 0, current_period_resets_at: null, updated_at: '',
@@ -72,7 +84,7 @@ describe('tierService', () => {
     });
 
     it('denies after lifetime cap of 2 is reached', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u1', tier: 'free_demo', org_id: null,
         current_period_reports_used: 2, current_period_deep_reports_used: 0,
         lifetime_reports_used: 2, current_period_resets_at: null, updated_at: '',
@@ -83,7 +95,7 @@ describe('tierService', () => {
     });
 
     it('allows when lifetime reports used is below cap', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u1', tier: 'free_demo', org_id: null,
         current_period_reports_used: 1, current_period_deep_reports_used: 0,
         lifetime_reports_used: 1, current_period_resets_at: null, updated_at: '',
@@ -95,7 +107,7 @@ describe('tierService', () => {
 
   describe('checkTierAccess — student monthly cap', () => {
     it('denies at monthly cap with $0 wallet (402)', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u2', tier: 'student', org_id: null,
         current_period_reports_used: 10, current_period_deep_reports_used: 0,
         lifetime_reports_used: 50, current_period_resets_at: null, updated_at: '',
@@ -107,7 +119,7 @@ describe('tierService', () => {
     });
 
     it('allows at monthly cap when wallet has balance', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u2', tier: 'student', org_id: null,
         current_period_reports_used: 10, current_period_deep_reports_used: 0,
         lifetime_reports_used: 50, current_period_resets_at: null, updated_at: '',
@@ -119,7 +131,7 @@ describe('tierService', () => {
 
   describe('checkTierAccess — pro', () => {
     it('allows any objective', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u3', tier: 'pro', org_id: null,
         current_period_reports_used: 0, current_period_deep_reports_used: 0,
         lifetime_reports_used: 0, current_period_resets_at: null, updated_at: '',
@@ -129,7 +141,7 @@ describe('tierService', () => {
     });
 
     it('allows with reports remaining', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u3', tier: 'pro', org_id: null,
         current_period_reports_used: 0, current_period_deep_reports_used: 0,
         lifetime_reports_used: 0, current_period_resets_at: null, updated_at: '',
@@ -139,7 +151,7 @@ describe('tierService', () => {
     });
 
     it('denies when monthly cap reached and wallet is $0', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u3', tier: 'pro', org_id: null,
         current_period_reports_used: 25, current_period_deep_reports_used: 5,
         lifetime_reports_used: 100, current_period_resets_at: null, updated_at: '',
@@ -150,7 +162,7 @@ describe('tierService', () => {
     });
 
     it('allows when monthly cap reached but wallet has $10', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u3', tier: 'pro', org_id: null,
         current_period_reports_used: 25, current_period_deep_reports_used: 5,
         lifetime_reports_used: 100, current_period_resets_at: null, updated_at: '',
@@ -162,7 +174,7 @@ describe('tierService', () => {
 
   describe('checkTierAccess — admin / sovereign', () => {
     it('admin allows any objective with no caps', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u_admin', tier: 'admin', org_id: null,
         current_period_reports_used: 999, current_period_deep_reports_used: 999,
         lifetime_reports_used: 9999, current_period_resets_at: null, updated_at: '',
@@ -172,7 +184,7 @@ describe('tierService', () => {
     });
 
     it('sovereign allows any objective with no caps', async () => {
-      queryOneMock.mockResolvedValueOnce({
+      mockPersistedUserTier({
         user_id: 'u_sov', tier: 'sovereign', org_id: null,
         current_period_reports_used: 999, current_period_deep_reports_used: 999,
         lifetime_reports_used: 9999, current_period_resets_at: null, updated_at: '',

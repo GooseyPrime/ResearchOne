@@ -18,6 +18,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
 import { useBillingSubscriptionQuery, effectiveEntitlementTier } from '../../hooks/useBillingSubscription';
+import { useEnsureUserSynced } from '../../hooks/useEnsureUserSynced';
 import api, {
   getStats,
   getSystemHealth,
@@ -83,6 +84,7 @@ export default function Layout() {
     readBreakGlassAdminTokenFromSession(),
   );
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  useEnsureUserSynced();
 
   const { data: authMe } = useQuery({
     queryKey: ['auth', 'me'],

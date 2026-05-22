@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "probe:openrouter-models": "tsx scripts/probe-openrouter-models.ts",
+    "billing:diagnostics": "tsx scripts/billing-diagnostics.ts",
     "benchmark:adversarial-smoke": "tsx scripts/adversarial-research-smoke.ts"
   },
   "dependencies": {

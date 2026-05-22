@@ -223,14 +223,8 @@ router.post('/sync', async (req, res, next) => {
 
     const email = (req.auth?.payload?.email as string | undefined) ?? null;
 
-    await query(
-      `INSERT INTO users (id, email)
-       VALUES ($1, $2)
-       ON CONFLICT (id) DO UPDATE SET
-         email = COALESCE(EXCLUDED.email, users.email),
-         updated_at = NOW()`,
-      [userId, email]
-    );
+    const { ensureUserAndTierRow } = await import('../../services/users/ensureUserRow');
+    await ensureUserAndTierRow(userId, email);
 
     res.json({ ok: true, userId });
   } catch (err) {

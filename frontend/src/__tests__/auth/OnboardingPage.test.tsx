@@ -83,7 +83,7 @@ describe('OnboardingPage', () => {
       </MemoryRouter>,
     );
     await user.click(screen.getByRole('radio', { name: /No, opt out/i }));
-    await user.click(screen.getByRole('button', { name: /Continue to research workspace/i }));
+    await user.click(screen.getByRole('button', { name: /Continue to checkout/i }));
     expect(mockUpdate).toHaveBeenCalledWith({
       unsafeMetadata: expect.objectContaining({
         initialTier: 'pro',
