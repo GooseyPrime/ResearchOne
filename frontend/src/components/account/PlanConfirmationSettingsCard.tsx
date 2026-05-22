@@ -101,7 +101,7 @@ export default function PlanConfirmationSettingsCard() {
           {data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT ? (
             <p className="text-[11px] text-slate-500">
               Confirm plans from the{' '}
-              <Link to="/app/research-v2" className="text-accent hover:underline">
+              <Link to="/app/research?engine=v2" className="text-accent hover:underline">
                 Deep Research
               </Link>{' '}
               page without using &quot;Apply refinement&quot; {PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT} times in a row to unlock this toggle.

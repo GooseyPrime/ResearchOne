@@ -4,7 +4,7 @@ import clsx from 'clsx';
 
 /**
  * Shared drag/drop attachment picker used on:
- *   - ResearchPageV2 (research request supplemental files + URLs)
+ *   - ResearchDeepPage (research request supplemental files + URLs)
  *   - ReportDetailPage (revision request supplemental files + URLs)
  *
  * The parent owns the `files` and `urls` arrays and passes them in. This
