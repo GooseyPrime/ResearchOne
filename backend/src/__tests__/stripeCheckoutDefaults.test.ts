@@ -3,10 +3,14 @@ import {
   stripeCheckoutAllowPromotionCodes,
   stripeCheckoutSubscriptionCustomerDefaults,
 } from '../services/billing/stripeClient';
+import { stripeCheckoutPaymentSessionDefaults } from '../services/billing/stripeCheckoutSessionParams';
 
 describe('Stripe Checkout session customer defaults', () => {
   it('enables promotion codes on payment-mode sessions (wallet top-up)', () => {
     expect(stripeCheckoutAllowPromotionCodes).toEqual({ allow_promotion_codes: true });
+    expect(stripeCheckoutPaymentSessionDefaults).toEqual({
+      allow_promotion_codes: true,
+    });
   });
 
   it('enables promotion codes and defers payment method when not required (subscriptions)', () => {
