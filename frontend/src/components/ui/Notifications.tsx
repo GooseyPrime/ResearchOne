@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,6 +34,15 @@ export default function Notifications() {
             >
               <Icon size={16} className="flex-shrink-0 mt-0.5" />
               <span className="text-sm flex-1">{n.message}</span>
+              {n.action ? (
+                <Link
+                  to={n.action.to}
+                  className="text-xs font-medium underline underline-offset-2 shrink-0"
+                  onClick={() => removeNotification(n.id)}
+                >
+                  {n.action.label}
+                </Link>
+              ) : null}
               <button onClick={() => removeNotification(n.id)} className="opacity-60 hover:opacity-100">
                 <X size={14} />
               </button>

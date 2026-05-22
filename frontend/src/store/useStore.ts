@@ -8,8 +8,17 @@ interface AppStore {
   activeRun: ResearchProgressEvent | null;
   setActiveRun: (run: ResearchProgressEvent | null) => void;
 
-  notifications: Array<{ id: string; type: 'success' | 'error' | 'info'; message: string }>;
-  addNotification: (type: 'success' | 'error' | 'info', message: string) => void;
+  notifications: Array<{
+    id: string;
+    type: 'success' | 'error' | 'info';
+    message: string;
+    action?: { label: string; to: string };
+  }>;
+  addNotification: (
+    type: 'success' | 'error' | 'info',
+    message: string,
+    action?: { label: string; to: string }
+  ) => void;
   removeNotification: (id: string) => void;
 }
 
@@ -21,10 +30,10 @@ export const useStore = create<AppStore>((set) => ({
   setActiveRun: (activeRun) => set({ activeRun }),
 
   notifications: [],
-  addNotification: (type, message) => {
+  addNotification: (type, message, action) => {
     const id = crypto.randomUUID();
     set(state => ({
-      notifications: [...state.notifications, { id, type, message }],
+      notifications: [...state.notifications, { id, type, message, action }],
     }));
     // Auto-remove after 5 seconds
     setTimeout(() => {

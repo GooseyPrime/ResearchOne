@@ -7,44 +7,39 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
-  AlertCircle,
   CheckCircle2,
-  Clock,
   Zap,
   Brain,
   Shield,
   FileSearch,
   PenLine,
   Target,
-  Trash2,
-  Ban,
   Settings2,
-  XCircle,
 } from 'lucide-react';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import LiveResearchTraceLog from '../components/research/LiveResearchTraceLog';
 import LiveStatusBanner from '../components/research/LiveStatusBanner';
 import ResearchRunFailureCard from '../components/research/ResearchRunFailureCard';
+import PlanConfirmationPanel, { type PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
+import ResearchRunRow from '../components/research/ResearchRunRow';
+import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
 import {
   startResearch,
   getResearchRuns,
   getResearchRun,
-  cancelResearchRun,
-  deleteResearchRun,
   getResearchModelOptions,
   ResearchRun,
   ResearchProgressEvent,
 } from '../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { formatFailureReason } from '../utils/researchFailureFormat';
-import { deriveRunState } from '../utils/researchLiveStatus';
+import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
-import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 
 interface ResearchFailureEvent {
@@ -125,6 +120,9 @@ export default function ResearchPage() {
   const runSummaryReceivedRef = useRef(false);
   const [runSummary, setRunSummary] = useState<RunSummaryData | null>(null);
   const traceScrollRef = useRef<HTMLDivElement>(null);
+  const [planGateLocal, setPlanGateLocal] = useState<PlanGateSnapshot | null>(null);
+  const [planGateBusy, setPlanGateBusy] = useState(false);
+  const planGateRef = useRef<HTMLDivElement>(null);
 
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<Record<string, { primary?: string; fallback?: string }>>({});
@@ -145,7 +143,9 @@ export default function ResearchPage() {
   const trackedStatus = trackedRun?.status;
   /** Poll quickly only while work is in flight; keep query enabled so cache can refresh on invalidate (PR #133 Copilot + Rule 10). */
   const runPollCadenceActive =
-    trackedStatus === 'running' || trackedStatus === 'queued';
+    trackedStatus === 'running' ||
+    trackedStatus === 'queued' ||
+    trackedStatus === 'plan_pending_confirmation';
 
   const { data: polledRun } = useQuery({
     queryKey: ['research-run', trackingRunId],
@@ -155,19 +155,81 @@ export default function ResearchPage() {
       runPollCadenceActive ? getAdaptiveRefetchIntervalMs(4_000) : false,
   });
 
+  const { attachRun, detachRun: detachTracking } = useResearchRunTracking({
+    trackingRunId,
+    setTrackingRunId,
+    lastKnownRunIdRef,
+    setProgress,
+    setActiveRun,
+    setTraceEvents,
+    setFailure: () => setFailure(null),
+    setRunSummary,
+    runSummaryReceivedRef,
+    setPlanGateLocal,
+    setPlanGateBusy,
+    runStatus: trackedRun?.status ?? polledRun?.status,
+    engineVersionHint: trackedRun?.engine_version ?? polledRun?.engine_version,
+  });
+
+  const runStatusForGate = trackedRun?.status ?? polledRun?.status;
+  const showPlanGatePanel =
+    Boolean(trackingRunId) &&
+    (runStatusForGate === 'plan_pending_confirmation' || planGateLocal?.runId === trackingRunId);
+
+  const planGateAwaitingForBanner = Boolean(
+    showPlanGatePanel ||
+      (planGateLocal &&
+        trackingRunId &&
+        planGateLocal.runId === trackingRunId &&
+        (trackedRun?.status === 'running' || trackedRun?.status === 'queued'))
+  );
+
+  const trackedRunLiveStatus = useMemo(
+    () =>
+      classifyLiveStatus(trackedRun?.status ?? polledRun?.status, failure, {
+        retryAttempts: trackedRun?.retry_attempts ?? polledRun?.retry_attempts ?? null,
+        progressMessage: trackedRun?.progress_message ?? polledRun?.progress_message ?? null,
+        progressStage: trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null,
+        planGateAwaiting: planGateAwaitingForBanner,
+      }),
+    [
+      trackedRun?.status,
+      polledRun?.status,
+      failure,
+      trackedRun?.retry_attempts,
+      polledRun?.retry_attempts,
+      trackedRun?.progress_message,
+      polledRun?.progress_message,
+      trackedRun?.progress_stage,
+      polledRun?.progress_stage,
+      planGateAwaitingForBanner,
+    ]
+  );
+
+  useEffect(() => {
+    if (!showPlanGatePanel || !planGateRef.current) return;
+    const hash = window.location.hash;
+    if (hash === '#plan' || runStatusForGate === 'plan_pending_confirmation') {
+      planGateRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [showPlanGatePanel, runStatusForGate, planGateLocal?.planId]);
+
   const mutation = useMutation({
     mutationFn: startResearch,
     onSuccess: (data) => {
-      setTrackingRunId(data.runId);
-      lastKnownRunIdRef.current = data.runId;
-      const queuedEvt: ResearchProgressEvent = { runId: data.runId, stage: 'planning', percent: 0, message: 'Research queued...', timestamp: new Date().toISOString() };
-      setProgress(queuedEvt);
-      setActiveRun(queuedEvt);
-      setFailure(null);
-      setRunSummary(null);
-      runSummaryReceivedRef.current = false;
-      setTraceEvents([queuedEvt]);
-      subscribeToJob(data.runId);
+      setPlanGateLocal(null);
+      void attachRun({ runId: data.runId }).then(() => {
+        const queuedEvt: ResearchProgressEvent = {
+          runId: data.runId,
+          stage: 'planning',
+          percent: 0,
+          message: 'Research queued...',
+          timestamp: new Date().toISOString(),
+        };
+        setProgress(queuedEvt);
+        setActiveRun(queuedEvt);
+        setTraceEvents([queuedEvt]);
+      });
       const ing = data.supplementalIngest;
       if (ing && (ing.urlsQueued > 0 || ing.filesQueued > 0)) {
         addNotification(
@@ -622,7 +684,13 @@ export default function ResearchPage() {
 
           <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || !!trackingRunId}>
             <Send size={16} />
-            {mutation.isPending ? 'Queuing...' : trackingRunId ? 'Research Running...' : 'Run Research'}
+            {mutation.isPending
+              ? 'Queuing...'
+              : trackingRunId
+                ? trackedRunLiveStatus === 'plan_pending_confirmation'
+                  ? 'Review plan below…'
+                  : 'Research Running...'
+                : 'Run Research'}
           </button>
         </form>
 
@@ -674,8 +742,47 @@ export default function ResearchPage() {
                 retryAttempts={trackedRun?.retry_attempts ?? polledRun?.retry_attempts ?? null}
                 progressMessage={trackedRun?.progress_message ?? polledRun?.progress_message ?? null}
                 progressStage={trackedRun?.progress_stage ?? polledRun?.progress_stage ?? null}
-                planGateAwaiting={false}
+                planGateAwaiting={planGateAwaitingForBanner}
               />
+              {showPlanGatePanel && (
+                <div ref={planGateRef} id="plan">
+                  {planGateLocal && planGateLocal.runId === trackingRunId ? (
+                    <PlanConfirmationPanel
+                      snapshot={planGateLocal}
+                      busy={planGateBusy}
+                      onBusy={setPlanGateBusy}
+                      tierAllowsSavedProfiles={false}
+                      onAfterConfirm={() => {
+                        setPlanGateLocal(null);
+                        setPlanGateBusy(false);
+                        void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                        void qc.invalidateQueries(
+                          { queryKey: ['research-run', trackingRunId] },
+                          { cancelRefetch: false }
+                        );
+                      }}
+                      onAfterCancel={() => {
+                        detachTracking();
+                        void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                      }}
+                      onNotify={(kind, message) => addNotification(kind, message)}
+                      onGatePlanMutated={() => {
+                        void qc.invalidateQueries({ queryKey: ['research-runs'] });
+                        if (trackingRunId) {
+                          void qc.invalidateQueries(
+                            { queryKey: ['run-plan-gate', trackingRunId] },
+                            { cancelRefetch: false }
+                          );
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="rounded-xl border border-amber-700/35 bg-amber-950/20 p-4 text-sm text-amber-100/90">
+                      Loading research plan…
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <LiveResearchTraceLog traceEvents={traceEvents} traceScrollRef={traceScrollRef} />
@@ -731,130 +838,23 @@ export default function ResearchPage() {
           <h2 className="section-title mb-3">Recent Research Runs</h2>
           <div className="space-y-2">
             {runs.slice(0, 10).map((run) => (
-              <RunRow
+              <ResearchRunRow
                 key={run.id}
                 run={run}
                 onRunsChanged={() => qc.invalidateQueries({ queryKey: ['research-runs'] })}
                 onRemoved={(id) => {
                   if (id === trackingRunId) {
-                    setTrackingRunId(null);
-                    setProgress(null);
+                    detachTracking();
                     setFailure(null);
                     setRunSummary(null);
                   }
                 }}
+                onResumeRun={(r) => {
+                  void attachRun({ runId: r.id, runRow: r });
+                }}
               />
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RunRow({
-  run,
-  onRunsChanged,
-  onRemoved,
-}: {
-  run: ResearchRun;
-  onRunsChanged: () => void;
-  onRemoved?: (id: string) => void;
-}) {
-  const navigate = useNavigate();
-  const [showError, setShowError] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
-    queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
-    running: { icon: Zap, color: 'text-accent animate-pulse', label: 'Running' },
-    completed: { icon: CheckCircle2, color: 'text-green-400', label: 'Completed' },
-    failed: { icon: AlertCircle, color: 'text-amber-400', label: 'Needs review' },
-    cancelled: { icon: AlertCircle, color: 'text-slate-500', label: 'Cancelled' },
-    aborted: { icon: XCircle, color: 'text-red-400', label: 'Aborted' },
-  };
-
-  const cfg = STATUS_CONFIG[run.status] ?? STATUS_CONFIG.failed;
-  const Icon = cfg.icon;
-
-  const latestEvent = Array.isArray(run.progress_events) && run.progress_events.length > 0
-    ? run.progress_events[run.progress_events.length - 1]
-    : null;
-
-  const handleCancel = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm('Cancel this run?')) return;
-    setBusy(true);
-    try {
-      await cancelResearchRun(run.id);
-      onRunsChanged();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Cancel failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm('Remove this run from the list?')) return;
-    setBusy(true);
-    try {
-      await deleteResearchRun(run.id);
-      onRemoved?.(run.id);
-      onRunsChanged();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Delete failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="card p-3 space-y-2">
-      <div
-        className="flex items-center justify-between hover:border-accent/30 cursor-pointer transition-all gap-2"
-        onClick={() => run.status === 'completed' && navigate(dossierReportUrlForRun(run.id))}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <Icon size={14} className={cfg.color} />
-          <div className="min-w-0">
-            <p className="text-sm text-white truncate">{run.title}</p>
-            <p className="text-xs text-slate-500">{formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}</p>
-            {(run.status === 'running' || run.status === 'queued' || latestEvent) && (
-              <p className="text-xs text-accent/90 mt-1 line-clamp-2">
-                {typeof run.progress_percent === 'number' ? `${run.progress_percent}% · ` : ''}
-                {run.progress_message || latestEvent?.message || 'Awaiting updates...'}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <span className={clsx('text-xs font-medium', cfg.color)}>{cfg.label}</span>
-          {(run.status === 'queued' || run.status === 'running') && (
-            <button type="button" className="btn-ghost p-1.5 text-amber-400" title="Cancel run" disabled={busy} onClick={handleCancel}>
-              <Ban size={14} />
-            </button>
-          )}
-          {(run.status === 'queued' || run.status === 'failed' || run.status === 'cancelled') && (
-            <button type="button" className="btn-ghost p-1.5 text-slate-400" title="Remove from list" disabled={busy} onClick={handleDelete}>
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {run.status === 'failed' && (run.error_message || run.failed_stage) && (
-        <div>
-          <button type="button" className="text-xs text-amber-300 hover:text-amber-200" onClick={() => setShowError((v) => !v)}>
-            {showError ? 'Hide error details' : 'Show error details'}
-          </button>
-          {showError && (
-            <p className="text-xs text-amber-200 mt-1">
-              {run.failed_stage ? `Stage: ${run.failed_stage} · ` : ''}
-              {formatFailureReason(run.error_message || 'Unknown failure', run.failure_meta)}
-            </p>
-          )}
         </div>
       )}
     </div>
