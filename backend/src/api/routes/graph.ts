@@ -20,7 +20,7 @@ export interface GraphNode {
   weight?: number;
 }
 
-function graphGroupKeyFromUrl(url: string | undefined): string | undefined {
+function graphGroupKeyFromUrl(url: string | null | undefined): string | undefined {
   if (!url?.trim()) return undefined;
   try {
     const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
@@ -56,8 +56,8 @@ router.get('/', async (req, res, next) => {
     }
     const sources = await query<{
       id: string;
-      title: string;
-      url: string;
+      title: string | null;
+      url: string | null;
       source_type: string;
       tags: string[];
       chunk_count: number;

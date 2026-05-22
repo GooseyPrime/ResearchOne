@@ -69,6 +69,12 @@ export default function KnowledgeGraphPage() {
   const zoomRef = useRef<D3ZoomBehavior | null>(null);
   const fitAfterLayoutRef = useRef(true);
   const layoutNodesRef = useRef<SimNode[]>([]);
+  const claimSourceDomainRef = useRef<Map<string, string>>(new Map());
+  const graphInteractionRef = useRef<{
+    updateLabelVisibility: (activeId: string | null, selectedId: string | null) => void;
+    applyFocusOpacity: (activeId: string | null) => void;
+  } | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
 
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [limit, setLimit] = useState(80);
@@ -141,6 +147,7 @@ export default function KnowledgeGraphPage() {
         claimSourceDomain.set(tgt.id, resolveNodeGroupKey(src));
       }
     }
+    claimSourceDomainRef.current = claimSourceDomain;
 
     for (const e of edges) {
       const a = e.source as SimNode;
@@ -288,7 +295,9 @@ export default function KnowledgeGraphPage() {
       });
     };
 
-    updateLabelVisibility(null, selected?.id ?? null);
+    graphInteractionRef.current = { updateLabelVisibility, applyFocusOpacity };
+
+    updateLabelVisibility(null, selectedIdRef.current);
     applyFocusOpacity(null);
 
     type DragEv = { active: boolean; x: number; y: number };
@@ -329,18 +338,19 @@ export default function KnowledgeGraphPage() {
           sub.textContent = d.sub;
           tooltipEl.appendChild(sub);
         }
-        const group = resolveNodeGroupKey(d);
-        if (d.type === 'source' || claimSourceDomain.has(d.id)) {
+        const pubDomain =
+          d.type === 'source' ? resolveNodeGroupKey(d) : claimSourceDomain.get(d.id);
+        if (d.type === 'source' || pubDomain) {
           const pub = document.createElement('div');
           pub.className = 'text-[10px] mt-1 text-slate-400';
-          pub.textContent = `Publisher: ${group}`;
+          pub.textContent = `Publisher: ${pubDomain ?? 'unlinked'}`;
           tooltipEl.appendChild(pub);
         }
         tooltip
           .style('display', 'block')
           .style('left', `${event.offsetX + 14}px`)
           .style('top', `${event.offsetY - 10}px`);
-        updateLabelVisibility(d.id, selected?.id ?? null);
+        updateLabelVisibility(d.id, selectedIdRef.current);
         applyFocusOpacity(d.id);
       })
       .on('mousemove', (event: MouseEvent) => {
@@ -348,10 +358,11 @@ export default function KnowledgeGraphPage() {
       })
       .on('mouseout', () => {
         tooltip.style('display', 'none');
-        updateLabelVisibility(null, selected?.id ?? null);
+        updateLabelVisibility(null, selectedIdRef.current);
         applyFocusOpacity(null);
       })
       .on('click', (_event: MouseEvent, d: SimNode) => {
+        selectedIdRef.current = d.id;
         setSelected(d);
         fitAfterLayoutRef.current = false;
         updateLabelVisibility(null, d.id);
@@ -372,7 +383,12 @@ export default function KnowledgeGraphPage() {
         fitAfterLayoutRef.current = false;
       }
     });
-  }, [data, showContradictions, colorMode, sizePreset, sizeScale, labelMode, selected?.id, applyFitView]);
+  }, [data, showContradictions, colorMode, sizePreset, sizeScale, labelMode, applyFitView]);
+
+  useEffect(() => {
+    selectedIdRef.current = selected?.id ?? null;
+    graphInteractionRef.current?.updateLabelVisibility(null, selectedIdRef.current);
+  }, [selected?.id, labelMode]);
 
   useEffect(() => {
     fitAfterLayoutRef.current = true;
@@ -611,7 +627,14 @@ export default function KnowledgeGraphPage() {
         <div className="flex-shrink-0 w-80 border-l border-surface-100/20 flex flex-col min-h-0">
           {selected ? (
             <div className="p-4 space-y-3 overflow-y-auto flex-1">
-              <button type="button" className="btn-ghost text-xs" onClick={() => setSelected(null)}>
+              <button
+                type="button"
+                className="btn-ghost text-xs"
+                onClick={() => {
+                  selectedIdRef.current = null;
+                  setSelected(null);
+                }}
+              >
                 ← Clear
               </button>
               <div className="flex items-center gap-2">
@@ -624,7 +647,9 @@ export default function KnowledgeGraphPage() {
                     backgroundColor: nodeFill(
                       selected,
                       colorMode,
-                      selected.type === 'claim' ? resolveNodeGroupKey(selected) : undefined,
+                      selected.type === 'claim'
+                        ? claimSourceDomainRef.current.get(selected.id)
+                        : undefined,
                     ),
                   }}
                 />
@@ -634,11 +659,15 @@ export default function KnowledgeGraphPage() {
               </div>
               <p className="text-sm text-white leading-snug">{selected.label}</p>
               {selected.sub && <p className="text-xs text-slate-500">{selected.sub}</p>}
-              {(selected.group_key || selected.url) && (
+              {(selected.type === 'source'
+                ? selected.group_key || selected.url
+                : claimSourceDomainRef.current.get(selected.id) || selected.group_key) && (
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Publisher</div>
                   <p className="text-xs text-slate-300 font-mono break-all">
-                    {selected.group_key ?? resolveNodeGroupKey(selected)}
+                    {selected.type === 'source'
+                      ? (selected.group_key ?? resolveNodeGroupKey(selected))
+                      : (claimSourceDomainRef.current.get(selected.id) ?? 'unlinked')}
                   </p>
                 </div>
               )}

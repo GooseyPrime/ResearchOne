@@ -36,6 +36,13 @@ describe('knowledgeGraphViz', () => {
     expect(a).not.toBe(c);
   });
 
+  it('nodeFill type mode uses fixed source and claim colors', () => {
+    expect(nodeFill({ id: 's', type: 'source', label: 'S' }, 'type')).toBe('#60a5fa');
+    expect(nodeFill({ id: 'c', type: 'claim', label: 'C', evidence_tier: 'established_fact' }, 'type')).toBe(
+      '#a78bfa',
+    );
+  });
+
   it('nodeFill domain mode colors sources and linked claims by publisher', () => {
     const source: GraphNode = {
       id: 's',
@@ -59,6 +66,14 @@ describe('knowledgeGraphViz', () => {
     const t = computeFitViewTransform(bounds, 800, 600, 40, 3);
     expect(t.k).toBeGreaterThan(0.7);
     expect(t.k).toBeLessThanOrEqual(3);
+  });
+
+  it('computeFitViewTransform clamps tiny viewport and positive scale', () => {
+    const bounds = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+    const t = computeFitViewTransform(bounds, 0, 0, 56, 2.8);
+    expect(t.k).toBeGreaterThanOrEqual(0.05);
+    expect(Number.isFinite(t.x)).toBe(true);
+    expect(Number.isFinite(t.y)).toBe(true);
   });
 
   it('computeGraphBounds returns null when nodes lack positions', () => {

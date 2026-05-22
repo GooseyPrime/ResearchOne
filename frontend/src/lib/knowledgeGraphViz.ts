@@ -79,6 +79,9 @@ export function nodeFill(
   colorMode: GraphColorMode,
   claimParentDomain?: string,
 ): string {
+  if (colorMode === 'type') {
+    return node.type === 'source' ? '#60a5fa' : '#a78bfa';
+  }
   if (colorMode === 'tier' && node.type === 'claim' && node.evidence_tier) {
     return TIER_COLORS[node.evidence_tier] ?? '#a78bfa';
   }
@@ -140,19 +143,24 @@ export function computeFitViewTransform(
   padding = 56,
   maxScale = 2.8,
 ): { x: number; y: number; k: number } {
+  const safeWidth = Math.max(width, 1);
+  const safeHeight = Math.max(height, 1);
   const dx = Math.max(bounds.maxX - bounds.minX, 40);
   const dy = Math.max(bounds.maxY - bounds.minY, 40);
-  const k = Math.min(
-    (width - padding * 2) / dx,
-    (height - padding * 2) / dy,
-    maxScale,
+  const k = Math.max(
+    0.05,
+    Math.min(
+      (safeWidth - padding * 2) / dx,
+      (safeHeight - padding * 2) / dy,
+      maxScale,
+    ),
   );
   const cx = (bounds.minX + bounds.maxX) / 2;
   const cy = (bounds.minY + bounds.maxY) / 2;
   return {
     k,
-    x: width / 2 - k * cx,
-    y: height / 2 - k * cy,
+    x: safeWidth / 2 - k * cx,
+    y: safeHeight / 2 - k * cy,
   };
 }
 
