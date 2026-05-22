@@ -907,6 +907,9 @@ export interface GraphNode {
   evidence_tier?: string | null;
   tags?: string[];
   url?: string;
+  /** Publisher hostname bucket for graph coloring (sources / stakeholders). */
+  group_key?: string;
+  source_type?: string;
   weight?: number;
 }
 

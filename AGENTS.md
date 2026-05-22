@@ -82,6 +82,38 @@ ship on `main`.
   `checkTierAccess` when `engineVersion === 'v2'` so `monthlyDeepReportCap`
   is enforced (Copilot PR #124).
 
+## Recurring review themes (Codex / Copilot, PR #135–#136 — billing quota + WO-Y)
+
+- **`incrementReportCount` must mirror `checkTierAccess` `isDeep`:** V2 run
+  completion passes `engineVersion === 'v2'` so `monthly_deep_reports`
+  increments; always grep callers when tier gates change (PR #135).
+- **`user_tiers` UPSERT:** on conflict, set
+  `current_period_resets_at = COALESCE(existing, EXCLUDED)` so legacy NULL
+  rows get a reset boundary (PR #135).
+- **Checkout confirm idempotency:** `eventId: checkout_confirm:${sessionId}`
+  on `syncStripeSubscriptionToUser` (PR #136).
+- **Wallet credit guard:** only `mode === 'payment'` + `complete` + `paid`
+  before `creditWalletFromCheckoutSession` (PR #136).
+- **Add-on Stripe subs:** early return when `metadata.monitor_kind` is set —
+  do not call plan-tier `syncSubscription` (PR #136).
+- **Invoice webhooks:** `invoice.payment_succeeded` only — not `invoice.paid`
+  (PR #136).
+
+## Recurring review themes (Codex / Copilot, PR #137 — knowledge graph UX)
+
+- **Claim publisher color/domain:** use the `contains` edge map
+  (`claimSourceDomain.get(claimId)`), not `resolveNodeGroupKey(claim)` —
+  claims lack source URLs (PR #137 Copilot).
+- **D3 selection vs rebuild:** do not put `selected?.id` in `buildGraph` deps;
+  update labels/focus via refs so node click does not restart the simulation
+  (PR #137 Copilot).
+- **`nodeFill` `type` mode:** explicit `#60a5fa` / `#a78bfa` branch — do not
+  fall through to tier colors (PR #137).
+- **`computeFitViewTransform`:** clamp viewport dimensions and minimum `k`
+  for zero-size containers (PR #137).
+- **Graph API types:** `title` / `url` nullable in SQL row types;
+  `graphGroupKeyFromUrl` accepts `null | undefined` (PR #137).
+
 ## Recurring review themes (Codex / Copilot, PR #127 — Dossier / Wave 5 reads)
 
 - **`v_dossier` + RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) when it selects from RLS-protected tables so policies run as the querying role, not the migration owner.

@@ -151,6 +151,46 @@ returning a stale cancelled row or conflicting on INSERT.
 PR #86 (Codex P2 / Copilot): `registerMonitor()` returned a cancelled
 row without updating it.
 
+## Rule — tier counters mirror access checks (PR #135)
+
+`incrementReportCount(userId, isDeep)` must receive the same `isDeep`
+semantics as `checkTierAccess` for the run:
+
+- V2 completions: pass `engineVersion === 'v2'` so `monthly_deep_reports`
+  increments (Copilot PR #135).
+- V1 / non-deep: pass `false` for `monthly_reports`.
+
+Grep every `incrementReportCount` caller when changing tier gates.
+
+## Rule — `user_tiers` UPSERT preserves period reset (PR #135)
+
+On `INSERT … ON CONFLICT`, backfill `current_period_resets_at` for legacy
+rows that still have `NULL`:
+
+```sql
+current_period_resets_at = COALESCE(user_tiers.current_period_resets_at, EXCLUDED.current_period_resets_at)
+```
+
+Without this, conflict paths leave NULL resets and quota windows never roll.
+
+## Rule — checkout confirm + webhook hardening (PR #136)
+
+1. **`POST /billing/checkout/confirm`:** pass `eventId: \`checkout_confirm:${sessionId}\``
+   into `syncStripeSubscriptionToUser` for idempotency (Copilot).
+2. **Wallet top-up:** only call `creditWalletFromCheckoutSession` when
+   `session.mode === 'payment'`, `status === 'complete'`, and
+   `payment_status === 'paid'` — not on incomplete subscription checkouts.
+3. **`customer.subscription.deleted`:** resolve user via
+   `resolveUserIdForSubscription` (DB + metadata), not metadata alone;
+   throw `StripeSubscriptionUserUnresolvedError` when unresolved (Codex).
+4. **Add-on subs (`metadata.monitor_kind`):** return before any plan-tier
+   `syncSubscription` / `setUserTier` path — unpaid add-ons must not touch
+   `user_subscriptions` plan rows (Copilot tier-guards test).
+5. **Stripe invoice events:** handle `invoice.payment_succeeded` only;
+   do not also map `invoice.paid` (duplicate processing).
+6. **`/auth/sync` bootstrap:** retry with backoff on transient failure
+   (`useEnsureUserSynced`).
+
 ## Pre-commit check
 
 - [ ] Did you grep for every metadata key name in both the writer
@@ -177,3 +217,8 @@ row without updating it.
 - [ ] For `/billing/subscription` reads in React, did you use
   `useBillingSubscriptionQuery()` (or keep options identical) and avoid
   treating query error as "resolved free tier"?
+- [ ] Does `incrementReportCount` get `isDeep: true` for V2 completions
+  (grep orchestrator + any other completion paths)?
+- [ ] Does `user_tiers` UPSERT backfill `current_period_resets_at` on conflict?
+- [ ] Checkout confirm uses a stable `eventId`; wallet credit gated on paid
+  `payment` mode; add-on webhooks skip plan `syncSubscription`?
