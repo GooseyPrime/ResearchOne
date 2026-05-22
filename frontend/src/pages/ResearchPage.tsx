@@ -140,9 +140,10 @@ export default function ResearchPage() {
   });
 
   const trackedRun = runs.find((r) => r.id === trackingRunId);
+  const trackedStatus = trackedRun?.status;
   /** Poll quickly only while work is in flight; keep query enabled so cache can refresh on invalidate (PR #133 Copilot + Rule 10). */
   const runPollCadenceActive =
-    trackedRun?.status === 'running' || trackedRun?.status === 'queued';
+    trackedStatus === 'running' || trackedStatus === 'queued';
 
   const { data: polledRun } = useQuery({
     queryKey: ['research-run', trackingRunId],
@@ -219,10 +220,10 @@ export default function ResearchPage() {
   }, [failure, trackingRunId]);
 
   useEffect(() => {
-    if (!trackingRunId || !trackedRun) return;
-    if (trackedRun.status !== 'failed' && trackedRun.status !== 'aborted') return;
+    if (!trackingRunId) return;
+    if (trackedStatus !== 'failed' && trackedStatus !== 'aborted') return;
     void qc.invalidateQueries({ queryKey: ['research-run', trackingRunId] }, { cancelRefetch: false });
-  }, [trackingRunId, trackedRun, qc]);
+  }, [trackingRunId, trackedStatus, qc]);
 
   useEffect(() => {
     if (!modelOptions) return;
