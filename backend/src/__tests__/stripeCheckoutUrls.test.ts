@@ -56,7 +56,7 @@ describe('resolveStripeCheckoutRedirect', () => {
         devDefault,
       ),
     ).toBe(
-      'https://researchone.io/app/billing?checkout=success&session_id=%7BCHECKOUT_SESSION_ID%7D',
+      'https://researchone.io/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}',
     );
 
     expect(
@@ -76,8 +76,14 @@ describe('resolveStripeCheckoutRedirect', () => {
     const appended = appendStripeCheckoutSessionIdTemplate(
       'https://researchone.io/app/billing?checkout=success',
     );
-    expect(appended).toContain('session_id');
-    expect(decodeURIComponent(appended)).toContain('{CHECKOUT_SESSION_ID}');
+    expect(appended).toBe(
+      'https://researchone.io/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}',
+    );
+    expect(appendStripeCheckoutSessionIdTemplate(
+      'https://researchone.io/app/billing?checkout=success&session_id=%7BCHECKOUT_SESSION_ID%7D',
+    )).toBe(
+      'https://researchone.io/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}',
+    );
   });
 
   it('assertStripeCheckoutSuccessUrlHasSessionTemplate is a no-op outside production', () => {

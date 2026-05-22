@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
-import { startCheckoutRedirect } from '../lib/billing/checkout';
+import { parseStripeCheckoutReturnSessionId, startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
 import {
   BILLING_SUBSCRIPTION_QUERY_KEY,
@@ -114,7 +114,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     const checkout = searchParams.get('checkout');
-    const sessionId = searchParams.get('session_id');
+    const sessionId = parseStripeCheckoutReturnSessionId(searchParams.get('session_id'));
 
     if (checkout !== 'success') {
       if (checkout === 'cancel') {
@@ -126,6 +126,18 @@ export default function BillingPage() {
     }
 
     if (!sessionId) {
+      const rawSession = searchParams.get('session_id');
+      if (rawSession) {
+        setConfirming('error');
+        setConfirmError(
+          'Checkout returned without a valid session id. Refresh billing after the server update, or open Manage billing in Stripe if you were charged.',
+        );
+        const next = new URLSearchParams(searchParams);
+        next.delete('checkout');
+        next.delete('session_id');
+        setSearchParams(next, { replace: true });
+        return;
+      }
       setLegacyCheckoutWarning(true);
       void queryClient.invalidateQueries(
         { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
@@ -236,7 +248,7 @@ export default function BillingPage() {
             type="button"
             className="mt-2 rounded bg-red-800/40 px-3 py-1 text-xs hover:bg-red-800/60"
             onClick={() => {
-              const sessionId = searchParams.get('session_id');
+              const sessionId = parseStripeCheckoutReturnSessionId(searchParams.get('session_id'));
               if (!sessionId) return;
               void runCheckoutConfirm(sessionId);
             }}

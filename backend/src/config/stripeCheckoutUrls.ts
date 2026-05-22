@@ -1,18 +1,30 @@
 const CHECKOUT_SESSION_ID_TEMPLATE = '{CHECKOUT_SESSION_ID}';
 
+const ENCODED_CHECKOUT_SESSION_ID_TEMPLATE = encodeURIComponent(CHECKOUT_SESSION_ID_TEMPLATE);
+
 /**
- * Stripe substitutes `{CHECKOUT_SESSION_ID}` on redirect. Used for:
- * - payment-mode wallet top-ups (`/billing/checkout/topup`)
- * - subscription-mode plan upgrades (`/billing/checkout/subscription`)
- * - subscription-mode monitor add-ons (report monitors checkout)
+ * Stripe substitutes the literal `{CHECKOUT_SESSION_ID}` token on redirect.
+ * It must not be URL-encoded — `%7B…%7D` is passed through verbatim and breaks confirm.
  */
 export function appendStripeCheckoutSessionIdTemplate(url: string): string {
-  if (url.includes(CHECKOUT_SESSION_ID_TEMPLATE)) {
-    return url;
+  let normalized = url;
+  if (normalized.includes(ENCODED_CHECKOUT_SESSION_ID_TEMPLATE)) {
+    normalized = normalized.replaceAll(
+      ENCODED_CHECKOUT_SESSION_ID_TEMPLATE,
+      CHECKOUT_SESSION_ID_TEMPLATE,
+    );
   }
-  const parsed = new URL(url);
-  parsed.searchParams.set('session_id', CHECKOUT_SESSION_ID_TEMPLATE);
-  return parsed.toString();
+  if (normalized.includes(`session_id=${ENCODED_CHECKOUT_SESSION_ID_TEMPLATE}`)) {
+    normalized = normalized.replace(
+      `session_id=${ENCODED_CHECKOUT_SESSION_ID_TEMPLATE}`,
+      `session_id=${CHECKOUT_SESSION_ID_TEMPLATE}`,
+    );
+  }
+  if (normalized.includes(CHECKOUT_SESSION_ID_TEMPLATE)) {
+    return normalized;
+  }
+  const joiner = normalized.includes('?') ? '&' : '?';
+  return `${normalized}${joiner}session_id=${CHECKOUT_SESSION_ID_TEMPLATE}`;
 }
 
 /**
