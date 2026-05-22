@@ -214,6 +214,9 @@ describe('tierService', () => {
       expect(sql).toContain('INSERT INTO user_tiers');
       expect(sql).toContain('ON CONFLICT (user_id) DO UPDATE');
       expect(sql).toContain('lifetime_reports_used = user_tiers.lifetime_reports_used + 1');
+      expect(sql).toContain(
+        'current_period_resets_at = COALESCE(user_tiers.current_period_resets_at, EXCLUDED.current_period_resets_at)'
+      );
       expect(params[0]).toBe('u1');
       expect(params[2]).toBe(0);
     });
