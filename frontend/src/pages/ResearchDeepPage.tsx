@@ -133,7 +133,7 @@ const TIER_ALLOWED_OBJECTIVES: Record<string, readonly ResearchObjective[]> = {
   admin: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
 };
 
-export default function ResearchPageV2() {
+export default function ResearchDeepPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();

@@ -52,8 +52,7 @@ type NavItem = {
 const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start investigation' },
-  { to: '/app/research-v2', label: 'Deep Research', icon: FlaskConical, desc: 'Multi-model ensemble research' },
+  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Standard and Deep Research' },
   { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
   { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources', requireTier: 'pro' },
@@ -73,12 +72,10 @@ const EMPTY_RESEARCH_RUNS: ResearchRun[] = [];
 
 export default function Layout() {
   const location = useLocation();
-  /** Prefer the longest matching `to` so `/app/research-v2` does not match `/app/research` first. */
-  const activeNavItem = useMemo(() => {
-    const matches = NAV_ITEMS.filter((n) => location.pathname.startsWith(n.to));
-    if (matches.length === 0) return undefined;
-    return matches.reduce((a, b) => (a.to.length >= b.to.length ? a : b));
-  }, [location.pathname]);
+  const activeNavItem = useMemo(
+    () => NAV_ITEMS.find((n) => location.pathname.startsWith(n.to)),
+    [location.pathname]
+  );
   const queryClient = useQueryClient();
   const { setStats, stats, setActiveRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
