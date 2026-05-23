@@ -130,10 +130,7 @@ export default function ResearchRunRow({
   };
 
   const rowInteractive =
-    run.status === 'completed' ||
-    isLive ||
-    run.status === 'failed' ||
-    (canReopenRequest && Boolean(onOpenRequestSetup));
+    run.status === 'completed' || isLive || run.status === 'failed' || canReopenRequest;
 
   return (
     <div className="card p-3 space-y-2">
