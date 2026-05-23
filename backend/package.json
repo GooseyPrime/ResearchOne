@@ -27,7 +27,7 @@
     "bullmq": "^5.76.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^4.22.2",
     "express-rate-limit": "^7.4.1",
     "express-validator": "^7.2.0",
     "fast-xml-parser": "^5.7.0",
