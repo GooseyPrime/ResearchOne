@@ -162,14 +162,12 @@ export default function ResearchStandardPage() {
     const slice = researchRequestFromRun(run);
     setQuery(slice.query);
     setSupplemental(slice.supplemental);
-    if (slice.supplemental.trim()) setShowSupplemental(true);
     const urlLines = (run.supplemental_attachments ?? [])
       .filter((a) => a.kind === 'url' && a.url)
       .map((a) => a.url as string);
-    if (urlLines.length > 0) {
-      setSupplementalUrlsText(urlLines.join('\n'));
-      setShowSupplemental(true);
-    }
+    setSupplementalUrlsText(urlLines.length > 0 ? urlLines.join('\n') : '');
+    setSupplementalFiles([]);
+    setShowSupplemental(Boolean(slice.supplemental.trim()) || urlLines.length > 0);
   }, []);
 
   const { attachRun, detachRun: detachTracking } = useResearchRunTracking({

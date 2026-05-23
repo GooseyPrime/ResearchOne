@@ -243,33 +243,52 @@ export default function ResearchDeepPage() {
       runPollCadenceActive ? getAdaptiveRefetchIntervalMs(4_000) : false,
   });
 
-  const applyRequestFormFromRun = useCallback((run: ResearchRun) => {
-    const slice = deepResearchRequestFromRun(run);
-    setQuery(slice.query);
-    setSupplemental(slice.supplemental);
-    if (slice.supplemental.trim()) setShowSupplemental(true);
-    if (slice.supplementalUrlLines.length > 0) {
+  const applyRequestFormFromRun = useCallback(
+    (run: ResearchRun) => {
+      const slice = deepResearchRequestFromRun(run);
+      setQuery(slice.query);
+      setSupplemental(slice.supplemental);
       setSupplementalUrls(slice.supplementalUrlLines);
-      setShowSupplemental(true);
-    }
-    if (slice.researchObjective) setResearchObjective(slice.researchObjective);
-    if (slice.citationStyle) setCitationStyle(slice.citationStyle);
-    if (slice.filterTags) setFilterTags(slice.filterTags);
+      setSupplementalFiles([]);
+      setShowSupplemental(Boolean(slice.supplemental.trim()) || slice.supplementalUrlLines.length > 0);
+      if (slice.researchObjective) setResearchObjective(slice.researchObjective);
+      if (slice.citationStyle) setCitationStyle(slice.citationStyle);
+      setFilterTags(slice.filterTags);
 
-    const overrides = run.model_overrides as Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> | undefined;
-    if (overrides && typeof overrides === 'object') {
-      const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
-      for (const [role, row] of Object.entries(overrides)) {
-        if (!row || typeof row !== 'object') continue;
-        rows[role] = {
-          primary: typeof row.primary === 'string' ? row.primary : undefined,
-          fallback: typeof row.fallback === 'string' ? row.fallback : undefined,
-          fallbackEnabled: row.fallbackEnabled === true,
-        };
+      const overrides = run.model_overrides as
+        | Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }>
+        | undefined;
+      if (overrides && typeof overrides === 'object') {
+        const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> =
+          {};
+        for (const [role, row] of Object.entries(overrides)) {
+          if (!row || typeof row !== 'object') continue;
+          rows[role] = {
+            primary: typeof row.primary === 'string' ? row.primary : undefined,
+            fallback: typeof row.fallback === 'string' ? row.fallback : undefined,
+            fallbackEnabled: row.fallbackEnabled === true,
+          };
+        }
+        if (Object.keys(rows).length > 0) {
+          setModelRows(rows);
+          return;
+        }
       }
-      if (Object.keys(rows).length > 0) setModelRows(rows);
-    }
-  }, []);
+
+      const objective = slice.researchObjective ?? researchObjective;
+      const preset = ensembleData?.presets?.[objective];
+      if (preset) {
+        const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> =
+          {};
+        for (const role of Object.keys(preset)) {
+          const p = preset[role];
+          rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
+        }
+        setModelRows(rows);
+      }
+    },
+    [ensembleData, researchObjective]
+  );
 
   const { attachRun, detachRun: detachTracking } = useResearchRunTracking({
     trackingRunId,

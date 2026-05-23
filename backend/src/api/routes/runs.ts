@@ -228,6 +228,7 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
     // Queue resume job before DB confirm so Redis hiccups never leave a confirmed plan
     // with no worker (Rule 13). `resumeAfterPlanConfirmation` requires `status='confirmed'`;
     // BullMQ retries cover the small window before confirm completes (PR #128 Codex).
+    const resumeJid = researchResumeJobId(runId);
     try {
       await enqueueResearchResumeAfterPlan(researchQueue, runId, effectivePlanId);
     } catch (queueErr) {
