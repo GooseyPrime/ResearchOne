@@ -7,7 +7,11 @@ globs:
   - frontend/src/hooks/usePlanGateSockets.ts
   - frontend/src/hooks/useResearchRunTracking.ts
   - frontend/src/components/layout/Layout.tsx
-  - frontend/src/pages/ResearchPage*.tsx
+  - frontend/src/pages/ResearchPage.tsx
+  - frontend/src/pages/ResearchStandardPage.tsx
+  - frontend/src/pages/ResearchDeepPage.tsx
+  - frontend/src/pages/ResearchLegacyV2Redirect.tsx
+  - frontend/src/utils/researchRunRoutes.ts
 ---
 
 # Run URL sync, attach hydration, sockets, layout polling
