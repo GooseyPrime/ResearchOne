@@ -113,27 +113,67 @@ Behavior:
 ## Database Schema
 
 Key tables:
+
+*Corpus / retrieval*
 - `sources` — Every external resource ingested (with provenance: `imported_via`, `discovered_by_run_id`, `discovery_query`, etc.)
 - `documents` — Processed document content (`parse_method`, `extraction_metadata`)
 - `chunks` — Segmented fragments for retrieval (with FTS indexes)
 - `embeddings` — pgvector vectors for semantic search (HNSW index)
 - `entities` / `entity_mentions` — Named entity extraction
-- `claims` — Discrete factual assertions with evidence tiers (run/report linked)
-- `contradictions` — Explicit contradiction records (first-class data, run/report linked)
+- `ingestion_artifacts` — Optional ingestion audit (hashes, parse warnings)
+- `ingestion_audit_log` / `run_ingestion_state` / `run_user_overrides` / `user_ingestion_consent` — Dual-pipeline ingestion tracking (migration 023)
+
+*Research runs / reports*
 - `research_runs` — Full workflow execution records with model logs and discovery summary
 - `reports` + `report_sections` — Structured long-form research reports
 - `report_citations` — Evidence → section links (with `chunk_quote`, `citation_order`, `discovery_origin`)
+- `claims` — Discrete factual assertions with evidence tiers (run/report linked)
+- `contradictions` — Explicit contradiction records (first-class data, run/report linked)
+- `atlas_exports` — Embedding Atlas export snapshots
+- `discovery_events` — Audit log for all autonomous discovery activity
+- `error_log` — Structured error tracking
+
+*Report revisions*
 - `report_revision_requests` — post-publication revision requests
 - `report_revisions` — revision metadata + version linkage
 - `report_revision_sections` — before/after section snapshots
 - `report_revision_diffs` — structured diff records
 - `report_revision_comments` / `report_revision_citations` — optional review and citation annotations
-- `atlas_exports` — Embedding Atlas export snapshots
-- `discovery_events` — Audit log for all autonomous discovery activity
-- `ingestion_artifacts` — Optional ingestion audit (hashes, parse warnings)
-- `error_log` — Structured error tracking
 
-Migrations are additive and currently span `001_initial_schema.sql` through `026_report_monitors.sql` in `backend/src/db/migrations/`.
+*Dossiers / planning (Wave 5)*
+- `research_plans` + `plan_revisions` — structured plan intent and revision history
+- `dossier_statistics` — epistemic rollup stats per dossier
+- `v_dossier` — security-invoker view joining runs + plans + stats (canonical dossier read path)
+- `account_preferences` — per-user account-level settings
+- `saved_orchestration_profiles` — user/org-scoped saved orchestration profile presets
+
+*Academic formatting (Work Order X)*
+- `evidence_aliases` — stable `[E1]`-style citation aliases per report/citation pair
+- `report_exports` — export job records (format, citation style, status)
+
+*Users / organisations / auth*
+- `users` / `orgs` / `org_members` — multi-tenant identity (Clerk-style IDs)
+- `byok_keys` — per-user encrypted Bring Your Own Key entries
+
+*Billing / subscriptions / wallet*
+- `user_wallets` + `wallet_ledger` — credit wallet and ledger
+- `wallet_holds` — credit holds scoped to research runs
+- `user_subscriptions` + `stripe_webhook_events` — Stripe subscription state
+- `user_tiers` + `tier_addons` — resolved access tier per user
+- `report_monitors` + `report_monitor_events` — Living Reports monitor subscriptions (Work Order T)
+- `stripe_customers` — Stripe customer records
+- `billing_events` — structured billing audit log
+
+*Telemetry / cost*
+- `agent_executions` + `model_pricing` — per-LLM-call cost telemetry sidecar (see `docs/COST_SIDECAR_DESIGN.md`)
+- `landing_persona_events` — anonymous persona analytics (no user ID)
+
+*Admin / compliance*
+- `admin_actions_log` — admin action audit trail
+- `retention_events` — workspace/report expiry tracking
+- `user_notifications` — in-app notification feed
+
+Migrations are additive and currently span `001_initial_schema.sql` through `043_billing_events.sql` in `backend/src/db/migrations/`.
 
 ## Environment Variables
 
@@ -461,35 +501,51 @@ ResearchOne/
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── app.ts              # Express application
-│   │   │   └── routes/             # All API routes
+│   │   │   └── routes/             # All API routes (admin, atlas, auth, billing, byok,
+│   │   │                           #   corpus, dossiers, graph, health, ingestion,
+│   │   │                           #   landing, monitors, notifications, reports,
+│   │   │                           #   research, runs, sources)
 │   │   ├── config/                 # Configuration (all env vars)
 │   │   ├── db/
 │   │   │   ├── migrations/
 │   │   │   │   ├── 001_initial_schema.sql
-│   │   │   │   └── 002_research_governance_and_discovery.sql
+│   │   │   │   └── … through 043_billing_events.sql
 │   │   │   ├── migrate.ts          # Migration runner
-│   │   │   └── pool.ts             # PostgreSQL connection pool
+│   │   │   └── pool.ts             # PostgreSQL connection pool (RLS context)
+│   │   ├── jobs/                   # Cron jobs (retention cleanup, tier reset)
 │   │   ├── queue/
 │   │   │   ├── queues.ts           # BullMQ queue definitions
 │   │   │   ├── redis.ts            # Redis connection (with password support)
 │   │   │   └── workers.ts          # BullMQ workers
 │   │   └── services/
+│   │       ├── agents/             # Agent framework utilities
+│   │       ├── billing/            # Stripe billing, subscriptions, wallet
+│   │       ├── byok/               # Bring-Your-Own-Key encryption
 │   │       ├── discovery/          # Autonomous external research discovery
 │   │       │   ├── discoveryOrchestrator.ts
 │   │       │   ├── providerTypes.ts
 │   │       │   └── providers/      # Search provider abstraction
 │   │       ├── embedding/          # Embedding generation + Atlas export
+│   │       ├── formatting/         # Academic formatting engine (Pandoc/CSL/LaTeX)
 │   │       ├── ingestion/          # Source ingestion (PDF, markdown, txt, URL)
 │   │       │   ├── pdfExtractor.ts
 │   │       │   ├── markdownNormalizer.ts
 │   │       │   └── ingestionService.ts
+│   │       ├── monitoring/         # Living Reports / report monitors
+│   │       ├── notifications/      # In-app notification feed
 │   │       ├── openrouter/         # Model routing + prompts (all roles w/ fallbacks)
+│   │       ├── planning/           # Dossier plan orchestration (Wave 5)
 │   │       ├── reasoning/          # Research orchestrator + epistemic persistence
 │   │       │   ├── researchOrchestrator.ts
 │   │       │   ├── claimExtractor.ts
 │   │       │   ├── contradictionExtractor.ts
 │   │       │   └── citationMapper.ts
-│   │       └── retrieval/          # Hybrid vector + FTS retrieval
+│   │       ├── research/           # Research-run lifecycle helpers
+│   │       ├── retention/          # Workspace / report retention policy
+│   │       ├── retrieval/          # Hybrid vector + FTS retrieval
+│   │       ├── telemetry/          # Cost sidecar (agent_executions)
+│   │       ├── tier/               # Tier access checks and reset
+│   │       └── users/              # User / org helpers
 ├── frontend/
 │   ├── .env.example                # Vercel env template
 │   └── src/
