@@ -26,10 +26,8 @@ import type { ResearchJobData } from '../../services/reasoning/researchOrchestra
 import { allowFallbackByRoleFromOverrides } from '../../services/reasoning/v2FallbackResolution';
 import { normalizeRunOverrides } from '../../services/reasoning/researchOrchestratorNormalize';
 import { researchQueue } from '../../queue/queues';
-import {
-  RESEARCH_JOB_RESUME_AFTER_PLAN,
-  researchResumeJobId,
-} from '../../queue/researchQueueJobs';
+import { researchResumeJobId } from '../../queue/researchQueueJobs';
+import { enqueueResearchResumeAfterPlan } from '../../utils/researchResumeQueueing';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { logger } from '../../utils/logger';
 
@@ -230,31 +228,16 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
     // Queue resume job before DB confirm so Redis hiccups never leave a confirmed plan
     // with no worker (Rule 13). `resumeAfterPlanConfirmation` requires `status='confirmed'`;
     // BullMQ retries cover the small window before confirm completes (PR #128 Codex).
-    const resumeJid = researchResumeJobId(runId);
-    const existingResume = await researchQueue.getJob(resumeJid);
-    if (!existingResume) {
-      try {
-        await researchQueue.add(
-          RESEARCH_JOB_RESUME_AFTER_PLAN,
-          { runId, confirmedPlanId: effectivePlanId },
-          {
-            jobId: resumeJid,
-            attempts: 8,
-            backoff: { type: 'exponential', delay: 750 },
-          }
-        );
-      } catch (queueErr) {
-        const raced = await researchQueue.getJob(resumeJid);
-        if (!raced) {
-          logger.error('plan_confirm_queue_failed', { runId, planId: effectivePlanId, err: queueErr });
-          res.status(503).json({
-            error: 'Failed to queue pipeline resume',
-            detail: 'No database changes were made; retry confirm when the queue is available.',
-            planId: effectivePlanId,
-          });
-          return;
-        }
-      }
+    try {
+      await enqueueResearchResumeAfterPlan(researchQueue, runId, effectivePlanId);
+    } catch (queueErr) {
+      logger.error('plan_confirm_queue_failed', { runId, planId: effectivePlanId, err: queueErr });
+      res.status(503).json({
+        error: 'Failed to queue pipeline resume',
+        detail: 'No database changes were made; retry confirm when the queue is available.',
+        planId: effectivePlanId,
+      });
+      return;
     }
 
     const confirmed = await confirmGatePlan({ planId: effectivePlanId, runId });

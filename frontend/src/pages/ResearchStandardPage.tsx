@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,6 +35,8 @@ import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import { formatFailureReason } from '../utils/researchFailureFormat';
 import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
+import { isLiveAttachedResearchRun, researchRequestFromRun } from '../utils/researchOpenRun';
+import { useResearchPageShell } from './ResearchPageContext';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription';
@@ -105,6 +107,7 @@ export default function ResearchStandardPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
+  const { embeddedInShell, syncEngineForRun } = useResearchPageShell();
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
@@ -155,6 +158,20 @@ export default function ResearchStandardPage() {
       runPollCadenceActive ? getAdaptiveRefetchIntervalMs(4_000) : false,
   });
 
+  const applyRequestFormFromRun = useCallback((run: ResearchRun) => {
+    const slice = researchRequestFromRun(run);
+    setQuery(slice.query);
+    setSupplemental(slice.supplemental);
+    if (slice.supplemental.trim()) setShowSupplemental(true);
+    const urlLines = (run.supplemental_attachments ?? [])
+      .filter((a) => a.kind === 'url' && a.url)
+      .map((a) => a.url as string);
+    if (urlLines.length > 0) {
+      setSupplementalUrlsText(urlLines.join('\n'));
+      setShowSupplemental(true);
+    }
+  }, []);
+
   const { attachRun, detachRun: detachTracking } = useResearchRunTracking({
     trackingRunId,
     setTrackingRunId,
@@ -171,7 +188,24 @@ export default function ResearchStandardPage() {
     engineVersionHint: trackedRun?.engine_version ?? polledRun?.engine_version,
   });
 
-  const runStatusForGate = trackedRun?.status ?? polledRun?.status;
+  const activeRunStatus = trackedRun?.status ?? polledRun?.status;
+  const formLocked = Boolean(trackingRunId) && isLiveAttachedResearchRun(activeRunStatus);
+
+  const handleOpenRun = useCallback(
+    (run: ResearchRun) => {
+      syncEngineForRun(run.engine_version);
+      if (isLiveAttachedResearchRun(run.status)) {
+        void attachRun({ runId: run.id, runRow: run });
+        return;
+      }
+      detachTracking();
+      applyRequestFormFromRun(run);
+      addNotification('info', 'Loaded this run’s research request — edit and submit when ready.');
+    },
+    [syncEngineForRun, attachRun, detachTracking, applyRequestFormFromRun, addNotification]
+  );
+
+  const runStatusForGate = activeRunStatus;
   const showPlanGatePanel =
     Boolean(trackingRunId) &&
     (runStatusForGate === 'plan_pending_confirmation' || planGateLocal?.runId === trackingRunId);
@@ -471,13 +505,18 @@ export default function ResearchStandardPage() {
       }
     });
 
-    socket.on('research:cancelled', (payload: { runId: string }) => {
+    socket.on('research:cancelled', async (payload: { runId: string }) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       if (payload.runId === trackingRunId) {
-        setProgress(null);
-        setTrackingRunId(null);
-        setActiveRun(null);
-        addNotification('info', 'Research run cancelled.');
+        try {
+          const row = await getResearchRun(payload.runId);
+          applyRequestFormFromRun(row);
+        } catch {
+          const row = runs.find((r) => r.id === payload.runId);
+          if (row) applyRequestFormFromRun(row);
+        }
+        detachTracking();
+        addNotification('info', 'Research run cancelled — request loaded for editing.');
       }
     });
 
@@ -489,7 +528,7 @@ export default function ResearchStandardPage() {
       socket.off('research:aborted');
       socket.off('research:cancelled');
     };
-  }, [trackingRunId, navigate, addNotification, setActiveRun, qc]);
+  }, [trackingRunId, navigate, addNotification, setActiveRun, qc, runs, applyRequestFormFromRun, detachTracking]);
 
   const runtimeOverridesPayload = useMemo(() => {
     const payload: Record<string, unknown> = {};
@@ -536,16 +575,18 @@ export default function ResearchStandardPage() {
   const hasWarning = Boolean(failure) || currentUiStage === 'failed';
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <FlaskConical className="text-accent" size={28} />
-          <span className="text-gradient">Start Research</span>
-        </h1>
-        <p className="text-slate-400 mt-2 text-sm">
-          Disciplined anomaly research with source-corroboration-tiered reporting and full-stage telemetry.
-        </p>
-      </div>
+    <div className={embeddedInShell ? 'space-y-8' : 'max-w-5xl mx-auto px-6 py-8 space-y-8'}>
+      {!embeddedInShell && (
+        <div>
+          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+            <FlaskConical className="text-accent" size={28} />
+            <span className="text-gradient">Start Research</span>
+          </h1>
+          <p className="text-slate-400 mt-2 text-sm">
+            Disciplined anomaly research with source-corroboration-tiered reporting and full-stage telemetry.
+          </p>
+        </div>
+      )}
 
       <FreeLifetimeQuotaBanner variant="research" />
 
@@ -558,7 +599,7 @@ export default function ResearchStandardPage() {
               placeholder="What is the relationship between mitochondrial dysfunction and cancer metabolism?"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              disabled={mutation.isPending || !!trackingRunId}
+              disabled={mutation.isPending || formLocked}
             />
             <p className="text-xs text-slate-500 mt-1">Be specific and include the exact framing you want tested.</p>
           </div>
@@ -577,7 +618,7 @@ export default function ResearchStandardPage() {
                   placeholder="Paste relevant text, abstracts, or constraints"
                   value={supplemental}
                   onChange={(e) => setSupplemental(e.target.value)}
-                  disabled={mutation.isPending || !!trackingRunId}
+                  disabled={mutation.isPending || formLocked}
                 />
               </div>
               <div>
@@ -589,7 +630,7 @@ export default function ResearchStandardPage() {
                   }
                   value={supplementalUrlsText}
                   onChange={(e) => setSupplementalUrlsText(e.target.value)}
-                  disabled={mutation.isPending || !!trackingRunId}
+                  disabled={mutation.isPending || formLocked}
                 />
                 <p className="text-xs text-slate-500 mt-1">
                   Each URL is fetched and added to the ResearchOne corpus, then used for this run.
@@ -602,7 +643,7 @@ export default function ResearchStandardPage() {
                   multiple
                   accept=".pdf,.txt,.md,text/plain,application/pdf"
                   className="block w-full text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-surface-300 file:text-slate-200"
-                  disabled={mutation.isPending || !!trackingRunId}
+                  disabled={mutation.isPending || formLocked}
                   onChange={(e) => {
                     const list = e.target.files ? Array.from(e.target.files) : [];
                     setSupplementalFiles((prev) => [...prev, ...list]);
@@ -635,7 +676,7 @@ export default function ResearchStandardPage() {
                   placeholder="biology, oncology, metabolism"
                   value={filterTags}
                   onChange={(e) => setFilterTags(e.target.value)}
-                  disabled={mutation.isPending || !!trackingRunId}
+                  disabled={mutation.isPending || formLocked}
                 />
               </div>
             </div>
@@ -662,7 +703,7 @@ export default function ResearchStandardPage() {
                           [role]: { ...prev[role], primary: e.target.value },
                         }))
                       }
-                      disabled={mutation.isPending || !!trackingRunId}
+                      disabled={mutation.isPending || formLocked}
                     />
                     <input
                       className="input text-xs"
@@ -673,7 +714,7 @@ export default function ResearchStandardPage() {
                           [role]: { ...prev[role], fallback: e.target.value },
                         }))
                       }
-                      disabled={mutation.isPending || !!trackingRunId}
+                      disabled={mutation.isPending || formLocked}
                     />
                   </div>
                 ))}
@@ -681,7 +722,7 @@ export default function ResearchStandardPage() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || !!trackingRunId}>
+          <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || formLocked}>
             <Send size={16} />
             {mutation.isPending
               ? 'Queuing...'
@@ -761,6 +802,12 @@ export default function ResearchStandardPage() {
                         );
                       }}
                       onAfterCancel={() => {
+                        const row =
+                          polledRun ??
+                          trackedRun ??
+                          runs.find((r) => r.id === trackingRunId) ??
+                          null;
+                        if (row) applyRequestFormFromRun(row);
                         detachTracking();
                         void qc.invalidateQueries({ queryKey: ['research-runs'] });
                       }}
@@ -848,9 +895,8 @@ export default function ResearchStandardPage() {
                     setRunSummary(null);
                   }
                 }}
-                onResumeRun={(r) => {
-                  void attachRun({ runId: r.id, runRow: r });
-                }}
+                onResumeRun={handleOpenRun}
+                onOpenRequestSetup={handleOpenRun}
               />
             ))}
           </div>
