@@ -67,6 +67,12 @@ ship on `main`.
 `.github/workflows/ci-guards.yml` (PRs / all branches) and again in
 `deploy-backend-emma.yml` before production SSH deploy to `main`.
 
+## Recurring review themes (Codex / Copilot, PR #141 — unified research + plan confirm queue)
+
+- **`resumeJid` ripple:** Extracting plan-confirm enqueue into `enqueueResearchResumeAfterPlan` must keep `researchResumeJobId(runId)` in the route for confirm rollback (`getJob` / `remove`).
+- **BullMQ dedupe races:** After `add()` fails or `remove()` is skipped (locked job), re-fetch by `jobId` and assert `data.confirmedPlanId` matches — do not treat “any job exists” as success (PR #141 Codex P1).
+- **Reopen request hydrate:** Reset supplemental URLs/files/tags and `modelRows` before applying run data; empty run fields must not leave prior form state (PR #141 Copilot/Codex).
+
 ## Recurring review themes (Codex / Copilot, PR #140 — plan review navigation)
 
 - **`?runId=` detach:** suppress auto-reattach after intentional `detachRun`; clear query param in the same path (`dismissUrlReattach` + `setUrlRunId(null)`).

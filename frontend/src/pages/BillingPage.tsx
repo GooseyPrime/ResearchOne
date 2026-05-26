@@ -362,7 +362,7 @@ export default function BillingPage() {
                     View plans &amp; upgrade
                   </Link>
                   <Link
-                    to="/app/research-v2"
+                    to="/app/research?engine=v2"
                     className="text-sm text-indigo-400 hover:text-indigo-300"
                   >
                     Start researching

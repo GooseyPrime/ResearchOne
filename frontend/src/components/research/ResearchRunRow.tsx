@@ -9,6 +9,7 @@ import {
   XCircle,
   Zap,
   ClipboardCheck,
+  FileEdit,
 } from 'lucide-react';
 import { cancelResearchRun, deleteResearchRun, type ResearchRun } from '../../utils/api';
 import { dossierReportUrlForRun, liveResearchUrl, failedRunReportUrl } from '../../utils/researchRunRoutes';
@@ -27,17 +28,23 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: 
 
 const LIVE_STATUSES = new Set(['queued', 'running', 'plan_pending_confirmation']);
 
+/** Terminal runs where the user may reopen the prefilled research request form. */
+const REOPEN_REQUEST_STATUSES = new Set(['cancelled', 'aborted', 'completed', 'failed']);
+
 export default function ResearchRunRow({
   run,
   onRunsChanged,
   onRemoved,
   onResumeRun,
+  onOpenRequestSetup,
 }: {
   run: ResearchRun;
   onRunsChanged: () => void;
   onRemoved?: (id: string) => void;
   /** When set, Resume/Review plan invokes this (e.g. attach + navigate in-page). */
   onResumeRun?: (run: ResearchRun) => void;
+  /** When set, Open request loads the run's query/setup into the form (detach live tracking). */
+  onOpenRequestSetup?: (run: ResearchRun) => void;
 }) {
   const navigate = useNavigate();
   const [showError, setShowError] = useState(false);
@@ -47,6 +54,7 @@ export default function ResearchRunRow({
   const Icon = cfg.icon;
   const isLive = LIVE_STATUSES.has(run.status);
   const isPlanGate = run.status === 'plan_pending_confirmation';
+  const canReopenRequest = REOPEN_REQUEST_STATUSES.has(run.status);
 
   const latestEvent =
     Array.isArray(run.progress_events) && run.progress_events.length > 0
@@ -57,6 +65,18 @@ export default function ResearchRunRow({
     engineVersion: run.engine_version,
     focusPlan: isPlanGate,
   });
+
+  const openRequest = () => {
+    if (onOpenRequestSetup) {
+      onOpenRequestSetup(run);
+      return;
+    }
+    if (isLive && onResumeRun) {
+      onResumeRun(run);
+      return;
+    }
+    navigate(resumeTarget);
+  };
 
   const handleRowActivate = () => {
     if (run.status === 'completed') {
@@ -73,6 +93,10 @@ export default function ResearchRunRow({
     }
     if (run.status === 'failed') {
       navigate(failedRunReportUrl(run.id));
+      return;
+    }
+    if (canReopenRequest && onOpenRequestSetup) {
+      onOpenRequestSetup(run);
     }
   };
 
@@ -105,13 +129,15 @@ export default function ResearchRunRow({
     }
   };
 
+  const rowInteractive =
+    run.status === 'completed' || isLive || run.status === 'failed' || canReopenRequest;
+
   return (
     <div className="card p-3 space-y-2">
       <div
         className={clsx(
           'flex items-center justify-between gap-2 transition-all',
-          (run.status === 'completed' || isLive || run.status === 'failed') &&
-            'hover:border-accent/30 cursor-pointer'
+          rowInteractive && 'hover:border-accent/30 cursor-pointer'
         )}
         onClick={handleRowActivate}
         onKeyDown={(e) => {
@@ -121,10 +147,8 @@ export default function ResearchRunRow({
             handleRowActivate();
           }
         }}
-        role={
-          run.status === 'completed' || isLive || run.status === 'failed' ? 'button' : undefined
-        }
-        tabIndex={run.status === 'completed' || isLive || run.status === 'failed' ? 0 : undefined}
+        role={rowInteractive ? 'button' : undefined}
+        tabIndex={rowInteractive ? 0 : undefined}
       >
         <div className="flex items-center gap-3 min-w-0">
           <Icon size={14} className={cfg.color} />
@@ -168,6 +192,15 @@ export default function ResearchRunRow({
             >
               Resume
             </Link>
+          ) : canReopenRequest && onOpenRequestSetup ? (
+            <button
+              type="button"
+              className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1"
+              onClick={openRequest}
+            >
+              <FileEdit size={12} />
+              Open request
+            </button>
           ) : null}
           {(run.status === 'queued' || run.status === 'running' || isPlanGate) && (
             <button

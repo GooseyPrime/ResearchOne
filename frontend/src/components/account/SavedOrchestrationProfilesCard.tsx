@@ -48,7 +48,7 @@ export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: {
       <h2 className="text-sm font-semibold text-white">Saved orchestration profiles</h2>
       <p className="text-xs text-slate-400 leading-snug">
         Save a plan from the confirmation panel on{' '}
-        <Link to="/app/research-v2" className="text-accent hover:underline">
+        <Link to="/app/research?engine=v2" className="text-accent hover:underline">
           Deep Research
         </Link>
         . Select a profile before starting a run to seed the planner.

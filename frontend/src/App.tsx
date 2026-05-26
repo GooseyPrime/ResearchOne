@@ -4,7 +4,7 @@ import RequireAdmin from './components/auth/RequireAdmin';
 import RequireAuth from './components/auth/RequireAuth';
 import LandingPage from './pages/LandingPage';
 import ResearchPage from './pages/ResearchPage';
-import ResearchPageV2 from './pages/ResearchPageV2';
+import ResearchLegacyV2Redirect from './pages/ResearchLegacyV2Redirect';
 import ReportsPage from './pages/ReportsPage';
 import DossiersPage from './pages/DossiersPage';
 import DossierDetailPage from './pages/DossierDetailPage';
@@ -76,7 +76,7 @@ export function AppRoutes() {
       <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<Navigate to="/app/research" replace />} />
         <Route path="research" element={<ResearchPage />} />
-        <Route path="research-v2" element={<ResearchPageV2 />} />
+        <Route path="research-v2" element={<ResearchLegacyV2Redirect />} />
         <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
         <Route path="dossiers" element={<DossiersPage />} />
         <Route path="dossiers/:id/plan-history" element={<DossierPlanHistoryPage />} />

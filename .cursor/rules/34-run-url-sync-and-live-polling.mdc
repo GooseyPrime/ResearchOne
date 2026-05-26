@@ -7,7 +7,11 @@ globs:
   - frontend/src/hooks/usePlanGateSockets.ts
   - frontend/src/hooks/useResearchRunTracking.ts
   - frontend/src/components/layout/Layout.tsx
-  - frontend/src/pages/ResearchPage*.tsx
+  - frontend/src/pages/ResearchPage.tsx
+  - frontend/src/pages/ResearchStandardPage.tsx
+  - frontend/src/pages/ResearchDeepPage.tsx
+  - frontend/src/pages/ResearchLegacyV2Redirect.tsx
+  - frontend/src/utils/researchRunRoutes.ts
 ---
 
 # Run URL sync, attach hydration, sockets, layout polling
@@ -50,6 +54,14 @@ If the UI component already calls `onNotify('info', …)` on success, the socket
 2. Use `refetchInterval: (query) => hasInFlightResearchRuns(query.state.data) ? interval : false` so idle users do not poll the full list every 6s.
 3. Pass polled data into presentational children (e.g. `PlanReviewBanner`) instead of spawning duplicate queries.
 
+## Rule — reopen request / hydrate from run (PR #141)
+
+When loading a terminal run into the editable request form (“Open request”):
+
+1. **Reset-then-apply** — clear URLs, files, tags, supplemental visibility, and model rows to defaults **before** conditionally copying from the run row. Do not only set fields when the run has values (stale state from a prior run leaks into the next submit).
+2. **Model overrides** — if `model_overrides` is empty, fall back to the ensemble preset for the run objective, else `setModelRows({})`. Never leave prior per-role overrides in memory.
+3. **Refactor ripple** — extracting enqueue/cleanup helpers must not drop symbols still used downstream (e.g. `resumeJid` for confirm rollback in `runs.ts`).
+
 ## Pre-commit check
 
 - [ ] Detach path: URL cleared + suppressed re-attach?
@@ -57,3 +69,4 @@ If the UI component already calls `onNotify('info', …)` on success, the socket
 - [ ] Socket hook: stable subscription?
 - [ ] Cancel/info toasts: single writer per user-visible message?
 - [ ] Layout polling: backs off when no in-flight runs?
+- [ ] Open request hydrate: reset-then-apply; model rows cleared when run has no overrides?
