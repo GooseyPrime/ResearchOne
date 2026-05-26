@@ -285,7 +285,9 @@ export default function ResearchDeepPage() {
           rows[role] = { primary: p.primary, fallback: p.fallback, fallbackEnabled: false };
         }
         setModelRows(rows);
+        return;
       }
+      setModelRows({});
     },
     [ensembleData, researchObjective]
   );

@@ -69,6 +69,9 @@ changes.
 - ✅ `enqueueResearchRetryJobWithCleanup(queue, runId, payload)`
   documents the BullMQ deduplication contract in its JSDoc and
   is the only retry path.
+- ✅ `enqueueResearchResumeAfterPlan(queue, runId, confirmedPlanId)`
+  (PR #141) removes stale dedupe jobs and **validates** `confirmedPlanId`
+  on raced/final jobs — existence of a job id alone is not success.
 - ✅ `isHfRepoModel(model)` disambiguates HF vs. OpenRouter and is
   imported by every caller.
 
