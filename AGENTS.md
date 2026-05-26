@@ -32,10 +32,12 @@ drove the rules is at
 | [`.cursor/rules/25-cost-sidecar-and-unit-economics.mdc`](.cursor/rules/25-cost-sidecar-and-unit-economics.mdc) | Cost telemetry sidecar: single emit site, run scope, idempotency, deploy skew. |
 | [`.cursor/rules/26-landing-persona-and-visual.mdc`](.cursor/rules/26-landing-persona-and-visual.mdc) | Landing persona detection + lab-notebook visual (WO-V invariants). |
 | [`.cursor/rules/27-animated-pipeline-hero.mdc`](.cursor/rules/27-animated-pipeline-hero.mdc) | WO-W animated pipeline hero + persona beams. |
+| [`.cursor/rules/28-academic-formatting-engine.mdc`](.cursor/rules/28-academic-formatting-engine.mdc) | Academic formatting engine (Pandoc + CSL + LaTeX + evidence aliases). |
 | [`.cursor/rules/29-marketing-scope-doc-contracts.mdc`](.cursor/rules/29-marketing-scope-doc-contracts.mdc) | Contract-style marketing / a11y scope docs (conditional re-scan, cwd, Lighthouse gates, F-42 boundary). |
 | [`.cursor/rules/30-vercel-prerender-spa-routing.mdc`](.cursor/rules/30-vercel-prerender-spa-routing.mdc) | Vercel SPA catch-all must not shadow prerendered `dist/<segment>/`; sync exclusions with `public/sitemap.xml`. |
 | [`.cursor/rules/31-evidence-vs-source-vocabulary.mdc`](.cursor/rules/31-evidence-vs-source-vocabulary.mdc) | Marketing / public copy: evidence vs. sources vocabulary (Wave 4). |
 | [`.cursor/rules/32-dossier-canonical-read-path.mdc`](.cursor/rules/32-dossier-canonical-read-path.mdc) | Dossier reads must use `v_dossier` / dossierReadService (Wave 5.0). |
+| [`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc) | All work ships via a PR branch by default unless user directs otherwise. |
 | [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (Wave 5.1). |
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
