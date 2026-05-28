@@ -54,10 +54,12 @@ import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import ResearchRunRow from '../components/research/ResearchRunRow';
 import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
+import { useResearchShellOpenRun } from '../hooks/useResearchShellOpenRun';
+import { deepResearchRequestFromRun, isLiveAttachedResearchRun } from '../utils/researchOpenRun';
 import {
-  deepResearchRequestFromRun,
-  isLiveAttachedResearchRun,
-} from '../utils/researchOpenRun';
+  mergeSupplementalWithSkepticPersona,
+  splitSupplementalAndSkepticPersona,
+} from '../utils/skepticPersonaSupplemental';
 import { useResearchPageShell } from './ResearchPageContext';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -130,7 +132,13 @@ export default function ResearchDeepPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
-  const { embeddedInShell, syncEngineForRun } = useResearchPageShell();
+  const {
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+  } = useResearchPageShell();
   const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
     useBillingSubscriptionQuery();
 
@@ -228,12 +236,20 @@ export default function ResearchDeepPage() {
 
   const applyRequestFormFromRun = useCallback(
     (run: ResearchRun) => {
+      setSkepticPersona('');
       const slice = deepResearchRequestFromRun(run);
+      const { supplemental: supplementalBody, skepticPersona: personaFromRun } =
+        splitSupplementalAndSkepticPersona(slice.supplemental);
       setQuery(slice.query);
-      setSupplemental(slice.supplemental);
+      setSupplemental(supplementalBody);
+      setSkepticPersona(personaFromRun);
       setSupplementalUrls(slice.supplementalUrlLines);
       setSupplementalFiles([]);
-      setShowSupplemental(Boolean(slice.supplemental.trim()) || slice.supplementalUrlLines.length > 0);
+      setShowSupplemental(
+        Boolean(supplementalBody.trim()) ||
+          Boolean(personaFromRun.trim()) ||
+          slice.supplementalUrlLines.length > 0
+      );
       if (slice.researchObjective) setResearchObjective(slice.researchObjective);
       if (slice.citationStyle) setCitationStyle(slice.citationStyle);
       setFilterTags(slice.filterTags);
@@ -294,19 +310,17 @@ export default function ResearchDeepPage() {
   const activeRunStatus = trackedRun?.status ?? polledRun?.status;
   const formLocked = Boolean(trackingRunId) && isLiveAttachedResearchRun(activeRunStatus);
 
-  const handleOpenRun = useCallback(
-    (run: ResearchRun) => {
-      syncEngineForRun(run.engine_version);
-      if (isLiveAttachedResearchRun(run.status)) {
-        void attachRun({ runId: run.id, runRow: run });
-        return;
-      }
-      detachTracking();
-      applyRequestFormFromRun(run);
-      addNotification('info', 'Loaded this run’s research request — edit and submit when ready.');
-    },
-    [syncEngineForRun, attachRun, detachTracking, applyRequestFormFromRun, addNotification]
-  );
+  const { handleOpenRun } = useResearchShellOpenRun({
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+    attachRun,
+    detachTracking,
+    applyRequestFormFromRun,
+    addNotification,
+  });
 
   const mutation = useMutation({
     mutationFn: startResearch,
@@ -679,10 +693,9 @@ export default function ResearchDeepPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
-    const supplementalMerged = [supplemental.trim(), skepticPersona.trim()].filter(Boolean).join('\n\n');
     mutation.mutate({
       query: query.trim(),
-      supplemental: supplementalMerged || undefined,
+      supplemental: mergeSupplementalWithSkepticPersona(supplemental, skepticPersona),
       filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',

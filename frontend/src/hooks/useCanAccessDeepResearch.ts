@@ -15,18 +15,21 @@ export function useCanAccessDeepResearch(): {
 } {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
 
-  const { data: authMe } = useQuery({
+  const authMeQuery = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: () => api.get<{ userId: string; isAdmin: boolean }>('/auth/me').then((r) => r.data),
     enabled: Boolean(authLoaded && isSignedIn),
     staleTime: 60_000,
     retry: false,
   });
+  const authMe = authMeQuery.data;
   const isAllowlistedAdmin = authMe?.isAdmin === true;
 
   const subQuery = useBillingSubscriptionQuery();
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
-  const tierGateUnknown = subQuery.isLoading || (Boolean(subQuery.isError) && !subQuery.data);
+  const authMeGateUnknown = Boolean(authLoaded && isSignedIn && authMeQuery.isLoading);
+  const tierGateUnknown =
+    authMeGateUnknown || subQuery.isLoading || (Boolean(subQuery.isError) && !subQuery.data);
 
   const tierBlocksDeep =
     Boolean(subQuery.data && effectiveTier && FREE_TIERS_BLOCKING_DEEP_UI.has(effectiveTier));

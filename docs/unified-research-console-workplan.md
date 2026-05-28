@@ -28,6 +28,13 @@ Child pages remount with `key="research-deep-console"` / `key="research-standard
 - [ ] `?runId=…#plan` still routes to plan review pages
 - [ ] Free `free_demo` users see upgrade modal when selecting Deep (not 403 after filling form)
 
+## PR #149 review fixes (Codex / Copilot)
+
+- Cross-mode recent-run open: shell `queueRunHandoff` / `consumeRunHandoff` + `useResearchShellOpenRun`.
+- Deep hydrate: reset `skepticPersona` on open-request; split preset persona from stored supplemental.
+- Deep tier gate: include `/auth/me` loading in `tierGateUnknown` (admin on `free_demo`).
+- Custom persona: textarea when “Custom Persona” is selected.
+
 ## Follow-up (not this PR)
 
 Single-sheet form with greyed inactive sections (merge Deep + Standard UI into one component).

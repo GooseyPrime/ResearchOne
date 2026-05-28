@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ResearchRun } from '../utils/api';
 import { Link } from 'react-router-dom';
 import { FlaskConical } from 'lucide-react';
 import clsx from 'clsx';
@@ -31,7 +32,18 @@ export default function UnifiedResearchConsole({
 }: UnifiedResearchConsoleProps) {
   const [mode, setMode] = useState<ResearchEngineMode>(initialMode);
   const [showDeepUpgrade, setShowDeepUpgrade] = useState(false);
+  const pendingRunHandoffRef = useRef<ResearchRun | null>(null);
   const { canAccessDeep, tierGateUnknown } = useCanAccessDeepResearch();
+
+  const queueRunHandoff = useCallback((run: ResearchRun) => {
+    pendingRunHandoffRef.current = run;
+  }, []);
+
+  const consumeRunHandoff = useCallback((): ResearchRun | null => {
+    const run = pendingRunHandoffRef.current;
+    pendingRunHandoffRef.current = null;
+    return run;
+  }, []);
 
   useEffect(() => {
     setMode(initialMode);
@@ -57,8 +69,14 @@ export default function UnifiedResearchConsole({
   );
 
   const shellValue = useMemo(
-    () => ({ embeddedInShell: true, syncEngineForRun }),
-    [syncEngineForRun]
+    () => ({
+      embeddedInShell: true,
+      shellMode: mode,
+      syncEngineForRun,
+      queueRunHandoff,
+      consumeRunHandoff,
+    }),
+    [mode, syncEngineForRun, queueRunHandoff, consumeRunHandoff]
   );
 
   return (

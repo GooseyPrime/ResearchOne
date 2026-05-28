@@ -1,15 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, UserX } from 'lucide-react';
 import clsx from 'clsx';
+import {
+  isPresetSkepticPersonaLabel,
+  SKEPTIC_PERSONA_OPTIONS,
+} from '../../utils/skepticPersonaSupplemental';
 
-export const SKEPTIC_PERSONA_OPTIONS = [
-  { id: 'fda', label: 'FDA Compliance Officer', description: 'Regulatory scrutiny focus' },
-  { id: 'peer', label: 'Hostile Peer Reviewer', description: 'Academic rigor challenge' },
-  { id: 'defense', label: 'Defense Attorney', description: 'Adversarial cross-examination' },
-  { id: 'investor', label: 'Skeptical Investor', description: 'Due diligence perspective' },
-  { id: 'journalist', label: 'Investigative Journalist', description: 'Source verification focus' },
-  { id: 'custom', label: 'Custom Persona', description: 'Define your own adversary' },
-] as const;
+export { SKEPTIC_PERSONA_OPTIONS };
 
 type SkepticPersonaSelectorProps = {
   value: string;
@@ -29,6 +26,24 @@ export default function SkepticPersonaSelector({
   className,
 }: SkepticPersonaSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [customActive, setCustomActive] = useState(
+    () => Boolean(value.trim()) && !isPresetSkepticPersonaLabel(value)
+  );
+
+  useEffect(() => {
+    if (!value.trim()) {
+      setCustomActive(false);
+      return;
+    }
+    if (isPresetSkepticPersonaLabel(value)) {
+      setCustomActive(false);
+    }
+  }, [value]);
+
+  const showCustomInput = customActive || (Boolean(value.trim()) && !isPresetSkepticPersonaLabel(value));
+  const triggerLabel = showCustomInput
+    ? value.trim() || 'Custom persona (describe below)'
+    : value || 'Select adversarial persona (optional)';
 
   return (
     <div className={clsx('relative', className)}>
@@ -51,8 +66,8 @@ export default function SkepticPersonaSelector({
       >
         <span className="flex items-center gap-2 min-w-0">
           <UserX className="w-4 h-4 shrink-0 text-slate-400" />
-          <span className={value ? 'text-slate-200 truncate' : 'text-slate-500 truncate'}>
-            {value || 'Select adversarial persona (optional)'}
+          <span className={value || customActive ? 'text-slate-200 truncate' : 'text-slate-500 truncate'}>
+            {triggerLabel}
           </span>
         </span>
         <ChevronDown className={clsx('w-4 h-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
@@ -67,13 +82,23 @@ export default function SkepticPersonaSelector({
               <button
                 type="button"
                 role="option"
-                aria-selected={value === persona.label}
+                aria-selected={
+                  persona.id === 'custom'
+                    ? showCustomInput
+                    : value === persona.label
+                }
                 className={clsx(
                   'w-full px-3 py-2.5 text-left text-sm hover:bg-accent/10 transition-colors',
-                  value === persona.label && 'bg-accent/15'
+                  (persona.id === 'custom' ? showCustomInput : value === persona.label) && 'bg-accent/15'
                 )}
                 onClick={() => {
-                  onChange(persona.id === 'custom' ? '' : persona.label);
+                  if (persona.id === 'custom') {
+                    setCustomActive(true);
+                    onChange('');
+                  } else {
+                    setCustomActive(false);
+                    onChange(persona.label);
+                  }
                   setOpen(false);
                 }}
               >
@@ -83,6 +108,15 @@ export default function SkepticPersonaSelector({
             </li>
           ))}
         </ul>
+      ) : null}
+      {showCustomInput && !disabled ? (
+        <textarea
+          className="mt-2 w-full rounded-lg border border-surface-400/80 bg-surface-200/40 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-accent/50 focus:outline-none min-h-[72px] resize-y"
+          placeholder="Describe the adversarial stance (e.g. regulatory auditor focused on primary-source gaps)…"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Custom adversarial persona"
+        />
       ) : null}
     </div>
   );
