@@ -1,4 +1,5 @@
 import { config } from '../../config';
+import type { MonitorKind } from '../monitoring/parallelMonitorService';
 
 export type AddonBillingModel =
   | 'report_subscription'
@@ -13,7 +14,7 @@ export type AddonCatalogEntry = {
   billingModel: AddonBillingModel;
   category: 'report_monitor' | 'research_run' | 'platform';
   /** Stripe-backed per-report monitor kind */
-  monitorKind?: 'living_report' | 'reverse_citation_watch';
+  monitorKind?: MonitorKind;
   /** Wallet/run surcharge key from creditEnforcement */
   runAddonKey?: string;
   managePath?: string;

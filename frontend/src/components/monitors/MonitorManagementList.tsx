@@ -1,7 +1,12 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { listUserMonitors, type ReportMonitorKind, type ReportMonitorRow } from '../../utils/api';
+import {
+  extractApiError,
+  listUserMonitors,
+  type ReportMonitorKind,
+  type ReportMonitorRow,
+} from '../../utils/api';
 import MonitorEventsPanel from './MonitorEventsPanel';
 
 const KIND_LABEL: Record<ReportMonitorKind, string> = {
@@ -16,8 +21,8 @@ export default function MonitorManagementList({
   monitorKind: ReportMonitorKind;
   emptyHint: string;
 }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['user-monitors', monitorKind],
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['billing-monitors'],
     queryFn: listUserMonitors,
   });
   const monitors = (data?.monitors ?? []).filter((m) => m.monitor_kind === monitorKind);
@@ -25,6 +30,17 @@ export default function MonitorManagementList({
 
   if (isLoading) {
     return <div className="card h-40 animate-pulse bg-surface-200" />;
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-md border border-red-900/40 bg-red-950/20 px-4 py-3 text-sm text-red-300 space-y-2">
+        <p>{extractApiError(error)}</p>
+        <button type="button" className="btn-ghost text-xs" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? 'Retrying…' : 'Retry'}
+        </button>
+      </div>
+    );
   }
 
   if (monitors.length === 0) {

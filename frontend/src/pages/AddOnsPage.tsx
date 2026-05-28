@@ -2,7 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Lock, Radar, Quote, FlaskConical, Layers } from 'lucide-react';
-import api, { listUserMonitors, type ReportMonitorKind, type ReportMonitorRow } from '../utils/api';
+import api, {
+  extractApiError,
+  listUserMonitors,
+  type ReportMonitorKind,
+  type ReportMonitorRow,
+} from '../utils/api';
 import { useHasProAccess } from '../hooks/useHasProAccess';
 import ReportSubscribeModal from '../components/addons/ReportSubscribeModal';
 
@@ -50,7 +55,8 @@ export default function AddOnsPage() {
     enabled: hasProAccess,
   });
 
-  const monitors = monitorsQuery.data?.monitors ?? [];
+  const monitors =
+    monitorsQuery.isError || monitorsQuery.isLoading ? [] : (monitorsQuery.data?.monitors ?? []);
   const addons = catalogQuery.data?.addons ?? [];
 
   const reportAddons = useMemo(() => addons.filter((a) => a.category === 'report_monitor'), [addons]);
@@ -85,6 +91,12 @@ export default function AddOnsPage() {
 
       {catalogQuery.isError ? (
         <p className="text-sm text-red-400">Could not load add-on catalog.</p>
+      ) : null}
+
+      {hasProAccess && monitorsQuery.isError ? (
+        <p className="text-sm text-red-400">
+          Could not load your monitor subscriptions. {extractApiError(monitorsQuery.error)}
+        </p>
       ) : null}
 
       <section className="space-y-4">
