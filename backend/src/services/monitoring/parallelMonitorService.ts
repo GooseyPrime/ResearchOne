@@ -11,10 +11,17 @@
 import crypto from 'crypto';
 import axios from 'axios';
 import { config } from '../../config';
-import { query } from '../../db/pool';
+import type { PoolClient } from 'pg';
+import { query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { getStripeClient } from '../billing/stripeClient';
+import {
+  assertUserHasMonitorToken,
+  InsufficientMonitorTokensError,
+} from '../billing/monitorTokenService';
 import type { RevisionTriggerSource } from '../reasoning/reportRevisionService';
+
+export { InsufficientMonitorTokensError };
 
 export type MonitorKind = 'living_report' | 'reverse_citation_watch';
 
@@ -29,6 +36,35 @@ export interface MonitorRow {
   status: string;
   stripe_subscription_id: string | null;
   stripe_subscription_item_id: string | null;
+  expires_at?: string | null;
+  auto_renew?: boolean;
+  paused_at?: string | null;
+  cancelled_at?: string | null;
+}
+
+const MONITOR_ROW_SELECT = `id, report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status,
+            stripe_subscription_id, stripe_subscription_item_id, expires_at, auto_renew, paused_at, cancelled_at`;
+
+const MONITOR_ROW_SELECT_LEGACY = `id, report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status,
+            stripe_subscription_id, stripe_subscription_item_id, paused_at, cancelled_at`;
+
+function isMissingSchemaError(err: unknown): boolean {
+  const e = err as { code?: string };
+  return e?.code === '42P01' || e?.code === '42703';
+}
+
+async function queryMonitorRows<T extends MonitorRow>(
+  text: string,
+  params?: unknown[]
+): Promise<T[]> {
+  try {
+    return await query<T>(text, params);
+  } catch (err) {
+    if (!isMissingSchemaError(err)) throw err;
+    const legacySql = text.replace(MONITOR_ROW_SELECT, MONITOR_ROW_SELECT_LEGACY);
+    const rows = await query<T>(legacySql, params);
+    return rows.map((r) => ({ ...r, expires_at: null, auto_renew: false }));
+  }
 }
 
 /** Same text must be passed to `createReportRevision` when finishing the queued job (request row already exists). */
@@ -381,10 +417,8 @@ export async function registerMonitor(args: {
 }
 
 async function assertMonitorCaller(monitorId: string, userId: string): Promise<MonitorRow> {
-  const rows = await query<MonitorRow>(
-    `SELECT id, report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status,
-            stripe_subscription_id, stripe_subscription_item_id
-     FROM report_monitors WHERE id=$1 LIMIT 1`,
+  const rows = await queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
     [monitorId]
   );
   const row = rows[0];
@@ -404,12 +438,250 @@ export async function pauseMonitor(monitorId: string, userId: string): Promise<v
 
 export async function resumeMonitor(monitorId: string, userId: string): Promise<void> {
   const row = await assertMonitorCaller(monitorId, userId);
+  if (row.monitor_kind === 'living_report' && !row.stripe_subscription_id) {
+    throw new Error('Use token activation to resume this living report');
+  }
   await patchRemoteParallelMonitor(row.parallel_monitor_id, { status: 'active' });
   await query(
     `UPDATE report_monitors SET status='active', paused_at=NULL, last_event_at=NOW() WHERE id=$1`,
     [monitorId]
   );
   await query(`INSERT INTO report_monitor_events (monitor_id, event_kind) VALUES ($1, 'monitor_resumed')`, [monitorId]);
+}
+
+export async function patchRemoteParallelMonitorForExpiry(
+  parallelMonitorId: string,
+  body: Record<string, unknown>
+): Promise<void> {
+  await patchRemoteParallelMonitor(parallelMonitorId, body);
+}
+
+export async function setLivingReportAutoRenew(
+  monitorId: string,
+  userId: string,
+  autoRenew: boolean
+): Promise<MonitorRow> {
+  const row = await assertMonitorCaller(monitorId, userId);
+  if (row.monitor_kind !== 'living_report') {
+    throw new Error('Auto-renew applies to living reports only');
+  }
+  try {
+    await query(`UPDATE report_monitors SET auto_renew=$2, last_event_at=NOW() WHERE id=$1`, [
+      monitorId,
+      autoRenew,
+    ]);
+  } catch (err) {
+    if (!isMissingSchemaError(err)) throw err;
+  }
+  const updated = await queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
+    [monitorId]
+  );
+  return updated[0] ?? row;
+}
+
+async function activateLivingReportRowInTx(
+  client: PoolClient,
+  args: {
+    userId: string;
+    monitorId: string;
+    parallelMonitorId: string;
+    autoRenew: boolean;
+    idempotencyKey: string;
+  }
+): Promise<{ expiresAt: string; parallelMonitorId: string }> {
+  const { deductOneMonitorTokenInTx, monitorActiveExpirySql } = await import(
+    '../billing/monitorTokenService'
+  );
+  await deductOneMonitorTokenInTx(client, {
+    userId: args.userId,
+    monitorId: args.monitorId,
+    idempotencyKey: args.idempotencyKey,
+    reason: 'activate',
+  });
+
+  const updated = await client.query<{ expires_at: string }>(
+    `UPDATE report_monitors
+     SET status='active', paused_at=NULL, cancelled_at=NULL, auto_renew=$2,
+         expires_at = ${monitorActiveExpirySql()}, last_event_at=NOW()
+     WHERE id=$1
+     RETURNING expires_at`,
+    [args.monitorId, args.autoRenew]
+  );
+  const expiresAt = updated.rows[0]?.expires_at;
+  if (!expiresAt) throw new Error('Failed to activate monitor');
+
+  await client.query(
+    `INSERT INTO report_monitor_events (monitor_id, event_kind, payload)
+     VALUES ($1, 'monitor_resumed', $2::jsonb)`,
+    [args.monitorId, JSON.stringify({ funded_by: 'monitor_token' })]
+  );
+
+  return { expiresAt: String(expiresAt), parallelMonitorId: args.parallelMonitorId };
+}
+
+/**
+ * Spend one monitor token to activate (or re-activate) a living report on a finalized report.
+ */
+export async function activateLivingReportWithToken(args: {
+  reportId: string;
+  userId: string;
+  orgId?: string | null;
+  autoRenew?: boolean;
+}): Promise<{ monitorId: string; expiresAt: string; tokenBalance: number }> {
+  const autoRenew = Boolean(args.autoRenew);
+  const existing = await queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE report_id=$1 AND monitor_kind='living_report' LIMIT 1`,
+    [args.reportId]
+  );
+  const row = existing[0];
+  if (row?.status === 'active' && row.expires_at && new Date(row.expires_at).getTime() > Date.now()) {
+    const { getMonitorTokenBalance } = await import('../billing/monitorTokenService');
+    const bal = await getMonitorTokenBalance(args.userId);
+    return { monitorId: row.id, expiresAt: row.expires_at, tokenBalance: bal.tokenBalance };
+  }
+
+  await assertUserHasMonitorToken(args.userId);
+
+  let parallelMonitorId = row?.parallel_monitor_id;
+  let monitorId = row?.id;
+  let createdRemoteId: string | null = null;
+  let insertedMonitorId: string | null = null;
+
+  try {
+    if (!row || row.status === 'cancelled' || !parallelMonitorId) {
+      const reportRows = await query<{ falsification_criteria: string | null }>(
+        'SELECT falsification_criteria FROM reports WHERE id=$1',
+        [args.reportId]
+      );
+      const doiRows = await query<{ doi: string }>(
+        `SELECT DISTINCT trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', '')) AS doi
+         FROM report_citations rc
+         JOIN sources s ON s.id = rc.source_id
+         WHERE rc.report_id=$1
+           AND length(trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', ''))) > 4
+         LIMIT 60`,
+        [args.reportId]
+      );
+      const queryDef = buildQueryDef({
+        reportId: args.reportId,
+        falsification_criteria: reportRows[0]?.falsification_criteria ?? null,
+        citationDois: doiRows.map((r) => r.doi).filter(Boolean),
+        monitorKind: 'living_report',
+      });
+      parallelMonitorId = await createRemoteParallelMonitor(queryDef);
+      createdRemoteId = parallelMonitorId;
+
+      if (!row) {
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO report_monitors (
+             report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status
+           ) VALUES ($1, $2, $3, 'living_report', $4, $5::jsonb, 'paused')
+           RETURNING id`,
+          [args.reportId, args.userId, args.orgId ?? null, parallelMonitorId, JSON.stringify(queryDef)]
+        );
+        monitorId = inserted[0]?.id;
+        insertedMonitorId = monitorId ?? null;
+      }
+    }
+
+    if (!monitorId || !parallelMonitorId) throw new Error('Failed to prepare monitor row');
+
+    const pausedKey = row?.paused_at ?? row?.cancelled_at ?? 'new';
+    const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
+    let tokenBalance = 0;
+    let expiresAt = '';
+    let remoteIdToActivate = parallelMonitorId;
+
+    await withTransaction(async (client) => {
+      const result = await activateLivingReportRowInTx(client, {
+        userId: args.userId,
+        monitorId,
+        parallelMonitorId: parallelMonitorId!,
+        autoRenew,
+        idempotencyKey,
+      });
+      expiresAt = result.expiresAt;
+      remoteIdToActivate = result.parallelMonitorId;
+      const bal = await client.query<{ token_balance: number }>(
+        'SELECT token_balance FROM user_monitor_balances WHERE user_id = $1',
+        [args.userId]
+      );
+      tokenBalance = Number(bal.rows[0]?.token_balance ?? 0);
+    });
+
+    await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
+
+    return { monitorId, expiresAt, tokenBalance };
+  } catch (err) {
+    if (createdRemoteId) {
+      try {
+        await deleteRemoteParallelMonitor(createdRemoteId);
+      } catch (cleanupErr) {
+        logger.warn('monitor_token_activate_remote_cleanup_failed', {
+          reportId: args.reportId,
+          parallelMonitorId: createdRemoteId,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+    }
+    if (insertedMonitorId) {
+      await query(`DELETE FROM report_monitors WHERE id=$1 AND status='paused'`, [insertedMonitorId]);
+    }
+    throw err;
+  }
+}
+
+export async function toggleLivingReportMonitor(
+  monitorId: string,
+  userId: string,
+  active: boolean,
+  autoRenew?: boolean
+): Promise<MonitorRow> {
+  if (!active) {
+    await pauseMonitor(monitorId, userId);
+    const rows = await queryMonitorRows<MonitorRow>(
+      `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
+      [monitorId]
+    );
+    return rows[0]!;
+  }
+
+  const row = await assertMonitorCaller(monitorId, userId);
+  if (row.monitor_kind !== 'living_report') {
+    throw new Error('Token toggle applies to living reports only');
+  }
+  if (row.stripe_subscription_id) {
+    await resumeMonitor(monitorId, userId);
+    const rows = await queryMonitorRows<MonitorRow>(
+      `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
+      [monitorId]
+    );
+    return rows[0]!;
+  }
+
+  await assertUserHasMonitorToken(userId);
+
+  const pausedKey = row.paused_at ?? row.cancelled_at ?? 'new';
+  const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
+  let remoteIdToActivate = row.parallel_monitor_id;
+  await withTransaction(async (client) => {
+    const result = await activateLivingReportRowInTx(client, {
+      userId,
+      monitorId,
+      parallelMonitorId: row.parallel_monitor_id,
+      autoRenew: autoRenew ?? Boolean(row.auto_renew),
+      idempotencyKey,
+    });
+    remoteIdToActivate = result.parallelMonitorId;
+  });
+  await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
+
+  const rows = await queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,
+    [monitorId]
+  );
+  return rows[0]!;
 }
 
 export async function cancelMonitor(monitorId: string, userId: string, reason: string): Promise<void> {
@@ -525,19 +797,15 @@ export async function recordSubscriptionPastDueForMonitor(subscriptionId: string
 }
 
 export async function listMonitorsForReport(reportId: string, userId: string): Promise<MonitorRow[]> {
-  return query<MonitorRow>(
-    `SELECT id, report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status,
-            stripe_subscription_id, stripe_subscription_item_id
-     FROM report_monitors WHERE report_id=$1 AND user_id=$2 ORDER BY created_at DESC`,
+  return queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE report_id=$1 AND user_id=$2 ORDER BY created_at DESC`,
     [reportId, userId]
   );
 }
 
 export async function listMonitorsForUser(userId: string): Promise<MonitorRow[]> {
-  return query<MonitorRow>(
-    `SELECT id, report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status,
-            stripe_subscription_id, stripe_subscription_item_id
-     FROM report_monitors WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`,
+  return queryMonitorRows<MonitorRow>(
+    `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200`,
     [userId]
   );
 }

@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
+import api, {
+  extractApiError,
+  listUserMonitors,
+  getMonitorTokenBalance,
+  listMonitorTokenPackages,
+  updateMonitorTokenPreferences,
+  MONITOR_TOKENS_QUERY_KEY,
+  type ReportMonitorRow,
+  type MonitorTokenPackage,
+} from '../utils/api';
+import { startMonitorTokenCheckoutRedirect } from '../lib/billing/checkout';
 import { parseStripeCheckoutReturnSessionId, startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
 import {
@@ -14,7 +24,7 @@ import { useHasProAccess } from '../hooks/useHasProAccess';
 import { BILLING_HISTORY_QUERY_KEY, useBillingHistory } from '../hooks/useBillingHistory';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
-  living_report: 'Living Report — $19/mo',
+  living_report: 'Living Report — token (2 mo / report)',
   reverse_citation_watch: 'Reverse-Citation Watch — $15/mo',
 };
 
@@ -95,6 +105,7 @@ export default function BillingPage() {
       await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
       await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
       await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
+      await queryClient.invalidateQueries({ queryKey: MONITOR_TOKENS_QUERY_KEY }, { cancelRefetch: false });
       setConfirming('idle');
       setConfirmError(null);
       const next = new URLSearchParams(searchParams);
@@ -218,6 +229,37 @@ export default function BillingPage() {
     retry: false,
     enabled: hasProAccess,
   });
+
+  const monitorTokensQuery = useQuery({
+    queryKey: MONITOR_TOKENS_QUERY_KEY,
+    queryFn: getMonitorTokenBalance,
+    retry: false,
+  });
+
+  const monitorPackagesQuery = useQuery({
+    queryKey: ['billing-monitor-token-packages'],
+    queryFn: listMonitorTokenPackages,
+    retry: false,
+  });
+
+  const [tokenPrefsError, setTokenPrefsError] = useState<string | null>(null);
+
+  const tokenPrefsMutation = useMutation({
+    mutationFn: updateMonitorTokenPreferences,
+    onSuccess: (data) => {
+      queryClient.setQueryData(MONITOR_TOKENS_QUERY_KEY, data);
+      setTokenPrefsError(null);
+    },
+    onError: (err: unknown) => setTokenPrefsError(extractApiError(err)),
+  });
+
+  const configuredTokenPackages = monitorPackagesQuery.data?.packages ?? [];
+  const defaultAutoTopupPackageId = useMemo(() => {
+    const saved = monitorTokensQuery.data?.autoTopupPackageId;
+    if (saved && configuredTokenPackages.some((p) => p.id === saved)) return saved;
+    return configuredTokenPackages[0]?.id ?? null;
+  }, [configuredTokenPackages, monitorTokensQuery.data?.autoTopupPackageId]);
+  const autoTopupControlsEnabled = configuredTokenPackages.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
@@ -480,6 +522,101 @@ export default function BillingPage() {
       </section>
 
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
+        <h2 className="text-lg font-medium">Living Report tokens</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          One token activates monitoring on a single finalized report for 2 months. Separate from API
+          wallet credits.
+        </p>
+        {monitorTokensQuery.isLoading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading token balance…</p>
+        ) : monitorTokensQuery.isError ? (
+          <p className="mt-3 text-sm text-amber-400">{extractApiError(monitorTokensQuery.error)}</p>
+        ) : (
+          <p className="mt-3 text-sm text-slate-300">
+            Balance:{' '}
+            <span className="font-medium text-slate-100">
+              {monitorTokensQuery.data?.tokenBalance ?? 0} token
+              {(monitorTokensQuery.data?.tokenBalance ?? 0) === 1 ? '' : 's'}
+            </span>
+          </p>
+        )}
+        {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {monitorPackagesQuery.isLoading ? (
+            <p className="text-sm text-slate-500">Loading packages…</p>
+          ) : (monitorPackagesQuery.data?.packages ?? []).length > 0 ? (
+            (monitorPackagesQuery.data?.packages ?? []).map((pkg: MonitorTokenPackage) => (
+              <button
+                key={pkg.id}
+                type="button"
+                className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
+                onClick={() => {
+                  setCheckoutError(null);
+                  void startMonitorTokenCheckoutRedirect(pkg.id).catch((e) =>
+                    setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
+                  );
+                }}
+              >
+                {pkg.label}
+              </button>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">
+              Token packages are not configured on this deployment (Stripe price IDs).
+            </p>
+          )}
+        </div>
+        <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={Boolean(monitorTokensQuery.data?.autoTopupEnabled)}
+              disabled={
+                !autoTopupControlsEnabled ||
+                tokenPrefsMutation.isPending ||
+                monitorTokensQuery.isLoading
+              }
+              onChange={(e) => {
+                if (!defaultAutoTopupPackageId) return;
+                tokenPrefsMutation.mutate({
+                  autoTopupEnabled: e.target.checked,
+                  autoTopupPackageId: defaultAutoTopupPackageId,
+                });
+              }}
+            />
+            Auto top-up when balance hits zero
+          </label>
+          <p className="text-xs text-slate-500">
+            Preference only — automatic Stripe charges when depleted are not enabled yet; you will be
+            notified to buy tokens manually.
+          </p>
+          {monitorTokensQuery.data?.autoTopupEnabled ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500">Package when topping up:</span>
+              <select
+                className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+                value={defaultAutoTopupPackageId ?? ''}
+                disabled={tokenPrefsMutation.isPending || !defaultAutoTopupPackageId}
+                onChange={(e) =>
+                  tokenPrefsMutation.mutate({
+                    autoTopupEnabled: true,
+                    autoTopupPackageId: e.target.value,
+                  })
+                }
+              >
+                {configuredTokenPackages.map((pkg) => (
+                  <option key={pkg.id} value={pkg.id}>
+                    {pkg.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {tokenPrefsError ? <p className="text-xs text-red-400">{tokenPrefsError}</p> : null}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium">Your add-ons</h2>
           <Link to="/app/add-ons" className="text-xs text-indigo-400 hover:text-indigo-300">
@@ -487,7 +624,7 @@ export default function BillingPage() {
           </Link>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Per-report subscriptions for Living Reports and Reverse-Citation Watch.
+          Living Reports use tokens per report; Reverse-Citation Watch remains a Stripe subscription.
         </p>
         {!hasProAccess ? (
           <div className="mt-3 rounded-md border border-white/5 bg-slate-800/30 p-3">

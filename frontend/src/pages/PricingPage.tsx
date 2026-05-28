@@ -15,8 +15,9 @@ type AddOn = {
 const ADD_ONS: AddOn[] = [
   {
     name: 'Living Reports',
-    price: '$19/mo',
-    description: 'Your published reports stay current. ResearchOne monitors the underlying literature and pushes diffs when the sources meaningfully shift.',
+    price: 'From $10 / token',
+    description:
+      'Per-report monitor tokens (2 months active per token). Buy 1 for $10, 5 for $25, or 10 for $40 — apply tokens on finalized reports in the app.',
   },
   {
     name: 'Reverse-Citation Watch',

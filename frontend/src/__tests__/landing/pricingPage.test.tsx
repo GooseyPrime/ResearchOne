@@ -36,7 +36,7 @@ describe('PricingPage', () => {
   it('shows add-on pricing for Living Reports and Reverse-Citation Watch', () => {
     const html = render();
     expect(html).toContain('Living Reports');
-    expect(html).toContain('$19/mo');
+    expect(html).toContain('$10 / token');
     expect(html).toContain('Reverse-Citation Watch');
     expect(html).toContain('$15/mo');
   });

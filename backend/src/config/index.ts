@@ -119,6 +119,9 @@ const config = {
       wallet100: process.env.STRIPE_PRICE_ID_WALLET_100 || '',
       livingReportMonthly: process.env.STRIPE_PRICE_ID_LIVING_REPORT_MONTHLY || '',
       reverseCitationWatchMonthly: process.env.STRIPE_PRICE_ID_REVERSE_CITATION_WATCH_MONTHLY || '',
+      monitorTokenPack1: process.env.STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_1 || '',
+      monitorTokenPack5: process.env.STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_5 || '',
+      monitorTokenPack10: process.env.STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_10 || '',
     },
   },
 

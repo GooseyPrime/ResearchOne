@@ -24,6 +24,7 @@ import {
 } from '../../services/notifications/userNotifications';
 import { recordSubscriptionPastDueForMonitor } from '../../services/monitoring/parallelMonitorService';
 import { creditWalletFromCheckoutSession } from '../../services/billing/checkoutWalletTopup';
+import { creditMonitorTokensFromCheckoutSession } from '../../services/billing/checkoutMonitorTokens';
 import {
   resolveUserIdForSubscription,
   syncStripeSubscriptionToUser,
@@ -47,6 +48,10 @@ interface CheckoutSessionData {
     topupAmountCents?: string;
     topup_amount_cents?: string;
     price_id?: string;
+    purchase_type?: string;
+    package_id?: string;
+    token_amount?: string;
+    checkout_kind?: string;
   };
   client_reference_id?: string | null;
 }
@@ -81,11 +86,20 @@ const handleCheckoutSessionCompleted: WebhookEventHandler<StripeEventData> = asy
     return;
   }
 
+  const meta = session.metadata ?? {};
+  if (meta.purchase_type === 'monitor_tokens' || meta.checkout_kind === 'monitor_tokens') {
+    await creditMonitorTokensFromCheckoutSession(session.id, meta, eventId);
+    return;
+  }
+
+  const tokenCredited = await creditMonitorTokensFromCheckoutSession(session.id, meta, eventId);
+  if (tokenCredited) return;
+
   await creditWalletFromCheckoutSession(session.id, {
-    userId: session.metadata?.userId,
-    user_id: session.metadata?.user_id,
-    topupAmountCents: session.metadata?.topupAmountCents ?? session.metadata?.topup_amount_cents,
-    price_id: session.metadata?.price_id,
+    userId: meta.userId,
+    user_id: meta.user_id,
+    topupAmountCents: meta.topupAmountCents ?? meta.topup_amount_cents,
+    price_id: meta.price_id,
   }, eventId);
 };
 

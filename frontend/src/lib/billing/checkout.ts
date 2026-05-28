@@ -20,6 +20,23 @@ export function parseStripeCheckoutReturnSessionId(raw: string | null): string |
   return decoded;
 }
 
+export async function startMonitorTokenCheckoutRedirect(packageId: string): Promise<void> {
+  try {
+    const { data } = await api.post<{ checkoutUrl?: string; error?: string }>(
+      '/billing/monitor-tokens/checkout',
+      { packageId },
+    );
+    if (data?.checkoutUrl) {
+      const url = new URL(data.checkoutUrl);
+      window.location.assign(url.toString());
+      return;
+    }
+    throw new Error(data?.error || 'Checkout session was not returned by the server');
+  } catch (err: unknown) {
+    throw new Error(extractApiError(err));
+  }
+}
+
 export async function startCheckoutRedirect(
   endpoint: '/billing/checkout/topup' | '/billing/checkout/subscription',
   body: Record<string, unknown>

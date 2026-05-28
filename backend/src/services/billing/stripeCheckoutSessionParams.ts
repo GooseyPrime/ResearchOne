@@ -77,6 +77,32 @@ export function buildPlanSubscriptionCheckoutSessionCreateParams(args: {
   };
 }
 
+export function buildMonitorTokenCheckoutSessionCreateParams(args: {
+  customerId: string;
+  userId: string;
+  packageId: string;
+  tokenCount: number;
+  priceId: string;
+}) {
+  return {
+    mode: 'payment' as const,
+    customer: args.customerId,
+    client_reference_id: args.userId,
+    ...stripeCheckoutPaymentSessionDefaults,
+    line_items: [{ price: args.priceId, quantity: 1 }],
+    success_url: config.stripe.successUrl,
+    cancel_url: config.stripe.cancelUrl,
+    metadata: {
+      user_id: args.userId,
+      price_id: args.priceId,
+      purchase_type: 'monitor_tokens',
+      package_id: args.packageId,
+      token_amount: String(args.tokenCount),
+      checkout_kind: 'monitor_tokens',
+    },
+  };
+}
+
 export function buildMonitorSubscriptionCheckoutSessionCreateParams(args: {
   customerId: string;
   userId: string;

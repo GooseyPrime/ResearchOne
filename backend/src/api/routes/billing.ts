@@ -7,10 +7,16 @@ import {
   getTierForSubscriptionPrice,
 } from '../../services/billing/stripeClient';
 import {
+  buildMonitorTokenCheckoutSessionCreateParams,
   buildPlanSubscriptionCheckoutSessionCreateParams,
   buildWalletTopupCheckoutSessionCreateParams,
   checkoutSessionPaymentSettled,
 } from '../../services/billing/stripeCheckoutSessionParams';
+import {
+  getMonitorTokenBalance,
+  updateMonitorTokenPreferences,
+} from '../../services/billing/monitorTokenService';
+import { listMonitorTokenPackages, resolveMonitorTokenPackage } from '../../services/billing/monitorTokenCatalog';
 import { cancelSubscriptionAtPeriodEnd } from '../../services/billing/subscriptionService';
 import { getBillingSubscriptionView } from '../../services/billing/billingSubscriptionView';
 import { getWalletSummary, getWalletTransactions } from '../../services/billing/walletService';
@@ -24,6 +30,7 @@ import {
   type StripeSubscriptionInput,
 } from '../../services/billing/syncStripeSubscription';
 import { creditWalletFromCheckoutSession } from '../../services/billing/checkoutWalletTopup';
+import { creditMonitorTokensFromCheckoutSession } from '../../services/billing/checkoutMonitorTokens';
 import { getBillingHistory } from '../../services/billing/billingEventsService';
 import { isTierName } from '../../config/tierRules';
 import { getAddonCatalog } from '../../services/billing/addonCatalog';
@@ -76,6 +83,82 @@ router.get('/history', async (req, res, next) => {
     const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10), 0);
     const result = await getBillingHistory(userId, limit, offset);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/monitor-tokens', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const balance = await getMonitorTokenBalance(userId);
+    res.json(balance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/monitor-tokens/packages', (_req, res) => {
+  res.json({ packages: listMonitorTokenPackages() });
+});
+
+router.patch('/monitor-tokens/preferences', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const body = req.body as { autoTopupEnabled?: boolean; autoTopupPackageId?: string | null };
+    const balance = await updateMonitorTokenPreferences(userId, {
+      autoTopupEnabled: body.autoTopupEnabled,
+      autoTopupPackageId: body.autoTopupPackageId,
+    });
+    res.json(balance);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'Invalid auto top-up package') {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.post('/monitor-tokens/checkout', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const packageId = String(req.body?.packageId ?? '').trim();
+    const pkg = resolveMonitorTokenPackage(packageId);
+    if (!pkg) {
+      res.status(400).json({ error: 'Invalid token package' });
+      return;
+    }
+
+    const email = (req.auth?.payload?.email as string | undefined) ?? null;
+    await ensureUserAndTierRow(userId, email);
+    const customerId = await getOrCreateStripeCustomer(userId, email);
+
+    const stripe = getStripeClient();
+    const session = await stripe.checkout.sessions.create(
+      buildMonitorTokenCheckoutSessionCreateParams({
+        customerId,
+        userId,
+        packageId: pkg.id,
+        tokenCount: pkg.tokenCount,
+        priceId: pkg.priceId,
+      })
+    );
+
+    res.json({ checkoutUrl: session.url, sessionId: session.id });
   } catch (err) {
     next(err);
   }
@@ -276,16 +359,25 @@ router.post('/checkout/confirm', async (req, res, next) => {
         });
         return;
       }
-      await creditWalletFromCheckoutSession(sessionId, {
-        user_id: session.metadata?.user_id,
-        userId: session.metadata?.userId,
-        topupAmountCents: session.metadata?.topup_amount_cents ?? session.metadata?.topupAmountCents,
-        price_id: session.metadata?.price_id,
-      });
+      const meta = session.metadata ?? {};
+      const tokenCredited = await creditMonitorTokensFromCheckoutSession(
+        sessionId,
+        meta,
+        `checkout_confirm:${sessionId}`
+      );
+      if (!tokenCredited) {
+        await creditWalletFromCheckoutSession(sessionId, {
+          user_id: meta.user_id,
+          userId: meta.userId,
+          topupAmountCents: meta.topup_amount_cents ?? meta.topupAmountCents,
+          price_id: meta.price_id,
+        });
+      }
     }
 
     const view = await getBillingSubscriptionView(userId);
-    res.json(view);
+    const tokenBalance = await getMonitorTokenBalance(userId);
+    res.json({ ...view, monitorTokens: tokenBalance });
   } catch (err) {
     next(err);
   }
