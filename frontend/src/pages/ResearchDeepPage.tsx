@@ -25,6 +25,7 @@ import LiveStatusBanner from '../components/research/LiveStatusBanner';
 import ResearchRunFailureCard from '../components/research/ResearchRunFailureCard';
 import PlanConfirmationPanel, { type PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
+import SkepticPersonaSelector from '../components/research/SkepticPersonaSelector';
 import {
   startResearch,
   getResearchRuns,
@@ -150,6 +151,7 @@ export default function ResearchDeepPage() {
   // models can review them as sources alongside the corpus search results.
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
+  const [skepticPersona, setSkepticPersona] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
   const [savedOrchestrationProfileId, setSavedOrchestrationProfileId] = useState('');
@@ -677,9 +679,10 @@ export default function ResearchDeepPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+    const supplementalMerged = [supplemental.trim(), skepticPersona.trim()].filter(Boolean).join('\n\n');
     mutation.mutate({
       query: query.trim(),
-      supplemental: supplemental.trim() || undefined,
+      supplemental: supplementalMerged || undefined,
       filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',
@@ -750,6 +753,12 @@ export default function ResearchDeepPage() {
             />
             <p className="text-xs text-slate-500 mt-1">Be specific and include the exact framing you want tested.</p>
           </div>
+
+          <SkepticPersonaSelector
+            value={skepticPersona}
+            onChange={setSkepticPersona}
+            disabled={mutation.isPending || formLocked}
+          />
 
           <div>
             <label className="section-title block mb-2">Research objective</label>
