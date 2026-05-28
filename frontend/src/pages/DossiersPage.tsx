@@ -30,14 +30,15 @@ export default function DossiersPage() {
   }, [data?.rows, search]);
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6 bg-r1-canvas min-h-full">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <FolderOpen className="text-accent" size={24} />
+          <span className="r1-tag r1-tag-cyan mb-3 inline-flex">DOSSIERS</span>
+          <h1 className="text-2xl sm:text-3xl font-bold text-r1-heading flex items-center gap-3">
+            <FolderOpen className="text-r1-cyan" size={24} />
             Dossiers
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-r1-muted text-sm mt-2">
             Each dossier bundles your request, plan, linked report, and run statistics. Open a row for
             details.
           </p>

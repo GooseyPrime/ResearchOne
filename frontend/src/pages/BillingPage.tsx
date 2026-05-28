@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import api, { extractApiError, listUserMonitors, type ReportMonitorRow } from '../utils/api';
@@ -88,29 +88,35 @@ export default function BillingPage() {
 
   const billingIntent = searchParams.get('intent');
 
-  const applyCheckoutConfirmSuccess = async (data: BillingSubscription) => {
-    queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
-    await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
-    await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
-    await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
-    setConfirming('idle');
-    setConfirmError(null);
-    const next = new URLSearchParams(searchParams);
-    next.delete('checkout');
-    next.delete('session_id');
-    setSearchParams(next, { replace: true });
-  };
+  const applyCheckoutConfirmSuccess = useCallback(
+    async (data: BillingSubscription) => {
+      queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
+      await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
+      await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
+      await queryClient.invalidateQueries({ queryKey: ['billing-monitors'] }, { cancelRefetch: false });
+      setConfirming('idle');
+      setConfirmError(null);
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      next.delete('session_id');
+      setSearchParams(next, { replace: true });
+    },
+    [queryClient, searchParams, setSearchParams],
+  );
 
-  const runCheckoutConfirm = async (sessionId: string) => {
-    setConfirming('in_progress');
-    try {
-      const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
-      await applyCheckoutConfirmSuccess(data);
-    } catch (e) {
-      setConfirming('error');
-      setConfirmError(extractApiError(e));
-    }
-  };
+  const runCheckoutConfirm = useCallback(
+    async (sessionId: string) => {
+      setConfirming('in_progress');
+      try {
+        const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
+        await applyCheckoutConfirmSuccess(data);
+      } catch (e) {
+        setConfirming('error');
+        setConfirmError(extractApiError(e));
+      }
+    },
+    [applyCheckoutConfirmSuccess],
+  );
 
   useEffect(() => {
     const checkout = searchParams.get('checkout');
@@ -151,7 +157,7 @@ export default function BillingPage() {
     }
 
     void runCheckoutConfirm(sessionId);
-  }, [queryClient, searchParams, setSearchParams]);
+  }, [queryClient, runCheckoutConfirm, searchParams, setSearchParams]);
 
   const historyQuery = useBillingHistory(25);
 

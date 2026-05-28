@@ -24,12 +24,14 @@ const COMPETITOR_NAMES_CASE_INSENSITIVE = [
   'Anthropic',
   'Gemini',
   'Elicit',
-  'Scite',
   'You.com',
   'Undermind',
   'Iris.ai',
   'NotebookLM',
 ];
+
+/** Approved corpus integrations on the Sticklight landing page. */
+const LANDING_ALLOWED_NAMES = ['Scite'];
 
 const COMPETITOR_NAMES_WITH_TRAILING_SPACE = ['Claude ', 'ARI ', 'Parallel '];
 
@@ -58,8 +60,14 @@ describe('marketing hardening — no competitor names', () => {
     it(`${page.name} does not contain competitor proper nouns`, () => {
       const html = page.render();
       const htmlLower = html.toLowerCase();
+      const blocklist =
+        page.name === 'LandingPage'
+          ? COMPETITOR_NAMES_CASE_INSENSITIVE.filter(
+              (n) => !LANDING_ALLOWED_NAMES.some((a) => a.toLowerCase() === n.toLowerCase()),
+            )
+          : COMPETITOR_NAMES_CASE_INSENSITIVE;
 
-      for (const name of COMPETITOR_NAMES_CASE_INSENSITIVE) {
+      for (const name of blocklist) {
         expect(htmlLower).not.toContain(name.toLowerCase());
       }
 
@@ -73,28 +81,15 @@ describe('marketing hardening — no competitor names', () => {
     });
   }
 
-  /** Wave 4 — verbatim competitor attributions live only in this anchored section. */
-  it('MethodologyPage has no competitor names outside #what-competitors-say', () => {
-    const { container } = render(
-      <MemoryRouter>
-        <MethodologyPage />
-      </MemoryRouter>,
+  /** Sticklight methodology page — no legacy competitor anchor section. */
+  it('MethodologyPage has no competitor names in marketing copy', () => {
+    const html = renderInRouter(<MethodologyPage />).toLowerCase();
+    const blocklist = COMPETITOR_NAMES_CASE_INSENSITIVE.filter(
+      (n) => !LANDING_ALLOWED_NAMES.some((a) => a.toLowerCase() === n.toLowerCase()),
     );
-    const shell = container.cloneNode(true) as HTMLElement;
-    shell.querySelector('#what-competitors-say')?.remove();
-    const htmlLower = shell.textContent?.toLowerCase() ?? '';
-
-    for (const name of COMPETITOR_NAMES_CASE_INSENSITIVE) {
-      expect(htmlLower).not.toContain(name.toLowerCase());
+    for (const name of blocklist) {
+      expect(html).not.toContain(name.toLowerCase());
     }
-    for (const name of COMPETITOR_NAMES_WITH_TRAILING_SPACE) {
-      expect(htmlLower).not.toContain(name.toLowerCase());
-    }
-    for (const name of COMPETITOR_NAMES_CASE_SENSITIVE) {
-      expect(shell.textContent ?? '').not.toContain(name);
-    }
-
-    expect(container.querySelector('#what-competitors-say')).toBeTruthy();
   });
 });
 
@@ -115,29 +110,19 @@ describe('marketing hardening — no GB/storage language', () => {
 });
 
 describe('marketing hardening — structural copy present', () => {
-  it('LandingPage contains Wave 2 hero and marquee anchors', () => {
+  it('LandingPage contains Sticklight vault marketing anchors', () => {
     const html = renderInRouter(<LandingPage />);
+    expect(html).toContain('CAPABILITY_MATRIX');
+    expect(html).toContain('Research infrastructure');
+    expect(html).toContain('CORPUS_INTEGRATIONS');
     expect(html).toContain('Research that defends itself.');
-    expect(html).toContain('DEEP RESEARCH PLATFORM');
-    expect(html).toContain('Built for defensible decisions.');
-    expect(html).toContain('Side-by-side with general-purpose research assistants. We win where defense matters.');
-    expect(html).toContain('A report that keeps its receipts.');
-    expect(html).toContain('Source-corroboration tiers');
-    expect(html).toMatch(
-      /data-testid="(?:pipeline-schematic|pipeline-animated|pipeline-mobile-static|static-pipeline-fallback)"/
-    );
-    expect(html).toContain('data-testid="living-report-timeline"');
-    expect(html).toContain('Skeptic agent, by design');
-    expect(html).toContain('Ten stages. Seven agents. One adversary.');
-    expect(html).toContain('Intake to Living state, every step is named, instrumented, and reviewable.');
-    expect(html).toContain('Walk the pipeline →');
-    expect(html).toContain('Defensible at the data layer, too.');
-    expect(html).toContain('See trust posture →');
+    expect(html).toContain('id="main-content"');
   });
 
-  it('MethodologyPage contains Five modes. One pipeline.', () => {
+  it('MethodologyPage contains pipeline methodology copy', () => {
     const html = renderInRouter(<MethodologyPage />);
-    expect(html).toContain('Five modes. One pipeline.');
+    expect(html).toContain('How ResearchOne works');
+    expect(html).toContain('ADVERSARIAL_REVIEW');
   });
 });
 

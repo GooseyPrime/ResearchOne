@@ -1,180 +1,123 @@
+/**
+ * MethodologyPage - Pipeline methodology explanation
+ */
+
+import { R1Shell } from '@/components/r1-shell/R1Shell';
+import { MethodologyPipeline } from '@/components/r1-vault/MethodologyPipeline';
 import { Link } from 'react-router-dom';
-import LandingHeader from '../components/landing/LandingHeader';
-import LandingFooter from '../components/landing/LandingFooter';
-import ModeMatrix from '../components/landing/ModeMatrix';
-import PipelineDiagram from '../components/landing/PipelineDiagram';
-import WhatCompetitorsActuallySay from '../components/landing/WhatCompetitorsActuallySay';
-
-const PIPELINE_STAGES: Array<{ n: number; agent: string; role: string }> = [
-  { n: 1, agent: 'Planner', role: 'Decomposes your question into sub-questions, retrieval targets, falsification criteria' },
-  { n: 2, agent: 'Discovery', role: 'Autonomously locates and ingests external sources when corpus is sparse' },
-  { n: 3, agent: 'Retriever', role: 'Pulls sources from corpus and external feeds via hybrid vector + full-text search' },
-  { n: 4, agent: 'Retriever Analysis', role: 'Evaluates sources by source-corroboration tier, flags outliers and bridges between concepts' },
-  { n: 5, agent: 'Reasoner', role: 'Builds structured argument chains, tags every claim by source-corroboration tier' },
-  { n: 6, agent: 'Skeptic', role: "Attacks the reasoner's conclusions, surfaces alternatives, prevents confirmation bias" },
-  { n: 7, agent: 'Synthesizer', role: 'Writes the long-form report, integrating reasoning and skeptical critique' },
-  { n: 8, agent: 'Verifier', role: 'Quality gate — checks citation integrity, source-corroboration-tier consistency, contradiction completeness' },
-  { n: 9, agent: 'Report Save', role: 'Persists the report, sections, and verification metadata' },
-  { n: 10, agent: 'Epistemic Persistence', role: 'Extracts and stores claims, contradictions, and citations into the knowledge graph' },
-];
-
-const REVISION_AGENTS = [
-  'Revision Intake Agent',
-  'Report Locator / Impact Mapper',
-  'Change Planner',
-  'Section Rewriter',
-  'Citation Integrity Checker',
-  'Diff / Patch Assembler',
-  'Final Revision Verifier',
-];
+import { ChevronRight, FileText } from 'lucide-react';
 
 export default function MethodologyPage() {
   return (
-    <div className="min-h-screen bg-r1-bg text-r1-text">
-      <LandingHeader />
-      <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h1 className="font-serif text-5xl">Ten stages. Seven agents. One adversary.</h1>
-        <p className="mt-4 max-w-3xl text-r1-text-muted">
-          Every stage is named. Every agent is auditable. The Skeptic exists outside the model.
-        </p>
-
-        <section className="mt-12">
-          <h2 className="font-serif text-3xl">Ten stages. Seven specialized agents.</h2>
-          <p className="mt-3 text-r1-text-muted">
-            Every report follows the same disciplined pipeline. You see it run live as it happens.
+    <R1Shell variant="public">
+      {/* Hero */}
+      <section data-ev-id="ev_2cd3949cbb" className="pt-24 pb-12 bg-r1-canvas-deep border-b border-r1-border">
+        <div data-ev-id="ev_157c45e3a4" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <span data-ev-id="ev_02a1786d3d" className="r1-tag r1-tag-cyan mb-4 inline-flex">
+            METHODOLOGY
+          </span>
+          <h1 data-ev-id="ev_e6675ad580" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-r1-heading leading-tight text-balance">
+            How ResearchOne works
+          </h1>
+          <p data-ev-id="ev_aa5ad26f36" className="mt-4 text-xl text-r1-muted leading-relaxed">
+            A transparent look at the multi-agent pipeline that powers every research run.
           </p>
-          <div className="mt-6 overflow-x-auto rounded-xl border border-white/10">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-white/10 bg-r1-bg-deep">
-                  <th className="px-4 py-3 font-mono text-xs uppercase text-r1-accent">#</th>
-                  <th className="px-4 py-3 font-semibold">Agent</th>
-                  <th className="px-4 py-3 font-semibold">What it does</th>
-                </tr>
-              </thead>
-              <tbody>
-                {PIPELINE_STAGES.map((row) => (
-                  <tr key={row.n} className="border-b border-white/5 hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 font-mono text-r1-text-muted">{row.n}</td>
-                    <td className="px-4 py-3 text-r1-text">{row.agent}</td>
-                    <td className="px-4 py-3 text-r1-text-muted">{row.role}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </div>
+      </section>
+      
+      {/* Pipeline visualization */}
+      <MethodologyPipeline />
+      
+      {/* Additional methodology content */}
+      <section data-ev-id="ev_f7aee2320e" className="py-20 lg:py-32 bg-r1-canvas-deep">
+        <div data-ev-id="ev_ba5a82429a" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div data-ev-id="ev_5e6c2c8167" className="grid lg:grid-cols-2 gap-12">
+            {/* Adversarial approach */}
+            <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-skeptic/20">
+              <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-skeptic/50 text-r1-skeptic">
+                ADVERSARIAL_REVIEW
+              </span>
+              <h3 data-ev-id="ev_d800821cdc" className="text-xl font-bold text-r1-heading mb-4">
+                Why we attack our own conclusions
+              </h3>
+              <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
+                The Skeptic agent is the key differentiator. Before any report is finalized, 
+                a dedicated adversarial agent systematically attacks every conclusion, 
+                looking for logical gaps, evidence weaknesses, and alternative interpretations.
+              </p>
+              <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
+                {[
+                'Challenges claim confidence levels',
+                'Identifies unsupported assertions',
+                'Flags potential confirmation bias',
+                'Surfaces contradictory evidence'].
+                map((item, i) =>
+                <li data-ev-id="ev_0dc4f9f082" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
+                    <span data-ev-id="ev_367358ce9f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-skeptic" />
+                    {item}
+                  </li>
+                )}
+              </ul>
+            </div>
+            
+            {/* Contradiction preservation */}
+            <div data-ev-id="ev_587712de5f" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-amber/20">
+              <span data-ev-id="ev_5dffdd583e" className="r1-tag mb-4 inline-flex r1-tag-amber">
+                CONTRADICTION_LEDGER
+              </span>
+              <h3 data-ev-id="ev_fabd1bd0c7" className="text-xl font-bold text-r1-heading mb-4">
+                Truth is messy. Our reports reflect that.
+              </h3>
+              <p data-ev-id="ev_7f41472e59" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
+                Unlike systems that silently resolve conflicts, ResearchOne preserves 
+                contradictions in a dedicated ledger. When sources disagree, we show you 
+                both perspectives with full context.
+              </p>
+              <ul data-ev-id="ev_fb2d7422a3" className="flex flex-col gap-2">
+                {[
+                'Contradictions are surfaced, not hidden',
+                'Each conflict includes source attribution',
+                'Severity levels help prioritize review',
+                'Resolution notes when conflicts are resolved'].
+                map((item, i) =>
+                <li data-ev-id="ev_4739b33387" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
+                    <span data-ev-id="ev_ac7058838a" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-amber" />
+                    {item}
+                  </li>
+                )}
+              </ul>
+            </div>
           </div>
-        </section>
-
-        <section className="mt-12">
-          <PipelineDiagram />
-        </section>
-
-        <section className="mt-16">
-          <h2 className="font-serif text-3xl">Four source classes (retrieval context)</h2>
-          <p className="mt-3 max-w-3xl text-r1-text-muted">
-            Beyond source-corroboration tiers on citations, ResearchOne tags retrieved sources along an orthogonal axis:
-            how each source relates to public controversy, institutional narratives, and shifting expert agreement. These
-            labels describe the corpus of retrieved sources — not primary evidence artifacts attached to events.
+        </div>
+      </section>
+      
+      {/* CTA */}
+      <section data-ev-id="ev_e8c1910adb" className="py-20 bg-r1-canvas border-t border-r1-border">
+        <div data-ev-id="ev_87d67152b4" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 data-ev-id="ev_4b5e59f775" className="text-2xl font-bold text-r1-heading mb-4">
+            See the methodology in action
+          </h2>
+          <p data-ev-id="ev_c131e13bf2" style={{ display: 'block', width: '100%', maxWidth: '600px', margin: '0 auto 32px auto' }} className="text-r1-muted text-center">
+            Explore a complete research report to see how the pipeline produces citation-backed dossiers with adversarial review.
           </p>
-          <ul className="mt-6 space-y-4 text-sm text-r1-text-muted">
-            <li>
-              <span className="font-semibold text-r1-text">Suppressed / recovered</span> — sources whose substantive claims
-              were delayed, buried, or unevenly surfaced in public channels; secrecy posture alone does not substitute for
-              stronger corroboration.
-            </li>
-            <li>
-              <span className="font-semibold text-r1-text">Actively contested</span> — sources where opposed narratives are
-              live and well-documented; interpret quoted passages carefully rather than assuming either camp is complete.
-            </li>
-            <li>
-              <span className="font-semibold text-r1-text">Broad-agreement framing</span> — sources aligned with a durable mainstream
-              framing; still subject to mechanism checks — popularity is not a substitute for cited substance.
-            </li>
-            <li>
-              <span className="font-semibold text-r1-text">Shifting agreement</span> — sources tied to topics where expert
-              agreement moved materially over time; older &quot;settled&quot; summaries may be misleading without revision.
-            </li>
-          </ul>
-        </section>
+          <div data-ev-id="ev_c741136543" className="flex flex-wrap justify-center gap-4">
+            <Link
+              to="/sample-report"
+              className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold bg-r1-cyan text-r1-canvas rounded hover:bg-r1-cyan/90 transition-all duration-200 r1-focus-ring">
 
-        <section className="mt-16">
-          <h2 className="font-serif text-3xl">What &quot;contradictions preserved&quot; looks like</h2>
-          <p className="mt-3 text-r1-text-muted">
-            Most tools sand contested findings into a clean narrative. ResearchOne names them.
-          </p>
-          <pre className="mt-6 overflow-auto rounded-xl border border-white/10 bg-r1-bg-deep p-4 text-xs text-r1-text-muted">{`--- Excerpt: "Effects of Intermittent Fasting on Insulin Sensitivity" ---
+              <FileText className="w-4 h-4" />
+              View Sample Report
+            </Link>
+            <Link
+              to="/sign-up"
+              className="inline-flex items-center gap-2 px-6 py-3 text-base font-medium text-r1-text bg-r1-panel border border-r1-border rounded hover:bg-r1-panel-lift transition-all duration-200 r1-focus-ring">
 
-[strong_evidence]  Multiple RCTs show improved fasting insulin
-                   in metabolically unhealthy adults [3, 7, 12].
-
-[contradiction]    Three trials reaching opposite conclusions on
-                   women under 40 [9, 14, 22] — protocol differences
-                   in fasting window length appear material.
-
-[testimony]        Self-reported energy and sleep quality benefits
-                   appear consistently in observational studies but
-                   are not isolated from selection effects.
-
-[speculation]      Mechanism via autophagy upregulation is plausible
-                   but human-trial findings remain preliminary.`}</pre>
-        </section>
-
-        <WhatCompetitorsActuallySay />
-
-        <section className="mt-16">
-          <h2 className="font-serif text-3xl">Post-publication revision workflow</h2>
-          <p className="mt-4 text-r1-text-muted">
-            Published reports can be revised through a dedicated seven-agent pipeline (documented in the repository README):
-            structured intake, impact mapping, change planning, section rewrites, citation integrity checks, diff assembly,
-            and a final verifier.
-          </p>
-          <ol className="mt-6 list-decimal space-y-2 pl-6 text-r1-text-muted">
-            {REVISION_AGENTS.map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-          </ol>
-          <p className="mt-6 text-sm text-r1-text-muted">
-            Each stage emits progress over the live socket so operators can trace revisions end-to-end.
-          </p>
-        </section>
-
-        <section id="modes" className="mt-16">
-          <h2 className="font-serif text-3xl">Five modes. One pipeline.</h2>
-          <p className="mt-3 text-r1-text-muted">
-            Each mode runs the full ten-stage pipeline. The differences live in the mode-specific overlays on the
-            Planner, Skeptic, and Synthesizer.
-          </p>
-          <div className="mt-6">
-            <ModeMatrix />
+              Start Your Research
+              <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
-          <div className="mt-8 space-y-4 text-sm text-r1-text-muted">
-            <p>
-              Mode choice happens before run-time, not after. The planner needs to know which decomposition strategy
-              to use, the skeptic needs to know which attack surface to prioritize, and the synthesizer needs to know
-              which output format to target. Choosing a mode after retrieval would leave the planner blind to the
-              research objective.
-            </p>
-            <p>
-              A &quot;mode-specific overlay&quot; is a system-prompt prefix that adjusts agent behavior without replacing
-              the base pipeline. The Planner overlay changes decomposition strategy (e.g. actor-graph vs. balanced
-              sub-questions). The Skeptic overlay adjusts attack intensity and focus. The Synthesizer overlay adjusts
-              output structure and emphasis.
-            </p>
-            <p>
-              Adversarial Twin (Sovereign-only) runs the Skeptic at full attack intensity with no synthesis pass —
-              producing only contradictions, gaps, and falsification probes. Use it when you need a dedicated red-team
-              output alongside the standard report.
-            </p>
-          </div>
-        </section>
+        </div>
+      </section>
+    </R1Shell>);
 
-        <p className="mt-12">
-          <Link to="/pricing" className="text-r1-accent hover:underline">
-            View pricing →
-          </Link>
-        </p>
-      </main>
-      <LandingFooter />
-    </div>
-  );
 }

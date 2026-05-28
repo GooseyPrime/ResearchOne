@@ -15,12 +15,13 @@ describe('App routing structure', () => {
 
   it('renders the landing page route under SSR', () => {
     const html = renderToString(<App />);
-    expect(html).toContain('Research that defends itself.');
+    expect(html).toContain('Research that');
+    expect(html).toContain('maps');
   });
 
   it('renders the public sample report route under SSR', () => {
     const html = renderToString(<App initialEntries={['/sample-report']} />);
-    expect(html).toContain('Sample research dossier');
+    expect(html).toContain('AI Governance Frameworks: Comparative Analysis');
   });
 
   it('does not render signed-in research chrome when visiting /app/research signed out', () => {

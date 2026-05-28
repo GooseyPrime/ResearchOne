@@ -14,8 +14,9 @@ function inRouter(node: ReactElement) {
 describe('marketing pages', () => {
   it('MethodologyPage — pipeline depth', () => {
     const html = inRouter(<MethodologyPage />);
-    expect(html).toContain('Ten stages. Seven agents. One adversary.');
-    expect(html).toContain('Five modes. One pipeline.');
+    expect(html).toContain('How ResearchOne works');
+    expect(html).toContain('multi-agent pipeline');
+    expect(html).toContain('ADVERSARIAL_REVIEW');
   });
 
   it('SovereignPage — isolation story', () => {
