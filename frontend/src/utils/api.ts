@@ -959,7 +959,25 @@ export interface ReportMonitorRow {
   status: string;
   stripe_subscription_id: string | null;
   stripe_subscription_item_id: string | null;
+  expires_at?: string | null;
+  auto_renew?: boolean;
 }
+
+export interface MonitorTokenBalance {
+  tokenBalance: number;
+  autoTopupEnabled: boolean;
+  autoTopupPackageId: string | null;
+}
+
+export interface MonitorTokenPackage {
+  id: string;
+  label: string;
+  tokenCount: number;
+  priceCents: number;
+  priceId: string;
+}
+
+export const MONITOR_TOKENS_QUERY_KEY = ['billing-monitor-tokens'] as const;
 
 export interface MonitorEventRow {
   id: string;
@@ -978,6 +996,48 @@ export const createMonitorCheckoutSession = (reportId: string, monitorKind: Repo
     .post<{ checkoutUrl: string | null; sessionId: string }>(`/reports/${reportId}/monitors`, {
       monitorKind,
     })
+    .then((r) => r.data);
+
+export const getMonitorTokenBalance = () =>
+  api.get<MonitorTokenBalance>('/billing/monitor-tokens').then((r) => r.data);
+
+export const listMonitorTokenPackages = () =>
+  api.get<{ packages: MonitorTokenPackage[] }>('/billing/monitor-tokens/packages').then((r) => r.data);
+
+export const createMonitorTokenCheckout = (packageId: string) =>
+  api
+    .post<{ checkoutUrl: string | null; sessionId: string }>('/billing/monitor-tokens/checkout', {
+      packageId,
+    })
+    .then((r) => r.data);
+
+export const updateMonitorTokenPreferences = (body: {
+  autoTopupEnabled?: boolean;
+  autoTopupPackageId?: string | null;
+}) => api.patch<MonitorTokenBalance>('/billing/monitor-tokens/preferences', body).then((r) => r.data);
+
+export const activateLivingReportMonitor = (
+  reportId: string,
+  options?: { autoRenew?: boolean },
+) =>
+  api
+    .post<{ monitorId: string; expiresAt: string; tokenBalance: number }>(
+      `/reports/${reportId}/monitors`,
+      { monitorKind: 'living_report', autoRenew: options?.autoRenew },
+    )
+    .then((r) => r.data);
+
+export const toggleLivingReportMonitor = (
+  monitorId: string,
+  body: { active: boolean; autoRenew?: boolean },
+) =>
+  api
+    .post<{ monitor: ReportMonitorRow; tokenBalance: number }>(`/monitors/${monitorId}/toggle`, body)
+    .then((r) => r.data);
+
+export const setLivingReportAutoRenew = (monitorId: string, autoRenew: boolean) =>
+  api
+    .patch<{ monitor: ReportMonitorRow }>(`/monitors/${monitorId}/auto-renew`, { autoRenew })
     .then((r) => r.data);
 
 export const listUserMonitors = () =>

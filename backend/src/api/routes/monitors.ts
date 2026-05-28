@@ -9,16 +9,21 @@ import { query } from '../../db/pool';
 import { getUserTier } from '../../services/tier/tierService';
 import { TIER_RULES } from '../../config/tierRules';
 import {
+  activateLivingReportWithToken,
   cancelMonitor,
+  InsufficientMonitorTokensError,
   listMonitorEvents,
   listMonitorsForReport,
   listMonitorsForUser,
   monitorPriceIdForKind,
   pauseMonitor,
   resumeMonitor,
+  setLivingReportAutoRenew,
+  toggleLivingReportMonitor,
   userCanAccessReportForMonitor,
   type MonitorKind,
 } from '../../services/monitoring/parallelMonitorService';
+import { getMonitorTokenBalance } from '../../services/billing/monitorTokenService';
 
 /** Report-scoped checkout + listing — mount at `/api/reports` (paths: `/:reportId/monitors`). */
 export const reportMonitorsRouter = Router();
@@ -43,9 +48,50 @@ byReport.post('/', async (req, res, next) => {
     }
 
     const reportId = String((req.params as { reportId?: string }).reportId ?? '').trim();
-    const monitorKind = String((req.body as { monitorKind?: string })?.monitorKind ?? '').trim() as MonitorKind;
+    const body = req.body as { monitorKind?: string; autoRenew?: boolean };
+    const monitorKind = String(body?.monitorKind ?? '').trim() as MonitorKind;
     if (!reportId || (monitorKind !== 'living_report' && monitorKind !== 'reverse_citation_watch')) {
       res.status(400).json({ error: 'reportId and monitorKind are required' });
+      return;
+    }
+
+    if (monitorKind === 'living_report') {
+      const allowed = await userCanAccessReportForMonitor(userId, reportId);
+      if (!allowed) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+      const reportRows = await query<{ status: string }>('SELECT status FROM reports WHERE id=$1', [reportId]);
+      if (reportRows.length === 0) {
+        res.status(404).json({ error: 'Report not found' });
+        return;
+      }
+      if (reportRows[0].status !== 'finalized') {
+        res.status(400).json({ error: 'Monitors can only be attached to finalized reports' });
+        return;
+      }
+      try {
+        const result = await activateLivingReportWithToken({
+          reportId,
+          userId,
+          autoRenew: Boolean(body.autoRenew),
+        });
+        res.json({
+          monitorId: result.monitorId,
+          expiresAt: result.expiresAt,
+          tokenBalance: result.tokenBalance,
+        });
+      } catch (err) {
+        if (err instanceof InsufficientMonitorTokensError) {
+          res.status(402).json({
+            error: 'Insufficient monitor tokens',
+            detail: 'Purchase tokens on the billing page to activate this living report.',
+            upgradePath: '/app/billing',
+          });
+          return;
+        }
+        throw err;
+      }
       return;
     }
 
@@ -148,6 +194,60 @@ userMonitorsRouter.get('/:monitorId/events', async (req, res, next) => {
     }
     const rows = await listMonitorEvents(req.params.monitorId, userId);
     res.json({ events: rows });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'Forbidden' || msg === 'Monitor not found') {
+      res.status(msg === 'Forbidden' ? 403 : 404).json({ error: msg });
+      return;
+    }
+    next(err);
+  }
+});
+
+userMonitorsRouter.post('/:monitorId/toggle', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const active = Boolean((req.body as { active?: boolean })?.active);
+    const autoRenew = (req.body as { autoRenew?: boolean })?.autoRenew;
+    const row = await toggleLivingReportMonitor(
+      req.params.monitorId,
+      userId,
+      active,
+      autoRenew
+    );
+    const balance = await getMonitorTokenBalance(userId);
+    res.json({ monitor: row, tokenBalance: balance.tokenBalance });
+  } catch (err) {
+    if (err instanceof InsufficientMonitorTokensError) {
+      res.status(402).json({
+        error: 'Insufficient monitor tokens',
+        upgradePath: '/app/billing',
+      });
+      return;
+    }
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'Forbidden' || msg === 'Monitor not found') {
+      res.status(msg === 'Forbidden' ? 403 : 404).json({ error: msg });
+      return;
+    }
+    next(err);
+  }
+});
+
+userMonitorsRouter.patch('/:monitorId/auto-renew', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const autoRenew = Boolean((req.body as { autoRenew?: boolean })?.autoRenew);
+    const row = await setLivingReportAutoRenew(req.params.monitorId, userId, autoRenew);
+    res.json({ monitor: row });
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
     if (msg === 'Forbidden' || msg === 'Monitor not found') {

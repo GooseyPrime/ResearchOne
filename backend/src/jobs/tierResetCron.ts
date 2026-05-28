@@ -1,5 +1,6 @@
 import { resetMonthlyCounters } from '../services/tier/tierService';
 import { reapExpiredHolds } from '../services/billing/walletReservations';
+import { sweepExpiredLivingReportMonitors } from '../services/billing/monitorExpirySweep';
 import { logger } from '../utils/logger';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -31,6 +32,17 @@ export function startTierResetCron(): void {
       }
     } catch (err) {
       logger.error('wallet_hold_reap_cron_error', { error: err instanceof Error ? err.message : 'Unknown' });
+    }
+
+    try {
+      const expiredMonitors = await sweepExpiredLivingReportMonitors();
+      if (expiredMonitors > 0) {
+        logger.info('living_report_expiry_sweep', { monitorsHandled: expiredMonitors });
+      }
+    } catch (err) {
+      logger.error('living_report_expiry_sweep_error', {
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
     }
   }
 
