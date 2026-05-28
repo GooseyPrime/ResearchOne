@@ -81,7 +81,7 @@ describe('Wave 2.5 — LandingPage main landmark', () => {
         <LandingPage />
       </MemoryRouter>,
     );
-    expect(html).toContain('id="marketing-main"');
+    expect(html).toContain('id="main-content"');
     const mains = html.match(/<main\b/g);
     expect(mains?.length).toBe(1);
   });

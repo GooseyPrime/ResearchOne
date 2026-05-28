@@ -2,9 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './theme.css';
+
 @layer base {
   :root {
-    --color-bg: #090d13;
+    --color-bg: #0A0E1A;
     --color-surface: #111827;
     --color-surface-2: #172033;
     --color-surface-3: #1e293b;

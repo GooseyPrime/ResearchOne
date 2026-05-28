@@ -21,6 +21,7 @@ export function ResearchPageShellProvider({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook is intentionally colocated with its provider
 export function useResearchPageShell(): ResearchPageShellContextValue {
   const ctx = useContext(ResearchPageShellContext);
   return (

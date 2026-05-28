@@ -3,6 +3,7 @@ import Layout from './components/layout/Layout';
 import RequireAdmin from './components/auth/RequireAdmin';
 import RequireAuth from './components/auth/RequireAuth';
 import LandingPage from './pages/LandingPage';
+import LiveRunPage from './pages/LiveRunPage';
 import ResearchPage from './pages/ResearchPage';
 import ResearchLegacyV2Redirect from './pages/ResearchLegacyV2Redirect';
 import ReportsPage from './pages/ReportsPage';
@@ -76,6 +77,7 @@ export function AppRoutes() {
       <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<Navigate to="/app/research" replace />} />
         <Route path="research" element={<ResearchPage />} />
+        <Route path="run/:runId" element={<LiveRunPage />} />
         <Route path="research-v2" element={<ResearchLegacyV2Redirect />} />
         <Route path="models" element={<RequireAdmin><ModelsPage /></RequireAdmin>} />
         <Route path="dossiers" element={<DossiersPage />} />

@@ -38,17 +38,12 @@ function SubscribeCTAMarketing({
   );
 }
 
-export default function SubscribeCTA({
+function SubscribeCTAAuthenticated({
   tier,
   cta,
   className,
   featured = false,
-  marketingStatic = false,
-}: SubscribeCTAProps) {
-  if (marketingStatic) {
-    return <SubscribeCTAMarketing tier={tier} cta={cta} className={className} />;
-  }
-
+}: Omit<SubscribeCTAProps, 'marketingStatic'>) {
   const { isLoaded, isSignedIn } = useAuth();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,5 +94,26 @@ export default function SubscribeCTA({
         <p className="mt-2 text-xs text-r1-text-muted">Subscription checkout is unavailable on this deployment.</p>
       ) : null}
     </div>
+  );
+}
+
+export default function SubscribeCTA({
+  tier,
+  cta,
+  className,
+  featured = false,
+  marketingStatic = false,
+}: SubscribeCTAProps) {
+  if (marketingStatic) {
+    return <SubscribeCTAMarketing tier={tier} cta={cta} className={className} />;
+  }
+
+  return (
+    <SubscribeCTAAuthenticated
+      tier={tier}
+      cta={cta}
+      className={className}
+      featured={featured}
+    />
   );
 }

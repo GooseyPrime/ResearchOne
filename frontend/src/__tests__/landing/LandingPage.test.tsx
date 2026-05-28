@@ -4,18 +4,19 @@ import { describe, expect, it } from 'vitest';
 import LandingPage from '../../pages/LandingPage';
 
 describe('LandingPage', () => {
-  it('includes the approved h1, CTA labels, and sign-up funnel hrefs', () => {
+  it('includes the Sticklight hero, CTA labels, and sign-up funnel hrefs', () => {
     const markup = renderToString(
       <MemoryRouter>
         <LandingPage />
       </MemoryRouter>,
     );
 
-    expect(markup).toContain('Research that defends itself.');
-    expect(markup).toContain('Open a sample report');
-    expect(markup).toContain('See the methodology');
+    expect(markup).toContain('Research that');
+    expect(markup).toContain('maps');
+    expect(markup).toContain('Start Research');
+    expect(markup).toContain('View Sample Report');
     expect(markup).toContain('href="/sign-up"');
-    expect(markup).not.toMatch(/href="\/app\/research"/);
+    expect(markup).toContain('href="/sample-report"');
   });
 
   it('does not contain storage marketing language', () => {
