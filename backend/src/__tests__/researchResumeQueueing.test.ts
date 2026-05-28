@@ -18,6 +18,22 @@ function resumeJob(
 }
 
 describe('enqueueResearchResumeAfterPlan', () => {
+  it('enqueues when no prior resume job exists', async () => {
+    const added = resumeJob('run-0', 'plan-first', 'waiting');
+    const getJob = vi.fn(async () => undefined);
+    const add = vi.fn(async () => added);
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-0', 'plan-first');
+
+    expect(getJob).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenCalledWith(
+      'research:resume_after_plan',
+      { runId: 'run-0', confirmedPlanId: 'plan-first' },
+      expect.objectContaining({ jobId: 'run-0:resume_after_plan' })
+    );
+  });
+
   it('removes a completed resume job before adding a fresh one', async () => {
     const calls: string[] = [];
     const stale = resumeJob('run-1', 'plan-old', 'completed');
@@ -34,7 +50,7 @@ describe('enqueueResearchResumeAfterPlan', () => {
     });
     const add = vi.fn(async () => {
       calls.push('add');
-      return {};
+      return fresh;
     });
 
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-1', 'plan-a');
@@ -51,9 +67,20 @@ describe('enqueueResearchResumeAfterPlan', () => {
   it('does not remove a job that is already waiting with the same plan id', async () => {
     const job = resumeJob('run-2', 'plan-b', 'waiting');
     const getJob = vi.fn(async () => job);
-    const add = vi.fn(async () => ({}));
+    const add = vi.fn(async () => job);
 
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-2', 'plan-b');
+
+    expect(job.remove).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it('treats an active job with matching plan id as idempotent success', async () => {
+    const job = resumeJob('run-2a', 'plan-active', 'active');
+    const getJob = vi.fn(async () => job);
+    const add = vi.fn(async () => job);
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-2a', 'plan-active');
 
     expect(job.remove).not.toHaveBeenCalled();
     expect(add).not.toHaveBeenCalled();
@@ -68,7 +95,7 @@ describe('enqueueResearchResumeAfterPlan', () => {
       if (getJobCalls === 1) return stale;
       return fresh;
     });
-    const add = vi.fn(async () => ({}));
+    const add = vi.fn(async () => fresh);
 
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-2b', 'plan-new');
 
@@ -102,15 +129,53 @@ describe('enqueueResearchResumeAfterPlan', () => {
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-4', 'plan-d');
 
     expect(add).toHaveBeenCalled();
-    expect(getJob).toHaveBeenCalledTimes(3);
+    expect(getJob).toHaveBeenCalledTimes(2);
   });
 
-  it('fails final validation when job is missing after add', async () => {
+  it('accepts add race when existing active job has matching plan id', async () => {
+    const raced = resumeJob('run-4b', 'plan-d2', 'active');
+    const getJob = vi.fn(async () => raced);
+    const add = vi.fn(async () => {
+      throw new Error('duplicate job id');
+    });
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-4b', 'plan-d2');
+
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when add returns a job but getJob is not yet visible', async () => {
+    const added = resumeJob('run-5', 'plan-e', 'waiting');
     const getJob = vi.fn(async () => undefined);
-    const add = vi.fn(async () => ({}));
+    const add = vi.fn(async () => added);
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-5', 'plan-e');
+
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(getJob).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails final validation when job is missing after add and add returned nothing', async () => {
+    const getJob = vi.fn(async () => undefined);
+    const add = vi.fn(async () => undefined);
 
     await expect(
-      enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-5', 'plan-e')
+      enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-6', 'plan-f')
     ).rejects.toThrow('resume_after_plan_job_missing');
+  });
+
+  it('rejects active job with wrong plan id when remove is locked', async () => {
+    const stale = resumeJob('run-7', 'plan-wrong', 'active');
+    stale.remove = vi.fn(async () => {
+      throw new Error('locked');
+    });
+    const getJob = vi.fn(async () => stale);
+    const add = vi.fn(async () => {
+      throw new Error('duplicate job id');
+    });
+
+    await expect(
+      enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-7', 'plan-right')
+    ).rejects.toThrow('duplicate job id');
   });
 });
