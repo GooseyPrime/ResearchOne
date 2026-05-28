@@ -282,6 +282,8 @@ export const runtimeTopology: RuntimeNode[] = [
 ];
 
 // ===== RESEARCH MODES =====
+// Legacy marketing/demo list — production research UIs use `constants/researchObjectives.ts`.
+// `comprehensive` implied Living Reports; that is a per-report add-on, not a research mode.
 
 export const researchModes: { id: ResearchMode; label: string; description: string }[] = [
   {
@@ -302,7 +304,7 @@ export const researchModes: { id: ResearchMode; label: string; description: stri
   {
     id: 'comprehensive',
     label: 'Comprehensive',
-    description: 'Deep mode plus living monitoring and update tracking',
+    description: 'Deprecated label — do not use in app research flows; Living Reports are add-on only',
   },
 ];
 

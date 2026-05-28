@@ -6,13 +6,13 @@ import {
   getReport,
   getReportRevision,
   getReportRevisions,
-  createReportRevision,
   publishReportFeatured,
   getResearchRun,
   getRunArtifacts,
   type ResearchRun,
   type ResearchProgressEvent,
 } from '../utils/api';
+import type { ReportRevisionRequestState } from '@/types/reportRevisionNavigation';
 import MonitorToggle from '../components/monitors/MonitorToggle';
 import ReportExportButton from '../components/reports/ReportExportButton';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
@@ -121,26 +121,12 @@ export default function ReportDetailPage() {
   // prompts so the models review them on this call.
   const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
   const [revisionUrls, setRevisionUrls] = useState<string[]>([]);
-  const [revisionProgress, setRevisionProgress] = useState<{
-    stage: string;
-    percent: number;
-    message: string;
-  } | null>(null);
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     subscribeToJob(id);
     const sock = getSocket();
-    const onProgress = (payload: unknown) => {
-      const p = payload as { reportId?: string; stage?: string; percent?: number; message?: string };
-      if (p.reportId && p.reportId !== id) return;
-      setRevisionProgress({
-        stage: p.stage ?? '',
-        percent: typeof p.percent === 'number' ? p.percent : 0,
-        message: p.message ?? '',
-      });
-    };
-    const onCompleted = () => setRevisionProgress(null);
     const onLivingCompleted = (payload: unknown) => {
       const p = payload as { reportId?: string };
       if (p.reportId && p.reportId !== id) return;
@@ -149,12 +135,8 @@ export default function ReportDetailPage() {
       qc.invalidateQueries({ queryKey: ['report-monitors', id] });
       addNotification('info', 'Living Report monitor produced a new revision for this report.');
     };
-    sock.on('revision:progress', onProgress);
-    sock.on('revision:completed', onCompleted);
     sock.on('living_report:revision_completed', onLivingCompleted);
     return () => {
-      sock.off('revision:progress', onProgress);
-      sock.off('revision:completed', onCompleted);
       sock.off('living_report:revision_completed', onLivingCompleted);
     };
   }, [id, qc, addNotification]);
@@ -300,40 +282,17 @@ export default function ReportDetailPage() {
     };
   }, [report?.metadata, report?.query, sourceRun]);
 
-  const revisionMutation = useMutation({
-    mutationFn: () =>
-      createReportRevision(id!, {
-        requestText: revisionRequestText.trim(),
-        rationale: revisionRationale.trim() || undefined,
-        revisionFiles: revisionFiles.length > 0 ? revisionFiles : undefined,
-        revisionUrls: revisionUrls.length > 0 ? revisionUrls : undefined,
-      }),
-    onMutate: () => {
-      const attachmentNote =
-        revisionFiles.length > 0 || revisionUrls.length > 0
-          ? ` (${revisionFiles.length} file${revisionFiles.length === 1 ? '' : 's'} · ${revisionUrls.length} URL${revisionUrls.length === 1 ? '' : 's'} attached)`
-          : '';
-      addNotification('info', `Revision request submitted${attachmentNote} — processing on the server…`);
-      setRevisionProgress({ stage: 'queued', percent: 0, message: 'Connecting…' });
-    },
-    onSuccess: (data) => {
-      setRevisionProgress(null);
-      addNotification('success', 'Revision requested and applied as a new version.');
-      setRevisionRequestText('');
-      setRevisionRationale('');
-      setRevisionFiles([]);
-      setRevisionUrls([]);
-      qc.invalidateQueries({ queryKey: ['report-revisions', id] });
-      qc.invalidateQueries({ queryKey: ['reports'] });
-      if (data.revisedReportId) {
-        navigate(`/app/reports/${data.revisedReportId}`);
-      }
-    },
-    onError: (err: unknown) => {
-      setRevisionProgress(null);
-      addNotification('error', err instanceof Error ? err.message : 'Revision request failed');
-    },
-  });
+  const openRevisionWorkspace = () => {
+    if (!id || !revisionRequestText.trim() || revisionSubmitting) return;
+    const state: ReportRevisionRequestState = {
+      requestText: revisionRequestText.trim(),
+      rationale: revisionRationale.trim() || undefined,
+      revisionFiles: revisionFiles.length > 0 ? revisionFiles : undefined,
+      revisionUrls: revisionUrls.length > 0 ? revisionUrls : undefined,
+    };
+    setRevisionSubmitting(true);
+    navigate(`/app/reports/${id}/revising`, { state });
+  };
 
   const featuredMutation = useMutation({
     mutationFn: async () => publishReportFeatured(id!, undefined),
@@ -691,14 +650,14 @@ export default function ReportDetailPage() {
           placeholder="Describe the edit, correction, or re-evaluation you want."
           value={revisionRequestText}
           onChange={(e) => setRevisionRequestText(e.target.value)}
-          disabled={revisionMutation.isPending}
+          disabled={revisionSubmitting}
         />
         <textarea
           className="textarea min-h-20"
           placeholder="Optional basis for change (sources, rationale, assumptions to test)"
           value={revisionRationale}
           onChange={(e) => setRevisionRationale(e.target.value)}
-          disabled={revisionMutation.isPending}
+          disabled={revisionSubmitting}
         />
         <AttachmentDropZone
           files={revisionFiles}
@@ -707,35 +666,21 @@ export default function ReportDetailPage() {
             setRevisionFiles(files);
             setRevisionUrls(urls);
           }}
-          disabled={revisionMutation.isPending}
+          disabled={revisionSubmitting}
           label="Supplemental files and URLs to support the revision (optional)"
           description="Attached files are extracted and reviewed by the revision pipeline (intake → planner → section rewriter) and also imported into the corpus so future runs can retrieve them. PDF / TXT / Markdown."
         />
+        <p className="text-xs text-slate-500">
+          Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
+        </p>
         <button
           type="button"
           className="btn-primary"
-          disabled={!revisionRequestText.trim() || revisionMutation.isPending}
-          onClick={() => revisionMutation.mutate()}
+          disabled={!revisionRequestText.trim() || revisionSubmitting}
+          onClick={openRevisionWorkspace}
         >
-          {revisionMutation.isPending ? 'Submitting revision...' : 'Submit revision request'}
+          {revisionSubmitting ? 'Opening revision workspace…' : 'Submit revision request'}
         </button>
-        {revisionProgress && (
-          <div className="rounded border border-indigo-900/30 bg-surface-900/80 p-3 space-y-2">
-            <div className="flex justify-between gap-2 text-xs text-slate-400">
-              <span className="text-slate-300">{revisionProgress.message}</span>
-              <span className="tabular-nums text-slate-500">{revisionProgress.percent}%</span>
-            </div>
-            <div className="h-1.5 bg-surface-400 rounded overflow-hidden">
-              <div
-                className="h-full bg-accent transition-[width] duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, revisionProgress.percent))}%` }}
-              />
-            </div>
-            {revisionProgress.stage && (
-              <p className="text-[11px] text-slate-500 uppercase tracking-wide">{revisionProgress.stage}</p>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="card p-5 space-y-3 print:hidden">

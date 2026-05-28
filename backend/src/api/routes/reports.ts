@@ -517,6 +517,8 @@ router.post(
       }
 
       const io = req.app.get('io') as { to: (room: string) => { emit: (event: string, data: unknown) => void } } | undefined;
+      // Revision workspace uses `subscribe:revision` → `job:revision:*` only.
+      // Also emit to `job:${id}` for clients on `subscribe:job` (e.g. living-report path).
       const emitProgress = (payload: unknown) => {
         io?.to(`job:revision:${req.params.id}`).emit('revision:progress', payload);
         io?.to(`job:${req.params.id}`).emit('revision:progress', payload);
@@ -567,6 +569,7 @@ router.post(
       });
 
       io?.to(`job:revision:${req.params.id}`).emit('revision:completed', result);
+      io?.to(`job:${req.params.id}`).emit('revision:completed', result); // see emitProgress — do not join both rooms in one client
       io?.to('reports').emit('reports:updated', {});
       res.status(202).json(result);
     } catch (err) {
