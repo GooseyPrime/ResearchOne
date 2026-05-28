@@ -44,7 +44,8 @@ export function ProtocolMarquee() {
       }}>
 
         {marqueeContent.map((label, i) => {
-          const isOperational = i >= protocolLabels.length || i >= allLabels.length && i < allLabels.length + protocolLabels.length;
+          const pos = i % allLabels.length;
+          const isOperational = pos >= protocolLabels.length;
           const isSkeptic = label === 'SKEPTIC';
 
           return (

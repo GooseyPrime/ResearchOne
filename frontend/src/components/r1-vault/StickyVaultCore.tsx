@@ -19,14 +19,17 @@ export function StickyVaultCore() {
     offset: ['start start', 'end end']
   });
 
-  // Map scroll progress to active stage
-  const activeStage = useTransform(scrollYProgress, [0, 1], [0, 9]);
+  const maxStageIndex = pipelineStages.length - 1;
+
+  // Map scroll progress to active stage (indexes 0..length-1)
+  const activeStage = useTransform(scrollYProgress, [0, 1], [0, maxStageIndex]);
 
   useEffect(() => {
     return activeStage.on('change', (v) => {
-      setActiveIndex(Math.round(v));
+      const next = Math.round(v);
+      setActiveIndex(Math.min(maxStageIndex, Math.max(0, next)));
     });
-  }, [activeStage]);
+  }, [activeStage, maxStageIndex]);
 
   return (
     <section data-ev-id="ev_225dc73099"
@@ -186,7 +189,7 @@ export function StickyVaultCore() {
                     'text-cyan-400' :
                     'text-amber-400'}`
                     }>
-                      {pipelineStages[activeIndex]?.name.toUpperCase()}
+                      {pipelineStages[activeIndex]?.name?.toUpperCase() ?? ''}
                     </span>
                   </motion.div>
                 </div>

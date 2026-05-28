@@ -8,6 +8,7 @@ import type { AgentActivity, ResearchRun } from '@/lib/researchone/types';
 import { getResearchRun, type ResearchProgressEvent } from '@/utils/api';
 import { getSocket, subscribeToJob } from '@/utils/socket';
 import { mapApiRunStage, mapApiRunStatus, mapApiRunToVaultRun } from '@/lib/researchone/runMappers';
+import { liveResearchUrl } from '@/utils/researchRunRoutes';
 
 function progressToActivity(evt: ResearchProgressEvent): AgentActivity {
   return {
@@ -51,6 +52,19 @@ export function LiveRunPanel() {
   }, [apiRun, liveProgress]);
 
   useEffect(() => {
+    if (!apiRun || !runId) return;
+    if (apiRun.status === 'plan_pending_confirmation') {
+      navigate(
+        liveResearchUrl(runId, {
+          engineVersion: apiRun.engine_version,
+          focusPlan: true,
+        }),
+        { replace: true },
+      );
+    }
+  }, [apiRun, navigate, runId]);
+
+  useEffect(() => {
     if (!runId) return;
     subscribeToJob(runId);
     const socket = getSocket();
@@ -85,19 +99,19 @@ export function LiveRunPanel() {
     );
   }
 
-  if (isLoading || !run) {
-    return (
-      <div className="r1-panel p-8 text-center">
-        <Clock className="w-6 h-6 text-r1-cyan animate-spin mx-auto" />
-      </div>
-    );
-  }
-
-  if (isError) {
+  if (isError && !apiRun) {
     return (
       <div className="r1-panel p-8 text-center">
         <AlertCircle className="w-8 h-8 text-r1-skeptic mx-auto mb-3" />
         <p className="text-r1-muted">Unable to load run {runId}.</p>
+      </div>
+    );
+  }
+
+  if (isLoading || !run) {
+    return (
+      <div className="r1-panel p-8 text-center">
+        <Clock className="w-6 h-6 text-r1-cyan animate-spin mx-auto" />
       </div>
     );
   }
