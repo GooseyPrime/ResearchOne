@@ -10,6 +10,7 @@ import {
   useBillingSubscriptionQuery,
   type BillingSubscription,
 } from '../hooks/useBillingSubscription';
+import { useHasProAccess } from '../hooks/useHasProAccess';
 import { BILLING_HISTORY_QUERY_KEY, useBillingHistory } from '../hooks/useBillingHistory';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
@@ -161,9 +162,6 @@ export default function BillingPage() {
 
   const historyQuery = useBillingHistory(25);
 
-  const cachedAuthMe = queryClient.getQueryData<{ userId: string; isAdmin: boolean }>(['auth', 'me']);
-  const isAllowlistedAdmin = cachedAuthMe?.isAdmin === true;
-
   const walletQuery = useQuery({
     queryKey: ['billing-wallet'],
     queryFn: async () => (await api.get<WalletResponse>('/billing/wallet')).data,
@@ -211,13 +209,8 @@ export default function BillingPage() {
   );
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
-  const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'];
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
-  const tierGateUnknown = subQuery.isLoading || (Boolean(subQuery.isError) && !subQuery.data);
-  const hasProAccess =
-    isAllowlistedAdmin ||
-    tierGateUnknown ||
-    Boolean(subQuery.data && effectiveTier && PRO_PLUS_TIERS.includes(effectiveTier));
+  const { hasProAccess } = useHasProAccess();
 
   const monitorsQuery = useQuery({
     queryKey: ['billing-monitors'],
@@ -489,15 +482,9 @@ export default function BillingPage() {
       <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium">Your add-ons</h2>
-          {hasProAccess ? (
-            <Link to="/app/monitors" className="text-xs text-indigo-400 hover:text-indigo-300">
-              Manage add-ons →
-            </Link>
-          ) : (
-            <Link to="/pricing" className="text-xs text-indigo-400 hover:text-indigo-300">
-              Browse add-ons →
-            </Link>
-          )}
+          <Link to="/app/add-ons" className="text-xs text-indigo-400 hover:text-indigo-300">
+            {hasProAccess ? 'Manage add-ons →' : 'Browse add-ons →'}
+          </Link>
         </div>
         <p className="mt-1 text-xs text-slate-500">
           Per-report subscriptions for Living Reports and Reverse-Citation Watch.
@@ -518,7 +505,7 @@ export default function BillingPage() {
           if (active.length === 0) {
             return (
               <p className="mt-3 text-sm text-slate-400">
-                No add-ons yet. Open any finalized report to add Living Reports or Reverse-Citation Watch.
+                No add-ons yet. Open the add-ons catalog to subscribe on a finalized report.
               </p>
             );
           }

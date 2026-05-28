@@ -26,6 +26,7 @@ import {
 import { creditWalletFromCheckoutSession } from '../../services/billing/checkoutWalletTopup';
 import { getBillingHistory } from '../../services/billing/billingEventsService';
 import { isTierName } from '../../config/tierRules';
+import { getAddonCatalog } from '../../services/billing/addonCatalog';
 
 const router = Router();
 
@@ -92,6 +93,10 @@ router.get('/topup-options', (_req, res) => {
 router.get('/subscription-options', (_req, res) => {
   const options = getSubscriptionPriceOptions();
   res.json({ options });
+});
+
+router.get('/addon-catalog', (_req, res) => {
+  res.json({ addons: getAddonCatalog() });
 });
 
 router.post('/checkout/topup', async (req, res, next) => {
