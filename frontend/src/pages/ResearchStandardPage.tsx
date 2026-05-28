@@ -23,6 +23,7 @@ import ResearchRunFailureCard from '../components/research/ResearchRunFailureCar
 import PlanConfirmationPanel, { type PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import ResearchRunRow from '../components/research/ResearchRunRow';
 import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
+import { useResearchShellOpenRun } from '../hooks/useResearchShellOpenRun';
 import {
   startResearch,
   getResearchRuns,
@@ -107,7 +108,13 @@ export default function ResearchStandardPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
-  const { embeddedInShell, syncEngineForRun } = useResearchPageShell();
+  const {
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+  } = useResearchPageShell();
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
@@ -189,19 +196,17 @@ export default function ResearchStandardPage() {
   const activeRunStatus = trackedRun?.status ?? polledRun?.status;
   const formLocked = Boolean(trackingRunId) && isLiveAttachedResearchRun(activeRunStatus);
 
-  const handleOpenRun = useCallback(
-    (run: ResearchRun) => {
-      syncEngineForRun(run.engine_version);
-      if (isLiveAttachedResearchRun(run.status)) {
-        void attachRun({ runId: run.id, runRow: run });
-        return;
-      }
-      detachTracking();
-      applyRequestFormFromRun(run);
-      addNotification('info', 'Loaded this run’s research request — edit and submit when ready.');
-    },
-    [syncEngineForRun, attachRun, detachTracking, applyRequestFormFromRun, addNotification]
-  );
+  const { handleOpenRun } = useResearchShellOpenRun({
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+    attachRun,
+    detachTracking,
+    applyRequestFormFromRun,
+    addNotification,
+  });
 
   const runStatusForGate = activeRunStatus;
   const showPlanGatePanel =

@@ -25,6 +25,7 @@ import LiveStatusBanner from '../components/research/LiveStatusBanner';
 import ResearchRunFailureCard from '../components/research/ResearchRunFailureCard';
 import PlanConfirmationPanel, { type PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
+import SkepticPersonaSelector from '../components/research/SkepticPersonaSelector';
 import {
   startResearch,
   getResearchRuns,
@@ -53,10 +54,12 @@ import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import ResearchRunRow from '../components/research/ResearchRunRow';
 import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
+import { useResearchShellOpenRun } from '../hooks/useResearchShellOpenRun';
+import { deepResearchRequestFromRun, isLiveAttachedResearchRun } from '../utils/researchOpenRun';
 import {
-  deepResearchRequestFromRun,
-  isLiveAttachedResearchRun,
-} from '../utils/researchOpenRun';
+  mergeSupplementalWithSkepticPersona,
+  splitSupplementalAndSkepticPersona,
+} from '../utils/skepticPersonaSupplemental';
 import { useResearchPageShell } from './ResearchPageContext';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -129,7 +132,13 @@ export default function ResearchDeepPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification, setActiveRun, activeRun } = useStore();
-  const { embeddedInShell, syncEngineForRun } = useResearchPageShell();
+  const {
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+  } = useResearchPageShell();
   const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
     useBillingSubscriptionQuery();
 
@@ -150,6 +159,7 @@ export default function ResearchDeepPage() {
   // models can review them as sources alongside the corpus search results.
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
+  const [skepticPersona, setSkepticPersona] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
   const [savedOrchestrationProfileId, setSavedOrchestrationProfileId] = useState('');
@@ -226,12 +236,20 @@ export default function ResearchDeepPage() {
 
   const applyRequestFormFromRun = useCallback(
     (run: ResearchRun) => {
+      setSkepticPersona('');
       const slice = deepResearchRequestFromRun(run);
+      const { supplemental: supplementalBody, skepticPersona: personaFromRun } =
+        splitSupplementalAndSkepticPersona(slice.supplemental);
       setQuery(slice.query);
-      setSupplemental(slice.supplemental);
+      setSupplemental(supplementalBody);
+      setSkepticPersona(personaFromRun);
       setSupplementalUrls(slice.supplementalUrlLines);
       setSupplementalFiles([]);
-      setShowSupplemental(Boolean(slice.supplemental.trim()) || slice.supplementalUrlLines.length > 0);
+      setShowSupplemental(
+        Boolean(supplementalBody.trim()) ||
+          Boolean(personaFromRun.trim()) ||
+          slice.supplementalUrlLines.length > 0
+      );
       if (slice.researchObjective) setResearchObjective(slice.researchObjective);
       if (slice.citationStyle) setCitationStyle(slice.citationStyle);
       setFilterTags(slice.filterTags);
@@ -292,19 +310,17 @@ export default function ResearchDeepPage() {
   const activeRunStatus = trackedRun?.status ?? polledRun?.status;
   const formLocked = Boolean(trackingRunId) && isLiveAttachedResearchRun(activeRunStatus);
 
-  const handleOpenRun = useCallback(
-    (run: ResearchRun) => {
-      syncEngineForRun(run.engine_version);
-      if (isLiveAttachedResearchRun(run.status)) {
-        void attachRun({ runId: run.id, runRow: run });
-        return;
-      }
-      detachTracking();
-      applyRequestFormFromRun(run);
-      addNotification('info', 'Loaded this run’s research request — edit and submit when ready.');
-    },
-    [syncEngineForRun, attachRun, detachTracking, applyRequestFormFromRun, addNotification]
-  );
+  const { handleOpenRun } = useResearchShellOpenRun({
+    embeddedInShell,
+    shellMode,
+    syncEngineForRun,
+    queueRunHandoff,
+    consumeRunHandoff,
+    attachRun,
+    detachTracking,
+    applyRequestFormFromRun,
+    addNotification,
+  });
 
   const mutation = useMutation({
     mutationFn: startResearch,
@@ -679,7 +695,7 @@ export default function ResearchDeepPage() {
     if (!query.trim()) return;
     mutation.mutate({
       query: query.trim(),
-      supplemental: supplemental.trim() || undefined,
+      supplemental: mergeSupplementalWithSkepticPersona(supplemental, skepticPersona),
       filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       engineVersion: 'v2',
@@ -750,6 +766,12 @@ export default function ResearchDeepPage() {
             />
             <p className="text-xs text-slate-500 mt-1">Be specific and include the exact framing you want tested.</p>
           </div>
+
+          <SkepticPersonaSelector
+            value={skepticPersona}
+            onChange={setSkepticPersona}
+            disabled={mutation.isPending || formLocked}
+          />
 
           <div>
             <label className="section-title block mb-2">Research objective</label>
