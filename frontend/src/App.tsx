@@ -41,6 +41,9 @@ import AccountPage from './pages/AccountPage';
 import BillingPage from './pages/BillingPage';
 import SampleReportPage from './pages/SampleReportPage';
 import MonitorsPage from './pages/MonitorsPage';
+import AddOnsPage from './pages/AddOnsPage';
+import LivingReportsPage from './pages/LivingReportsPage';
+import ReverseCitationWatchPage from './pages/ReverseCitationWatchPage';
 import NotFoundPage from './pages/NotFoundPage';
 import FaqPage from './pages/FaqPage';
 import AboutPage from './pages/AboutPage';
@@ -86,7 +89,10 @@ export function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
         <Route path="reports/:id" element={<ReportDetailPage />} />
+        <Route path="add-ons" element={<AddOnsPage />} />
         <Route path="monitors" element={<MonitorsPage />} />
+        <Route path="monitors/living-reports" element={<LivingReportsPage />} />
+        <Route path="monitors/reverse-citation-watch" element={<ReverseCitationWatchPage />} />
         <Route path="corpus" element={<CorpusPage />} />
         <Route path="atlas" element={<AtlasPage />} />
         <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />

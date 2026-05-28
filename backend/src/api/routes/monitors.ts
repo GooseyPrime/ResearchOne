@@ -77,6 +77,16 @@ byReport.post('/', async (req, res, next) => {
       return;
     }
 
+    const existingMonitors = await listMonitorsForReport(reportId, userId);
+    const existingKind = existingMonitors.find((m) => m.monitor_kind === monitorKind);
+    if (existingKind && existingKind.status !== 'cancelled') {
+      res.status(409).json({
+        error: 'This report already has this add-on',
+        detail: 'Manage the existing subscription from Billing or the report page.',
+      });
+      return;
+    }
+
     const priceId = monitorPriceIdForKind(monitorKind);
     if (!priceId) {
       res.status(503).json({ error: 'Stripe price not configured for this monitor product' });

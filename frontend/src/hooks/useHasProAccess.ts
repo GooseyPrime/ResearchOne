@@ -1,0 +1,40 @@
+import { useAuth } from '@clerk/react';
+import { useQuery } from '@tanstack/react-query';
+import api from '../utils/api';
+import {
+  BILLING_SUBSCRIPTION_QUERY_KEY,
+  effectiveEntitlementTier,
+  useBillingSubscriptionQuery,
+} from './useBillingSubscription';
+
+const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
+
+/** Permissive until tier resolves — includes allowlisted admin (same pattern as Layout). */
+export function useHasProAccess(): {
+  hasProAccess: boolean;
+  tierGateUnknown: boolean;
+  isLoading: boolean;
+} {
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+
+  const { data: authMe } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => api.get<{ userId: string; isAdmin: boolean }>('/auth/me').then((r) => r.data),
+    enabled: Boolean(authLoaded && isSignedIn),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const isAllowlistedAdmin = authMe?.isAdmin === true;
+
+  const subQuery = useBillingSubscriptionQuery();
+  const effectiveTier = effectiveEntitlementTier(subQuery.data);
+  const tierGateUnknown = subQuery.isLoading || (Boolean(subQuery.isError) && !subQuery.data);
+  const hasProAccess =
+    isAllowlistedAdmin ||
+    tierGateUnknown ||
+    Boolean(subQuery.data && effectiveTier && PRO_PLUS_TIERS.includes(effectiveTier as (typeof PRO_PLUS_TIERS)[number]));
+
+  return { hasProAccess, tierGateUnknown, isLoading: subQuery.isLoading };
+}
+
+export { PRO_PLUS_TIERS, BILLING_SUBSCRIPTION_QUERY_KEY };

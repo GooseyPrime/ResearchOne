@@ -13,7 +13,7 @@ import {
   Cpu,
   Settings,
   Wallet,
-  Radar,
+  Package,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
@@ -54,7 +54,7 @@ const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 const NAV_ITEMS: NavItem[] = [
   { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Standard and Deep Research' },
   { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
-  { to: '/app/monitors', label: 'Monitors', icon: Radar, desc: 'Living Reports & citation watch', requireTier: 'pro' },
+  { to: '/app/add-ons', label: 'Add-ons', icon: Package, desc: 'Catalog, purchase & manage add-ons', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources', requireTier: 'pro' },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
