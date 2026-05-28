@@ -232,7 +232,22 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
     try {
       await enqueueResearchResumeAfterPlan(researchQueue, runId, effectivePlanId);
     } catch (queueErr) {
-      logger.error('plan_confirm_queue_failed', { runId, planId: effectivePlanId, err: queueErr });
+      const queueErrMsg = queueErr instanceof Error ? queueErr.message : String(queueErr);
+      const staleMeta =
+        queueErr instanceof Error && 'requestedPlanId' in queueErr
+          ? {
+              existingPlanId: (queueErr as Error & { existingPlanId?: string | null }).existingPlanId,
+              requestedPlanId: (queueErr as Error & { requestedPlanId?: string }).requestedPlanId,
+            }
+          : {};
+      logger.error('plan_confirm_queue_failed', {
+        runId,
+        planId: effectivePlanId,
+        resumeJid,
+        err: queueErr,
+        errMsg: queueErrMsg,
+        ...staleMeta,
+      });
       res.status(503).json({
         error: 'Failed to queue pipeline resume',
         detail: 'No database changes were made; retry confirm when the queue is available.',
