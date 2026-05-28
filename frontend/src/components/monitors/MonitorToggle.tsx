@@ -164,8 +164,7 @@ function LivingReportTokenCard({
     return formatExpiry(d.toISOString());
   }, []);
 
-  const showActivate =
-    !monitor || monitor.status === 'cancelled' || (monitor.status === 'paused' && !isLegacyStripe);
+  const showActivate = !monitor || monitor.status === 'cancelled';
 
   return (
     <div className="rounded-lg border border-indigo-900/40 bg-surface-200/80 p-4 space-y-3">

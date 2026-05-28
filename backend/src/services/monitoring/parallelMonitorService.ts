@@ -15,7 +15,13 @@ import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { getStripeClient } from '../billing/stripeClient';
+import {
+  assertUserHasMonitorToken,
+  InsufficientMonitorTokensError,
+} from '../billing/monitorTokenService';
 import type { RevisionTriggerSource } from '../reasoning/reportRevisionService';
+
+export { InsufficientMonitorTokensError };
 
 export type MonitorKind = 'living_report' | 'reverse_citation_watch';
 
@@ -474,13 +480,6 @@ export async function setLivingReportAutoRenew(
   return updated[0] ?? row;
 }
 
-export class InsufficientMonitorTokensError extends Error {
-  constructor() {
-    super('INSUFFICIENT_MONITOR_TOKENS');
-    this.name = 'InsufficientMonitorTokensError';
-  }
-}
-
 async function activateLivingReportRowInTx(
   client: PoolClient,
   args: {
@@ -490,7 +489,7 @@ async function activateLivingReportRowInTx(
     autoRenew: boolean;
     idempotencyKey: string;
   }
-): Promise<{ expiresAt: string }> {
+): Promise<{ expiresAt: string; parallelMonitorId: string }> {
   const { deductOneMonitorTokenInTx, monitorActiveExpirySql } = await import(
     '../billing/monitorTokenService'
   );
@@ -518,8 +517,7 @@ async function activateLivingReportRowInTx(
     [args.monitorId, JSON.stringify({ funded_by: 'monitor_token' })]
   );
 
-  await patchRemoteParallelMonitor(args.parallelMonitorId, { status: 'active' });
-  return { expiresAt: String(expiresAt) };
+  return { expiresAt: String(expiresAt), parallelMonitorId: args.parallelMonitorId };
 }
 
 /**
@@ -543,67 +541,95 @@ export async function activateLivingReportWithToken(args: {
     return { monitorId: row.id, expiresAt: row.expires_at, tokenBalance: bal.tokenBalance };
   }
 
+  await assertUserHasMonitorToken(args.userId);
+
   let parallelMonitorId = row?.parallel_monitor_id;
   let monitorId = row?.id;
+  let createdRemoteId: string | null = null;
+  let insertedMonitorId: string | null = null;
 
-  if (!row || row.status === 'cancelled' || !parallelMonitorId) {
-    const reportRows = await query<{ falsification_criteria: string | null }>(
-      'SELECT falsification_criteria FROM reports WHERE id=$1',
-      [args.reportId]
-    );
-    const doiRows = await query<{ doi: string }>(
-      `SELECT DISTINCT trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', '')) AS doi
-       FROM report_citations rc
-       JOIN sources s ON s.id = rc.source_id
-       WHERE rc.report_id=$1
-         AND length(trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', ''))) > 4
-       LIMIT 60`,
-      [args.reportId]
-    );
-    const queryDef = buildQueryDef({
-      reportId: args.reportId,
-      falsification_criteria: reportRows[0]?.falsification_criteria ?? null,
-      citationDois: doiRows.map((r) => r.doi).filter(Boolean),
-      monitorKind: 'living_report',
-    });
-    parallelMonitorId = await createRemoteParallelMonitor(queryDef);
-
-    if (!row) {
-      const inserted = await query<{ id: string }>(
-        `INSERT INTO report_monitors (
-           report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status
-         ) VALUES ($1, $2, $3, 'living_report', $4, $5::jsonb, 'paused')
-         RETURNING id`,
-        [args.reportId, args.userId, args.orgId ?? null, parallelMonitorId, JSON.stringify(queryDef)]
+  try {
+    if (!row || row.status === 'cancelled' || !parallelMonitorId) {
+      const reportRows = await query<{ falsification_criteria: string | null }>(
+        'SELECT falsification_criteria FROM reports WHERE id=$1',
+        [args.reportId]
       );
-      monitorId = inserted[0]?.id;
+      const doiRows = await query<{ doi: string }>(
+        `SELECT DISTINCT trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', '')) AS doi
+         FROM report_citations rc
+         JOIN sources s ON s.id = rc.source_id
+         WHERE rc.report_id=$1
+           AND length(trim(coalesce(s.metadata->>'doi', s.metadata->>'DOI', ''))) > 4
+         LIMIT 60`,
+        [args.reportId]
+      );
+      const queryDef = buildQueryDef({
+        reportId: args.reportId,
+        falsification_criteria: reportRows[0]?.falsification_criteria ?? null,
+        citationDois: doiRows.map((r) => r.doi).filter(Boolean),
+        monitorKind: 'living_report',
+      });
+      parallelMonitorId = await createRemoteParallelMonitor(queryDef);
+      createdRemoteId = parallelMonitorId;
+
+      if (!row) {
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO report_monitors (
+             report_id, user_id, org_id, monitor_kind, parallel_monitor_id, query_def, status
+           ) VALUES ($1, $2, $3, 'living_report', $4, $5::jsonb, 'paused')
+           RETURNING id`,
+          [args.reportId, args.userId, args.orgId ?? null, parallelMonitorId, JSON.stringify(queryDef)]
+        );
+        monitorId = inserted[0]?.id;
+        insertedMonitorId = monitorId ?? null;
+      }
     }
-  }
 
-  if (!monitorId || !parallelMonitorId) throw new Error('Failed to prepare monitor row');
+    if (!monitorId || !parallelMonitorId) throw new Error('Failed to prepare monitor row');
 
-  const pausedKey = row?.paused_at ?? row?.cancelled_at ?? 'new';
-  const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
-  let tokenBalance = 0;
-  let expiresAt = '';
+    const pausedKey = row?.paused_at ?? row?.cancelled_at ?? 'new';
+    const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
+    let tokenBalance = 0;
+    let expiresAt = '';
+    let remoteIdToActivate = parallelMonitorId;
 
-  await withTransaction(async (client) => {
-    const result = await activateLivingReportRowInTx(client, {
-      userId: args.userId,
-      monitorId,
-      parallelMonitorId: parallelMonitorId!,
-      autoRenew,
-      idempotencyKey,
+    await withTransaction(async (client) => {
+      const result = await activateLivingReportRowInTx(client, {
+        userId: args.userId,
+        monitorId,
+        parallelMonitorId: parallelMonitorId!,
+        autoRenew,
+        idempotencyKey,
+      });
+      expiresAt = result.expiresAt;
+      remoteIdToActivate = result.parallelMonitorId;
+      const bal = await client.query<{ token_balance: number }>(
+        'SELECT token_balance FROM user_monitor_balances WHERE user_id = $1',
+        [args.userId]
+      );
+      tokenBalance = Number(bal.rows[0]?.token_balance ?? 0);
     });
-    expiresAt = result.expiresAt;
-    const bal = await client.query<{ token_balance: number }>(
-      'SELECT token_balance FROM user_monitor_balances WHERE user_id = $1',
-      [args.userId]
-    );
-    tokenBalance = Number(bal.rows[0]?.token_balance ?? 0);
-  });
 
-  return { monitorId, expiresAt, tokenBalance };
+    await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
+
+    return { monitorId, expiresAt, tokenBalance };
+  } catch (err) {
+    if (createdRemoteId) {
+      try {
+        await deleteRemoteParallelMonitor(createdRemoteId);
+      } catch (cleanupErr) {
+        logger.warn('monitor_token_activate_remote_cleanup_failed', {
+          reportId: args.reportId,
+          parallelMonitorId: createdRemoteId,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+    }
+    if (insertedMonitorId) {
+      await query(`DELETE FROM report_monitors WHERE id=$1 AND status='paused'`, [insertedMonitorId]);
+    }
+    throw err;
+  }
 }
 
 export async function toggleLivingReportMonitor(
@@ -634,17 +660,22 @@ export async function toggleLivingReportMonitor(
     return rows[0]!;
   }
 
+  await assertUserHasMonitorToken(userId);
+
   const pausedKey = row.paused_at ?? row.cancelled_at ?? 'new';
   const idempotencyKey = `activate:${monitorId}:${pausedKey}`;
+  let remoteIdToActivate = row.parallel_monitor_id;
   await withTransaction(async (client) => {
-    await activateLivingReportRowInTx(client, {
+    const result = await activateLivingReportRowInTx(client, {
       userId,
       monitorId,
       parallelMonitorId: row.parallel_monitor_id,
       autoRenew: autoRenew ?? Boolean(row.auto_renew),
       idempotencyKey,
     });
+    remoteIdToActivate = result.parallelMonitorId;
   });
+  await patchRemoteParallelMonitor(remoteIdToActivate, { status: 'active' });
 
   const rows = await queryMonitorRows<MonitorRow>(
     `SELECT ${MONITOR_ROW_SELECT} FROM report_monitors WHERE id=$1 LIMIT 1`,

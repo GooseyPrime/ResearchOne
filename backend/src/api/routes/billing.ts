@@ -119,6 +119,11 @@ router.patch('/monitor-tokens/preferences', async (req, res, next) => {
     });
     res.json(balance);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'Invalid auto top-up package') {
+      res.status(400).json({ error: msg });
+      return;
+    }
     next(err);
   }
 });

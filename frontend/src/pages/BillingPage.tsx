@@ -260,6 +260,14 @@ export default function BillingPage() {
     onError: (err: unknown) => setTokenPrefsError(extractApiError(err)),
   });
 
+  const configuredTokenPackages = monitorPackagesQuery.data?.packages ?? [];
+  const defaultAutoTopupPackageId = useMemo(() => {
+    const saved = monitorTokensQuery.data?.autoTopupPackageId;
+    if (saved && configuredTokenPackages.some((p) => p.id === saved)) return saved;
+    return configuredTokenPackages[0]?.id ?? null;
+  }, [configuredTokenPackages, monitorTokensQuery.data?.autoTopupPackageId]);
+  const autoTopupControlsEnabled = configuredTokenPackages.length > 0;
+
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
       <h1 className="text-2xl font-semibold">Account</h1>
@@ -570,13 +578,18 @@ export default function BillingPage() {
             <input
               type="checkbox"
               checked={Boolean(monitorTokensQuery.data?.autoTopupEnabled)}
-              disabled={tokenPrefsMutation.isPending || monitorTokensQuery.isLoading}
-              onChange={(e) =>
+              disabled={
+                !autoTopupControlsEnabled ||
+                tokenPrefsMutation.isPending ||
+                monitorTokensQuery.isLoading
+              }
+              onChange={(e) => {
+                if (!defaultAutoTopupPackageId) return;
                 tokenPrefsMutation.mutate({
                   autoTopupEnabled: e.target.checked,
-                  autoTopupPackageId: monitorTokensQuery.data?.autoTopupPackageId ?? 'pack_5',
-                })
-              }
+                  autoTopupPackageId: defaultAutoTopupPackageId,
+                });
+              }}
             />
             Auto top-up when balance hits zero
           </label>
@@ -589,8 +602,8 @@ export default function BillingPage() {
               <span className="text-xs text-slate-500">Package when topping up:</span>
               <select
                 className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-slate-200"
-                value={monitorTokensQuery.data?.autoTopupPackageId ?? 'pack_5'}
-                disabled={tokenPrefsMutation.isPending}
+                value={defaultAutoTopupPackageId ?? ''}
+                disabled={tokenPrefsMutation.isPending || !defaultAutoTopupPackageId}
                 onChange={(e) =>
                   tokenPrefsMutation.mutate({
                     autoTopupEnabled: true,
@@ -598,7 +611,7 @@ export default function BillingPage() {
                   })
                 }
               >
-                {(monitorPackagesQuery.data?.packages ?? []).map((pkg) => (
+                {configuredTokenPackages.map((pkg) => (
                   <option key={pkg.id} value={pkg.id}>
                     {pkg.label}
                   </option>

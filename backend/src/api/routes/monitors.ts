@@ -11,7 +11,6 @@ import { TIER_RULES } from '../../config/tierRules';
 import {
   activateLivingReportWithToken,
   cancelMonitor,
-  InsufficientMonitorTokensError,
   listMonitorEvents,
   listMonitorsForReport,
   listMonitorsForUser,
@@ -23,7 +22,10 @@ import {
   userCanAccessReportForMonitor,
   type MonitorKind,
 } from '../../services/monitoring/parallelMonitorService';
-import { getMonitorTokenBalance } from '../../services/billing/monitorTokenService';
+import {
+  getMonitorTokenBalance,
+  isInsufficientMonitorTokensError,
+} from '../../services/billing/monitorTokenService';
 
 /** Report-scoped checkout + listing — mount at `/api/reports` (paths: `/:reportId/monitors`). */
 export const reportMonitorsRouter = Router();
@@ -35,6 +37,12 @@ userMonitorsRouter.use(requireAuth);
 
 function blockedTierForMonitorCheckout(tier: string): boolean {
   return tier === 'free_demo' || tier === 'anonymous';
+}
+
+function parseRequiredBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined) return null;
+  return null;
 }
 
 const byReport = Router({ mergeParams: true });
@@ -82,7 +90,7 @@ byReport.post('/', async (req, res, next) => {
           tokenBalance: result.tokenBalance,
         });
       } catch (err) {
-        if (err instanceof InsufficientMonitorTokensError) {
+        if (isInsufficientMonitorTokensError(err)) {
           res.status(402).json({
             error: 'Insufficient monitor tokens',
             detail: 'Purchase tokens on the billing page to activate this living report.',
@@ -120,6 +128,16 @@ byReport.post('/', async (req, res, next) => {
     const allowed = await userCanAccessReportForMonitor(userId, reportId);
     if (!allowed) {
       res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const existingMonitors = await listMonitorsForReport(reportId, userId);
+    const existingKind = existingMonitors.find((m) => m.monitor_kind === monitorKind);
+    if (existingKind && existingKind.status !== 'cancelled') {
+      res.status(409).json({
+        error: 'This report already has this add-on',
+        detail: 'Manage the existing subscription from Billing or the report page.',
+      });
       return;
     }
 
@@ -211,8 +229,18 @@ userMonitorsRouter.post('/:monitorId/toggle', async (req, res, next) => {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    const active = Boolean((req.body as { active?: boolean })?.active);
-    const autoRenew = (req.body as { autoRenew?: boolean })?.autoRenew;
+    const active = parseRequiredBoolean((req.body as { active?: boolean })?.active);
+    if (active === null) {
+      res.status(400).json({ error: 'active must be a boolean' });
+      return;
+    }
+    const autoRenewRaw = (req.body as { autoRenew?: boolean })?.autoRenew;
+    const autoRenew =
+      autoRenewRaw === undefined ? undefined : parseRequiredBoolean(autoRenewRaw);
+    if (autoRenew === null) {
+      res.status(400).json({ error: 'autoRenew must be a boolean when provided' });
+      return;
+    }
     const row = await toggleLivingReportMonitor(
       req.params.monitorId,
       userId,
@@ -222,7 +250,7 @@ userMonitorsRouter.post('/:monitorId/toggle', async (req, res, next) => {
     const balance = await getMonitorTokenBalance(userId);
     res.json({ monitor: row, tokenBalance: balance.tokenBalance });
   } catch (err) {
-    if (err instanceof InsufficientMonitorTokensError) {
+    if (isInsufficientMonitorTokensError(err)) {
       res.status(402).json({
         error: 'Insufficient monitor tokens',
         upgradePath: '/app/billing',
@@ -245,7 +273,11 @@ userMonitorsRouter.patch('/:monitorId/auto-renew', async (req, res, next) => {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    const autoRenew = Boolean((req.body as { autoRenew?: boolean })?.autoRenew);
+    const autoRenew = parseRequiredBoolean((req.body as { autoRenew?: boolean })?.autoRenew);
+    if (autoRenew === null) {
+      res.status(400).json({ error: 'autoRenew must be a boolean' });
+      return;
+    }
     const row = await setLivingReportAutoRenew(req.params.monitorId, userId, autoRenew);
     res.json({ monitor: row });
   } catch (err) {

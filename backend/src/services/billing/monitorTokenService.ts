@@ -1,7 +1,18 @@
 import type { PoolClient } from 'pg';
 import { getPool, query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
-import { MONITOR_TOKEN_ACTIVE_MONTHS } from './monitorTokenCatalog';
+import { MONITOR_TOKEN_ACTIVE_MONTHS, resolveMonitorTokenPackage } from './monitorTokenCatalog';
+
+export class InsufficientMonitorTokensError extends Error {
+  constructor() {
+    super('INSUFFICIENT_MONITOR_TOKENS');
+    this.name = 'InsufficientMonitorTokensError';
+  }
+}
+
+export function isInsufficientMonitorTokensError(err: unknown): err is InsufficientMonitorTokensError {
+  return err instanceof InsufficientMonitorTokensError;
+}
 
 export interface MonitorTokenBalanceView {
   tokenBalance: number;
@@ -69,10 +80,23 @@ export async function getMonitorTokenBalance(userId: string): Promise<MonitorTok
   }
 }
 
+export async function assertUserHasMonitorToken(userId: string): Promise<void> {
+  const bal = await getMonitorTokenBalance(userId);
+  if (bal.tokenBalance < 1) {
+    throw new InsufficientMonitorTokensError();
+  }
+}
+
 export async function updateMonitorTokenPreferences(
   userId: string,
   prefs: { autoTopupEnabled?: boolean; autoTopupPackageId?: string | null }
 ): Promise<MonitorTokenBalanceView> {
+  if (prefs.autoTopupPackageId !== undefined && prefs.autoTopupPackageId !== null) {
+    const pkg = resolveMonitorTokenPackage(prefs.autoTopupPackageId);
+    if (!pkg) {
+      throw new Error('Invalid auto top-up package');
+    }
+  }
   return withTransaction(async (client) => {
     await ensureBalanceRow(client, userId);
     const sets: string[] = ['updated_at = NOW()'];
@@ -179,7 +203,7 @@ export async function deductOneMonitorTokenInTx(
       [input.idempotencyKey]
     );
     if (prior.rowCount === 0) {
-      throw new Error('INSUFFICIENT_MONITOR_TOKENS');
+      throw new InsufficientMonitorTokensError();
     }
     const bal = await client.query<{ token_balance: number }>(
       'SELECT token_balance FROM user_monitor_balances WHERE user_id = $1',
@@ -194,7 +218,7 @@ export async function deductOneMonitorTokenInTx(
   );
   const current = parseTokenInt(locked.rows[0]?.token_balance);
   if (current < 1) {
-    throw new Error('INSUFFICIENT_MONITOR_TOKENS');
+    throw new InsufficientMonitorTokensError();
   }
 
   const updated = await client.query<{ token_balance: number }>(
@@ -205,7 +229,7 @@ export async function deductOneMonitorTokenInTx(
     [input.userId]
   );
   if (updated.rowCount === 0) {
-    throw new Error('INSUFFICIENT_MONITOR_TOKENS');
+    throw new InsufficientMonitorTokensError();
   }
   return { applied: true, tokenBalance: parseTokenInt(updated.rows[0]?.token_balance) };
 }
@@ -230,7 +254,7 @@ export async function tryDeductTokenForMonitorRenewal(args: {
     );
     return result.applied;
   } catch (err) {
-    if (err instanceof Error && err.message === 'INSUFFICIENT_MONITOR_TOKENS') {
+    if (isInsufficientMonitorTokensError(err)) {
       return false;
     }
     if (isMissingSchemaError(err)) {
