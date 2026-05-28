@@ -37,6 +37,12 @@ import {
   CITATION_STYLE_OPTIONS,
   type CitationStyleSlug,
 } from '../utils/api';
+import {
+  defaultObjectiveForTier,
+  objectivesForTier,
+  RESEARCH_OBJECTIVE_OPTIONS,
+  type EntitlementTierKey,
+} from '@/constants/researchObjectives';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
@@ -55,14 +61,6 @@ import { useResearchPageShell } from './ResearchPageContext';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import clsx from 'clsx';
-
-const RESEARCH_OBJECTIVE_OPTIONS: { value: ResearchObjective; label: string }[] = [
-  { value: 'GENERAL_EPISTEMIC_RESEARCH', label: 'General epistemic research' },
-  { value: 'INVESTIGATIVE_SYNTHESIS', label: 'Investigative synthesis' },
-  { value: 'NOVEL_APPLICATION_DISCOVERY', label: 'Novel application discovery' },
-  { value: 'PATENT_GAP_ANALYSIS', label: 'Patent gap analysis' },
-  { value: 'ANOMALY_CORRELATION', label: 'Anomaly correlation' },
-];
 
 interface ResearchFailureEvent {
   runId: string;
@@ -127,17 +125,6 @@ function sortEventsChronological(events: ResearchProgressEvent[]): ResearchProgr
 }
 
 
-const TIER_ALLOWED_OBJECTIVES: Record<string, readonly ResearchObjective[]> = {
-  free_demo: ['GENERAL_EPISTEMIC_RESEARCH'],
-  student: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS'],
-  wallet: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS'],
-  pro: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
-  team: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
-  byok: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
-  sovereign: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
-  admin: ['GENERAL_EPISTEMIC_RESEARCH', 'INVESTIGATIVE_SYNTHESIS', 'NOVEL_APPLICATION_DISCOVERY', 'PATENT_GAP_ANALYSIS', 'ANOMALY_CORRELATION'],
-};
-
 export default function ResearchDeepPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -148,17 +135,12 @@ export default function ResearchDeepPage() {
 
   const tierResolved =
     authReady && !subLoading && (!subError || Boolean(subscriptionData));
-  const userTier = tierResolved
-    ? effectiveEntitlementTier(subscriptionData) ?? 'free_demo'
+  const userTier: EntitlementTierKey | null = tierResolved
+    ? ((effectiveEntitlementTier(subscriptionData) ?? 'free_demo') as EntitlementTierKey)
     : null;
   const planPrefsQuery = usePlanPreferencesQuery({ enabled: authReady && tierResolved });
   const tierAllowsSavedProfiles = Boolean(userTier && userTier !== 'free_demo');
-  const allowedObjectives = userTier
-    ? (TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo)
-    : null;
-  const filteredObjectiveOptions = allowedObjectives
-    ? RESEARCH_OBJECTIVE_OPTIONS.filter((o) => allowedObjectives.includes(o.value))
-    : RESEARCH_OBJECTIVE_OPTIONS;
+  const filteredObjectiveOptions = objectivesForTier(userTier);
 
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
@@ -204,11 +186,10 @@ export default function ResearchDeepPage() {
 
   useEffect(() => {
     if (!tierResolved || !userTier) return;
-    const allowed = TIER_ALLOWED_OBJECTIVES[userTier] ?? TIER_ALLOWED_OBJECTIVES.free_demo;
-    if (!allowed.includes(researchObjective)) {
-      setResearchObjective(allowed[0] ?? 'GENERAL_EPISTEMIC_RESEARCH');
+    if (!filteredObjectiveOptions.some((o) => o.value === researchObjective)) {
+      setResearchObjective(defaultObjectiveForTier(userTier));
     }
-  }, [tierResolved, userTier, researchObjective]);
+  }, [tierResolved, userTier, researchObjective, filteredObjectiveOptions]);
 
   const { data: ensembleData } = useQuery({
     queryKey: ['research-v2-ensemble-presets'],

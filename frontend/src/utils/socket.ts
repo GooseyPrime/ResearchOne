@@ -19,6 +19,11 @@ export function subscribeToJob(jobId: string) {
   getSocket().emit('subscribe:job', jobId);
 }
 
+/** Report revision progress/completion rooms (`job:revision:<reportId>`). */
+export function subscribeToRevisionJob(reportId: string) {
+  getSocket().emit('subscribe:revision', reportId);
+}
+
 export function subscribeToCorpus() {
   getSocket().emit('subscribe:corpus');
 }

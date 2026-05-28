@@ -54,6 +54,11 @@ async function main() {
         socket.join(`job:${jobId}`);
       });
 
+      socket.on('subscribe:revision', (reportId: string) => {
+        socket.join(`job:revision:${reportId}`);
+        socket.join(`job:${reportId}`);
+      });
+
       socket.on('subscribe:corpus', () => {
         socket.join('corpus');
       });
