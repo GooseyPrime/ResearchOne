@@ -10,7 +10,7 @@ import {
 } from '@/utils/api';
 import LiveRevisionTraceLog from '@/components/research/LiveRevisionTraceLog';
 import { appendKeepingNewestAtBottom } from '@/utils/traceEventWindow';
-import { getSocket, subscribeToJob, subscribeToRevisionJob } from '@/utils/socket';
+import { getSocket, subscribeToRevisionJob } from '@/utils/socket';
 import {
   isReportRevisionRequestState,
   type ReportRevisionRequestState,
@@ -103,7 +103,6 @@ export default function ReportRevisionWorkspacePage() {
 
   useEffect(() => {
     if (!baseReportId) return;
-    subscribeToJob(baseReportId);
     subscribeToRevisionJob(baseReportId);
     const sock = getSocket();
 

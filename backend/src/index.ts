@@ -54,9 +54,9 @@ async function main() {
         socket.join(`job:${jobId}`);
       });
 
+      // Dedicated revision room only — avoid duplicate events when server also emits to `job:${reportId}`.
       socket.on('subscribe:revision', (reportId: string) => {
         socket.join(`job:revision:${reportId}`);
-        socket.join(`job:${reportId}`);
       });
 
       socket.on('subscribe:corpus', () => {
