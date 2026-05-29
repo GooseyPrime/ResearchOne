@@ -17,6 +17,7 @@ import MonitorToggle from '../components/monitors/MonitorToggle';
 import ReportExportButton from '../components/reports/ReportExportButton';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
+import ReportForkActions from '../components/reports/ReportForkActions';
 import {
   ArrowLeft,
   FileText,
@@ -122,6 +123,7 @@ export default function ReportDetailPage() {
   const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
   const [revisionUrls, setRevisionUrls] = useState<string[]>([]);
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
+  const [revisionPanelOpen, setRevisionPanelOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -479,7 +481,7 @@ export default function ReportDetailPage() {
               {researchRequestSnapshot.attachments.length > 0 ? (
                 <div>
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Supplemental URLs and files (ingested into corpus)
+                    Supplemental URLs and files (from original research run)
                   </span>
                   <ul className="mt-2 space-y-2">
                     {researchRequestSnapshot.attachments.map((a, i) => (
@@ -643,44 +645,74 @@ export default function ReportDetailPage() {
         </div>
       )}
 
+      <ReportForkActions
+        reportId={report.id}
+        onEditInPlace={() => setRevisionPanelOpen(true)}
+        editDisabled={revisionSubmitting}
+      />
+
       <div className="card p-5 space-y-3 print:hidden">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Request edit / correction / re-evaluation</h2>
-        <textarea
-          className="textarea min-h-24"
-          placeholder="Describe the edit, correction, or re-evaluation you want."
-          value={revisionRequestText}
-          onChange={(e) => setRevisionRequestText(e.target.value)}
-          disabled={revisionSubmitting}
-        />
-        <textarea
-          className="textarea min-h-20"
-          placeholder="Optional basis for change (sources, rationale, assumptions to test)"
-          value={revisionRationale}
-          onChange={(e) => setRevisionRationale(e.target.value)}
-          disabled={revisionSubmitting}
-        />
-        <AttachmentDropZone
-          files={revisionFiles}
-          urls={revisionUrls}
-          onChange={({ files, urls }) => {
-            setRevisionFiles(files);
-            setRevisionUrls(urls);
-          }}
-          disabled={revisionSubmitting}
-          label="Supplemental files and URLs to support the revision (optional)"
-          description="Attached files are extracted and reviewed by the revision pipeline (intake → planner → section rewriter) and also imported into the corpus so future runs can retrieve them. PDF / TXT / Markdown."
-        />
-        <p className="text-xs text-slate-500">
-          Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
-        </p>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={!revisionRequestText.trim() || revisionSubmitting}
-          onClick={openRevisionWorkspace}
-        >
-          {revisionSubmitting ? 'Opening revision workspace…' : 'Submit revision request'}
-        </button>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Edit in place</h2>
+          {!revisionPanelOpen ? (
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => setRevisionPanelOpen(true)}
+            >
+              Show revision form
+            </button>
+          ) : null}
+        </div>
+        {revisionPanelOpen ? (
+          <>
+            <p className="text-xs text-slate-500">
+              Rewrites selected sections of this report version. URLs you attach here are fetched synchronously when
+              you submit — not queued like a new research run. For a full re-investigation, use New research spinoff above.
+            </p>
+            <textarea
+              className="textarea min-h-24"
+              placeholder="Describe the edit, correction, or re-evaluation you want."
+              value={revisionRequestText}
+              onChange={(e) => setRevisionRequestText(e.target.value)}
+              disabled={revisionSubmitting}
+            />
+            <textarea
+              className="textarea min-h-20"
+              placeholder="Optional basis for change (sources, rationale, assumptions to test)"
+              value={revisionRationale}
+              onChange={(e) => setRevisionRationale(e.target.value)}
+              disabled={revisionSubmitting}
+            />
+            <AttachmentDropZone
+              mode="revision"
+              files={revisionFiles}
+              urls={revisionUrls}
+              onChange={({ files, urls }) => {
+                setRevisionFiles(files);
+                setRevisionUrls(urls);
+              }}
+              disabled={revisionSubmitting}
+              label="Supplemental files and URLs for this revision (optional)"
+            />
+            <p className="text-xs text-slate-500">
+              Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!revisionRequestText.trim() || revisionSubmitting}
+              onClick={openRevisionWorkspace}
+            >
+              {revisionSubmitting ? 'Opening revision workspace…' : 'Submit revision request'}
+            </button>
+          </>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Use Edit in place for targeted section rewrites. Attach URLs for synchronous fetch on submit, or choose spinoff
+            for a new research run with async corpus ingest.
+          </p>
+        )}
       </div>
 
       <div className="card p-5 space-y-3 print:hidden">

@@ -4,9 +4,17 @@ import {
   getDossiers,
   getReport,
   getRunPlanRevisions,
+  getDossierReportHistory,
+  getDossierSpinoffs,
+  getDossierSources,
+  fetchDossierTimeline,
   type Dossier,
   type DossierListParams,
   type DossierListResult,
+  type DossierReportHistoryEntry,
+  type DossierSpinoffEntry,
+  type DossierSourceEntry,
+  type DossierTimelineResult,
   type PlanRevisionRow,
   type Report,
 } from '../utils/api';
@@ -43,5 +51,46 @@ export function usePlanRevisions(runId: string | undefined) {
     queryKey: ['plan-revisions', runId],
     queryFn: () => getRunPlanRevisions(runId!),
     enabled: Boolean(runId),
+  });
+}
+
+export function useDossierReportHistory(dossierId: string | undefined) {
+  return useQuery<{ entries: DossierReportHistoryEntry[] }>({
+    queryKey: ['dossier-report-history', dossierId],
+    queryFn: () => getDossierReportHistory(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
+
+export function useDossierSpinoffs(dossierId: string | undefined) {
+  return useQuery<{ spinoffs: DossierSpinoffEntry[] }>({
+    queryKey: ['dossier-spinoffs', dossierId],
+    queryFn: () => getDossierSpinoffs(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
+
+export function useDossierSources(dossierId: string | undefined) {
+  return useQuery<{ sources: DossierSourceEntry[] }>({
+    queryKey: ['dossier-sources', dossierId],
+    queryFn: () => getDossierSources(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
+
+export function useDossierTimeline(params: {
+  page?: number;
+  pageSize?: number;
+  enabled?: boolean;
+}) {
+  const { enabled = true, ...rest } = params;
+  return useQuery<DossierTimelineResult>({
+    queryKey: ['dossier-timeline', rest],
+    queryFn: () => fetchDossierTimeline(rest),
+    enabled,
+    retry: false,
   });
 }

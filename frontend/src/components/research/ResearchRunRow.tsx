@@ -67,6 +67,10 @@ export default function ResearchRunRow({
   });
 
   const openRequest = () => {
+    if (run.report_id) {
+      navigate(`/app/reports/${run.report_id}/spinoff`);
+      return;
+    }
     if (onOpenRequestSetup) {
       onOpenRequestSetup(run);
       return;
@@ -192,14 +196,14 @@ export default function ResearchRunRow({
             >
               Resume
             </Link>
-          ) : canReopenRequest && onOpenRequestSetup ? (
+          ) : canReopenRequest && (onOpenRequestSetup || run.report_id) ? (
             <button
               type="button"
               className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1"
               onClick={openRequest}
             >
               <FileEdit size={12} />
-              Open request
+              {run.report_id ? 'Spinoff' : 'Open request'}
             </button>
           ) : null}
           {(run.status === 'queued' || run.status === 'running' || isPlanGate) && (

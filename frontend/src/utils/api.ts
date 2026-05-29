@@ -173,6 +173,10 @@ export interface ResearchRun {
   model_ensemble?: Record<string, unknown>;
   /** Bibliography style chosen at run start (`research_runs.citation_style`). */
   citation_style?: string | null;
+  /** Set when the run completed and produced a report. */
+  report_id?: string | null;
+  /** Spinoff runs reference the parent report they forked from. */
+  spinoff_from_report_id?: string | null;
 }
 
 export interface SystemHealth {
@@ -314,6 +318,13 @@ export interface DossierListRow {
   reportTitle: string | null;
   sourcesCitedCount: number | null;
   totalDurationMs: number | null;
+  /** Wave 5.5+ — most recent activity (revision, run update, etc.). */
+  lastActivityAt?: string | null;
+  versionNumber?: number | null;
+  isSpinoff?: boolean;
+  isRevised?: boolean;
+  spinoffFromReportId?: string | null;
+  engineVersion?: string | null;
 }
 
 export interface DossierListResult {
@@ -323,6 +334,8 @@ export interface DossierListResult {
   pageSize: number;
 }
 
+export type DossierSortBy = 'dossier_created_at' | 'last_activity_at';
+
 export type DossierListParams = {
   page?: number;
   pageSize?: number;
@@ -330,7 +343,97 @@ export type DossierListParams = {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: DossierSortBy;
 };
+
+/** Revision supplemental attachment audit row (POST /reports/:id/revisions response). */
+export interface RevisionAttachmentAudit {
+  kind: 'url' | 'file';
+  url?: string;
+  filename?: string;
+  mimetype?: string;
+  ingestion_job_id: string;
+  fetch_status?: 'success' | 'failed';
+  fetch_error?: string;
+  ingestion_status?: string;
+  extractedChars?: number;
+  inline_status?: 'included' | 'skipped' | 'failed';
+  retrieval_status?: 'queued' | 'completed' | 'failed' | 'pending';
+}
+
+export interface SpinoffPrefill {
+  fromReportId: string;
+  reportTitle: string;
+  query: string;
+  supplemental?: string | null;
+  engineVersion?: 'v1' | 'v2' | string | null;
+  researchObjective?: ResearchObjective | string | null;
+  citationStyle?: CitationStyleSlug | string | null;
+  targetWordCount?: number | null;
+  modelOverrides?: Record<string, unknown> | null;
+  filterTags?: string[];
+}
+
+export interface DossierReportHistoryEntry {
+  reportId: string;
+  versionNumber: number;
+  title: string;
+  status: string;
+  parentReportId: string | null;
+  revisionNumber: number | null;
+  createdAt: string;
+  finalizedAt: string | null;
+}
+
+export interface DossierSpinoffEntry {
+  runId: string;
+  dossierId: string;
+  query: string;
+  runStatus: string;
+  engineVersion: string | null;
+  reportId: string | null;
+  spinoffFromReportId: string;
+  createdAt: string;
+}
+
+export type DossierTimelineEventType =
+  | 'run_started'
+  | 'run_completed'
+  | 'run_failed'
+  | 'report_finalized'
+  | 'revision_applied'
+  | 'spinoff_started';
+
+export interface DossierTimelineRow {
+  occurredAt: string;
+  eventType: DossierTimelineEventType | string;
+  dossierId: string | null;
+  runId: string | null;
+  reportId: string | null;
+  query: string | null;
+  revisionNumber: number | null;
+  engineVersion: string | null;
+  runStatus: string | null;
+}
+
+export interface DossierTimelineResult {
+  rows: DossierTimelineRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface DossierSourceEntry {
+  sourceId: string;
+  title: string | null;
+  url: string | null;
+  sourceType: string | null;
+  ingestionStatus: string | null;
+  fetchStatus: string | null;
+  citedInReport: boolean;
+  discoveredByRunId: string | null;
+  chunkCount: number | null;
+}
 
 export interface ReportRevision {
   id: string;
@@ -460,6 +563,77 @@ export const getDossiers = (params?: DossierListParams) =>
 
 export const getDossier = (id: string) => api.get<Dossier>(`/dossiers/${id}`).then((r) => r.data);
 
+export const getDossierReportHistory = (dossierId: string) =>
+  api.get<{ entries: DossierReportHistoryEntry[] }>(`/dossiers/${dossierId}/report-history`).then((r) => r.data);
+
+export const getDossierSpinoffs = (dossierId: string) =>
+  api.get<{ spinoffs: DossierSpinoffEntry[] }>(`/dossiers/${dossierId}/spinoffs`).then((r) => r.data);
+
+export const getDossierSources = (dossierId: string) =>
+  api.get<{ sources: DossierSourceEntry[] }>(`/dossiers/${dossierId}/sources`).then((r) => r.data);
+
+export const fetchDossierTimeline = (params?: {
+  page?: number;
+  pageSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) => api.get<DossierTimelineResult>('/dossiers/timeline', { params }).then((r) => r.data);
+
+export const fetchSpinoffPrefill = (reportId: string) =>
+  api.get<SpinoffPrefill>(`/reports/${reportId}/spinoff/prefill`).then((r) => r.data);
+
+export const startResearchSpinoff = (fromReportId: string, data: StartResearchPayload) => {
+  const { supplementalFiles, supplementalUrls, ...rest } = data;
+  const hasFiles = supplementalFiles && supplementalFiles.length > 0;
+
+  if (hasFiles || (supplementalUrls && supplementalUrls.length > 0)) {
+    const form = new FormData();
+    form.append('fromReportId', fromReportId);
+    form.append('query', rest.query);
+    if (rest.supplemental) form.append('supplemental', rest.supplemental);
+    if (rest.filterTags?.length) form.append('filterTags', JSON.stringify(rest.filterTags));
+    if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
+      form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
+    }
+    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
+    if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
+    if (typeof rest.targetWordCount === 'number') {
+      form.append('targetWordCount', String(rest.targetWordCount));
+    }
+    if (rest.citationStyle) form.append('citation_style', rest.citationStyle);
+    if (rest.savedOrchestrationProfileId) {
+      form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
+    }
+    if (supplementalUrls?.length) {
+      form.append('supplementalUrls', JSON.stringify(supplementalUrls));
+    }
+    for (const f of supplementalFiles ?? []) {
+      form.append('files', f);
+    }
+    return api
+      .post<{
+        runId: string;
+        status: string;
+        supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+      }>('/research/spinoff', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  }
+
+  return api
+    .post<{
+      runId: string;
+      status: string;
+      supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+    }>('/research/spinoff', {
+      fromReportId,
+      ...rest,
+      supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
+    })
+    .then((r) => r.data);
+};
+
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 
 export const createReportRevision = (id: string, data: {
@@ -486,13 +660,21 @@ export const createReportRevision = (id: string, data: {
       form.append('files', f);
     }
     return api
-      .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, form, {
+      .post<{
+        revisionId: string;
+        revisedReportId: string;
+        supplementalAttachments?: RevisionAttachmentAudit[];
+      }>(`/reports/${id}/revisions`, form, {
         timeout: 900000,
       })
       .then((r) => r.data);
   }
   return api
-    .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
+    .post<{
+      revisionId: string;
+      revisedReportId: string;
+      supplementalAttachments?: RevisionAttachmentAudit[];
+    }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
     .then((r) => r.data);
 };
 
