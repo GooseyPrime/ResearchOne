@@ -32,3 +32,4 @@ export const dossierTimelineQuerySchema = z.object({
 });
 
 export type DossierListQuery = z.infer<typeof dossierListQuerySchema>;
+export type DossierTimelineQuery = z.infer<typeof dossierTimelineQuerySchema>;

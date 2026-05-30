@@ -398,6 +398,30 @@ export interface DossierSpinoffEntry {
   createdAt: string;
 }
 
+export type DossierTimelineEventType =
+  | 'initial_run'
+  | 'report_revision'
+  | 'research_spinoff'
+  | 'plan_refinement';
+
+export interface DossierTimelineRow {
+  occurredAt: string;
+  eventType: DossierTimelineEventType | string;
+  dossierId: string | null;
+  runId: string | null;
+  reportId: string | null;
+  query: string | null;
+  revisionNumber: number | null;
+  engineVersion: string | null;
+  runStatus: string | null;
+}
+
+export interface DossierTimelineResult {
+  rows: DossierTimelineRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
 
 export interface ReportRevision {
@@ -533,6 +557,15 @@ export const getDossierReportHistory = (dossierId: string) =>
 
 export const getDossierSpinoffs = (dossierId: string) =>
   api.get<{ spinoffs: DossierSpinoffEntry[] }>(`/dossiers/${dossierId}/spinoffs`).then((r) => r.data);
+
+export const fetchDossierTimeline = (params?: {
+  page?: number;
+  pageSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  status?: string;
+}) => api.get<DossierTimelineResult>('/dossiers/timeline', { params }).then((r) => r.data);
 
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 

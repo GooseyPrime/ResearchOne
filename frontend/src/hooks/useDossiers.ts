@@ -6,6 +6,7 @@ import {
   getRunPlanRevisions,
   getDossierReportHistory,
   getDossierSpinoffs,
+  fetchDossierTimeline,
   type Dossier,
   type DossierListParams,
   type DossierListResult,
@@ -69,3 +70,16 @@ export function useDossierSpinoffs(dossierId: string | undefined) {
 }
 
 
+export function useDossierTimeline(params: {
+  page?: number;
+  pageSize?: number;
+  enabled?: boolean;
+}) {
+  const { enabled = true, ...rest } = params;
+  return useQuery<DossierTimelineResult>({
+    queryKey: ['dossier-timeline', rest],
+    queryFn: () => fetchDossierTimeline(rest),
+    enabled,
+    retry: false,
+  });
+}

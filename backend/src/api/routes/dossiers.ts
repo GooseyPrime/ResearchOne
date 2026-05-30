@@ -10,10 +10,12 @@ import {
   getDossierStats,
   listDossiers,
 } from '../../services/research/dossierReadService';
+import { listTimelineEvents } from '../../services/research/dossierTimelineReadService';
 import type { DossierAuthContext } from '../../types/dossier';
 import {
   dossierIdParamSchema,
   dossierListQuerySchema,
+  dossierTimelineQuerySchema,
 } from '../../schemas/dossierSchemas';
 
 const router = Router();
@@ -56,6 +58,25 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+router.get('/timeline', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ctx = ctxFromReq(req);
+    if (!ctx) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const q = dossierTimelineQuerySchema.safeParse(req.query);
+    if (!q.success) {
+      res.status(400).json({ error: 'Invalid query', detail: q.error.flatten() });
+      return;
+    }
+    const { page, pageSize, dateFrom, dateTo } = q.data;
+    const result = await listTimelineEvents({ page, pageSize, dateFrom, dateTo }, ctx);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/:id/request', async (req: Request, res: Response, next: NextFunction) => {
   try {
