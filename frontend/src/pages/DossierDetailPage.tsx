@@ -8,7 +8,6 @@ import {
   NotebookTabs,
   Sigma,
   GitBranch,
-  Database,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
@@ -44,8 +43,7 @@ function tabFromHash(): TabId {
     h === 'stats' ||
     h === 'request' ||
     h === 'report-history' ||
-    h === 'spinoffs' ||
-    h === 'sources'
+    h === 'spinoffs'
   ) {
     return h;
   }

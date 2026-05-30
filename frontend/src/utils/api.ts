@@ -533,12 +533,6 @@ export const getDossierReportHistory = (dossierId: string) =>
 export const getDossierSpinoffs = (dossierId: string) =>
   api.get<{ spinoffs: DossierSpinoffEntry[] }>(`/dossiers/${dossierId}/spinoffs`).then((r) => r.data);
 
-
-  pageSize?: number;
-  dateFrom?: string;
-  dateTo?: string;
-}) => api.get<DossierTimelineResult>('/dossiers/timeline', { params }).then((r) => r.data);
-
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 
 /** @deprecated Prefer RevisionAttachmentAudit from revision responses. */
