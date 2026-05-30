@@ -20,9 +20,9 @@ Migration numbers: **046** spinoff lineage, **047** `v_dossier` activity, **048*
 | 1 | `cursor/revision-url-retrieval-64de` | A hotfix | PR open |
 | 2 | `cursor/research-spinoff-api-64de` | B backend | PR open |
 | 3 | `cursor/research-spinoff-ui-64de` | B frontend | pending |
-| 4 | `cursor/dossier-activity-history-64de` | C | pending |
-| 5 | `cursor/dossier-timeline-table-64de` | C | pending |
-| 6 | `cursor/revision-attachment-audit-64de` | D | pending |
+| 4 | `cursor/dossier-activity-history-64de` | C | PR open |
+| 5 | `cursor/dossier-timeline-table-64de` | C | PR open |
+| 6 | `cursor/revision-attachment-audit-64de` | D | PR open |
 
 Update this table at PR open/merge.
 
@@ -37,7 +37,7 @@ Update this table at PR open/merge.
 | `GET /api/dossiers/:id/spinoffs` | 4 | `api.getDossierSpinoffs` |
 | `GET /api/dossiers/timeline` | 5 | `api.fetchDossierTimeline` |
 | `GET /api/dossiers/:id/sources` | 6 | `api.getDossierSources` |
-| Revision attachment audit (TBD path) | 6 | `RevisionAttachmentAuditPanel` |
+| Revision attachment audit (POST /reports/:id/revisions response) | 6 | `RevisionAttachmentAuditPanel` |
 
 Do not merge UI for an endpoint until its gate backend is on `main`.
 
