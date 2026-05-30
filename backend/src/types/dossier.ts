@@ -58,6 +58,8 @@ export interface Dossier {
   stats: DossierStats;
 }
 
+export type DossierSortBy = 'dossier_created_at' | 'last_activity_at';
+
 export interface DossierListFilters {
   page: number;
   pageSize: number;
@@ -65,6 +67,7 @@ export interface DossierListFilters {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: DossierSortBy;
 }
 
 export interface DossierListRow {
@@ -78,6 +81,91 @@ export interface DossierListRow {
   reportTitle: string | null;
   sourcesCitedCount: number | null;
   totalDurationMs: number | null;
+  /** Wave 5.5+ — most recent activity (revision, run update, etc.). */
+  lastActivityAt: string | null;
+  versionNumber: number | null;
+  isSpinoff: boolean;
+  isRevised: boolean;
+  spinoffFromReportId: string | null;
+  engineVersion: string | null;
+}
+
+export interface DossierReportHistoryEntry {
+  reportId: string;
+  versionNumber: number;
+  title: string;
+  status: string;
+  parentReportId: string | null;
+  revisionNumber: number | null;
+  createdAt: string;
+  finalizedAt: string | null;
+}
+
+export interface DossierReportHistoryResult {
+  entries: DossierReportHistoryEntry[];
+}
+
+export interface DossierSpinoffEntry {
+  runId: string;
+  dossierId: string;
+  query: string;
+  runStatus: string;
+  engineVersion: string | null;
+  reportId: string | null;
+  spinoffFromReportId: string | null;
+  createdAt: string;
+}
+
+export interface DossierSpinoffsResult {
+  spinoffs: DossierSpinoffEntry[];
+}
+
+export interface DossierSourceEntry {
+  sourceId: string;
+  title: string | null;
+  url: string | null;
+  sourceType: string | null;
+  ingestionStatus: string | null;
+  fetchStatus: string | null;
+  citedInReport: boolean;
+  discoveredByRunId: string | null;
+  chunkCount: number | null;
+}
+
+export interface DossierSourcesResult {
+  sources: DossierSourceEntry[];
+}
+
+export type DossierTimelineEventType =
+  | 'initial_run'
+  | 'report_revision'
+  | 'research_spinoff'
+  | 'plan_refinement';
+
+export interface DossierTimelineRow {
+  occurredAt: string;
+  eventType: DossierTimelineEventType | string;
+  dossierId: string | null;
+  runId: string | null;
+  reportId: string | null;
+  query: string | null;
+  revisionNumber: number | null;
+  engineVersion: string | null;
+  runStatus: string | null;
+}
+
+export interface DossierTimelineFilters {
+  page: number;
+  pageSize: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface DossierTimelineResult {
+  rows: DossierTimelineRow[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface DossierListResult {
