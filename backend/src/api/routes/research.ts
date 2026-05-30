@@ -30,6 +30,12 @@ import { getUserSubscription, type UserSubscription } from '../../services/billi
 import { resolveEffectiveEntitlementTier } from '../../services/billing/entitlementTier';
 import { parseExportStyleInput, VALID_EXPORT_STYLES } from '../../services/formatting/exportStyleGuards';
 import { getSavedProfileVisibleToUser } from '../../services/planning/savedOrchestrationProfileService';
+import {
+  buildPriorReportContextBlock,
+  insertQueuedResearchRunWithLineage,
+  mergeSupplementalWithPriorContext,
+  resolveOwnedReportForSpinoff,
+} from '../../services/research/spinoffService';
 
 const router = Router();
 
@@ -77,28 +83,30 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
   return fallback;
 }
 
-// POST /api/research - Start a research run (JSON or multipart with supplemental files)
-router.post(
-  '/',
-  (req, res, next) => {
-    const ct = req.headers['content-type'] || '';
-    if (ct.includes('multipart/form-data')) {
-      uploadResearch.array('files', RESEARCH_MAX_FILES)(req, res, next);
-    } else {
-      next();
-    }
-  },
-  async (req, res, next) => {
+function parseSpinoffFromReportId(body: Record<string, unknown>): string | undefined {
+  const raw = body.fromReportId;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
+}
+
+async function handleStartResearchRun(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+  spinoffFromReportId?: string
+): Promise<void> {
     try {
       const isMultipart = Boolean(req.headers['content-type']?.includes('multipart/form-data'));
       const body = req.body as Record<string, string | undefined> & {
         filterTags?: string[] | string;
         modelOverrides?: unknown;
         supplementalUrls?: string[];
+        fromReportId?: string;
       };
 
       const researchQuery = typeof body.query === 'string' ? body.query : '';
-      const supplemental = typeof body.supplemental === 'string' ? body.supplemental : '';
+      let supplemental = typeof body.supplemental === 'string' ? body.supplemental : '';
 
       let filterTags: string[] | undefined;
       if (isMultipart) {
@@ -173,6 +181,29 @@ router.post(
         return;
       }
 
+      const userId = req.auth?.userId;
+      const orgId = req.auth?.orgId ?? null;
+
+      let spinoffLineage:
+        | { spinoffFromRunId: string; spinoffFromReportId: string }
+        | undefined;
+      if (spinoffFromReportId) {
+        const parent = await resolveOwnedReportForSpinoff(spinoffFromReportId, {
+          userId: userId ?? null,
+          orgId,
+        });
+        if (!parent) {
+          res.status(404).json({ error: 'Report not found' });
+          return;
+        }
+        const priorBlock = await buildPriorReportContextBlock(spinoffFromReportId);
+        supplemental = mergeSupplementalWithPriorContext(supplemental, priorBlock);
+        spinoffLineage = {
+          spinoffFromRunId: parent.runId,
+          spinoffFromReportId: parent.reportId,
+        };
+      }
+
       const eng = engineVersion ?? '';
       if (eng && eng !== 'v2') {
         res.status(400).json({ error: 'engineVersion must be "v2" when set' });
@@ -211,7 +242,6 @@ router.post(
       }
 
       // Tier enforcement: check access before creating the run
-      const userId = req.auth?.userId;
       let subscriptionRow: UserSubscription | undefined;
       if (userId) {
         let walletBalanceCents = 0;
@@ -299,67 +329,20 @@ router.post(
         jobIdx += 1;
       }
 
-      // INSERT — try with user_id + target_word_count first (migrations 029 + 013).
-      // If 029 has not yet applied, fall back without user_id. If 013 has not yet
-      // applied, fall back without target_word_count. Only Postgres 42703
-      // ("undefined column") is recovered; everything else is rethrown.
-      const orgId = req.auth?.orgId ?? null;
-      try {
-        await query(
-          `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
-           VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
-          [
-            runId,
-            title,
-            researchQuery,
-            supplemental ?? '',
-            JSON.stringify(normalizedOverrides),
-            JSON.stringify(attachments),
-            eng === 'v2' ? 'v2' : null,
-            researchObjective ?? null,
-            targetWordCount ?? null,
-            userId ?? null,
-            orgId,
-          ]
-        );
-      } catch (insertErr) {
-        const code = (insertErr as { code?: string } | null)?.code;
-        if (code !== '42703') throw insertErr;
-        try {
-          await query(
-            `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
-             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
-            [
-              runId,
-              title,
-              researchQuery,
-              supplemental ?? '',
-              JSON.stringify(normalizedOverrides),
-              JSON.stringify(attachments),
-              eng === 'v2' ? 'v2' : null,
-              researchObjective ?? null,
-              targetWordCount ?? null,
-            ]
-          );
-        } catch (insertErr2) {
-          const code2 = (insertErr2 as { code?: string } | null)?.code;
-          if (code2 !== '42703') throw insertErr2;
-          await query(
-            `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
-             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
-            [
-              runId,
-              title,
-              researchQuery,
-              supplemental ?? '',
-              JSON.stringify(normalizedOverrides),
-              JSON.stringify(attachments),
-              eng === 'v2' ? 'v2' : null,
-              researchObjective ?? null,
-            ]
-          );
-        }
-      }
+      await insertQueuedResearchRunWithLineage({
+        runId,
+        title,
+        query: researchQuery,
+        supplemental: supplemental ?? '',
+        normalizedOverridesJson: JSON.stringify(normalizedOverrides),
+        attachmentsJson: JSON.stringify(attachments),
+        engineVersion: eng === 'v2' ? 'v2' : null,
+        researchObjective: researchObjective ?? null,
+        targetWordCount: targetWordCount ?? null,
+        userId: userId ?? null,
+        orgId,
+        lineage: spinoffLineage,
+      });
 
       if (citationStyle) {
         try {
@@ -458,8 +441,31 @@ router.post(
     } catch (err) {
       next(err);
     }
+}
+
+const startResearchUpload = (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+  const ct = req.headers['content-type'] || '';
+  if (ct.includes('multipart/form-data')) {
+    uploadResearch.array('files', RESEARCH_MAX_FILES)(req, res, next);
+  } else {
+    next();
   }
-);
+};
+
+// POST /api/research - Start a research run (JSON or multipart with supplemental files)
+router.post('/', startResearchUpload, (req, res, next) => {
+  void handleStartResearchRun(req, res, next);
+});
+
+// POST /api/research/spinoff — full research from an existing report (Gate 2)
+router.post('/spinoff', startResearchUpload, (req, res, next) => {
+  const fromReportId = parseSpinoffFromReportId(req.body as Record<string, unknown>);
+  if (!fromReportId) {
+    res.status(400).json({ error: 'fromReportId is required' });
+    return;
+  }
+  void handleStartResearchRun(req, res, next, fromReportId);
+});
 
 // GET /api/research/v2/ensemble-presets — Research One 2 objective-based defaults (before /:id)
 router.get('/v2/ensemble-presets', async (_req, res, next) => {

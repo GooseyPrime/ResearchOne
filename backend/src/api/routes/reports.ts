@@ -12,6 +12,7 @@ import {
   listReportRevisions,
 } from '../../services/reasoning/reportRevisionService';
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
+import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { logger } from '../../utils/logger';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
 import {
@@ -416,6 +417,22 @@ router.get('/', async (req, res, next) => {
     }
 
     res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/:id/spinoff/prefill — form defaults for research spinoff (before /:id)
+router.get('/:id/spinoff/prefill', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+    const prefill = await getSpinoffPrefill(req.params.id, { userId, orgId });
+    if (!prefill) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    res.json(prefill);
   } catch (err) {
     next(err);
   }
