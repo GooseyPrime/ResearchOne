@@ -7,6 +7,7 @@ import {
   extractApiError,
   getReport,
   type ResearchProgressEvent,
+  type RevisionSupplementalAttachmentOutcome,
 } from '@/utils/api';
 import LiveRevisionTraceLog from '@/components/research/LiveRevisionTraceLog';
 import { appendKeepingNewestAtBottom } from '@/utils/traceEventWindow';
@@ -28,7 +29,16 @@ type RevisionProgressPayload = {
 type RevisionCompletedPayload = {
   revisionId?: string;
   revisedReportId?: string;
+  supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
 };
+
+function failedAttachmentLabels(attachments: RevisionSupplementalAttachmentOutcome[] | undefined): string[] {
+  if (!attachments?.length) return [];
+  return attachments
+    .filter((a) => a.fetch_status === 'failed')
+    .map((a) => a.url ?? a.filename ?? 'attachment')
+    .filter(Boolean);
+}
 
 function toTraceEvent(payload: RevisionProgressPayload): ResearchProgressEvent {
   return {
@@ -65,12 +75,20 @@ export default function ReportRevisionWorkspacePage() {
   });
 
   const finishRevision = useCallback(
-    (revisedReportId: string) => {
+    (revisedReportId: string, attachments?: RevisionSupplementalAttachmentOutcome[]) => {
       if (completedRef.current) return;
       completedRef.current = true;
       qc.invalidateQueries({ queryKey: ['report-revisions', baseReportId] });
       qc.invalidateQueries({ queryKey: ['reports'] });
-      addNotification('success', 'Revision complete — opening the new report version.');
+      const failed = failedAttachmentLabels(attachments);
+      if (failed.length > 0) {
+        addNotification(
+          'info',
+          `Revision complete, but ${failed.length} attachment(s) could not be fetched: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}`,
+        );
+      } else {
+        addNotification('success', 'Revision complete — opening the new report version.');
+      }
       navigate(`/app/reports/${revisedReportId}`, { replace: true });
     },
     [addNotification, baseReportId, navigate, qc],
@@ -92,7 +110,7 @@ export default function ReportRevisionWorkspacePage() {
       }),
     onSuccess: (data) => {
       if (data.revisedReportId) {
-        finishRevision(data.revisedReportId);
+        finishRevision(data.revisedReportId, data.supplementalAttachments);
       }
     },
     onError: (err: unknown) => {
@@ -121,7 +139,7 @@ export default function ReportRevisionWorkspacePage() {
     const onCompleted = (raw: unknown) => {
       const p = raw as RevisionCompletedPayload;
       if (!p.revisedReportId) return;
-      finishRevision(p.revisedReportId);
+      finishRevision(p.revisedReportId, p.supplementalAttachments);
     };
 
     sock.on('revision:progress', onProgress);

@@ -1,4 +1,18 @@
 import type { PerRunModelOverrides } from '../runtimeModelStore';
+import type { ReasoningModelRole } from './reasoningModelPolicy';
+
+/** Per-role runtime override slice for `callRoleModel`. */
+export function runtimeOverrideForRole(
+  overrides: PerRunModelOverrides,
+  role: ReasoningModelRole
+): { primary?: string; fallback?: string } | undefined {
+  const entry = overrides.overrides?.[role];
+  if (!entry) return undefined;
+  const primary = entry.primary?.trim() || undefined;
+  const fallback = entry.fallback?.trim() || undefined;
+  if (!primary && !fallback) return undefined;
+  return { primary, fallback };
+}
 
 /** Normalize client-supplied per-run model overrides before persisting or enqueueing. */
 export function normalizeRunOverrides(overrides: PerRunModelOverrides | undefined): PerRunModelOverrides {

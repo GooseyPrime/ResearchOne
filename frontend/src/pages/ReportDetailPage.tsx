@@ -667,11 +667,12 @@ export default function ReportDetailPage() {
             setRevisionUrls(urls);
           }}
           disabled={revisionSubmitting}
+          mode="revision"
           label="Supplemental files and URLs to support the revision (optional)"
-          description="Attached files are extracted and reviewed by the revision pipeline (intake → planner → section rewriter) and also imported into the corpus so future runs can retrieve them. PDF / TXT / Markdown."
         />
         <p className="text-xs text-slate-500">
           Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
+          Need a different engine, objective, or model lineup? Use <strong>New research spinoff</strong> (coming in the next release).
         </p>
         <button
           type="button"
