@@ -173,6 +173,24 @@ export interface ResearchRun {
   model_ensemble?: Record<string, unknown>;
   /** Bibliography style chosen at run start (`research_runs.citation_style`). */
   citation_style?: string | null;
+  /** Linked report when the run completed (enables spinoff from run list). */
+  report_id?: string | null;
+  /** Spinoff lineage when this run was forked from a prior report. */
+  spinoff_from_report_id?: string | null;
+}
+
+export interface SpinoffPrefill {
+  fromReportId: string;
+  fromRunId?: string;
+  reportTitle: string;
+  query: string;
+  supplemental?: string | null;
+  engineVersion?: 'v1' | 'v2' | string | null;
+  researchObjective?: ResearchObjective | string | null;
+  citationStyle?: CitationStyleSlug | string | null;
+  targetWordCount?: number | null;
+  modelOverrides?: Record<string, unknown> | null;
+  filterTags?: string[];
 }
 
 export interface SystemHealth {
@@ -602,6 +620,63 @@ export const startResearch = (data: StartResearchPayload) => {
       status: string;
       supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
     }>('/research', {
+      ...rest,
+      supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
+    })
+    .then((r) => r.data);
+};
+
+export const fetchSpinoffPrefill = (reportId: string) =>
+  api.get<SpinoffPrefill>(`/reports/${reportId}/spinoff/prefill`).then((r) => r.data);
+
+export const startResearchSpinoff = (fromReportId: string, data: StartResearchPayload) => {
+  const { supplementalFiles, supplementalUrls, ...rest } = data;
+  const hasFiles = supplementalFiles && supplementalFiles.length > 0;
+
+  if (hasFiles || (supplementalUrls && supplementalUrls.length > 0)) {
+    const form = new FormData();
+    form.append('fromReportId', fromReportId);
+    form.append('query', rest.query);
+    if (rest.supplemental) form.append('supplemental', rest.supplemental);
+    if (rest.filterTags?.length) form.append('filterTags', JSON.stringify(rest.filterTags));
+    if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
+      form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
+    }
+    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
+    if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
+    if (typeof rest.targetWordCount === 'number') {
+      form.append('targetWordCount', String(rest.targetWordCount));
+    }
+    if (rest.citationStyle) {
+      form.append('citation_style', rest.citationStyle);
+    }
+    if (rest.savedOrchestrationProfileId) {
+      form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
+    }
+    if (supplementalUrls?.length) {
+      form.append('supplementalUrls', JSON.stringify(supplementalUrls));
+    }
+    for (const f of supplementalFiles ?? []) {
+      form.append('files', f);
+    }
+    return api
+      .post<{
+        runId: string;
+        status: string;
+        supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+      }>('/research/spinoff', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  }
+
+  return api
+    .post<{
+      runId: string;
+      status: string;
+      supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+    }>('/research/spinoff', {
+      fromReportId,
       ...rest,
       supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
     })

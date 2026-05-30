@@ -17,6 +17,7 @@ import MonitorToggle from '../components/monitors/MonitorToggle';
 import ReportExportButton from '../components/reports/ReportExportButton';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
+import ReportForkActions from '../components/reports/ReportForkActions';
 import {
   ArrowLeft,
   FileText,
@@ -643,7 +644,16 @@ export default function ReportDetailPage() {
         </div>
       )}
 
-      <div className="card p-5 space-y-3 print:hidden">
+      <ReportForkActions
+        reportId={report.id}
+        onEditInPlace={() => {
+          const el = document.getElementById('revision-form');
+          el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        editDisabled={revisionSubmitting}
+      />
+
+      <div id="revision-form" className="card p-5 space-y-3 print:hidden">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Request edit / correction / re-evaluation</h2>
         <textarea
           className="textarea min-h-24"
@@ -672,7 +682,7 @@ export default function ReportDetailPage() {
         />
         <p className="text-xs text-slate-500">
           Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
-          Need a different engine, objective, or model lineup? Use <strong>New research spinoff</strong> (coming in the next release).
+          Need a different engine, objective, or model lineup? Use <strong>New research spinoff</strong> above.
         </p>
         <button
           type="button"

@@ -519,7 +519,7 @@ router.get('/', async (req, res, next) => {
 
     const baseCols = `id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
-                      started_at, completed_at, created_at`;
+                      started_at, completed_at, created_at, report_id`;
 
     let rows: unknown[];
     try {

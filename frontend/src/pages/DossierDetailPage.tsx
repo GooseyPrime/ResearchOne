@@ -7,6 +7,7 @@ import IntentBadge from '../components/dossiers/IntentBadge';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import DossierReportSection from '../components/dossiers/DossierReportSection';
 import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSection';
+import ReportForkActions from '../components/reports/ReportForkActions';
 import { extractApiError } from '../utils/api';
 
 type TabId = 'request' | 'plan' | 'report' | 'stats';
@@ -160,16 +161,22 @@ export default function DossierDetailPage() {
         )}
 
         {tab === 'report' && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <h2 className="text-white font-medium">Report</h2>
             {data.report.reportId ? (
-              <DossierReportSection
-                plan={data.plan}
-                report={reportQuery.data}
-                reportLoading={reportQuery.isLoading}
-                reportError={reportQuery.error instanceof Error ? reportQuery.error : null}
-                fullReportHref={reportHref!}
-              />
+              <>
+                <ReportForkActions
+                  reportId={data.report.reportId}
+                  onEditInPlace={() => navigate(`/app/reports/${data.report.reportId}`)}
+                />
+                <DossierReportSection
+                  plan={data.plan}
+                  report={reportQuery.data}
+                  reportLoading={reportQuery.isLoading}
+                  reportError={reportQuery.error instanceof Error ? reportQuery.error : null}
+                  fullReportHref={reportHref!}
+                />
+              </>
             ) : (
               <p className="text-slate-500">No report is linked to this dossier yet.</p>
             )}
