@@ -4,9 +4,15 @@ import {
   getDossiers,
   getReport,
   getRunPlanRevisions,
+  getDossierReportHistory,
+  getDossierSpinoffs,
   type Dossier,
   type DossierListParams,
   type DossierListResult,
+  type DossierReportHistoryEntry,
+  type DossierSpinoffEntry,
+  type DossierSourceEntry,
+  type DossierTimelineResult,
   type PlanRevisionRow,
   type Report,
 } from '../utils/api';
@@ -45,3 +51,23 @@ export function usePlanRevisions(runId: string | undefined) {
     enabled: Boolean(runId),
   });
 }
+
+export function useDossierReportHistory(dossierId: string | undefined) {
+  return useQuery<{ entries: DossierReportHistoryEntry[] }>({
+    queryKey: ['dossier-report-history', dossierId],
+    queryFn: () => getDossierReportHistory(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
+
+export function useDossierSpinoffs(dossierId: string | undefined) {
+  return useQuery<{ spinoffs: DossierSpinoffEntry[] }>({
+    queryKey: ['dossier-spinoffs', dossierId],
+    queryFn: () => getDossierSpinoffs(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
+
+

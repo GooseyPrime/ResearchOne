@@ -332,6 +332,13 @@ export interface DossierListRow {
   reportTitle: string | null;
   sourcesCitedCount: number | null;
   totalDurationMs: number | null;
+  /** Wave 5.5+ — most recent activity (revision, run update, etc.). */
+  lastActivityAt?: string | null;
+  versionNumber?: number | null;
+  isSpinoff?: boolean;
+  isRevised?: boolean;
+  spinoffFromReportId?: string | null;
+  engineVersion?: string | null;
 }
 
 export interface DossierListResult {
@@ -341,6 +348,8 @@ export interface DossierListResult {
   pageSize: number;
 }
 
+export type DossierSortBy = 'dossier_created_at' | 'last_activity_at';
+
 export type DossierListParams = {
   page?: number;
   pageSize?: number;
@@ -348,7 +357,47 @@ export type DossierListParams = {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  sortBy?: DossierSortBy;
 };
+
+/** Revision supplemental attachment audit row (POST /reports/:id/revisions response). */
+export interface RevisionAttachmentAudit {
+  kind: 'url' | 'file';
+  url?: string;
+  filename?: string;
+  mimetype?: string;
+  ingestion_job_id: string;
+  fetch_status?: 'success' | 'failed';
+  fetch_error?: string;
+  ingestion_status?: string;
+  extractedChars?: number;
+  inline_status?: 'included' | 'skipped' | 'failed';
+  retrieval_status?: 'queued' | 'completed' | 'failed' | 'pending';
+}
+
+export interface DossierReportHistoryEntry {
+  reportId: string;
+  versionNumber: number;
+  title: string;
+  status: string;
+  parentReportId: string | null;
+  revisionNumber: number | null;
+  createdAt: string;
+  finalizedAt: string | null;
+}
+
+export interface DossierSpinoffEntry {
+  runId: string;
+  dossierId: string;
+  query: string;
+  runStatus: string;
+  engineVersion: string | null;
+  reportId: string | null;
+  spinoffFromReportId: string | null;
+  createdAt: string;
+}
+
+
 
 export interface ReportRevision {
   id: string;
@@ -478,13 +527,26 @@ export const getDossiers = (params?: DossierListParams) =>
 
 export const getDossier = (id: string) => api.get<Dossier>(`/dossiers/${id}`).then((r) => r.data);
 
+export const getDossierReportHistory = (dossierId: string) =>
+  api.get<{ entries: DossierReportHistoryEntry[] }>(`/dossiers/${dossierId}/report-history`).then((r) => r.data);
+
+export const getDossierSpinoffs = (dossierId: string) =>
+  api.get<{ spinoffs: DossierSpinoffEntry[] }>(`/dossiers/${dossierId}/spinoffs`).then((r) => r.data);
+
+
+  pageSize?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) => api.get<DossierTimelineResult>('/dossiers/timeline', { params }).then((r) => r.data);
+
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 
+/** @deprecated Prefer RevisionAttachmentAudit from revision responses. */
 export interface RevisionSupplementalAttachmentOutcome {
   kind?: string;
   url?: string;
   filename?: string;
-  fetch_status?: 'ok' | 'failed';
+  fetch_status?: 'ok' | 'failed' | 'success';
   error?: string;
 }
 
@@ -515,7 +577,7 @@ export const createReportRevision = (id: string, data: {
       .post<{
         revisionId: string;
         revisedReportId: string;
-        supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
+        supplementalAttachments?: RevisionAttachmentAudit[];
       }>(`/reports/${id}/revisions`, form, {
         timeout: 900000,
       })
@@ -525,7 +587,7 @@ export const createReportRevision = (id: string, data: {
     .post<{
       revisionId: string;
       revisedReportId: string;
-      supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
+      supplementalAttachments?: RevisionAttachmentAudit[];
     }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
     .then((r) => r.data);
 };
