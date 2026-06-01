@@ -97,7 +97,7 @@ Deliverables: this file, rule 35, `AGENTS.md`, `00-pre-commit-review.mdc` §F3.
 - Cherry-pick/adapt from `origin/cursor/revision-spinoff-dossier-timeline-fa53`
 - `frontend/src/pages/ReportSpinoffPage.tsx`
 - `frontend/src/components/reports/ReportForkActions.tsx`
-- `frontend/src/pages/ReportDetailPage.tsx`, `DossierDetailPage.tsx`
+- `frontend/src/pages/ReportDetailPage.tsx`, `frontend/src/pages/DossierDetailPage.tsx`
 - `frontend/src/components/research/ResearchRunRow.tsx`
 - `frontend/src/utils/api.ts`, `frontend/src/App.tsx`
 
@@ -117,7 +117,7 @@ Deliverables: this file, rule 35, `AGENTS.md`, `00-pre-commit-review.mdc` §F3.
 - `backend/src/db/migrations/048_v_dossier_reapply_after_047.sql` (if needed)
 - `backend/src/services/research/dossierReadService.ts`
 - `backend/src/api/routes/dossiers.ts`
-- `frontend/src/pages/DossiersPage.tsx`, `DossierDetailPage.tsx`
+- `frontend/src/pages/DossiersPage.tsx`, `frontend/src/pages/DossierDetailPage.tsx`
 
 **Acceptance:**
 
@@ -131,7 +131,7 @@ Deliverables: this file, rule 35, `AGENTS.md`, `00-pre-commit-review.mdc` §F3.
 **Allowlist:**
 
 - `backend/src/services/research/dossierTimelineReadService.ts`
-- `backend/src/api/routes/dossiers.ts`
+- `backend/src/api/routes/dossiers.ts` — register `GET /timeline` **before** `GET /:id` so Express does not treat `timeline` as a dossier id
 - `frontend/src/components/dossiers/DossiersTimelineTable.tsx`
 - `frontend/src/pages/DossiersPage.tsx`
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -8,26 +8,30 @@ import { extractApiError, type DossierListRow } from '../utils/api';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import IntentBadge from '../components/dossiers/IntentBadge';
 
+const PAGE_SIZE = 20;
+
 export default function DossiersPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const { data, isLoading, isError, error } = useDossiers({
-    page: 1,
-    pageSize: 50,
+    page,
+    pageSize: PAGE_SIZE,
     status: status || undefined,
+    search: search.trim() || undefined,
+    sortBy: 'last_activity_at',
   });
 
-  const rows = useMemo(() => {
-    const r = data?.rows ?? [];
-    if (!search.trim()) return r;
-    const q = search.toLowerCase();
-    return r.filter(
-      (row) =>
-        row.requestQuery.toLowerCase().includes(q) ||
-        (row.reportTitle?.toLowerCase().includes(q) ?? false),
-    );
-  }, [data?.rows, search]);
+  const rows = data?.rows ?? [];
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6 bg-r1-canvas min-h-full">
@@ -39,8 +43,7 @@ export default function DossiersPage() {
             Dossiers
           </h1>
           <p className="text-r1-muted text-sm mt-2">
-            Each dossier bundles your request, plan, linked report, and run statistics. Open a row for
-            details.
+            Each dossier bundles your request, plan, linked report, and run statistics. Sorted by most recent activity.
           </p>
         </div>
       </div>
@@ -52,14 +55,19 @@ export default function DossiersPage() {
             className="input pl-9"
             placeholder="Search by query or report title"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             aria-label="Search dossiers"
           />
         </div>
         <select
           className="input sm:max-w-xs"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
           aria-label="Filter by run status"
         >
           <option value="">All run statuses</option>
@@ -92,11 +100,54 @@ export default function DossiersPage() {
           ))}
         </div>
       )}
+
+      {total > PAGE_SIZE ? (
+        <PaginationBar page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      ) : null}
+    </div>
+  );
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  onPageChange: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm text-slate-400">
+      <span>
+        Page {page} of {totalPages} · {total} total
+      </span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className="btn-ghost text-xs px-3 py-1"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="btn-ghost text-xs px-3 py-1"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 }
 
 function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => void }) {
+  const activityAt = row.lastActivityAt ?? row.dossierCreatedAt;
   return (
     <button
       type="button"
@@ -108,10 +159,28 @@ function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => v
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {row.versionNumber != null && row.versionNumber > 1 ? (
+              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-800 text-slate-300">
+                v{row.versionNumber}
+              </span>
+            ) : null}
+            {row.isSpinoff ? (
+              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-900/40 text-purple-300">
+                Spinoff
+              </span>
+            ) : null}
+            {row.isRevised ? (
+              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-accent/15 text-accent">
+                Revised
+              </span>
+            ) : null}
+            {row.engineVersion ? (
+              <span className="text-[10px] uppercase tracking-wide text-slate-500">{row.engineVersion}</span>
+            ) : null}
+          </div>
           <p className="text-xs text-slate-500">
-            {row.dossierCreatedAt
-              ? formatDistanceToNow(new Date(row.dossierCreatedAt), { addSuffix: true })
-              : '—'}
+            {activityAt ? formatDistanceToNow(new Date(activityAt), { addSuffix: true }) : '—'}
           </p>
           <p className="text-sm text-white font-medium line-clamp-2">{row.requestQuery || '—'}</p>
           {row.reportTitle && <p className="text-xs text-slate-400 line-clamp-1">Report: {row.reportTitle}</p>}

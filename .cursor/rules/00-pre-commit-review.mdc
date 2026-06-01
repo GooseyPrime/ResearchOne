@@ -92,17 +92,17 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
 
 ## F3. Revision supplemental URLs and spinoff parity (Rule 35)
 
-19. **Revision URL placeholder is a regression.** Grep
+F3-1. **Revision URL placeholder is a regression.** Grep
     `reportRevisionSupplementalIngest` for async-only URL placeholders before
     merge; supplemental URLs must sync-fetch into `inlineContext` or record
     explicit fetch failure in attachment metadata.
-20. **Scoped retrieval in revision.** `reportRevisionService` must call
+F3-2. **Scoped retrieval in revision.** `reportRevisionService` must call
     `retrieveChunks` (or equivalent scoped helper) for revision-tagged sources
     after ingest wait — not prompt-only URL strings.
-21. **Spinoff route tier parity.** `POST /api/research/spinoff` must use the
+F3-3. **Spinoff route tier parity.** `POST /api/research/spinoff` must use the
     same `checkTierAccess` / wallet / `isDeep` rules as `POST /api/research`;
     grep both handlers when changing tier gates.
-22. **Timeline / dossier SQL mocks.** When changing `v_dossier` or timeline
+F3-4. **Timeline / dossier SQL mocks.** When changing `v_dossier` or timeline
     read SQL, grep test mocks (`dbQuery.mockResolvedValue`, dossier tests) for
     stale row shapes.
 

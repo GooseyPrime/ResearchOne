@@ -3,13 +3,18 @@ import { requireAuth } from '../../middleware/clerkAuth';
 import {
   getDossierById,
   getDossierPlan,
+  getDossierReportHistory,
   getDossierReportLink,
   getDossierRequest,
+  getDossierSpinoffs,
   getDossierStats,
   listDossiers,
 } from '../../services/research/dossierReadService';
 import type { DossierAuthContext } from '../../types/dossier';
-import { dossierIdParamSchema, dossierListQuerySchema } from '../../schemas/dossierSchemas';
+import {
+  dossierIdParamSchema,
+  dossierListQuerySchema,
+} from '../../schemas/dossierSchemas';
 
 const router = Router();
 router.use(requireAuth);
@@ -39,14 +44,18 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       res.status(400).json({ error: 'Invalid query', detail: q.error.flatten() });
       return;
     }
-    const { page, pageSize, intent, status, dateFrom, dateTo } = q.data;
+    const { page, pageSize, intent, status, search, dateFrom, dateTo, sortBy } = q.data;
 
-    const result = await listDossiers({ page, pageSize, intent, status, dateFrom, dateTo }, ctx);
+    const result = await listDossiers(
+      { page, pageSize, intent, status, search, dateFrom, dateTo, sortBy },
+      ctx,
+    );
     res.json(result);
   } catch (e) {
     next(e);
   }
 });
+
 
 router.get('/:id/request', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -143,6 +152,55 @@ router.get('/:id/stats', async (req: Request, res: Response, next: NextFunction)
     next(e);
   }
 });
+
+router.get('/:id/report-history', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ctx = ctxFromReq(req);
+    if (!ctx) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const parsed = parseDossierId(String(req.params.id));
+    if (!parsed.ok) {
+      res.status(400).json({ error: 'Invalid dossier id' });
+      return;
+    }
+    const { id } = parsed;
+    const history = await getDossierReportHistory(id, ctx);
+    if (!history) {
+      res.status(404).json({ error: 'Dossier not found' });
+      return;
+    }
+    res.json(history);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:id/spinoffs', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ctx = ctxFromReq(req);
+    if (!ctx) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const parsed = parseDossierId(String(req.params.id));
+    if (!parsed.ok) {
+      res.status(400).json({ error: 'Invalid dossier id' });
+      return;
+    }
+    const { id } = parsed;
+    const spinoffs = await getDossierSpinoffs(id, ctx);
+    if (!spinoffs) {
+      res.status(404).json({ error: 'Dossier not found' });
+      return;
+    }
+    res.json(spinoffs);
+  } catch (e) {
+    next(e);
+  }
+});
+
 
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {

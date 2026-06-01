@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const queryMock = vi.fn();
-const fetchUrlForIngestMock = vi.fn();
-const ingestionQueueAddMock = vi.fn();
-const waitForIngestionJobsMock = vi.fn();
+const { queryMock, fetchUrlForIngestMock, ingestionQueueAddMock, waitForIngestionJobsMock } =
+  vi.hoisted(() => ({
+    queryMock: vi.fn(),
+    fetchUrlForIngestMock: vi.fn(),
+    ingestionQueueAddMock: vi.fn(),
+    waitForIngestionJobsMock: vi.fn(),
+  }));
 
 vi.mock('../db/pool', () => ({
   query: queryMock,
