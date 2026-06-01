@@ -18,7 +18,7 @@ Migration numbers: **046** spinoff lineage, **047** `v_dossier` activity, **048*
 |------|--------|-----|--------|
 | 0 | `cursor/revision-spinoff-docs-64de` | Docs | merged (#152) |
 | 1 | `cursor/revision-url-retrieval-64de` | A hotfix | PR open |
-| 2 | `cursor/research-spinoff-api-64de` | B backend | pending |
+| 2 | `cursor/research-spinoff-api-64de` | B backend | PR open |
 | 3 | `cursor/research-spinoff-ui-64de` | B frontend | pending |
 | 4 | `cursor/dossier-activity-history-64de` | C | pending |
 | 5 | `cursor/dossier-timeline-table-64de` | C | pending |

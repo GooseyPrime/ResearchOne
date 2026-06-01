@@ -11,6 +11,7 @@ import DossiersPage from './pages/DossiersPage';
 import DossierDetailPage from './pages/DossierDetailPage';
 import DossierPlanHistoryPage from './pages/DossierPlanHistoryPage';
 import ReportDetailPage from './pages/ReportDetailPage';
+import ReportSpinoffPage from './pages/ReportSpinoffPage';
 import ReportRevisionWorkspacePage from './pages/ReportRevisionWorkspacePage';
 import FailedRunReportPage from './pages/FailedRunReportPage';
 import CorpusPage from './pages/CorpusPage';
@@ -90,6 +91,7 @@ export function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/run/:runId" element={<FailedRunReportPage />} />
         <Route path="reports/:baseReportId/revising" element={<ReportRevisionWorkspacePage />} />
+        <Route path="reports/:reportId/spinoff" element={<ReportSpinoffPage />} />
         <Route path="reports/:id" element={<ReportDetailPage />} />
         <Route path="add-ons" element={<AddOnsPage />} />
         <Route path="monitors" element={<MonitorsPage />} />
