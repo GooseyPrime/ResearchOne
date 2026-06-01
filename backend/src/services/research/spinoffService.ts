@@ -8,7 +8,7 @@ const PRIOR_REPORT_CONTEXT_MAX_CHARS = 8000;
 
 export type SpinoffParentReport = {
   reportId: string;
-  runId: string;
+  runId: string | null;
   title: string;
   query: string;
   supplemental: string | null;
@@ -22,7 +22,7 @@ export type SpinoffParentReport = {
 
 export type SpinoffPrefill = {
   fromReportId: string;
-  fromRunId: string;
+  fromRunId?: string;
   reportTitle: string;
   query: string;
   supplemental?: string | null;
@@ -40,6 +40,18 @@ function ownershipSql(alias = 'r'): string {
   return `(${alias}.user_id = $2 OR (${alias}.org_id IS NOT NULL AND ${alias}.org_id = $3) OR ${alias}.user_id IS NULL)`;
 }
 
+/** Unwrap persisted `{ overrides: { role: … } }` envelope for spinoff prefill consumers. */
+function flattenModelOverridesForPrefill(
+  raw: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const nested = raw.overrides;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  return raw;
+}
+
 export async function resolveOwnedReportForSpinoff(
   reportId: string,
   auth: AuthScope
@@ -53,7 +65,7 @@ export async function resolveOwnedReportForSpinoff(
               rr.target_word_count, rr.citation_style, rr.model_overrides,
               rr.supplemental_attachments
          FROM reports r
-         JOIN research_runs rr ON rr.id = r.run_id
+         LEFT JOIN research_runs rr ON rr.id = r.run_id
         WHERE r.id = $1 AND ${ownershipSql('r')}`,
       [reportId, userId, orgId]
     );
@@ -66,7 +78,7 @@ export async function resolveOwnedReportForSpinoff(
               rr.target_word_count, rr.citation_style, rr.model_overrides,
               rr.supplemental_attachments
          FROM reports r
-         JOIN research_runs rr ON rr.id = r.run_id
+         LEFT JOIN research_runs rr ON rr.id = r.run_id
         WHERE r.id = $1`,
       [reportId]
     );
@@ -74,8 +86,7 @@ export async function resolveOwnedReportForSpinoff(
 
   if (rows.length === 0) return null;
   const row = rows[0];
-  const runId = row.run_id as string | null;
-  if (!runId) return null;
+  const runId = (row.run_id as string | null) ?? null;
 
   return {
     reportId: String(row.report_id),
@@ -131,7 +142,7 @@ export function mergeSupplementalWithPriorContext(
 export function mapParentToSpinoffPrefill(parent: SpinoffParentReport): SpinoffPrefill {
   return {
     fromReportId: parent.reportId,
-    fromRunId: parent.runId,
+    fromRunId: parent.runId ?? undefined,
     reportTitle: parent.title,
     query: parent.query,
     supplemental: parent.supplemental,
@@ -139,7 +150,7 @@ export function mapParentToSpinoffPrefill(parent: SpinoffParentReport): SpinoffP
     researchObjective: parent.researchObjective,
     citationStyle: parent.citationStyle,
     targetWordCount: parent.targetWordCount,
-    modelOverrides: parent.modelOverrides,
+    modelOverrides: flattenModelOverridesForPrefill(parent.modelOverrides),
     filterTags: [],
   };
 }
@@ -154,7 +165,7 @@ export async function getSpinoffPrefill(
 }
 
 export type SpinoffLineage = {
-  spinoffFromRunId: string;
+  spinoffFromRunId: string | null;
   spinoffFromReportId: string;
 };
 

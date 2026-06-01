@@ -118,8 +118,15 @@ export default function ReportSpinoffPage() {
   }, [ensembleData, researchObjective, engineVersion, prefill?.modelOverrides]);
 
   useEffect(() => {
-    const overrides = prefill?.modelOverrides;
-    if (!overrides || typeof overrides !== 'object') return;
+    const raw = prefill?.modelOverrides;
+    if (!raw || typeof raw !== 'object') return;
+    const overrides =
+      'overrides' in raw &&
+      raw.overrides &&
+      typeof raw.overrides === 'object' &&
+      !Array.isArray(raw.overrides)
+        ? (raw.overrides as Record<string, unknown>)
+        : (raw as Record<string, unknown>);
     const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
     for (const [role, row] of Object.entries(overrides)) {
       if (!row || typeof row !== 'object') continue;
@@ -175,7 +182,7 @@ export default function ReportSpinoffPage() {
         filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
         modelOverrides: runtimeOverridesPayload,
         engineVersion: engineVersion === 'v2' ? 'v2' : undefined,
-        researchObjective,
+        ...(engineVersion === 'v2' ? { researchObjective } : {}),
         targetWordCount: resolvedTargetWordCount,
         supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
         supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
