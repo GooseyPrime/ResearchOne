@@ -44,10 +44,10 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       res.status(400).json({ error: 'Invalid query', detail: q.error.flatten() });
       return;
     }
-    const { page, pageSize, intent, status, dateFrom, dateTo, sortBy } = q.data;
+    const { page, pageSize, intent, status, search, dateFrom, dateTo, sortBy } = q.data;
 
     const result = await listDossiers(
-      { page, pageSize, intent, status, dateFrom, dateTo, sortBy },
+      { page, pageSize, intent, status, search, dateFrom, dateTo, sortBy },
       ctx,
     );
     res.json(result);

@@ -42,6 +42,7 @@ SELECT
   ) AS has_spinoffs,
   GREATEST(
     rr.created_at,
+    rr.updated_at,
     rr.completed_at,
     rep.finalized_at,
     rev_stats.last_revision_at
