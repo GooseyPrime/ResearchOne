@@ -6,6 +6,7 @@ import {
   getDossierReportHistory,
   getDossierReportLink,
   getDossierRequest,
+  getDossierSources,
   getDossierSpinoffs,
   getDossierStats,
   listDossiers,
@@ -222,6 +223,29 @@ router.get('/:id/spinoffs', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
+router.get('/:id/sources', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ctx = ctxFromReq(req);
+    if (!ctx) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const parsed = parseDossierId(String(req.params.id));
+    if (!parsed.ok) {
+      res.status(400).json({ error: 'Invalid dossier id' });
+      return;
+    }
+    const { id } = parsed;
+    const sources = await getDossierSources(id, ctx);
+    if (!sources) {
+      res.status(404).json({ error: 'Dossier not found' });
+      return;
+    }
+    res.json(sources);
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {

@@ -585,7 +585,10 @@ router.post(
         onProgress: emitProgress,
       });
 
-      const responsePayload = { ...result, supplementalAttachments };
+      const responsePayload = {
+        ...result,
+        supplementalAttachments: result.supplementalAttachments ?? supplementalAttachments,
+      };
       io?.to(`job:revision:${req.params.id}`).emit('revision:completed', responsePayload);
       io?.to(`job:${req.params.id}`).emit('revision:completed', responsePayload); // see emitProgress — do not join both rooms in one client
       io?.to('reports').emit('reports:updated', {});

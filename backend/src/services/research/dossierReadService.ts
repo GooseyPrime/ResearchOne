@@ -15,6 +15,8 @@ import type {
   DossierReportLink,
   DossierRequest,
   DossierSortBy,
+  DossierSourceEntry,
+  DossierSourcesResult,
   DossierSpinoffEntry,
   DossierSpinoffsResult,
   DossierStats,
@@ -400,6 +402,94 @@ export async function getDossierSpinoffs(
   }
 }
 
+export async function getDossierSources(
+  dossierId: string,
+  _ctx: DossierAuthContext,
+): Promise<DossierSourcesResult | null> {
+  if (!isUuid(dossierId)) return null;
+
+  try {
+    const anchor = await queryOne<{ run_id: string; report_id: string | null }>(
+      `SELECT run_id, report_id FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
+      [dossierId],
+    );
+    if (!anchor) return null;
+
+    const sourceRows = await query<Record<string, unknown>>(
+      `SELECT s.id AS source_id,
+              s.title,
+              s.url,
+              s.source_type::text AS source_type,
+              s.discovered_by_run_id,
+              s.fetch_method,
+              (
+                SELECT ij.status::text
+                FROM ingestion_jobs ij
+                WHERE ij.source_id = s.id
+                ORDER BY ij.created_at DESC
+                LIMIT 1
+              ) AS ingestion_status,
+              (
+                SELECT COUNT(*)::int
+                FROM chunks c
+                WHERE c.source_id = s.id
+              ) AS chunk_count,
+              EXISTS (
+                SELECT 1 FROM report_citations rc
+                WHERE ($2::uuid IS NOT NULL AND rc.report_id = $2::uuid)
+                  AND (
+                    rc.source_id = s.id
+                    OR (
+                      rc.chunk_id IS NOT NULL
+                      AND rc.source_id IS NULL
+                      AND EXISTS (
+                        SELECT 1 FROM chunks c
+                        WHERE c.id = rc.chunk_id
+                          AND c.source_id = s.id
+                      )
+                    )
+                  )
+              ) AS cited_in_report
+       FROM sources s
+       WHERE s.discovered_by_run_id = $1::uuid
+       ORDER BY s.ingested_at DESC NULLS LAST`,
+      [anchor.run_id, anchor.report_id],
+    );
+
+    const sources: DossierSourceEntry[] = sourceRows.map((row) => {
+      const ingestionStatus = row.ingestion_status != null ? String(row.ingestion_status) : null;
+      const fetchMethod = row.fetch_method != null ? String(row.fetch_method) : null;
+      const fetchStatus =
+        ingestionStatus === 'failed'
+          ? 'failed'
+          : ingestionStatus === 'completed'
+            ? 'success'
+            : fetchMethod
+              ? 'success'
+              : ingestionStatus;
+
+      return {
+        sourceId: String(row.source_id),
+        title: row.title != null ? String(row.title) : null,
+        url: row.url != null ? String(row.url) : null,
+        sourceType: row.source_type != null ? String(row.source_type) : null,
+        ingestionStatus,
+        fetchStatus,
+        citedInReport: Boolean(row.cited_in_report),
+        discoveredByRunId: row.discovered_by_run_id != null ? String(row.discovered_by_run_id) : null,
+        chunkCount: row.chunk_count != null ? Number(row.chunk_count) : null,
+      };
+    });
+
+    return { sources };
+  } catch (e) {
+    if (isDossierDeploySkewPgError(e)) {
+      logger.debug('dossier sources: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
+      return null;
+    }
+    throw e;
+  }
+}
 
 export async function getDossierRequest(dossierId: string, ctx: DossierAuthContext): Promise<DossierRequest | null> {
   const d = await getDossierById(dossierId, ctx);

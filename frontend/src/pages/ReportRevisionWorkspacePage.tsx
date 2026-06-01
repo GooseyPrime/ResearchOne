@@ -7,9 +7,10 @@ import {
   extractApiError,
   getReport,
   type ResearchProgressEvent,
-  type RevisionSupplementalAttachmentOutcome,
+  type RevisionAttachmentAudit,
 } from '@/utils/api';
 import LiveRevisionTraceLog from '@/components/research/LiveRevisionTraceLog';
+import RevisionAttachmentAuditPanel from '@/components/reports/RevisionAttachmentAuditPanel';
 import { appendKeepingNewestAtBottom } from '@/utils/traceEventWindow';
 import { getSocket, subscribeToRevisionJob } from '@/utils/socket';
 import {
@@ -29,16 +30,8 @@ type RevisionProgressPayload = {
 type RevisionCompletedPayload = {
   revisionId?: string;
   revisedReportId?: string;
-  supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
+  supplementalAttachments?: RevisionAttachmentAudit[];
 };
-
-function failedAttachmentLabels(attachments: RevisionSupplementalAttachmentOutcome[] | undefined): string[] {
-  if (!attachments?.length) return [];
-  return attachments
-    .filter((a) => a.fetch_status === 'failed')
-    .map((a) => a.url ?? a.filename ?? 'attachment')
-    .filter(Boolean);
-}
 
 function toTraceEvent(payload: RevisionProgressPayload): ResearchProgressEvent {
   return {
@@ -61,6 +54,8 @@ export default function ReportRevisionWorkspacePage() {
   const startedRef = useRef(false);
   const completedRef = useRef(false);
 
+  const [attachmentAudit, setAttachmentAudit] = useState<RevisionAttachmentAudit[] | null>(null);
+  const [pendingRevisedReportId, setPendingRevisedReportId] = useState<string | null>(null);
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
   const [latestProgress, setLatestProgress] = useState<{
     stage: string;
@@ -75,24 +70,37 @@ export default function ReportRevisionWorkspacePage() {
   });
 
   const finishRevision = useCallback(
-    (revisedReportId: string, attachments?: RevisionSupplementalAttachmentOutcome[]) => {
+    (revisedReportId: string, attachments?: RevisionAttachmentAudit[]) => {
       if (completedRef.current) return;
       completedRef.current = true;
       qc.invalidateQueries({ queryKey: ['report-revisions', baseReportId] });
       qc.invalidateQueries({ queryKey: ['reports'] });
-      const failed = failedAttachmentLabels(attachments);
+
+      const failed = (attachments ?? []).filter((a) => a.fetch_status === 'failed');
       if (failed.length > 0) {
-        addNotification(
-          'info',
-          `Revision complete, but ${failed.length} attachment(s) could not be fetched: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}`,
-        );
-      } else {
-        addNotification('success', 'Revision complete — opening the new report version.');
+        setAttachmentAudit(attachments ?? []);
+        setPendingRevisedReportId(revisedReportId);
+        for (const a of failed) {
+          const label = a.kind === 'url' ? a.url : a.filename;
+          addNotification(
+            'error',
+            `Attachment fetch failed${label ? `: ${label}` : ''}${a.fetch_error ? ` — ${a.fetch_error}` : ''}`,
+          );
+        }
+        addNotification('info', 'Revision completed with attachment warnings — review audit below.');
+        return;
       }
+
+      addNotification('success', 'Revision complete — opening the new report version.');
       navigate(`/app/reports/${revisedReportId}`, { replace: true });
     },
     [addNotification, baseReportId, navigate, qc],
   );
+
+  const continueToRevisedReport = useCallback(() => {
+    if (!pendingRevisedReportId) return;
+    navigate(`/app/reports/${pendingRevisedReportId}`, { replace: true });
+  }, [navigate, pendingRevisedReportId]);
 
   const revisionMutation = useMutation({
     mutationFn: () =>
@@ -205,6 +213,17 @@ export default function ReportRevisionWorkspacePage() {
         latestPercent={latestProgress?.percent}
         latestMessage={latestProgress?.message}
       />
+
+      {attachmentAudit && attachmentAudit.length > 0 ? (
+        <div className="space-y-3">
+          <RevisionAttachmentAuditPanel attachments={attachmentAudit} />
+          {pendingRevisedReportId ? (
+            <button type="button" className="btn-primary" onClick={continueToRevisedReport}>
+              Continue to revised report
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

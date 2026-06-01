@@ -6,6 +6,7 @@ import {
   getRunPlanRevisions,
   getDossierReportHistory,
   getDossierSpinoffs,
+  getDossierSources,
   fetchDossierTimeline,
   type Dossier,
   type DossierListParams,
@@ -70,6 +71,14 @@ export function useDossierSpinoffs(dossierId: string | undefined) {
   });
 }
 
+export function useDossierSources(dossierId: string | undefined) {
+  return useQuery<{ sources: DossierSourceEntry[] }>({
+    queryKey: ['dossier-sources', dossierId],
+    queryFn: () => getDossierSources(dossierId!),
+    enabled: Boolean(dossierId),
+    retry: false,
+  });
+}
 
 export function useDossierTimeline(params: {
   page?: number;
