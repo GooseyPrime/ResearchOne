@@ -45,6 +45,16 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Copy preset — revision fetches URLs synchronously on submit; research uses async ingest. */
+export type AttachmentDropZoneMode = 'research' | 'revision';
+
+const DESCRIPTION_BY_MODE: Record<AttachmentDropZoneMode, string> = {
+  research:
+    'PDF, TXT, or Markdown. Drag-and-drop or click to browse. URLs are queued for async ingest alongside files.',
+  revision:
+    'For in-place revision, URLs are fetched synchronously when you submit (best for one or two pages). Files are extracted immediately for the revision pipeline. For many URLs or large corpora, use New research spinoff instead.',
+};
+
 export interface AttachmentDropZoneProps {
   files: File[];
   urls: string[];
@@ -52,8 +62,10 @@ export interface AttachmentDropZoneProps {
   disabled?: boolean;
   /** Caption above the drop zone. Defaults to a generic label. */
   label?: string;
-  /** Help text under the URL input. */
+  /** Help text under the URL input. Overrides mode default when set. */
   description?: string;
+  /** Preset copy for research vs in-place revision honesty. */
+  mode?: AttachmentDropZoneMode;
   /** Maximum files allowed. Defaults to 25 (matches backend multer limit). */
   maxFiles?: number;
 }
@@ -64,9 +76,11 @@ export default function AttachmentDropZone({
   onChange,
   disabled = false,
   label = 'Attach supporting files / URLs',
-  description = 'PDF, TXT, or Markdown. Drag-and-drop or click to browse. URLs are fetched and ingested into the corpus alongside files.',
+  description,
+  mode = 'research',
   maxFiles = MAX_FILES,
 }: AttachmentDropZoneProps) {
+  const resolvedDescription = description ?? DESCRIPTION_BY_MODE[mode];
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -228,7 +242,7 @@ export default function AttachmentDropZone({
           Add URL
         </button>
       </div>
-      {description && <p className="text-xs text-slate-500 -mt-1">{description}</p>}
+      {resolvedDescription && <p className="text-xs text-slate-500 -mt-1">{resolvedDescription}</p>}
 
       {/* Errors */}
       {errors.length > 0 && (

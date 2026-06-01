@@ -1,7 +1,17 @@
 import { query, withTransaction } from '../../db/pool';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import {
+  formatRetrievedChunksForPrompt,
+  retrieveRevisionSupplementalChunks,
+} from '../retrieval/retrievalService';
 import { runScope } from '../telemetry';
-import { parseResearchObjective, type ResearchObjective } from './reasoningModelPolicy';
+import type { PerRunModelOverrides } from '../runtimeModelStore';
+import {
+  parseResearchObjective,
+  type ReasoningModelRole,
+  type ResearchObjective,
+} from './reasoningModelPolicy';
+import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchestratorNormalize';
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { logger } from '../../utils/logger';
 
@@ -273,10 +283,11 @@ async function createReportRevisionInner(args: {
 
   const reportRunModelEnsembleRows = await query<{
     model_ensemble: Record<string, unknown> | null;
+    model_overrides: Record<string, unknown> | null;
     engine_version: string | null;
     research_objective: string | null;
   }>(
-    `SELECT rr.model_ensemble, rr.engine_version, rr.research_objective FROM research_runs rr
+    `SELECT rr.model_ensemble, rr.model_overrides, rr.engine_version, rr.research_objective FROM research_runs rr
       JOIN reports r ON r.run_id = rr.id
      WHERE r.id = $1
      LIMIT 1`,
@@ -287,6 +298,9 @@ async function createReportRevisionInner(args: {
   const runObjective: ResearchObjective | undefined = parseResearchObjective(
     reportRunModelEnsembleRows[0]?.research_objective ?? undefined
   );
+  const runModelOverrides = normalizeRunOverrides(
+    (reportRunModelEnsembleRows[0]?.model_overrides ?? null) as PerRunModelOverrides | undefined
+  );
   const allowFallbackByRole = allowFallbackByRoleFromModelEnsembleSnapshot(
     reportRunModelEnsembleRows[0]?.model_ensemble ?? null
   );
@@ -295,6 +309,11 @@ async function createReportRevisionInner(args: {
     researchObjective: runObjective,
     allowFallbackByRole,
   };
+  const revisionRoleCall = (role: ReasoningModelRole) => ({
+    role,
+    ...revOpts,
+    runtimeOverrides: runtimeOverrideForRole(runModelOverrides, role),
+  });
   if (baseSections.length === 0) {
     throw new Error('Report has no sections');
   }
@@ -367,16 +386,28 @@ async function createReportRevisionInner(args: {
     if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
     requestId = requestRows[0].id;
   }
+  emit('retrieval', 8, 'Retrieving supplemental corpus chunks');
+  let retrievedSupplementalContext = '';
+  if (supplementalAttachments.length > 0) {
+    const retrievedChunks = await retrieveRevisionSupplementalChunks({
+      reportId: args.reportId,
+      revisionRequestId: requestId,
+      queryText: args.requestText,
+    });
+    retrievedSupplementalContext = formatRetrievedChunksForPrompt(retrievedChunks);
+  }
+
   // Build a single supplemental block to splice into model prompts when
   // attachments are present. Kept short to stay inside per-prompt budgets.
-  const supplementalBlock = args.supplementalContext && args.supplementalContext.trim().length > 0
-    ? `\n\nUser-attached supplemental context (review and weigh as evidence; cite when used):\n${args.supplementalContext.trim()}`
+  const inlineSupplemental = args.supplementalContext?.trim() ?? '';
+  const combinedSupplemental = [inlineSupplemental, retrievedSupplementalContext].filter(Boolean).join('\n\n---\n\n');
+  const supplementalBlock = combinedSupplemental.length > 0
+    ? `\n\nUser-attached supplemental context (review and weigh as sources; cite when used):\n${combinedSupplemental}`
     : '';
 
   emit('intake', 12, 'Parsing revision request');
   const intakeResult = await callRoleModel({
-    role: 'revision_intake',
-    ...revOpts,
+    ...revisionRoleCall('revision_intake'),
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.revision_intake },
       { role: 'user', content: `Revision request:\n${args.requestText}\nRationale:\n${args.rationale ?? ''}${supplementalBlock}\nReturn JSON only.` },
@@ -388,8 +419,7 @@ async function createReportRevisionInner(args: {
   const targetTerms = intake.target_terms ?? [];
   const deterministicHits = locateAffectedSections({ sections: baseSections, request: args.requestText, targetTerms });
   const locatorResult = await callRoleModel({
-    role: 'report_locator',
-    ...revOpts,
+    ...revisionRoleCall('report_locator'),
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.report_locator },
       {
@@ -406,8 +436,7 @@ Return strict JSON.`,
 
   emit('planning', 38, 'Building structured change plan');
   const plannerResult = await callRoleModel({
-    role: 'change_planner',
-    ...revOpts,
+    ...revisionRoleCall('change_planner'),
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.change_planner },
       {
@@ -455,8 +484,7 @@ Return strict JSON.`,
       if (idx < 0) continue;
       const section = revisedSections[idx];
       const rewriteResult = await callRoleModel({
-        role: 'section_rewriter',
-        ...revOpts,
+        ...revisionRoleCall('section_rewriter'),
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS.section_rewriter },
           {
@@ -505,8 +533,7 @@ Return revised section body only.`,
   const citationEntries = await Promise.all(
     revisedSections.map(async (section) => {
       const checkerResult = await callRoleModel({
-        role: 'citation_integrity_checker',
-        ...revOpts,
+        ...revisionRoleCall('citation_integrity_checker'),
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS.citation_integrity_checker },
           {
@@ -534,8 +561,7 @@ Return JSON only.`,
 
   emit('verification', 82, 'Running final revision verifier');
   const verifierResult = await callRoleModel({
-    role: 'final_revision_verifier',
-    ...revOpts,
+    ...revisionRoleCall('final_revision_verifier'),
     messages: [
       { role: 'system', content: SYSTEM_PROMPTS.final_revision_verifier },
       {

@@ -65,7 +65,7 @@ export async function runIngestionJob(
     let parseMethod = 'raw';
 
     if (sourceType === 'web_url' && data.url) {
-      const fetched = await fetchUrl(data.url);
+      const fetched = await fetchUrlForIngest(data.url);
       rawContent = fetched.content;
       title = fetched.title;
       fetchMetadata = {
@@ -264,7 +264,8 @@ interface FetchResult {
   retrievalTimestamp: string;
 }
 
-async function fetchUrl(url: string): Promise<FetchResult> {
+/** Shared URL fetch used by ingestion workers and revision supplemental sync-fetch. */
+export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
   const response = await axios.get(url, {
     timeout: 30000,
     headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.io)' },

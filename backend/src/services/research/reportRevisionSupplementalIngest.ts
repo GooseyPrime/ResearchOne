@@ -4,6 +4,7 @@ import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
 import { waitForIngestionJobs } from '../discovery/discoveryOrchestrator';
 import { extractPdf } from '../ingestion/pdfExtractor';
+import { fetchUrlForIngest } from '../ingestion/ingestionService';
 import { logger } from '../../utils/logger';
 
 /**
@@ -15,13 +16,11 @@ import { logger } from '../../utils/logger';
  * Two roles:
  *   1. Persistence: queue files/URLs onto the same ingestion pipeline used
  *      by manual corpus uploads, so the user's "imported into the corpus"
- *      requirement holds — the chunks become permanent retrievable evidence.
+ *      requirement holds — the chunks become permanent retrievable sources.
  *   2. Inline review: extract file text right here (PDF via pdfExtractor,
- *      txt/md as utf8) and return it as a single concatenated string so the
- *      caller can splice it into the immediate revision-intake /
- *      change_planner / section_rewriter prompts. The models therefore
- *      review the attached material on this revision call, not just on
- *      hypothetical future retrievals.
+ *      txt/md as utf8) and sync-fetch URL text via `fetchUrlForIngest` so
+ *      the caller can splice it into the immediate revision-intake /
+ *      change_planner / section_rewriter prompts.
  */
 
 export interface RevisionSupplementalFileItem {
@@ -30,18 +29,33 @@ export interface RevisionSupplementalFileItem {
   buffer: Buffer;
 }
 
+export type RevisionUrlFetchStatus = 'ok' | 'failed';
+
 export interface RevisionSupplementalIngestResult {
   jobIds: string[];
   urlsQueued: number;
   filesQueued: number;
-  /** Concatenated text extracted from the attached files, sized so callers
-   *  can safely include it in a model prompt. URLs are listed by reference
-   *  (the corpus pipeline fetches them asynchronously). */
+  /** Concatenated text extracted from attached files and sync-fetched URLs. */
   inlineContext: string;
   /** Per-attachment summaries for audit / UI display. */
   attachments: Array<
-    | { kind: 'url'; url: string; ingestion_job_id: string }
-    | { kind: 'file'; filename: string; mimetype: string; ingestion_job_id: string; extractedChars: number }
+    | {
+        kind: 'url';
+        url: string;
+        ingestion_job_id: string;
+        fetch_status: RevisionUrlFetchStatus;
+        extractedChars: number;
+        error?: string;
+      }
+    | {
+        kind: 'file';
+        filename: string;
+        mimetype: string;
+        ingestion_job_id: string;
+        extractedChars: number;
+        fetch_status: 'ok' | 'failed';
+        error?: string;
+      }
   >;
 }
 
@@ -53,6 +67,10 @@ const REVISION_META = (reportId: string, revisionRequestId: string) => ({
 
 const MAX_INLINE_CONTEXT_CHARS = 60_000;
 const MAX_PER_FILE_CHARS = 20_000;
+const MAX_PER_URL_CHARS = 20_000;
+
+/** Regression guard — placeholder-only URL inline text must not ship (Rule 35). */
+export const REVISION_URL_PLACEHOLDER_MARKER = 'Content fetched into corpus asynchronously';
 
 export async function ingestSupplementalForRevision(args: {
   reportId: string;
@@ -99,8 +117,40 @@ export async function ingestSupplementalForRevision(args: {
     });
     jobIds.push(id);
     urlsQueued += 1;
-    attachments.push({ kind: 'url', url, ingestion_job_id: id });
-    inlineParts.push(`# Attached URL\n${url}\n(Content fetched into corpus asynchronously; cite it after retrieval.)`);
+
+    let fetchStatus: RevisionUrlFetchStatus = 'failed';
+    let extractedChars = 0;
+    let fetchError: string | undefined;
+    let inlineText = '';
+    try {
+      const fetched = await fetchUrlForIngest(url);
+      inlineText = fetched.content.slice(0, MAX_PER_URL_CHARS);
+      extractedChars = inlineText.length;
+      fetchStatus = inlineText.length > 0 ? 'ok' : 'failed';
+      if (inlineText.length === 0) {
+        fetchError = 'URL returned no extractable text';
+      }
+    } catch (err) {
+      fetchError = err instanceof Error ? err.message : String(err);
+      logger.warn(`[revision-supplement] URL fetch failed for ${url}:`, err);
+    }
+
+    attachments.push({
+      kind: 'url',
+      url,
+      ingestion_job_id: id,
+      fetch_status: fetchStatus,
+      extractedChars,
+      ...(fetchError ? { error: fetchError } : {}),
+    });
+
+    if (inlineText.length > 0) {
+      inlineParts.push(`# Attached URL: ${url}\nTitle: ${inlineText.slice(0, 120).split('\n')[0]}\n${inlineText}`);
+    } else {
+      inlineParts.push(
+        `# Attached URL (fetch failed)\n${url}\nError: ${fetchError ?? 'no content extracted'}`
+      );
+    }
   }
 
   for (const file of files) {
@@ -111,6 +161,7 @@ export async function ingestSupplementalForRevision(args: {
     let sourceType: 'text' | 'pdf' | 'markdown';
     let fileData: { text?: string; fileBuffer?: string };
     let extractedText = '';
+    let fileFetchError: string | undefined;
 
     if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
       sourceType = 'pdf';
@@ -119,6 +170,7 @@ export async function ingestSupplementalForRevision(args: {
         const result = await extractPdf(file.buffer);
         extractedText = result.text ?? '';
       } catch (err) {
+        fileFetchError = err instanceof Error ? err.message : String(err);
         logger.warn(`[revision-supplement] PDF extraction failed for ${file.originalname}:`, err);
       }
     } else if (
@@ -176,21 +228,18 @@ export async function ingestSupplementalForRevision(args: {
       mimetype: file.mimetype,
       ingestion_job_id: id,
       extractedChars: trimmed.length,
+      fetch_status: trimmed.length > 0 ? 'ok' : 'failed',
+      ...(fileFetchError ? { error: fileFetchError } : {}),
     });
     if (trimmed.length > 0) {
       inlineParts.push(`# Attached file: ${file.originalname}\n${trimmed}`);
     }
   }
 
-  // Wait briefly for ingestion to settle so the corpus has the chunks before
-  // the revision pipeline returns. This is bounded by the same timeout the
-  // research-run supplemental ingest uses.
   if (jobIds.length > 0) {
     await waitForIngestionJobs(jobIds, config.discovery.ingestionWaitTimeoutMs);
   }
 
-  // Concatenate inline context, hard-capping total length so we never blow
-  // through a model's prompt budget.
   let inlineContext = inlineParts.join('\n\n---\n\n');
   if (inlineContext.length > MAX_INLINE_CONTEXT_CHARS) {
     inlineContext = inlineContext.slice(0, MAX_INLINE_CONTEXT_CHARS) + '\n\n[...attachment context truncated for prompt budget]';

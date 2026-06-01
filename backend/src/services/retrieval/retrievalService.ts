@@ -24,6 +24,8 @@ export interface RetrievalOptions {
   minSimilarity?: number;
   filterTags?: string[];
   hybridSearch?: boolean;  // combine vector + full-text
+  /** When set, restrict hits to these corpus source ids (revision supplemental scope). */
+  sourceIds?: string[];
 }
 
 /**
@@ -37,6 +39,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
     minSimilarity = 0.3,
     filterTags,
     hybridSearch = true,
+    sourceIds,
   } = options;
 
   const results: Map<string, RetrievedChunk> = new Map();
@@ -71,6 +74,11 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
       if (filterTags && filterTags.length > 0) {
         params.push(filterTags);
         vectorSql += ` AND s.tags && $${params.length}::text[]`;
+      }
+
+      if (sourceIds && sourceIds.length > 0) {
+        params.push(sourceIds);
+        vectorSql += ` AND c.source_id = ANY($${params.length}::uuid[])`;
       }
 
       vectorSql += ` ORDER BY e.vector <=> $1::vector LIMIT $${params.length + 1}`;
@@ -133,6 +141,11 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
         ftsSql += ` AND s.tags && $${ftsParams.length}::text[]`;
       }
 
+      if (sourceIds && sourceIds.length > 0) {
+        ftsParams.push(sourceIds);
+        ftsSql += ` AND c.source_id = ANY($${ftsParams.length}::uuid[])`;
+      }
+
       ftsSql += ` ORDER BY fts_rank DESC LIMIT $${ftsParams.length + 1}`;
       ftsParams.push(Math.ceil(topK / 2));
 
@@ -175,3 +188,57 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, topK);
 }
+
+/** Scoped retrieval for revision supplemental sources tagged with revision_request_id. */
+export async function retrieveRevisionSupplementalChunks(args: {
+  reportId: string;
+  revisionRequestId: string;
+  queryText: string;
+  topK?: number;
+}): Promise<RetrievedChunk[]> {
+  const sourceRows = await query<{ source_id: string }>(
+    `SELECT DISTINCT resolved.source_id
+       FROM ingestion_jobs ij
+       CROSS JOIN LATERAL (
+         SELECT ij.source_id AS source_id
+          WHERE ij.source_id IS NOT NULL
+         UNION ALL
+         SELECT s.id AS source_id
+           FROM sources s
+          WHERE ij.source_id IS NULL
+            AND ij.status = 'completed'
+            AND (
+              (ij.url IS NOT NULL AND s.url = ij.url)
+              OR (ij.file_name IS NOT NULL AND s.original_filename = ij.file_name)
+            )
+          LIMIT 1
+       ) resolved
+      WHERE ij.metadata->>'revision_request_id' = $1
+        AND ij.metadata->>'report_id' = $2
+        AND resolved.source_id IS NOT NULL`,
+    [args.revisionRequestId, args.reportId]
+  );
+  const sourceIds = sourceRows.map((r) => r.source_id).filter(Boolean);
+  if (sourceIds.length === 0) return [];
+
+  return retrieveChunks({
+    query: args.queryText,
+    topK: args.topK ?? 12,
+    hybridSearch: true,
+    sourceIds,
+  });
+}
+
+function formatRetrievedChunksForPrompt(chunks: RetrievedChunk[]): string {
+  if (chunks.length === 0) return '';
+  return chunks
+    .map((c, i) =>
+      [
+        `[RETRIEVED ${i + 1}] ${c.source_title || c.source_url || 'Unknown source'}`,
+        c.content,
+      ].join('\n')
+    )
+    .join('\n\n---\n\n');
+}
+
+export { formatRetrievedChunksForPrompt };

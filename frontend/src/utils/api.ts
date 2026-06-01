@@ -462,6 +462,14 @@ export const getDossier = (id: string) => api.get<Dossier>(`/dossiers/${id}`).th
 
 export const getReport = (id: string) => api.get<Report>(`/reports/${id}`).then(r => r.data);
 
+export interface RevisionSupplementalAttachmentOutcome {
+  kind?: string;
+  url?: string;
+  filename?: string;
+  fetch_status?: 'ok' | 'failed';
+  error?: string;
+}
+
 export const createReportRevision = (id: string, data: {
   requestText: string;
   rationale?: string;
@@ -486,13 +494,21 @@ export const createReportRevision = (id: string, data: {
       form.append('files', f);
     }
     return api
-      .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, form, {
+      .post<{
+        revisionId: string;
+        revisedReportId: string;
+        supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
+      }>(`/reports/${id}/revisions`, form, {
         timeout: 900000,
       })
       .then((r) => r.data);
   }
   return api
-    .post<{ revisionId: string; revisedReportId: string }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
+    .post<{
+      revisionId: string;
+      revisedReportId: string;
+      supplementalAttachments?: RevisionSupplementalAttachmentOutcome[];
+    }>(`/reports/${id}/revisions`, data, { timeout: 900000 })
     .then((r) => r.data);
 };
 
