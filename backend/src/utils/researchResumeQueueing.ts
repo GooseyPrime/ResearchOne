@@ -1,5 +1,6 @@
 import {
   RESEARCH_JOB_RESUME_AFTER_PLAN,
+  legacyResearchResumeJobId,
   researchResumeJobId,
   type ResearchResumeAfterPlanJobData,
 } from '../queue/researchQueueJobs';
@@ -94,6 +95,11 @@ export async function enqueueResearchResumeAfterPlan(
 ): Promise<void> {
   const jobId = researchResumeJobId(runId);
   const payload: ResearchResumeAfterPlanJobData = { runId, confirmedPlanId };
+
+  const legacyJob = await queue.getJob(legacyResearchResumeJobId(runId));
+  if (legacyJob) {
+    await tryRemoveResumeJob(legacyJob);
+  }
 
   const existing = await queue.getJob(jobId);
   if (existing) {
