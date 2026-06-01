@@ -19,7 +19,10 @@ import { runAtlasExport } from '../services/embedding/atlasExport';
 import { query } from '../db/pool';
 import { getLatestRunCheckpoint } from '../services/reasoning/checkpointService';
 import { ResearchCancelledError } from '../services/researchCancellation';
-import { classifyResearchFailureForSocket } from '../utils/researchFailureRouting';
+import {
+  classifyResearchFailureForSocket,
+  isBenignPlanResumeAwaitingConfirm,
+} from '../utils/researchFailureRouting';
 
 async function markInterruptedResearchRuns(): Promise<void> {
   const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
@@ -137,9 +140,18 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
             percent?: number;
             message?: string;
             retryable?: boolean;
+            code?: string;
             failureMeta?: Record<string, unknown>;
             summary?: RunSummaryPayload;
           };
+          if (isBenignPlanResumeAwaitingConfirm(e)) {
+            logger.info('plan_resume_awaiting_confirm', {
+              runId,
+              confirmedPlanId,
+              message: e.message,
+            });
+            throw err;
+          }
           const decision = classifyResearchFailureForSocket(e, runId);
           emit(`job:${runId}`, decision.event, decision.payload);
           if (e.summary) {

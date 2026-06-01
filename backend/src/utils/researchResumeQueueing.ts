@@ -20,12 +20,13 @@ export type ResumeQueueLike = {
   ) => Promise<ResumeAfterPlanJobLike | undefined>;
 };
 
-const RUNNABLE_RESUME_STATES = new Set(['waiting', 'delayed', 'prioritized', 'paused']);
-
 /** BullMQ states where an in-flight job with matching payload is already queued (idempotent confirm). */
-const IDEMPOTENT_MATCH_STATES = new Set([...RUNNABLE_RESUME_STATES, 'active']);
+const IDEMPOTENT_MATCH_STATES = new Set(['waiting', 'delayed', 'prioritized', 'paused', 'active']);
 
-const REMOVABLE_STALE_STATES = new Set(['completed', 'failed']);
+const RESUME_ADD_OPTS = {
+  attempts: 8,
+  backoff: { type: 'exponential' as const, delay: 750 },
+};
 
 function resumeJobPlanId(job: ResumeAfterPlanJobLike | undefined): string | null {
   if (!job) return null;
@@ -57,19 +58,34 @@ function isMatchingResumeJob(
   return IDEMPOTENT_MATCH_STATES.has(state) && resumeJobPlanId(job) === confirmedPlanId;
 }
 
-const RESUME_ADD_OPTS = {
-  attempts: 8,
-  backoff: { type: 'exponential' as const, delay: 750 },
-};
+async function tryRemoveResumeJob(job: ResumeAfterPlanJobLike): Promise<void> {
+  try {
+    await job.remove();
+  } catch {
+    // BullMQ: Job.remove() throws on locked/active jobs — caller re-fetches below.
+  }
+}
+
+async function addResumeJob(
+  queue: ResumeQueueLike,
+  jobId: string,
+  payload: ResearchResumeAfterPlanJobData
+): Promise<ResumeAfterPlanJobLike | undefined> {
+  return queue.add(RESEARCH_JOB_RESUME_AFTER_PLAN, payload, {
+    jobId,
+    ...RESUME_ADD_OPTS,
+  });
+}
 
 /**
- * Enqueue post–plan-confirmation resume work. Removes stale completed/failed jobs
+ * Enqueue post–plan-confirmation resume work. Removes stale dedupe jobs
  * that share the dedupe `jobId` so refine → confirm can enqueue fresh payload
  * (same contract as `enqueueResearchRetryJobWithCleanup`).
  *
  * BullMQ: `Job.remove()` throws on locked/active jobs — matching `active` jobs are
  * treated as success (idempotent confirm). Final validation uses `add()`'s return
- * value when `getJob(jobId)` is not yet visible.
+ * value when `getJob(jobId)` is not yet visible. On duplicate `jobId`, force-removes
+ * the stale job once and retries `add()` (PR #141 / plan-confirm 503 follow-up).
  */
 export async function enqueueResearchResumeAfterPlan(
   queue: ResumeQueueLike,
@@ -85,21 +101,12 @@ export async function enqueueResearchResumeAfterPlan(
     if (isMatchingResumeJob(existing, state, confirmedPlanId)) {
       return;
     }
-    if (REMOVABLE_STALE_STATES.has(state) || state === 'active' || RUNNABLE_RESUME_STATES.has(state)) {
-      try {
-        await existing.remove();
-      } catch {
-        // Locked/active: re-fetch below; stale payload must not be treated as success.
-      }
-    }
+    await tryRemoveResumeJob(existing);
   }
 
   let addedJob: ResumeAfterPlanJobLike | undefined;
   try {
-    addedJob = await queue.add(RESEARCH_JOB_RESUME_AFTER_PLAN, payload, {
-      jobId,
-      ...RESUME_ADD_OPTS,
-    });
+    addedJob = await addResumeJob(queue, jobId, payload);
   } catch (queueErr) {
     const raced = await queue.getJob(jobId);
     if (raced) {
@@ -107,12 +114,24 @@ export async function enqueueResearchResumeAfterPlan(
       if (isMatchingResumeJob(raced, racedState, confirmedPlanId)) {
         return;
       }
+      await tryRemoveResumeJob(raced);
     }
     try {
-      assertResumeJobQueued(raced ?? addedJob, confirmedPlanId);
-      return;
-    } catch {
-      throw queueErr;
+      addedJob = await addResumeJob(queue, jobId, payload);
+    } catch (retryErr) {
+      const afterRetry = await queue.getJob(jobId);
+      if (afterRetry) {
+        const afterState = await afterRetry.getState();
+        if (isMatchingResumeJob(afterRetry, afterState, confirmedPlanId)) {
+          return;
+        }
+      }
+      try {
+        assertResumeJobQueued(afterRetry ?? raced ?? addedJob, confirmedPlanId);
+        return;
+      } catch {
+        throw retryErr ?? queueErr;
+      }
     }
   }
 
