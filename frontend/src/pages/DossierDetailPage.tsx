@@ -21,10 +21,11 @@ import IntentBadge from '../components/dossiers/IntentBadge';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import DossierReportSection from '../components/dossiers/DossierReportSection';
 import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSection';
+import DossierSourcesPanel from '../components/dossiers/DossierSourcesPanel';
 import ReportForkActions from '../components/reports/ReportForkActions';
 import { extractApiError } from '../utils/api';
 
-type TabId = 'request' | 'plan' | 'report' | 'report-history' | 'spinoffs' | 'stats';
+type TabId = 'request' | 'plan' | 'report' | 'report-history' | 'spinoffs' | 'sources' | 'stats';
 
 const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'request', label: 'Request', icon: NotebookTabs },
@@ -32,6 +33,7 @@ const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'report', label: 'Report', icon: FileText },
   { id: 'report-history', label: 'Report history', icon: History },
   { id: 'spinoffs', label: 'Spinoffs', icon: GitBranch },
+  { id: 'sources', label: 'Sources', icon: Database },
   { id: 'stats', label: 'Statistics', icon: Sigma },
 ];
 
@@ -297,6 +299,12 @@ export default function DossierDetailPage() {
           </div>
         )}
 
+        {tab === 'sources' && (
+          <div className="space-y-3">
+            <h2 className="text-white font-medium">Sources audit</h2>
+            <DossierSourcesPanel dossierId={id!} />
+          </div>
+        )}
 
         {tab === 'stats' && <DossierStatisticsSection stats={data.stats} planIntent={data.plan.intent} />}
       </section>

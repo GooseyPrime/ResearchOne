@@ -423,6 +423,17 @@ export interface DossierTimelineResult {
   pageSize: number;
 }
 
+export interface DossierSourceEntry {
+  sourceId: string;
+  title: string | null;
+  url: string | null;
+  sourceType: string | null;
+  ingestionStatus: string | null;
+  fetchStatus: string | null;
+  citedInReport: boolean;
+  discoveredByRunId: string | null;
+  chunkCount: number | null;
+}
 
 export interface ReportRevision {
   id: string;
@@ -557,6 +568,9 @@ export const getDossierReportHistory = (dossierId: string) =>
 
 export const getDossierSpinoffs = (dossierId: string) =>
   api.get<{ spinoffs: DossierSpinoffEntry[] }>(`/dossiers/${dossierId}/spinoffs`).then((r) => r.data);
+
+export const getDossierSources = (dossierId: string) =>
+  api.get<{ sources: DossierSourceEntry[] }>(`/dossiers/${dossierId}/sources`).then((r) => r.data);
 
 export const fetchDossierTimeline = (params?: {
   page?: number;

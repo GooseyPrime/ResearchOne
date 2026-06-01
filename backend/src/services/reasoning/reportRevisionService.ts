@@ -18,6 +18,21 @@ import { logger } from '../../utils/logger';
 /** Source of an automated revision (Work Order T). Same pipeline as user revisions; UI/reporting only. */
 export type RevisionTriggerSource = 'user' | 'parallel_monitor' | 'reverse_citation_watch';
 
+/** Full audit row returned to revision UI (Gate 6 — matches frontend RevisionAttachmentAudit). */
+export interface RevisionAttachmentAudit {
+  kind: 'url' | 'file';
+  url?: string;
+  filename?: string;
+  mimetype?: string;
+  ingestion_job_id: string;
+  fetch_status?: 'success' | 'failed';
+  fetch_error?: string;
+  ingestion_status?: string;
+  extractedChars?: number;
+  inline_status?: 'included' | 'skipped' | 'failed';
+  retrieval_status?: 'queued' | 'completed' | 'failed' | 'pending';
+}
+
 export interface RevisionProgress {
   reportId: string;
   revisionId?: string;
@@ -235,7 +250,12 @@ export async function createReportRevision(args: {
    *  INSERT is skipped and this id is used directly; the row's metadata and
    *  supplemental_attachments are updated to reflect the final ingest result. */
   requestId?: string;
-}): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
+}): Promise<{
+  revisionId: string;
+  revisedReportId: string;
+  changePlan: ChangePlan;
+  supplementalAttachments?: RevisionAttachmentAudit[];
+}> {
   return runScope.run(
     {
       runId: null,
@@ -258,7 +278,12 @@ async function createReportRevisionInner(args: {
   supplementalAttachments?: Array<Record<string, unknown>>;
   onProgress?: (update: RevisionProgress) => void;
   requestId?: string;
-}): Promise<{ revisionId: string; revisedReportId: string; changePlan: ChangePlan }> {
+}): Promise<{
+  revisionId: string;
+  revisedReportId: string;
+  changePlan: ChangePlan;
+  supplementalAttachments?: RevisionAttachmentAudit[];
+}> {
   const emit = (stage: string, percent: number, message: string, revisionId?: string) => {
     args.onProgress?.({
       reportId: args.reportId,
@@ -388,6 +413,7 @@ async function createReportRevisionInner(args: {
   }
   emit('retrieval', 8, 'Retrieving supplemental corpus chunks');
   let retrievedSupplementalContext = '';
+  let enrichedAttachments: RevisionAttachmentAudit[] = [];
   if (supplementalAttachments.length > 0) {
     const retrievedChunks = await retrieveRevisionSupplementalChunks({
       reportId: args.reportId,
@@ -395,6 +421,18 @@ async function createReportRevisionInner(args: {
       queryText: args.requestText,
     });
     retrievedSupplementalContext = formatRetrievedChunksForPrompt(retrievedChunks);
+    enrichedAttachments = await enrichRevisionSupplementalAttachments(supplementalAttachments, {
+      retrievedChunkCount: retrievedChunks.length,
+    });
+    try {
+      await query(
+        `UPDATE report_revision_requests SET supplemental_attachments=$1::jsonb WHERE id=$2`,
+        [JSON.stringify(enrichedAttachments), requestId]
+      );
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code !== '42703') throw err;
+    }
   }
 
   // Build a single supplemental block to splice into model prompts when
@@ -820,7 +858,100 @@ Return strict JSON.`,
   });
 
   emit('done', 100, 'Revision applied', revisionId);
-  return { revisionId, revisedReportId, changePlan };
+  return {
+    revisionId,
+    revisedReportId,
+    changePlan,
+    ...(enrichedAttachments.length > 0 ? { supplementalAttachments: enrichedAttachments } : {}),
+  };
+}
+
+function normalizeFetchStatus(raw: unknown): 'success' | 'failed' {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (s === 'ok' || s === 'success') return 'success';
+  return 'failed';
+}
+
+function resolveRetrievalStatus(
+  ingestionStatus: string | undefined,
+  retrievedChunkCount: number
+): RevisionAttachmentAudit['retrieval_status'] {
+  const ingest = (ingestionStatus ?? '').toLowerCase();
+  if (ingest === 'failed' || ingest === 'error') return 'failed';
+  if (retrievedChunkCount > 0 && (ingest === 'complete' || ingest === 'completed')) return 'completed';
+  if (ingest === 'complete' || ingest === 'completed') return 'pending';
+  if (ingest === 'queued' || ingest === 'processing' || ingest === 'running') return 'queued';
+  return retrievedChunkCount > 0 ? 'completed' : 'pending';
+}
+
+/** Maps ingest audit rows to the full RevisionAttachmentAudit contract for UI + API. */
+export async function enrichRevisionSupplementalAttachments(
+  attachments: Array<Record<string, unknown>>,
+  options: { retrievedChunkCount: number }
+): Promise<RevisionAttachmentAudit[]> {
+  if (attachments.length === 0) return [];
+
+  const jobIds = attachments
+    .map((a) => String(a.ingestion_job_id ?? '').trim())
+    .filter(Boolean);
+  const jobStatusById = new Map<string, string>();
+  if (jobIds.length > 0) {
+    try {
+      const rows = await query<{ id: string; status: string }>(
+        `SELECT id, status FROM ingestion_jobs WHERE id = ANY($1::uuid[])`,
+        [jobIds]
+      );
+      for (const row of rows) {
+        jobStatusById.set(row.id, row.status);
+      }
+    } catch (err) {
+      logger.debug('[revision] enrichRevisionSupplementalAttachments ingestion_jobs lookup skipped', err);
+    }
+  }
+
+  return attachments.map((raw) => {
+    const kind = raw.kind === 'file' ? 'file' : 'url';
+    const jobId = String(raw.ingestion_job_id ?? '');
+    const fetchStatus = normalizeFetchStatus(raw.fetch_status);
+    const extractedChars =
+      typeof raw.extractedChars === 'number' ? raw.extractedChars : undefined;
+    const fetchError =
+      typeof raw.error === 'string'
+        ? raw.error
+        : typeof raw.fetch_error === 'string'
+          ? raw.fetch_error
+          : undefined;
+    const ingestionStatus = jobStatusById.get(jobId);
+
+    let inline_status: RevisionAttachmentAudit['inline_status'];
+    if (fetchStatus === 'failed') {
+      inline_status = 'failed';
+    } else if ((extractedChars ?? 0) > 0) {
+      inline_status = 'included';
+    } else {
+      inline_status = 'skipped';
+    }
+
+    const base: RevisionAttachmentAudit = {
+      kind,
+      ingestion_job_id: jobId,
+      fetch_status: fetchStatus,
+      ...(fetchError ? { fetch_error: fetchError } : {}),
+      ...(typeof extractedChars === 'number' ? { extractedChars } : {}),
+      ...(ingestionStatus ? { ingestion_status: ingestionStatus } : {}),
+      inline_status,
+      retrieval_status: resolveRetrievalStatus(ingestionStatus, options.retrievedChunkCount),
+    };
+
+    if (kind === 'url') {
+      return { ...base, url: typeof raw.url === 'string' ? raw.url : undefined };
+    }
+    return {
+      ...base,
+      filename: typeof raw.filename === 'string' ? raw.filename : undefined,
+      mimetype: typeof raw.mimetype === 'string' ? raw.mimetype : undefined,
+    };
+  });
 }
 
 export async function listReportRevisions(reportId: string): Promise<Record<string, unknown>[]> {
