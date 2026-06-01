@@ -355,6 +355,7 @@ export type DossierListParams = {
   pageSize?: number;
   intent?: string;
   status?: string;
+  search?: string;
   dateFrom?: string;
   dateTo?: string;
   sortBy?: DossierSortBy;

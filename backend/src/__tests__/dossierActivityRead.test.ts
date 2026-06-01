@@ -81,6 +81,17 @@ describe('listDossiers sortBy', () => {
     expect(fallbackSql).not.toContain('last_activity_at');
     expect(fallbackSql).toContain('ORDER BY dossier_created_at DESC');
   });
+
+  it('passes search ILIKE filter when search is non-empty', async () => {
+    queryMock.mockResolvedValueOnce([{ c: '0' }]).mockResolvedValueOnce([]);
+
+    await listDossiers({ page: 1, pageSize: 20, search: '  anomaly  ' }, ctx);
+
+    const countSql = String(queryMock.mock.calls[0]?.[0] ?? '');
+    expect(countSql).toContain('request_query ILIKE');
+    expect(countSql).toContain('report_title ILIKE');
+    expect(queryMock.mock.calls[0]?.[1]).toContain('%anomaly%');
+  });
 });
 
 describe('getDossierReportHistory', () => {
@@ -114,6 +125,9 @@ describe('getDossierReportHistory', () => {
     expect(result?.entries).toHaveLength(2);
     expect(result?.entries[1]?.versionNumber).toBe(2);
     expect(result?.entries[1]?.revisionNumber).toBe(1);
+    const historySql = String(queryMock.mock.calls[0]?.[0] ?? '');
+    expect(historySql).toContain('EXISTS');
+    expect(historySql).toContain('v_dossier');
   });
 
   it('returns null when dossier anchor missing', async () => {

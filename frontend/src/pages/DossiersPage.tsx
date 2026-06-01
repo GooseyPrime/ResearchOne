@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -16,23 +16,19 @@ export default function DossiersPage() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const { data, isLoading, isError, error } = useDossiers({
     page,
     pageSize: PAGE_SIZE,
     status: status || undefined,
+    search: search.trim() || undefined,
     sortBy: 'last_activity_at',
   });
 
-  const rows = useMemo(() => {
-    const r = data?.rows ?? [];
-    if (!search.trim()) return r;
-    const q = search.toLowerCase();
-    return r.filter(
-      (row) =>
-        row.requestQuery.toLowerCase().includes(q) ||
-        (row.reportTitle?.toLowerCase().includes(q) ?? false),
-    );
-  }, [data?.rows, search]);
+  const rows = data?.rows ?? [];
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -59,7 +55,9 @@ export default function DossiersPage() {
             className="input pl-9"
             placeholder="Search by query or report title"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             aria-label="Search dossiers"
           />
         </div>

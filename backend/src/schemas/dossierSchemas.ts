@@ -18,6 +18,7 @@ export const dossierListQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   intent: z.string().min(1).max(64).optional(),
   status: z.string().min(1).max(64).optional(),
+  search: z.string().min(1).max(200).optional(),
   dateFrom: optionalTimestamptzQuery,
   dateTo: optionalTimestamptzQuery,
   sortBy: z.enum(['dossier_created_at', 'last_activity_at']).default('last_activity_at'),

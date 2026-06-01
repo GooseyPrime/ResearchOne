@@ -216,6 +216,15 @@ export async function listDossiers(filters: DossierListFilters, _ctx: DossierAut
     conds.push(`dossier_created_at <= $${p++}::timestamptz`);
     params.push(filters.dateTo);
   }
+  const searchTrimmed = filters.search?.trim();
+  if (searchTrimmed) {
+    const pattern = `%${searchTrimmed.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    conds.push(
+      `(request_query ILIKE $${p} ESCAPE '\\' OR report_title ILIKE $${p} ESCAPE '\\')`,
+    );
+    params.push(pattern);
+    p++;
+  }
 
   const where = conds.join(' AND ');
   const sortBy = filters.sortBy ?? 'last_activity_at';
@@ -312,6 +321,9 @@ export async function getDossierReportHistory(
               ) AS revision_number
        FROM reports r
        WHERE COALESCE(r.root_report_id, r.id) = $1::uuid
+         AND EXISTS (
+           SELECT 1 FROM v_dossier vd WHERE vd.report_id = r.id
+         )
        ORDER BY r.version_number ASC NULLS LAST, r.created_at ASC`,
       [rootId],
     );
