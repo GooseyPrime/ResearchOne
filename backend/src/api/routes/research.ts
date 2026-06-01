@@ -35,6 +35,7 @@ import {
   insertQueuedResearchRunWithLineage,
   mergeSupplementalWithPriorContext,
   resolveOwnedReportForSpinoff,
+  type SpinoffLineage,
 } from '../../services/research/spinoffService';
 
 const router = Router();
@@ -184,9 +185,7 @@ async function handleStartResearchRun(
       const userId = req.auth?.userId;
       const orgId = req.auth?.orgId ?? null;
 
-      let spinoffLineage:
-        | { spinoffFromRunId: string; spinoffFromReportId: string }
-        | undefined;
+      let spinoffLineage: SpinoffLineage | undefined;
       if (spinoffFromReportId) {
         const parent = await resolveOwnedReportForSpinoff(spinoffFromReportId, {
           userId: userId ?? null,
