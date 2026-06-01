@@ -12,6 +12,7 @@ import {
   type DossierListParams,
   type DossierListResult,
   type DossierReportHistoryEntry,
+  type DossierSourceEntry,
   type DossierSpinoffEntry,
   type DossierTimelineResult,
   type PlanRevisionRow,

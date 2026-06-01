@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  Database,
   FileText,
   History,
   LayoutList,
@@ -45,7 +46,8 @@ function tabFromHash(): TabId {
     h === 'stats' ||
     h === 'request' ||
     h === 'report-history' ||
-    h === 'spinoffs'
+    h === 'spinoffs' ||
+    h === 'sources'
   ) {
     return h;
   }
