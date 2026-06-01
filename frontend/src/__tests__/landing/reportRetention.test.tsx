@@ -14,6 +14,12 @@ vi.mock('../../hooks/useDossiers', () => ({
     isError: false,
     error: null,
   })),
+  useDossierTimeline: vi.fn(() => ({
+    data: { rows: [], total: 0, page: 1, pageSize: 50 },
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
 }));
 
 import { useAuth } from '@clerk/react';

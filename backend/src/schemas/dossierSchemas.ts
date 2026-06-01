@@ -27,6 +27,8 @@ export const dossierListQuerySchema = z.object({
 export const dossierTimelineQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  search: z.string().min(1).max(200).optional(),
+  status: z.string().min(1).max(64).optional(),
   dateFrom: optionalTimestamptzQuery,
   dateTo: optionalTimestamptzQuery,
 });

@@ -13,6 +13,13 @@ function eventLabel(type: string): string {
   return EVENT_LABELS[type] ?? type.replace(/_/g, ' ');
 }
 
+function formatOccurredAt(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return format(d, 'yyyy-MM-dd HH:mm');
+}
+
 export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineRow[] }) {
   if (rows.length === 0) {
     return (
@@ -43,7 +50,7 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
                 className="border-b border-slate-800/60 hover:bg-slate-900/30"
               >
                 <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap tabular-nums text-xs">
-                  {format(new Date(row.occurredAt), 'yyyy-MM-dd HH:mm')}
+                  {formatOccurredAt(row.occurredAt)}
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="text-slate-200">{eventLabel(String(row.eventType))}</span>

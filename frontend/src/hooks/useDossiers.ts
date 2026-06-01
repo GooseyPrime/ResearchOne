@@ -12,6 +12,7 @@ import {
   type DossierListResult,
   type DossierReportHistoryEntry,
   type DossierSpinoffEntry,
+  type DossierTimelineResult,
   type PlanRevisionRow,
   type Report,
 } from '../utils/api';
@@ -73,6 +74,8 @@ export function useDossierSpinoffs(dossierId: string | undefined) {
 export function useDossierTimeline(params: {
   page?: number;
   pageSize?: number;
+  search?: string;
+  status?: string;
   enabled?: boolean;
 }) {
   const { enabled = true, ...rest } = params;

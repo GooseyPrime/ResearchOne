@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderOpen, Search } from 'lucide-react';
+import { FolderOpen, Search, Download, LayoutGrid, Table2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
-import { useDossiers } from '../hooks/useDossiers';
+import { useDossiers, useDossierTimeline } from '../hooks/useDossiers';
 import { extractApiError, type DossierListRow } from '../utils/api';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import IntentBadge from '../components/dossiers/IntentBadge';
+import DossiersTimelineTable, { timelineRowsToCsv } from '../components/dossiers/DossiersTimelineTable';
+
+type ViewMode = 'cards' | 'timeline';
 
 const PAGE_SIZE = 20;
 
@@ -15,23 +18,46 @@ export default function DossiersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState<ViewMode>('cards');
+
+  const searchParam = search.trim() || undefined;
+  const statusParam = status || undefined;
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, viewMode]);
 
   const { data, isLoading, isError, error } = useDossiers({
     page,
     pageSize: PAGE_SIZE,
-    status: status || undefined,
-    search: search.trim() || undefined,
+    status: statusParam,
+    search: searchParam,
     sortBy: 'last_activity_at',
   });
 
-  const rows = data?.rows ?? [];
+  const timelineQuery = useDossierTimeline({
+    page,
+    pageSize: PAGE_SIZE,
+    search: searchParam,
+    status: statusParam,
+    enabled: viewMode === 'timeline',
+  });
 
+  const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const handleExportCsv = () => {
+    const exportRows = timelineQuery.data?.rows ?? [];
+    const csv = timelineRowsToCsv(exportRows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = `dossier-timeline-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(objectUrl);
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-6 bg-r1-canvas min-h-full">
@@ -46,6 +72,43 @@ export default function DossiersPage() {
             Each dossier bundles your request, plan, linked report, and run statistics. Sorted by most recent activity.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-indigo-900/40 overflow-hidden">
+            <button
+              type="button"
+              className={clsx(
+                'px-3 py-1.5 text-xs inline-flex items-center gap-1.5',
+                viewMode === 'cards' ? 'bg-accent/15 text-accent' : 'text-slate-400 hover:bg-slate-900/50',
+              )}
+              onClick={() => setViewMode('cards')}
+            >
+              <LayoutGrid size={14} />
+              Cards
+            </button>
+            <button
+              type="button"
+              className={clsx(
+                'px-3 py-1.5 text-xs inline-flex items-center gap-1.5 border-l border-indigo-900/40',
+                viewMode === 'timeline' ? 'bg-accent/15 text-accent' : 'text-slate-400 hover:bg-slate-900/50',
+              )}
+              onClick={() => setViewMode('timeline')}
+            >
+              <Table2 size={14} />
+              Timeline
+            </button>
+          </div>
+          {viewMode === 'timeline' ? (
+            <button
+              type="button"
+              className="btn-ghost text-xs inline-flex items-center gap-1.5 border border-indigo-900/40"
+              onClick={handleExportCsv}
+              disabled={!timelineQuery.data?.rows?.length}
+            >
+              <Download size={14} />
+              Export CSV
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -55,9 +118,7 @@ export default function DossiersPage() {
             className="input pl-9"
             placeholder="Search by query or report title"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             aria-label="Search dossiers"
           />
         </div>
@@ -79,30 +140,44 @@ export default function DossiersPage() {
         </select>
       </div>
 
-      {isError && (
+      {(isError || (viewMode === 'timeline' && timelineQuery.isError)) && (
         <div className="rounded-lg border border-red-800/40 bg-red-950/20 px-4 py-3 text-sm text-red-200">
-          {extractApiError(error)}
+          {extractApiError(viewMode === 'timeline' ? timelineQuery.error : error)}
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={`dossier-skel-${i}`} className="card p-5 animate-pulse h-36" />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="card p-10 text-center text-slate-400 text-sm">No dossiers match your filters.</div>
+      {viewMode === 'cards' ? (
+        isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={`dossier-skel-${i}`} className="card p-5 animate-pulse h-36" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="card p-10 text-center text-slate-400 text-sm">No dossiers match your filters.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {rows.map((row) => (
+              <DossierListCard key={row.dossierId} row={row} onOpen={() => navigate(`/app/dossiers/${row.dossierId}`)} />
+            ))}
+          </div>
+        )
+      ) : timelineQuery.isLoading ? (
+        <div className="card p-10 animate-pulse h-48" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {rows.map((row) => (
-            <DossierListCard key={row.dossierId} row={row} onOpen={() => navigate(`/app/dossiers/${row.dossierId}`)} />
-          ))}
-        </div>
+        <DossiersTimelineTable rows={timelineQuery.data?.rows ?? []} />
       )}
 
-      {total > PAGE_SIZE ? (
+      {viewMode === 'cards' && total > PAGE_SIZE ? (
         <PaginationBar page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      ) : null}
+      {viewMode === 'timeline' && (timelineQuery.data?.total ?? 0) > PAGE_SIZE ? (
+        <PaginationBar
+          page={page}
+          totalPages={Math.max(1, Math.ceil((timelineQuery.data?.total ?? 0) / PAGE_SIZE))}
+          total={timelineQuery.data?.total ?? 0}
+          onPageChange={setPage}
+        />
       ) : null}
     </div>
   );

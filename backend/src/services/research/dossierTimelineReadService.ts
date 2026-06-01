@@ -97,7 +97,7 @@ const TIMELINE_UNION_LEGACY = `
          d.report_id,
          d.request_query AS query,
          NULL::int AS revision_number,
-         d.engine_version,
+         NULL::text AS engine_version,
          d.run_status::text AS run_status
   FROM v_dossier d
 
@@ -110,7 +110,7 @@ const TIMELINE_UNION_LEGACY = `
          rv.revised_report_id AS report_id,
          d.request_query AS query,
          rv.revision_number,
-         d.engine_version,
+         NULL::text AS engine_version,
          d.run_status::text AS run_status
   FROM report_revisions rv
   JOIN reports r ON r.id = rv.report_id
@@ -125,7 +125,7 @@ const TIMELINE_UNION_LEGACY = `
          d.report_id,
          d.request_query AS query,
          pr.revision_number,
-         d.engine_version,
+         NULL::text AS engine_version,
          d.run_status::text AS run_status
   FROM plan_revisions pr
   JOIN research_plans rp ON rp.id = pr.plan_id
@@ -151,6 +151,17 @@ export async function listTimelineEvents(
   if (filters.dateTo) {
     conds.push(`occurred_at <= $${p++}::timestamptz`);
     params.push(filters.dateTo);
+  }
+  const searchTrimmed = filters.search?.trim();
+  if (searchTrimmed) {
+    const pattern = `%${searchTrimmed.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    conds.push(`query ILIKE $${p} ESCAPE '\\'`);
+    params.push(pattern);
+    p++;
+  }
+  if (filters.status) {
+    conds.push(`run_status = $${p++}`);
+    params.push(filters.status);
   }
 
   const where = conds.join(' AND ');

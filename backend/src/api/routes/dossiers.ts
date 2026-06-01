@@ -70,8 +70,8 @@ router.get('/timeline', async (req: Request, res: Response, next: NextFunction) 
       res.status(400).json({ error: 'Invalid query', detail: q.error.flatten() });
       return;
     }
-    const { page, pageSize, dateFrom, dateTo } = q.data;
-    const result = await listTimelineEvents({ page, pageSize, dateFrom, dateTo }, ctx);
+    const { page, pageSize, search, status, dateFrom, dateTo } = q.data;
+    const result = await listTimelineEvents({ page, pageSize, search, status, dateFrom, dateTo }, ctx);
     res.json(result);
   } catch (e) {
     next(e);

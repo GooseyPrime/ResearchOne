@@ -158,6 +158,8 @@ export interface DossierTimelineRow {
 export interface DossierTimelineFilters {
   page: number;
   pageSize: number;
+  search?: string;
+  status?: string;
   dateFrom?: string;
   dateTo?: string;
 }
