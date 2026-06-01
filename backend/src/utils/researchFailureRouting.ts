@@ -13,13 +13,21 @@
  * Pulled out of `backend/src/queue/workers.ts` so it can be unit-tested
  * without spinning up a BullMQ worker / Redis.
  */
+export const PLAN_RESUME_INVALID_CODE = 'PLAN_RESUME_INVALID';
+
 export interface ResearchJobFailureLike {
   runId?: string;
   stage?: string;
   percent?: number;
   message?: string;
   retryable?: boolean;
+  code?: string;
   failureMeta?: Record<string, unknown>;
+}
+
+/** Benign BullMQ retry while plan confirm DB write completes (Rule 33 queue-before-confirm). */
+export function isBenignPlanResumeAwaitingConfirm(err: ResearchJobFailureLike): boolean {
+  return err.code === PLAN_RESUME_INVALID_CODE && err.retryable === true;
 }
 
 export interface ResearchFailureSocketDecision {

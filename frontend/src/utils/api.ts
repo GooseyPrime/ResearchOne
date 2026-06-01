@@ -51,7 +51,11 @@ export function extractApiError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as Record<string, unknown> | undefined;
     if (data) {
-      if (typeof data.error === 'string' && data.error) return data.error;
+      const error = typeof data.error === 'string' ? data.error : '';
+      const detail = typeof data.detail === 'string' ? data.detail : '';
+      if (error && detail) return `${error}: ${detail}`;
+      if (error) return error;
+      if (detail) return detail;
       if (typeof data.message === 'string' && data.message) return data.message;
     }
   }

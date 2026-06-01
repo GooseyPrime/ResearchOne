@@ -178,4 +178,56 @@ describe('enqueueResearchResumeAfterPlan', () => {
       enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-7', 'plan-right')
     ).rejects.toThrow('duplicate job id');
   });
+
+  it('removes waiting-children stale job before enqueue', async () => {
+    const calls: string[] = [];
+    const stale = resumeJob('run-8', 'plan-old', 'waiting-children');
+    stale.remove = vi.fn(async () => {
+      calls.push('remove');
+    });
+    const fresh = resumeJob('run-8', 'plan-new', 'waiting');
+    let getJobCalls = 0;
+    const getJob = vi.fn(async () => {
+      calls.push('getJob');
+      getJobCalls += 1;
+      if (getJobCalls === 1) return stale;
+      return fresh;
+    });
+    const add = vi.fn(async () => {
+      calls.push('add');
+      return fresh;
+    });
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-8', 'plan-new');
+
+    expect(calls).toEqual(['getJob', 'remove', 'add', 'getJob']);
+    expect(stale.remove).toHaveBeenCalled();
+  });
+
+  it('retries add once after removing duplicate job id blocker', async () => {
+    const calls: string[] = [];
+    const stale = resumeJob('run-9', 'plan-stale', 'failed');
+    const fresh = resumeJob('run-9', 'plan-new', 'waiting');
+    let removeCount = 0;
+    stale.remove = vi.fn(async () => {
+      calls.push('remove');
+      removeCount += 1;
+    });
+    const getJob = vi.fn(async () => {
+      calls.push('getJob');
+      return removeCount >= 2 ? fresh : stale;
+    });
+    let addCalls = 0;
+    const add = vi.fn(async () => {
+      addCalls += 1;
+      calls.push(`add-${addCalls}`);
+      if (addCalls === 1) throw new Error('duplicate job id');
+      return fresh;
+    });
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-9', 'plan-new');
+
+    expect(calls).toEqual(['getJob', 'remove', 'add-1', 'getJob', 'remove', 'add-2', 'getJob']);
+    expect(add).toHaveBeenCalledTimes(2);
+  });
 });

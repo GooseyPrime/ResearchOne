@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { classifyResearchFailureForSocket } from '../utils/researchFailureRouting';
+import {
+  classifyResearchFailureForSocket,
+  isBenignPlanResumeAwaitingConfirm,
+} from '../utils/researchFailureRouting';
 
 /**
  * Locks in the contract reviewed in PR #39: an orchestrator-thrown error
@@ -78,5 +81,22 @@ describe('classifyResearchFailureForSocket', () => {
     expect(decision.event).toBe('research:failed');
     expect(decision.payload.terminal).toBe(false);
     expect(decision.payload.retryable).toBe(false);
+  });
+
+  it('detects benign plan resume retry while confirm is in flight', () => {
+    expect(
+      isBenignPlanResumeAwaitingConfirm({
+        code: 'PLAN_RESUME_INVALID',
+        retryable: true,
+        message: 'Confirmed plan not found for this run',
+      })
+    ).toBe(true);
+    expect(
+      isBenignPlanResumeAwaitingConfirm({
+        code: 'PLAN_RESUME_INVALID',
+        retryable: false,
+        message: 'Missing resume job payload',
+      })
+    ).toBe(false);
   });
 });

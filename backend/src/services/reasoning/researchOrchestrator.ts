@@ -1773,6 +1773,8 @@ export async function resumeAfterPlanConfirmation(
     throw Object.assign(new Error('Confirmed plan not found for this run'), {
       code: 'PLAN_RESUME_INVALID',
       statusCode: 400,
+      // Queue-before-confirm race: worker may run before confirm writes `status='confirmed'`.
+      retryable: true,
     });
   }
   const planPayloadRow = await queryOne<{ plan_payload: unknown }>(
