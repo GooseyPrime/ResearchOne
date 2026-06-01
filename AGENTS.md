@@ -40,6 +40,7 @@ drove the rules is at
 | [`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc) | All work ships via a PR branch by default unless user directs otherwise. |
 | [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (Wave 5.1). |
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
+| [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (Wave 5.4+). |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -53,6 +54,8 @@ drove the rules is at
 4. [`docs/V2_RELIABILITY_PLAN_2026-04-26.md`](docs/V2_RELIABILITY_PLAN_2026-04-26.md)
    — Earlier V2 reliability work. Historical but still in force.
 5. [`README.md`](README.md) — runtime topology.
+6. [`docs/revision-spinoff-dossier-timeline-scope.md`](docs/revision-spinoff-dossier-timeline-scope.md)
+   — gated work plan for revision URL fixes, research spinoffs, dossier timeline.
 
 ## Production application source — no test mocks (CI enforced)
 
@@ -66,6 +69,14 @@ ship on `main`.
 **Enforcement:** `scripts/ci/assert-no-test-mocks-in-app-src.sh` runs in
 `.github/workflows/ci-guards.yml` (PRs / all branches) and again in
 `deploy-backend-emma.yml` before production SSH deploy to `main`.
+
+## Recurring review themes (revision / spinoff / dossier timeline — Rule 35)
+
+- **`cursor/revision-spinoff-dossier-timeline-fa53`:** frontend-only draft; do not merge until Gate 2 spinoff API exists on `main`.
+- **Revision URL:** sync `fetchUrl` + scoped `retrieveChunks` in revision pipeline — placeholder-only inline text is a regression.
+- **Spinoff tier gate:** `POST /api/research/spinoff` must mirror `checkTierAccess` / wallet path from `POST /api/research` (`isDeep` for V2; admin override on UI).
+- **Cherry-pick fa53:** reconcile with unified research console (PR #149); spinoff submit → `/app/research?runId=`.
+- **Migration numbers:** spinoff lineage = **046**; `v_dossier` activity = **047** (039 is saved orchestration profiles).
 
 ## Recurring review themes (Codex / Copilot, PR #141 — unified research + plan confirm queue)
 

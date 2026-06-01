@@ -90,6 +90,22 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
 18. **Layout `research-runs` poll:** backoff when no in-flight runs;
     avoid duplicate queries for the same key. (Same rule.)
 
+## F3. Revision supplemental URLs and spinoff parity (Rule 35)
+
+F3-1. **Revision URL placeholder is a regression.** Grep
+    `reportRevisionSupplementalIngest` for async-only URL placeholders before
+    merge; supplemental URLs must sync-fetch into `inlineContext` or record
+    explicit fetch failure in attachment metadata.
+F3-2. **Scoped retrieval in revision.** `reportRevisionService` must call
+    `retrieveChunks` (or equivalent scoped helper) for revision-tagged sources
+    after ingest wait — not prompt-only URL strings.
+F3-3. **Spinoff route tier parity.** `POST /api/research/spinoff` must use the
+    same `checkTierAccess` / wallet / `isDeep` rules as `POST /api/research`;
+    grep both handlers when changing tier gates.
+F3-4. **Timeline / dossier SQL mocks.** When changing `v_dossier` or timeline
+    read SQL, grep test mocks (`dbQuery.mockResolvedValue`, dossier tests) for
+    stale row shapes.
+
 ## G. Third-party APIs
 
 15. **Read the contract of any third-party API you call**. BullMQ

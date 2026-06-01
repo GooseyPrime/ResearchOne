@@ -1,0 +1,92 @@
+---
+description: Revision supplemental URLs, research spinoffs, dossier timeline (Wave 5.4+)
+alwaysApply: true
+---
+
+# Rule 35 — Revision, spinoff, and dossier timeline
+
+## Why this rule exists
+
+Users reported revision URLs were not used in rewrites, revised reports did not
+appear as new dossier rows (by design for in-place revision), and there was no
+path to launch **full research** from a past report with lineage. A prior agent
+shipped frontend-only work on branch `cursor/revision-spinoff-dossier-timeline-fa53`
+calling seven backend endpoints that did not exist. Scope and gates live in
+`docs/revision-spinoff-dossier-timeline-scope.md`.
+
+## Two-path product model
+
+1. **In-place revision** — same `run_id`, section rewrite only. Same engine,
+   objective, models, plan gate (none). Supplemental URLs/files improved in
+   Gate 1; **never** run full `researchOrchestrator` here.
+2. **Research spinoff** — new `research_runs` row with `spinoff_from_run_id` /
+   `spinoff_from_report_id`. Full `POST /api/research` parity (engine, objective,
+   models, profile, plan gate, tier/billing). **Only** spinoff changes setup.
+
+## Rule — revision URL contract (Gate 1)
+
+1. **`ingestSupplementalForRevision`** must **sync-fetch** supplemental URLs
+   (via shared `fetchUrl` from ingestion) and inline text into `inlineContext`.
+2. Placeholder-only inline text (`Content fetched into corpus asynchronously…`)
+   is a **regression** — grep before merge.
+3. **`createReportRevision`** must run **scoped** `retrieveChunks` for sources
+   tagged with `revision_request_id` / `report_id` metadata after ingest wait.
+4. Persist per-attachment outcomes (`fetch_status`, `extractedChars`, `error`) in
+   `report_revision_requests.supplemental_attachments` / metadata.
+5. Replay **`research_runs.model_ensemble`** snapshot + **`model_overrides`**
+   via `runtimeOverrides` on revision `callRoleModel` paths — grep all revision
+   roles when changing override plumbing.
+
+## Rule — spinoff parity (Gate 2–3)
+
+1. **`POST /api/research/spinoff`** body = `StartResearchPayload` + required
+   `fromReportId`. Reuse Zod schema, `checkTierAccess` (`isDeep` for V2),
+   wallet/credit path from `POST /api/research`.
+2. Lineage columns on INSERT only: `spinoff_from_run_id`, `spinoff_from_report_id`
+   (migration **046** — not 039, which is saved orchestration profiles).
+3. Inject capped prior-report context block into `supplemental` unless user already
+   included it.
+4. **`GET /api/reports/:id/spinoff/prefill`** — parent run/report fields for form;
+   validate ownership via RLS-aligned report/run read.
+5. Deploy-skew: INSERT/SELECT tolerate missing `spinoff_*` columns (Rule 13).
+6. **Frontend-before-backend forbidden:** do not merge UI calling `/research/spinoff`
+   until Gate 2 backend tests pass.
+
+## Rule — reopen consolidation
+
+When a terminal run has a linked **`report_id`**, "Open request" / "start from
+past work" must route to **spinoff prefill** (`/app/reports/:id/spinoff`), not
+bare reopen without lineage. Reopen without report remains for failed/no-report runs.
+
+## Rule — dossier reads (Gates 4–5)
+
+1. List/detail dossier shape: **`dossierReadService`** + **`v_dossier` only**
+   (Rule 32). New columns in migration **047** (+ repair **048** if view overwrite
+   risk per Rule 33 §7).
+2. **`last_activity_at`** default list sort after Gate 4.
+3. Timeline flat rows: **`dossierTimelineReadService`** + `GET /api/dossiers/timeline`
+   — event types: `initial_run`, `report_revision`, `research_spinoff`,
+   `plan_refinement`.
+4. **`v_dossier` edits:** preserve single-plan **LATERAL** join from migration 035;
+   `WITH (security_invoker = true)`.
+
+## Rule — vocabulary (Rule 31)
+
+User-facing revision/spinoff copy and revision prompts: **sources**, not generic
+"evidence" for retrieved web text. Tier identifiers unchanged.
+
+## Rule — unified research console (PR #149)
+
+Spinoff submit navigates to **`/app/research?runId=`** (inline trace + plan gate).
+Do not fork a third research shell; `ReportSpinoffPage` is a dedicated entry with
+full form parity.
+
+## Pre-commit check
+
+- [ ] Grep `inlineParts.push` / placeholder URL strings in revision ingest — none?
+- [ ] Grep `retrieveChunks` in `reportRevisionService.ts` — present after Gate 1?
+- [ ] Spinoff route: `checkTierAccess` mirrors `POST /api/research`?
+- [ ] Grep `spinoff_from` writers and readers — deploy-skew handled?
+- [ ] `v_dossier` migration preserves LATERAL + `security_invoker`?
+- [ ] Timeline/dossier SQL changes: grep test mocks for stale row shapes?
+- [ ] Read only the current gate section in scope doc before coding.
