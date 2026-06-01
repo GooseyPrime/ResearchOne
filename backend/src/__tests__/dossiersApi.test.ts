@@ -24,7 +24,12 @@ const dossierServiceMocks = vi.hoisted(() => ({
   getDossierStats: vi.fn(),
 }));
 
+const timelineServiceMocks = vi.hoisted(() => ({
+  listTimelineEvents: vi.fn(),
+}));
+
 vi.mock('../services/research/dossierReadService', () => dossierServiceMocks);
+vi.mock('../services/research/dossierTimelineReadService', () => timelineServiceMocks);
 
 import request from 'supertest';
 import testApp from '../api/app';
@@ -38,6 +43,7 @@ beforeEach(() => {
   dossierServiceMocks.getDossierPlan.mockReset();
   dossierServiceMocks.getDossierReportLink.mockReset();
   dossierServiceMocks.getDossierStats.mockReset();
+  timelineServiceMocks.listTimelineEvents.mockReset();
 });
 
 describe('GET /api/dossiers', () => {
@@ -69,6 +75,45 @@ describe('GET /api/dossiers', () => {
     const res = await request(testApp).get('/api/dossiers?dateFrom=not-a-date');
     expect(res.status).toBe(400);
     expect(dossierServiceMocks.listDossiers).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/dossiers/timeline', () => {
+  it('returns timeline payload from listTimelineEvents', async () => {
+    timelineServiceMocks.listTimelineEvents.mockResolvedValueOnce({
+      rows: [
+        {
+          occurredAt: '2024-01-01T00:00:00.000Z',
+          eventType: 'initial_run',
+          dossierId: RUN_ID,
+          runId: RUN_ID,
+          reportId: null,
+          query: 'test query',
+          revisionNumber: null,
+          engineVersion: 'v2',
+          runStatus: 'completed',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    });
+
+    const res = await request(testApp).get('/api/dossiers/timeline');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.rows).toHaveLength(1);
+    expect(timelineServiceMocks.listTimelineEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 50 }),
+      expect.objectContaining({ userId: 'user_test', orgId: null }),
+    );
+  });
+
+  it('returns 400 on invalid page', async () => {
+    const res = await request(testApp).get('/api/dossiers/timeline?page=0');
+    expect(res.status).toBe(400);
+    expect(timelineServiceMocks.listTimelineEvents).not.toHaveBeenCalled();
   });
 });
 

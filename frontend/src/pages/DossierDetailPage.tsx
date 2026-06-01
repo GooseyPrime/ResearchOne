@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FileText, History, LayoutList, NotebookTabs, Sigma } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileText,
+  History,
+  LayoutList,
+  NotebookTabs,
+  Sigma,
+  GitBranch,
+} from 'lucide-react';
 import clsx from 'clsx';
-import { useDossier, useReport } from '../hooks/useDossiers';
+import { format } from 'date-fns';
+import {
+  useDossier,
+  useReport,
+  useDossierReportHistory,
+  useDossierSpinoffs,
+} from '../hooks/useDossiers';
 import IntentBadge from '../components/dossiers/IntentBadge';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import DossierReportSection from '../components/dossiers/DossierReportSection';
@@ -10,18 +24,29 @@ import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSe
 import ReportForkActions from '../components/reports/ReportForkActions';
 import { extractApiError } from '../utils/api';
 
-type TabId = 'request' | 'plan' | 'report' | 'stats';
+type TabId = 'request' | 'plan' | 'report' | 'report-history' | 'spinoffs' | 'stats';
 
 const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'request', label: 'Request', icon: NotebookTabs },
   { id: 'plan', label: 'Plan', icon: LayoutList },
   { id: 'report', label: 'Report', icon: FileText },
+  { id: 'report-history', label: 'Report history', icon: History },
+  { id: 'spinoffs', label: 'Spinoffs', icon: GitBranch },
   { id: 'stats', label: 'Statistics', icon: Sigma },
 ];
 
 function tabFromHash(): TabId {
   const h = (typeof window !== 'undefined' ? window.location.hash : '').replace(/^#/, '');
-  if (h === 'plan' || h === 'report' || h === 'stats' || h === 'request') return h;
+  if (
+    h === 'plan' ||
+    h === 'report' ||
+    h === 'stats' ||
+    h === 'request' ||
+    h === 'report-history' ||
+    h === 'spinoffs'
+  ) {
+    return h;
+  }
   return 'request';
 }
 
@@ -31,6 +56,8 @@ export default function DossierDetailPage() {
   const { data, isLoading, isError, error } = useDossier(id);
   const reportId = data?.report?.reportId ?? undefined;
   const reportQuery = useReport(reportId);
+  const historyQuery = useDossierReportHistory(id);
+  const spinoffsQuery = useDossierSpinoffs(id);
   const [tab, setTab] = useState<TabId>(() => tabFromHash());
 
   useEffect(() => {
@@ -182,6 +209,94 @@ export default function DossierDetailPage() {
             )}
           </div>
         )}
+
+        {tab === 'report-history' && (
+          <div className="space-y-3">
+            <h2 className="text-white font-medium">Report history</h2>
+            <p className="text-xs text-slate-500">Revision chain for reports linked to this dossier.</p>
+            {historyQuery.isLoading ? (
+              <p className="text-slate-500">Loading report history…</p>
+            ) : historyQuery.isError ? (
+              <p className="text-slate-500">{extractApiError(historyQuery.error)}</p>
+            ) : (historyQuery.data?.entries ?? []).length === 0 ? (
+              <p className="text-slate-500">No revision history recorded yet.</p>
+            ) : (
+              <ol className="space-y-2">
+                {(historyQuery.data?.entries ?? []).map((entry) => (
+                  <li
+                    key={entry.reportId}
+                    className="rounded-lg border border-slate-800/80 bg-slate-950/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div>
+                      <Link to={`/app/reports/${entry.reportId}`} className="text-accent hover:underline font-medium">
+                        v{entry.versionNumber} — {entry.title}
+                      </Link>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {entry.status}
+                        {entry.revisionNumber != null ? ` · revision #${entry.revisionNumber}` : ''}
+                        {entry.createdAt ? ` · ${format(new Date(entry.createdAt), 'MMM d, yyyy')}` : ''}
+                      </p>
+                    </div>
+                    {entry.parentReportId ? (
+                      <Link
+                        to={`/app/reports/${entry.parentReportId}`}
+                        className="text-xs text-slate-400 hover:text-accent"
+                      >
+                        Parent report
+                      </Link>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+
+        {tab === 'spinoffs' && (
+          <div className="space-y-3">
+            <h2 className="text-white font-medium">Spinoffs</h2>
+            <p className="text-xs text-slate-500">Child research runs forked from this dossier&apos;s report lineage.</p>
+            {spinoffsQuery.isLoading ? (
+              <p className="text-slate-500">Loading spinoffs…</p>
+            ) : spinoffsQuery.isError ? (
+              <p className="text-slate-500">{extractApiError(spinoffsQuery.error)}</p>
+            ) : (spinoffsQuery.data?.spinoffs ?? []).length === 0 ? (
+              <p className="text-slate-500">No spinoff runs yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {(spinoffsQuery.data?.spinoffs ?? []).map((s) => (
+                  <li
+                    key={s.runId}
+                    className="rounded-lg border border-slate-800/80 bg-slate-950/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-slate-200 line-clamp-2">{s.query}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {s.runStatus}
+                        {s.engineVersion ? ` · ${s.engineVersion}` : ''}
+                        {s.createdAt ? ` · ${format(new Date(s.createdAt), 'MMM d, yyyy')}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 text-xs shrink-0">
+                      <Link to={`/app/dossiers/${s.dossierId}`} className="text-accent hover:underline">
+                        Dossier
+                      </Link>
+                      <Link to={`/app/run/${s.runId}`} className="text-accent hover:underline">
+                        Run
+                      </Link>
+                      {s.reportId ? (
+                        <Link to={`/app/reports/${s.reportId}`} className="text-accent hover:underline">
+                          Report
+                        </Link>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
 
         {tab === 'stats' && <DossierStatisticsSection stats={data.stats} planIntent={data.plan.intent} />}
       </section>
