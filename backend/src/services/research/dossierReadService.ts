@@ -436,8 +436,19 @@ export async function getDossierSources(
               ) AS chunk_count,
               EXISTS (
                 SELECT 1 FROM report_citations rc
-                WHERE rc.source_id = s.id
-                  AND ($2::uuid IS NOT NULL AND rc.report_id = $2::uuid)
+                WHERE ($2::uuid IS NOT NULL AND rc.report_id = $2::uuid)
+                  AND (
+                    rc.source_id = s.id
+                    OR (
+                      rc.chunk_id IS NOT NULL
+                      AND rc.source_id IS NULL
+                      AND EXISTS (
+                        SELECT 1 FROM chunks c
+                        WHERE c.id = rc.chunk_id
+                          AND c.source_id = s.id
+                      )
+                    )
+                  )
               ) AS cited_in_report
        FROM sources s
        WHERE s.discovered_by_run_id = $1::uuid
