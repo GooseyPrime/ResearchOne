@@ -197,11 +197,25 @@ export async function retrieveRevisionSupplementalChunks(args: {
   topK?: number;
 }): Promise<RetrievedChunk[]> {
   const sourceRows = await query<{ source_id: string }>(
-    `SELECT DISTINCT ij.source_id
+    `SELECT DISTINCT resolved.source_id
        FROM ingestion_jobs ij
-      WHERE ij.source_id IS NOT NULL
-        AND ij.metadata->>'revision_request_id' = $1
-        AND ij.metadata->>'report_id' = $2`,
+       CROSS JOIN LATERAL (
+         SELECT ij.source_id AS source_id
+          WHERE ij.source_id IS NOT NULL
+         UNION ALL
+         SELECT s.id AS source_id
+           FROM sources s
+          WHERE ij.source_id IS NULL
+            AND ij.status = 'completed'
+            AND (
+              (ij.url IS NOT NULL AND s.url = ij.url)
+              OR (ij.file_name IS NOT NULL AND s.original_filename = ij.file_name)
+            )
+          LIMIT 1
+       ) resolved
+      WHERE ij.metadata->>'revision_request_id' = $1
+        AND ij.metadata->>'report_id' = $2
+        AND resolved.source_id IS NOT NULL`,
     [args.revisionRequestId, args.reportId]
   );
   const sourceIds = sourceRows.map((r) => r.source_id).filter(Boolean);

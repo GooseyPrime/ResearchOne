@@ -568,13 +568,11 @@ router.post(
         onProgress: emitProgress,
       });
 
-      io?.to(`job:revision:${req.params.id}`).emit('revision:completed', result);
-      io?.to(`job:${req.params.id}`).emit('revision:completed', result); // see emitProgress — do not join both rooms in one client
+      const responsePayload = { ...result, supplementalAttachments };
+      io?.to(`job:revision:${req.params.id}`).emit('revision:completed', responsePayload);
+      io?.to(`job:${req.params.id}`).emit('revision:completed', responsePayload); // see emitProgress — do not join both rooms in one client
       io?.to('reports').emit('reports:updated', {});
-      res.status(202).json({
-        ...result,
-        supplementalAttachments,
-      });
+      res.status(202).json(responsePayload);
     } catch (err) {
       next(err);
     }
