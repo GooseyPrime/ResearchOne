@@ -110,6 +110,13 @@ ship on `main`.
 - **ResearchOne shared corpus (Pipeline B):** opt-in only — no `user_ingestion_consent` row ⇒ `false` on GET and `user_opted_out` in eligibility; toggling off stops new contributions; past data is not deleted.
 - **Supplemental site crawl:** `supplementalUrlCrawl` on standard/deep research and spinoff (`AttachmentDropZone` + `SiteCrawlControls`); not gated by private corpus (run-scoped URLs). Ingest workspace crawl remains on `/app/ingest` for private-corpus tiers.
 
+## Recurring review themes (Codex / Copilot, PR #164 — private ingest + supplemental crawl)
+
+- **Admin allowlist parity:** Any UI gate that uses `/auth/me` `isAdmin` or `ADMIN_USER_IDS` must have a matching backend bypass (`isAllowlistedAdminUserId` in `requirePrivateCorpus`, `requireAdmin`, tier routes). Grep both sides before merge.
+- **Tier gate loading vs error:** `tierGateUnknown` = subscription query **loading** only. `subscriptionUnavailable` = `isError && !data` — route guards must show Billing/error UI, not infinite “Loading subscription…”.
+- **Shared UI copy per surface:** Reused components (`SiteCrawlControls`) need a `crawlTarget` (or explicit label) when behavior differs — run-scoped supplemental crawl vs private-corpus Ingest.
+- **Parse errors match failure mode:** Discriminated parse results (`invalid_json` vs `invalid_crawl_layers`) and `*ErrorMessage()` helpers — do not return `undefined` for both JSON and validation failures (400 message must name the actual problem).
+
 ## Recurring review themes (revision / spinoff / dossier timeline — Rule 35)
 
 - **`cursor/revision-spinoff-dossier-timeline-fa53`:** frontend-only draft; do not merge until Gate 2 spinoff API exists on `main`.

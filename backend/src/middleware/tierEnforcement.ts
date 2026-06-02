@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { getUserSubscription } from '../services/billing/subscriptionService';
 import { resolveEffectiveEntitlementTier } from '../services/billing/entitlementTier';
 import { tierHasCorpusAccess, tierNameFromUnknown } from '../config/tierRules';
+import { isAllowlistedAdminUserId } from '../services/auth/adminAllowlist';
 
 interface TierCheckOptions {
   objective?: string | null;
@@ -100,7 +101,7 @@ export function requirePrivateCorpus(): (
         'free_demo'
       );
 
-      if (!tierHasCorpusAccess(entitlementTier)) {
+      if (!isAllowlistedAdminUserId(userId) && !tierHasCorpusAccess(entitlementTier)) {
         res.status(403).json({
           error:
             'Private corpus ingest requires a Pro, Team, BYOK, or Sovereign subscription. Upgrade to maintain a separate corpus from the shared ResearchOne library.',

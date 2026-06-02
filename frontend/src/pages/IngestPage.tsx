@@ -387,6 +387,7 @@ export default function IngestPage() {
             <SiteCrawlControls
               enabled={siteCrawlEnabled}
               crawlLayers={crawlLayers}
+              crawlTarget="private_corpus"
               disabled={urlMutation.isPending}
               hint="Follows same-origin links only (stays on the host you enter). Skips PDFs and media."
               onEnabledChange={setSiteCrawlEnabled}

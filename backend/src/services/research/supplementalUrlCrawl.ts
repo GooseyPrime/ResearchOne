@@ -11,18 +11,24 @@ export interface ResolvedSupplementalUrlCrawl {
   crawlLayers?: number;
 }
 
+export type SupplementalUrlCrawlParseError = 'invalid_json' | 'invalid_crawl_layers';
+
+export type SupplementalUrlCrawlParseResult =
+  | { ok: true; crawl: ResolvedSupplementalUrlCrawl }
+  | { ok: false; error: SupplementalUrlCrawlParseError };
+
 /** Parse optional site-crawl flags from a research start payload (JSON or multipart fields). */
 export function parseSupplementalUrlCrawlFromBody(
   raw: unknown,
   jsonField?: SupplementalUrlCrawlInput | null
-): ResolvedSupplementalUrlCrawl | undefined {
+): SupplementalUrlCrawlParseResult {
   let parsed: SupplementalUrlCrawlInput | null = null;
 
   if (typeof raw === 'string' && raw.trim()) {
     try {
       parsed = JSON.parse(raw) as SupplementalUrlCrawlInput;
     } catch {
-      return undefined;
+      return { ok: false, error: 'invalid_json' };
     }
   } else if (raw && typeof raw === 'object') {
     parsed = raw as SupplementalUrlCrawlInput;
@@ -31,7 +37,7 @@ export function parseSupplementalUrlCrawlFromBody(
   }
 
   if (!parsed || parsed.siteCrawl !== true) {
-    return { siteCrawl: false };
+    return { ok: true, crawl: { siteCrawl: false } };
   }
 
   const layers = clampCrawlLayers(
@@ -39,8 +45,18 @@ export function parseSupplementalUrlCrawlFromBody(
     config.ingestion.siteCrawlMaxLayers
   );
   if (layers === null || layers < 2) {
-    return undefined;
+    return { ok: false, error: 'invalid_crawl_layers' };
   }
 
-  return { siteCrawl: true, crawlLayers: layers };
+  return { ok: true, crawl: { siteCrawl: true, crawlLayers: layers } };
+}
+
+export function supplementalUrlCrawlErrorMessage(
+  error: SupplementalUrlCrawlParseError,
+  maxLayers: number = config.ingestion.siteCrawlMaxLayers
+): string {
+  if (error === 'invalid_json') {
+    return 'supplementalUrlCrawl must be valid JSON with siteCrawl and optional crawlLayers';
+  }
+  return `crawlLayers must be an integer from 2 to ${maxLayers} when site crawl is enabled`;
 }

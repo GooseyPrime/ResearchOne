@@ -1,3 +1,6 @@
+/** Where crawled pages are stored — run-scoped supplemental URLs vs private Ingest corpus. */
+export type SiteCrawlTarget = 'research_run' | 'private_corpus';
+
 export interface SiteCrawlControlsProps {
   enabled: boolean;
   crawlLayers: number;
@@ -6,10 +9,17 @@ export interface SiteCrawlControlsProps {
   disabled?: boolean;
   /** Shown under the checkbox label. */
   hint?: string;
+  /** Default `research_run` (supplemental URLs on a research request). */
+  crawlTarget?: SiteCrawlTarget;
 }
 
 const DEFAULT_HINT =
   'Follows same-origin links only (stays on the host you enter). Skips PDFs and media.';
+
+const CRAWL_CHECKBOX_LABEL: Record<SiteCrawlTarget, string> = {
+  research_run: 'Crawl attached site(s) into this run',
+  private_corpus: 'Crawl attached site(s) into your private corpus',
+};
 
 export default function SiteCrawlControls({
   enabled,
@@ -18,6 +28,7 @@ export default function SiteCrawlControls({
   onLayersChange,
   disabled = false,
   hint = DEFAULT_HINT,
+  crawlTarget = 'research_run',
 }: SiteCrawlControlsProps) {
   return (
     <div className="space-y-2 rounded-lg border border-indigo-900/40 bg-surface-200/50 p-3">
@@ -30,7 +41,7 @@ export default function SiteCrawlControls({
           className="mt-0.5 rounded border-indigo-800"
         />
         <span>
-          Crawl attached site(s) into this run
+          {CRAWL_CHECKBOX_LABEL[crawlTarget]}
           <span className="block text-xs text-slate-500 mt-0.5 font-normal">{hint}</span>
         </span>
       </label>
