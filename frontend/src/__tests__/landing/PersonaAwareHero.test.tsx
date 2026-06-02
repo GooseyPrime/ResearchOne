@@ -89,7 +89,7 @@ describe('PersonaAwareHero — forcePersona', () => {
   it('forcePersona="uap" renders the UAP variant', async () => {
     renderHero({ forcePersona: 'uap' });
     await waitFor(() => {
-      expect(screen.getByText(/research engine that doesn/i)).toBeInTheDocument();
+      expect(screen.getByText(/weak signals on the record/i)).toBeInTheDocument();
     });
   });
 

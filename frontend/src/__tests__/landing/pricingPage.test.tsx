@@ -49,7 +49,7 @@ describe('PricingPage', () => {
 
   it("mentions Devil's Advocate Review as Sovereign-only", () => {
     const html = render();
-    expect(html).toContain("Devil's Advocate Review");
+    expect(html).toContain('Devil&#x27;s Advocate Review');
     expect(html).toContain('Included in Sovereign');
   });
 
