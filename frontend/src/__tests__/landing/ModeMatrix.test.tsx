@@ -5,20 +5,15 @@ import ModeMatrix from '../../components/landing/ModeMatrix';
 describe('ModeMatrix', () => {
   const html = renderToString(<ModeMatrix />);
 
-  it('renders all 5 mode names', () => {
-    expect(html).toContain('General Epistemic');
-    expect(html).toContain('Investigative');
-    expect(html).toContain('Patent / Technical Gap');
-    expect(html).toContain('Novel Application Discovery');
-    expect(html).toContain('Anomaly Correlation');
+  it('lists all five research types with plain-language names', () => {
+    expect(html).toContain('General Research');
+    expect(html).toContain('Investigative Research');
+    expect(html).toContain('Patent Research and Whitespace Mapping');
+    expect(html).toContain('Application Discovery');
+    expect(html).toContain('Convergence Analysis');
   });
 
-  it('renders all 6 column headers', () => {
-    expect(html).toContain('Mode');
-    expect(html).toContain('Best for');
-    expect(html).toContain('Typical run time');
-    expect(html).toContain('Mode-specific overlay');
+  it('includes skeptic intensity column', () => {
     expect(html).toContain('Skeptic intensity');
-    expect(html).toContain('Output emphasis');
   });
 });

@@ -20,27 +20,27 @@ export type ResearchObjectiveOption = {
 export const RESEARCH_OBJECTIVE_OPTIONS: ResearchObjectiveOption[] = [
   {
     value: 'GENERAL_EPISTEMIC_RESEARCH',
-    label: 'General epistemic research',
-    description: 'Balanced reasoning across competing hypotheses and source tiers.',
+    label: 'General Research',
+    description: 'Balanced reasoning across competing hypotheses and source corroboration tiers.',
   },
   {
     value: 'INVESTIGATIVE_SYNTHESIS',
-    label: 'Investigative synthesis',
+    label: 'Investigative Research',
     description: 'Trace incentives, networks, and cross-domain connections.',
   },
   {
     value: 'NOVEL_APPLICATION_DISCOVERY',
-    label: 'Novel application discovery',
+    label: 'Application Discovery',
     description: 'Map mechanisms to underexplored implementation paths.',
   },
   {
     value: 'PATENT_GAP_ANALYSIS',
-    label: 'Patent / IP whitespace',
+    label: 'Patent Research and Whitespace Mapping',
     description: 'Prior-art landscape, claim boundaries, and novelty gaps.',
   },
   {
     value: 'ANOMALY_CORRELATION',
-    label: 'Anomaly correlation',
+    label: 'Convergence Analysis',
     description: 'Test whether disparate signals share a structural mechanism.',
   },
 ];
