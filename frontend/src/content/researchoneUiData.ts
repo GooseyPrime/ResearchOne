@@ -319,12 +319,12 @@ export const evidenceTierMeta: Record<EvidenceTier, { label: string; color: stri
   corroborated: {
     label: 'Corroborated',
     color: 'green',
-    description: 'Supporting evidence from independent sources',
+    description: 'Supporting corroboration from independent sources',
   },
   supported: {
     label: 'Supported',
     color: 'amber',
-    description: 'Evidence present but limited corroboration',
+    description: 'Source support present but limited corroboration',
   },
   uncorroborated: {
     label: 'Uncorroborated',
@@ -334,7 +334,7 @@ export const evidenceTierMeta: Record<EvidenceTier, { label: string; color: stri
   contested: {
     label: 'Contested',
     color: 'red',
-    description: 'Contradictory evidence exists',
+    description: 'Contradictory sources exist',
   },
 };
 

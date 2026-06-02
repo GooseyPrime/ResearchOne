@@ -344,7 +344,7 @@ export default function EmbeddingAtlasPage() {
                 )}
               </div>
               <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Evidence tier</div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Source corroboration tier</div>
                 <span
                   className="text-xs px-2 py-0.5 rounded-full font-medium"
                   style={{ backgroundColor: `${tierColor(selected.evidence_tier)}20`, color: tierColor(selected.evidence_tier) }}
@@ -373,7 +373,7 @@ export default function EmbeddingAtlasPage() {
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-600 p-6 text-center">
               <Info size={20} className="opacity-40" />
               <p className="text-xs leading-relaxed">
-                Click any point to inspect the chunk text, source, and evidence tier.
+                Click any point to inspect the chunk text, source, and source corroboration tier.
               </p>
               <div className="mt-4 space-y-2 text-left w-full">
                 <div className={clsx('text-[10px] text-slate-500 p-2 rounded border border-surface-100/20')}>

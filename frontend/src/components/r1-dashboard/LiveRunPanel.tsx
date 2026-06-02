@@ -224,7 +224,7 @@ export function LiveRunPanel() {
                   <span className="text-r1-text capitalize">{run.currentStage.replace('_', ' ')}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-r1-muted">Evidence tier</span>
+                  <span className="text-r1-muted">Source corroboration tier</span>
                   <span className={`r1-tag text-[9px] ${tierMeta.color === 'green' ? 'r1-tag-green' : 'r1-tag-cyan'}`}>
                     {tierMeta.label.toUpperCase()}
                   </span>
