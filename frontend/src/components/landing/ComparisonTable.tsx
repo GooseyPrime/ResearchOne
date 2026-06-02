@@ -5,7 +5,7 @@ type Cell = 'yes' | 'no' | 'partial';
 const ROWS: Array<{ capability: string; researchOne: Cell; generalPurpose: Cell }> = [
   { capability: 'Per-claim citations', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Source tier disclosure', researchOne: 'yes', generalPurpose: 'no' },
-  { capability: 'Adversarial skeptic pass', researchOne: 'yes', generalPurpose: 'no' },
+  { capability: 'Dedicated skeptic check', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Preserved contradictions', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Versioned, living updates', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'Cited counter-claims', researchOne: 'yes', generalPurpose: 'partial' },

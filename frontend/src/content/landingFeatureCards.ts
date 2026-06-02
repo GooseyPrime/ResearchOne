@@ -14,7 +14,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: Shield,
     headline: 'Skeptic agent, by design',
     description:
-      'A dedicated adversarial pass challenges every claim before the report is bound.',
+      'A dedicated skeptic check challenges every claim before the report is bound.',
     metric: '1 of 7 agents',
   },
   {

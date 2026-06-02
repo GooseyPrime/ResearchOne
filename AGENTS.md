@@ -75,6 +75,7 @@ drove the rules is at
 | [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (Wave 5.1). |
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
 | [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (Wave 5.4+). |
+| [`.cursor/rules/36-two-audience-copy.mdc`](.cursor/rules/36-two-audience-copy.mdc) | Tier A plain language vs Tier B technical depth; CI banned-jargon grep. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -124,6 +125,15 @@ ship on `main`.
 - **Spinoff tier gate:** `POST /api/research/spinoff` must mirror `checkTierAccess` / wallet path from `POST /api/research` (`isDeep` for V2; admin override on UI).
 - **Cherry-pick fa53:** reconcile with unified research console (PR #149); spinoff submit → `/app/research?runId=`.
 - **Migration numbers:** spinoff lineage = **046**; `v_dossier` activity = **047** (039 is saved orchestration profiles).
+
+## Recurring review themes (Codex / Copilot, PR #165 — Rule 36 Tier A copy)
+
+- **`assert-tier-a-no-banned-jargon.sh`:** use **grep -H** (single-file matches omit the path prefix), **grep/find/sed only** — GitHub `ubuntu-latest` has no `ripgrep`; mirror `assert-no-test-mocks-in-app-src.sh`.
+- **Manifest/pattern parsing:** trim comments/blanks with POSIX `[[:space:]]` — do not rely on `\s` in `grep` for `#` lines.
+- **Contract exemptions (Codex P2):** strip `id`/`value`/`runAddonKey` assignments and `'general-epistemic':` slug prefix, then re-test the **remainder** for banned display copy — never drop an entire matched line because a contract key appears on it.
+- **Manifest completeness:** include Tier A **child components** rendered by manifest pages (e.g. `LandingPage` → `AnimatedProcessFlow`), not just the page file.
+- **Objective labels:** use `researchObjectiveLabel(value)` (value-keyed lookup), not `RESEARCH_OBJECTIVE_OPTIONS[n]` array indices in guide pages.
+- **Copy + interaction tests:** updating display-string assertions must **keep** behavior tests (e.g. mode tab click → `onModeChange`) — copy and wiring regress independently.
 
 ## Recurring review themes (Codex / Copilot, PR #141 — unified research + plan confirm queue)
 

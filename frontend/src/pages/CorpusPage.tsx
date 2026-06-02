@@ -116,7 +116,7 @@ export default function CorpusPage() {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">Evidence Tier Distribution</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">Source Corroboration Tier Distribution</h3>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
@@ -141,7 +141,7 @@ export default function CorpusPage() {
           </div>
 
           <div className="card p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-white mb-4">Evidence Tier Legend</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">Source Corroboration Tier Legend</h3>
             {Object.entries(TIER_LABELS).map(([tier, label]) => (
               <div key={tier} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -152,7 +152,7 @@ export default function CorpusPage() {
               </div>
             ))}
             <div className="pt-3 border-t border-indigo-900/20 text-xs text-slate-500">
-              Evidence tiers reflect the epistemic weight of each claim. Never treat inferences as facts.
+              Source corroboration tiers reflect how strongly sources back each claim. Never treat inferences as facts.
             </div>
           </div>
         </div>

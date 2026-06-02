@@ -1,8 +1,8 @@
 /** Labels for known `topic=` slugs on the sample report page. */
 export const SAMPLE_REPORT_TOPIC_LABELS: Record<string, string> = {
   investigative: 'Investigative mode — narrative and incentive tracing',
-  'general-epistemic': 'General Epistemic — contested evidence balance',
-  'anomaly-correlation': 'Anomaly Correlation — weak-signal linkage',
+  'general-epistemic': 'General Research — contested source balance',
+  'anomaly-correlation': 'Convergence Analysis — weak-signal linkage',
   'patent-gap': 'Patent / Technical Gap — prior-art landscape mapping',
 };
 

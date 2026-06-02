@@ -14,8 +14,8 @@ const PHASES = [
     stages: ['Reasoner', 'Skeptic'],
   },
   {
-    label: 'SYNTHESIZE & CITE',
-    stages: ['Synthesizer', 'Verifier', 'Report', 'Epistemic Persistence'],
+    label: 'WRITE & CITE',
+    stages: ['Drafting', 'Verifier', 'Report', 'Recordkeeping'],
   },
 ] as const;
 
@@ -30,8 +30,8 @@ export default function HeroPipelineVisual() {
         The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner and Discovery stages.
         Phase two, Retrieve and Read, includes the Retriever and Retriever Analysis stages.
         Phase three, Reason and Challenge, includes the Reasoner and Skeptic stages. The Skeptic is a dedicated
-        adversarial agent that attacks the draft before it proceeds.
-        Phase four, Synthesize and Cite, includes the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
+        check that argues against the draft before it proceeds.
+        Phase four, Write and Cite, includes the Drafting, Verifier, Report, and Recordkeeping stages.
       </p>
 
       {/* Desktop: horizontal flow */}

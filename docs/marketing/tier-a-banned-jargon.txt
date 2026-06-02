@@ -1,0 +1,17 @@
+# Tier A banned jargon — one RE2 pattern per line (case-insensitive via script).
+# Contract keys (enum values, addon ids) must not appear in Tier A display copy.
+adversarial
+red[- ]team
+\bepistemic\b
+\bretrieval\b
+\bSynthesizer\b
+\bSYNTHESIZER\b
+\bSynthesis &
+\bGeneral Epistemic\b
+\bDeep Adversarial\b
+\bStandard Retrieval\b
+\bAdversarial Twin\b
+\bAnomaly Correlation\b
+\bsuppress(es|ed|ing)?\b the anomaly
+\bepistemic doctrine\b
+\bCitation-grade synthesis\b

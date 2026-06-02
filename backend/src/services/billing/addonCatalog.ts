@@ -56,9 +56,9 @@ function buildCatalog(): AddonCatalogEntry[] {
     },
     {
       id: 'adversarial_twin',
-      name: 'Adversarial Twin',
+      name: "Devil's Advocate Review",
       description:
-        'Dedicated adversarial analysis on a research run — extra wallet surcharge when your tier does not include it.',
+        'A dedicated critique pass on a research run — flags contradictions, unsupported claims, reasoning gaps, and exact passages that need attention. Extra wallet surcharge when your tier does not include it.',
       priceLabel: '+$5.00 per run (wallet)',
       billingModel: 'per_run',
       category: 'research_run',

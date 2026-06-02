@@ -11,11 +11,18 @@ This document records **where** the binding Cursor rules for the marketing shell
 | Evidence vs. source vocabulary (marketing + public copy) | `.cursor/rules/31-evidence-vs-source-vocabulary.mdc` |
 | Dossier canonical reads (`v_dossier` / Rule 32) | `.cursor/rules/32-dossier-canonical-read-path.mdc` |
 | Plan confirmation gate (Wave 5.1 / Rule 33) | `.cursor/rules/33-plan-confirmation-gate.mdc` |
+| Two-audience marketing copy (Tier A / Tier B) | `.cursor/rules/36-two-audience-copy.mdc` |
 | Master pre-commit checklist | `.cursor/rules/00-pre-commit-review.mdc` |
 
 The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above. This file only adds **override history** so reviewers can see that a given PR operated under an explicit, time-bounded exception.
 
 ## Override history
+
+### 2026-06-02 — Marketing terminology normalization + Rule 27 hero labels
+
+- **Scope:** Tier A plain-language rename (Standard Research, Deep Research, Devil's Advocate Review display copy), Tier B methodology/guide restructure, hero pipeline stage labels (`Drafting`, `Recordkeeping`, `WRITE & CITE`), **Rule 36** (Tier A banned grep + two-audience discipline), **Rule 27 I-2/I-3** amendment to keep static/animated hero labels synchronized.
+- **Fence:** Enum values, addon ids, backend overlay keys, and Rule 28 tier identifiers unchanged.
+- **PR #165 review follow-up:** CI guard rewritten for `grep -H` + narrow contract stripping; `AnimatedProcessFlow` added to Tier A manifest; `researchObjectiveLabel()` for V2 guide; mode-toggle interaction test restored.
 
 ### 2026-05-14 — Wave 5.1 + Rule 33 (plan confirmation gate)
 

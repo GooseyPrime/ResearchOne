@@ -158,9 +158,9 @@ export default function AnimatedPipelineHero({
           The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
           and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
           Retriever Analysis stages. Phase three, Reason and Challenge, includes the
-          Reasoner and Skeptic stages. The Skeptic is a dedicated adversarial agent that
-          attacks the draft before it proceeds. Phase four, Synthesize and Cite, includes
-          the Synthesizer, Verifier, Report, and Epistemic Persistence stages.
+          Reasoner and Skeptic stages. The Skeptic is a dedicated check that
+          argues against the draft before it proceeds. Phase four, Write and Cite, includes
+          the Drafting, Verifier, Report, and Recordkeeping stages.
         </p>
 
         <div
@@ -213,7 +213,7 @@ export default function AnimatedPipelineHero({
                           ? `0 0 12px ${palette.skepticRing}55`
                           : 'none',
                       }}
-                      aria-label={isSkeptic ? 'Skeptic, dedicated adversarial agent' : stage.label}
+                      aria-label={isSkeptic ? 'Dedicated skeptic check' : stage.label}
                     >
                       {stage.label}
                     </span>
@@ -223,7 +223,7 @@ export default function AnimatedPipelineHero({
             </div>
 
             <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
-              {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'SYNTHESIZE & CITE'] as const).map(
+              {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'WRITE & CITE'] as const).map(
                 (label) => (
                   <span
                     key={label}

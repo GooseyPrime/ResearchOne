@@ -14,6 +14,7 @@ on:
       - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
       - '.cursor/rules/**'
+      - 'docs/marketing/**'
       - 'AGENTS.md'
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
       - '.cursor/rules/**'
+      - 'docs/marketing/**'
       - 'AGENTS.md'
 
 jobs:
@@ -35,6 +37,16 @@ jobs:
 
       - name: Assert no test mock APIs in backend/src or frontend/src
         run: bash "${{ github.workspace }}/scripts/ci/assert-no-test-mocks-in-app-src.sh"
+
+  tier-a-no-banned-jargon:
+    name: Tier A marketing copy has no banned jargon
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert Tier A surfaces pass banned-term grep
+        run: bash "${{ github.workspace }}/scripts/ci/assert-tier-a-no-banned-jargon.sh"
 
   pr-branch-not-default:
     name: PR workflow uses non-default branch

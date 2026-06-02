@@ -9,7 +9,7 @@ describe('HeroPipelineVisual', () => {
     expect(html).toContain('PLAN');
     expect(html).toContain('RETRIEVE &amp; READ');
     expect(html).toContain('REASON &amp; CHALLENGE');
-    expect(html).toContain('SYNTHESIZE &amp; CITE');
+    expect(html).toContain('WRITE &amp; CITE');
   });
 
   it('renders all 10 stage names', () => {
@@ -20,10 +20,10 @@ describe('HeroPipelineVisual', () => {
       'Retriever Analysis',
       'Reasoner',
       'Skeptic',
-      'Synthesizer',
+      'Drafting',
       'Verifier',
       'Report',
-      'Epistemic Persistence',
+      'Recordkeeping',
     ];
     for (const stage of stages) {
       expect(html).toContain(stage);

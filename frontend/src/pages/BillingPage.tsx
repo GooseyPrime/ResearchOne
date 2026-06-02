@@ -385,12 +385,11 @@ export default function BillingPage() {
                       <span className="text-slate-200 font-medium">
                         {Math.max(0, subQuery.data.lifetimeReportCap - (subQuery.data.lifetimeReportsUsed ?? 0))}
                       </span>{' '}
-                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining (General Epistemic
-                      Research), available in both Research and Deep Research modes.
+                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining (General Research), available in both Research and Deep Research modes.
                     </>
                   ) : (
                     <>
-                      You have access to limited lifetime research runs using General Epistemic Research, available in
+                      You have access to limited lifetime research runs using General Research, available in
                       both Research and Deep Research modes.
                     </>
                   )}

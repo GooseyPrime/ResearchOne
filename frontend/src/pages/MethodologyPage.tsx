@@ -6,6 +6,10 @@ import { R1Shell } from '@/components/r1-shell/R1Shell';
 import { MethodologyPipeline } from '@/components/r1-vault/MethodologyPipeline';
 import { Link } from 'react-router-dom';
 import { ChevronRight, FileText } from 'lucide-react';
+import {
+  HOW_YOUR_REPORT_IS_MADE_HEADING,
+  HOW_YOUR_REPORT_IS_MADE_STEPS,
+} from '@/content/howYourReportIsMade';
 
 export default function MethodologyPage() {
   return (
@@ -24,6 +28,18 @@ export default function MethodologyPage() {
           </p>
         </div>
       </section>
+
+      {/* Plain-language overview */}
+      <section className="py-16 bg-r1-canvas border-b border-r1-border">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-r1-heading mb-6">{HOW_YOUR_REPORT_IS_MADE_HEADING}</h2>
+          <ol className="max-w-3xl flex flex-col gap-3 list-decimal list-inside text-[15px] text-r1-muted leading-relaxed">
+            {HOW_YOUR_REPORT_IS_MADE_STEPS.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      </section>
       
       {/* Pipeline visualization */}
       <MethodologyPipeline />
@@ -31,19 +47,19 @@ export default function MethodologyPage() {
       {/* Additional methodology content */}
       <section data-ev-id="ev_f7aee2320e" className="py-20 lg:py-32 bg-r1-canvas-deep">
         <div data-ev-id="ev_ba5a82429a" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div data-ev-id="ev_5e6c2c8167" className="grid lg:grid-cols-2 gap-12">
-            {/* Adversarial approach */}
+          <div className="grid lg:grid-cols-2 gap-12">
+            {/* Skeptic check */}
             <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-skeptic/20">
               <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-skeptic/50 text-r1-skeptic">
-                ADVERSARIAL_REVIEW
+                SKEPTIC_CHECK
               </span>
               <h3 data-ev-id="ev_d800821cdc" className="text-xl font-bold text-r1-heading mb-4">
-                Why we attack our own conclusions
+                Why we argue against our own draft
               </h3>
               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
-                The Skeptic agent is the key differentiator. Before any report is finalized, 
-                a dedicated adversarial agent systematically attacks every conclusion, 
-                looking for logical gaps, evidence weaknesses, and alternative interpretations.
+                The Skeptic step is the key differentiator. Before any report is finalized,
+                a dedicated check systematically argues against every conclusion,
+                looking for logical gaps, weak source corroboration, and alternative interpretations.
               </p>
               <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
                 {[
@@ -98,7 +114,7 @@ export default function MethodologyPage() {
             See the methodology in action
           </h2>
           <p data-ev-id="ev_c131e13bf2" style={{ display: 'block', width: '100%', maxWidth: '600px', margin: '0 auto 32px auto' }} className="text-r1-muted text-center">
-            Explore a complete research report to see how the pipeline produces citation-backed dossiers with adversarial review.
+            Explore a complete research report to see how the pipeline produces citation-backed dossiers with a dedicated skeptic check.
           </p>
           <div data-ev-id="ev_c741136543" className="flex flex-wrap justify-center gap-4">
             <Link
