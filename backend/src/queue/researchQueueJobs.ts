@@ -9,7 +9,18 @@ export interface ResearchResumeAfterPlanJobData {
   confirmedPlanId: string;
 }
 
-/** Stable id for the post–plan-confirmation continuation job (distinct from initial `jobId: runId`). */
+/**
+ * Stable id for the post–plan-confirmation continuation job (distinct from initial `jobId: runId`).
+ *
+ * BullMQ 5.x rejects custom `jobId` values that contain `:` unless the id splits into exactly
+ * three repeatable-job segments — `${runId}:resume_after_plan` always throws
+ * `Custom Id cannot contain :` on `queue.add()` (plan-confirm 503 root cause, PR #160).
+ */
 export function researchResumeJobId(runId: string): string {
+  return `${runId}__resume_after_plan`;
+}
+
+/** Pre–PR #160 dedupe id; remove if present so confirm can enqueue after deploy. */
+export function legacyResearchResumeJobId(runId: string): string {
   return `${runId}:resume_after_plan`;
 }

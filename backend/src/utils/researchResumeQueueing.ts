@@ -1,5 +1,6 @@
 import {
   RESEARCH_JOB_RESUME_AFTER_PLAN,
+  legacyResearchResumeJobId,
   researchResumeJobId,
   type ResearchResumeAfterPlanJobData,
 } from '../queue/researchQueueJobs';
@@ -66,6 +67,39 @@ async function tryRemoveResumeJob(job: ResumeAfterPlanJobLike): Promise<void> {
   }
 }
 
+/**
+ * Pre–PR #160 jobs used `${runId}:resume_after_plan`. If one is still active with a
+ * matching payload, treat confirm as idempotent. If removal fails (locked job) and
+ * the payload does not match, fail fast — do not enqueue the new `__` id (PR #160 review).
+ *
+ * @returns `true` when a legacy job already satisfies this confirm (caller should return).
+ */
+async function reconcileLegacyResumeJob(
+  queue: ResumeQueueLike,
+  runId: string,
+  confirmedPlanId: string
+): Promise<boolean> {
+  const legacyId = legacyResearchResumeJobId(runId);
+  const legacyJob = await queue.getJob(legacyId);
+  if (!legacyJob) return false;
+
+  const legacyState = await legacyJob.getState();
+  if (isMatchingResumeJob(legacyJob, legacyState, confirmedPlanId)) {
+    return true;
+  }
+
+  await tryRemoveResumeJob(legacyJob);
+  const stillPresent = await queue.getJob(legacyId);
+  if (!stillPresent) return false;
+
+  const stillState = await stillPresent.getState();
+  if (isMatchingResumeJob(stillPresent, stillState, confirmedPlanId)) {
+    return true;
+  }
+
+  throw new Error('resume_after_plan_legacy_job_locked');
+}
+
 async function addResumeJob(
   queue: ResumeQueueLike,
   jobId: string,
@@ -95,6 +129,10 @@ export async function enqueueResearchResumeAfterPlan(
   const jobId = researchResumeJobId(runId);
   const payload: ResearchResumeAfterPlanJobData = { runId, confirmedPlanId };
 
+  if (await reconcileLegacyResumeJob(queue, runId, confirmedPlanId)) {
+    return;
+  }
+
   const existing = await queue.getJob(jobId);
   if (existing) {
     const state = await existing.getState();
@@ -102,6 +140,11 @@ export async function enqueueResearchResumeAfterPlan(
       return;
     }
     await tryRemoveResumeJob(existing);
+  }
+
+  // Locked colon-format jobs must not coexist with a fresh `__` enqueue (PR #160 review).
+  if (await reconcileLegacyResumeJob(queue, runId, confirmedPlanId)) {
+    return;
   }
 
   let addedJob: ResumeAfterPlanJobLike | undefined;
