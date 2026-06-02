@@ -229,6 +229,8 @@ const config = {
     maxChunkSize: parseInt(process.env.MAX_CHUNK_SIZE || '1000', 10),
     chunkOverlap: parseInt(process.env.CHUNK_OVERLAP || '200', 10),
     maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB || '50', 10),
+    siteCrawlMaxLayers: parseInt(process.env.SITE_CRAWL_MAX_LAYERS || '5', 10),
+    siteCrawlMaxPages: parseInt(process.env.SITE_CRAWL_MAX_PAGES || '50', 10),
   },
 
   discovery: {

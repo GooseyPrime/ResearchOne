@@ -8,6 +8,7 @@ import { chunkText } from './chunker';
 import { extractPdf } from './pdfExtractor';
 import { normalizeMarkdown } from './markdownNormalizer';
 import { readStagedFile, cleanupStagedFile } from './uploadStaging';
+import { discoverSiteCrawlUrls } from './siteCrawl';
 
 export interface IngestionJobData {
   ingestionJobId: string;
@@ -28,6 +29,10 @@ export interface IngestionJobData {
   sourceRank?: number;
   importedVia?: 'manual_upload' | 'manual_url' | 'autonomous_discovery' | 'corpus_sync';
   fetchMethod?: string;
+  /** When true, crawl same-origin links up to `crawlLayers` depth (manual URL ingest only). */
+  siteCrawl?: boolean;
+  /** Layer count: 1 = seed page only; 2 = seed + pages it links to; etc. */
+  crawlLayers?: number;
 }
 
 export interface IngestionProgress {
@@ -65,6 +70,9 @@ export async function runIngestionJob(
     let parseMethod = 'raw';
 
     if (sourceType === 'web_url' && data.url) {
+      if (data.siteCrawl && (data.crawlLayers ?? 1) > 1) {
+        return await runSiteCrawlIngestion(data, onProgress);
+      }
       const fetched = await fetchUrlForIngest(data.url);
       rawContent = fetched.content;
       title = fetched.title;
@@ -123,118 +131,19 @@ export async function runIngestionJob(
       throw new Error('Content is empty after extraction');
     }
 
-    onProgress({ stage: 'dedup', percent: 20, message: 'Checking for duplicates...' });
-
-    const contentHash = crypto
-      .createHash('sha256')
-      .update(rawContent)
-      .digest('hex');
-
-    const existing = await queryOne<{ id: string }>(
-      'SELECT id FROM sources WHERE content_hash=$1',
-      [contentHash]
-    );
-
-    if (existing) {
-      if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
-      await query(
-        `UPDATE ingestion_jobs SET status='completed', completed_at=NOW() WHERE id=$1`,
-        [ingestionJobId]
-      );
-      return { sourceId: existing.id, chunkCount: 0 };
-    }
-
-    onProgress({ stage: 'store', percent: 30, message: 'Storing source...' });
-
-    let sourceId!: string;
-    let documentId!: string;
-    let chunks: string[] = [];
-
-    await withTransaction(async (client) => {
-      // Insert source with provenance metadata
-      const sourceResult = await client.query(
-        `INSERT INTO sources (
-           url, title, source_type, raw_content, content_hash, tags, metadata,
-           discovered_by_run_id, discovery_query, source_rank, imported_via,
-           original_mime_type, original_filename, fetch_method, canonical_url,
-           retrieval_timestamp
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-         RETURNING id`,
-        [
-          url,
-          title,
-          sourceType,
-          rawContent,
-          contentHash,
-          tags,
-          JSON.stringify({ ...metadata, ...fetchMetadata }),
-          data.discoveredByRunId ?? null,
-          data.discoveryQuery ?? null,
-          data.sourceRank ?? null,
-          data.importedVia ?? 'manual_upload',
-          data.originalMimeType ?? null,
-          data.fileName ?? null,
-          (fetchMetadata.fetch_method as string) ?? data.fetchMethod ?? null,
-          (fetchMetadata.canonical_url as string) ?? null,
-          fetchMetadata.retrieval_timestamp
-            ? new Date(fetchMetadata.retrieval_timestamp as string)
-            : new Date(),
-        ]
-      );
-      sourceId = sourceResult.rows[0].id;
-
-      // Update ingestion job with source
-      await client.query(
-        `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
-        [sourceId, ingestionJobId]
-      );
-
-      // Insert document with parse_method and extraction_metadata
-      const docResult = await client.query(
-        `INSERT INTO documents (source_id, title, content, parse_method, extraction_metadata)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [sourceId, title, rawContent, parseMethod, JSON.stringify(fetchMetadata)]
-      );
-      documentId = docResult.rows[0].id;
+    const { sourceId, chunkCount } = await ingestFetchedWebPage({
+      data,
+      pageUrl: url,
+      title,
+      rawContent,
+      parseMethod,
+      fetchMetadata,
+      tags,
+      metadata,
+      linkJobSource: true,
+      onProgress,
     });
 
-    onProgress({ stage: 'chunk', percent: 50, message: 'Chunking document...' });
-
-    chunks = chunkText(rawContent, {
-      maxChunkSize: config.ingestion.maxChunkSize,
-      overlap: config.ingestion.chunkOverlap,
-    });
-
-    // AUDIT (manual ingest): No LLM title/summary/tags here — rawContent flows to chunkText (deterministic).
-    // If LLM metadata is added, use withPreamble + INGEST_CORPUS_SUMMARY_SUPPLEMENT from constants/prompts.ts.
-
-    logger.info(`Created ${chunks.length} chunks for source ${sourceId}`);
-
-    onProgress({ stage: 'store_chunks', percent: 60, message: `Storing ${chunks.length} chunks...` });
-
-    // Batch insert chunks
-    const chunkIds: string[] = [];
-    await withTransaction(async (client) => {
-      for (let i = 0; i < chunks.length; i++) {
-        const res = await client.query(
-          `INSERT INTO chunks (document_id, source_id, chunk_index, content, token_count, start_char, end_char)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [documentId, sourceId, i, chunks[i], estimateTokens(chunks[i]), 0, chunks[i].length]
-        );
-        chunkIds.push(res.rows[0].id);
-      }
-    });
-
-    onProgress({ stage: 'queue_embedding', percent: 80, message: 'Queuing embedding generation...' });
-
-    // Queue embedding job for these chunks
-    await embeddingQueue.add('embed-chunks', {
-      sourceId,
-      chunkIds,
-    });
-
-    // Mark job complete
     await query(
       `UPDATE ingestion_jobs SET status='completed', completed_at=NOW() WHERE id=$1`,
       [ingestionJobId]
@@ -243,7 +152,7 @@ export async function runIngestionJob(
     onProgress({ stage: 'done', percent: 100, message: 'Ingestion complete' });
 
     if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
-    return { sourceId, chunkCount: chunks.length };
+    return { sourceId, chunkCount };
   } catch (err) {
     if (data.stagedFilePath) cleanupStagedFile(data.stagedFilePath);
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -264,45 +173,311 @@ interface FetchResult {
   retrievalTimestamp: string;
 }
 
-/** Shared URL fetch used by ingestion workers and revision supplemental sync-fetch. */
-export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
+interface IngestFetchedWebPageParams {
+  data: IngestionJobData;
+  pageUrl: string;
+  title: string;
+  rawContent: string;
+  parseMethod: string;
+  fetchMetadata: Record<string, unknown>;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  linkJobSource: boolean;
+  onProgress: ProgressCallback;
+}
+
+/** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
+async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
+  sourceId: string;
+  chunkCount: number;
+  duplicate: boolean;
+}> {
+  const {
+    data,
+    pageUrl,
+    title,
+    rawContent,
+    parseMethod,
+    fetchMetadata,
+    tags,
+    metadata,
+    linkJobSource,
+    onProgress,
+  } = params;
+
+  onProgress({ stage: 'dedup', percent: 20, message: 'Checking for duplicates...' });
+
+  const contentHash = crypto.createHash('sha256').update(rawContent).digest('hex');
+
+  const existing = await queryOne<{ id: string }>(
+    'SELECT id FROM sources WHERE content_hash=$1',
+    [contentHash]
+  );
+
+  if (existing) {
+    if (linkJobSource && data.ingestionJobId) {
+      await query(
+        `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
+        [existing.id, data.ingestionJobId]
+      );
+    }
+    return { sourceId: existing.id, chunkCount: 0, duplicate: true };
+  }
+
+  onProgress({ stage: 'store', percent: 30, message: 'Storing source...' });
+
+  let sourceId!: string;
+  let documentId!: string;
+
+  await withTransaction(async (client) => {
+    const sourceResult = await client.query(
+      `INSERT INTO sources (
+         url, title, source_type, raw_content, content_hash, tags, metadata,
+         discovered_by_run_id, discovery_query, source_rank, imported_via,
+         original_mime_type, original_filename, fetch_method, canonical_url,
+         retrieval_timestamp
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       RETURNING id`,
+      [
+        pageUrl,
+        title,
+        'web_url',
+        rawContent,
+        contentHash,
+        tags,
+        JSON.stringify({ ...metadata, ...fetchMetadata }),
+        data.discoveredByRunId ?? null,
+        data.discoveryQuery ?? null,
+        data.sourceRank ?? null,
+        data.importedVia ?? 'manual_upload',
+        data.originalMimeType ?? null,
+        data.fileName ?? null,
+        (fetchMetadata.fetch_method as string) ?? data.fetchMethod ?? null,
+        (fetchMetadata.canonical_url as string) ?? null,
+        fetchMetadata.retrieval_timestamp
+          ? new Date(fetchMetadata.retrieval_timestamp as string)
+          : new Date(),
+      ]
+    );
+    sourceId = sourceResult.rows[0].id;
+
+    if (linkJobSource && data.ingestionJobId) {
+      await client.query(
+        `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
+        [sourceId, data.ingestionJobId]
+      );
+    }
+
+    const docResult = await client.query(
+      `INSERT INTO documents (source_id, title, content, parse_method, extraction_metadata)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [sourceId, title, rawContent, parseMethod, JSON.stringify(fetchMetadata)]
+    );
+    documentId = docResult.rows[0].id;
+  });
+
+  onProgress({ stage: 'chunk', percent: 50, message: 'Chunking document...' });
+
+  const chunks = chunkText(rawContent, {
+    maxChunkSize: config.ingestion.maxChunkSize,
+    overlap: config.ingestion.chunkOverlap,
+  });
+
+  logger.info(`Created ${chunks.length} chunks for source ${sourceId}`);
+
+  onProgress({ stage: 'store_chunks', percent: 60, message: `Storing ${chunks.length} chunks...` });
+
+  const chunkIds: string[] = [];
+  await withTransaction(async (client) => {
+    for (let i = 0; i < chunks.length; i++) {
+      const res = await client.query(
+        `INSERT INTO chunks (document_id, source_id, chunk_index, content, token_count, start_char, end_char)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [documentId, sourceId, i, chunks[i], estimateTokens(chunks[i]), 0, chunks[i].length]
+      );
+      chunkIds.push(res.rows[0].id);
+    }
+  });
+
+  onProgress({ stage: 'queue_embedding', percent: 80, message: 'Queuing embedding generation...' });
+
+  await embeddingQueue.add('embed-chunks', {
+    sourceId,
+    chunkIds,
+  });
+
+  return { sourceId, chunkCount: chunks.length, duplicate: false };
+}
+
+async function runSiteCrawlIngestion(
+  data: IngestionJobData,
+  onProgress: ProgressCallback
+): Promise<{ sourceId: string; chunkCount: number }> {
+  const seedUrl = data.url!;
+  const crawlLayers = data.crawlLayers ?? 2;
+  const tags = data.tags ?? [];
+  const baseMetadata = data.metadata ?? {};
+
+  onProgress({
+    stage: 'crawl_discover',
+    percent: 5,
+    message: `Discovering pages (up to ${crawlLayers} layers)...`,
+  });
+
+  const pageUrls = await discoverSiteCrawlUrls({
+    seedUrl,
+    crawlLayers,
+    maxPages: config.ingestion.siteCrawlMaxPages,
+    fetchHtml: fetchUrlRawHtml,
+  });
+
+  if (pageUrls.length === 0) {
+    throw new Error('Site crawl found no pages to ingest');
+  }
+
+  let seedSourceId: string | null = null;
+  let totalChunks = 0;
+  const sourceIds: string[] = [];
+  let ingested = 0;
+  let skippedDuplicate = 0;
+  let failed = 0;
+
+  for (let i = 0; i < pageUrls.length; i++) {
+    const pageUrl = pageUrls[i];
+    const pct = 10 + Math.floor((i / pageUrls.length) * 75);
+    onProgress({
+      stage: 'crawl_fetch',
+      percent: pct,
+      message: `Ingesting page ${i + 1} of ${pageUrls.length}...`,
+    });
+
+    try {
+      const fetched = await fetchUrlForIngest(pageUrl);
+      const rawContent = stripNul(fetched.content);
+      const title = stripNul(fetched.title);
+      if (!rawContent.trim()) {
+        failed += 1;
+        continue;
+      }
+
+      const fetchMetadata = {
+        canonical_url: fetched.canonicalUrl,
+        meta_description: fetched.metaDescription,
+        retrieval_timestamp: fetched.retrievalTimestamp,
+        fetch_method: 'http_get',
+        site_crawl_seed: seedUrl,
+        site_crawl_layers: crawlLayers,
+      };
+
+      const result = await ingestFetchedWebPage({
+        data,
+        pageUrl,
+        title,
+        rawContent,
+        parseMethod: 'html_extract',
+        fetchMetadata: {
+          ...fetchMetadata,
+          site_crawl_page_index: i,
+        },
+        tags,
+        metadata: {
+          ...baseMetadata,
+          site_crawl: true,
+          site_crawl_seed: seedUrl,
+        },
+        linkJobSource: i === 0,
+        onProgress: (p) => onProgress({ ...p, percent: Math.min(85, pct + 5) }),
+      });
+
+      sourceIds.push(result.sourceId);
+      if (i === 0) seedSourceId = result.sourceId;
+      totalChunks += result.chunkCount;
+      if (result.duplicate) skippedDuplicate += 1;
+      else ingested += 1;
+    } catch (err) {
+      failed += 1;
+      logger.warn('site_crawl_page_failed', {
+        pageUrl,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (!seedSourceId && sourceIds.length > 0) {
+    seedSourceId = sourceIds[0];
+  }
+
+  if (!seedSourceId) {
+    throw new Error(
+      `Site crawl could not ingest any pages (${failed} failed, ${skippedDuplicate} duplicates)`
+    );
+  }
+
+  await query(
+    `UPDATE ingestion_jobs SET status='completed', completed_at=NOW(),
+     metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+     WHERE id=$1`,
+    [
+      data.ingestionJobId,
+      JSON.stringify({
+        site_crawl: true,
+        site_crawl_seed: seedUrl,
+        crawl_layers: crawlLayers,
+        pages_discovered: pageUrls.length,
+        pages_ingested: ingested,
+        pages_duplicate: skippedDuplicate,
+        pages_failed: failed,
+        source_ids: sourceIds,
+      }),
+    ]
+  );
+
+  onProgress({
+    stage: 'done',
+    percent: 100,
+    message: `Site crawl complete (${ingested} new, ${skippedDuplicate} duplicate, ${failed} failed)`,
+  });
+
+  return { sourceId: seedSourceId, chunkCount: totalChunks };
+}
+
+/** Raw HTML fetch for same-origin link discovery during site crawl. */
+export async function fetchUrlRawHtml(url: string): Promise<string> {
   const response = await axios.get(url, {
     timeout: 30000,
     headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.io)' },
     maxContentLength: 50 * 1024 * 1024,
+    responseType: 'text',
+    transformResponse: [(body) => body],
+    validateStatus: (status) => status >= 200 && status < 400,
   });
+  return typeof response.data === 'string' ? response.data : String(response.data);
+}
 
-  const html: string = response.data;
+function parseHtmlToContent(html: string, pageUrl: string): FetchResult {
   const retrievalTimestamp = new Date().toISOString();
 
-  // Extract title
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  const title = titleMatch ? titleMatch[1].trim() : url;
+  const title = titleMatch ? titleMatch[1].trim() : pageUrl;
 
-  // Extract canonical URL
   const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
     || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i);
   const canonicalUrl = canonicalMatch ? canonicalMatch[1].trim() : null;
 
-  // Extract meta description
   const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
     || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
   const metaDescription = descMatch ? descMatch[1].trim() : null;
 
-  // Remove script and style blocks entirely
   const withoutScripts = html.replace(/<script[\s\S]*?<\/script\s*>/gi, ' ');
   const withoutStyles = withoutScripts.replace(/<style[\s\S]*?<\/style\s*>/gi, ' ');
 
-  // Remove nav, header, footer, aside boilerplate sections
   const withoutBoilerplate = withoutStyles
     .replace(/<nav[\s\S]*?<\/nav\s*>/gi, ' ')
     .replace(/<header[\s\S]*?<\/header\s*>/gi, ' ')
     .replace(/<footer[\s\S]*?<\/footer\s*>/gi, ' ')
     .replace(/<aside[\s\S]*?<\/aside\s*>/gi, ' ');
 
-  // Strip remaining HTML tags and clean whitespace.
-  // Decode HTML entities in a single regex pass to avoid double-unescaping
-  // (e.g. &amp;lt; should become &lt;, not <).
   const content = withoutBoilerplate
     .replace(/<[^>]*>/g, ' ')
     .replace(/&(nbsp|amp|lt|gt|quot|#39|#x27|apos);/gi, (_match, entity: string) => {
@@ -322,6 +497,12 @@ export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
     .trim();
 
   return { content, title, canonicalUrl, metaDescription, retrievalTimestamp };
+}
+
+/** Shared URL fetch used by ingestion workers and revision supplemental sync-fetch. */
+export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
+  const html = await fetchUrlRawHtml(url);
+  return parseHtmlToContent(html, url);
 }
 
 function estimateTokens(text: string): number {
