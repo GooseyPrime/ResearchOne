@@ -6,6 +6,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import type { Server as SocketIOServer } from 'socket.io';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { queryOne } from '../../db/pool';
+import { buildOwnershipSql, rejectUnscopedReadOnScopeError } from '../../db/tenantScope';
 import { getDossierByRunId } from '../../services/research/dossierReadService';
 import type { DossierAuthContext } from '../../types/dossier';
 import {
@@ -62,20 +63,11 @@ async function loadRunForPlanGate(
       `SELECT id, status::text AS status, resume_job_payload
          FROM research_runs
         WHERE id = $1::uuid
-          AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+          AND ${buildOwnershipSql('', 2, 3)}`,
       [runId, userId, orgId ?? null]
     );
   } catch (e) {
-    if ((e as { code?: string })?.code === '42703') {
-      return await queryOne(
-        `SELECT id, status::text AS status, resume_job_payload
-           FROM research_runs
-          WHERE id = $1::uuid
-            AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
-        [runId, userId, orgId ?? null]
-      );
-    }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'runs.fetchOwnedRunForPlanGate');
   }
 }
 

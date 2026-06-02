@@ -1,5 +1,5 @@
 import { query } from '../../db/pool';
-import { logger } from '../../utils/logger';
+import { buildOwnershipSql, rejectUnscopedReadOnScopeError } from '../../db/tenantScope';
 
 /** Marker in merged supplemental so tests can assert prior-report context was injected. */
 export const SPINOFF_PRIOR_REPORT_MARKER = '[Spinoff prior report context';
@@ -36,10 +36,6 @@ export type SpinoffPrefill = {
 
 type AuthScope = { userId: string | null; orgId: string | null };
 
-function ownershipSql(alias = 'r'): string {
-  return `(${alias}.user_id = $2 OR (${alias}.org_id IS NOT NULL AND ${alias}.org_id = $3) OR ${alias}.user_id IS NULL)`;
-}
-
 /** Unwrap persisted `{ overrides: { role: … } }` envelope for spinoff prefill consumers. */
 function flattenModelOverridesForPrefill(
   raw: Record<string, unknown> | null
@@ -66,22 +62,11 @@ export async function resolveOwnedReportForSpinoff(
               rr.supplemental_attachments
          FROM reports r
          LEFT JOIN research_runs rr ON rr.id = r.run_id
-        WHERE r.id = $1 AND ${ownershipSql('r')}`,
+        WHERE r.id = $1 AND ${buildOwnershipSql('r', 2, 3)}`,
       [reportId, userId, orgId]
     );
   } catch (scopeErr) {
-    if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-    logger.warn('legacy_unscoped_read', { route: 'spinoffService.resolveOwnedReportForSpinoff' });
-    rows = await query(
-      `SELECT r.id AS report_id, r.title, r.run_id,
-              rr.query, rr.supplemental, rr.engine_version, rr.research_objective,
-              rr.target_word_count, rr.citation_style, rr.model_overrides,
-              rr.supplemental_attachments
-         FROM reports r
-         LEFT JOIN research_runs rr ON rr.id = r.run_id
-        WHERE r.id = $1`,
-      [reportId]
-    );
+    rejectUnscopedReadOnScopeError(scopeErr, 'spinoffService.resolveOwnedReportForSpinoff');
   }
 
   if (rows.length === 0) return null;
@@ -250,41 +235,25 @@ export async function insertQueuedResearchRunWithLineage(params: {
       ]
     );
   } catch (insertErr) {
+    if (userId) {
+      rejectUnscopedReadOnScopeError(insertErr, 'spinoffService.insertQueuedResearchRunWithLineage');
+    }
     const code = (insertErr as { code?: string } | null)?.code;
     if (code !== '42703') throw insertErr;
-    try {
-      await query(
-        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
-        [
-          runId,
-          title,
-          researchQuery,
-          supplemental ?? '',
-          normalizedOverridesJson,
-          attachmentsJson,
-          engineVersion,
-          researchObjective,
-          targetWordCount,
-        ]
-      );
-    } catch (insertErr2) {
-      const code2 = (insertErr2 as { code?: string } | null)?.code;
-      if (code2 !== '42703') throw insertErr2;
-      await query(
-        `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8)`,
-        [
-          runId,
-          title,
-          researchQuery,
-          supplemental ?? '',
-          normalizedOverridesJson,
-          attachmentsJson,
-          engineVersion,
-          researchObjective,
-        ]
-      );
-    }
+    await query(
+      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+      [
+        runId,
+        title,
+        researchQuery,
+        supplemental ?? '',
+        normalizedOverridesJson,
+        attachmentsJson,
+        engineVersion,
+        researchObjective,
+        targetWordCount,
+      ]
+    );
   }
 }

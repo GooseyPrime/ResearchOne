@@ -3,6 +3,10 @@ import { Router, RequestHandler } from 'express';
 import { requireAdmin, requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { query, adminQuery } from '../../db/pool';
+import {
+  buildOwnershipSql,
+  rejectUnscopedReadOnScopeError,
+} from '../../db/tenantScope';
 import { config } from '../../config';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
@@ -216,20 +220,12 @@ router.get('/exports/:exportId/download', async (req, res, next) => {
            JOIN reports r ON r.id = e.report_id
           WHERE e.id = $1
             AND e.user_id = $2
-            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
+            AND ${buildOwnershipSql('r', 2, 3)}
           LIMIT 1`,
         [exportId, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId/download' });
-      rows = await adminQuery<PickRow>(
-        `SELECT e.format, e.status, e.style
-           FROM report_exports e
-          WHERE e.id = $1 AND e.user_id = $2
-          LIMIT 1`,
-        [exportId, userId]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/exports/:exportId/download');
     }
 
     if (rows.length === 0) {
@@ -299,7 +295,7 @@ router.get('/exports/:exportId', async (req, res, next) => {
            JOIN reports r ON r.id = e.report_id
           WHERE e.id = $1
             AND e.user_id = $2
-            AND (r.user_id = $2 OR (r.org_id IS NOT NULL AND r.org_id = $3) OR r.user_id IS NULL)
+            AND ${buildOwnershipSql('r', 2, 3)}
           LIMIT 1`,
         [req.params.exportId, userId, orgId]
       );
@@ -311,19 +307,7 @@ router.get('/exports/:exportId', async (req, res, next) => {
         });
         return;
       }
-      if ((dbErr as { code?: string }).code === '42703') {
-        logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/exports/:exportId' });
-        rows = await adminQuery(
-          `SELECT id, status, format, style, output_url, output_bytes,
-                  error_class, error_detail, created_at, completed_at
-             FROM report_exports
-            WHERE id = $1 AND user_id = $2
-            LIMIT 1`,
-          [req.params.exportId, userId]
-        );
-      } else {
-        throw dbErr;
-      }
+      rejectUnscopedReadOnScopeError(dbErr, 'GET /api/reports/exports/:exportId');
     }
     if (rows.length === 0) {
       res.status(404).json({ error: 'export not found' });
@@ -357,7 +341,7 @@ router.get('/', async (req, res, next) => {
       let where = ' WHERE 1=1';
       if (scoped) {
         params.push(userId, orgId);
-        where += ` AND (r.user_id = $${params.length - 1} OR (r.org_id IS NOT NULL AND r.org_id = $${params.length}) OR r.user_id IS NULL)`;
+        where += ` AND ${buildOwnershipSql('r', params.length - 1, params.length)}`;
       }
       if (includeRetentionFilter) {
         where += ` AND (r.retention_status IS NULL OR r.retention_status NOT IN ('expired', 'deleted'))`;
@@ -381,35 +365,19 @@ router.get('/', async (req, res, next) => {
     } catch (err: unknown) {
       const pgCode = (err as { code?: string }).code;
       if (pgCode === '42703') {
-        logger.warn('legacy_unscoped_read', { route: 'GET /api/reports' });
         try {
           const params: unknown[] = [];
-          const sql = `SELECT ${baseCols}${livingSubquery} FROM reports r${buildWhere(params, false, false)} ORDER BY r.created_at DESC LIMIT 100`;
+          const sql = `SELECT ${baseCols}${scopeCols}${livingSubquery} FROM reports r${buildWhere(params, false, true)} ORDER BY r.created_at DESC LIMIT 100`;
           const fallbackRows = await query(sql, params);
           rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
             ...r,
-            owner_user_id: null,
-            org_id: null,
             report_expires_at: null,
             workspace_expires_at: null,
             workspace_purged_at: null,
             retention_status: null,
           }));
         } catch (fallbackErr: unknown) {
-          const fbCode = (fallbackErr as { code?: string }).code;
-          if (fbCode !== '42703') throw fallbackErr;
-          const params: unknown[] = [];
-          const sql = `SELECT ${baseCols} FROM reports r${buildWhere(params, false, false)} ORDER BY r.created_at DESC LIMIT 100`;
-          const fallbackRows = await query(sql, params);
-          rows = (fallbackRows as Array<Record<string, unknown>>).map((r) => ({
-            ...r,
-            owner_user_id: null,
-            org_id: null,
-            report_expires_at: null,
-            workspace_expires_at: null,
-            workspace_purged_at: null,
-            retention_status: null,
-          }));
+          rejectUnscopedReadOnScopeError(fallbackErr, 'GET /api/reports');
         }
       } else {
         throw err;
@@ -447,16 +415,11 @@ router.get('/:id', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        `SELECT * FROM reports WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id' });
-      rows = await query(
-        `SELECT * FROM reports WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id');
     }
 
     if (rows.length === 0) {
@@ -608,13 +571,11 @@ router.get('/:id/revisions', async (req, res, next) => {
     let ownerRows: unknown[];
     try {
       ownerRows = await query(
-        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        `SELECT id FROM reports WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/revisions' });
-      ownerRows = await query(`SELECT id FROM reports WHERE id=$1`, [req.params.id]);
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/revisions');
     }
 
     if (ownerRows.length === 0) {
@@ -638,13 +599,11 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
     let ownerRows: unknown[];
     try {
       ownerRows = await query(
-        `SELECT id FROM reports WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        `SELECT id FROM reports WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/revisions/:revisionId' });
-      ownerRows = await query(`SELECT id FROM reports WHERE id=$1`, [req.params.id]);
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/revisions/:revisionId');
     }
 
     if (ownerRows.length === 0) {
@@ -676,19 +635,11 @@ router.get('/:id/citations', async (req, res, next) => {
          FROM report_citations rc
          LEFT JOIN sources s ON s.id = rc.source_id
          JOIN reports rp ON rp.id = rc.report_id
-         WHERE rc.report_id=$1 AND (rp.user_id = $2 OR (rp.org_id IS NOT NULL AND rp.org_id = $3) OR rp.user_id IS NULL)`,
+         WHERE rc.report_id=$1 AND ${buildOwnershipSql('rp', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/reports/:id/citations' });
-      citations = await query(
-        `SELECT rc.*, s.url AS source_url, s.title AS source_title
-         FROM report_citations rc
-         LEFT JOIN sources s ON s.id = rc.source_id
-         WHERE rc.report_id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/citations');
     }
 
     res.json(citations);
@@ -744,13 +695,11 @@ router.post('/:id/export', async (req, res, next) => {
     let owned: { id: string }[];
     try {
       owned = await query(
-        `SELECT id FROM reports WHERE id=$1 AND (user_id=$2 OR (org_id IS NOT NULL AND org_id=$3) OR user_id IS NULL)`,
+        `SELECT id FROM reports WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [reportId, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'POST /api/reports/:id/export' });
-      owned = await query(`SELECT id FROM reports WHERE id=$1`, [reportId]);
+      rejectUnscopedReadOnScopeError(scopeErr, 'POST /api/reports/:id/export');
     }
     if (owned.length === 0) {
       res.status(404).json({ error: 'report not found' });

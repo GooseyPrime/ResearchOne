@@ -2,6 +2,11 @@ import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
+import {
+  appendOwnershipFilter,
+  buildOwnershipSql,
+  rejectUnscopedReadOnScopeError,
+} from '../../db/tenantScope';
 import type { ResearchJobData } from '../../services/reasoning/researchOrchestrator';
 import { researchQueue, intellmeDeletionQueue } from '../../queue/queues';
 import { markRunCancelled } from '../../services/researchCancellation';
@@ -523,8 +528,9 @@ router.get('/', async (req, res, next) => {
     let rows: unknown[];
     try {
       const params: unknown[] = [];
-      let where = ' WHERE (user_id = $1 OR (org_id IS NOT NULL AND org_id = $2) OR user_id IS NULL)';
-      params.push(userId, orgId);
+      const conds: string[] = [];
+      appendOwnershipFilter(conds, params, { userId, orgId });
+      let where = ` WHERE ${conds[0]}`;
       if (status) {
         params.push(status);
         where += ` AND status=$${params.length}`;
@@ -532,16 +538,7 @@ router.get('/', async (req, res, next) => {
       const sql = `SELECT ${baseCols} FROM research_runs${where} ORDER BY created_at DESC LIMIT 50`;
       rows = await query(sql, params);
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/research' });
-      const params: unknown[] = [];
-      let sql = `SELECT ${baseCols} FROM research_runs`;
-      if (status) {
-        params.push(status);
-        sql += ` WHERE status=$1`;
-      }
-      sql += ' ORDER BY created_at DESC LIMIT 50';
-      rows = await query(sql, params);
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');
     }
 
     res.json(rows);
@@ -559,16 +556,11 @@ router.get('/:id', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        `SELECT * FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/research/:id' });
-      rows = await query(
-        `SELECT * FROM research_runs WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research/:id');
     }
 
     if (rows.length === 0) {
@@ -602,27 +594,11 @@ router.get('/:id/artifacts', async (req, res, next) => {
     try {
       runMeta = await query<RunMetaRow>(
         `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
-           FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+           FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [runId, userId, orgId]
       );
     } catch (selectErr) {
-      const code = (selectErr as { code?: string } | null)?.code;
-      if (code !== '42703') throw selectErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/research/:id/artifacts' });
-      try {
-        runMeta = await query<RunMetaRow>(
-          `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
-             FROM research_runs WHERE id=$1`,
-          [runId]
-        );
-      } catch (innerErr) {
-        const innerCode = (innerErr as { code?: string } | null)?.code;
-        if (innerCode !== '42703') throw innerErr;
-        runMeta = (await query<{ id: string }>(
-          `SELECT id FROM research_runs WHERE id=$1`,
-          [runId]
-        )) as RunMetaRow[];
-      }
+      rejectUnscopedReadOnScopeError(selectErr, 'GET /api/research/:id/artifacts');
     }
     if (runMeta.length === 0) {
       res.status(404).json({ error: 'Run not found' });
@@ -944,16 +920,11 @@ router.delete('/:id', async (req, res, next) => {
     let rows: { status: string; user_id: string | null }[];
     try {
       rows = await query<{ status: string; user_id: string | null }>(
-        `SELECT status, user_id FROM research_runs WHERE id=$1 AND (user_id = $2 OR (org_id IS NOT NULL AND org_id = $3) OR user_id IS NULL)`,
+        `SELECT status, user_id FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'DELETE /api/research/:id' });
-      rows = await query<{ status: string; user_id: string | null }>(
-        `SELECT status, user_id FROM research_runs WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'DELETE /api/research/:id');
     }
 
     if (rows.length === 0) {

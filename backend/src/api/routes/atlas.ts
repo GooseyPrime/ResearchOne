@@ -3,6 +3,10 @@ import path from 'path';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
+import {
+  buildUserOnlyOwnershipSql,
+  rejectUnscopedReadOnScopeError,
+} from '../../db/tenantScope';
 import { atlasExportQueue } from '../../queue/queues';
 import * as fs from 'fs';
 import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
@@ -58,13 +62,11 @@ router.get('/exports', async (req, res, next) => {
     let rows: unknown[];
     try {
       rows = await query(
-        `SELECT * FROM atlas_exports WHERE (user_id = $1 OR user_id IS NULL) ORDER BY created_at DESC LIMIT 50`,
+        `SELECT * FROM atlas_exports WHERE ${buildUserOnlyOwnershipSql('', 1)} ORDER BY created_at DESC LIMIT 50`,
         [userId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/atlas/exports' });
-      rows = await query(`SELECT * FROM atlas_exports ORDER BY created_at DESC LIMIT 50`);
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/atlas/exports');
     }
 
     res.json(rows);
@@ -81,16 +83,11 @@ router.get('/exports/:id/download', async (req, res, next) => {
     let rows: Array<{ export_path: string; label: string }>;
     try {
       rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND ${buildUserOnlyOwnershipSql('', 2)}`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/atlas/exports/:id/download' });
-      rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/atlas/exports/:id/download');
     }
 
     if (rows.length === 0 || !rows[0].export_path) {
@@ -335,16 +332,11 @@ router.post('/exports/:id/nomic-upload', async (req, res, next) => {
     let rows: Array<{ export_path: string; label: string }>;
     try {
       rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
+        `SELECT export_path, label FROM atlas_exports WHERE id=$1 AND ${buildUserOnlyOwnershipSql('', 2)}`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'POST /api/atlas/exports/:id/nomic-upload' });
-      rows = await query<{ export_path: string; label: string }>(
-        `SELECT export_path, label FROM atlas_exports WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'POST /api/atlas/exports/:id/nomic-upload');
     }
 
     if (rows.length === 0 || !rows[0].export_path) {

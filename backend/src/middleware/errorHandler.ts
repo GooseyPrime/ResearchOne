@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { TenantIsolationUnavailableError, TENANT_ISOLATION_UNAVAILABLE } from '../db/tenantScope';
 import { logger } from '../utils/logger';
 
 const PII_PATTERNS = [
@@ -35,6 +36,25 @@ export function centralErrorHandler(err: Error, req: Request, res: Response, nex
 
   if (res.headersSent) {
     next(err);
+    return;
+  }
+
+  if (err instanceof TenantIsolationUnavailableError) {
+    res.status(err.statusCode).json({
+      error: TENANT_ISOLATION_UNAVAILABLE,
+      message: err.message,
+      requestId,
+    });
+    return;
+  }
+
+  const statusCode = (err as { statusCode?: number }).statusCode;
+  if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 600) {
+    res.status(statusCode).json({
+      error: (err as { code?: string }).code ?? 'request_failed',
+      message: safeMessage,
+      requestId,
+    });
     return;
   }
 

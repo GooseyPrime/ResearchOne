@@ -2,6 +2,7 @@ import { Pool, PoolClient } from 'pg';
 import { AsyncLocalStorage } from 'async_hooks';
 import { config } from '../config';
 import { isPostgresRoleDoesNotExist } from './pgRoleErrors';
+import { TenantIsolationUnavailableError } from './tenantScope';
 import { logger } from '../utils/logger';
 
 let pool: Pool;
@@ -55,12 +56,16 @@ async function applyRlsContext(client: PoolClient): Promise<void> {
     }
   } catch (err) {
     if (isPostgresRoleDoesNotExist(err, 'application_role')) {
-      logger.warn(
-        'application_role does not exist — RLS not active; run `npm run bootstrap:application-role` with DATABASE_ADMIN_URL (see docs/RUNBOOKS/application-role-bootstrap.md)',
+      logger.error(
+        'tenant_isolation_unavailable',
+        {
+          reason: 'application_role_missing',
+          hint: 'run `cd backend && npm run bootstrap:application-role` with DATABASE_ADMIN_URL (see docs/RUNBOOKS/application-role-bootstrap.md)',
+        },
       );
-    } else {
-      throw err;
+      throw new TenantIsolationUnavailableError();
     }
+    throw err;
   }
 }
 

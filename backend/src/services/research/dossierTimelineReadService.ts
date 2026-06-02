@@ -3,6 +3,7 @@
  * Reads through v_dossier + related tables with RLS via security_invoker view.
  */
 import { query } from '../../db/pool';
+import { buildOwnershipSql, rejectUnscopedReadOnScopeError } from '../../db/tenantScope';
 import { logger } from '../../utils/logger';
 import type {
   DossierAuthContext,
@@ -14,6 +15,10 @@ import type {
 function isDossierDeploySkewPgError(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
   return code === '42P01' || code === '42703';
+}
+
+function isViewMissingPgError(err: unknown): boolean {
+  return (err as { code?: string })?.code === '42P01';
 }
 
 function mapTimelineRow(r: Record<string, unknown>): DossierTimelineRow {
@@ -30,7 +35,10 @@ function mapTimelineRow(r: Record<string, unknown>): DossierTimelineRow {
   };
 }
 
-const TIMELINE_UNION = `
+function buildTimelineUnion(ctx: DossierAuthContext, extended: boolean): string {
+  const own = buildOwnershipSql('d', 1, 2);
+  if (extended) {
+    return `
   SELECT d.dossier_created_at AS occurred_at,
          'initial_run'::text AS event_type,
          d.dossier_id,
@@ -41,7 +49,7 @@ const TIMELINE_UNION = `
          d.engine_version,
          d.run_status::text AS run_status
   FROM v_dossier d
-  WHERE NOT COALESCE(d.is_spinoff, false)
+  WHERE NOT COALESCE(d.is_spinoff, false) AND ${own}
 
   UNION ALL
 
@@ -55,7 +63,7 @@ const TIMELINE_UNION = `
          d.engine_version,
          d.run_status::text AS run_status
   FROM v_dossier d
-  WHERE COALESCE(d.is_spinoff, false)
+  WHERE COALESCE(d.is_spinoff, false) AND ${own}
 
   UNION ALL
 
@@ -70,7 +78,7 @@ const TIMELINE_UNION = `
          d.run_status::text AS run_status
   FROM report_revisions rv
   JOIN reports r ON r.id = rv.report_id
-  JOIN v_dossier d ON d.run_id = r.run_id
+  JOIN v_dossier d ON d.run_id = r.run_id AND ${own}
 
   UNION ALL
 
@@ -85,11 +93,11 @@ const TIMELINE_UNION = `
          d.run_status::text AS run_status
   FROM plan_revisions pr
   JOIN research_plans rp ON rp.id = pr.plan_id
-  JOIN v_dossier d ON d.run_id = rp.run_id
+  JOIN v_dossier d ON d.run_id = rp.run_id AND ${own}
 `;
+  }
 
-/** Spinoff columns may be absent before migration 047 — fall back to initial_run + revisions only. */
-const TIMELINE_UNION_LEGACY = `
+  return `
   SELECT d.dossier_created_at AS occurred_at,
          'initial_run'::text AS event_type,
          d.dossier_id,
@@ -100,6 +108,7 @@ const TIMELINE_UNION_LEGACY = `
          NULL::text AS engine_version,
          d.run_status::text AS run_status
   FROM v_dossier d
+  WHERE ${own}
 
   UNION ALL
 
@@ -114,7 +123,7 @@ const TIMELINE_UNION_LEGACY = `
          d.run_status::text AS run_status
   FROM report_revisions rv
   JOIN reports r ON r.id = rv.report_id
-  JOIN v_dossier d ON d.run_id = r.run_id
+  JOIN v_dossier d ON d.run_id = r.run_id AND ${own}
 
   UNION ALL
 
@@ -129,20 +138,27 @@ const TIMELINE_UNION_LEGACY = `
          d.run_status::text AS run_status
   FROM plan_revisions pr
   JOIN research_plans rp ON rp.id = pr.plan_id
-  JOIN v_dossier d ON d.run_id = rp.run_id
+  JOIN v_dossier d ON d.run_id = rp.run_id AND ${own}
 `;
+}
 
 export async function listTimelineEvents(
   filters: DossierTimelineFilters,
-  _ctx: DossierAuthContext,
+  ctx: DossierAuthContext,
 ): Promise<DossierTimelineResult> {
   const page = Math.max(1, filters.page);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize));
   const offset = (page - 1) * pageSize;
 
+  if (!ctx.userId) {
+    return { rows: [], total: 0, page, pageSize };
+  }
+
+  const ownershipParams: unknown[] = [ctx.userId, ctx.orgId];
+
   const conds: string[] = ['1=1'];
-  const params: unknown[] = [];
-  let p = 1;
+  const params: unknown[] = [...ownershipParams];
+  let p = params.length + 1;
 
   if (filters.dateFrom) {
     conds.push(`occurred_at >= $${p++}::timestamptz`);
@@ -172,13 +188,15 @@ export async function listTimelineEvents(
   let countRows: { c: string }[];
   let rows: Record<string, unknown>[];
 
+  const timelineUnion = buildTimelineUnion(ctx, true);
+
   try {
     countRows = await query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM (${TIMELINE_UNION}) events WHERE ${where}`,
+      `SELECT COUNT(*)::text AS c FROM (${timelineUnion}) events WHERE ${where}`,
       params,
     );
     rows = await query<Record<string, unknown>>(
-      `SELECT * FROM (${TIMELINE_UNION}) events
+      `SELECT * FROM (${timelineUnion}) events
        WHERE ${where}
        ORDER BY occurred_at DESC
        LIMIT $${limIdx} OFFSET $${offIdx}`,
@@ -187,24 +205,25 @@ export async function listTimelineEvents(
   } catch (e) {
     if (!isDossierDeploySkewPgError(e)) throw e;
     logger.debug('dossier timeline: extended union unavailable (deploy skew)', { err: String(e) });
+    const legacyUnion = buildTimelineUnion(ctx, false);
     try {
       countRows = await query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM (${TIMELINE_UNION_LEGACY}) events WHERE ${where}`,
+        `SELECT COUNT(*)::text AS c FROM (${legacyUnion}) events WHERE ${where}`,
         params,
       );
       rows = await query<Record<string, unknown>>(
-        `SELECT * FROM (${TIMELINE_UNION_LEGACY}) events
+        `SELECT * FROM (${legacyUnion}) events
          WHERE ${where}
          ORDER BY occurred_at DESC
          LIMIT $${limIdx} OFFSET $${offIdx}`,
         listParams,
       );
     } catch (fallbackErr) {
-      if (isDossierDeploySkewPgError(fallbackErr)) {
+      if (isViewMissingPgError(fallbackErr)) {
         logger.debug('dossier timeline: v_dossier unavailable (deploy skew)', { err: String(fallbackErr) });
         return { rows: [], total: 0, page, pageSize };
       }
-      throw fallbackErr;
+      rejectUnscopedReadOnScopeError(fallbackErr, 'dossierTimelineReadService.listTimelineEvents');
     }
   }
 

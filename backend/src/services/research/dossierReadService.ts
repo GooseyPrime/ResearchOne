@@ -2,6 +2,11 @@
  * Canonical dossier reads — SELECT from `v_dossier` only (Rule 32).
  */
 import { query, queryOne } from '../../db/pool';
+import {
+  appendOwnershipFilter,
+  buildOwnershipSql,
+  rejectUnscopedReadOnScopeError,
+} from '../../db/tenantScope';
 import { logger } from '../../utils/logger';
 import type {
   Dossier,
@@ -30,6 +35,19 @@ function isUuid(id: string): boolean {
 function isDossierDeploySkewPgError(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
   return code === '42P01' || code === '42703';
+}
+
+function isViewMissingPgError(err: unknown): boolean {
+  return (err as { code?: string })?.code === '42P01';
+}
+
+/** Belt-and-suspenders ownership on v_dossier (no legacy NULL rows). */
+function pushDossierOwnership(conds: string[], params: unknown[], ctx: DossierAuthContext): void {
+  appendOwnershipFilter(conds, params, { userId: ctx.userId, orgId: ctx.orgId });
+}
+
+function dossierOwnershipSql(ctx: DossierAuthContext, userParam: number, orgParam: number): string {
+  return buildOwnershipSql('', userParam, orgParam);
 }
 
 function parseTierSummary(raw: unknown): Record<string, unknown> | null {
@@ -156,51 +174,56 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
   };
 }
 
-export async function getDossierById(dossierId: string, _ctx: DossierAuthContext): Promise<Dossier | null> {
+export async function getDossierById(dossierId: string, ctx: DossierAuthContext): Promise<Dossier | null> {
   if (!isUuid(dossierId)) return null;
   try {
     const row = await queryOne<Record<string, unknown>>(
-      `SELECT * FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
-      [dossierId],
+      `SELECT * FROM v_dossier WHERE dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)} LIMIT 1`,
+      [dossierId, ctx.userId, ctx.orgId],
     );
     if (!row) return null;
     return mapRowToDossier(row);
   } catch (e) {
-    if (isDossierDeploySkewPgError(e)) {
+    if (isViewMissingPgError(e)) {
       logger.debug('dossier read: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
       return null;
     }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierById');
   }
 }
 
 /** Canonical dossier read keyed by `research_runs.id` (Wave 5.1 plan gate GET). */
-export async function getDossierByRunId(runId: string, _ctx: DossierAuthContext): Promise<Dossier | null> {
+export async function getDossierByRunId(runId: string, ctx: DossierAuthContext): Promise<Dossier | null> {
   if (!isUuid(runId)) return null;
   try {
     const row = await queryOne<Record<string, unknown>>(
-      `SELECT * FROM v_dossier WHERE run_id = $1::uuid LIMIT 1`,
-      [runId],
+      `SELECT * FROM v_dossier WHERE run_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)} LIMIT 1`,
+      [runId, ctx.userId, ctx.orgId],
     );
     if (!row) return null;
     return mapRowToDossier(row);
   } catch (e) {
-    if (isDossierDeploySkewPgError(e)) {
+    if (isViewMissingPgError(e)) {
       logger.debug('dossier read: v_dossier unavailable (deploy skew)', { runId, err: String(e) });
       return null;
     }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierByRunId');
   }
 }
 
-export async function listDossiers(filters: DossierListFilters, _ctx: DossierAuthContext): Promise<DossierListResult> {
+export async function listDossiers(filters: DossierListFilters, ctx: DossierAuthContext): Promise<DossierListResult> {
+  if (!ctx.userId) {
+    return { rows: [], total: 0, page: Math.max(1, filters.page), pageSize: Math.min(100, Math.max(1, filters.pageSize)) };
+  }
+
   const page = Math.max(1, filters.page);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize));
   const offset = (page - 1) * pageSize;
 
-  const conds: string[] = ['1=1'];
+  const conds: string[] = [];
   const params: unknown[] = [];
-  let p = 1;
+  pushDossierOwnership(conds, params, ctx);
+  let p = params.length + 1;
 
   if (filters.intent) {
     conds.push(`plan_intent = $${p++}`);
@@ -270,11 +293,11 @@ export async function listDossiers(filters: DossierListFilters, _ctx: DossierAut
         listParams,
       );
     } catch (fallbackErr) {
-      if (isDossierDeploySkewPgError(fallbackErr)) {
+      if (isViewMissingPgError(fallbackErr)) {
         logger.debug('dossier list: v_dossier unavailable (deploy skew)', { err: String(fallbackErr) });
         return { rows: [], total: 0, page, pageSize };
       }
-      throw fallbackErr;
+      rejectUnscopedReadOnScopeError(fallbackErr, 'dossierReadService.listDossiers');
     }
   }
 
@@ -286,7 +309,7 @@ export async function listDossiers(filters: DossierListFilters, _ctx: DossierAut
 
 export async function getDossierReportHistory(
   dossierId: string,
-  _ctx: DossierAuthContext,
+  ctx: DossierAuthContext,
 ): Promise<DossierReportHistoryResult | null> {
   if (!isUuid(dossierId)) return null;
 
@@ -296,9 +319,9 @@ export async function getDossierReportHistory(
               COALESCE(r.root_report_id, r.id) AS root_report_id
        FROM v_dossier d
        LEFT JOIN reports r ON r.id = d.report_id
-       WHERE d.dossier_id = $1::uuid
+       WHERE d.dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)}
        LIMIT 1`,
-      [dossierId],
+      [dossierId, ctx.userId, ctx.orgId],
     );
     if (!anchor) return null;
     if (!anchor.root_report_id && !anchor.report_id) {
@@ -324,10 +347,11 @@ export async function getDossierReportHistory(
        FROM reports r
        WHERE COALESCE(r.root_report_id, r.id) = $1::uuid
          AND EXISTS (
-           SELECT 1 FROM v_dossier vd WHERE vd.report_id = r.id
+           SELECT 1 FROM v_dossier vd
+           WHERE vd.report_id = r.id AND ${dossierOwnershipSql(ctx, 2, 3)}
          )
        ORDER BY r.version_number ASC NULLS LAST, r.created_at ASC`,
-      [rootId],
+      [rootId, ctx.userId, ctx.orgId],
     );
 
     const entries: DossierReportHistoryEntry[] = reportRows.map((row) => ({
@@ -343,24 +367,24 @@ export async function getDossierReportHistory(
 
     return { entries };
   } catch (e) {
-    if (isDossierDeploySkewPgError(e)) {
+    if (isViewMissingPgError(e)) {
       logger.debug('dossier report history: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
       return null;
     }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierReportHistory');
   }
 }
 
 export async function getDossierSpinoffs(
   dossierId: string,
-  _ctx: DossierAuthContext,
+  ctx: DossierAuthContext,
 ): Promise<DossierSpinoffsResult | null> {
   if (!isUuid(dossierId)) return null;
 
   try {
     const anchor = await queryOne<{ run_id: string; report_id: string | null }>(
-      `SELECT run_id, report_id FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
-      [dossierId],
+      `SELECT run_id, report_id FROM v_dossier WHERE dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)} LIMIT 1`,
+      [dossierId, ctx.userId, ctx.orgId],
     );
     if (!anchor) return null;
 
@@ -370,10 +394,11 @@ export async function getDossierSpinoffs(
         `SELECT dossier_id, run_id, request_query, run_status, engine_version,
                 report_id, spinoff_from_report_id, dossier_created_at
          FROM v_dossier
-         WHERE spinoff_from_run_id = $1::uuid
-            OR ($2::uuid IS NOT NULL AND spinoff_from_report_id = $2::uuid)
+         WHERE (${buildOwnershipSql('', 3, 4)})
+           AND (spinoff_from_run_id = $1::uuid
+            OR ($2::uuid IS NOT NULL AND spinoff_from_report_id = $2::uuid))
          ORDER BY dossier_created_at DESC`,
-        [anchor.run_id, anchor.report_id],
+        [anchor.run_id, anchor.report_id, ctx.userId, ctx.orgId],
       );
     } catch (spinoffErr) {
       if (!isDossierDeploySkewPgError(spinoffErr)) throw spinoffErr;
@@ -394,24 +419,24 @@ export async function getDossierSpinoffs(
 
     return { spinoffs };
   } catch (e) {
-    if (isDossierDeploySkewPgError(e)) {
+    if (isViewMissingPgError(e)) {
       logger.debug('dossier spinoffs: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
       return null;
     }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierSpinoffs');
   }
 }
 
 export async function getDossierSources(
   dossierId: string,
-  _ctx: DossierAuthContext,
+  ctx: DossierAuthContext,
 ): Promise<DossierSourcesResult | null> {
   if (!isUuid(dossierId)) return null;
 
   try {
     const anchor = await queryOne<{ run_id: string; report_id: string | null }>(
-      `SELECT run_id, report_id FROM v_dossier WHERE dossier_id = $1::uuid LIMIT 1`,
-      [dossierId],
+      `SELECT run_id, report_id FROM v_dossier WHERE dossier_id = $1::uuid AND ${dossierOwnershipSql(ctx, 2, 3)} LIMIT 1`,
+      [dossierId, ctx.userId, ctx.orgId],
     );
     if (!anchor) return null;
 
@@ -483,11 +508,11 @@ export async function getDossierSources(
 
     return { sources };
   } catch (e) {
-    if (isDossierDeploySkewPgError(e)) {
+    if (isViewMissingPgError(e)) {
       logger.debug('dossier sources: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
       return null;
     }
-    throw e;
+    rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierSources');
   }
 }
 

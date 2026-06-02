@@ -9,25 +9,22 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       'utf8'
     );
 
-    it('scoped query includes user_id predicate', () => {
-      expect(src).toContain('user_id = $1');
+    it('scoped query uses appendOwnershipFilter', () => {
+      expect(src).toContain('appendOwnershipFilter');
     });
 
-    it('scoped query includes org_id fallback predicate', () => {
-      expect(src).toContain('org_id IS NOT NULL AND org_id = $2');
-    });
-
-    it('includes OR user_id IS NULL in route SQL for legacy compatibility (RLS still hides NULL rows until backfill)', () => {
-      expect(src).toContain('OR user_id IS NULL');
+    it('does not expose legacy NULL rows in authenticated list SQL', () => {
+      const listHandler = src.slice(src.indexOf('// GET /api/research - List'), src.indexOf('// GET /api/research/:id'));
+      expect(listHandler).not.toContain('OR user_id IS NULL');
     });
 
     it('reads userId from req.auth', () => {
       expect(src).toContain("req.auth?.userId");
     });
 
-    it('falls back to unscoped read only on deploy-skew (42703)', () => {
-      expect(src).toContain("'42703'");
-      expect(src).toContain('legacy_unscoped_read');
+    it('fails closed on deploy-skew (42703) instead of unscoped read', () => {
+      expect(src).toContain('rejectUnscopedReadOnScopeError');
+      expect(src).not.toContain('legacy_unscoped_read');
     });
   });
 
@@ -41,17 +38,17 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       expect(src).toContain('r.user_id');
     });
 
-    it('scoped query includes org_id fallback predicate', () => {
-      expect(src).toContain('r.org_id IS NOT NULL AND r.org_id');
+    it('scoped query uses buildOwnershipSql for org sharing', () => {
+      expect(src).toContain('buildOwnershipSql');
     });
 
     it('buildWhere receives scoped=true for the primary query', () => {
       expect(src).toMatch(/buildWhere\(params,\s*true,\s*true\)/);
     });
 
-    it('falls back to unscoped read only on deploy-skew (42703)', () => {
-      expect(src).toContain("'42703'");
-      expect(src).toContain('legacy_unscoped_read');
+    it('fails closed on deploy-skew (42703) instead of unscoped read', () => {
+      expect(src).toContain('rejectUnscopedReadOnScopeError');
+      expect(src).not.toContain('legacy_unscoped_read');
     });
   });
 
@@ -62,16 +59,16 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
     );
 
     it('scoped query includes user_id predicate', () => {
-      expect(src).toContain('j.user_id = $1');
+      expect(src).toContain('buildUserOnlyOwnershipSql');
     });
 
     it('reads userId from req.auth', () => {
       expect(src).toContain("req.auth?.userId");
     });
 
-    it('falls back to unscoped read only on deploy-skew (42703)', () => {
-      expect(src).toContain("'42703'");
-      expect(src).toContain('legacy_unscoped_read');
+    it('fails closed on deploy-skew (42703) instead of unscoped read', () => {
+      expect(src).toContain('rejectUnscopedReadOnScopeError');
+      expect(src).not.toContain('legacy_unscoped_read');
     });
   });
 
@@ -82,16 +79,32 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
     );
 
     it('scoped query includes user_id predicate', () => {
-      expect(src).toContain('user_id = $1');
+      expect(src).toContain('buildUserOnlyOwnershipSql');
     });
 
     it('reads userId from req.auth', () => {
       expect(src).toContain("req.auth?.userId");
     });
 
-    it('falls back to unscoped read only on deploy-skew (42703)', () => {
-      expect(src).toContain("'42703'");
-      expect(src).toContain('legacy_unscoped_read');
+    it('fails closed on deploy-skew (42703) instead of unscoped read', () => {
+      expect(src).toContain('rejectUnscopedReadOnScopeError');
+      expect(src).not.toContain('legacy_unscoped_read');
+    });
+  });
+
+  describe('dossier reads (v_dossier)', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../services/research/dossierReadService.ts'),
+      'utf8'
+    );
+
+    it('filters list/detail by ownership via tenantScope helpers', () => {
+      expect(src).toContain('appendOwnershipFilter');
+      expect(src).toContain('buildOwnershipSql');
+    });
+
+    it('does not include OR user_id IS NULL in dossier SQL', () => {
+      expect(src).not.toContain('OR user_id IS NULL');
     });
   });
 

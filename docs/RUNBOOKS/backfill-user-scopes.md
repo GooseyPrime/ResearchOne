@@ -1,5 +1,61 @@
 # Runbook: Backfill user_id / org_id on legacy rows
 
+## P0 production checklist — cross-tenant report visibility
+
+Run **immediately after** deploying tenant-isolation hardening (fail-closed routes, dossier SQL filters, migration **048**).
+
+### 1. Verify database state
+
+```sql
+-- v_dossier must run as invoker (RLS applies)
+SELECT reloptions FROM pg_class WHERE relname = 'v_dossier';
+-- Expect: {security_invoker=true}
+
+SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'application_role');
+
+SELECT count(*) FROM research_runs WHERE user_id IS NULL;
+```
+
+High `NULL` counts explain historical shared visibility when RLS was bypassed; backfill (below) before expecting per-user lists to match pre-migration memory.
+
+### 2. Apply migrations through 048
+
+```bash
+cd backend && npm run migrate
+```
+
+Confirm `048_v_dossier_security_invoker_repair.sql` applied (re-creates `v_dossier` with `WITH (security_invoker = true)`).
+
+### 3. Bootstrap `application_role`
+
+```bash
+cd backend && npm run bootstrap:application-role
+```
+
+Use `DATABASE_ADMIN_URL` per [application-role-bootstrap.md](./application-role-bootstrap.md). Readiness must show RLS usable:
+
+```bash
+curl -sS "$API_BASE/health/ready" | jq '.checks.db'
+# Expect: ok: true, rlsReady: true (or application_role_exists)
+```
+
+### 4. Backfill NULL scopes
+
+```bash
+npx tsx backend/src/scripts/backfillUserScopes.ts
+```
+
+For remaining `research_runs` with `user_id IS NULL`, assign ownership manually (Clerk user ids) when you can determine the owner. Legacy NULL rows are **not** visible to normal authenticated users after this fix.
+
+### 5. Post-deploy verification
+
+1. Test user `GET /api/research` — must not include another user's run IDs.
+2. Test user `/app/dossiers` (`GET /api/dossiers`) — only their dossiers.
+3. Grep API logs for `legacy_unscoped_read` — must be **absent** (replaced by `tenant_isolation_unavailable` on skew).
+4. Optional integration test: `TEST_DATABASE_URL=... cd backend && npm test -- tenantIsolation.integration`
+
+---
+
 ## When to run
 
 After **migration 029** (`029_user_scoped_research_data.sql`) has been

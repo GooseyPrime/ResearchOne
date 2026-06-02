@@ -63,6 +63,7 @@ describe('listDossiers sortBy', () => {
     expect(result.rows[0]?.isRevised).toBe(true);
     expect(result.rows[0]?.versionNumber).toBe(2);
     const listSql = String(queryMock.mock.calls[1]?.[0] ?? '');
+    expect(listSql).toContain('user_id = $');
     expect(listSql).toContain('last_activity_at');
     expect(listSql).toContain('ORDER BY COALESCE(last_activity_at, dossier_created_at) DESC');
   });

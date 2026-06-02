@@ -3,6 +3,10 @@ import { requireAuth } from '../../middleware/clerkAuth';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../../db/pool';
+import {
+  buildUserOnlyOwnershipSql,
+  rejectUnscopedReadOnScopeError,
+} from '../../db/tenantScope';
 import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
 import { retentionConfig } from '../../config/retention';
@@ -236,23 +240,13 @@ router.get('/jobs', async (req, res, next) => {
                 s.imported_via, s.discovered_by_run_id
          FROM ingestion_jobs j
          LEFT JOIN sources s ON s.id = j.source_id
-         WHERE (j.user_id = $1 OR j.user_id IS NULL)
+         WHERE ${buildUserOnlyOwnershipSql('j', 1)}
          ORDER BY j.created_at DESC
          LIMIT 100`,
         [userId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/ingestion/jobs' });
-      jobs = await query(
-        `SELECT j.id, j.url, j.file_name, j.source_type, j.status, j.error_message,
-                j.started_at, j.completed_at, j.created_at, j.source_id, j.metadata,
-                s.imported_via, s.discovered_by_run_id
-         FROM ingestion_jobs j
-         LEFT JOIN sources s ON s.id = j.source_id
-         ORDER BY j.created_at DESC
-         LIMIT 100`
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/ingestion/jobs');
     }
 
     res.json(jobs);
@@ -269,16 +263,11 @@ router.get('/jobs/:id', async (req, res, next) => {
     let jobs: unknown[];
     try {
       jobs = await query(
-        `SELECT * FROM ingestion_jobs WHERE id=$1 AND (user_id = $2 OR user_id IS NULL)`,
+        `SELECT * FROM ingestion_jobs WHERE id=$1 AND ${buildUserOnlyOwnershipSql('', 2)}`,
         [req.params.id, userId]
       );
     } catch (scopeErr) {
-      if ((scopeErr as { code?: string })?.code !== '42703') throw scopeErr;
-      logger.warn('legacy_unscoped_read', { route: 'GET /api/ingestion/jobs/:id' });
-      jobs = await query(
-        `SELECT * FROM ingestion_jobs WHERE id=$1`,
-        [req.params.id]
-      );
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/ingestion/jobs/:id');
     }
 
     if (jobs.length === 0) {
