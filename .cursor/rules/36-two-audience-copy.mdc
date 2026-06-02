@@ -36,13 +36,31 @@ Tier A edits are **display strings only**. Do not rename:
 
 When Tier A copy changes, update assertions in the same commit (`PersonaAwareHero`,
 `ModeMatrix`, `pricingPage`, marketing page tests, etc.). Rule 16 applies: tests
-must fail if the copy reverts.
+must fail if the copy reverts. **Do not drop interaction tests** (e.g. tab click →
+`onModeChange`) when refreshing display-string assertions — copy and behavior
+regress independently (PR #165 Copilot).
 
 ## R-D — Living banned list + CI grep
 
 Banned Tier A patterns live in `docs/marketing/tier-a-banned-jargon.txt`; scanned
 paths in `docs/marketing/tier-a-manifest.txt`. CI runs
 `scripts/ci/assert-tier-a-no-banned-jargon.sh` in `.github/workflows/ci-guards.yml`.
+
+**CI script constraints (PR #165 review):**
+
+1. Use **grep/find/sed only** — GitHub `ubuntu-latest` does not ship `ripgrep`;
+   mirror `assert-no-test-mocks-in-app-src.sh`.
+2. Parse manifest/pattern files with POSIX whitespace trimming — do not rely on
+   `\s` in `grep` for comment/blank skipping.
+3. **Narrow contract exemptions:** strip `id`/`value`/`runAddonKey` assignments
+   and the `'general-epistemic':` slug key prefix, then re-test the remainder.
+   Never drop an entire matched line because a slug key appears on it.
+4. **Manifest completeness:** include Tier A **child components** rendered by
+   manifest pages (e.g. `LandingPage` → `AnimatedProcessFlow`), not just the
+   page file itself.
+
+**Display label lookups:** use `researchObjectiveLabel(value)` (or equivalent
+value-keyed lookup), not `RESEARCH_OBJECTIVE_OPTIONS[n]` array indices.
 
 Before merge on Tier A edits:
 

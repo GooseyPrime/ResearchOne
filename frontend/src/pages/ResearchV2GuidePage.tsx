@@ -11,17 +11,25 @@ import {
   Brain,
   AlertCircle,
 } from 'lucide-react';
-import { RESEARCH_OBJECTIVE_OPTIONS } from '@/constants/researchObjectives';
+import { researchObjectiveLabel } from '@/constants/researchObjectives';
+import type { ResearchObjective } from '@/utils/api';
 import {
   HOW_YOUR_REPORT_IS_MADE_HEADING,
   HOW_YOUR_REPORT_IS_MADE_STEPS,
 } from '@/content/howYourReportIsMade';
 
-const MODES = [
+const MODES: Array<{
+  objective: ResearchObjective;
+  icon: typeof Search;
+  color: string;
+  definition: string;
+  capabilities: string[];
+  reportOutput: string[];
+}> = [
   {
+    objective: 'GENERAL_EPISTEMIC_RESEARCH',
     icon: Search,
     color: 'text-accent',
-    title: RESEARCH_OBJECTIVE_OPTIONS[0].label,
     definition:
       'The default Deep research type. Conducts rigorous, reasoning-first research on any topic by analyzing claims, extracting citations, and compiling a balanced report without assuming active, coordinated suppression.',
     capabilities: [
@@ -36,9 +44,9 @@ const MODES = [
     ],
   },
   {
+    objective: 'INVESTIGATIVE_SYNTHESIS',
     icon: BookOpen,
     color: 'text-research-purple',
-    title: RESEARCH_OBJECTIVE_OPTIONS[1].label,
     definition:
       'A deep-dive historical and investigative type designed to trace origins, institutional gaps, and fragmentation of contested data or overlooked technologies.',
     capabilities: [
@@ -52,9 +60,9 @@ const MODES = [
     ],
   },
   {
+    objective: 'PATENT_GAP_ANALYSIS',
     icon: FileCode2,
     color: 'text-research-teal',
-    title: RESEARCH_OBJECTIVE_OPTIONS[3].label,
     definition:
       'A highly rigid, technical type that cross-references physical mechanisms against public patent databases to find unpatented technological whitespace.',
     capabilities: [
@@ -67,9 +75,9 @@ const MODES = [
     ],
   },
   {
+    objective: 'NOVEL_APPLICATION_DISCOVERY',
     icon: Lightbulb,
     color: 'text-amber-400',
-    title: RESEARCH_OBJECTIVE_OPTIONS[2].label,
     definition:
       'A lateral-thinking engineering type. It takes contested or under-explored physics and asks: "If this data holds up, how can it address current engineering bottlenecks?"',
     capabilities: [
@@ -83,9 +91,9 @@ const MODES = [
     ],
   },
   {
+    objective: 'ANOMALY_CORRELATION',
     icon: GitBranch,
     color: 'text-research-blue',
-    title: RESEARCH_OBJECTIVE_OPTIONS[4].label,
     definition:
       'A meta-analytical type designed to find underlying frameworks connecting disparate fields of high strangeness or fringe physics (e.g., correlating consciousness studies with quantum entanglement or UAP observables).',
     capabilities: [
@@ -209,10 +217,10 @@ export default function ResearchV2GuidePage() {
       </div>
 
       {MODES.map((mode) => (
-        <div key={mode.title} className="card p-6 space-y-4">
+        <div key={mode.objective} className="card p-6 space-y-4">
           <div className="flex items-center gap-3">
             <mode.icon size={18} className={mode.color} />
-            <h2 className="text-base font-semibold text-white">{mode.title}</h2>
+            <h2 className="text-base font-semibold text-white">{researchObjectiveLabel(mode.objective)}</h2>
           </div>
 
           <div>

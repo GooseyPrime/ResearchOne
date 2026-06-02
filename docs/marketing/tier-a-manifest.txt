@@ -10,6 +10,7 @@ frontend/src/components/landing/ModeMatrix.tsx
 frontend/src/components/landing/ComparisonTable.tsx
 frontend/src/components/landing/TrustStrip.tsx
 frontend/src/pages/LandingPage.tsx
+frontend/src/components/r1-vault/AnimatedProcessFlow.tsx
 frontend/src/pages/PricingPage.tsx
 frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx
 frontend/src/pages/BillingPage.tsx

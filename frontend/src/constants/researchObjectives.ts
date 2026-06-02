@@ -97,3 +97,8 @@ export function objectivesForTier(tier: EntitlementTierKey | null | undefined): 
 export function defaultObjectiveForTier(tier: EntitlementTierKey | null | undefined): ResearchObjective {
   return objectivesForTier(tier)[0]?.value ?? 'GENERAL_EPISTEMIC_RESEARCH';
 }
+
+/** Plain-language label for a research objective value (Rule 36 — lookup by value, not array index). */
+export function researchObjectiveLabel(value: ResearchObjective): string {
+  return RESEARCH_OBJECTIVE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+}

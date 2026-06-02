@@ -22,6 +22,7 @@ The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above
 
 - **Scope:** Tier A plain-language rename (Standard Research, Deep Research, Devil's Advocate Review display copy), Tier B methodology/guide restructure, hero pipeline stage labels (`Drafting`, `Recordkeeping`, `WRITE & CITE`), **Rule 36** (Tier A banned grep + two-audience discipline), **Rule 27 I-2/I-3** amendment to keep static/animated hero labels synchronized.
 - **Fence:** Enum values, addon ids, backend overlay keys, and Rule 28 tier identifiers unchanged.
+- **PR #165 review follow-up:** CI guard rewritten for `grep -H` + narrow contract stripping; `AnimatedProcessFlow` added to Tier A manifest; `researchObjectiveLabel()` for V2 guide; mode-toggle interaction test restored.
 
 ### 2026-05-14 — Wave 5.1 + Rule 33 (plan confirmation gate)
 

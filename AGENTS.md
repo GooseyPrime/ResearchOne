@@ -113,6 +113,15 @@ ship on `main`.
 - **Cherry-pick fa53:** reconcile with unified research console (PR #149); spinoff submit → `/app/research?runId=`.
 - **Migration numbers:** spinoff lineage = **046**; `v_dossier` activity = **047** (039 is saved orchestration profiles).
 
+## Recurring review themes (Codex / Copilot, PR #165 — Rule 36 Tier A copy)
+
+- **`assert-tier-a-no-banned-jargon.sh`:** use **grep -H** (single-file matches omit the path prefix), **grep/find/sed only** — GitHub `ubuntu-latest` has no `ripgrep`; mirror `assert-no-test-mocks-in-app-src.sh`.
+- **Manifest/pattern parsing:** trim comments/blanks with POSIX `[[:space:]]` — do not rely on `\s` in `grep` for `#` lines.
+- **Contract exemptions (Codex P2):** strip `id`/`value`/`runAddonKey` assignments and `'general-epistemic':` slug prefix, then re-test the **remainder** for banned display copy — never drop an entire matched line because a contract key appears on it.
+- **Manifest completeness:** include Tier A **child components** rendered by manifest pages (e.g. `LandingPage` → `AnimatedProcessFlow`), not just the page file.
+- **Objective labels:** use `researchObjectiveLabel(value)` (value-keyed lookup), not `RESEARCH_OBJECTIVE_OPTIONS[n]` array indices in guide pages.
+- **Copy + interaction tests:** updating display-string assertions must **keep** behavior tests (e.g. mode tab click → `onModeChange`) — copy and wiring regress independently.
+
 ## Recurring review themes (Codex / Copilot, PR #141 — unified research + plan confirm queue)
 
 - **`resumeJid` ripple:** Extracting plan-confirm enqueue into `enqueueResearchResumeAfterPlan` must keep `researchResumeJobId(runId)` in the route for confirm rollback (`getJob` / `remove`).
