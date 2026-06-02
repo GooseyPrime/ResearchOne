@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIER_RULES, type TierName, isTierName } from '../config/tierRules';
+import { TIER_RULES, type TierName, isTierName, tierHasCorpusAccess } from '../config/tierRules';
 
 const ALL_TIERS: TierName[] = [
   'anonymous', 'free_demo', 'student', 'wallet', 'pro', 'team', 'byok', 'sovereign', 'admin',
@@ -161,6 +161,22 @@ describe('TIER_RULES', () => {
       expect(rules.livingReportsIncluded).toBe(true);
       expect(rules.adversarialTwinIncluded).toBe(true);
       expect(rules.provenanceLedgerIncluded).toBe(true);
+    });
+  });
+
+  describe('tierHasCorpusAccess (private Ingest workspace)', () => {
+    it('grants corpus access for paid private-corpus tiers', () => {
+      for (const tier of ['pro', 'team', 'byok', 'sovereign', 'admin'] as TierName[]) {
+        expect(tierHasCorpusAccess(tier)).toBe(true);
+        expect(TIER_RULES[tier].corpusAccess).toBe(true);
+      }
+    });
+
+    it('denies corpus access for free and wallet tiers', () => {
+      for (const tier of ['anonymous', 'free_demo', 'student', 'wallet'] as TierName[]) {
+        expect(tierHasCorpusAccess(tier)).toBe(false);
+        expect(TIER_RULES[tier].corpusAccess).toBe(false);
+      }
     });
   });
 

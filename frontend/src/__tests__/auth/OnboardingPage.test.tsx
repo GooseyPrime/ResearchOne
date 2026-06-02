@@ -6,6 +6,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockUpdate = vi.fn();
+const mockApiPost = vi.fn().mockResolvedValue({ data: {} });
+
+vi.mock('../../utils/api', () => ({
+  default: { post: (...args: unknown[]) => mockApiPost(...args) },
+}));
 
 vi.mock('@clerk/react', () => ({
   useUser: vi.fn(() => ({
@@ -27,6 +32,8 @@ describe('OnboardingPage', () => {
 
   beforeEach(() => {
     mockUpdate.mockClear();
+    mockApiPost.mockClear();
+    mockApiPost.mockResolvedValue({ data: {} });
     vi.mocked(useUser).mockReturnValue({
       isLoaded: true,
       user: {
@@ -73,6 +80,7 @@ describe('OnboardingPage', () => {
         onboardingComplete: true,
       }),
     });
+    expect(mockApiPost).toHaveBeenCalledWith('/ingestion/consent', { pipeline_b_consent: false });
   });
 
   it('persists tier=pro from the onboarding URL into unsafeMetadata.initialTier', async () => {

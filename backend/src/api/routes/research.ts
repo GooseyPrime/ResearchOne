@@ -18,6 +18,7 @@ import {
 import { config } from '../../config';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
+import { parseSupplementalUrlCrawlFromBody } from '../../services/research/supplementalUrlCrawl';
 import { V2_MODE_PRESETS } from '../../config/researchEnsemblePresets';
 import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQueueing';
 import {
@@ -149,6 +150,26 @@ async function handleStartResearchRun(
         supplementalUrls = Array.isArray(jsonBody.supplementalUrls)
           ? jsonBody.supplementalUrls.map((u) => String(u).trim()).filter(Boolean)
           : [];
+      }
+
+      let supplementalUrlCrawlRaw: unknown;
+      if (isMultipart) {
+        supplementalUrlCrawlRaw = body.supplementalUrlCrawl;
+      } else {
+        supplementalUrlCrawlRaw = (req.body as { supplementalUrlCrawl?: unknown }).supplementalUrlCrawl;
+      }
+      const supplementalUrlCrawl = parseSupplementalUrlCrawlFromBody(
+        supplementalUrlCrawlRaw,
+        !isMultipart
+          ? (req.body as { supplementalUrlCrawl?: { siteCrawl?: boolean; crawlLayers?: number } })
+              .supplementalUrlCrawl
+          : null
+      );
+      if (supplementalUrlCrawl === undefined && supplementalUrlCrawlRaw) {
+        res.status(400).json({
+          error: `crawlLayers must be an integer from 2 to ${config.ingestion.siteCrawlMaxLayers} when site crawl is enabled`,
+        });
+        return;
       }
 
       let engineVersion: string | undefined;
@@ -314,6 +335,7 @@ async function handleStartResearchRun(
         urls: supplementalUrls,
         files: fileItems,
         userId: userId ?? undefined,
+        urlCrawl: supplementalUrlCrawl,
       });
 
       const attachments: Array<

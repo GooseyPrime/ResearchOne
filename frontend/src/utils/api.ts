@@ -673,6 +673,7 @@ export interface StartResearchPayload {
   engineVersion?: 'v2';
   researchObjective?: ResearchObjective;
   supplementalUrls?: string[];
+  supplementalUrlCrawl?: { siteCrawl: boolean; crawlLayers: number };
   supplementalFiles?: File[];
   /** User-requested total report length in words. Server clamps to a safe range. */
   targetWordCount?: number;
@@ -683,10 +684,11 @@ export interface StartResearchPayload {
 }
 
 export const startResearch = (data: StartResearchPayload) => {
-  const { supplementalFiles, supplementalUrls, ...rest } = data;
+  const { supplementalFiles, supplementalUrls, supplementalUrlCrawl, ...rest } = data;
   const hasFiles = supplementalFiles && supplementalFiles.length > 0;
+  const hasSupplementalUrls = supplementalUrls && supplementalUrls.length > 0;
 
-  if (hasFiles || (supplementalUrls && supplementalUrls.length > 0)) {
+  if (hasFiles || hasSupplementalUrls || supplementalUrlCrawl) {
     const form = new FormData();
     form.append('query', rest.query);
     if (rest.supplemental) form.append('supplemental', rest.supplemental);
@@ -705,8 +707,11 @@ export const startResearch = (data: StartResearchPayload) => {
     if (rest.savedOrchestrationProfileId) {
       form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
     }
-    if (supplementalUrls?.length) {
+    if (hasSupplementalUrls) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
+    }
+    if (supplementalUrlCrawl) {
+      form.append('supplementalUrlCrawl', JSON.stringify(supplementalUrlCrawl));
     }
     for (const f of supplementalFiles ?? []) {
       form.append('files', f);
@@ -729,7 +734,8 @@ export const startResearch = (data: StartResearchPayload) => {
       supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
     }>('/research', {
       ...rest,
-      supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
+      supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
+      supplementalUrlCrawl,
     })
     .then((r) => r.data);
 };
@@ -738,10 +744,11 @@ export const fetchSpinoffPrefill = (reportId: string) =>
   api.get<SpinoffPrefill>(`/reports/${reportId}/spinoff/prefill`).then((r) => r.data);
 
 export const startResearchSpinoff = (fromReportId: string, data: StartResearchPayload) => {
-  const { supplementalFiles, supplementalUrls, ...rest } = data;
+  const { supplementalFiles, supplementalUrls, supplementalUrlCrawl, ...rest } = data;
   const hasFiles = supplementalFiles && supplementalFiles.length > 0;
+  const hasSupplementalUrls = supplementalUrls && supplementalUrls.length > 0;
 
-  if (hasFiles || (supplementalUrls && supplementalUrls.length > 0)) {
+  if (hasFiles || hasSupplementalUrls || supplementalUrlCrawl) {
     const form = new FormData();
     form.append('fromReportId', fromReportId);
     form.append('query', rest.query);
@@ -761,8 +768,11 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     if (rest.savedOrchestrationProfileId) {
       form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
     }
-    if (supplementalUrls?.length) {
+    if (hasSupplementalUrls) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
+    }
+    if (supplementalUrlCrawl) {
+      form.append('supplementalUrlCrawl', JSON.stringify(supplementalUrlCrawl));
     }
     for (const f of supplementalFiles ?? []) {
       form.append('files', f);
@@ -786,7 +796,8 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     }>('/research/spinoff', {
       fromReportId,
       ...rest,
-      supplementalUrls: supplementalUrls?.length ? supplementalUrls : undefined,
+      supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
+      supplementalUrlCrawl,
     })
     .then((r) => r.data);
 };

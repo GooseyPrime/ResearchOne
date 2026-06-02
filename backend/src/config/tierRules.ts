@@ -31,6 +31,7 @@ export interface TierRule {
   livingReportsIncluded: boolean;
   adversarialTwinIncluded: boolean;
   provenanceLedgerIncluded: boolean;
+  /** Paid private corpus workspace (/app/ingest) separate from the shared ResearchOne corpus. */
   corpusAccess: boolean;
   atlasAccess: boolean;
   knowledgeGraphAccess: boolean;
@@ -252,4 +253,9 @@ export function tierNameFromUnknown(raw: string | null | undefined, fallback: Ti
 
 export function maxTierByEntitlementRank(a: TierName, b: TierName): TierName {
   return TIER_ENTITLEMENT_RANK[a] >= TIER_ENTITLEMENT_RANK[b] ? a : b;
+}
+
+/** Whether the tier includes a tenant-scoped private corpus (Ingest workspace). */
+export function tierHasCorpusAccess(tier: TierName): boolean {
+  return TIER_RULES[tier]?.corpusAccess ?? false;
 }

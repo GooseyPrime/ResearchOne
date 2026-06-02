@@ -23,17 +23,17 @@ export default function IngestionConsentToggle() {
   });
 
   const isLoading = consentQuery.isLoading;
-  const consent = consentQuery.data?.consent ?? true;
+  const consent = consentQuery.data?.consent ?? false;
 
   return (
     <div className="rounded-lg border border-white/10 bg-slate-900/50 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-slate-200">Research Contribution</h3>
+          <h3 className="text-sm font-medium text-slate-200">ResearchOne shared corpus</h3>
           <p className="mt-1 text-xs text-slate-400">
-            Allow anonymized, sanitized research artifacts to contribute to the broader research
-            knowledge base. Your data is stripped of all personally identifying information before
-            any sharing occurs. You can opt out at any time.
+            When enabled, eligible sanitized excerpts from your research may be added to the shared
+            ResearchOne corpus (Pipeline B). Turning this off stops new contributions; material already
+            added cannot be removed. This is separate from your private Ingest workspace on paid plans.
           </p>
         </div>
         <button

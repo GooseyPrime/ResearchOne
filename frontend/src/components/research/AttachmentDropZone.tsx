@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { Paperclip, Upload, Trash2, X, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import SiteCrawlControls from './SiteCrawlControls';
 
 /**
  * Shared drag/drop attachment picker used on:
@@ -68,6 +69,10 @@ export interface AttachmentDropZoneProps {
   mode?: AttachmentDropZoneMode;
   /** Maximum files allowed. Defaults to 25 (matches backend multer limit). */
   maxFiles?: number;
+  /** When set, show site-crawl controls for supplemental URLs (research / spinoff). */
+  siteCrawlEnabled?: boolean;
+  crawlLayers?: number;
+  onSiteCrawlChange?: (next: { enabled: boolean; crawlLayers: number }) => void;
 }
 
 export default function AttachmentDropZone({
@@ -79,6 +84,9 @@ export default function AttachmentDropZone({
   description,
   mode = 'research',
   maxFiles = MAX_FILES,
+  siteCrawlEnabled = false,
+  crawlLayers = 2,
+  onSiteCrawlChange,
 }: AttachmentDropZoneProps) {
   const resolvedDescription = description ?? DESCRIPTION_BY_MODE[mode];
   const inputId = useId();
@@ -243,6 +251,16 @@ export default function AttachmentDropZone({
         </button>
       </div>
       {resolvedDescription && <p className="text-xs text-slate-500 -mt-1">{resolvedDescription}</p>}
+
+      {onSiteCrawlChange && urls.length > 0 && (
+        <SiteCrawlControls
+          enabled={siteCrawlEnabled}
+          crawlLayers={crawlLayers}
+          disabled={disabled}
+          onEnabledChange={(enabled) => onSiteCrawlChange({ enabled, crawlLayers })}
+          onLayersChange={(layers) => onSiteCrawlChange({ enabled: siteCrawlEnabled, crawlLayers: layers })}
+        />
+      )}
 
       {/* Errors */}
       {errors.length > 0 && (

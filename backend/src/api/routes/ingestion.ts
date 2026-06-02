@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
+import { requirePrivateCorpus } from '../../middleware/tierEnforcement';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { query, queryOne } from '../../db/pool';
@@ -46,7 +47,7 @@ const upload = multer({
 });
 
 // POST /api/ingestion/url - Ingest a URL
-router.post('/url', async (req, res, next) => {
+router.post('/url', requirePrivateCorpus(), async (req, res, next) => {
   try {
     const { url, tags, metadata, siteCrawl, crawlLayers } = req.body as {
       url: string;
@@ -129,7 +130,7 @@ router.post('/url', async (req, res, next) => {
 });
 
 // POST /api/ingestion/text - Ingest raw text
-router.post('/text', async (req, res, next) => {
+router.post('/text', requirePrivateCorpus(), async (req, res, next) => {
   try {
     const { text, title, tags, metadata } = req.body as {
       text: string;
@@ -177,7 +178,7 @@ router.post('/text', async (req, res, next) => {
 });
 
 // POST /api/ingestion/file - Ingest a file (PDF, markdown, txt)
-router.post('/file', upload.single('file'), async (req, res, next) => {
+router.post('/file', requirePrivateCorpus(), upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: 'file is required' });
@@ -329,9 +330,9 @@ router.get('/consent', async (req, res, next) => {
         'SELECT pipeline_b_consent FROM user_ingestion_consent WHERE user_id = $1',
         [userId]
       );
-      res.json({ consent: row?.pipeline_b_consent ?? true });
+      res.json({ consent: row?.pipeline_b_consent ?? false });
     } catch (err: unknown) {
-      if ((err as { code?: string })?.code === '42P01') { res.json({ consent: true }); return; }
+      if ((err as { code?: string })?.code === '42P01') { res.json({ consent: false }); return; }
       throw err;
     }
   } catch (err) { next(err); }

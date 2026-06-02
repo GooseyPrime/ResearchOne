@@ -104,6 +104,12 @@ ship on `main`.
 `.github/workflows/ci-guards.yml` (PRs / all branches) and again in
 `deploy-backend-emma.yml` before production SSH deploy to `main`.
 
+## Recurring review themes (private corpus / ResearchOne consent / supplemental site crawl)
+
+- **`corpusAccess` ≠ Pro nav:** `/app/ingest` and ingestion POST routes use `tierHasCorpusAccess` / `requirePrivateCorpus` (pro, team, byok, sovereign, admin). Atlas/corpus browse may still use broader `hasProAccess`.
+- **ResearchOne shared corpus (Pipeline B):** opt-in only — no `user_ingestion_consent` row ⇒ `false` on GET and `user_opted_out` in eligibility; toggling off stops new contributions; past data is not deleted.
+- **Supplemental site crawl:** `supplementalUrlCrawl` on standard/deep research and spinoff (`AttachmentDropZone` + `SiteCrawlControls`); not gated by private corpus (run-scoped URLs). Ingest workspace crawl remains on `/app/ingest` for private-corpus tiers.
+
 ## Recurring review themes (revision / spinoff / dossier timeline — Rule 35)
 
 - **`cursor/revision-spinoff-dossier-timeline-fa53`:** frontend-only draft; do not merge until Gate 2 spinoff API exists on `main`.

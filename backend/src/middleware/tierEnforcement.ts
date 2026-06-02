@@ -6,6 +6,7 @@ import { getUserTier } from '../services/tier/tierService';
 import { logger } from '../utils/logger';
 import { getUserSubscription } from '../services/billing/subscriptionService';
 import { resolveEffectiveEntitlementTier } from '../services/billing/entitlementTier';
+import { tierHasCorpusAccess, tierNameFromUnknown } from '../config/tierRules';
 
 interface TierCheckOptions {
   objective?: string | null;
@@ -71,6 +72,48 @@ export function requireTier(
       next();
     } catch (err) {
       logger.error('tier_enforcement_error', { error: err instanceof Error ? err.message : 'Unknown' });
+      next(err);
+    }
+  };
+}
+
+/**
+ * Requires a paid tier with `corpusAccess` (private Ingest workspace).
+ * Research supplemental URL ingest is intentionally not gated here.
+ */
+export function requirePrivateCorpus(): (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => Promise<void> {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.auth?.userId;
+      if (!userId) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const [userTier, subscription] = await Promise.all([getUserTier(userId), getUserSubscription(userId)]);
+      const entitlementTier = tierNameFromUnknown(
+        resolveEffectiveEntitlementTier(subscription, userTier.tier),
+        'free_demo'
+      );
+
+      if (!tierHasCorpusAccess(entitlementTier)) {
+        res.status(403).json({
+          error:
+            'Private corpus ingest requires a Pro, Team, BYOK, or Sovereign subscription. Upgrade to maintain a separate corpus from the shared ResearchOne library.',
+          upgrade_path: '/pricing',
+        });
+        return;
+      }
+
+      next();
+    } catch (err) {
+      logger.error('private_corpus_enforcement_error', {
+        error: err instanceof Error ? err.message : 'Unknown',
+      });
       next(err);
     }
   };

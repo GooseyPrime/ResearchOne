@@ -1,6 +1,7 @@
 import { UserProfile } from '@clerk/react';
 import PlanConfirmationSettingsCard from '../components/account/PlanConfirmationSettingsCard';
 import SavedOrchestrationProfilesCard from '../components/account/SavedOrchestrationProfilesCard';
+import IngestionConsentToggle from '../components/account/IngestionConsentToggle';
 import { useBillingSubscriptionQuery, effectiveEntitlementTier } from '../hooks/useBillingSubscription';
 
 export default function AccountPage() {
@@ -16,6 +17,7 @@ export default function AccountPage() {
           <UserProfile path="/account" routing="path" />
         </div>
         <div className="w-full lg:max-w-md flex flex-col gap-6 shrink-0">
+          <IngestionConsentToggle />
           <PlanConfirmationSettingsCard />
           <SavedOrchestrationProfilesCard tierAllowsProfiles={tierAllowsSavedProfiles} />
         </div>

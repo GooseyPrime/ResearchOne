@@ -40,6 +40,7 @@ import { isLiveAttachedResearchRun, researchRequestFromRun } from '../utils/rese
 import { useResearchPageShell } from './ResearchPageContext';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
+import SiteCrawlControls from '../components/research/SiteCrawlControls';
 import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -119,6 +120,8 @@ export default function ResearchStandardPage() {
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
   const [supplementalUrlsText, setSupplementalUrlsText] = useState('');
+  const [supplementalSiteCrawlEnabled, setSupplementalSiteCrawlEnabled] = useState(false);
+  const [supplementalCrawlLayers, setSupplementalCrawlLayers] = useState(2);
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [showSupplemental, setShowSupplemental] = useState(false);
   const [filterTags, setFilterTags] = useState('');
@@ -173,6 +176,8 @@ export default function ResearchStandardPage() {
       .filter((a) => a.kind === 'url' && a.url)
       .map((a) => a.url as string);
     setSupplementalUrlsText(urlLines.length > 0 ? urlLines.join('\n') : '');
+    setSupplementalSiteCrawlEnabled(false);
+    setSupplementalCrawlLayers(2);
     setSupplementalFiles([]);
     setShowSupplemental(Boolean(slice.supplemental.trim()) || urlLines.length > 0);
   }, []);
@@ -568,6 +573,10 @@ export default function ResearchStandardPage() {
       filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
       modelOverrides: Object.keys(runtimeOverridesPayload).length > 0 ? runtimeOverridesPayload : undefined,
       supplementalUrls: urlList.length > 0 ? urlList : undefined,
+      supplementalUrlCrawl:
+        urlList.length > 0 && supplementalSiteCrawlEnabled
+          ? { siteCrawl: true, crawlLayers: supplementalCrawlLayers }
+          : undefined,
       supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
     });
   };
@@ -638,6 +647,18 @@ export default function ResearchStandardPage() {
                 <p className="text-xs text-slate-500 mt-1">
                   Each URL is fetched and added to the ResearchOne corpus, then used for this run.
                 </p>
+                {supplementalUrlsText
+                  .split(/[\n,]+/)
+                  .map((u) => u.trim())
+                  .filter(Boolean).length > 0 && (
+                  <SiteCrawlControls
+                    enabled={supplementalSiteCrawlEnabled}
+                    crawlLayers={supplementalCrawlLayers}
+                    disabled={mutation.isPending || formLocked}
+                    onEnabledChange={setSupplementalSiteCrawlEnabled}
+                    onLayersChange={setSupplementalCrawlLayers}
+                  />
+                )}
               </div>
               <div>
                 <label className="section-title block mb-2">Supplemental files</label>
