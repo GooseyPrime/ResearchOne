@@ -17,7 +17,10 @@ function resumeJob(
   };
 }
 
-/** BullMQ-safe id is checked first; ignore pre–PR #160 legacy colon lookups in unit mocks. */
+/**
+ * Default mock: legacy colon id lookups return undefined unless a test supplies
+ * an explicit `getJob` impl (production always calls `getJob(legacyResearchResumeJobId(...))` first).
+ */
 function getJobNoLegacy(
   impl: (jobId: string) => Promise<ResumeAfterPlanJobLike | undefined> | ResumeAfterPlanJobLike | undefined
 ) {
@@ -35,7 +38,7 @@ describe('enqueueResearchResumeAfterPlan', () => {
 
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-0', 'plan-first');
 
-    expect(getJob).toHaveBeenCalledTimes(3);
+    expect(getJob).toHaveBeenCalledTimes(4);
     expect(add).toHaveBeenCalledTimes(1);
     expect(add).toHaveBeenCalledWith(
       'research:resume_after_plan',
@@ -139,7 +142,7 @@ describe('enqueueResearchResumeAfterPlan', () => {
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-4', 'plan-d');
 
     expect(add).toHaveBeenCalled();
-    expect(getJob).toHaveBeenCalledTimes(3);
+    expect(getJob).toHaveBeenCalledTimes(4);
   });
 
   it('accepts add race when existing active job has matching plan id', async () => {
@@ -162,7 +165,7 @@ describe('enqueueResearchResumeAfterPlan', () => {
     await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-5', 'plan-e');
 
     expect(add).toHaveBeenCalledTimes(1);
-    expect(getJob).toHaveBeenCalledTimes(3);
+    expect(getJob).toHaveBeenCalledTimes(4);
   });
 
   it('fails final validation when job is missing after add and add returned nothing', async () => {
@@ -244,13 +247,15 @@ describe('enqueueResearchResumeAfterPlan', () => {
   it('removes legacy colon dedupe job id before enqueue', async () => {
     const calls: string[] = [];
     const legacy = resumeJob('run-10', 'plan-old', 'failed');
+    let legacyPresent = true;
     legacy.remove = vi.fn(async () => {
       calls.push('remove-legacy');
+      legacyPresent = false;
     });
     const fresh = resumeJob('run-10', 'plan-new', 'waiting');
     const getJob = vi.fn(async (id: string) => {
       calls.push(`getJob:${id}`);
-      if (id === 'run-10:resume_after_plan') return legacy;
+      if (id === 'run-10:resume_after_plan') return legacyPresent ? legacy : undefined;
       if (id === 'run-10__resume_after_plan') return undefined;
       return undefined;
     });
@@ -266,5 +271,41 @@ describe('enqueueResearchResumeAfterPlan', () => {
     expect(calls).toContain('getJob:run-10__resume_after_plan');
     expect(calls).toContain('add');
     expect(legacy.remove).toHaveBeenCalled();
+  });
+
+  it('treats a matching legacy colon job as idempotent success', async () => {
+    const legacy = resumeJob('run-11', 'plan-same', 'active');
+    const getJob = vi.fn(async (id: string) => {
+      if (id === 'run-11:resume_after_plan') return legacy;
+      return undefined;
+    });
+    const add = vi.fn(async () => {
+      throw new Error('should not enqueue');
+    });
+
+    await enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-11', 'plan-same');
+
+    expect(legacy.remove).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it('fails fast when legacy colon job is locked with stale plan id', async () => {
+    const legacy = resumeJob('run-12', 'plan-old', 'active');
+    legacy.remove = vi.fn(async () => {
+      throw new Error('locked');
+    });
+    const getJob = vi.fn(async (id: string) => {
+      if (id === 'run-12:resume_after_plan') return legacy;
+      return undefined;
+    });
+    const add = vi.fn(async () => {
+      throw new Error('should not enqueue');
+    });
+
+    await expect(
+      enqueueResearchResumeAfterPlan({ getJob, add } as ResumeQueueLike, 'run-12', 'plan-new')
+    ).rejects.toThrow('resume_after_plan_legacy_job_locked');
+
+    expect(add).not.toHaveBeenCalled();
   });
 });
