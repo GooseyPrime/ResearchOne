@@ -65,7 +65,7 @@ export const pipelineStages: PipelineStage[] = [
   {
     id: 'retriever',
     name: 'Retriever & Assessor',
-    description: 'Executes hybrid retrieval with funding and bias checks on sources',
+    description: 'Finds and ranks relevant sources with funding and bias checks',
   },
   {
     id: 'quantitative',
@@ -75,18 +75,18 @@ export const pipelineStages: PipelineStage[] = [
   {
     id: 'reasoner',
     name: 'Reasoner',
-    description: 'Synthesizes findings into structured claims with citations',
+    description: 'Structures findings into claims with citation chains',
   },
   {
     id: 'skeptic',
     name: 'Skeptic',
-    description: 'Adversarial review with custom red-team personas that attack conclusions',
+    description: 'Dedicated skeptic check with optional critique personas that stress-test conclusions',
     isSkeptic: true,
   },
   {
     id: 'synthesizer',
-    name: 'Synthesizer',
-    description: 'Integrates findings while preserving contradictions',
+    name: 'Drafting',
+    description: 'Integrates findings into the report while preserving contradictions',
   },
   {
     id: 'verifier',
@@ -109,14 +109,14 @@ export const protocolLabels = [
   'QUANTITATIVE EXTRACTOR',
   'REASONER',
   'SKEPTIC',
-  'SYNTHESIZER',
+  'DRAFTING',
   'VERIFIER',
   'FORMATTER',
 ];
 
 export const operationalPhrases = [
   'FUNDING BIAS CHECK ACTIVE',
-  'RED-TEAM PERSONA INJECTED',
+  'SKEPTIC PERSONA INJECTED',
   'CONTRADICTION PRESERVED',
   'SKEPTIC PASS COMPLETE',
   'REVISION LINEAGE ENABLED',
@@ -132,7 +132,7 @@ export const capabilities: Capability[] = [
   {
     id: 'orchestration',
     title: 'Multi-Agent Research Orchestration',
-    description: 'Coordinated research pipeline with specialized agents for planning, retrieval, reasoning, and verification.',
+    description: 'Coordinated research pipeline with specialized agents for planning, source discovery, reasoning, and verification.',
     icon: 'Network',
   },
   {
@@ -149,8 +149,8 @@ export const capabilities: Capability[] = [
   },
   {
     id: 'red-team',
-    title: 'Custom Red-Team Personas',
-    description: 'Assign specialized adversarial personas to the Skeptic pass—FDA compliance officer, hostile peer reviewer, or defense attorney.',
+    title: 'Custom Skeptic Personas',
+    description: 'Assign specialized critique personas to the Skeptic step—FDA compliance officer, hostile peer reviewer, or defense attorney.',
     icon: 'UserX',
   },
   {
@@ -221,27 +221,27 @@ export const featureBlocks: FeatureBlock[] = [
   {
     number: '05',
     title: 'Reasoning & Correlation',
-    subtitle: 'CLAIM_SYNTHESIS · LINK_CHAIN',
-    description: 'Findings are synthesized into structured claims with citation chains and correlation mapping.',
+    subtitle: 'CLAIM_DRAFT · LINK_CHAIN',
+    description: 'Findings are structured into claims with citation chains and correlation mapping.',
   },
   {
     number: '06',
-    title: 'Adversarial Skeptic Attack',
-    subtitle: 'RED_TEAM · WEAKNESS_SCAN',
-    description: 'Custom red-team personas attack every conclusion, exposing logical gaps and weaknesses before publication.',
+    title: 'Dedicated Skeptic Check',
+    subtitle: 'SKEPTIC · WEAKNESS_SCAN',
+    description: 'Optional critique personas stress-test every conclusion, exposing logical gaps and unsupported claims before publication.',
     isSkeptic: true,
   },
   {
     number: '07',
     title: 'Contradiction Preservation',
-    subtitle: 'CONFLICT_TRACK · NO_SUPPRESS',
+    subtitle: 'CONFLICT_TRACK · PRESERVE',
     description: 'Contradictory findings are tracked and preserved. Conflicting claims are surfaced, not silently resolved.',
   },
   {
     number: '08',
-    title: 'Synthesis & Integrity Verification',
+    title: 'Reporting & Integrity Verification',
     subtitle: 'INTEGRATE · VALIDATE',
-    description: 'Final synthesis integrates findings while verification confirms citation integrity and source validity.',
+    description: 'Final report integrates findings while verification confirms citation integrity and source validity.',
   },
   {
     number: '09',
@@ -298,8 +298,8 @@ export const researchModes: { id: ResearchMode; label: string; description: stri
   },
   {
     id: 'adversarial',
-    label: 'Adversarial',
-    description: 'Enhanced skeptic pass with aggressive weakness detection',
+    label: 'Enhanced skeptic',
+    description: 'Heavier skeptic check with more thorough weakness detection',
   },
   {
     id: 'comprehensive',
@@ -399,7 +399,7 @@ Significant contradictions exist in stakeholder assessments of enforcement effec
     'Cross-jurisdictional comparison complicated by definitional differences in "AI system"',
   ],
   revisionHistory: [
-    { version: 1, timestamp: '2024-01-15T10:30:00Z', changes: 'Initial draft generated', agent: 'Synthesizer' },
+    { version: 1, timestamp: '2024-01-15T10:30:00Z', changes: 'Initial draft generated', agent: 'Drafting' },
     { version: 2, timestamp: '2024-01-15T11:45:00Z', changes: 'Skeptic pass completed - 3 weaknesses flagged', agent: 'Skeptic' },
     { version: 3, timestamp: '2024-01-15T13:00:00Z', changes: 'Citations verified, 2 sources upgraded', agent: 'Verifier' },
     { version: 4, timestamp: '2024-01-15T14:22:00Z', changes: 'Final review and publication', agent: 'Report' },

@@ -55,12 +55,12 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
 
   // ──────────────────────────────────────────────────────────────
   // OSINT / Investigative journalism.
-  // Anti-fluff, technical, emphasizes adversarial twin and FOIA/
-  // Wayback retrieval per the strategic doc.
+  // Anti-fluff, technical, emphasizes Devil's Advocate Review and FOIA/
+  // Wayback source discovery per the strategic doc.
   // ──────────────────────────────────────────────────────────────
   osint: {
     eyebrow: 'For investigative work',
-    headline: 'Adversarial reasoning for stories that don\u2019t survive consensus.',
+    headline: 'Skeptic reasoning for stories that don\u2019t survive consensus.',
     subhead:
       'A dedicated Skeptic agent. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',
@@ -68,22 +68,22 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       { label: 'See the Investigative mode', to: '/sample-report?topic=investigative', variant: 'primary' },
       { label: 'Pricing',                    to: '/pricing',                          variant: 'secondary' },
     ],
-    proofLine: 'PolicyOne epistemic doctrine \u00B7 Open-weight reasoning \u00B7 No corporate alignment filters on the critical path.',
+    proofLine: 'Research policy \u00B7 Open-weight reasoning \u00B7 No corporate alignment filters on the critical path.',
   },
 
   // ──────────────────────────────────────────────────────────────
   // UAP / paranormal disclosure community.
-  // Emphasizes anomaly preservation and absence of institutional
+  // Emphasizes weak-signal preservation and absence of institutional
   // gatekeeping per the strategic doc.
   // ──────────────────────────────────────────────────────────────
   uap: {
     eyebrow: 'For non-consensus research',
-    headline: 'A research engine that doesn\u2019t suppress the anomaly.',
+    headline: 'A research engine that keeps weak signals on the record.',
     subhead:
       'Built on open-weight models with no alignment filter overriding what the sources actually say. ' +
-      'Anomaly Correlation mode: map weak signals, preserve contradictions, surface what the official story omits.',
+      'Convergence Analysis mode: map weak signals, preserve contradictions, surface what the official story omits.',
     ctas: [
-      { label: 'See an Anomaly Correlation report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
+      { label: 'See a Convergence Analysis report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
       { label: 'How it works',                       to: '/methodology',                            variant: 'secondary' },
     ],
     proofLine: 'Skeptic agent on every claim \u00B7 Five source-corroboration tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
@@ -96,7 +96,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   // ──────────────────────────────────────────────────────────────
   academic: {
     eyebrow: 'For literature work that has to hold up',
-    headline: 'Citation-grade synthesis without the hallucinated bibliography.',
+    headline: 'Citation-grade reports without the hallucinated bibliography.',
     subhead:
       'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every claim ' +
       'to a source card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',

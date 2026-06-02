@@ -8,7 +8,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'What does the Skeptic agent actually do?',
     answer:
-      'The Skeptic is a dedicated adversarial pass: it attacks draft claims, surfaces counter-sources, and preserves contradictions as named outputs rather than smoothing them away.',
+      'The Skeptic is a dedicated check that argues against the draft: it surfaces counter-sources, stress-tests claims, and preserves contradictions as named outputs rather than smoothing them away.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -47,12 +47,12 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'What does the Skeptic agent actually do?',
     answer:
-      'It receives the draft synthesis and attacks it: searches for counter-sources, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
+      'It receives the draft report and argues against it: searches for counter-sources, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
     answer:
-      'Both survive into the report with tier tags and a named contradiction block — no silent consensus synthesis.',
+      'Both survive into the report with tier tags and a named contradiction block — no silent consensus rewrite.',
   },
   {
     question: 'Can ResearchOne forge or hallucinate a citation?',
