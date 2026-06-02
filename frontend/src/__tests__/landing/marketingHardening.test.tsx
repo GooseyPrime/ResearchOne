@@ -122,7 +122,7 @@ describe('marketing hardening — structural copy present', () => {
   it('MethodologyPage contains pipeline methodology copy', () => {
     const html = renderInRouter(<MethodologyPage />);
     expect(html).toContain('How ResearchOne works');
-    expect(html).toContain('ADVERSARIAL_REVIEW');
+    expect(html).toContain('SKEPTIC_CHECK');
   });
 });
 
