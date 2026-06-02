@@ -1,5 +1,6 @@
 # Lightweight repo-wide checks that do not require npm install.
-# Keeps Vitest/Jest mock APIs out of application source trees that ship to production.
+# - Vitest/Jest mock APIs must not ship in application src
+# - Direct pushes to main must look like merged PRs or carry [direct-main]
 
 name: CI – repository guards
 
@@ -10,13 +11,19 @@ on:
       - 'backend/src/**'
       - 'frontend/src/**'
       - 'scripts/ci/**'
+      - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
+      - '.cursor/rules/**'
+      - 'AGENTS.md'
   pull_request:
     paths:
       - 'backend/src/**'
       - 'frontend/src/**'
       - 'scripts/ci/**'
+      - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
+      - '.cursor/rules/**'
+      - 'AGENTS.md'
 
 jobs:
   no-mocks-in-app-src:
@@ -28,3 +35,27 @@ jobs:
 
       - name: Assert no test mock APIs in backend/src or frontend/src
         run: bash "${{ github.workspace }}/scripts/ci/assert-no-test-mocks-in-app-src.sh"
+
+  main-push-gate:
+    name: Block unauthorized direct pushes to main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Assert main tip is merged PR or explicitly authorized
+        run: bash "${{ github.workspace }}/scripts/ci/assert-main-push-authorized.sh"
+
+  pr-branch-not-default:
+    name: PR workflow uses non-default branch
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout head ref
+        uses: actions/checkout@v4
+
+      - name: Refuse PRs whose head branch is main/master
+        run: bash "${{ github.workspace }}/scripts/git/assert-not-on-main-branch.sh"
