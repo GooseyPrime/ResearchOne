@@ -18,6 +18,52 @@ or update a **PR** into `main` (draft is acceptable). Silence or omission is
 **PR branch** and open a PR — **never** interpret it as permission to push
 `origin/main`.
 
+## Speed — nothing held back from `main`
+
+This workflow must **not** add latency versus direct commits to `main`:
+
+- **Integration path is unchanged:** code reaches `main` when the **PR is
+  merged** (squash, merge commit, or rebase merge). That is production
+  delivery — not a separate approval step before work starts.
+- **Guards target mistakes, not merges:** `main-push-gate` runs only on
+  **pushes to `main`**. It **allows** normal GitHub PR merges (`(#<number>)` or
+  merge commits). Feature-branch pushes and PR CI are unaffected.
+- **Do not ask permission to start** normal scoped work. Branch creation +
+  PR is mechanical (~seconds); proceed immediately unless an exception below
+  applies.
+- **Do not leave work “almost on main”:** when implementation is done, the
+  agent must state **PR URL**, **merge readiness** (CI green / known gaps),
+  and that **merging the PR ships to `main`** (and triggers deploy paths that
+  watch `main`). Never end with only a branch push and no PR.
+
+## Communication — when the user must be involved
+
+Use a **short, explicit** message only in these cases (not for routine work):
+
+| Situation | Agent action |
+|-----------|----------------|
+| Normal scoped work | No pre-approval. Branch → implement → push → **open/update PR** → tell user **“Merge PR #N to ship to `main`.”** |
+| Work finished, PR open | Same: PR link + merge instruction. Do **not** ask “may I start?” |
+| User authorized direct `main` in **this** message | Commit on `main` with `[direct-main]`; say what landed and that deploy may follow. |
+| **Emergency / prod down / security hotfix** and user did **not** authorize direct `main` | **Stop before pushing `main`.** Send the **escalation block** below; offer **merge existing PR** if one exists, else **direct-main** only after user replies in-thread. |
+| Cannot open PR (tooling / permissions) | Push branch; give **exact** `gh pr create` (or GitHub UI) steps + branch name. Label **BLOCKED: needs you to open PR** so nothing is assumed merged. |
+| `main-push-gate` or branch protection failed on `main` | Report failing commit SHA + check name; say whether **merging the PR** fixes it vs user must **`[direct-main]`** / bypass. |
+
+### Escalation block (copy when user input is required)
+
+```
+INTEGRATION — needs your call (<one-line reason, e.g. prod incident>)
+
+• Intended fix: <summary>
+• Branch / PR: <branch> | PR #<n> <url> — OR — no PR yet
+• Fastest path to main: (A) Merge PR #n  (B) You reply “push to main” and I use [direct-main]
+• Risk if we wait: <one line>
+• What I need from you: reply A or B (or “push to main” for B)
+```
+
+Do **not** use vague “let me know if you want a PR.” Either merge is ready, or the
+block above applies.
+
 ## Mandatory first action (before any file edit)
 
 1. `git fetch origin`

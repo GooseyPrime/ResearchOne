@@ -13,9 +13,20 @@ to `main` / skip a PR, you must:
    instructions to “commit and push when done” mean the **PR branch**, not
    `main`.
 
+**This does not slow delivery to `main`.** Merging the PR **is** how work lands
+on `main` (and deploy). When done, always say: **PR link + “Merge PR #N to ship.”**
+Do **not** ask permission before starting routine work.
+
+**When you must involve the user (clear, short):** emergencies without
+same-message direct-main authorization; cannot open a PR; or `main` / protection
+CI blocked. Use the escalation block in
+[`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc)
+— offer **(A) merge PR** or **(B) user replies “push to main”** with `[direct-main]`.
+Never leave work on a branch with no PR and no merge instruction.
+
 Enforcement: `scripts/git/assert-not-on-main-branch.sh`, CI job
-`main-push-gate` in `.github/workflows/ci-guards.yml`, and (recommended)
-GitHub branch protection per
+`main-push-gate` in `.github/workflows/ci-guards.yml` (allows normal PR merges;
+blocks mistaken direct pushes), and (recommended) branch protection per
 [`docs/RUNBOOKS/github-branch-protection.md`](docs/RUNBOOKS/github-branch-protection.md).
 
 Authorized rare direct-main: user says so in the same request; commits on
