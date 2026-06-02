@@ -12,6 +12,8 @@
 #   DEPLOY_SOURCE             (e.g. github-actions — recorded in build-meta.json)
 #   SKIP_PREFLIGHT            (set to 1 to skip preflight-runtime.sh)
 #   DATABASE_ADMIN_URL_B64    (optional; base64 of DATABASE_ADMIN_URL — decoded at start; never logged)
+#   REASSIGN_LEGACY_RESEARCH_OWNER (optional; set to 1 for one-shot mass-assign — see assignLegacyResearchOwnership.ts)
+#   LEGACY_OWNER_USER_ID / LEGACY_OWNER_EMAIL (optional; Clerk user id or users.email lookup)
 
 set -euo pipefail
 
@@ -111,6 +113,26 @@ else
 fi
 unset _RO_DATABASE_ADMIN_URL_FROM_B64
 unset DATABASE_ADMIN_URL || true
+
+echo "[deploy] backfill user scopes (idempotent)"
+(
+  cd "${DEPLOY_ROOT}/backend"
+  npx tsx src/scripts/backfillUserScopes.ts
+)
+
+if [[ "${REASSIGN_LEGACY_RESEARCH_OWNER:-}" == "1" ]]; then
+  echo "[deploy] one-shot legacy research ownership reassignment (REASSIGN_LEGACY_RESEARCH_OWNER=1)"
+  (
+    cd "${DEPLOY_ROOT}/backend"
+    export REASSIGN_LEGACY_RESEARCH_OWNER=1
+    export LEGACY_OWNER_USER_ID="${LEGACY_OWNER_USER_ID:-}"
+    export LEGACY_OWNER_EMAIL="${LEGACY_OWNER_EMAIL:-}"
+    export LEGACY_RESEARCH_ASSIGN_SCOPE="${LEGACY_RESEARCH_ASSIGN_SCOPE:-all_existing}"
+    npx tsx src/scripts/assignLegacyResearchOwnership.ts
+  )
+else
+  echo "[deploy] skipping legacy research ownership reassignment (set REASSIGN_LEGACY_RESEARCH_OWNER=1 to run once)"
+fi
 
 echo "[deploy] PM2 reconcile and start/reload"
 PM2_CHECK="$(DEPLOY_ROOT="${DEPLOY_ROOT}" node <<'NODE'

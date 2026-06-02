@@ -41,11 +41,29 @@ curl -sS "$API_BASE/health/ready" | jq '.checks.db'
 
 ### 4. Backfill NULL scopes
 
+Runs automatically on every Emma deploy via `scripts/deploy-runtime.sh` → `backfillUserScopes.ts`.
+
+Manual run:
+
 ```bash
 npx tsx backend/src/scripts/backfillUserScopes.ts
 ```
 
-For remaining `research_runs` with `user_id IS NULL`, assign ownership manually (Clerk user ids) when you can determine the owner. Legacy NULL rows are **not** visible to normal authenticated users after this fix.
+#### One-shot: assign **all existing** research to a single owner (pre–multi-tenant lock-down)
+
+For production before external users, set GitHub Actions **production** secrets (one deploy only):
+
+| Secret | Value |
+|--------|--------|
+| `REASSIGN_LEGACY_RESEARCH_OWNER` | `1` |
+| `LEGACY_OWNER_EMAIL` | `brandon@intellmeai.com` (or `LEGACY_OWNER_USER_ID` = your Clerk `user_…` id) |
+| `LEGACY_RESEARCH_ASSIGN_SCOPE` | `all_existing` (default) |
+
+After a successful deploy, **remove** `REASSIGN_LEGACY_RESEARCH_OWNER` (or set to `0`). The script writes marker `p0_legacy_research_assigned_to_owner_v1` in `app_deploy_markers` so it cannot run again even if the secret is left set.
+
+Requires a row in `users` for the email (sign in once so Clerk sync creates it), unless `LEGACY_OWNER_USER_ID` is set.
+
+For remaining `research_runs` with `user_id IS NULL`, assign ownership manually (Clerk user ids) when you can determine the owner. Legacy NULL rows are **not** visible to normal authenticated users after tenant isolation is enforced.
 
 ### 5. Post-deploy verification
 

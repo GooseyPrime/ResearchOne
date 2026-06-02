@@ -9,6 +9,8 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "bootstrap:application-role": "tsx src/db/bootstrap-application-role.cli.ts",
+    "backfill:user-scopes": "tsx src/scripts/backfillUserScopes.ts",
+    "assign:legacy-research-owner": "tsx src/scripts/assignLegacyResearchOwnership.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
