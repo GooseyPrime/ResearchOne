@@ -1,0 +1,86 @@
+---
+description: Two-audience marketing copy — Tier A plain language vs Tier B technical depth; contracts untouched.
+alwaysApply: true
+---
+
+# Rule 36 — Two-audience copy tiers
+
+## Why this rule exists
+
+Marketing and in-app labels were dense with AI jargon ("adversarial synthesis",
+"epistemic research", "retrieval mode") while enum keys and backend contracts must
+stay stable. Wave terminology normalization splits **plain Tier A** surfaces from
+**technical Tier B** depth pages without renaming API fields.
+
+## R-A — Two audiences
+
+1. **Tier A (plain):** Hero, pricing, mode toggles, persona headlines, billing
+   banners, comparison tables, FAQ data sources, and shared constants imported
+   by those surfaces. Use everyday language; link "learn more" to `/methodology`
+   or `/app/guide` for depth.
+2. **Tier B (technical):** `/methodology`, `/app/guide`, `/app/guide/research-v2`.
+   Lead with the shared `howYourReportIsMade.ts` steps, then an **Under the hood**
+   section where internal terms may appear with a first-use plain definition.
+
+## R-B — Copy never touches contracts
+
+Tier A edits are **display strings only**. Do not rename:
+
+- `ResearchObjective` enum values (`GENERAL_EPISTEMIC_RESEARCH`, etc.)
+- Addon ids / `runAddonKey` (`adversarial_twin`, …)
+- Backend overlay keys (`ADVERSARIAL_TWIN`, agent role ids, `engineVersion`)
+- Stripe bootstrap product names (separate change set)
+- Rule 28 tier identifier strings (`strong_evidence`, …)
+
+## R-C — Strings and tests move together
+
+When Tier A copy changes, update assertions in the same commit (`PersonaAwareHero`,
+`ModeMatrix`, `pricingPage`, marketing page tests, etc.). Rule 16 applies: tests
+must fail if the copy reverts. **Do not drop interaction tests** (e.g. tab click →
+`onModeChange`) when refreshing display-string assertions — copy and behavior
+regress independently (PR #165 Copilot).
+
+## R-D — Living banned list + CI grep
+
+Banned Tier A patterns live in `docs/marketing/tier-a-banned-jargon.txt`; scanned
+paths in `docs/marketing/tier-a-manifest.txt`. CI runs
+`scripts/ci/assert-tier-a-no-banned-jargon.sh` in `.github/workflows/ci-guards.yml`.
+
+**CI script constraints (PR #165 review):**
+
+1. Use **grep/find/sed only** — GitHub `ubuntu-latest` does not ship `ripgrep`;
+   mirror `assert-no-test-mocks-in-app-src.sh`.
+2. Parse manifest/pattern files with POSIX whitespace trimming — do not rely on
+   `\s` in `grep` for comment/blank skipping.
+3. **Narrow contract exemptions:** strip `id`/`value`/`runAddonKey` assignments
+   and the `'general-epistemic':` slug key prefix, then re-test the remainder.
+   Never drop an entire matched line because a slug key appears on it.
+4. **Manifest completeness:** include Tier A **child components** rendered by
+   manifest pages (e.g. `LandingPage` → `AnimatedProcessFlow`), not just the
+   page file itself.
+
+**Display label lookups:** use `researchObjectiveLabel(value)` (or equivalent
+value-keyed lookup), not `RESEARCH_OBJECTIVE_OPTIONS[n]` array indices.
+
+Before merge on Tier A edits:
+
+```bash
+bash scripts/ci/assert-tier-a-no-banned-jargon.sh
+```
+
+## R-E — Learn-more links must resolve
+
+Tier A CTAs that promise depth must link to routes that exist:
+
+- Default methodology link: `/methodology`
+- In-app operator guide: `/app/guide`
+- Deep research types: `/app/guide/research-v2`
+
+Grep fragment targets before shipping new anchor links (Rule 15 parity).
+
+## Pre-commit check
+
+- [ ] Tier A edit? Run `assert-tier-a-no-banned-jargon.sh` — zero hits.
+- [ ] Contract grep unchanged (`value:`, `runAddonKey`, enum exports)?
+- [ ] Tests for touched display strings updated in the same commit?
+- [ ] Tier B page adds plain intro + Under the hood when adding new jargon?

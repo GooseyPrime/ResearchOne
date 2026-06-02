@@ -17,6 +17,10 @@ import {
   GitBranch,
   RefreshCw,
 } from 'lucide-react';
+import {
+  HOW_YOUR_REPORT_IS_MADE_HEADING,
+  HOW_YOUR_REPORT_IS_MADE_STEPS,
+} from '@/content/howYourReportIsMade';
 
 type GuideSection = {
   id: string;
@@ -32,12 +36,12 @@ type GuideSection = {
 };
 
 const PIPELINE_STAGES = [
-  { icon: Brain, label: 'Planning', desc: 'Decomposes your query, proposes sub-questions, and may pause for plan confirmation before expensive retrieval.' },
+  { icon: Brain, label: 'Planning', desc: 'Decomposes your query, proposes sub-questions, and may pause for plan confirmation before expensive source reads.' },
   { icon: FileSearch, label: 'Discovery', desc: 'Bounded open-web search finds candidate pages; top hits are ingested into your run corpus (not a full-site crawler).' },
-  { icon: Database, label: 'Retrieval', desc: 'Hybrid vector + full-text search over corpus chunks (your uploads, supplemental URLs, and discovery ingest).' },
-  { icon: Zap, label: 'Reasoning', desc: 'Builds structured argument chains from retrieved sources; tags claims by corroboration tier.' },
-  { icon: Shield, label: 'Challenge', desc: 'Skeptic and adversarial roles pressure-test conclusions (strongest on Deep Adversarial Synthesis).' },
-  { icon: PenLine, label: 'Synthesis', desc: 'Drafts the long-form report and plain-language summary from what the corpus actually supports.' },
+  { icon: Database, label: 'Source read', desc: 'Hybrid vector + full-text search over corpus chunks (your uploads, supplemental URLs, and discovery ingest).' },
+  { icon: Zap, label: 'Reasoning', desc: 'Builds structured argument chains from retrieved sources; tags claims by source-corroboration tier.' },
+  { icon: Shield, label: 'Challenge', desc: 'Skeptic and internal challenger roles pressure-test conclusions (heavier model ensemble on Deep Research).' },
+  { icon: PenLine, label: 'Reporting', desc: 'Drafts the long-form report and plain-language summary from what the corpus actually supports.' },
   { icon: Target, label: 'Verification', desc: 'Checks tier discipline, contradictions, and persistence before the report is saved.' },
 ];
 
@@ -47,9 +51,9 @@ const SECTIONS: GuideSection[] = [
     icon: FlaskConical,
     color: 'text-accent',
     title: 'What is ResearchOne?',
-    content: `ResearchOne is a disciplined anomaly research platform. It is not a chatbot. It is a structured source-gathering and reasoning system designed to investigate where mainstream corpora may be incomplete, filtered, distorted, or consensus-bound.
+    content: `ResearchOne is a disciplined research platform. It is not a chatbot. It is a structured source-gathering and reasoning system designed to investigate where mainstream corpora may be incomplete, filtered, distorted, or consensus-bound.
 
-The system enforces strict epistemic discipline: every claim is tagged with a source-corroboration tier, contradictions are first-class data, and reports are designed to attack their own conclusions before finalizing them.`,
+Every claim is tagged with a source-corroboration tier, contradictions are first-class data, and reports are designed to argue against their own draft before finalizing.`,
   },
   {
     id: 'research-console-methods',
@@ -58,18 +62,18 @@ The system enforces strict epistemic discipline: every claim is tagged with a so
     title: 'Research console — two methods',
     content: `All new investigations start on Research (/app/research). Use the method toggle at the top of the page:
 
-• Standard Retrieval — fast multi-source retrieval and synthesis. Best for general inquiries, historical context, and when you already have a seeded corpus. Does not use the Deep (V2) engine.
+• Standard Research — the Standard (V1) engine for fast multi-source runs. Best for general inquiries and historical context when you already have a seeded corpus. Supports supplemental URLs and file uploads. Plan confirmation applies before source reads on both methods.
 
-• Deep Adversarial Synthesis — full multi-stage pipeline with reasoning models, file uploads, research objective modes, skeptic persona, citation style, and red-team adversarial roles. Available on paid tiers (student, wallet, BYOK, Pro, etc.) — not on free_demo/anonymous unless you upgrade; admins can always access. URL: /app/research?engine=v2 switches the toggle to Deep.
+• Deep Research — the Deep (V2) engine with a reasoning-first model ensemble, all five research types on paid tiers, citation style, optional skeptic persona, and per-role model overrides. Also supports supplemental URLs and file uploads. Same plan confirmation gate and live trace as Standard. Available on paid tiers (student, wallet, BYOK, Pro, etc.) — not on free_demo/anonymous unless you upgrade; admins can always access. URL: /app/research?engine=v2 switches the toggle to Deep.
 
-Both methods share the same live trace, plan review panel when applicable, and ?runId= deep-linking for in-progress runs.`,
+The real difference between methods is engine choice (V1 vs V2 ensemble) and which research types your tier unlocks — not a different pipeline shape. Both run the multi-agent flow with a Skeptic step; Deep uses heavier models on Challenge.`,
   },
   {
     id: 'pipeline-stages',
     icon: Brain,
     color: 'text-research-purple',
     title: 'Pipeline stages (what the trace shows)',
-    content: `The progress trace on Research maps to these stages. Deep runs use the same stage names; Challenge and adversarial roles are heavier on Deep Adversarial Synthesis.`,
+    content: `The progress trace on Research maps to these stages. Deep runs use the same stage names; Challenge runs with a heavier model ensemble on Deep Research.`,
     roles: PIPELINE_STAGES,
   },
   {
@@ -104,11 +108,11 @@ If you leave the page, use the plan review banner or return via ?runId= to finis
     id: 'deep-options',
     icon: FlaskConical,
     color: 'text-research-purple',
-    title: 'Deep Adversarial Synthesis — options beyond Standard',
-    content: `On Deep Adversarial Synthesis, additional controls shape orchestration and report structure. Full definitions for each research objective are on the companion page.`,
+    title: 'Deep Research — options beyond Standard',
+    content: `On Deep Research, additional controls shape orchestration and report structure. Full definitions for each research type are on the companion page.`,
     footerLink: { href: '/app/guide/research-v2', label: 'Research modes and capabilities →' },
     bullets: [
-      'Research objective — switches ensemble focus and report template (General, Investigative Synthesis, Patent Gap, Novel Application, Anomaly Correlation). Tier may limit which objectives appear.',
+      'Research type — switches ensemble focus and report template (General Research, Investigative Research, Application Discovery, Patent Research and Whitespace Mapping, Convergence Analysis). Tier may limit which types appear.',
       'Citation style — academic export formatting (APA, Chicago, etc.).',
       'Report length — preset or custom word target (backend clamps to safe bounds).',
       'Skeptic persona — optional tone/constraints merged into supplemental context for the Challenge stage.',
@@ -160,14 +164,14 @@ The correct workflow: find interesting points in Atlas → bring those topics ba
     icon: AlertTriangle,
     color: 'text-amber-400',
     title: 'What this system will NOT do',
-    content: `ResearchOne is designed with hard constraints against epistemic failure modes:
+    content: `ResearchOne is designed with hard constraints against common failure modes:
 
 • It will NOT present inferences as established facts
-• It will NOT suppress contradictions — they are stored and surfaced
+• It will NOT hide contradictions — they are stored and surfaced
 • It will NOT treat consensus density as a proxy for truth
 • It will NOT treat outliers as automatically correct
 • It will NOT generate reports without falsification criteria
-• It will NOT allow the synthesizer to exceed the source base
+• It will NOT let the report writer exceed the source base
 • It will NOT automatically crawl every page on a website you mention in the query
 
 The Challenge and Verification stages exist specifically to prevent the system from becoming a sophisticated hallucination engine.`,
@@ -179,10 +183,10 @@ The Challenge and Verification stages exist specifically to prevent the system f
     title: 'Troubleshooting common situations',
     bullets: [
       '"Review this entire website" — list each important URL under Supplemental URLs (homepage + About + key articles). Discovery alone may miss deep routes. State in the query that attached URLs are authoritative for this run.',
-      'Report says a site could not be loaded but you can open it in a browser — the server may have fetched little text (SPA/JS), discovery never ingested that host, or the synthesizer had zero chunks from that domain. Check trace ingest messages; re-run with explicit supplemental URLs.',
+      'Report says a site could not be loaded but you can open it in a browser — the server may have fetched little text (SPA/JS), discovery never ingested that host, or the report compiler had zero chunks from that domain. Check trace ingest messages; re-run with explicit supplemental URLs.',
       '403 / bot blocking from the origin — production fetch IPs differ from your laptop. Try Wayback or paste critical text into Supplemental Context.',
       'Plan gate stuck — confirm or cancel on Research; refresh with ?runId= if you navigated away.',
-      'Deep toggle locked — free_demo/anonymous cannot open Deep; upgrade (student, wallet, Pro, etc.) or use Standard Retrieval within your tier quota.',
+      'Deep Research toggle locked — free_demo/anonymous cannot open Deep; upgrade (student, wallet, Pro, etc.) or use Standard Research within your tier quota.',
       'Thin corpus — add Ingest sources beforehand, supplemental files, and explicit URLs; narrow filter tags if you over-scoped retrieval.',
     ],
   },
@@ -193,12 +197,12 @@ The Challenge and Verification stages exist specifically to prevent the system f
     title: 'Recommended first steps',
     footerLink: { href: '/app/guide/research-v2', label: '/app/guide/research-v2' },
     steps: [
-      'Open Research → choose Standard Retrieval or Deep Adversarial Synthesis.',
+      'Open Research → choose Standard Research or Deep Research.',
       'Write a specific, testable query. State what might be neglected and what would falsify your angle.',
       'If specific pages must be read, add them under Supplemental URLs (not only inside the query). Optional: seed corpus via Ingest and use filter tags.',
       'Submit and watch the trace — confirm the plan when prompted.',
       'Review the report — Contradiction Analysis and Falsification Criteria first.',
-      'For Deep objective-specific behavior, read Research modes and capabilities.',
+      'For Deep research-type behavior, read Research modes and capabilities.',
       'Export to Atlas for follow-up leads; use revision or spinoff for the next iteration.',
     ],
   },
@@ -284,6 +288,15 @@ export default function GuidePage() {
         </nav>
       </div>
 
+      <div className="card p-6 space-y-4 border border-accent/20">
+        <h2 className="text-base font-semibold text-white">{HOW_YOUR_REPORT_IS_MADE_HEADING}</h2>
+        <ol className="space-y-2 list-decimal list-inside text-sm text-slate-300 leading-relaxed">
+          {HOW_YOUR_REPORT_IS_MADE_STEPS.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      </div>
+
       <div className="card p-4 border border-accent/20 bg-accent/5">
         <p className="text-sm text-slate-300 leading-relaxed">
           <span className="text-white font-medium">Quick rule:</span> anything you need the system to{' '}
@@ -293,6 +306,11 @@ export default function GuidePage() {
           you care about.
         </p>
       </div>
+
+      <h2 className="text-lg font-semibold text-white pt-2">Under the hood</h2>
+      <p className="text-sm text-slate-400">
+        Technical detail for operators — agent roles, corpus mechanics, and tier identifiers unchanged in the API.
+      </p>
 
       {SECTIONS.map((section) => (
         <div key={section.id} className="card p-6 space-y-4">

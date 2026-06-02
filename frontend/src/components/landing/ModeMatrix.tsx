@@ -1,14 +1,14 @@
 const MODES = [
   {
-    mode: 'General Epistemic',
+    mode: 'General Research',
     bestFor: 'Contested questions where sources are mixed',
     runTime: '8–15 min',
-    overlay: 'Balanced planner; tier-weighted synthesizer',
+    overlay: 'Balanced planner; tier-weighted report writer',
     skepticIntensity: 'Standard' as const,
     outputEmphasis: 'Tiered source summary',
   },
   {
-    mode: 'Investigative',
+    mode: 'Investigative Research',
     bestFor: 'Tracking incentives, networks, narrative drift',
     runTime: '12–20 min',
     overlay: 'Actor-graph planner; timeline retriever',
@@ -16,7 +16,7 @@ const MODES = [
     outputEmphasis: 'Timeline + actor map',
   },
   {
-    mode: 'Patent / Technical Gap',
+    mode: 'Patent Research and Whitespace Mapping',
     bestFor: 'Mapping prior art and novelty',
     runTime: '10–18 min',
     overlay: 'Prior-art retriever; mechanism analyzer',
@@ -24,7 +24,7 @@ const MODES = [
     outputEmphasis: 'Gap analysis + novelty matrix',
   },
   {
-    mode: 'Novel Application Discovery',
+    mode: 'Application Discovery',
     bestFor: 'Mechanism → implementation paths',
     runTime: '10–15 min',
     overlay: 'Mechanism-first reasoner',
@@ -32,10 +32,10 @@ const MODES = [
     outputEmphasis: 'Application hypotheses',
   },
   {
-    mode: 'Anomaly Correlation',
+    mode: 'Convergence Analysis',
     bestFor: 'Are these signals related?',
     runTime: '10–18 min',
-    overlay: 'Correlation planner; contradiction-preserving synthesizer',
+    overlay: 'Correlation planner; contradiction-preserving report compiler',
     skepticIntensity: 'Elevated' as const,
     outputEmphasis: 'Hypothesis ranking with conflicts',
   },
@@ -80,7 +80,7 @@ export default function ModeMatrix() {
         </table>
       </div>
       <p className="mt-4 text-sm text-r1-text-muted">
-        Each mode runs the full ten-stage pipeline. Mode-specific overlays adjust the planner, skeptic, and synthesizer.
+        Each mode runs the full ten-stage pipeline. Mode-specific overlays adjust the planner, skeptic, and report writer.
       </p>
     </div>
   );

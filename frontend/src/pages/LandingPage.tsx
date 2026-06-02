@@ -44,7 +44,7 @@ export default function LandingPage() {
             Research that defends itself.
           </h2>
           <p data-ev-id="ev_856644994c" className="text-xl text-r1-muted leading-relaxed mb-8">
-            Start your first multi-agent research run and see how adversarial review 
+            Start your first multi-agent research run and see how the skeptic check
             transforms raw queries into citation-backed dossiers.
           </p>
           <div data-ev-id="ev_72b490abe2" className="flex flex-wrap justify-center gap-4">

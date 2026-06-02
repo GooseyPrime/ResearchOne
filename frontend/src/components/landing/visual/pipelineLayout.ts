@@ -12,12 +12,12 @@
  *      ↓                  ↓
  *   Reason & Challenge ←
  *      ↓
- *   Synthesize & Cite (4 nodes)  →  →  →
+ *   Write & Cite (4 nodes)  →  →  →
  *
  * Actually a simpler 2-row layout reads better in a hero panel.
  * Row 1: Planner → Discovery → Retriever → Retriever Analysis → Reasoner
  * Row 2 (reversed for snake flow):
- *        ... ← Skeptic ← Synthesizer ← Verifier ← Report ← Epistemic Persistence
+ *        ... ← Skeptic ← Drafting ← Verifier ← Report ← Recordkeeping
  * Connector: Reasoner (end of row 1) drops down to Skeptic (end of row 2).
  *
  * The layout is intentionally laid out so beams trace an S-curve
@@ -70,10 +70,10 @@ export const PIPELINE_STAGES: readonly PipelineStage[] = [
   { id: 'reasoner',            label: 'Reasoner',             phase: 'reason',     x: 790, y: 90 },
   // Bottom row, right to left (snake reversal).
   { id: 'skeptic',             label: 'Skeptic',              phase: 'reason',     x: 920, y: 270, emphasis: true },
-  { id: 'synthesizer',         label: 'Synthesizer',          phase: 'synthesize', x: 740, y: 270 },
+  { id: 'synthesizer',         label: 'Drafting',             phase: 'synthesize', x: 740, y: 270 },
   { id: 'verifier',            label: 'Verifier',             phase: 'synthesize', x: 560, y: 270 },
   { id: 'report',              label: 'Report',               phase: 'synthesize', x: 380, y: 270 },
-  { id: 'persistence',         label: 'Epistemic Persistence', phase: 'synthesize', x: 180, y: 270 },
+  { id: 'persistence',         label: 'Recordkeeping',        phase: 'synthesize', x: 180, y: 270 },
 ] as const;
 
 /* ────────────────────────────────────────────────────────────────

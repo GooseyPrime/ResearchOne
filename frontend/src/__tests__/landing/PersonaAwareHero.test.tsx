@@ -81,7 +81,7 @@ describe('PersonaAwareHero — forcePersona', () => {
   it('forcePersona="osint" renders the OSINT variant immediately', async () => {
     renderHero({ forcePersona: 'osint' });
     await waitFor(() => {
-      expect(screen.getByText(/Adversarial reasoning/i)).toBeInTheDocument();
+      expect(screen.getByText(/Skeptic reasoning/i)).toBeInTheDocument();
       expect(screen.getByText('For investigative work')).toBeInTheDocument();
     });
   });
@@ -89,14 +89,14 @@ describe('PersonaAwareHero — forcePersona', () => {
   it('forcePersona="uap" renders the UAP variant', async () => {
     renderHero({ forcePersona: 'uap' });
     await waitFor(() => {
-      expect(screen.getByText(/research engine that doesn/i)).toBeInTheDocument();
+      expect(screen.getByText(/weak signals on the record/i)).toBeInTheDocument();
     });
   });
 
   it('forcePersona="academic" renders the academic variant', async () => {
     renderHero({ forcePersona: 'academic' });
     await waitFor(() => {
-      expect(screen.getByText(/Citation-grade synthesis/i)).toBeInTheDocument();
+      expect(screen.getByText(/Citation-grade reports/i)).toBeInTheDocument();
       expect(screen.getByText(/Student plan/i)).toBeInTheDocument();
     });
   });
@@ -131,7 +131,7 @@ describe('PersonaAwareHero — URL query param routes to persona variant', () =>
     window.history.replaceState({}, '', '/?p=academic');
     renderHero();
     await waitFor(() => {
-      expect(screen.getByText(/Citation-grade synthesis/i)).toBeInTheDocument();
+      expect(screen.getByText(/Citation-grade reports/i)).toBeInTheDocument();
     });
   });
 });

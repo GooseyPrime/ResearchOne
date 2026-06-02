@@ -7,14 +7,14 @@ const MODE_COPY: Record<
   { title: string; description: string }
 > = {
   standard: {
-    title: 'Standard Retrieval',
+    title: 'Standard Research',
     description:
-      'Fast, multi-source knowledge retrieval and summarization. Best for general inquiries and historical context.',
+      'Fast, multi-source research and summarization. Best for general inquiries and historical context.',
   },
   deep: {
-    title: 'Deep Adversarial Synthesis',
+    title: 'Deep Research',
     description:
-      'Advanced multi-stage pipeline. Uses reasoning models, file uploads, and red-team adversarial agents to stress-test claims before synthesis.',
+      'Full multi-stage pipeline with research types, longer reports, and a skeptic step that argues against the draft to catch weak claims.',
   },
 };
 

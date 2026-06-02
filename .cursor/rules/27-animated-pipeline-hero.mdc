@@ -48,17 +48,12 @@ WCAG 2.1 SC 2.3.3, and the existing static visual is the validated
 fallback shape. Per Rule 26 I-3 / I-10 analogy: when motion is
 disabled, we get a known-good baseline.
 
-### I-2. Static visual stays in the codebase, unchanged
+### I-2. Static visual stays in the codebase as the reduced-motion fallback
 
-`frontend/src/components/landing/HeroPipelineVisual.tsx` is not
-edited by this WO. It is imported by `AnimatedPipelineHero` and
-re-rendered when reduced motion is active. If you find yourself
-editing `HeroPipelineVisual.tsx`, you're outside this WO's scope —
-escalate.
-
-This serves two purposes: (a) the reduced-motion baseline stays
-known-good, (b) if `AnimatedPipelineHero` is ever rolled back via
-a one-line import revert, the page is immediately whole.
+`frontend/src/components/landing/HeroPipelineVisual.tsx` is imported by
+`AnimatedPipelineHero` and re-rendered when reduced motion is active.
+Label changes to the static visual must stay synchronized with
+`pipelineLayout.ts` and `heroPipelineAria.ts` in the same PR.
 
 ### I-3. The 10 stages are canonical and named exactly as today
 
@@ -66,11 +61,11 @@ The stage list:
 
 ```
 Planner, Discovery, Retriever, Retriever Analysis, Reasoner, Skeptic,
-Synthesizer, Verifier, Report, Epistemic Persistence
+Drafting, Verifier, Report, Recordkeeping
 ```
 
 These are the phases the Master Brief markets and the strategic doc
-specifies. They are the labels visible on the existing static visual.
+specifies. They are the labels visible on the static and animated hero.
 Do NOT rename, reorder, or collapse them in `pipelineLayout.ts`
 without coordinating with marketing — the stage names are referenced
 externally.

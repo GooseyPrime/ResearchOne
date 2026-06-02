@@ -40,12 +40,12 @@ export default function FreeLifetimeQuotaBanner({ variant }: Props) {
           <>
             You have <span className="text-slate-200 font-medium">{remaining}</span> of{' '}
             <span className="text-slate-200 font-medium">{cap}</span> lifetime research runs remaining
-            (General Epistemic Research), shared across Research and Deep Research modes. Completed runs
+            (General Research), shared across Research and Deep Research modes. Completed runs
             update this count.
           </>
         ) : (
           <>
-            Lifetime research runs on the free tier use the General Epistemic Research objective only,
+            Lifetime research runs on the free tier use the General Research objective only,
             shared across Research and Deep Research modes.{' '}
           </>
         )}
