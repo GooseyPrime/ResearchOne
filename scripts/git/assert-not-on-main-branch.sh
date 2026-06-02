@@ -21,7 +21,11 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
-branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+# actions/checkout@v4 on pull_request leaves a detached HEAD; use the PR head ref.
+branch="${GITHUB_HEAD_REF:-${CI_PR_HEAD_REF:-}}"
+if [[ -z "$branch" ]]; then
+  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+fi
 if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
   echo "::error::Detached HEAD — create or checkout a PR branch before committing."
   exit 1

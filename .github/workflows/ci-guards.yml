@@ -58,4 +58,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Refuse PRs whose head branch is main/master
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: bash "${{ github.workspace }}/scripts/git/assert-not-on-main-branch.sh"
