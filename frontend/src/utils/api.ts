@@ -1050,8 +1050,13 @@ export const deleteCorpusByResearchRun = (adminToken: string | undefined, body: 
     .post<DeleteCorpusByResearchRunResponse>('/admin/corpus/delete-by-research-run', body, optionalAdminHeaders(adminToken))
     .then(r => r.data);
 
-export const ingestUrl = (data: { url: string; tags?: string[]; metadata?: Record<string, unknown> }) =>
-  api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);
+export const ingestUrl = (data: {
+  url: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  siteCrawl?: boolean;
+  crawlLayers?: number;
+}) => api.post<{ jobId: string; status: string }>('/ingestion/url', data).then(r => r.data);
 
 export const ingestText = (data: { text: string; title?: string; tags?: string[] }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/text', data).then(r => r.data);

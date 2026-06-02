@@ -51,6 +51,8 @@ export default function IngestPage() {
   const { addNotification } = useStore();
   const [tab, setTab] = useState<IngestTab>('url');
   const [url, setUrl] = useState('');
+  const [siteCrawlEnabled, setSiteCrawlEnabled] = useState(false);
+  const [crawlLayers, setCrawlLayers] = useState(2);
   const [text, setText] = useState('');
   const [textTitle, setTextTitle] = useState('');
   const [tags, setTags] = useState('');
@@ -98,8 +100,14 @@ export default function IngestPage() {
   const urlMutation = useMutation({
     mutationFn: ingestUrl,
     onSuccess: () => {
-      addNotification('info', 'URL queued for ingestion.');
+      addNotification(
+        'info',
+        siteCrawlEnabled
+          ? `Site crawl queued (${crawlLayers} layers, same-origin links only).`
+          : 'URL queued for ingestion.'
+      );
       setUrl('');
+      setSiteCrawlEnabled(false);
       qc.invalidateQueries({ queryKey: ['ingestion-jobs'] });
     },
     onError: () => addNotification('error', 'Failed to queue URL.'),
@@ -179,7 +187,11 @@ export default function IngestPage() {
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
-    urlMutation.mutate({ url: url.trim(), tags: parsedTags });
+    urlMutation.mutate({
+      url: url.trim(),
+      tags: parsedTags,
+      ...(siteCrawlEnabled ? { siteCrawl: true, crawlLayers } : {}),
+    });
   };
 
   const handleTextSubmit = (e: React.FormEvent) => {
@@ -370,6 +382,46 @@ export default function IngestPage() {
                 disabled={urlMutation.isPending}
                 type="url"
               />
+            </div>
+            <div className="space-y-2 rounded-lg border border-indigo-900/40 bg-surface-200/50 p-3">
+              <label className="flex items-start gap-2 text-sm text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={siteCrawlEnabled}
+                  onChange={e => setSiteCrawlEnabled(e.target.checked)}
+                  disabled={urlMutation.isPending}
+                  className="mt-0.5 rounded border-indigo-800"
+                />
+                <span>
+                  Crawl this site into the corpus
+                  <span className="block text-xs text-slate-500 mt-0.5 font-normal">
+                    Follows same-origin links only (stays on the host you enter). Skips PDFs and media.
+                  </span>
+                </span>
+              </label>
+              {siteCrawlEnabled && (
+                <div className="flex flex-wrap items-center gap-2 pl-6">
+                  <label className="text-xs text-slate-400" htmlFor="crawl-layers">
+                    Layers to ingest
+                  </label>
+                  <input
+                    id="crawl-layers"
+                    type="number"
+                    min={2}
+                    max={5}
+                    value={crawlLayers}
+                    onChange={e => {
+                      const n = Number.parseInt(e.target.value, 10);
+                      if (Number.isFinite(n)) setCrawlLayers(Math.min(5, Math.max(2, n)));
+                    }}
+                    disabled={urlMutation.isPending}
+                    className="input w-20 text-sm py-1"
+                  />
+                  <span className="text-xs text-slate-500">
+                    Layer 1 = seed URL; each extra layer follows links found on the previous layer (max 50 pages).
+                  </span>
+                </div>
+              )}
             </div>
             <button
               type="submit"

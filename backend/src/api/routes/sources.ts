@@ -59,9 +59,10 @@ router.get('/:id', async (req, res, next) => {
 
 // DELETE /api/sources/:id - Remove a source and all its data.
 // Restricted: admin-only, or the user who ingested the source.
-// Ownership is checked via two paths:
+// Ownership is checked via:
 //   1. discovered_by_run_id -> research_runs.user_id (autonomous discovery)
-//   2. ingestion_jobs.source_id -> ingestion_jobs.user_id (manual ingest via /url, /text, /file)
+//   2. ingestion_jobs.source_id -> ingestion_jobs.user_id (manual ingest seed)
+//   3. sources.metadata.ingested_by_user_id (site-crawl child pages, PR #162)
 router.delete('/:id', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
@@ -79,7 +80,11 @@ router.delete('/:id', async (req, res, next) => {
     let isOwner = false;
     try {
       const row = await queryOne<{ owner_user_id: string | null }>(
-        `SELECT COALESCE(r.user_id, ij.user_id) AS owner_user_id
+        `SELECT COALESCE(
+           r.user_id,
+           ij.user_id,
+           NULLIF(s.metadata->>'ingested_by_user_id', '')
+         ) AS owner_user_id
          FROM sources s
          LEFT JOIN research_runs r ON r.id = s.discovered_by_run_id
          LEFT JOIN ingestion_jobs ij ON ij.source_id = s.id

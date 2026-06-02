@@ -12,7 +12,9 @@ import { config } from '../../config';
 import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
 import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
+import { assertPublicHttpUrl, UrlFetchPolicyError } from '../../services/ingestion/urlFetchPolicy';
 import { logger } from '../../utils/logger';
+import { clampCrawlLayers } from '../../services/ingestion/siteCrawl';
 
 const router = Router();
 
@@ -46,10 +48,12 @@ const upload = multer({
 // POST /api/ingestion/url - Ingest a URL
 router.post('/url', async (req, res, next) => {
   try {
-    const { url, tags, metadata } = req.body as {
+    const { url, tags, metadata, siteCrawl, crawlLayers } = req.body as {
       url: string;
       tags?: string[];
       metadata?: Record<string, unknown>;
+      siteCrawl?: boolean;
+      crawlLayers?: number;
     };
 
     if (!url || typeof url !== 'string') {
@@ -57,20 +61,53 @@ router.post('/url', async (req, res, next) => {
       return;
     }
 
+    try {
+      assertPublicHttpUrl(url);
+    } catch (err) {
+      if (err instanceof UrlFetchPolicyError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(400).json({ error: 'url must be a valid absolute URL' });
+      return;
+    }
+
+    const crawlEnabled = siteCrawl === true;
+    const layers = crawlEnabled
+      ? clampCrawlLayers(crawlLayers ?? 2, config.ingestion.siteCrawlMaxLayers)
+      : null;
+    if (crawlEnabled && layers === null) {
+      res.status(400).json({
+        error: `crawlLayers must be an integer from 1 to ${config.ingestion.siteCrawlMaxLayers} when siteCrawl is enabled`,
+      });
+      return;
+    }
+    if (crawlEnabled && layers !== null && layers < 2) {
+      res.status(400).json({
+        error: 'crawlLayers must be at least 2 when site crawl is enabled (layer 1 is the seed page only)',
+      });
+      return;
+    }
+
+    const jobMetadata = {
+      ...(metadata ?? {}),
+      ...(crawlEnabled ? { site_crawl: true, crawl_layers: layers } : {}),
+    };
+
     const id = uuidv4();
     const ingestionUserId = req.auth?.userId ?? null;
     try {
       await query(
         `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
          VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
-        [id, url, JSON.stringify(metadata ?? {}), ingestionUserId]
+        [id, url, JSON.stringify(jobMetadata), ingestionUserId]
       );
     } catch (insertErr) {
       if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
       await query(
         `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
          VALUES ($1, $2, 'web_url', 'queued', $3)`,
-        [id, url, JSON.stringify(metadata ?? {})]
+        [id, url, JSON.stringify(jobMetadata)]
       );
     }
 
@@ -79,8 +116,10 @@ router.post('/url', async (req, res, next) => {
       url,
       sourceType: 'web_url',
       tags: tags ?? [],
-      metadata: metadata ?? {},
+      metadata: jobMetadata,
       importedVia: 'manual_url',
+      siteCrawl: crawlEnabled,
+      crawlLayers: layers ?? undefined,
     });
 
     res.status(202).json({ jobId: id, status: 'queued' });
