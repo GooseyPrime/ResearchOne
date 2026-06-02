@@ -55,7 +55,7 @@ export default function PricingPage() {
         <p className="mt-4 text-r1-text-muted">Start free. Pay per report. Subscribe when it makes sense.</p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <PricingCard title="Free Demo" details="$0 — 2 reports lifetime — General Epistemic only — Watermarked" cta="Start free" to="/sign-up" />
+          <PricingCard title="Free Demo" details="$0 — 2 reports lifetime — General Research only — Watermarked" cta="Start free" to="/sign-up" />
           <div id="student" className="contents">
             <PricingCard
               title="Student"
@@ -81,7 +81,7 @@ export default function PricingPage() {
           <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — expanded corpus quota" cta="Configure keys" to="/byok" />
           <PricingCard
             title="Sovereign Enterprise"
-            details="From $4,500/mo (annual) — dedicated stack and custom retention — Adversarial Twin: Included in Sovereign"
+            details="From $4,500/mo (annual) — dedicated stack and custom retention — Devil's Advocate Review: Included in Sovereign"
             cta="Talk to sales"
             to="/sovereign"
           />

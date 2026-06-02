@@ -47,9 +47,9 @@ describe('PricingPage', () => {
     expect(html).toContain('Provenance%20Ledger');
   });
 
-  it('mentions Adversarial Twin as Sovereign-only', () => {
+  it("mentions Devil's Advocate Review as Sovereign-only", () => {
     const html = render();
-    expect(html).toContain('Adversarial Twin');
+    expect(html).toContain("Devil's Advocate Review");
     expect(html).toContain('Included in Sovereign');
   });
 
