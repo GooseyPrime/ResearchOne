@@ -14,6 +14,68 @@ request:** dedicated branch off fresh `origin/main` → commits → push → ope
 or update a **PR** into `main` (draft is acceptable). Silence or omission is
 **not** permission to bypass a PR.
 
+**Cloud / background agents:** “commit and push when done” means push the
+**PR branch** and open a PR — **never** interpret it as permission to push
+`origin/main`.
+
+## Speed — nothing held back from `main`
+
+This workflow must **not** add latency versus direct commits to `main`:
+
+- **Integration path is unchanged:** code reaches `main` when the **PR is
+  merged** (squash merge, merge commit, or rebase-and-merge). That is
+  production delivery — not a separate approval step before work starts.
+- **Guards target mistakes, not merges:** `ci-main-push-gate.yml` runs on
+  **every push to `main`** (no paths filter). It allows squash/merge commits,
+  PR-linked commits (GitHub API), and `[direct-main]`. Feature-branch PR CI
+  only checks head ref ≠ `main`/`master`.
+- **Do not ask permission to start** normal scoped work. Branch creation +
+  PR is mechanical (~seconds); proceed immediately unless an exception below
+  applies.
+- **Do not leave work “almost on main”:** when implementation is done, the
+  agent must state **PR URL**, **merge readiness** (CI green / known gaps),
+  and that **merging the PR ships to `main`** (and triggers deploy paths that
+  watch `main`). Never end with only a branch push and no PR.
+
+## Communication — when the user must be involved
+
+Use a **short, explicit** message only in these cases (not for routine work):
+
+| Situation | Agent action |
+|-----------|----------------|
+| Normal scoped work | No pre-approval. Branch → implement → push → **open/update PR** → tell user **“Merge PR #N to ship to `main`.”** |
+| Work finished, PR open | Same: PR link + merge instruction. Do **not** ask “may I start?” |
+| User authorized direct `main` in **this** message | Commit on `main` with `[direct-main]`; say what landed and that deploy may follow. |
+| **Emergency / prod down / security hotfix** and user did **not** authorize direct `main` | **Stop before pushing `main`.** Send the **escalation block** below; offer **merge existing PR** if one exists, else **direct-main** only after user replies in-thread. |
+| Cannot open PR (tooling / permissions) | Push branch; give **exact** `gh pr create` (or GitHub UI) steps + branch name. Label **BLOCKED: needs you to open PR** so nothing is assumed merged. |
+| `main-push-gate` or branch protection failed on `main` | Report failing commit SHA + check name; say whether **merging the PR** fixes it vs user must **`[direct-main]`** / bypass. |
+
+### Escalation block (copy when user input is required)
+
+```
+INTEGRATION — needs your call (<one-line reason, e.g. prod incident>)
+
+• Intended fix: <summary>
+• Branch / PR: <branch> | PR #<n> <url> — OR — no PR yet
+• Fastest path to main: (A) Merge PR #n  (B) You reply “push to main” and I use [direct-main]
+• Risk if we wait: <one line>
+• What I need from you: reply A or B (or “push to main” for B)
+```
+
+Do **not** use vague “let me know if you want a PR.” Either merge is ready, or the
+block above applies.
+
+## Mandatory first action (before any file edit)
+
+1. `git fetch origin`
+2. `bash scripts/git/prepare-work-branch.sh <topic-slug>` (or equivalent:
+   `git checkout -B cursor/<topic> origin/main`)
+3. State the branch name in the first reply for the scoped request.
+
+Do **not** stage, commit, or push until step 2 is done, except when the user
+**in the same message** authorized direct `main` (then include `[direct-main]`
+in every commit message on `main`).
+
 ## Why this rule exists
 
 Shipping several commits directly to the default branch (`main`) bypasses
@@ -28,15 +90,12 @@ this workflow rule.
    refactor), do all implementation commits on a **dedicated branch** that will
    back a **pull request** into the repo default branch (here: `main`), per the
    request-time default above.
-2. **Default:** For any **new scoped request** (feature, WO, wave, bugfix,
-   refactor), do all implementation commits on a **dedicated branch** that
-   will back a **pull request** into the repo default branch (here: `main`).
-3. **Branch off current remote default:** Before the first commit,
+2. **Branch off current remote default:** Before the first commit,
    `git fetch origin` and create the branch from **`origin/main`** (or the
    user-specified base), not from a stale local `main`.
-4. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
+3. **Naming:** Follow repo convention — e.g. `cursor/<topic>`,
    `feat/<topic>`, `fix/<topic>` — consistent with sibling branches.
-5. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
+4. **Push + PR:** Push the branch and **open the PR** (draft is fine) as soon
    as there is a meaningful first commit, unless the environment cannot create
    PRs — then leave explicit instructions for the human to open one.
 
@@ -58,6 +117,21 @@ If `origin/main` can reach this branch’s tip and the tip is already on
 `origin/main`’s history as the merge result of the PR, the branch is done —
 verify with `git branch -r --merged origin/main` or compare PR state on GitHub.
 
+## Technical enforcement (repo)
+
+| Mechanism | Purpose |
+|-----------|---------|
+| `scripts/git/prepare-work-branch.sh` | Create PR branch from `origin/main` |
+| `scripts/git/assert-not-on-main-branch.sh` | Fail commits on `main`/`master` |
+| `scripts/git/install-pre-commit-hook.sh` | Optional local pre-commit guard |
+| `scripts/ci/assert-main-push-authorized.sh` | CI fails unauthorized `main` tips |
+| `docs/RUNBOOKS/github-branch-protection.md` | Enable required checks on `main` |
+
+**Direct-main override (same-request only):** `ALLOW_DIRECT_MAIN_PUSH=1` for
+local commit, and **`[direct-main]`** in the commit message for pushes that
+land on `main`. Do not use overrides without explicit user direction in the
+current message.
+
 ## Exceptions
 
 - The user **states in the same request** that work may bypass a PR (e.g.
@@ -67,11 +141,14 @@ verify with `git branch -r --merged origin/main` or compare PR state on GitHub.
 
 ## Pre-commit check
 
-- [ ] Unless the user directed otherwise **in this request**, am I on a
-      **non-default** branch created from fresh `origin/main` (or declared
-      base)?
+- [ ] Unless the user directed otherwise **in this request**, did I run
+      `prepare-work-branch.sh` (or equivalent) **before the first edit**?
+- [ ] Am I on a **non-default** branch created from fresh `origin/main` (or
+      declared base)?
 - [ ] If continuing prior work on a named branch: is its PR **still open** (or
       no PR yet and work is still part of the same scoped request)?
 - [ ] Have I pushed and opened (or instructed opening) a **PR** for this
       branch, except when an explicit same-request or governance exception
       applies?
+- [ ] Did I avoid `git push origin main` unless the user authorized direct-main
+      in **this** message?

@@ -1,5 +1,6 @@
 # Lightweight repo-wide checks that do not require npm install.
-# Keeps Vitest/Jest mock APIs out of application source trees that ship to production.
+# - Vitest/Jest mock APIs must not ship in application src
+# - Direct pushes to main must look like merged PRs or carry [direct-main]
 
 name: CI – repository guards
 
@@ -10,13 +11,19 @@ on:
       - 'backend/src/**'
       - 'frontend/src/**'
       - 'scripts/ci/**'
+      - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
+      - '.cursor/rules/**'
+      - 'AGENTS.md'
   pull_request:
     paths:
       - 'backend/src/**'
       - 'frontend/src/**'
       - 'scripts/ci/**'
+      - 'scripts/git/**'
       - '.github/workflows/ci-guards.yml'
+      - '.cursor/rules/**'
+      - 'AGENTS.md'
 
 jobs:
   no-mocks-in-app-src:
@@ -28,3 +35,17 @@ jobs:
 
       - name: Assert no test mock APIs in backend/src or frontend/src
         run: bash "${{ github.workspace }}/scripts/ci/assert-no-test-mocks-in-app-src.sh"
+
+  pr-branch-not-default:
+    name: PR workflow uses non-default branch
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse PRs whose head branch is main/master
+        run: |
+          head="${{ github.head_ref }}"
+          if [[ -z "$head" || "$head" == "main" || "$head" == "master" ]]; then
+            echo "::error::PR head branch must not be main or master (got: ${head:-<empty>})"
+            exit 1
+          fi
+          echo "PR head branch ok: $head"

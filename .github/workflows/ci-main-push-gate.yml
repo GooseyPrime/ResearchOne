@@ -1,0 +1,24 @@
+# Runs on every push to main (no paths filter) so Rule 32 cannot be bypassed
+# by changing files outside ci-guards.yml path filters.
+
+name: CI – main push gate
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  main-push-gate:
+    name: Block unauthorized direct pushes to main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Assert main tip is merged PR or explicitly authorized
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash "${{ github.workspace }}/scripts/ci/assert-main-push-authorized.sh"

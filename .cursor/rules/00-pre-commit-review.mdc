@@ -12,6 +12,12 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
 
 ## A. Before staging
 
+0. **PR branch (Rule 32).** Unless the user authorized direct `main` in **this
+   request**, run `bash scripts/git/assert-not-on-main-branch.sh` before
+   `git add` / `git commit`. For a new scoped request, the **first** action
+   must be `bash scripts/git/prepare-work-branch.sh <topic>` (or checkout a
+   named PR branch that is still open). Never push to `origin/main` without
+   same-request authorization and `[direct-main]` in the commit message.
 1. **Read the full file**, not just the diff, around every edit. About a
    third of the bugs were visible only when the surrounding function or
    call site was read end-to-end.

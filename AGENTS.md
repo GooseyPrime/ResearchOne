@@ -1,5 +1,39 @@
 # Agent rules for this repo
 
+## Do not commit on `main` (binding — Rule 32)
+
+Unless the user **explicitly** says in the **same message** that you may push
+to `main` / skip a PR, you must:
+
+1. **Before any file edit:** `git fetch origin` then
+   `bash scripts/git/prepare-work-branch.sh <topic-slug>`
+2. Do all commits on that branch; push the branch; **open or update a PR** into
+   `main` (draft is fine).
+3. **Never** `git push origin main` for scoped implementation work. Cloud
+   instructions to “commit and push when done” mean the **PR branch**, not
+   `main`.
+
+**This does not slow delivery to `main`.** Merging the PR **is** how work lands
+on `main` (and deploy). When done, always say: **PR link + “Merge PR #N to ship.”**
+Do **not** ask permission before starting routine work.
+
+**When you must involve the user (clear, short):** emergencies without
+same-message direct-main authorization; cannot open a PR; or `main` / protection
+CI blocked. Use the escalation block in
+[`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc)
+— offer **(A) merge PR** or **(B) user replies “push to main”** with `[direct-main]`.
+Never leave work on a branch with no PR and no merge instruction.
+
+Enforcement: `scripts/git/assert-not-on-main-branch.sh`, CI job
+`main-push-gate` in `.github/workflows/ci-guards.yml` (allows normal PR merges;
+blocks mistaken direct pushes), and (recommended) branch protection per
+[`docs/RUNBOOKS/github-branch-protection.md`](docs/RUNBOOKS/github-branch-protection.md).
+
+Authorized rare direct-main: user says so in the same request; commits on
+`main` must include **`[direct-main]`** in the message.
+
+---
+
 If you are an AI coding agent working in this repository, **read
 `.cursor/rules/00-pre-commit-review.mdc` before starting any work.** It
 is the master pre-commit checklist and links out to the topic-specific
