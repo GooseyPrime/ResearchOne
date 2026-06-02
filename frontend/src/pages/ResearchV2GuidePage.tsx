@@ -105,7 +105,11 @@ export default function ResearchV2GuidePage() {
         <p className="text-slate-400 text-sm mt-1">
           Each mode changes orchestrator focus, red-team criteria, and report structure. Open-weights ensemble defaults are tuned per mode on{' '}
           <Link to="/app/research?engine=v2" className="text-accent hover:underline">
-            Deep Research
+            Deep Adversarial Synthesis
+          </Link>
+          . General console guidance:{' '}
+          <Link to="/app/guide" className="text-accent hover:underline">
+            How to Use ResearchOne
           </Link>
           .
         </p>
@@ -114,7 +118,8 @@ export default function ResearchV2GuidePage() {
       <div className="card p-4 flex items-start gap-3 border border-indigo-900/30">
         <HelpCircle className="text-slate-500 flex-shrink-0 mt-0.5" size={18} />
         <p className="text-sm text-slate-400 leading-relaxed">
-          Deep Research uses a reasoning-first epistemic policy: the platform shifts agent configurations and models by research mode to support literature rigor, investigative tracing, patent whitespace, applied feasibility, or cross-domain correlation—without assuming a single narrative by default.
+          Deep Adversarial Synthesis uses a reasoning-first epistemic policy: the platform shifts agent configurations and models by research mode to support literature rigor, investigative tracing, patent whitespace, applied feasibility, or cross-domain correlation—without assuming a single narrative by default. Pages you need in the corpus must be listed under{' '}
+          <span className="text-slate-200">Attach supporting files / URLs</span> on the research form; URLs mentioned only in the query are not auto-fetched.
         </p>
       </div>
 
@@ -124,14 +129,13 @@ export default function ResearchV2GuidePage() {
           <h2 className="text-base font-semibold text-white">V2 model selection criteria</h2>
         </div>
         <p className="text-sm text-slate-300 leading-relaxed">
-          V2 runs are governed by a strict open-weights matrix. Every default primary
-          in every research objective must be either <span className="text-slate-100">abliterated</span>{' '}
-          (refusal direction orthogonalized out of the base weights),{' '}
-          <span className="text-slate-100">an uncensored fine-tune</span> (Dolphin / Hermes / Dark-Champion lines),
-          or <span className="text-slate-100">a steerable, low-refusal open-weights model</span>. RLHF/RLAIF
-          refusal-aligned primaries are forbidden in V2 — they cause drift back toward
-          consensus-debunking and silent omission of anomalous findings, which is the contamination
-          ResearchOne PolicyOne explicitly prohibits.
+          V2 default primaries are chosen by <span className="text-slate-100">inference-time behavior</span> under
+          ResearchOne's reasoning-first system prompt—not by training labels alone. Defaults must pass live
+          routing checks: preserve anomalous claims literally, avoid debunk-by-recall, and keep chain-of-thought
+          intact on reasoner roles. That typically means open-weights thinking models with light RLHF, abliterated
+          weights, or steerable low-refusal instruct lines with verified multi-upstream redundancy on critical paths.
+          RLHF refusal-aligned closed pipelines and unabliterated instruct bases are{' '}
+          <span className="text-amber-200">user-opt-in fallbacks only</span>—they must not run silently as V2 defaults.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
