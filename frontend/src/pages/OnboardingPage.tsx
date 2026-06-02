@@ -2,6 +2,7 @@ import { useUser } from '@clerk/react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { parseSignupTierFromSearch, signupTierLabel, type SignupInitialTier } from '../utils/signupTier';
+import api from '../utils/api';
 
 type PipelineChoice = 'yes' | 'no' | null;
 
@@ -37,6 +38,7 @@ export default function OnboardingPage() {
           initialTier,
         },
       });
+      await api.post('/ingestion/consent', { pipeline_b_consent: pipelineBConsent });
       const afterOnboarding =
         initialTier === 'free_demo' ? '/app/research' : `/app/billing?intent=${initialTier}`;
       navigate(afterOnboarding, { replace: true });

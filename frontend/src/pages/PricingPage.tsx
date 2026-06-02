@@ -46,7 +46,7 @@ const ADD_ONS: AddOn[] = [
   },
 ];
 
-export default function PricingPage() {
+export default function PricingPage() { 
   return (
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
@@ -66,7 +66,7 @@ export default function PricingPage() {
           </div>
           <PricingCard
             title="Pro"
-            details="$29/mo or $290/yr — 25 reports/mo — All 5 modes, priority queue — generous corpus quota"
+            details="$29/mo or $290/yr — 25 reports/mo — All 5 modes — Private corpus (Ingest workspace) + Atlas"
             cta="Subscribe"
             featured
             ctaSlot={<SubscribeCTA tier="pro" cta="Subscribe" featured marketingStatic />}
@@ -74,11 +74,11 @@ export default function PricingPage() {
           <PricingCard
             title="Team"
             badge="Coming soon"
-            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Team-wide library, audit log, SSO"
+            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Private corpus, team library, SSO"
             cta="Contact us"
             to="mailto:hello@researchone.io?subject=Team%20tier%20inquiry"
           />
-          <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — You bring OpenRouter keys — expanded corpus quota" cta="Configure keys" to="/byok" />
+          <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — BYOK keys — Private corpus (Ingest)" cta="Configure keys" to="/byok" />
           <PricingCard
             title="Sovereign Enterprise"
             details="From $4,500/mo (annual) — dedicated stack and custom retention — Devil's Advocate Review: Included in Sovereign"

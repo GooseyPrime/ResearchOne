@@ -19,6 +19,7 @@ import {
   RESEARCH_OBJECTIVE_OPTIONS,
   type EntitlementTierKey,
 } from '@/constants/researchObjectives';
+import { supplementalUrlCrawlPayload } from '@/utils/supplementalUrlCrawl';
 import { effectiveEntitlementTier, useBillingSubscriptionQuery } from '@/hooks/useBillingSubscription';
 import { useStore } from '@/store/useStore';
 import { liveResearchUrl } from '@/utils/researchRunRoutes';
@@ -52,6 +53,8 @@ export default function ReportSpinoffPage() {
   const [supplemental, setSupplemental] = useState('');
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
+  const [supplementalSiteCrawlEnabled, setSupplementalSiteCrawlEnabled] = useState(false);
+  const [supplementalCrawlLayers, setSupplementalCrawlLayers] = useState(2);
   const [filterTags, setFilterTags] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
@@ -186,6 +189,10 @@ export default function ReportSpinoffPage() {
         targetWordCount: resolvedTargetWordCount,
         supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
         supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
+        supplementalUrlCrawl: supplementalUrlCrawlPayload(
+          supplementalSiteCrawlEnabled,
+          supplementalCrawlLayers
+        ),
         citationStyle,
       }),
     onSuccess: (data) => {
@@ -296,6 +303,12 @@ export default function ReportSpinoffPage() {
               onChange={({ files, urls }) => {
                 setSupplementalFiles(files);
                 setSupplementalUrls(urls);
+              }}
+              siteCrawlEnabled={supplementalSiteCrawlEnabled}
+              crawlLayers={supplementalCrawlLayers}
+              onSiteCrawlChange={({ enabled, crawlLayers }) => {
+                setSupplementalSiteCrawlEnabled(enabled);
+                setSupplementalCrawlLayers(crawlLayers);
               }}
               disabled={mutation.isPending}
               label="Supplemental files and URLs"

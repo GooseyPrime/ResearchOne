@@ -43,13 +43,14 @@ export async function evaluatePipelineBEligibility(
       'SELECT pipeline_b_consent FROM user_ingestion_consent WHERE user_id = $1',
       [userId]
     );
-    if (consent && !consent.pipeline_b_consent) {
+    if (!consent?.pipeline_b_consent) {
       reasons.push('user_opted_out');
     }
   } catch (err: unknown) {
     const pgCode = (err as { code?: string })?.code;
     if (pgCode === '42P01') {
-      // Table doesn't exist yet — treat as consent given (default)
+      // Table missing (pre-migration deploy) — opt-in default: no consent row
+      reasons.push('user_opted_out');
     } else {
       throw err;
     }

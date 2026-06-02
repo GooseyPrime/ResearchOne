@@ -2,6 +2,7 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from 'react-rout
 import Layout from './components/layout/Layout';
 import RequireAdmin from './components/auth/RequireAdmin';
 import RequireAuth from './components/auth/RequireAuth';
+import RequirePrivateCorpus from './components/auth/RequirePrivateCorpus';
 import LandingPage from './pages/LandingPage';
 import LiveRunPage from './pages/LiveRunPage';
 import ResearchPage from './pages/ResearchPage';
@@ -101,7 +102,7 @@ export function AppRoutes() {
         <Route path="atlas" element={<AtlasPage />} />
         <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
         <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
-        <Route path="ingest" element={<IngestPage />} />
+        <Route path="ingest" element={<RequirePrivateCorpus><IngestPage /></RequirePrivateCorpus>} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
         <Route path="billing" element={<BillingPage />} />

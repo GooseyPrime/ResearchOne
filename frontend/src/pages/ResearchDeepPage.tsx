@@ -52,6 +52,7 @@ import { formatFailureReason } from '../utils/researchFailureFormat';
 import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
+import { supplementalUrlCrawlPayload } from '../utils/supplementalUrlCrawl';
 import ResearchRunRow from '../components/research/ResearchRunRow';
 import { useResearchRunTracking } from '../hooks/useResearchRunTracking';
 import { useResearchShellOpenRun } from '../hooks/useResearchShellOpenRun';
@@ -159,6 +160,8 @@ export default function ResearchDeepPage() {
   // models can review them as sources alongside the corpus search results.
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
   const [supplementalUrls, setSupplementalUrls] = useState<string[]>([]);
+  const [supplementalSiteCrawlEnabled, setSupplementalSiteCrawlEnabled] = useState(false);
+  const [supplementalCrawlLayers, setSupplementalCrawlLayers] = useState(2);
   const [skepticPersona, setSkepticPersona] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
@@ -244,6 +247,8 @@ export default function ResearchDeepPage() {
       setSupplemental(supplementalBody);
       setSkepticPersona(personaFromRun);
       setSupplementalUrls(slice.supplementalUrlLines);
+      setSupplementalSiteCrawlEnabled(false);
+      setSupplementalCrawlLayers(2);
       setSupplementalFiles([]);
       setShowSupplemental(
         Boolean(supplementalBody.trim()) ||
@@ -703,6 +708,10 @@ export default function ResearchDeepPage() {
       targetWordCount: resolvedTargetWordCount,
       supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
       supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
+      supplementalUrlCrawl: supplementalUrlCrawlPayload(
+        supplementalSiteCrawlEnabled,
+        supplementalCrawlLayers
+      ),
       citationStyle,
       ...(savedOrchestrationProfileId.trim()
         ? { savedOrchestrationProfileId: savedOrchestrationProfileId.trim() }
@@ -905,6 +914,12 @@ export default function ResearchDeepPage() {
                 onChange={({ files, urls }) => {
                   setSupplementalFiles(files);
                   setSupplementalUrls(urls);
+                }}
+                siteCrawlEnabled={supplementalSiteCrawlEnabled}
+                crawlLayers={supplementalCrawlLayers}
+                onSiteCrawlChange={({ enabled, crawlLayers }) => {
+                  setSupplementalSiteCrawlEnabled(enabled);
+                  setSupplementalCrawlLayers(crawlLayers);
                 }}
                 disabled={mutation.isPending || formLocked}
                 label="Supplemental files and URLs (ingested into corpus)"

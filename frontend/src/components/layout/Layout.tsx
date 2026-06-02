@@ -18,6 +18,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, UserButton } from '@clerk/react';
 import { useBillingSubscriptionQuery, effectiveEntitlementTier } from '../../hooks/useBillingSubscription';
+import { useHasPrivateCorpusAccess } from '../../hooks/useHasPrivateCorpusAccess';
 import { useEnsureUserSynced } from '../../hooks/useEnsureUserSynced';
 import api, {
   getStats,
@@ -47,6 +48,8 @@ type NavItem = {
   desc: string;
   requireAdmin?: boolean;
   requireTier?: 'pro';
+  /** Private Ingest workspace — `corpusAccess` tiers only (not the same as general Pro nav). */
+  requirePrivateCorpus?: boolean;
 };
 
 const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
@@ -59,7 +62,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
   { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },
-  { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Add sources', requireTier: 'pro' },
+  { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Private corpus ingest', requirePrivateCorpus: true },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
   { to: '/app/billing', label: 'Account', icon: Wallet, desc: 'Account and subscription' },
   { to: '/app/models', label: 'Models', icon: Settings, desc: 'Model routing (admin)', requireAdmin: true },
@@ -108,9 +111,12 @@ export default function Layout() {
     (Boolean(subscriptionData) &&
       (PRO_PLUS_TIERS as readonly string[]).includes(effectiveTier ?? 'free_demo'));
 
+  const { hasPrivateCorpusAccess, tierGateUnknown: corpusTierUnknown } = useHasPrivateCorpusAccess();
+
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.requireAdmin && !isAllowlistedAdmin) return false;
     if (item.requireTier === 'pro' && !hasProAccess) return false;
+    if (item.requirePrivateCorpus && !corpusTierUnknown && !hasPrivateCorpusAccess) return false;
     return true;
   });
 

@@ -59,11 +59,20 @@ describe('pipelineBEligibility', () => {
     expect(result.reasons).toContain('per_run_opt_out');
   });
 
-  it('eligible when consent table does not exist (42P01 tolerance)', async () => {
+  it('ineligible when consent table does not exist (42P01 — opt-in default)', async () => {
     queryOneMock.mockRejectedValueOnce(Object.assign(new Error('relation does not exist'), { code: '42P01' }));
     queryOneMock.mockResolvedValueOnce(null);
     const result = await evaluatePipelineBEligibility('run1', 'u1', 'pro', 'completed');
-    expect(result.eligible).toBe(true);
+    expect(result.eligible).toBe(false);
+    expect(result.reasons).toContain('user_opted_out');
+  });
+
+  it('ineligible when user has no consent row', async () => {
+    queryOneMock.mockResolvedValueOnce(null);
+    queryOneMock.mockResolvedValueOnce(null);
+    const result = await evaluatePipelineBEligibility('run1', 'u1', 'pro', 'completed');
+    expect(result.eligible).toBe(false);
+    expect(result.reasons).toContain('user_opted_out');
   });
 
   it('accumulates multiple ineligibility reasons', async () => {

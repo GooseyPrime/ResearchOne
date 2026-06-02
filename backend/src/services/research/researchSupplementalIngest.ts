@@ -3,6 +3,7 @@ import { query } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
 import { waitForIngestionJobs } from '../discovery/discoveryOrchestrator';
+import type { ResolvedSupplementalUrlCrawl } from './supplementalUrlCrawl';
 
 export interface SupplementalUrlItem {
   url: string;
@@ -30,8 +31,11 @@ export async function ingestSupplementalForRun(args: {
   urls: string[];
   files: SupplementalFileItem[];
   userId?: string;
+  urlCrawl?: ResolvedSupplementalUrlCrawl;
 }): Promise<SupplementalIngestSummary> {
-  const { runId, urls, files, userId } = args;
+  const { runId, urls, files, userId, urlCrawl } = args;
+  const crawlEnabled = urlCrawl?.siteCrawl === true;
+  const crawlLayers = crawlEnabled ? urlCrawl?.crawlLayers : undefined;
   const jobIds: string[] = [];
   let urlsQueued = 0;
   let filesQueued = 0;
@@ -40,7 +44,11 @@ export async function ingestSupplementalForRun(args: {
     const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
     if (!url) continue;
     const id = uuidv4();
-    const meta = JSON.stringify(RESEARCH_META(runId));
+    const researchMeta = {
+      ...RESEARCH_META(runId),
+      ...(crawlEnabled ? { site_crawl: true, crawl_layers: crawlLayers } : {}),
+    };
+    const meta = JSON.stringify(researchMeta);
     try {
       await query(
         `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
@@ -60,9 +68,10 @@ export async function ingestSupplementalForRun(args: {
       url,
       sourceType: 'web_url',
       tags: [],
-      metadata: RESEARCH_META(runId),
+      metadata: researchMeta,
       importedVia: 'manual_url',
       discoveredByRunId: runId,
+      ...(crawlEnabled ? { siteCrawl: true, crawlLayers } : {}),
     });
     jobIds.push(id);
     urlsQueued += 1;
