@@ -23,11 +23,12 @@ or update a **PR** into `main` (draft is acceptable). Silence or omission is
 This workflow must **not** add latency versus direct commits to `main`:
 
 - **Integration path is unchanged:** code reaches `main` when the **PR is
-  merged** (squash, merge commit, or rebase merge). That is production
-  delivery — not a separate approval step before work starts.
-- **Guards target mistakes, not merges:** `main-push-gate` runs only on
-  **pushes to `main`**. It **allows** normal GitHub PR merges (`(#<number>)` or
-  merge commits). Feature-branch pushes and PR CI are unaffected.
+  merged** (squash merge, merge commit, or rebase-and-merge). That is
+  production delivery — not a separate approval step before work starts.
+- **Guards target mistakes, not merges:** `ci-main-push-gate.yml` runs on
+  **every push to `main`** (no paths filter). It allows squash/merge commits,
+  PR-linked commits (GitHub API), and `[direct-main]`. Feature-branch PR CI
+  only checks head ref ≠ `main`/`master`.
 - **Do not ask permission to start** normal scoped work. Branch creation +
   PR is mechanical (~seconds); proceed immediately unless an exception below
   applies.

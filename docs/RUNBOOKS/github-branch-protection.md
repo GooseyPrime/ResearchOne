@@ -48,7 +48,8 @@ should surface the escalation block from Rule 32 instead of going silent.
 `scripts/ci/assert-main-push-authorized.sh` fails pushes to `main` when the tip commit:
 
 - is not a merge commit,
-- does not reference `(#<pr>)` (GitHub squash/merge convention), and
+- does not reference `(#<pr>)` (GitHub squash convention),
+- is not linked to a merged PR (GitHub commits API), and
 - does not contain `[direct-main]`.
 
 Pair this check with required status checks so **mistaken** direct pushes do not stick.

@@ -19,10 +19,20 @@ fi
 
 mkdir -p "$HOOK_DIR"
 
-if [[ -f "$HOOK_PATH" ]] && ! grep -q 'assert-not-on-main-branch.sh' "$HOOK_PATH" 2>/dev/null; then
-  echo "::warning::Existing pre-commit hook preserved; append manually or merge:" >&2
-  echo "  bash \"$ASSERT\"" >&2
-  exit 1
+MARKER='Installed by scripts/git/install-pre-commit-hook.sh'
+
+if [[ -f "$HOOK_PATH" ]]; then
+  if grep -qF "$MARKER" "$HOOK_PATH" 2>/dev/null; then
+    : # safe to refresh our hook
+  elif grep -q 'assert-not-on-main-branch.sh' "$HOOK_PATH" 2>/dev/null; then
+    echo "::warning::pre-commit calls assert-not-on-main-branch.sh but was not installed by this script; not overwriting." >&2
+    echo "  Merge manually or remove the hook and re-run: bash scripts/git/install-pre-commit-hook.sh" >&2
+    exit 1
+  else
+    echo "::warning::Existing pre-commit hook preserved; append manually or merge:" >&2
+    echo "  bash \"$ASSERT\"" >&2
+    exit 1
+  fi
 fi
 
 cat >"$HOOK_PATH" <<'EOF'

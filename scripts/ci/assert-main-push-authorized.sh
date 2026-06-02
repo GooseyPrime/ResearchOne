@@ -33,10 +33,21 @@ if echo "$msg" | grep -qiE '\[direct-main\]'; then
   exit 0
 fi
 
-# GitHub squash/rebase merge and many manual merges reference the PR number.
+# GitHub squash merge titles reference the PR number; merge commits use two parents above.
 if echo "$msg" | grep -qE '\(#[0-9]+\)'; then
   echo "main-push-gate: ok (PR reference in commit message)"
   exit 0
+fi
+
+# Rebase-and-merge and other single-parent PR integrations: commit is linked to a PR.
+repo="${GITHUB_REPOSITORY:-}"
+if [[ -n "$repo" ]] && command -v gh >/dev/null 2>&1; then
+  pr_count="$(gh api -H "Accept: application/vnd.github+json" \
+    "repos/${repo}/commits/${sha}/pulls" 2>/dev/null | jq 'length' 2>/dev/null || echo 0)"
+  if [[ "${pr_count:-0}" =~ ^[0-9]+$ ]] && [[ "$pr_count" -gt 0 ]]; then
+    echo "main-push-gate: ok (commit associated with PR via GitHub API)"
+    exit 0
+  fi
 fi
 
 echo "::error::Unauthorized direct push to main."
