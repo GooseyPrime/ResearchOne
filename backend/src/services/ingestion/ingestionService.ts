@@ -9,6 +9,7 @@ import { extractPdf } from './pdfExtractor';
 import { normalizeMarkdown } from './markdownNormalizer';
 import { readStagedFile, cleanupStagedFile } from './uploadStaging';
 import { discoverSiteCrawlUrls } from './siteCrawl';
+import { assertPublicHttpUrl } from './urlFetchPolicy';
 
 export interface IngestionJobData {
   ingestionJobId: string;
@@ -48,11 +49,25 @@ function stripNul(s: string): string {
   return s.includes('\0') ? s.replace(/\0/g, '') : s;
 }
 
+async function resolveIngestionJobUserId(ingestionJobId: string): Promise<string | null> {
+  try {
+    const row = await queryOne<{ user_id: string | null }>(
+      'SELECT user_id FROM ingestion_jobs WHERE id=$1',
+      [ingestionJobId]
+    );
+    return row?.user_id ?? null;
+  } catch (err) {
+    if ((err as { code?: string })?.code === '42703') return null;
+    throw err;
+  }
+}
+
 export async function runIngestionJob(
   data: IngestionJobData,
   onProgress: ProgressCallback
 ): Promise<{ sourceId: string; chunkCount: number }> {
   const { ingestionJobId, sourceType, tags = [], metadata = {} } = data;
+  const ingestedByUserId = await resolveIngestionJobUserId(ingestionJobId);
 
   // Mark job as running
   await query(
@@ -141,6 +156,7 @@ export async function runIngestionJob(
       tags,
       metadata,
       linkJobSource: true,
+      ingestedByUserId,
       onProgress,
     });
 
@@ -183,6 +199,8 @@ interface IngestFetchedWebPageParams {
   tags: string[];
   metadata: Record<string, unknown>;
   linkJobSource: boolean;
+  /** Clerk user who queued the ingestion job (for crawl child ownership). */
+  ingestedByUserId?: string | null;
   onProgress: ProgressCallback;
 }
 
@@ -202,8 +220,18 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     tags,
     metadata,
     linkJobSource,
+    ingestedByUserId,
     onProgress,
   } = params;
+
+  const sourceType = data.sourceType;
+  const storedMetadata: Record<string, unknown> = {
+    ...metadata,
+    ...fetchMetadata,
+  };
+  if (ingestedByUserId) {
+    storedMetadata.ingested_by_user_id = ingestedByUserId;
+  }
 
   onProgress({ stage: 'dedup', percent: 20, message: 'Checking for duplicates...' });
 
@@ -240,13 +268,13 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING id`,
       [
-        pageUrl,
+        pageUrl || null,
         title,
-        'web_url',
+        sourceType,
         rawContent,
         contentHash,
         tags,
-        JSON.stringify({ ...metadata, ...fetchMetadata }),
+        JSON.stringify(storedMetadata),
         data.discoveredByRunId ?? null,
         data.discoveryQuery ?? null,
         data.sourceRank ?? null,
@@ -318,6 +346,7 @@ async function runSiteCrawlIngestion(
   const crawlLayers = data.crawlLayers ?? 2;
   const tags = data.tags ?? [];
   const baseMetadata = data.metadata ?? {};
+  const ingestedByUserId = await resolveIngestionJobUserId(data.ingestionJobId);
 
   onProgress({
     stage: 'crawl_discover',
@@ -387,6 +416,7 @@ async function runSiteCrawlIngestion(
           site_crawl_seed: seedUrl,
         },
         linkJobSource: i === 0,
+        ingestedByUserId,
         onProgress: (p) => onProgress({ ...p, percent: Math.min(85, pct + 5) }),
       });
 
@@ -444,6 +474,7 @@ async function runSiteCrawlIngestion(
 
 /** Raw HTML fetch for same-origin link discovery during site crawl. */
 export async function fetchUrlRawHtml(url: string): Promise<string> {
+  assertPublicHttpUrl(url);
   const response = await axios.get(url, {
     timeout: 30000,
     headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.io)' },

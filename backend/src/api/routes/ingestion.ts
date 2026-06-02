@@ -8,6 +8,7 @@ import { config } from '../../config';
 import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
 import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
+import { assertPublicHttpUrl, UrlFetchPolicyError } from '../../services/ingestion/urlFetchPolicy';
 import { logger } from '../../utils/logger';
 import { clampCrawlLayers } from '../../services/ingestion/siteCrawl';
 
@@ -57,12 +58,12 @@ router.post('/url', async (req, res, next) => {
     }
 
     try {
-      const parsedSeed = new URL(url);
-      if (parsedSeed.protocol !== 'http:' && parsedSeed.protocol !== 'https:') {
-        res.status(400).json({ error: 'url must use http or https' });
+      assertPublicHttpUrl(url);
+    } catch (err) {
+      if (err instanceof UrlFetchPolicyError) {
+        res.status(400).json({ error: err.message });
         return;
       }
-    } catch {
       res.status(400).json({ error: 'url must be a valid absolute URL' });
       return;
     }
