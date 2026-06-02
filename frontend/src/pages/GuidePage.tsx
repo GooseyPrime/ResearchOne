@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 type GuideSection = {
+  id: string;
   icon: React.ComponentType<{ size?: string | number; className?: string }>;
   color: string;
   title: string;
@@ -27,6 +28,7 @@ type GuideSection = {
   tiers?: { tier: string; label: string; color: string; desc: string }[];
   steps?: string[];
   bullets?: string[];
+  footerLink?: { href: string; label: string };
 };
 
 const PIPELINE_STAGES = [
@@ -41,6 +43,7 @@ const PIPELINE_STAGES = [
 
 const SECTIONS: GuideSection[] = [
   {
+    id: 'what-is-researchone',
     icon: FlaskConical,
     color: 'text-accent',
     title: 'What is ResearchOne?',
@@ -49,6 +52,7 @@ const SECTIONS: GuideSection[] = [
 The system enforces strict epistemic discipline: every claim is tagged with a source-corroboration tier, contradictions are first-class data, and reports are designed to attack their own conclusions before finalizing them.`,
   },
   {
+    id: 'research-console-methods',
     icon: ListChecks,
     color: 'text-research-teal',
     title: 'Research console — two methods',
@@ -56,11 +60,12 @@ The system enforces strict epistemic discipline: every claim is tagged with a so
 
 • Standard Retrieval — fast multi-source retrieval and synthesis. Best for general inquiries, historical context, and when you already have a seeded corpus. Does not use the Deep (V2) engine.
 
-• Deep Adversarial Synthesis — full multi-stage pipeline with reasoning models, file uploads, research objective modes, skeptic persona, citation style, and red-team adversarial roles. Requires a Pro-tier plan (or admin access). URL: /app/research?engine=v2 switches the toggle to Deep.
+• Deep Adversarial Synthesis — full multi-stage pipeline with reasoning models, file uploads, research objective modes, skeptic persona, citation style, and red-team adversarial roles. Available on paid tiers (student, wallet, BYOK, Pro, etc.) — not on free_demo/anonymous unless you upgrade; admins can always access. URL: /app/research?engine=v2 switches the toggle to Deep.
 
 Both methods share the same live trace, plan review panel when applicable, and ?runId= deep-linking for in-progress runs.`,
   },
   {
+    id: 'pipeline-stages',
     icon: Brain,
     color: 'text-research-purple',
     title: 'Pipeline stages (what the trace shows)',
@@ -68,6 +73,7 @@ Both methods share the same live trace, plan review panel when applicable, and ?
     roles: PIPELINE_STAGES,
   },
   {
+    id: 'plan-confirmation-gate',
     icon: ListChecks,
     color: 'text-indigo-400',
     title: 'Plan confirmation gate',
@@ -80,12 +86,14 @@ Both methods share the same live trace, plan review panel when applicable, and ?
 If you leave the page, use the plan review banner or return via ?runId= to finish confirmation.`,
   },
   {
+    id: 'urls-files-discovery',
     icon: Link2,
     color: 'text-amber-400',
     title: 'URLs, files, discovery — what actually gets into the corpus',
     bullets: [
       'URLs in the research question text are instructions to the model only. They are not automatically fetched. To force-fetch a page, add it under Supplemental URLs (Standard) or Attach supporting files / URLs (Deep).',
       'Each supplemental URL is HTTP-fetched, text-extracted, and ingested for that run. PDF/TXT/MD uploads follow the same path.',
+      'Ingest → URL tab (corpus seeding): optional “Crawl this site” ingests same-origin linked pages up to a layer limit (bounded; not unbounded sitewide). Research supplemental URLs still fetch one page per URL unless you seed the corpus via crawl first.',
       'Discovery runs bounded web search (e.g. Tavily/Brave) and ingests a limited set of top candidates — it does not crawl every link on a domain or mirror an entire site.',
       'Fetch uses server-side HTTP + HTML text extraction, not a headless browser. Heavy JavaScript sites may return thin text; SPAs may look empty after strip. Add key inner pages as separate supplemental URLs if the homepage is not enough.',
       'Filter by Tags (optional) scopes retrieval to sources you tagged during Ingest — useful when you pre-seeded a corpus.',
@@ -93,10 +101,12 @@ If you leave the page, use the plan review banner or return via ?runId= to finis
     ],
   },
   {
+    id: 'deep-options',
     icon: FlaskConical,
     color: 'text-research-purple',
     title: 'Deep Adversarial Synthesis — options beyond Standard',
     content: `On Deep Adversarial Synthesis, additional controls shape orchestration and report structure. Full definitions for each research objective are on the companion page.`,
+    footerLink: { href: '/app/guide/research-v2', label: 'Research modes and capabilities →' },
     bullets: [
       'Research objective — switches ensemble focus and report template (General, Investigative Synthesis, Patent Gap, Novel Application, Anomaly Correlation). Tier may limit which objectives appear.',
       'Citation style — academic export formatting (APA, Chicago, etc.).',
@@ -107,6 +117,7 @@ If you leave the page, use the plan review banner or return via ?runId= to finis
     ],
   },
   {
+    id: 'revision-spinoff',
     icon: RefreshCw,
     color: 'text-research-blue',
     title: 'After a report — revision vs spinoff',
@@ -117,6 +128,7 @@ If you leave the page, use the plan review banner or return via ?runId= to finis
     ],
   },
   {
+    id: 'source-tiers',
     icon: Database,
     color: 'text-research-teal',
     title: 'Source-corroboration tiers — critical distinction',
@@ -129,6 +141,7 @@ If you leave the page, use the plan review banner or return via ?runId= to finis
     ],
   },
   {
+    id: 'embedding-atlas',
     icon: Layers,
     color: 'text-research-blue',
     title: 'Using Embedding Atlas',
@@ -143,6 +156,7 @@ Sparse bridges = overlooked connections between conceptual regions. High-value t
 The correct workflow: find interesting points in Atlas → bring those topics back to Research → run targeted research queries → generate disciplined reports.`,
   },
   {
+    id: 'will-not-do',
     icon: AlertTriangle,
     color: 'text-amber-400',
     title: 'What this system will NOT do',
@@ -159,6 +173,7 @@ The correct workflow: find interesting points in Atlas → bring those topics ba
 The Challenge and Verification stages exist specifically to prevent the system from becoming a sophisticated hallucination engine.`,
   },
   {
+    id: 'troubleshooting',
     icon: GitBranch,
     color: 'text-red-400',
     title: 'Troubleshooting common situations',
@@ -167,14 +182,16 @@ The Challenge and Verification stages exist specifically to prevent the system f
       'Report says a site could not be loaded but you can open it in a browser — the server may have fetched little text (SPA/JS), discovery never ingested that host, or the synthesizer had zero chunks from that domain. Check trace ingest messages; re-run with explicit supplemental URLs.',
       '403 / bot blocking from the origin — production fetch IPs differ from your laptop. Try Wayback or paste critical text into Supplemental Context.',
       'Plan gate stuck — confirm or cancel on Research; refresh with ?runId= if you navigated away.',
-      'Deep toggle locked — upgrade to Pro or use Standard Retrieval for non–deep-report quota.',
+      'Deep toggle locked — free_demo/anonymous cannot open Deep; upgrade (student, wallet, Pro, etc.) or use Standard Retrieval within your tier quota.',
       'Thin corpus — add Ingest sources beforehand, supplemental files, and explicit URLs; narrow filter tags if you over-scoped retrieval.',
     ],
   },
   {
+    id: 'first-steps',
     icon: ArrowRight,
     color: 'text-research-teal',
     title: 'Recommended first steps',
+    footerLink: { href: '/app/guide/research-v2', label: '/app/guide/research-v2' },
     steps: [
       'Open Research → choose Standard Retrieval or Deep Adversarial Synthesis.',
       'Write a specific, testable query. State what might be neglected and what would falsify your angle.',
@@ -222,7 +239,7 @@ function SectionBody({ section }: { section: GuideSection }) {
       {section.bullets ? (
         <ul className="list-disc list-inside space-y-2 text-sm text-slate-300 leading-relaxed">
           {section.bullets.map((item) => (
-            <li key={item.slice(0, 48)}>{item}</li>
+            <li key={item}>{item}</li>
           ))}
         </ul>
       ) : null}
@@ -230,7 +247,7 @@ function SectionBody({ section }: { section: GuideSection }) {
       {section.steps ? (
         <ol className="space-y-2">
           {section.steps.map((step, j) => (
-            <li key={step.slice(0, 40)} className="flex items-start gap-3 text-sm text-slate-300">
+            <li key={step} className="flex items-start gap-3 text-sm text-slate-300">
               <span className="flex-shrink-0 w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">
                 {j + 1}
               </span>
@@ -278,24 +295,17 @@ export default function GuidePage() {
       </div>
 
       {SECTIONS.map((section) => (
-        <div key={section.title} className="card p-6 space-y-4">
+        <div key={section.id} className="card p-6 space-y-4">
           <div className="flex items-center gap-3">
             <section.icon size={18} className={section.color} />
             <h2 className="text-base font-semibold text-white">{section.title}</h2>
           </div>
           <SectionBody section={section} />
-          {section.title === 'Deep Adversarial Synthesis — options beyond Standard' ? (
+          {section.footerLink ? (
             <p className="text-sm text-slate-400">
-              <Link to="/app/guide/research-v2" className="text-accent hover:underline">
-                Research modes and capabilities →
-              </Link>
-            </p>
-          ) : null}
-          {section.title === 'Recommended first steps' ? (
-            <p className="text-sm text-slate-400">
-              Deep objective reference:{' '}
-              <Link to="/app/guide/research-v2" className="text-accent hover:underline">
-                /app/guide/research-v2
+              {section.id === 'first-steps' ? 'Deep objective reference: ' : null}
+              <Link to={section.footerLink.href} className="text-accent hover:underline">
+                {section.footerLink.label}
               </Link>
             </p>
           ) : null}
