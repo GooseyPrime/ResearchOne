@@ -3,6 +3,7 @@ import type { MonitorKind } from '../monitoring/parallelMonitorService';
 
 export type AddonBillingModel =
   | 'report_subscription'
+  | 'token_pack'
   | 'per_run'
   | 'enterprise_inquiry';
 
@@ -24,7 +25,6 @@ export type AddonCatalogEntry = {
 };
 
 function buildCatalog(): AddonCatalogEntry[] {
-  const livingPrice = Boolean(config.stripe.priceIds.livingReportMonthly);
   const rcwPrice = Boolean(config.stripe.priceIds.reverseCitationWatchMonthly);
 
   return [
@@ -32,14 +32,14 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'living_report',
       name: 'Living Reports',
       description:
-        'Your published reports stay current. ResearchOne monitors the underlying literature and pushes diffs when the sources meaningfully shift.',
-      priceLabel: '$19/mo per report',
-      billingModel: 'report_subscription',
+        'Keep a finalized report current with monitor tokens — each token covers one report for two months of Living Report monitoring (same revision pipeline as manual requests).',
+      priceLabel: '1 token / 2 months per report',
+      billingModel: 'token_pack',
       category: 'report_monitor',
       monitorKind: 'living_report',
-      managePath: '/app/monitors/living-reports',
+      managePath: '/app/billing#monitor-tokens',
       comingSoon: false,
-      stripeConfigured: livingPrice,
+      stripeConfigured: false,
     },
     {
       id: 'reverse_citation_watch',

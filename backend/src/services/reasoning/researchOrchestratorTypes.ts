@@ -5,6 +5,8 @@ import type { ResearchObjective } from './reasoningModelPolicy';
 export interface CreditChargeContext {
   type: 'subscription' | 'wallet' | 'byok' | 'none';
   costCents: number;
+  /** Wallet surcharges for run add-ons (may apply even when base report is subscription quota). */
+  addonSurchargeCents?: number;
   holdId?: string;
   userId?: string;
   subscriptionQuotaToDecrement?: number;
@@ -37,6 +39,8 @@ export interface ResearchJobData {
     customizations: unknown;
     profileName?: string;
   };
+  /** Per-run wallet add-ons from POST /api/research (persisted on research_runs.selected_addons). */
+  addons?: string[];
 }
 
 export interface ResearchProgress {

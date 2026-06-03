@@ -141,6 +141,8 @@ export async function runDiscoveryOrchestrator(args: {
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
+  /** Per-run add-on override (parallel_search → higher ingest cap). */
+  maxIngestCapOverride?: number;
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
@@ -168,9 +170,10 @@ async function runDiscoveryOrchestratorInner(args: {
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
+  maxIngestCapOverride?: number;
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, onRoundComplete } = args;
+  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, maxIngestCapOverride, onRoundComplete } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -227,10 +230,11 @@ async function runDiscoveryOrchestratorInner(args: {
     return buildSummary(runId, false, discoveryPlan.rationale, [], [], [], startTime);
   }
 
-  const maxIngest = Math.min(
-    discoveryPlan.max_sources_to_ingest || config.discovery.maxIngestPerRun,
-    config.discovery.maxIngestPerRun
-  );
+  const capCeiling =
+    typeof maxIngestCapOverride === 'number' && maxIngestCapOverride > 0
+      ? maxIngestCapOverride
+      : config.discovery.maxIngestPerRun;
+  const maxIngest = Math.min(discoveryPlan.max_sources_to_ingest || capCeiling, capCeiling);
 
   logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
 

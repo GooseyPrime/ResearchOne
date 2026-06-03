@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import RunAddonToggles from '@/components/research/RunAddonToggles';
+import { useResearchRunAddons } from '@/hooks/useResearchRunAddons';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '@/utils/researchRunAddons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -39,6 +42,9 @@ export default function ReportSpinoffPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification } = useStore();
+
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
     useBillingSubscriptionQuery();
@@ -194,6 +200,7 @@ export default function ReportSpinoffPage() {
           supplementalCrawlLayers
         ),
         citationStyle,
+        addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
@@ -434,6 +441,12 @@ export default function ReportSpinoffPage() {
                 ) : null}
               </div>
             ) : null}
+
+            <RunAddonToggles
+              selected={selectedAddons}
+              onToggle={toggleAddon}
+              disabled={mutation.isPending}
+            />
 
             <button
               type="submit"

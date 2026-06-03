@@ -31,10 +31,12 @@ import {
 import { checkTierAccess } from '../../services/tier/tierService';
 import { getWalletSummary } from '../../services/billing/walletService';
 import { logger } from '../../utils/logger';
-import { computeRunCost, type CreditChargeContext } from '../../middleware/creditEnforcement';
+import {
+  buildCreditChargeContextForRun,
+  type CreditChargeContext,
+} from '../../middleware/creditEnforcement';
+import { parseAddonsFromStartRequest } from '../../services/reasoning/parseResearchAddons';
 import { getUserTier } from '../../services/tier/tierService';
-import { TIER_RULES } from '../../config/tierRules';
-import { placeHold } from '../../services/billing/walletReservations';
 import { getUserSubscription, type UserSubscription } from '../../services/billing/subscriptionService';
 import { resolveEffectiveEntitlementTier } from '../../services/billing/entitlementTier';
 import { parseExportStyleInput, VALID_EXPORT_STYLES } from '../../services/formatting/exportStyleGuards';
@@ -116,6 +118,11 @@ async function handleStartResearchRun(
       };
 
       const researchQuery = typeof body.query === 'string' ? body.query : '';
+      const selectedAddons = parseAddonsFromStartRequest(
+        req.body as Record<string, unknown>,
+        isMultipart
+      );
+      const selectedAddonsJson = JSON.stringify(selectedAddons);
       let supplemental = typeof body.supplemental === 'string' ? body.supplemental : '';
 
       let filterTags: string[] | undefined;
@@ -372,6 +379,7 @@ async function handleStartResearchRun(
         userId: userId ?? null,
         orgId,
         lineage: spinoffLineage,
+        selectedAddonsJson,
       });
 
       if (citationStyle) {
@@ -390,46 +398,20 @@ async function handleStartResearchRun(
           const userTier = await getUserTier(userId);
           const sub = subscriptionRow ?? (await getUserSubscription(userId));
           const entitlementTier = resolveEffectiveEntitlementTier(sub, userTier.tier);
-          const rules = TIER_RULES[entitlementTier] ?? TIER_RULES.free_demo;
-          const addons = (req.body as { addons?: string[] }).addons;
 
-          if (entitlementTier === 'byok' || entitlementTier === 'admin' || entitlementTier === 'sovereign') {
-            creditChargeContext = { type: 'byok', costCents: 0, userId };
-          } else {
-            const { costCents, errors } = computeRunCost(entitlementTier, researchObjective, addons);
-            if (errors.length > 0) {
-              const first = errors[0];
-              res.status(first.status).json({ error: first.message, errors });
-              return;
-            }
-
-            const withinMonthlyCap = rules.monthlyReportCap !== null &&
-              userTier.current_period_reports_used < rules.monthlyReportCap;
-
-            const isLifetimeCapOnly = rules.lifetimeReportCap !== null && rules.monthlyReportCap === null && !rules.walletFallbackEnabled;
-
-            if (withinMonthlyCap) {
-              creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
-            } else if (isLifetimeCapOnly) {
-              // Lifetime-only tiers (e.g. free_demo) still need subscription-shaped
-              // credit context so `incrementReportCount` runs on successful completion.
-              creditChargeContext = { type: 'subscription', costCents: 0, subscriptionQuotaToDecrement: 1, userId };
-            } else if (rules.walletFallbackEnabled || rules.monthlyReportCap === null) {
-              const holdResult = await placeHold(userId, runId, costCents);
-              if (!holdResult.success) {
-                res.status(402).json({
-                  error: 'Insufficient wallet balance',
-                  available_balance_cents: holdResult.availableBalanceCents,
-                  required_cents: costCents,
-                  checkout_path: '/app/billing',
-                });
-                return;
-              }
-              creditChargeContext = { type: 'wallet', costCents, holdId: holdResult.holdId, userId };
-            } else {
-              creditChargeContext = { type: 'none', costCents: 0 };
-            }
+          const creditResult = await buildCreditChargeContextForRun({
+            userId,
+            runId,
+            entitlementTier,
+            researchObjective,
+            addons: selectedAddons,
+            currentPeriodReportsUsed: userTier.current_period_reports_used,
+          });
+          if (!creditResult.ok) {
+            res.status(creditResult.status).json(creditResult.body);
+            return;
           }
+          creditChargeContext = creditResult.context;
         } catch (creditErr) {
           // Deploy-skew tolerance: if wallet_holds table doesn't exist, proceed without credit enforcement
           const pgCode = (creditErr as { code?: string })?.code;
@@ -455,6 +437,7 @@ async function handleStartResearchRun(
           citationStyle,
           creditChargeContext,
           savedOrchestrationProfileSeed,
+          addons: selectedAddons.length > 0 ? selectedAddons : undefined,
         },
         { jobId: runId }
       );

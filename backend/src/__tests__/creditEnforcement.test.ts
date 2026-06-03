@@ -20,12 +20,15 @@ describe('computeRunCost', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('adds addon costs to base', () => {
-    const { costCents, errors } = computeRunCost('sovereign', 'GENERAL_EPISTEMIC_RESEARCH', [
-      'living_reports', 'adversarial_twin',
-    ]);
-    expect(costCents).toBe(400 + 200 + 500);
+  it('waives surcharges for tier-included addons on sovereign', () => {
+    const { costCents, addonSurchargeCents, errors } = computeRunCost(
+      'sovereign',
+      'GENERAL_EPISTEMIC_RESEARCH',
+      ['living_reports', 'adversarial_twin'],
+    );
     expect(errors).toHaveLength(0);
+    expect(addonSurchargeCents).toBe(0);
+    expect(costCents).toBe(400);
   });
 
   it('returns 400 error for unknown addon', () => {
@@ -48,18 +51,42 @@ describe('computeRunCost', () => {
     expect(costCents).toBe(400 + 50);
   });
 
-  it('pro tier cannot use adversarial_twin', () => {
-    const { errors } = computeRunCost('pro', 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
+  it('pro tier can purchase adversarial_twin with wallet surcharge', () => {
+    const { costCents, addonSurchargeCents, errors } = computeRunCost('pro', 'GENERAL_EPISTEMIC_RESEARCH', [
+      'adversarial_twin',
+    ]);
+    expect(errors).toHaveLength(0);
+    expect(addonSurchargeCents).toBe(500);
+    expect(costCents).toBe(900);
+  });
+
+  it('free_demo cannot use adversarial_twin when deep research is disabled', () => {
+    const { errors } = computeRunCost('anonymous', 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
     expect(errors).toHaveLength(1);
     expect(errors[0].status).toBe(403);
   });
 
-  it('sovereign tier can use all addons', () => {
-    const { costCents, errors } = computeRunCost('sovereign', 'GENERAL_EPISTEMIC_RESEARCH', [
-      'living_reports', 'adversarial_twin', 'provenance_ledger', 'parallel_search', 'parallel_extract', 'smart_citations',
+  it('sovereign tier waives included addons but still surcharges parallel add-ons', () => {
+    const { costCents, addonSurchargeCents, errors } = computeRunCost('sovereign', 'GENERAL_EPISTEMIC_RESEARCH', [
+      'living_reports',
+      'adversarial_twin',
+      'provenance_ledger',
+      'parallel_search',
+      'parallel_extract',
+      'smart_citations',
     ]);
     expect(errors).toHaveLength(0);
-    expect(costCents).toBe(400 + 200 + 500 + 300 + 100 + 100 + 50);
+    expect(addonSurchargeCents).toBe(250);
+    expect(costCents).toBe(650);
+  });
+
+  it('team tier waives living_reports surcharge when livingReportsIncluded', () => {
+    const { addonSurchargeCents, costCents } = computeRunCost('team', 'GENERAL_EPISTEMIC_RESEARCH', [
+      'living_reports',
+      'adversarial_twin',
+    ]);
+    expect(addonSurchargeCents).toBe(500);
+    expect(costCents).toBe(900);
   });
 
   it('defaults to 400 for null objective', () => {

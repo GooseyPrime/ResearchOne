@@ -46,6 +46,11 @@ import {
   resolveOrchestrationProfileFromJob,
 } from '../planning/orchestrationRuntime';
 import {
+  applyAdversarialTwinToSkepticMode,
+  buildRunAddonPipelineEffects,
+  resolveRunAddons,
+} from './runAddons';
+import {
   PIPELINE_STAGES,
   shouldRunPipelineStage,
 } from '../planning/orchestrationProfiles';
@@ -307,6 +312,9 @@ async function runResearchJobInner(
   }
   const v2 = { ...v2Base, ...(byokApiKeyOverride ? { byokApiKeyOverride } : {}) };
 
+  const runAddons = await resolveRunAddons(runId, data.addons);
+  const addonEffects = buildRunAddonPipelineEffects(runAddons);
+
   const resumeJobPayload: ResearchJobData = {
     runId,
     query: researchQuery,
@@ -318,6 +326,9 @@ async function runResearchJobInner(
     targetWordCount,
     citationStyle,
     creditChargeContext: creditCtx,
+    addons: runAddons.length > 0 ? [...runAddons] : undefined,
+    savedOrchestrationProfileSeed: data.savedOrchestrationProfileSeed,
+    confirmedPlanPayload: data.confirmedPlanPayload,
   };
   const modelLog: ModelCallResult[] = [];
   let currentStage = 'queued';
@@ -326,7 +337,10 @@ async function runResearchJobInner(
   const runStartedAt = Date.now();
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
-  const orchProfile = resolveOrchestrationProfileFromJob(data);
+  const orchProfile = applyAdversarialTwinToSkepticMode(
+    resolveOrchestrationProfileFromJob(data),
+    runAddons
+  );
 
   let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
   let wave53SourceClassBreakdown: Record<string, number> = {};
@@ -574,6 +588,7 @@ async function runResearchJobInner(
         allowFallbackByRole,
         byokApiKeyOverride,
         userId: creditCtx?.userId,
+        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
         onRoundComplete: async ({ round, candidatesAfter }) => {
           const pct = round === 1 ? 15 : 17;
           await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
@@ -612,7 +627,7 @@ async function runResearchJobInner(
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
         const chunks = await retrieveChunks({
           query: rqStr,
-          topK: 15,
+          topK: addonEffects.retrievalTopK,
           filterTags,
           hybridSearch: true,
         });
@@ -1037,6 +1052,7 @@ async function runResearchJobInner(
           reportSections,
           discoverySummary: discoverySummary as unknown as Record<string, unknown>,
           sourceClassByChunkId: wave53SourceClassMap,
+          chunkContextLimit: addonEffects.citationChunkContextLimit,
           ...v2,
         });
       } catch (epistemicErr) {
@@ -1088,7 +1104,7 @@ async function runResearchJobInner(
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {
       try {
-        if (creditCtx.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+        if (creditCtx.holdId && creditCtx.userId) {
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
         }
         if (creditCtx.type === 'subscription' && creditCtx.userId) {
@@ -1349,7 +1365,7 @@ async function runResearchJobInner(
     // For terminal failures (aborted, non-retryable), release immediately.
     // For retryable failures, hold is kept for the retry attempt (it carries
     // forward via resumeJobPayload.creditChargeContext).
-    if (creditCtx?.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+    if (creditCtx?.holdId && creditCtx.userId) {
       const isTerminal = finalStatus === 'aborted' || !failureMetaWithResume.retryable;
       if (isTerminal) {
         try {

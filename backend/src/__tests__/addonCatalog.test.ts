@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { getAddonCatalog } from '../services/billing/addonCatalog';
 
 describe('getAddonCatalog', () => {
-  it('includes Stripe-backed report monitors with manage paths', () => {
+  it('uses token economy for Living Reports and Stripe for RCW', () => {
     const catalog = getAddonCatalog();
     const living = catalog.find((e) => e.id === 'living_report');
     const rcw = catalog.find((e) => e.id === 'reverse_citation_watch');
 
-    expect(living?.billingModel).toBe('report_subscription');
-    expect(living?.managePath).toBe('/app/monitors/living-reports');
+    expect(living?.billingModel).toBe('token_pack');
+    expect(living?.stripeConfigured).toBe(false);
+    expect(living?.managePath).toBe('/app/billing#monitor-tokens');
+    expect(rcw?.billingModel).toBe('report_subscription');
     expect(rcw?.managePath).toBe('/app/monitors/reverse-citation-watch');
   });
 

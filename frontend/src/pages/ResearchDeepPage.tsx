@@ -46,6 +46,9 @@ import {
 } from '@/constants/researchObjectives';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
+import RunAddonToggles from '../components/research/RunAddonToggles';
+import { useResearchRunAddons } from '../hooks/useResearchRunAddons';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '../utils/researchRunAddons';
 import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSubscriptionQuery } from '../hooks/useBillingSubscription';
 import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/usePlanPreferences';
 import { formatFailureReason } from '../utils/researchFailureFormat';
@@ -191,6 +194,9 @@ export default function ResearchDeepPage() {
   const [planGateLocal, setPlanGateLocal] = useState<PlanGateSnapshot | null>(null);
   const [planGateBusy, setPlanGateBusy] = useState(false);
   const planGateRef = useRef<HTMLDivElement>(null);
+
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<
@@ -698,6 +704,7 @@ export default function ResearchDeepPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+    syncAddonsToUrl();
     mutation.mutate({
       query: query.trim(),
       supplemental: mergeSupplementalWithSkepticPersona(supplemental, skepticPersona),
@@ -716,6 +723,7 @@ export default function ResearchDeepPage() {
       ...(savedOrchestrationProfileId.trim()
         ? { savedOrchestrationProfileId: savedOrchestrationProfileId.trim() }
         : {}),
+      addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
     });
   };
 
@@ -1077,6 +1085,12 @@ export default function ResearchDeepPage() {
               </div>
             </div>
           )}
+
+          <RunAddonToggles
+            selected={selectedAddons}
+            onToggle={toggleAddon}
+            disabled={mutation.isPending || formLocked}
+          />
 
           <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || formLocked}>
             <Send size={16} />

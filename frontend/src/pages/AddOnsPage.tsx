@@ -10,13 +10,15 @@ import api, {
 } from '../utils/api';
 import { useHasProAccess } from '../hooks/useHasProAccess';
 import ReportSubscribeModal from '../components/addons/ReportSubscribeModal';
+import LivingReportSubscribeModal from '../components/addons/LivingReportSubscribeModal';
+import { RESEARCH_ADDONS_QUERY_KEY } from '../utils/researchRunAddons';
 
 export type AddonCatalogEntry = {
   id: string;
   name: string;
   description: string;
   priceLabel: string;
-  billingModel: 'report_subscription' | 'per_run' | 'enterprise_inquiry';
+  billingModel: 'report_subscription' | 'token_pack' | 'per_run' | 'enterprise_inquiry';
   category: 'report_monitor' | 'research_run' | 'platform';
   monitorKind?: ReportMonitorKind;
   runAddonKey?: string;
@@ -37,11 +39,28 @@ function activeMonitorsForKind(monitors: ReportMonitorRow[], kind: ReportMonitor
   );
 }
 
+function monitorStatusLabel(m: ReportMonitorRow): string {
+  if (m.monitor_kind === 'living_report' && m.expires_at) {
+    try {
+      const exp = new Date(m.expires_at).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${m.status} · until ${exp}`;
+    } catch {
+      return m.status;
+    }
+  }
+  return m.status;
+}
+
 export default function AddOnsPage() {
   const { hasProAccess } = useHasProAccess();
   const [subscribeKind, setSubscribeKind] = useState<{
     kind: ReportMonitorKind;
     name: string;
+    billingModel: AddonCatalogEntry['billingModel'];
   } | null>(null);
 
   const catalogQuery = useQuery({
@@ -69,7 +88,8 @@ export default function AddOnsPage() {
         <h1 className="text-2xl font-bold text-white">Add-ons</h1>
         <p className="mt-2 text-sm text-slate-400 max-w-2xl">
           Extend your subscription with per-report monitors, per-run enhancements, and platform capabilities.
-          Report add-ons bill through Stripe; run add-ons apply as wallet surcharges when enabled on a research job.
+          Reverse-Citation Watch bills through Stripe per report. Living Reports use monitor tokens from Account.
+          Run enhancements apply as wallet surcharges when you enable them on a research job.
         </p>
         {!hasProAccess && !catalogQuery.isLoading ? (
           <div className="mt-4 rounded-md border border-amber-700/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200 flex gap-2">
@@ -101,7 +121,9 @@ export default function AddOnsPage() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium text-slate-200">Report monitors</h2>
-        <p className="text-xs text-slate-500">Per finalized report · Stripe subscription · stack on any eligible plan</p>
+        <p className="text-xs text-slate-500">
+          Per finalized report · Living Reports = monitor tokens · Reverse-Citation Watch = Stripe per report
+        </p>
         <div className="grid gap-4 md:grid-cols-2">
           {reportAddons.map((addon) => {
             const Icon = ICON_BY_ID[addon.id] ?? Radar;
@@ -118,9 +140,20 @@ export default function AddOnsPage() {
                 </div>
                 <p className="mt-3 text-sm text-slate-400 leading-relaxed flex-1">{addon.description}</p>
                 {active.length > 0 ? (
-                  <p className="mt-3 text-xs text-emerald-400">
-                    {active.length} active subscription{active.length === 1 ? '' : 's'}
-                  </p>
+                  <div className="mt-3 text-xs text-emerald-400/90">
+                    <p>
+                      {active.length}{' '}
+                      {addon.billingModel === 'token_pack' || addon.monitorKind === 'living_report'
+                        ? `active monitor${active.length === 1 ? '' : 's'}`
+                        : `active subscription${active.length === 1 ? '' : 's'}`}
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-slate-500">
+                      {active.slice(0, 3).map((m) => (
+                        <li key={m.id}>{monitorStatusLabel(m)}</li>
+                      ))}
+                      {active.length > 3 ? <li>+{active.length - 3} more</li> : null}
+                    </ul>
+                  </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {addon.managePath ? (
@@ -128,18 +161,38 @@ export default function AddOnsPage() {
                       Manage
                     </Link>
                   ) : null}
-                  {addon.comingSoon ? null : hasProAccess && addon.monitorKind && addon.stripeConfigured ? (
-                    <button
-                      type="button"
-                      className="btn text-xs"
-                      onClick={() =>
-                        setSubscribeKind({ kind: addon.monitorKind!, name: addon.name })
-                      }
-                    >
-                      Subscribe to a report
-                    </button>
-                  ) : hasProAccess && addon.monitorKind && !addon.stripeConfigured ? (
-                    <span className="text-xs text-amber-400">Stripe price not configured on server</span>
+                  {addon.comingSoon ? null : hasProAccess && addon.monitorKind ? (
+                    addon.billingModel === 'token_pack' ? (
+                      <button
+                        type="button"
+                        className="btn text-xs"
+                        onClick={() =>
+                          setSubscribeKind({
+                            kind: addon.monitorKind!,
+                            name: addon.name,
+                            billingModel: addon.billingModel,
+                          })
+                        }
+                      >
+                        Activate on a report
+                      </button>
+                    ) : addon.stripeConfigured ? (
+                      <button
+                        type="button"
+                        className="btn text-xs"
+                        onClick={() =>
+                          setSubscribeKind({
+                            kind: addon.monitorKind!,
+                            name: addon.name,
+                            billingModel: addon.billingModel,
+                          })
+                        }
+                      >
+                        Subscribe to a report
+                      </button>
+                    ) : (
+                      <span className="text-xs text-amber-400">Stripe price not configured on server</span>
+                    )
                   ) : !hasProAccess ? (
                     <Link to="/app/billing" className="btn text-xs">
                       Upgrade to subscribe
@@ -166,9 +219,18 @@ export default function AddOnsPage() {
                 <span className="text-xs text-slate-500">{addon.priceLabel}</span>
               </div>
               <p className="mt-2 text-xs text-slate-400 leading-relaxed">{addon.description}</p>
-              <Link to="/app/research" className="mt-3 inline-block text-xs text-indigo-400 hover:text-indigo-300">
-                Enable on your next research run →
-              </Link>
+              {addon.runAddonKey ? (
+                <Link
+                  to={`/app/research?${RESEARCH_ADDONS_QUERY_KEY}=${encodeURIComponent(addon.runAddonKey)}`}
+                  className="mt-3 inline-block text-xs text-indigo-400 hover:text-indigo-300"
+                >
+                  Enable on your next research run →
+                </Link>
+              ) : (
+                <Link to="/app/research" className="mt-3 inline-block text-xs text-indigo-400 hover:text-indigo-300">
+                  Open research console →
+                </Link>
+              )}
             </article>
           ))}
         </div>
@@ -212,11 +274,15 @@ export default function AddOnsPage() {
       </p>
 
       {subscribeKind ? (
-        <ReportSubscribeModal
-          monitorKind={subscribeKind.kind}
-          addonName={subscribeKind.name}
-          onClose={() => setSubscribeKind(null)}
-        />
+        subscribeKind.billingModel === 'token_pack' && subscribeKind.kind === 'living_report' ? (
+          <LivingReportSubscribeModal addonName={subscribeKind.name} onClose={() => setSubscribeKind(null)} />
+        ) : (
+          <ReportSubscribeModal
+            monitorKind={subscribeKind.kind}
+            addonName={subscribeKind.name}
+            onClose={() => setSubscribeKind(null)}
+          />
+        )
       ) : null}
     </div>
   );

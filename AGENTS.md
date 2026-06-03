@@ -126,6 +126,16 @@ ship on `main`.
 - **Cherry-pick fa53:** reconcile with unified research console (PR #149); spinoff submit → `/app/research?runId=`.
 - **Migration numbers:** spinoff lineage = **046**; `v_dossier` activity = **047** (039 is saved orchestration profiles).
 
+## Recurring review themes (Codex / Copilot, PR #166 — add-ons billing wiring)
+
+- **Wallet holds vs `creditCtx.type`:** `consumeHold` / `releaseHold` in `researchOrchestrator` must key off `holdId` + `userId`, not only `creditCtx.type === 'wallet'`. Subscription-quota runs with add-on wallet surcharges still place holds — grep `releaseHold` / `consumeHold` when changing credit paths.
+- **Deploy-skew `42703` on INSERT:** Do not blanket `return false` for every missing column on authenticated inserts. Fail closed when the error names `user_id` / `org_id`; only fall through to narrower INSERTs for optional columns (e.g. `selected_addons`, lineage). Never insert ownerless rows when `userId` is set — see `spinoffInsertSkew.test.ts`.
+- **Charge-without-effect add-ons:** Run add-ons that bill must change pipeline behavior (`applyAdversarialTwinToSkepticMode` un-skips `challenge`, enables `skepticMode` gate; `buildRunAddonPipelineEffects` for retrieval/citations). Grep `agentsToSkip` / `hasRunAddon` when wiring new keys.
+- **Eligibility vs waiver:** `computeRunCost` / `creditEnforcement` — `eligibilityFeature` (who may purchase) can differ from `includedFeature` (plan waives surcharge). Example: `adversarial_twin` uses `deepResearchAccess` for eligibility, `adversarialTwinIncluded` for waiver — do not gate purchase on `provenanceLedgerIncluded` when the UI sells on Pro/deep.
+- **Monitor status vs Stripe subscription:** Token-based Living Reports use `report_monitors.status === 'active'` only for “already subscribed” UI — `paused` must not block re-activation. Stripe add-ons remain subscription-shaped; copy on `AddOnsPage` should say “monitor(s)” vs “subscription(s)” per product type.
+
+Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`](docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md).
+
 ## Recurring review themes (Codex / Copilot, PR #165 — Rule 36 Tier A copy)
 
 - **`assert-tier-a-no-banned-jargon.sh`:** use **grep -H** (single-file matches omit the path prefix), **grep/find/sed only** — GitHub `ubuntu-latest` has no `ripgrep`; mirror `assert-no-test-mocks-in-app-src.sh`.

@@ -41,6 +41,9 @@ import { useResearchPageShell } from './ResearchPageContext';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import SiteCrawlControls from '../components/research/SiteCrawlControls';
+import RunAddonToggles from '../components/research/RunAddonToggles';
+import { useResearchRunAddons } from '../hooks/useResearchRunAddons';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '../utils/researchRunAddons';
 import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
@@ -136,6 +139,9 @@ export default function ResearchStandardPage() {
   const [planGateLocal, setPlanGateLocal] = useState<PlanGateSnapshot | null>(null);
   const [planGateBusy, setPlanGateBusy] = useState(false);
   const planGateRef = useRef<HTMLDivElement>(null);
+
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<Record<string, { primary?: string; fallback?: string }>>({});
@@ -567,6 +573,7 @@ export default function ResearchStandardPage() {
       .split(/[\n,]+/)
       .map((u) => u.trim())
       .filter(Boolean);
+    syncAddonsToUrl();
     mutation.mutate({
       query: query.trim(),
       supplemental: supplemental.trim() || undefined,
@@ -578,6 +585,7 @@ export default function ResearchStandardPage() {
           ? { siteCrawl: true, crawlLayers: supplementalCrawlLayers }
           : undefined,
       supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
+      addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
     });
   };
 
@@ -745,6 +753,12 @@ export default function ResearchStandardPage() {
               </div>
             </div>
           )}
+
+          <RunAddonToggles
+            selected={selectedAddons}
+            onToggle={toggleAddon}
+            disabled={mutation.isPending || formLocked}
+          />
 
           <button type="submit" className="btn-primary w-full py-3 text-base justify-center" disabled={!query.trim() || mutation.isPending || formLocked}>
             <Send size={16} />
