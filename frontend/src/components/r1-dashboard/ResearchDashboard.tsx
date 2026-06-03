@@ -4,6 +4,9 @@
  */
 
 import { useState, useEffect } from 'react';
+import RunAddonToggles from '@/components/research/RunAddonToggles';
+import { useResearchRunAddons } from '@/hooks/useResearchRunAddons';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '@/utils/researchRunAddons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -25,6 +28,9 @@ export function ResearchDashboard() {
   const [skepticPersona, setSkepticPersona] = useState('');
   const [isPersonaDropdownOpen, setIsPersonaDropdownOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
     useBillingSubscriptionQuery();
@@ -48,6 +54,7 @@ export function ResearchDashboard() {
         engineVersion: 'v2',
         researchObjective,
         supplemental: skepticPersona.trim() || undefined,
+        addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       }),
     onSuccess: (data) => {
       navigate(`/app/run/${data.runId}`);
@@ -70,6 +77,7 @@ export function ResearchDashboard() {
     e.preventDefault();
     if (!query.trim() || startRunMutation.isPending) return;
     setSubmitError(null);
+    syncAddonsToUrl();
     await startRunMutation.mutateAsync();
   };
 
@@ -224,6 +232,14 @@ export function ResearchDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className="mt-6">
+              <RunAddonToggles
+                selected={selectedAddons}
+                onToggle={toggleAddon}
+                disabled={startRunMutation.isPending || !tierResolved}
+              />
             </div>
 
             <div data-ev-id="ev_73300c3b5e" className="mt-6 flex items-center justify-between">

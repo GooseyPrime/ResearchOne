@@ -681,6 +681,8 @@ export interface StartResearchPayload {
   citationStyle?: CitationStyleSlug;
   /** Wave 5.4 — optional saved orchestration profile (paid tiers). */
   savedOrchestrationProfileId?: string;
+  /** Per-run wallet add-ons (keys from billing add-on catalog). */
+  addons?: string[];
 }
 
 export const startResearch = (data: StartResearchPayload) => {
@@ -706,6 +708,9 @@ export const startResearch = (data: StartResearchPayload) => {
     }
     if (rest.savedOrchestrationProfileId) {
       form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
+    }
+    if (rest.addons && rest.addons.length > 0) {
+      form.append('addons', JSON.stringify(rest.addons));
     }
     if (hasSupplementalUrls) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
@@ -736,6 +741,7 @@ export const startResearch = (data: StartResearchPayload) => {
       ...rest,
       supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
       supplementalUrlCrawl,
+      addons: rest.addons?.length ? rest.addons : undefined,
     })
     .then((r) => r.data);
 };
@@ -768,6 +774,9 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     if (rest.savedOrchestrationProfileId) {
       form.append('savedOrchestrationProfileId', rest.savedOrchestrationProfileId);
     }
+    if (rest.addons && rest.addons.length > 0) {
+      form.append('addons', JSON.stringify(rest.addons));
+    }
     if (hasSupplementalUrls) {
       form.append('supplementalUrls', JSON.stringify(supplementalUrls));
     }
@@ -798,6 +807,7 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
       ...rest,
       supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
       supplementalUrlCrawl,
+      addons: rest.addons?.length ? rest.addons : undefined,
     })
     .then((r) => r.data);
 };

@@ -168,6 +168,8 @@ export async function insertQueuedResearchRunWithLineage(params: {
   userId: string | null;
   orgId: string | null;
   lineage?: SpinoffLineage;
+  /** JSON array of run add-on keys (migration 050); job payload also carries addons for deploy skew. */
+  selectedAddonsJson?: string;
 }): Promise<void> {
   const {
     runId,
@@ -182,78 +184,75 @@ export async function insertQueuedResearchRunWithLineage(params: {
     userId,
     orgId,
     lineage,
+    selectedAddonsJson = '[]',
   } = params;
 
-  if (lineage) {
+  const baseArgs = [
+    runId,
+    title,
+    researchQuery,
+    supplemental ?? '',
+    normalizedOverridesJson,
+    attachmentsJson,
+    engineVersion,
+    researchObjective,
+    targetWordCount,
+  ] as const;
+
+  const tryInsert = async (sql: string, values: unknown[]): Promise<boolean> => {
     try {
-      await query(
-        `INSERT INTO research_runs (
-           id, title, query, supplemental, status, model_overrides, supplemental_attachments,
-           engine_version, research_objective, target_word_count, user_id, org_id,
-           spinoff_from_run_id, spinoff_from_report_id
-         ) VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)`,
-        [
-          runId,
-          title,
-          researchQuery,
-          supplemental ?? '',
-          normalizedOverridesJson,
-          attachmentsJson,
-          engineVersion,
-          researchObjective,
-          targetWordCount,
-          userId,
-          orgId,
-          lineage.spinoffFromRunId,
-          lineage.spinoffFromReportId,
-        ]
-      );
-      return;
+      await query(sql, values);
+      return true;
     } catch (insertErr) {
       const code = (insertErr as { code?: string } | null)?.code;
-      if (code !== '42703') throw insertErr;
-      // migration 046 not applied — fall through to standard INSERT without lineage
+      if (code === '42703') return false;
+      if (userId) {
+        rejectUnscopedReadOnScopeError(insertErr, 'spinoffService.insertQueuedResearchRunWithLineage');
+      }
+      throw insertErr;
     }
+  };
+
+  if (lineage) {
+    const withAddonsLineage = await tryInsert(
+      `INSERT INTO research_runs (
+         id, title, query, supplemental, status, model_overrides, supplemental_attachments,
+         engine_version, research_objective, target_word_count, user_id, org_id,
+         spinoff_from_run_id, spinoff_from_report_id, selected_addons
+       ) VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)`,
+      [...baseArgs, userId, orgId, lineage.spinoffFromRunId, lineage.spinoffFromReportId, selectedAddonsJson]
+    );
+    if (withAddonsLineage) return;
+
+    const withLineage = await tryInsert(
+      `INSERT INTO research_runs (
+         id, title, query, supplemental, status, model_overrides, supplemental_attachments,
+         engine_version, research_objective, target_word_count, user_id, org_id,
+         spinoff_from_run_id, spinoff_from_report_id
+       ) VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)`,
+      [...baseArgs, userId, orgId, lineage.spinoffFromRunId, lineage.spinoffFromReportId]
+    );
+    if (withLineage) return;
+    // migration 046 not applied — fall through without lineage
   }
 
-  try {
-    await query(
-      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
-      [
-        runId,
-        title,
-        researchQuery,
-        supplemental ?? '',
-        normalizedOverridesJson,
-        attachmentsJson,
-        engineVersion,
-        researchObjective,
-        targetWordCount,
-        userId,
-        orgId,
-      ]
-    );
-  } catch (insertErr) {
-    if (userId) {
-      rejectUnscopedReadOnScopeError(insertErr, 'spinoffService.insertQueuedResearchRunWithLineage');
-    }
-    const code = (insertErr as { code?: string } | null)?.code;
-    if (code !== '42703') throw insertErr;
-    await query(
-      `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
-      [
-        runId,
-        title,
-        researchQuery,
-        supplemental ?? '',
-        normalizedOverridesJson,
-        attachmentsJson,
-        engineVersion,
-        researchObjective,
-        targetWordCount,
-      ]
-    );
-  }
+  const withAddonsScoped = await tryInsert(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id, selected_addons)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb)`,
+    [...baseArgs, userId, orgId, selectedAddonsJson]
+  );
+  if (withAddonsScoped) return;
+
+  const withScoped = await tryInsert(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
+    [...baseArgs, userId, orgId]
+  );
+  if (withScoped) return;
+
+  await query(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+    [...baseArgs]
+  );
 }
