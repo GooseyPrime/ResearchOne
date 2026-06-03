@@ -18,7 +18,7 @@ function reportIdsWithLivingMonitor(
 ): Set<string> {
   const ids = new Set<string>();
   for (const m of monitors) {
-    if (m.monitor_kind === 'living_report' && m.status !== 'cancelled') {
+    if (m.monitor_kind === 'living_report' && m.status === 'active') {
       ids.add(m.report_id);
     }
   }

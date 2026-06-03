@@ -51,8 +51,17 @@ describe('computeRunCost', () => {
     expect(costCents).toBe(400 + 50);
   });
 
-  it('pro tier cannot use adversarial_twin', () => {
-    const { errors } = computeRunCost('pro', 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
+  it('pro tier can purchase adversarial_twin with wallet surcharge', () => {
+    const { costCents, addonSurchargeCents, errors } = computeRunCost('pro', 'GENERAL_EPISTEMIC_RESEARCH', [
+      'adversarial_twin',
+    ]);
+    expect(errors).toHaveLength(0);
+    expect(addonSurchargeCents).toBe(500);
+    expect(costCents).toBe(900);
+  });
+
+  it('free_demo cannot use adversarial_twin when deep research is disabled', () => {
+    const { errors } = computeRunCost('anonymous', 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
     expect(errors).toHaveLength(1);
     expect(errors[0].status).toBe(403);
   });

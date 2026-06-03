@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../db', () => ({
+vi.mock('../db/pool', () => ({
   queryOne: vi.fn(),
 }));
 
@@ -9,6 +9,10 @@ import {
   buildRunAddonPipelineEffects,
   normalizeRunAddonKeys,
 } from '../services/reasoning/runAddons';
+import {
+  ORCHESTRATION_PROFILES,
+  shouldRunPipelineStage,
+} from '../services/planning/orchestrationProfiles';
 import { parseAddonsFromStartRequest } from '../services/reasoning/parseResearchAddons';
 
 describe('runAddons', () => {
@@ -25,9 +29,14 @@ describe('runAddons', () => {
     expect(effects.retrievalTopK).toBe(15);
   });
 
-  it('applyAdversarialTwinToSkepticMode enables gate when skeptic is off', () => {
-    const profile = applyAdversarialTwinToSkepticMode({ skepticMode: 'off' }, ['adversarial_twin']);
+  it('applyAdversarialTwinToSkepticMode un-skips challenge and enables gate', () => {
+    const exploratory = ORCHESTRATION_PROFILES.exploratory;
+    expect(shouldRunPipelineStage(exploratory, 'challenge')).toBe(false);
+
+    const profile = applyAdversarialTwinToSkepticMode(exploratory, ['adversarial_twin']);
     expect(profile.skepticMode).toBe('gate');
+    expect(shouldRunPipelineStage(profile, 'challenge')).toBe(true);
+    expect(profile.agentsToSkip).not.toContain('challenge');
   });
 
   it('parseAddonsFromStartRequest reads JSON array from multipart', () => {

@@ -1,4 +1,9 @@
 import { queryOne } from '../../db/pool';
+import {
+  PIPELINE_STAGES,
+  type OrchestrationProfileDefinition,
+  type PipelineStage,
+} from '../planning/orchestrationProfiles';
 
 export const RUN_ADDON_KEYS = [
   'adversarial_twin',
@@ -41,15 +46,23 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
   };
 }
 
-/** Devil's Advocate add-on enables skeptic gate when profile would skip challenge. */
-export function applyAdversarialTwinToSkepticMode<T extends { skepticMode: string }>(
-  profile: T,
+/**
+ * Devil's Advocate add-on: un-skip challenge and enable skeptic gate so the paid pass runs.
+ */
+export function applyAdversarialTwinToSkepticMode(
+  profile: OrchestrationProfileDefinition,
   addons: readonly RunAddonKey[]
-): T {
-  if (hasRunAddon(addons, 'adversarial_twin') && profile.skepticMode === 'off') {
-    return { ...profile, skepticMode: 'gate' };
-  }
-  return profile;
+): OrchestrationProfileDefinition {
+  if (!hasRunAddon(addons, 'adversarial_twin')) return profile;
+
+  const skipSet = new Set<PipelineStage>(
+    profile.agentsToSkip.filter((s): s is PipelineStage => s !== 'challenge')
+  );
+  const agentsToSkip = PIPELINE_STAGES.filter((s) => skipSet.has(s));
+  const agentsToRun = PIPELINE_STAGES.filter((s) => !skipSet.has(s));
+  const skepticMode = profile.skepticMode === 'off' ? 'gate' : profile.skepticMode;
+
+  return { ...profile, agentsToSkip, agentsToRun, skepticMode };
 }
 
 export async function resolveRunAddons(runId: string, jobAddons?: string[]): Promise<RunAddonKey[]> {

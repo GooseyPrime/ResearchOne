@@ -1104,7 +1104,7 @@ async function runResearchJobInner(
     // Credit charge: consume hold on success, decrement subscription quota
     if (creditCtx) {
       try {
-        if (creditCtx.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+        if (creditCtx.holdId && creditCtx.userId) {
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
         }
         if (creditCtx.type === 'subscription' && creditCtx.userId) {
@@ -1365,7 +1365,7 @@ async function runResearchJobInner(
     // For terminal failures (aborted, non-retryable), release immediately.
     // For retryable failures, hold is kept for the retry attempt (it carries
     // forward via resumeJobPayload.creditChargeContext).
-    if (creditCtx?.type === 'wallet' && creditCtx.holdId && creditCtx.userId) {
+    if (creditCtx?.holdId && creditCtx.userId) {
       const isTerminal = finalStatus === 'aborted' || !failureMetaWithResume.retryable;
       if (isTerminal) {
         try {

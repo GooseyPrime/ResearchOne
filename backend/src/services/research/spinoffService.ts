@@ -205,7 +205,19 @@ export async function insertQueuedResearchRunWithLineage(params: {
       return true;
     } catch (insertErr) {
       const code = (insertErr as { code?: string } | null)?.code;
-      if (code === '42703') return false;
+      if (code === '42703') {
+        const msg = String((insertErr as { message?: string } | null)?.message ?? '');
+        const missingOwnership =
+          userId != null && (/\buser_id\b/i.test(msg) || /\borg_id\b/i.test(msg));
+        if (missingOwnership) {
+          rejectUnscopedReadOnScopeError(
+            insertErr,
+            'spinoffService.insertQueuedResearchRunWithLineage'
+          );
+          throw insertErr;
+        }
+        return false;
+      }
       if (userId) {
         rejectUnscopedReadOnScopeError(insertErr, 'spinoffService.insertQueuedResearchRunWithLineage');
       }
@@ -249,6 +261,15 @@ export async function insertQueuedResearchRunWithLineage(params: {
     [...baseArgs, userId, orgId]
   );
   if (withScoped) return;
+
+  if (userId) {
+    const err = new Error(
+      'Tenant isolation prerequisites missing: research_runs.user_id column required for authenticated spinoff'
+    ) as Error & { code?: string };
+    err.code = '42703';
+    rejectUnscopedReadOnScopeError(err, 'spinoffService.insertQueuedResearchRunWithLineage');
+    throw err;
+  }
 
   await query(
     `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)

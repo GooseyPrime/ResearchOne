@@ -142,7 +142,10 @@ export default function AddOnsPage() {
                 {active.length > 0 ? (
                   <div className="mt-3 text-xs text-emerald-400/90">
                     <p>
-                      {active.length} active subscription{active.length === 1 ? '' : 's'}
+                      {active.length}{' '}
+                      {addon.billingModel === 'token_pack' || addon.monitorKind === 'living_report'
+                        ? `active monitor${active.length === 1 ? '' : 's'}`
+                        : `active subscription${active.length === 1 ? '' : 's'}`}
                     </p>
                     <ul className="mt-1 space-y-0.5 text-slate-500">
                       {active.slice(0, 3).map((m) => (
