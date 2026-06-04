@@ -1082,13 +1082,19 @@ export const ingestUrl = (data: {
 export const ingestText = (data: { text: string; title?: string; tags?: string[] }) =>
   api.post<{ jobId: string; status: string }>('/ingestion/text', data).then(r => r.data);
 
+/** Default corpus upload cap (mirrors backend MAX_FILE_SIZE_MB). */
+export const INGESTION_MAX_FILE_SIZE_MB = 50;
+
 export const ingestFile = (file: File, tags?: string[]) => {
   const formData = new FormData();
   formData.append('file', file);
   if (tags) formData.append('tags', JSON.stringify(tags));
-  return api.post<{ jobId: string; status: string }>('/ingestion/file', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(r => r.data);
+  // Let Axios set multipart boundary — a bare Content-Type breaks the body.
+  return api
+    .post<{ jobId: string; status: string }>('/ingestion/file', formData, {
+      timeout: 120_000,
+    })
+    .then((r) => r.data);
 };
 
 export const getIngestionJobs = () =>

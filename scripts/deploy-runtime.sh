@@ -134,6 +134,15 @@ else
   echo "[deploy] skipping legacy research ownership reassignment (set REASSIGN_LEGACY_RESEARCH_OWNER=1 to run once)"
 fi
 
+echo "[deploy] nginx: sync upload body limit (client_max_body_size)"
+if [[ -x "${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh" ]]; then
+  bash "${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh" || {
+    echo "[deploy] WARNING: nginx sync failed — large file uploads may 413 until fixed" >&2
+  }
+else
+  echo "[deploy] WARNING: scripts/sync-nginx-api-site.sh missing — skip nginx sync" >&2
+fi
+
 echo "[deploy] PM2 reconcile and start/reload"
 PM2_CHECK="$(DEPLOY_ROOT="${DEPLOY_ROOT}" node <<'NODE'
 const { execSync } = require('child_process');

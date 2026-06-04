@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import { TenantIsolationUnavailableError, TENANT_ISOLATION_UNAVAILABLE } from '../db/tenantScope';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 const PII_PATTERNS = [
@@ -43,6 +45,20 @@ export function centralErrorHandler(err: Error, req: Request, res: Response, nex
     res.status(err.statusCode).json({
       error: TENANT_ISOLATION_UNAVAILABLE,
       message: err.message,
+      requestId,
+    });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const maxMb = config.ingestion.maxFileSizeMb;
+    const message =
+      err.code === 'LIMIT_FILE_SIZE'
+        ? `File exceeds the ${maxMb} MB upload limit.`
+        : err.message;
+    res.status(413).json({
+      error: 'payload_too_large',
+      message,
       requestId,
     });
     return;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCorsOrigins } from './corsOrigins';
+import { expandCorsOriginAliases, parseCorsOrigins, resolveCorsOrigins } from './corsOrigins';
 
 describe('parseCorsOrigins', () => {
   it('strips trailing slashes so browser Origin matches', () => {
@@ -14,5 +14,27 @@ describe('parseCorsOrigins', () => {
 
   it('uses fallback when undefined', () => {
     expect(parseCorsOrigins(undefined, 'http://localhost:5173')).toEqual(['http://localhost:5173']);
+  });
+});
+
+describe('expandCorsOriginAliases', () => {
+  it('adds www variant when apex origin is configured', () => {
+    expect(expandCorsOriginAliases(['https://researchone.io'])).toEqual([
+      'https://researchone.io',
+      'https://www.researchone.io',
+    ]);
+  });
+
+  it('adds apex variant when www origin is configured', () => {
+    expect(expandCorsOriginAliases(['https://www.researchone.io'])).toEqual([
+      'https://www.researchone.io',
+      'https://researchone.io',
+    ]);
+  });
+
+  it('does not duplicate when both are already listed', () => {
+    expect(
+      resolveCorsOrigins('https://researchone.io,https://www.researchone.io', 'http://localhost:5173')
+    ).toEqual(['https://researchone.io', 'https://www.researchone.io']);
   });
 });

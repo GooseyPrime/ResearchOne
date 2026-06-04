@@ -78,6 +78,11 @@ Optional (feature-flag / deployment-specific):
 - [ ] `CORS_ORIGINS=https://researchone.io,https://www.researchone.io`
 - [ ] No wildcards
 - Production config validation enforces non-localhost origins
+- Backend also auto-adds www ↔ apex aliases when only one hostname is listed
+
+## 7b. Nginx upload body limit (Emma API)
+- [ ] `scripts/sync-nginx-api-site.sh` ran on deploy (or `client_max_body_size 64m` in `/etc/nginx/sites-available/researchone`)
+- [ ] Must be ≥ `MAX_FILE_SIZE_MB` (default 50). Nginx default **1m** causes **413** on PDF uploads; browsers then show a misleading **CORS** error because nginx’s 413 page has no `Access-Control-Allow-Origin`
 
 ## 8. CSP Headers
 - [x] Clerk (`js.clerk.io`, `img.clerk.com`) allowed in script-src, img-src
