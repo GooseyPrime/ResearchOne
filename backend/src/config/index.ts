@@ -90,6 +90,11 @@ const config = {
     webhookSecret: process.env.CLERK_WEBHOOK_SECRET || '',
   },
 
+  sheerid: {
+    apiToken: process.env.SHEERID_API_TOKEN || '',
+    programId: process.env.SHEERID_PROGRAM_ID || '',
+  },
+
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',

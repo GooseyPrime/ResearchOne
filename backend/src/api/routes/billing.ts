@@ -34,6 +34,12 @@ import { creditMonitorTokensFromCheckoutSession } from '../../services/billing/c
 import { getBillingHistory } from '../../services/billing/billingEventsService';
 import { isTierName } from '../../config/tierRules';
 import { getAddonCatalog } from '../../services/billing/addonCatalog';
+import {
+  isSheerIdProgramConfigured,
+  isStudentVerified,
+  recordStudentVerification,
+} from '../../services/billing/studentVerificationService';
+import { isAllowlistedAdminUserId } from '../../services/auth/adminAllowlist';
 
 const router = Router();
 
@@ -182,6 +188,56 @@ router.get('/addon-catalog', (_req, res) => {
   res.json({ addons: getAddonCatalog() });
 });
 
+router.get('/student/status', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const verified = await isStudentVerified(userId);
+    res.json({
+      verified,
+      programIdConfigured: isSheerIdProgramConfigured(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/student/verify', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const verificationId = String(req.body?.verificationId ?? '').trim();
+    if (!verificationId) {
+      res.status(400).json({ error: 'verificationId is required' });
+      return;
+    }
+
+    const email = (req.auth?.payload?.email as string | undefined) ?? null;
+    await ensureUserAndTierRow(userId, email);
+
+    const result = await recordStudentVerification(userId, verificationId);
+    if (!result.verified) {
+      res.status(400).json({
+        verified: false,
+        error: result.error ?? 'Student verification failed',
+      });
+      return;
+    }
+
+    res.json({ verified: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/checkout/topup', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
@@ -244,6 +300,18 @@ router.post('/checkout/subscription', async (req, res, next) => {
     }
     if (!isTierName(tier) || tier === 'anonymous' || tier === 'free_demo') {
       res.status(400).json({ error: 'Invalid subscription tier' });
+      return;
+    }
+
+    if (
+      tier === 'student' &&
+      !isAllowlistedAdminUserId(userId) &&
+      !(await isStudentVerified(userId))
+    ) {
+      res.status(403).json({
+        error: 'Student verification is required before subscribing to the Student plan',
+        code: 'STUDENT_VERIFICATION_REQUIRED',
+      });
       return;
     }
 

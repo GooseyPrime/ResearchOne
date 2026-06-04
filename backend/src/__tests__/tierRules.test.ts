@@ -56,8 +56,11 @@ describe('TIER_RULES', () => {
     it('denies PATENT_GAP_ANALYSIS', () => {
       expect(rules.allowedObjectives).not.toContain('PATENT_GAP_ANALYSIS');
     });
-    it('has monthly cap of 10', () => {
-      expect(rules.monthlyReportCap).toBe(10);
+    it('has monthly cap of 15', () => {
+      expect(rules.monthlyReportCap).toBe(15);
+    });
+    it('has monthly deep cap of 4', () => {
+      expect(rules.monthlyDeepReportCap).toBe(4);
     });
     it('has wallet fallback', () => {
       expect(rules.walletFallbackEnabled).toBe(true);
