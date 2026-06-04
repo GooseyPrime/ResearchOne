@@ -15,7 +15,14 @@ export function ingestFileUploadErrorMessage(error: unknown): string {
       return `File is too large (maximum ${INGESTION_MAX_FILE_SIZE_MB} MB).`;
     }
     if (!error.response && error.request) {
-      return `Upload failed before the server accepted the file. Files over about 1 MB may be blocked by the API proxy until nginx client_max_body_size is raised (limit is ${INGESTION_MAX_FILE_SIZE_MB} MB per file).`;
+      const isNetwork =
+        error.code === 'ERR_NETWORK' ||
+        error.message === 'Network Error' ||
+        error.message.toLowerCase().includes('network');
+      if (isNetwork) {
+        return `Upload could not reach the server (check your connection). If the file is large, the API proxy may still be limited to about 1 MB until nginx client_max_body_size is updated (app limit is ${INGESTION_MAX_FILE_SIZE_MB} MB per file).`;
+      }
+      return 'Upload failed before the server accepted the file. Try again or use a smaller file.';
     }
     const apiMsg = extractApiError(error);
     if (apiMsg) return apiMsg;

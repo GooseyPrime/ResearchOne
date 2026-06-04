@@ -135,12 +135,17 @@ else
 fi
 
 echo "[deploy] nginx: sync upload body limit (client_max_body_size)"
-if [[ -x "${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh" ]]; then
-  bash "${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh" || {
-    echo "[deploy] WARNING: nginx sync failed — large file uploads may 413 until fixed" >&2
-  }
-else
-  echo "[deploy] WARNING: scripts/sync-nginx-api-site.sh missing — skip nginx sync" >&2
+NGINX_SYNC="${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh"
+if [[ ! -f "${NGINX_SYNC}" ]]; then
+  echo "[deploy] ERROR: missing ${NGINX_SYNC}" >&2
+  exit 1
+fi
+bash "${NGINX_SYNC}"
+if command -v nginx >/dev/null 2>&1; then
+  if ! grep -q 'client_max_body_size 64m' /etc/nginx/sites-available/researchone 2>/dev/null; then
+    echo "[deploy] ERROR: nginx site missing client_max_body_size 64m after sync" >&2
+    exit 1
+  fi
 fi
 
 echo "[deploy] PM2 reconcile and start/reload"

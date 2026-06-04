@@ -126,6 +126,16 @@ ship on `main`.
 - **Cherry-pick fa53:** reconcile with unified research console (PR #149); spinoff submit → `/app/research?runId=`.
 - **Migration numbers:** spinoff lineage = **046**; `v_dossier` activity = **047** (039 is saved orchestration profiles).
 
+## Recurring review themes (Codex / Copilot, PR #169 — ingestion / nginx upload)
+
+- **nginx 413 masquerades as CORS:** Reverse-proxy body limits that reject before the app must include CORS on error responses *or* raise `client_max_body_size` above app `MAX_FILE_SIZE_MB` and sync on every Emma deploy (`scripts/sync-nginx-api-site.sh`). Fail deploy if sync script missing or `client_max_body_size 64m` absent after sync when nginx is installed.
+- **CORS www↔apex aliases:** Only expand for **apex** hosts (two DNS labels, not localhost/IP). Never emit `www.localhost` or `www.<preview-subdomain>.vercel.app` from `expandCorsOriginAliases` — grep `corsOrigins.test.ts` when changing alias logic.
+- **Multer HTTP mapping:** `LIMIT_FILE_SIZE` → 413 `payload_too_large`; other `MulterError` codes → 400 `invalid_upload`.
+- **Multipart axios:** Do not set `Content-Type` on `FormData` uploads — browser boundary must stay intact.
+- **Deploy script checks:** Prefer `[[ -f script.sh ]]` + `bash script.sh` over `[[ -x script.sh ]]` when the script is not executed directly.
+
+Retrospective: [`docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md`](docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md).
+
 ## Recurring review themes (Codex / Copilot, PR #166 — add-ons billing wiring)
 
 - **Wallet holds vs `creditCtx.type`:** `consumeHold` / `releaseHold` in `researchOrchestrator` must key off `holdId` + `userId`, not only `creditCtx.type === 'wallet'`. Subscription-quota runs with add-on wallet surcharges still place holds — grep `releaseHold` / `consumeHold` when changing credit paths.

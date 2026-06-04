@@ -37,4 +37,14 @@ describe('expandCorsOriginAliases', () => {
       resolveCorsOrigins('https://researchone.io,https://www.researchone.io', 'http://localhost:5173')
     ).toEqual(['https://researchone.io', 'https://www.researchone.io']);
   });
+
+  it('does not add www alias for localhost dev origins', () => {
+    expect(expandCorsOriginAliases(['http://localhost:5173'])).toEqual(['http://localhost:5173']);
+  });
+
+  it('does not add www alias for Vercel preview subdomains', () => {
+    expect(expandCorsOriginAliases(['https://my-app.vercel.app'])).toEqual([
+      'https://my-app.vercel.app',
+    ]);
+  });
 });
