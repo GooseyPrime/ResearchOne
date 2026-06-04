@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@clerk/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../utils/api';
 import { startCheckoutRedirect } from '../../lib/billing/checkout';
+import StudentVerificationPanel from './StudentVerificationPanel';
 
 export type SubscribeTier = 'pro' | 'student';
 
@@ -45,6 +46,7 @@ function SubscribeCTAAuthenticated({
   featured = false,
 }: Omit<SubscribeCTAProps, 'marketingStatic'>) {
   const { isLoaded, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,6 +55,14 @@ function SubscribeCTAAuthenticated({
     queryFn: async () => (await api.get<{ options: SubscriptionOption[] }>('/billing/subscription-options')).data,
     enabled: Boolean(isLoaded && isSignedIn),
     staleTime: 60_000,
+  });
+
+  const studentStatusQuery = useQuery({
+    queryKey: ['billing-student-status'],
+    queryFn: async () =>
+      (await api.get<{ verified: boolean; programIdConfigured: boolean }>('/billing/student/status')).data,
+    enabled: Boolean(isLoaded && isSignedIn && tier === 'student'),
+    staleTime: 30_000,
   });
 
   const ctaClass =
@@ -68,15 +78,25 @@ function SubscribeCTAAuthenticated({
   }
 
   const option = (optionsQuery.data?.options ?? []).find((o) => o.tier === tier);
+  const studentVerified = tier !== 'student' || Boolean(studentStatusQuery.data?.verified);
+  const studentGateLoading = tier === 'student' && studentStatusQuery.isLoading;
 
   return (
     <div>
+      {tier === 'student' ? (
+        <StudentVerificationPanel
+          compact
+          onVerified={() => {
+            void queryClient.invalidateQueries({ queryKey: ['billing-student-status'] });
+          }}
+        />
+      ) : null}
       <button
         type="button"
         className={ctaClass}
-        disabled={busy || optionsQuery.isLoading || !option?.monthlyPriceId}
+        disabled={busy || optionsQuery.isLoading || studentGateLoading || !option?.monthlyPriceId || !studentVerified}
         onClick={() => {
-          if (!option?.monthlyPriceId) return;
+          if (!option?.monthlyPriceId || !studentVerified) return;
           setCheckoutError(null);
           setBusy(true);
           void startCheckoutRedirect('/billing/checkout/subscription', {
@@ -87,8 +107,11 @@ function SubscribeCTAAuthenticated({
             .finally(() => setBusy(false));
         }}
       >
-        {busy ? 'Redirecting…' : cta}
+        {busy ? 'Redirecting…' : studentGateLoading ? 'Checking verification…' : cta}
       </button>
+      {tier === 'student' && !studentVerified && !studentGateLoading ? (
+        <p className="mt-2 text-xs text-r1-text-muted">Complete student verification above to subscribe.</p>
+      ) : null}
       {checkoutError ? <p className="mt-2 text-xs text-red-400">{checkoutError}</p> : null}
       {featured && !option?.monthlyPriceId && !optionsQuery.isLoading ? (
         <p className="mt-2 text-xs text-r1-text-muted">Subscription checkout is unavailable on this deployment.</p>

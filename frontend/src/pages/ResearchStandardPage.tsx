@@ -39,6 +39,7 @@ import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { isLiveAttachedResearchRun, researchRequestFromRun } from '../utils/researchOpenRun';
 import { useResearchPageShell } from './ResearchPageContext';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import SiteCrawlControls from '../components/research/SiteCrawlControls';
 import RunAddonToggles from '../components/research/RunAddonToggles';
@@ -277,15 +278,10 @@ export default function ResearchStandardPage() {
       setActiveRun(queuedEvt);
       setTraceEvents([queuedEvt]);
       void attachRun({ runId: data.runId });
-      const ing = data.supplementalIngest;
-      if (ing && (ing.urlsQueued > 0 || ing.filesQueued > 0)) {
-        addNotification(
-          'info',
-          `Research started — ingested ${ing.urlsQueued} URL(s) and ${ing.filesQueued} file(s) into the corpus.`
-        );
-      } else {
-        addNotification('info', 'Research started — tracking detailed progress...');
-      }
+      applySupplementalIngestNotifications(data.supplementalIngest, addNotification, {
+        researchLabel: 'Research',
+        defaultStartedMessage: 'Research started — tracking detailed progress...',
+      });
       qc.invalidateQueries({ queryKey: ['research-runs'] });
     },
     onError: (error) => {

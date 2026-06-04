@@ -101,4 +101,29 @@ describe('ingestSupplementalForRevision URL inline fetch', () => {
       error: 'HTTP 403 Forbidden',
     });
   });
+
+  it('stages PDF supplemental files with stagedFilePath instead of base64 in BullMQ', async () => {
+    const pdfBuffer = Buffer.alloc(512 * 1024, 0x25);
+
+    const { ingestSupplementalForRevision } = await import(
+      '../services/research/reportRevisionSupplementalIngest'
+    );
+
+    await ingestSupplementalForRevision({
+      reportId: 'report-1',
+      revisionRequestId: 'req-2',
+      urls: [],
+      files: [{ originalname: 'evidence.pdf', mimetype: 'application/pdf', buffer: pdfBuffer }],
+    });
+
+    expect(ingestionQueueAddMock).toHaveBeenCalledTimes(1);
+    const jobPayload = ingestionQueueAddMock.mock.calls[0]?.[1] as {
+      stagedFilePath?: string;
+      fileBuffer?: string;
+      text?: string;
+    };
+    expect(jobPayload.stagedFilePath).toBeTruthy();
+    expect(jobPayload.fileBuffer).toBeUndefined();
+    expect(jobPayload.text).toBeUndefined();
+  });
 });

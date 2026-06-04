@@ -54,6 +54,7 @@ import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/us
 import { formatFailureReason } from '../utils/researchFailureFormat';
 import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
 import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { supplementalUrlCrawlPayload } from '../utils/supplementalUrlCrawl';
 import ResearchRunRow from '../components/research/ResearchRunRow';
@@ -348,7 +349,10 @@ export default function ResearchDeepPage() {
       setActiveRun(queuedEvt);
       setTraceEvents([queuedEvt]);
       void attachRun({ runId: data.runId });
-      addNotification('info', 'Deep Research started — tracking detailed progress...');
+      applySupplementalIngestNotifications(data.supplementalIngest, addNotification, {
+        researchLabel: 'Deep Research',
+        defaultStartedMessage: 'Deep Research started — tracking detailed progress...',
+      });
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
     },

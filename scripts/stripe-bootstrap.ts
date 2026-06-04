@@ -15,6 +15,7 @@
  *   - ResearchOne Team Seat (monthly + annual)
  *   - ResearchOne BYOK (monthly + annual)
  *   - Wallet Top-up ($20, $50, $100)
+ *   - Monitor Token Packs (1 / 5 / 10 tokens)
  *   - Living Reports
  *   - Reverse-Citation Watch
  *   - Adversarial Twin
@@ -60,6 +61,9 @@ const PRODUCTS: ProductSpec[] = [
   { name: 'ResearchOne — Wallet Top-up ($20)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_20' },
   { name: 'ResearchOne — Wallet Top-up ($50)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_50' },
   { name: 'ResearchOne — Wallet Top-up ($100)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_100' },
+  { name: 'ResearchOne — Monitor Token Pack (1 token)', description: 'One monitor token for Living Reports or Reverse-Citation Watch ($10). Tokens stay active for two months after purchase.', lookupKey: 'researchone_monitor_token_pack_1' },
+  { name: 'ResearchOne — Monitor Token Pack (5 tokens)', description: 'Five monitor tokens for Living Reports or Reverse-Citation Watch ($25 bundle). Tokens stay active for two months after purchase.', lookupKey: 'researchone_monitor_token_pack_5' },
+  { name: 'ResearchOne — Monitor Token Pack (10 tokens)', description: 'Ten monitor tokens for Living Reports or Reverse-Citation Watch ($40 bundle). Tokens stay active for two months after purchase.', lookupKey: 'researchone_monitor_token_pack_10' },
   { name: 'ResearchOne — Living Reports', description: 'Continuous monitoring and updates for published reports', lookupKey: 'researchone_living_reports' },
   { name: 'ResearchOne — Reverse-Citation Watch', description: 'Track when your research is cited or referenced', lookupKey: 'researchone_reverse_citation_watch' },
   { name: 'ResearchOne — Adversarial Twin', description: 'Dedicated adversarial analysis service', lookupKey: 'researchone_adversarial_twin' },
@@ -94,6 +98,11 @@ const PRICES: PriceSpec[] = [
   { productLookupKey: 'researchone_wallet_topup_20', lookupKey: 'wallet_topup_20', unitAmountCents: 2000, currency: 'usd' },
   { productLookupKey: 'researchone_wallet_topup_50', lookupKey: 'wallet_topup_50', unitAmountCents: 5000, currency: 'usd' },
   { productLookupKey: 'researchone_wallet_topup_100', lookupKey: 'wallet_topup_100', unitAmountCents: 10000, currency: 'usd' },
+
+  // Monitor token packs (one-time)
+  { productLookupKey: 'researchone_monitor_token_pack_1', lookupKey: 'monitor_token_pack_1', unitAmountCents: 1000, currency: 'usd' },
+  { productLookupKey: 'researchone_monitor_token_pack_5', lookupKey: 'monitor_token_pack_5', unitAmountCents: 2500, currency: 'usd' },
+  { productLookupKey: 'researchone_monitor_token_pack_10', lookupKey: 'monitor_token_pack_10', unitAmountCents: 4000, currency: 'usd' },
 
   // Add-on services (monthly recurring)
   { productLookupKey: 'researchone_living_reports', lookupKey: 'living_reports_monthly', unitAmountCents: 1900, currency: 'usd', recurring: { interval: 'month' } },
@@ -180,6 +189,9 @@ const ENV_VAR_OVERRIDES: Record<string, string> = {
   wallet_topup_20: 'STRIPE_PRICE_ID_WALLET_20',
   wallet_topup_50: 'STRIPE_PRICE_ID_WALLET_50',
   wallet_topup_100: 'STRIPE_PRICE_ID_WALLET_100',
+  monitor_token_pack_1: 'STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_1',
+  monitor_token_pack_5: 'STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_5',
+  monitor_token_pack_10: 'STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_10',
 };
 
 function toEnvVarName(lookupKey: string): string {

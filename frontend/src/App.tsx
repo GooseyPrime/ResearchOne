@@ -29,6 +29,9 @@ import SovereignPage from './pages/SovereignPage';
 import BYOKPage from './pages/BYOKPage';
 import BYOKConfigPage from './pages/BYOKConfigPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminOverview from './pages/admin/AdminOverview';
+import AdminReportsBrowser from './pages/admin/AdminReportsBrowser';
+import AdminCorpusBrowser from './pages/admin/AdminCorpusBrowser';
 import UserLookup from './pages/admin/UserLookup';
 import RunTelemetry from './pages/admin/RunTelemetry';
 import AuditLogViewer from './pages/admin/AuditLogViewer';
@@ -108,7 +111,9 @@ export function AppRoutes() {
         <Route path="billing" element={<BillingPage />} />
         <Route path="byok" element={<BYOKConfigPage />} />
         <Route path="admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>}>
-          <Route index element={<Navigate to="users" replace />} />
+          <Route index element={<AdminOverview />} />
+          <Route path="reports" element={<AdminReportsBrowser />} />
+          <Route path="corpus" element={<AdminCorpusBrowser />} />
           <Route path="users" element={<UserLookup />} />
           <Route path="telemetry" element={<RunTelemetry />} />
           <Route path="cost" element={<CostAnalytics />} />

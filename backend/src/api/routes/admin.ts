@@ -17,6 +17,12 @@ import {
   saveRuntimeModelOverrides,
   validateAndNormalizePayload,
 } from '../../services/runtimeModelStore';
+import {
+  getAdminOverviewMetrics,
+  getVendorBalances,
+  listAdminCorpusSources,
+  listAdminReports,
+} from '../../services/admin/adminOpsReadService';
 
 const router = Router();
 
@@ -806,6 +812,60 @@ router.get('/cost/reports', async (req, res, next) => {
       res.json({ available: false, reason: 'migration_pending', rows: [] });
       return;
     }
+    next(err);
+  }
+});
+
+// ─── Admin Ops Dashboard (PR3) ─────────────────────────────────────
+
+router.get('/metrics/overview', async (req, res, next) => {
+  try {
+    const rawDays = parseInt(req.query.days as string, 10);
+    const days = Math.max(1, Math.min(365, Number.isFinite(rawDays) ? rawDays : 30));
+    const metrics = await getAdminOverviewMetrics(days);
+    res.json(metrics);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/reports', async (req, res, next) => {
+  try {
+    const rawDays = parseInt(req.query.days as string, 10);
+    const rawLimit = parseInt(req.query.limit as string, 10);
+    const rawOffset = parseInt(req.query.offset as string, 10);
+    const result = await listAdminReports({
+      days: Number.isFinite(rawDays) ? rawDays : undefined,
+      limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+      offset: Number.isFinite(rawOffset) ? rawOffset : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/corpus/list', async (req, res, next) => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const rawLimit = parseInt(req.query.limit as string, 10);
+    const rawOffset = parseInt(req.query.offset as string, 10);
+    const result = await listAdminCorpusSources({
+      search,
+      limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+      offset: Number.isFinite(rawOffset) ? rawOffset : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/vendors/balances', async (req, res, next) => {
+  try {
+    const result = await getVendorBalances();
+    res.json(result);
+  } catch (err) {
     next(err);
   }
 });

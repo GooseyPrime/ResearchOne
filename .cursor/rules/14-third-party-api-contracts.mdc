@@ -62,6 +62,18 @@ headers (`buildOpenRouterAppHeaders` in
 probes and live traffic do not drift when Referer/title/auth formatting
 changes.
 
+### Embedded widget SDKs + CSP (PR #168)
+
+When integrating a third-party **browser widget** (SheerID, BugNote, etc.):
+
+1. **Read the shipped UMD/ESM bundle** (or official snippet) for the exact
+   global API — do not assume method names from older docs or a different major
+   version (`loadInlineIframe` vs `loadIncentive`).
+2. **Update `vercel.json` CSP** in the same PR: `script-src` / `script-src-elem`
+   for CDN script hosts; `frame-src` for iframe origins.
+3. **Centralize success/failure parsing** for webhook or REST confirmation
+   (e.g. `sheerIdPayloadIndicatesSuccess`) and test alternate payload shapes.
+
 ## Concrete examples in this repo
 
 - ✅ `togetherChatEndpoint()` is the only function that builds the
