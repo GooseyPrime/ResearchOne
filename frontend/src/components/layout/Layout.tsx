@@ -1,4 +1,4 @@
-import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
   FlaskConical,
@@ -40,6 +40,8 @@ import PlanReviewBanner from './PlanReviewBanner';
 import { useGlobalPlanReadyNotify } from '../../hooks/useGlobalPlanReadyNotify';
 import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
+import { BugNoteProvider } from '../integrations/BugNoteProvider';
+import { parseRunIdFromSearchParams } from '../../utils/researchRunRoutes';
 
 type NavItem = {
   to: string;
@@ -75,12 +77,13 @@ const EMPTY_RESEARCH_RUNS: ResearchRun[] = [];
 
 export default function Layout() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const activeNavItem = useMemo(
     () => NAV_ITEMS.find((n) => location.pathname.startsWith(n.to)),
     [location.pathname]
   );
   const queryClient = useQueryClient();
-  const { setStats, stats, setActiveRun } = useStore();
+  const { setStats, stats, setActiveRun, activeRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
   const [breakGlassToken, setBreakGlassToken] = useState<string | undefined>(() =>
@@ -214,6 +217,9 @@ export default function Layout() {
       ? 'checking'
       : health?.status ?? 'checking';
 
+  const urlRunId = parseRunIdFromSearchParams(searchParams);
+  const bugNoteRunId = urlRunId ?? activeRun?.runId ?? null;
+
   const handleRestart = async () => {
     if (!window.confirm('Restart runtime now? Active jobs may be interrupted.')) return;
     setRestartBusy(true);
@@ -235,6 +241,11 @@ export default function Layout() {
   };
 
   return (
+    <BugNoteProvider
+      userId={authMe?.userId ?? null}
+      route={location.pathname}
+      runId={bugNoteRunId}
+    >
     <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
       <aside className="w-60 flex-shrink-0 border-r border-indigo-900/20 flex flex-col bg-surface-300">
         <div className="p-5 border-b border-indigo-900/20">
@@ -332,6 +343,7 @@ export default function Layout() {
 
       <Notifications />
     </div>
+    </BugNoteProvider>
   );
 }
 

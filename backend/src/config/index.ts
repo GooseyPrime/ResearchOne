@@ -132,6 +132,11 @@ const config = {
     baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
+  /** BugNote feedback widget + inbound webhooks (env-gated; see docs/integrations/bugnote-scope.md). */
+  bugnote: {
+    webhookSecret: process.env.BUGNOTE_WEBHOOK_SECRET || '',
+  },
+
   redis: {
     host: process.env.REDIS_HOST || '10.0.101.3',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),

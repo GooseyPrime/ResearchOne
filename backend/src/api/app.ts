@@ -28,6 +28,7 @@ import feedbackRoutes from './routes/feedback';
 import clerkWebhookRoutes from './webhooks/clerk';
 import stripeWebhookRoutes from './webhooks/stripe';
 import parallelMonitorWebhookRoutes from './webhooks/parallelMonitor';
+import bugnoteWebhookRoutes from './webhooks/bugnote';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
@@ -52,6 +53,8 @@ app.use('/api/webhooks/stripe', webhookRawParser);
 app.use('/webhooks/stripe', webhookRawParser);
 app.use('/api/webhooks/parallel-monitor', webhookRawParser);
 app.use('/webhooks/parallel-monitor', webhookRawParser);
+app.use('/api/webhooks/bugnote', webhookRawParser);
+app.use('/webhooks/bugnote', webhookRawParser);
 // Global JSON parser for all other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -116,6 +119,7 @@ const routes: Array<[string, express.Router]> = [
 app.use('/api/webhooks/clerk', clerkWebhookRoutes);
 app.use('/api/webhooks/stripe', stripeWebhookRoutes);
 app.use('/api/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
+app.use('/api/webhooks/bugnote', bugnoteWebhookRoutes);
 
 // Monitor routes are auth-protected and must only mount on their actual prefixes.
 app.use('/api/reports', reportMonitorsRouter);
@@ -129,6 +133,7 @@ for (const [path, router] of routes) {
 app.use('/webhooks/clerk', clerkWebhookRoutes);
 app.use('/webhooks/stripe', stripeWebhookRoutes);
 app.use('/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
+app.use('/webhooks/bugnote', bugnoteWebhookRoutes);
 
 app.use('/reports', reportMonitorsRouter);
 app.use('/monitors', userMonitorsRouter);
