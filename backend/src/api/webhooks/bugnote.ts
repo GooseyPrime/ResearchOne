@@ -50,7 +50,13 @@ router.post('/', (req: Request, res: Response) => {
     : Buffer.from(JSON.stringify(req.body ?? {}));
 
   const secret = config.bugnote.webhookSecret?.trim();
-  if (secret) {
+  if (!secret) {
+    if (config.nodeEnv === 'production') {
+      logger.warn('bugnote_webhook_secret_missing');
+      res.status(503).json({ error: 'Webhook not configured' });
+      return;
+    }
+  } else {
     const sigHdr = req.headers['x-bugnote-signature'];
     const sigStr = Array.isArray(sigHdr) ? sigHdr[0] : sigHdr;
     if (!verifyBugNoteWebhookSignature(raw, typeof sigStr === 'string' ? sigStr : undefined, secret)) {

@@ -148,7 +148,7 @@ async function fetchAvgCostPerRunUsd(sinceIso: string): Promise<{
     const totalCost = Number(rows[0]?.total_cost_usd ?? 0);
     const distinctRuns = Number(rows[0]?.distinct_runs ?? 0);
     return {
-      avgCostPerRunUsd: distinctRuns > 0 ? totalCost / distinctRuns : 0,
+      avgCostPerRunUsd: distinctRuns > 0 ? totalCost / distinctRuns : null,
       costTelemetry: { available: true },
     };
   } catch (err) {

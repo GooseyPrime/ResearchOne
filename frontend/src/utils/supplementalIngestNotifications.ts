@@ -51,7 +51,7 @@ export function buildSupplementalIngestNotifications(
     if (ing.filesQueued > 0) parts.push(`${ing.filesQueued} file(s)`);
     notifications.push({
       severity: 'info',
-      message: `${label} started — ingested ${parts.join(' and ')} into the corpus.`,
+      message: `${label} started — queued ${parts.join(' and ')} for ingestion.`,
     });
   }
 

@@ -210,12 +210,24 @@ export async function ingestSupplementalForRevision(args: {
         importedVia: 'manual_upload',
       });
     } catch (enqueueErr) {
+      const enqueueFailMsg = 'Could not queue file for ingestion';
       logger.warn('[revision-supplement] Failed to enqueue supplemental file ingest', {
         reportId,
         revisionRequestId,
         fileName: file.originalname,
         error: enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr),
       });
+      try {
+        await query(
+          `UPDATE ingestion_jobs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
+          [enqueueFailMsg, id],
+        );
+      } catch (markFailedErr) {
+        logger.warn('[revision-supplement] Failed to mark ingestion job failed after enqueue error', {
+          ingestionJobId: id,
+          error: markFailedErr instanceof Error ? markFailedErr.message : String(markFailedErr),
+        });
+      }
       if (fileData.stagedFilePath) {
         cleanupStagedFile(fileData.stagedFilePath);
       }

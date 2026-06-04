@@ -36,6 +36,7 @@ import { isTierName } from '../../config/tierRules';
 import { getAddonCatalog } from '../../services/billing/addonCatalog';
 import {
   isSheerIdProgramConfigured,
+  isStudentDevBypassAvailable,
   isStudentVerified,
   recordStudentVerification,
 } from '../../services/billing/studentVerificationService';
@@ -202,6 +203,7 @@ router.get('/student/status', async (req, res, next) => {
       verified,
       programIdConfigured,
       programId: programIdConfigured ? config.sheerid.programId.trim() : null,
+      devBypassAvailable: isStudentDevBypassAvailable(),
     });
   } catch (err) {
     next(err);

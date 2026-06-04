@@ -74,8 +74,7 @@ const uploadResearch = multer({
     const extOk = name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.pdf');
     const ok =
       allowed.includes(file.mimetype) ||
-      (file.mimetype === 'application/octet-stream' && extOk) ||
-      extOk;
+      (file.mimetype === 'application/octet-stream' && extOk);
     if (ok) cb(null, true);
     else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
   },

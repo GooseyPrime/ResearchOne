@@ -93,7 +93,7 @@ export function BugNoteProvider({ children, userId, route, runId }: BugNoteProvi
     (message: string, context?: Record<string, unknown>) => {
       if (!enabled) return;
 
-      const payload = { message, ...context, route, runId, userId: userId ?? undefined };
+      const payload = { ...context, route, runId, userId: userId ?? undefined, message };
 
       try {
         const sdk = window.BugNote;

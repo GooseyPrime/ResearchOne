@@ -9,8 +9,10 @@ describe('buildSupplementalIngestNotifications', () => {
       filesAttempted: 2,
       jobIds: ['a', 'b', 'c'],
     });
-    expect(notes.some((n) => n.severity === 'info' && n.message.includes('1 URL(s)'))).toBe(true);
+    expect(notes.some((n) => n.severity === 'info' && n.message.includes('queued'))).toBe(true);
+    expect(notes.some((n) => n.message.includes('1 URL(s)'))).toBe(true);
     expect(notes.some((n) => n.message.includes('2 file(s)'))).toBe(true);
+    expect(notes.some((n) => n.message.includes('ingested'))).toBe(false);
   });
 
   it('returns error when filesAttempted exceeds filesQueued', () => {

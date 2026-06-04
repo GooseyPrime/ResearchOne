@@ -8,17 +8,25 @@ type StudentStatusResponse = {
   verified: boolean;
   programIdConfigured: boolean;
   programId: string | null;
+  devBypassAvailable: boolean;
 };
 
+type SheerIdVerificationResponse = {
+  verificationId?: string;
+  currentStep?: string;
+};
+
+type SheerIdFormController = {
+  on?: (
+    hook: 'ON_VERIFICATION_SUCCESS',
+    callback: (payload: SheerIdVerificationResponse) => void,
+  ) => (() => void) | void;
+  cleanup?: () => void;
+};
+
+/** @sheerid/jslib@1 UMD global — see loadInlineIframe + ON_VERIFICATION_SUCCESS hooks. */
 type SheerIdSdk = {
-  setFormElement?: (el: HTMLElement) => void;
-  loadIncentive?: (
-    programId: string,
-    options?: {
-      onSuccess?: (payload: { verificationId?: string }) => void;
-      onError?: (err: unknown) => void;
-    },
-  ) => void;
+  loadInlineIframe?: (programId: string, element: HTMLElement) => SheerIdFormController;
 };
 
 declare global {
@@ -30,7 +38,7 @@ declare global {
 const SHEERID_JSLIB = 'https://cdn.jsdelivr.net/npm/@sheerid/jslib@1/sheerid.js';
 
 function loadSheerIdScript(): Promise<void> {
-  if (window.sheerid?.loadIncentive) return Promise.resolve();
+  if (window.sheerid?.loadInlineIframe) return Promise.resolve();
 
   const existing = document.querySelector<HTMLScriptElement>('script[data-researchone-sheerid="true"]');
   if (existing) {
@@ -87,30 +95,30 @@ export default function StudentVerificationPanel({ onVerified, compact = false }
     if (!programId || statusQuery.data?.verified || !formRef.current) return;
 
     let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    let controller: SheerIdFormController | undefined;
 
     void loadSheerIdScript()
       .then(() => {
-        if (cancelled || !formRef.current || !window.sheerid?.loadIncentive) {
-          if (!cancelled && !window.sheerid?.loadIncentive) {
+        if (cancelled || !formRef.current || !window.sheerid?.loadInlineIframe) {
+          if (!cancelled && !window.sheerid?.loadInlineIframe) {
             setWidgetError('SheerID widget is unavailable on this deployment.');
           }
           return;
         }
 
-        window.sheerid.setFormElement?.(formRef.current);
-        window.sheerid.loadIncentive(programId, {
-          onSuccess: (payload) => {
-            const verificationId = payload?.verificationId?.trim();
-            if (!verificationId) {
-              setWidgetError('Verification completed but no verification id was returned.');
-              return;
-            }
-            verifyMutation.mutate(verificationId);
-          },
-          onError: () => {
-            setWidgetError('Student verification could not be completed. Try again or contact support.');
-          },
+        controller = window.sheerid.loadInlineIframe(programId, formRef.current);
+        const unsubResult = controller.on?.('ON_VERIFICATION_SUCCESS', (payload) => {
+          const verificationId = payload?.verificationId?.trim();
+          if (!verificationId) {
+            setWidgetError('Verification completed but no verification id was returned.');
+            return;
+          }
+          verifyMutation.mutate(verificationId);
         });
+        if (typeof unsubResult === 'function') {
+          unsubscribe = unsubResult;
+        }
       })
       .catch(() => {
         if (!cancelled) setWidgetError('Could not load the SheerID verification widget.');
@@ -118,6 +126,8 @@ export default function StudentVerificationPanel({ onVerified, compact = false }
 
     return () => {
       cancelled = true;
+      unsubscribe?.();
+      controller?.cleanup?.();
     };
   }, [statusQuery.data?.programId, statusQuery.data?.verified, verifyMutation]);
 
@@ -137,7 +147,7 @@ export default function StudentVerificationPanel({ onVerified, compact = false }
     );
   }
 
-  const showDevBypass = !statusQuery.data?.programIdConfigured;
+  const showDevBypass = import.meta.env.DEV && statusQuery.data?.devBypassAvailable === true;
 
   return (
     <div className={compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3 rounded-md border border-white/10 bg-slate-900/40 p-3'}>
@@ -150,7 +160,8 @@ export default function StudentVerificationPanel({ onVerified, compact = false }
         <div id={formId} ref={formRef} className="min-h-[120px]" aria-label="SheerID student verification form" />
       ) : (
         <p className="text-xs text-amber-400">
-          SheerID is not configured on this deployment. Use dev verification below if enabled.
+          SheerID is not configured on this deployment.
+          {showDevBypass ? ' Use dev verification below if enabled.' : ' Contact support if you believe this is an error.'}
         </p>
       )}
 

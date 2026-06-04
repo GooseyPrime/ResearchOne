@@ -13,21 +13,46 @@ function isMissingColumnError(err: unknown): boolean {
   return (err as { code?: string })?.code === '42703';
 }
 
-function devBypassAllowed(verificationId: string): boolean {
+export function isStudentDevBypassAvailable(): boolean {
   return (
     !config.sheerid.apiToken.trim() &&
     config.nodeEnv !== 'production' &&
-    process.env.SHEERID_DEV_BYPASS === '1' &&
-    verificationId.startsWith('dev-')
+    process.env.SHEERID_DEV_BYPASS === '1'
   );
 }
 
-/** SheerID REST GET success: currentStep SUCCESS or rewardData present. */
-function sheerIdPayloadIndicatesSuccess(body: Record<string, unknown>): boolean {
-  if (body.currentStep === 'SUCCESS') return true;
+function devBypassAllowed(verificationId: string): boolean {
+  return isStudentDevBypassAvailable() && verificationId.startsWith('dev-');
+}
+
+/** SheerID REST GET success: currentStep success (any case) or rewardData present. */
+export function sheerIdPayloadIndicatesSuccess(body: Record<string, unknown>): boolean {
+  const step = body.currentStep;
+  if (typeof step === 'string' && step.toLowerCase() === 'success') return true;
   const rewardData = body.rewardData;
   if (rewardData != null && typeof rewardData === 'object') return true;
+  const rewardCode = body.rewardCode;
+  if (typeof rewardCode === 'string' && rewardCode.trim().length > 0) return true;
   return false;
+}
+
+async function verificationIdAlreadyBound(
+  verificationId: string,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const row = await queryOne<{ id: string }>(
+      `SELECT id FROM users
+       WHERE sheerid_verification_id = $1
+         AND id <> $2
+       LIMIT 1`,
+      [verificationId, userId],
+    );
+    return row != null;
+  } catch (err: unknown) {
+    if (isMissingColumnError(err)) return false;
+    throw err;
+  }
 }
 
 /**
@@ -160,6 +185,14 @@ export async function recordStudentVerification(
 
   if (!sheerIdPayloadIndicatesSuccess(sheerIdResult.body)) {
     return { verified: false, error: 'Student verification is not complete' };
+  }
+
+  if (await verificationIdAlreadyBound(trimmedId, userId)) {
+    logger.warn('student_verification_id_reuse_attempt', { userId, verificationId: trimmedId });
+    return {
+      verified: false,
+      error: 'This student verification is already linked to another account',
+    };
   }
 
   return persistStudentVerification(userId, trimmedId);
