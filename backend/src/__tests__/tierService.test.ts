@@ -109,7 +109,7 @@ describe('tierService', () => {
     it('denies at monthly cap with $0 wallet (402)', async () => {
       mockPersistedUserTier({
         user_id: 'u2', tier: 'student', org_id: null,
-        current_period_reports_used: 10, current_period_deep_reports_used: 0,
+        current_period_reports_used: 15, current_period_deep_reports_used: 0,
         lifetime_reports_used: 50, current_period_resets_at: null, updated_at: '',
       });
       const result = await checkTierAccess('u2', 'GENERAL_EPISTEMIC_RESEARCH', 0);
@@ -121,7 +121,7 @@ describe('tierService', () => {
     it('allows at monthly cap when wallet has balance', async () => {
       mockPersistedUserTier({
         user_id: 'u2', tier: 'student', org_id: null,
-        current_period_reports_used: 10, current_period_deep_reports_used: 0,
+        current_period_reports_used: 15, current_period_deep_reports_used: 0,
         lifetime_reports_used: 50, current_period_resets_at: null, updated_at: '',
       });
       const result = await checkTierAccess('u2', 'GENERAL_EPISTEMIC_RESEARCH', 1000);
