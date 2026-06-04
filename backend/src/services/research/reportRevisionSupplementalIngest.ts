@@ -5,6 +5,8 @@ import { config } from '../../config';
 import { waitForIngestionJobs } from '../discovery/discoveryOrchestrator';
 import { extractPdf } from '../ingestion/pdfExtractor';
 import { fetchUrlForIngest } from '../ingestion/ingestionService';
+import { buildSupplementalFileQueuePayload } from './supplementalFileQueuePayload';
+import { cleanupStagedFile } from '../ingestion/uploadStaging';
 import { logger } from '../../utils/logger';
 
 /**
@@ -154,18 +156,21 @@ export async function ingestSupplementalForRevision(args: {
   }
 
   for (const file of files) {
-    const id = uuidv4();
-    const filename = file.originalname.toLowerCase();
-    const mime = file.mimetype;
+    const parsed = buildSupplementalFileQueuePayload({
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      buffer: file.buffer,
+    });
+    if (!parsed) {
+      continue;
+    }
 
-    let sourceType: 'text' | 'pdf' | 'markdown';
-    let fileData: { text?: string; fileBuffer?: string };
+    const { sourceType, fileData } = parsed;
+    const id = uuidv4();
     let extractedText = '';
     let fileFetchError: string | undefined;
 
-    if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
-      sourceType = 'pdf';
-      fileData = { fileBuffer: file.buffer.toString('base64') };
+    if (sourceType === 'pdf') {
       try {
         const result = await extractPdf(file.buffer);
         extractedText = result.text ?? '';
@@ -173,23 +178,8 @@ export async function ingestSupplementalForRevision(args: {
         fileFetchError = err instanceof Error ? err.message : String(err);
         logger.warn(`[revision-supplement] PDF extraction failed for ${file.originalname}:`, err);
       }
-    } else if (
-      mime === 'text/markdown' ||
-      mime === 'text/x-markdown' ||
-      filename.endsWith('.md') ||
-      filename.endsWith('.markdown')
-    ) {
-      sourceType = 'markdown';
-      const text = file.buffer.toString('utf8');
-      fileData = { text };
-      extractedText = text;
-    } else if (mime === 'text/plain' || filename.endsWith('.txt')) {
-      sourceType = 'text';
-      const text = file.buffer.toString('utf8');
-      fileData = { text };
-      extractedText = text;
     } else {
-      continue;
+      extractedText = file.buffer.toString('utf8');
     }
 
     const fileMetaJson = JSON.stringify(meta);
@@ -208,16 +198,39 @@ export async function ingestSupplementalForRevision(args: {
       );
     }
 
-    await ingestionQueue.add('ingest-file', {
-      ingestionJobId: id,
-      ...fileData,
-      fileName: file.originalname,
-      sourceType,
-      originalMimeType: file.mimetype,
-      tags: [],
-      metadata: meta,
-      importedVia: 'manual_upload',
-    });
+    try {
+      await ingestionQueue.add('ingest-file', {
+        ingestionJobId: id,
+        ...fileData,
+        fileName: file.originalname,
+        sourceType,
+        originalMimeType: file.mimetype,
+        tags: [],
+        metadata: meta,
+        importedVia: 'manual_upload',
+      });
+    } catch (enqueueErr) {
+      logger.warn('[revision-supplement] Failed to enqueue supplemental file ingest', {
+        reportId,
+        revisionRequestId,
+        fileName: file.originalname,
+        error: enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr),
+      });
+      if (fileData.stagedFilePath) {
+        cleanupStagedFile(fileData.stagedFilePath);
+      }
+      attachments.push({
+        kind: 'file',
+        filename: file.originalname,
+        mimetype: file.mimetype,
+        ingestion_job_id: id,
+        extractedChars: 0,
+        fetch_status: 'failed',
+        error: 'Could not queue file for ingestion',
+      });
+      continue;
+    }
+
     jobIds.push(id);
     filesQueued += 1;
 

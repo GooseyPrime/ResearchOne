@@ -550,6 +550,57 @@ export async function waitForIngestionJobs(jobIds: string[], timeoutMs: number):
   }
 }
 
+export interface IngestionJobOutcome {
+  jobId: string;
+  status: string;
+  fileName: string | null;
+  url: string | null;
+  errorMessage: string | null;
+}
+
+/** Read terminal ingestion job rows for supplemental ingest feedback. */
+export async function fetchIngestionJobOutcomes(jobIds: string[]): Promise<IngestionJobOutcome[]> {
+  if (jobIds.length === 0) return [];
+
+  const placeholders = jobIds.map((_, i) => `$${i + 1}`).join(',');
+  try {
+    const rows = await query<{
+      id: string;
+      status: string;
+      file_name: string | null;
+      url: string | null;
+      error_message: string | null;
+    }>(
+      `SELECT id, status, file_name, url, error_message
+       FROM ingestion_jobs
+       WHERE id IN (${placeholders})`,
+      jobIds
+    );
+    return rows.map((row) => ({
+      jobId: row.id,
+      status: row.status,
+      fileName: row.file_name,
+      url: row.url,
+      errorMessage: row.error_message,
+    }));
+  } catch (err) {
+    if ((err as { code?: string })?.code === '42703') {
+      const rows = await query<{ id: string; status: string; file_name: string | null; url: string | null }>(
+        `SELECT id, status, file_name, url FROM ingestion_jobs WHERE id IN (${placeholders})`,
+        jobIds
+      );
+      return rows.map((row) => ({
+        jobId: row.id,
+        status: row.status,
+        fileName: row.file_name,
+        url: row.url,
+        errorMessage: null,
+      }));
+    }
+    throw err;
+  }
+}
+
 /** Persist a discovery audit event */
 async function persistDiscoveryEvent(
   runId: string,

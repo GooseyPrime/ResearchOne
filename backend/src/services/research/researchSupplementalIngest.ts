@@ -2,8 +2,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { config } from '../../config';
-import { waitForIngestionJobs } from '../discovery/discoveryOrchestrator';
+import {
+  fetchIngestionJobOutcomes,
+  waitForIngestionJobs,
+} from '../discovery/discoveryOrchestrator';
 import type { ResolvedSupplementalUrlCrawl } from './supplementalUrlCrawl';
+import { buildSupplementalFileQueuePayload } from './supplementalFileQueuePayload';
+import { cleanupStagedFile } from '../ingestion/uploadStaging';
+import { logger } from '../../utils/logger';
 
 export interface SupplementalUrlItem {
   url: string;
@@ -15,10 +21,18 @@ export interface SupplementalFileItem {
   buffer: Buffer;
 }
 
+export type SupplementalFileOutcome =
+  | { filename: string; status: 'queued'; ingestionJobId: string }
+  | { filename: string; status: 'skipped'; reason: string }
+  | { filename: string; status: 'failed'; reason: string };
+
 export interface SupplementalIngestSummary {
   jobIds: string[];
   urlsQueued: number;
   filesQueued: number;
+  filesAttempted: number;
+  fileOutcomes: SupplementalFileOutcome[];
+  ingestOutcomes: Awaited<ReturnType<typeof fetchIngestionJobOutcomes>>;
 }
 
 const RESEARCH_META = (runId: string) => ({
@@ -39,6 +53,7 @@ export async function ingestSupplementalForRun(args: {
   const jobIds: string[] = [];
   let urlsQueued = 0;
   let filesQueued = 0;
+  const fileOutcomes: SupplementalFileOutcome[] = [];
 
   for (const rawUrl of urls) {
     const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
@@ -78,31 +93,25 @@ export async function ingestSupplementalForRun(args: {
   }
 
   for (const file of files) {
-    const id = uuidv4();
-    const filename = file.originalname.toLowerCase();
-    const mime = file.mimetype;
+    const parsed = buildSupplementalFileQueuePayload({
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      buffer: file.buffer,
+    });
 
-    let sourceType: 'text' | 'pdf' | 'markdown';
-    let fileData: { text?: string; fileBuffer?: string };
-
-    if (mime === 'application/pdf' || filename.endsWith('.pdf')) {
-      sourceType = 'pdf';
-      fileData = { fileBuffer: file.buffer.toString('base64') };
-    } else if (
-      mime === 'text/markdown' ||
-      mime === 'text/x-markdown' ||
-      filename.endsWith('.md')
-    ) {
-      sourceType = 'markdown';
-      fileData = { text: file.buffer.toString('utf8') };
-    } else if (mime === 'text/plain' || filename.endsWith('.txt')) {
-      sourceType = 'text';
-      fileData = { text: file.buffer.toString('utf8') };
-    } else {
+    if (!parsed) {
+      fileOutcomes.push({
+        filename: file.originalname,
+        status: 'skipped',
+        reason: 'Unsupported file type (PDF, TXT, or Markdown only)',
+      });
       continue;
     }
 
+    const { sourceType, fileData } = parsed;
+    const id = uuidv4();
     const fileMeta = JSON.stringify(RESEARCH_META(runId));
+
     try {
       await query(
         `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata, user_id)
@@ -118,24 +127,52 @@ export async function ingestSupplementalForRun(args: {
       );
     }
 
-    await ingestionQueue.add('ingest-file', {
-      ingestionJobId: id,
-      ...fileData,
-      fileName: file.originalname,
-      sourceType,
-      originalMimeType: file.mimetype,
-      tags: [],
-      metadata: RESEARCH_META(runId),
-      importedVia: 'manual_upload',
-      discoveredByRunId: runId,
-    });
+    try {
+      await ingestionQueue.add('ingest-file', {
+        ingestionJobId: id,
+        ...fileData,
+        fileName: file.originalname,
+        sourceType,
+        originalMimeType: file.mimetype,
+        tags: [],
+        metadata: RESEARCH_META(runId),
+        importedVia: 'manual_upload',
+        discoveredByRunId: runId,
+      });
+    } catch (enqueueErr) {
+      logger.warn('[research-supplement] Failed to enqueue supplemental file ingest', {
+        runId,
+        fileName: file.originalname,
+        error: enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr),
+      });
+      if (fileData.stagedFilePath) {
+        cleanupStagedFile(fileData.stagedFilePath);
+      }
+      fileOutcomes.push({
+        filename: file.originalname,
+        status: 'failed',
+        reason: 'Could not queue file for ingestion',
+      });
+      continue;
+    }
+
     jobIds.push(id);
     filesQueued += 1;
+    fileOutcomes.push({ filename: file.originalname, status: 'queued', ingestionJobId: id });
   }
 
   if (jobIds.length > 0) {
     await waitForIngestionJobs(jobIds, config.discovery.ingestionWaitTimeoutMs);
   }
 
-  return { jobIds, urlsQueued, filesQueued };
+  const ingestOutcomes = await fetchIngestionJobOutcomes(jobIds);
+
+  return {
+    jobIds,
+    urlsQueued,
+    filesQueued,
+    filesAttempted: files.length,
+    fileOutcomes,
+    ingestOutcomes,
+  };
 }

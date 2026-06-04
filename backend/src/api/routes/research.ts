@@ -16,6 +16,7 @@ import {
   parseResearchObjective,
 } from '../../services/reasoning/reasoningModelPolicy';
 import { config } from '../../config';
+import { handleMulterUpload } from '../../middleware/multerUploadErrors';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { ingestSupplementalForRun } from '../../services/research/researchSupplementalIngest';
 import {
@@ -69,14 +70,12 @@ const uploadResearch = multer({
       'text/x-markdown',
     ];
     // Use lowercased name so .PDF/.MD etc. are treated the same as .pdf/.md.
-    // application/octet-stream is intentionally excluded from the mime list;
-    // it is only accepted when the extension itself is on the allow-list.
     const name = file.originalname.toLowerCase();
+    const extOk = name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.pdf');
     const ok =
       allowed.includes(file.mimetype) ||
-      name.endsWith('.md') ||
-      name.endsWith('.txt') ||
-      name.endsWith('.pdf');
+      (file.mimetype === 'application/octet-stream' && extOk) ||
+      extOk;
     if (ok) cb(null, true);
     else cb(new Error(`Unsupported supplemental file type: ${file.mimetype} (${file.originalname})`));
   },
@@ -448,7 +447,10 @@ async function handleStartResearchRun(
         supplementalIngest: {
           urlsQueued: ingestSummary.urlsQueued,
           filesQueued: ingestSummary.filesQueued,
+          filesAttempted: ingestSummary.filesAttempted,
           jobIds: ingestSummary.jobIds,
+          fileOutcomes: ingestSummary.fileOutcomes,
+          ingestOutcomes: ingestSummary.ingestOutcomes,
         },
       });
     } catch (err) {
@@ -456,14 +458,14 @@ async function handleStartResearchRun(
     }
 }
 
-const startResearchUpload = (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+const startResearchUpload = handleMulterUpload((req, res, next) => {
   const ct = req.headers['content-type'] || '';
   if (ct.includes('multipart/form-data')) {
     uploadResearch.array('files', RESEARCH_MAX_FILES)(req, res, next);
   } else {
     next();
   }
-};
+});
 
 // POST /api/research - Start a research run (JSON or multipart with supplemental files)
 router.post('/', startResearchUpload, (req, res, next) => {

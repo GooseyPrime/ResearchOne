@@ -197,9 +197,11 @@ router.get('/student/status', async (req, res, next) => {
     }
 
     const verified = await isStudentVerified(userId);
+    const programIdConfigured = isSheerIdProgramConfigured();
     res.json({
       verified,
-      programIdConfigured: isSheerIdProgramConfigured(),
+      programIdConfigured,
+      programId: programIdConfigured ? config.sheerid.programId.trim() : null,
     });
   } catch (err) {
     next(err);

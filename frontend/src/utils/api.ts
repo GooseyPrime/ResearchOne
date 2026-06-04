@@ -725,7 +725,7 @@ export const startResearch = (data: StartResearchPayload) => {
       .post<{
         runId: string;
         status: string;
-        supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+        supplementalIngest?: import('./supplementalIngestNotifications').SupplementalIngestSummary;
       }>('/research', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -736,7 +736,7 @@ export const startResearch = (data: StartResearchPayload) => {
     .post<{
       runId: string;
       status: string;
-      supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+      supplementalIngest?: import('./supplementalIngestNotifications').SupplementalIngestSummary;
     }>('/research', {
       ...rest,
       supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
@@ -790,7 +790,7 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
       .post<{
         runId: string;
         status: string;
-        supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+        supplementalIngest?: import('./supplementalIngestNotifications').SupplementalIngestSummary;
       }>('/research/spinoff', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -801,7 +801,7 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     .post<{
       runId: string;
       status: string;
-      supplementalIngest?: { urlsQueued: number; filesQueued: number; jobIds: string[] };
+      supplementalIngest?: import('./supplementalIngestNotifications').SupplementalIngestSummary;
     }>('/research/spinoff', {
       fromReportId,
       ...rest,
