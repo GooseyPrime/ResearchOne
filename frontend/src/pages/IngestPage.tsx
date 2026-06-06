@@ -28,6 +28,7 @@ import api, {
   CORPUS_CLEAR_CONFIRM_PHRASE,
   type IngestionJob,
 } from '../utils/api';
+import { ingestFileUploadErrorMessage } from '../utils/ingestUploadError';
 import { useStore } from '../store/useStore';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
@@ -132,7 +133,7 @@ export default function IngestPage() {
       setPendingFiles([]);
       qc.invalidateQueries({ queryKey: ['ingestion-jobs'] });
     },
-    onError: () => addNotification('error', 'Failed to queue file.'),
+    onError: (e: unknown) => addNotification('error', ingestFileUploadErrorMessage(e)),
   });
 
   const clearCorpusMutation = useMutation({

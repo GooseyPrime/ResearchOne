@@ -32,56 +32,9 @@ sudo npm install -g pm2
 sudo apt-get update -qq
 sudo apt-get install -y nginx
 
-# Nginx config — split deployment mode
-# Frontend is on Vercel. This nginx only serves /api, /socket.io, and /exports.
-sudo tee /etc/nginx/sites-available/researchone > /dev/null <<'EOF'
-server {
-    listen 80;
-    server_name _;
-
-    # API backend proxy
-    location /api/ {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 300s;
-    }
-
-    # WebSocket proxy
-    location /socket.io/ {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    # Atlas export files — canonical path must match EXPORTS_DIR in backend config
-    location /exports/ {
-        alias /opt/researchone/exports/;
-        add_header Content-Disposition "attachment";
-        add_header Access-Control-Allow-Origin "*";
-    }
-
-    # Health endpoint passthrough
-    location /health {
-        proxy_pass http://127.0.0.1:3001/api/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-}
-EOF
-
-sudo ln -sf /etc/nginx/sites-available/researchone /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+# Nginx config — split deployment mode (see scripts/nginx/researchone-api-site.conf)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "${SCRIPT_DIR}/sync-nginx-api-site.sh"
 
 echo "=== Nginx configured (API + exports only — frontend on Vercel) ==="
 echo "=== Runtime setup complete ==="

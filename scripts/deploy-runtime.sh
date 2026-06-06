@@ -134,6 +134,20 @@ else
   echo "[deploy] skipping legacy research ownership reassignment (set REASSIGN_LEGACY_RESEARCH_OWNER=1 to run once)"
 fi
 
+echo "[deploy] nginx: sync upload body limit (client_max_body_size)"
+NGINX_SYNC="${DEPLOY_ROOT}/scripts/sync-nginx-api-site.sh"
+if [[ ! -f "${NGINX_SYNC}" ]]; then
+  echo "[deploy] ERROR: missing ${NGINX_SYNC}" >&2
+  exit 1
+fi
+bash "${NGINX_SYNC}"
+if command -v nginx >/dev/null 2>&1; then
+  if ! grep -q 'client_max_body_size 64m' /etc/nginx/sites-available/researchone 2>/dev/null; then
+    echo "[deploy] ERROR: nginx site missing client_max_body_size 64m after sync" >&2
+    exit 1
+  fi
+fi
+
 echo "[deploy] PM2 reconcile and start/reload"
 PM2_CHECK="$(DEPLOY_ROOT="${DEPLOY_ROOT}" node <<'NODE'
 const { execSync } = require('child_process');
