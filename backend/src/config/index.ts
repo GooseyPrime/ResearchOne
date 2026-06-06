@@ -90,6 +90,11 @@ const config = {
     webhookSecret: process.env.CLERK_WEBHOOK_SECRET || '',
   },
 
+  sheerid: {
+    apiToken: process.env.SHEERID_API_TOKEN || '',
+    programId: process.env.SHEERID_PROGRAM_ID || '',
+  },
+
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
@@ -130,6 +135,11 @@ const config = {
     apiKey: process.env.PARALLEL_MONITOR_API_KEY || process.env.PARALLEL_API_KEY || '',
     webhookSecret: process.env.PARALLEL_MONITOR_WEBHOOK_SECRET || '',
     baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
+  },
+
+  /** BugNote feedback widget + inbound webhooks (env-gated; see docs/integrations/bugnote-scope.md). */
+  bugnote: {
+    webhookSecret: process.env.BUGNOTE_WEBHOOK_SECRET || '',
   },
 
   redis: {

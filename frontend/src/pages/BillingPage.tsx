@@ -560,9 +560,16 @@ export default function BillingPage() {
               </button>
             ))
           ) : (
-            <p className="text-sm text-slate-500">
-              Token packages are not configured on this deployment (Stripe price IDs).
-            </p>
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100/90">
+              <p className="font-medium text-amber-200">Monitor token packs are not configured yet</p>
+              <p className="mt-1 text-amber-100/80">
+                Run{' '}
+                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">STRIPE_SECRET_KEY=sk_… npx tsx scripts/stripe-bootstrap.ts</code>{' '}
+                and set the printed{' '}
+                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_*</code>{' '}
+                values on the API host, then redeploy.
+              </p>
+            </div>
           )}
         </div>
         <div className="mt-4 space-y-2 border-t border-white/5 pt-4">

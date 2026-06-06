@@ -135,6 +135,20 @@ ship on `main`.
 - **Deploy script checks:** Prefer `[[ -f script.sh ]]` + `bash script.sh` over `[[ -x script.sh ]]` when the script is not executed directly.
 
 Retrospective: [`docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md`](docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md).
+## Recurring review themes (Codex / Copilot, PR #168 — product gaps review)
+
+- **Third-party widget SDK contracts:** Read the **shipped** bundle or type defs before calling globals (SheerID v1: `window.sheerid.loadInlineIframe`, not `loadIncentive` / `setFormElement`). Grep the CDN file when docs drift.
+- **SheerID success payloads:** Accept lowercase `currentStep: 'success'`, `rewardData`, and `rewardCode` — not only uppercase `SUCCESS`. Centralize in `sheerIdPayloadIndicatesSuccess()`.
+- **CSP parity for new embeds:** When adding script tags or iframes, update `vercel.json` in the same PR (`script-src`/`script-src-elem` for CDN hosts; `frame-src` for iframe origins).
+- **One-time verification binding:** External proof ids (`sheerid_verification_id`) must be checked for cross-user reuse before persist — grep other identity-binding flows when adding verify endpoints.
+- **Ingestion job row vs queue:** If BullMQ `add()` fails after inserting `ingestion_jobs`, mark the row `failed` in the catch block (research + revision supplemental paths).
+- **Async copy accuracy:** Toasts and notifications must say **queued** when work is enqueued, not **ingested** / **complete**.
+- **Dev-only bypass UI:** Server exposes `devBypassAvailable`; client gates bypass controls with `import.meta.env.DEV && devBypassAvailable` — never show dev bypass in production builds.
+- **Nullable admin metrics:** When denominator is zero (`distinctRuns === 0`), return `null` for averages — not `0`.
+- **Object spread order:** In error/report payloads, put explicit fields (`message`, `route`, `runId`) **after** `...context` so they are not overwritten.
+- **Production webhooks without secrets:** Return **503** when required webhook secret env is unset in production — do not accept unsigned traffic.
+
+Retrospective: [`docs/retrospectives/2026-06-04-pr168-review-findings.md`](docs/retrospectives/2026-06-04-pr168-review-findings.md).
 
 ## Recurring review themes (Codex / Copilot, PR #166 — add-ons billing wiring)
 
