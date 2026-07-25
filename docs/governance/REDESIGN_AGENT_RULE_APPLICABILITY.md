@@ -1,7 +1,7 @@
 # ResearchOne redesign — agent rule applicability
 
-**Authoritative specification:** `ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md`  
-**Regression example:** `onlinbusinessreport.md`  
+**Authoritative specification:** `ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md` (repo root)
+**Regression example:** `onlinbusinessreport.md` (repo root)  
 **Created:** July 2026  
 **Purpose:** Map each agent rule to its status and applicability across redesign stages so coding agents are not blocked by contradictory instructions.
 
