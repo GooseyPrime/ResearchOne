@@ -66,7 +66,7 @@ function skipOnly(...skipped: PipelineStage[]): {
   };
 }
 
-/** One profile per intent (12 + legacy fallback). */
+/** One profile per intent (16 + legacy fallback). */
 export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefinition> = {
   factual_report: P({
     intent: 'factual_report',
@@ -106,6 +106,43 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     steelmanMode: 'symmetric',
     outputTemplateId: 'intent_investigation',
     expectedLengthRange: { minWords: 3500, maxWords: 14000 },
+  }),
+  story_verification: P({
+    intent: 'story_verification',
+    displayName: 'Story verification',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'gate',
+    steelmanMode: 'standard',
+    outputTemplateId: 'intent_adjudication',
+    expectedLengthRange: { minWords: 2000, maxWords: 8000 },
+  }),
+  opportunity_discovery: P({
+    intent: 'opportunity_discovery',
+    displayName: 'Opportunity discovery',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
+    expectedLengthRange: { minWords: 2000, maxWords: 10000 },
+  }),
+  feasibility: P({
+    intent: 'feasibility',
+    displayName: 'Feasibility',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
+    expectedLengthRange: { minWords: 1500, maxWords: 8000 },
+  }),
+  implementation: P({
+    intent: 'implementation',
+    displayName: 'Implementation',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
+    expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
   literature_review: P({
     intent: 'literature_review',

@@ -9,11 +9,14 @@
 # Ordered integration strategy (Rule 32):
 #   1. PREFERRED  — environment already supplies a non-main branch; use --reuse
 #   2. NORMAL     — create/reset a new branch from origin/main (default)
-#   3. RESTRICTED — GitHub returns GH013; script prints a structured message and exits 1
+#   3. RESTRICTED — push (run separately) fails with GH013; this script prints
+#                   a structured guidance block at the end of a successful run
+#                   so agents know what to do if the subsequent push is blocked.
 #
-# NOTE: local git checkout can succeed while the later remote push fails.
-# "Ready on branch" means the local state is correct; it does NOT guarantee
-# the remote ref can be created. If push fails with GH013 see BLOCKED message.
+# NOTE: this script prepares local branch state only — it does NOT push.
+# "Ready on branch" means the local checkout succeeded; it does NOT guarantee
+# the remote ref can be created. If the later push fails with GH013, follow
+# the BLOCKED_GITHUB_REF_CREATION guidance printed at the end of this script.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -44,14 +47,13 @@ fi
 
 branch="${arg2:-cursor/${topic}}"
 
-# Guard: refuse to reset a branch with uncommitted work unless it is the
-# exact target branch already checked out and clean.
-current="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
-if [[ "$current" == "$branch" ]]; then
-  if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-    echo "::error::Branch '${branch}' has uncommitted changes. Commit or stash before resetting." >&2
-    exit 1
-  fi
+# Guard: refuse to proceed with a dirty worktree. `git checkout -B` carries
+# uncommitted changes onto the new/reset branch, which can lead to accidental
+# commits of work-in-progress. Block on any branch, not only the target branch.
+if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+  current="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+  echo "::error::Dirty worktree on branch '${current}'. Commit or stash before creating/resetting '${branch}'." >&2
+  exit 1
 fi
 
 git fetch origin

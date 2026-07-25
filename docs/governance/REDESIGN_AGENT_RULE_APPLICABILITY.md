@@ -54,7 +54,7 @@
 | `.cursor/rules/37-intent-driven-report-contracts.mdc` | **NEW** | A–D | Core correctness rule for the redesign. Captures the cascade problem (four pipeline layers re-impose adjudicative structure) and the rules for making intent the controlling contract. | Created in this PR. |
 | `.cursor/rules/38-ez-research-and-lab-mode.mdc` | **NEW** | C | Governs the EZ Research / Research Lab UX split, intake flow, plan preview, and Research Lab preservation invariants. | Created in this PR. |
 | `AGENTS.md` | **AMEND** | All | Branch workflow opening updated to reflect ordered integration strategy. Rule index updated. | **Done** |
-| `scripts/git/prepare-work-branch.sh` | **AMEND** | All | Added `--reuse` mode for pre-assigned branches, dirty-worktree guard, GH013 detection and structured block output. | **Done** |
+| `scripts/git/prepare-work-branch.sh` | **AMEND** | All | Added `--reuse` mode for pre-assigned branches, dirty-worktree guard (any branch), and GH013 guidance block printed after a successful local checkout so agents know what to do if the subsequent push is blocked. | **Done** |
 | `scripts/git/assert-not-on-main-branch.sh` | **AMEND** | All | Improved error message to list both supported paths (PR branch / pre-created branch reuse, or direct-main authorization). | **Done** |
 | `scripts/ci/assert-main-push-authorized.sh` | **KEEP** | All | No change required. Already allows merge commits, PR references, and `[direct-main]`. | None |
 
