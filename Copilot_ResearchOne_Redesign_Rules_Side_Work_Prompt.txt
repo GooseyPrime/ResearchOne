@@ -1,0 +1,406 @@
+SIDE WORK ORDER: RECONCILE RESEARCHONE AGENT RULES WITH THE ALL-PURPOSE RESEARCH REDESIGN
+
+Repository: GooseyPrime/ResearchOne
+Default branch: main
+Authoritative redesign specification:
+- ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md
+- onlinbusinessreport.md is the regression example
+
+PURPOSE
+
+Audit and surgically amend ResearchOne’s agent rules so that GitHub Copilot coding agents can complete the staged all-purpose research redesign without being blocked by contradictory repository instructions.
+
+This is a governance/rules side task only. Do not implement redesign application code in this task.
+
+IMPORTANT DIAGNOSIS
+
+The prior Stage A attempt ended with:
+
+GH013: “Cannot create ref due to creations being restricted.”
+
+This is a GitHub server-side repository ruleset rejection. Text changes to AGENTS.md or .cursor/rules cannot override a GitHub ruleset. Do not claim that editing agent rules alone fixes GH013.
+
+There are two separate problems:
+
+1. GitHub’s active ruleset prevents creation of the feature branch/ref.
+2. Repository Rule 32 simultaneously requires every agent to create a new PR branch before editing.
+
+The repository instructions must be made compatible with environments where branch creation is prohibited. Separately, report the exact GitHub ruleset/admin action still needed if the server continues to reject ref creation.
+
+AUTHORIZATION FOR THIS SIDE WORK
+
+This prompt expressly authorizes direct-main integration for this rules-only side task if and only if:
+
+- the current Copilot environment is already operating on main;
+- GitHub permits updating main;
+- branch creation is rejected with GH013;
+- the commit message contains “[direct-main]”;
+- no application/runtime source files are changed.
+
+Suggested commit:
+
+[direct-main] reconcile agent workflow rules with restricted branch creation
+
+This authorization applies only to this governance side task. It does not grant redesign implementation stages blanket permission to push directly to main.
+
+If GitHub also rejects updates to main, stop. Return the exact rejected command/action and the ruleset name or rule detail if visible. Do not repeatedly retry, fabricate a PR, or claim the task was integrated.
+
+REQUIRED READING BEFORE EDITING
+
+Read these files in full:
+
+1. AGENTS.md
+2. .cursor/rules/00-pre-commit-review.mdc
+3. .cursor/rules/32-pr-branch-workflow.mdc
+4. scripts/git/prepare-work-branch.sh
+5. scripts/git/assert-not-on-main-branch.sh
+6. scripts/git/install-pre-commit-hook.sh
+7. scripts/ci/assert-main-push-authorized.sh
+8. .github/workflows/ci-guards.yml
+9. .github/workflows/ci-main-push-gate.yml
+10. docs/RUNBOOKS/github-branch-protection.md
+11. .cursor/rules/20-research-policy-guardrails.mdc
+12. .cursor/rules/27-animated-pipeline-hero.mdc
+13. .cursor/rules/33-plan-confirmation-gate.mdc
+14. .cursor/rules/36-two-audience-copy.mdc
+15. ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md
+
+Also inventory every file under .cursor/rules and verify all AGENTS.md rule-index links still resolve after the amendments.
+
+DO NOT DELETE THE RULE SET
+
+The repository’s accumulated correctness rules exist because of real regressions. Preserve them unless this work order specifically authorizes an amendment.
+
+RULE APPLICABILITY FOR THE REDESIGN
+
+A. KEEP AS BINDING, WITH NO SUBSTANTIVE DELETION
+
+Keep these rules. They are directly applicable to redesign work or remain valid path-scoped safeguards:
+
+- Rule 00 pre-commit review, except its branch-workflow section must be amended as described below.
+- Rule 10 state machine and multi-writer hygiene.
+- Rule 11 error paths and logging.
+- Rule 12 event-window math.
+- Rule 13 deploy-skew and schema hygiene.
+- Rule 14 third-party API contracts.
+- Rule 15 documentation/PR/code parity.
+- Rule 16 tests must fail without the fix.
+- Rule 17 ripple checks and caller searches.
+- Rule 20 research-policy guardrails, subject to the clarification below.
+- Rule 21 billing/webhook contracts when redesign work touches entitlements, add-ons, wallets, or billing metadata.
+- Rule 22 out-of-scope discoveries.
+- Rule 23 early-return resource cleanup.
+- Rule 24 canonical path after file mutation.
+- Rule 25 cost telemetry and unit economics.
+- Rule 25 PM2/bootstrap secrets.
+- Rule 26 landing persona and visual architecture.
+- Rule 28 academic formatting engine.
+- Rule 29 marketing scope contracts.
+- Rule 30 Vercel prerender/SPA routing.
+- Rule 31 evidence-versus-source vocabulary.
+- Rule 32 dossier canonical read path.
+- Rule 34 run URL synchronization and live polling.
+- Rule 35 revision/spinoff/dossier timeline.
+- Rule 36 two-audience copy.
+
+These rules should continue to activate through their current globs or explicit scope. Do not change an alwaysApply rule merely because it is inconvenient.
+
+B. AMEND, DO NOT DELETE
+
+Amend these rules:
+
+1. PR/branch workflow:
+   - AGENTS.md opening branch instructions
+   - .cursor/rules/00-pre-commit-review.mdc section A.0
+   - .cursor/rules/32-pr-branch-workflow.mdc
+   - scripts/git/prepare-work-branch.sh
+   - scripts/git/assert-not-on-main-branch.sh
+   - scripts/ci/assert-main-push-authorized.sh only if needed for parity
+   - docs/RUNBOOKS/github-branch-protection.md
+
+2. Rule 20:
+   - Preserve the immutable universal preamble fence unless the redesign specification explicitly changes it in a later approved stage.
+   - Clarify that Rule 20 does not require every research request to become a falsifiable hypothesis.
+   - Clarify that agent-specific prompts, mode overlays, intent routing, report templates, and verifier rubrics remain editable.
+   - Add a sentence stating that informational/descriptive intent may omit hypothesis and falsification sections while still preserving source rigor and uncertainty.
+   - Do not weaken the non-sanitization or contradiction-preservation requirements.
+
+3. Rule 27:
+   - Remove the assumption that every request always runs one fixed ten-stage adversarial pipeline.
+   - Preserve the animation, reduced-motion, accessibility, layout, and performance invariants.
+   - Change the visual contract to represent an adaptive agent team:
+     * a stable core path;
+     * conditional specialist nodes;
+     * optional skeptic/adversarial branches;
+     * skipped stages visibly bypassed or omitted;
+     * the visualization must reflect actual orchestration metadata when available.
+   - Do not require application code changes during this side task. Amend only the rule text and any rule index/description necessary for future redesign work.
+
+4. Rule 33:
+   - Preserve canonical plan writes, parked-state behavior, queue ordering, socket/REST parity, deploy-skew handling, and plan-confirmation safety.
+   - Expand the plan-gate contract to anticipate the new ResearchBrief:
+     * primary intent;
+     * secondary intents;
+     * requested artifacts and exact counts;
+     * research depth;
+     * epistemic posture;
+     * constraints;
+     * assumptions;
+     * selected agent capabilities;
+     * report/output contract.
+   - State that the confirmed ResearchBrief and deliverable contract are binding downstream.
+   - State that the execution planner must not silently replace them with a second intent-blind hypothesis plan.
+   - Preserve backward compatibility for legacy single-intent plans until migrations and application stages are complete.
+   - Do not change application code or database migrations in this side task.
+
+C. REMOVE ONLY OBSOLETE WORDING
+
+Delete or rewrite statements that conflict with the approved redesign:
+
+- “Every research objective passes through a ten-stage adversarial pipeline.”
+- Any rule text that requires falsification criteria for every informational request.
+- Any rule text that treats a hypothesis as mandatory for descriptive, comparative, procedural, exploratory, recommendation, opportunity-discovery, or implementation-planning work.
+- Any branch instruction that says the only valid first action is creation of a new ref when GitHub may prohibit ref creation.
+
+Do not delete:
+
+- source grounding;
+- citation integrity;
+- contradiction preservation when material contradictions exist;
+- uncertainty labeling;
+- plan confirmation;
+- RLS/tenant isolation;
+- billing safeguards;
+- migration/deploy-skew handling;
+- test requirements;
+- accessibility;
+- PR/code parity.
+
+REQUIRED BRANCH-WORKFLOW DESIGN
+
+Rewrite Rule 32 and its mirrors around an ordered integration strategy:
+
+1. PREFERRED: EXISTING ASSIGNED PR BRANCH
+   - If the coding environment supplies a non-default branch, use it.
+   - Verify it is based on current origin/main.
+   - Do not attempt to create another branch unnecessarily.
+
+2. NORMAL: CREATE A DEDICATED PR BRANCH
+   - If ref creation is permitted, create the branch from fresh origin/main.
+   - Push and open/update a PR normally.
+
+3. RESTRICTED-CREATION ENVIRONMENT
+   - If GitHub returns GH013 “Cannot create ref due to creations being restricted,” stop retrying branch creation.
+   - Check whether the task provides an existing writable branch.
+   - If one exists, use it and open/update its PR.
+   - If none exists, report:
+     * exact branch name attempted;
+     * base SHA;
+     * exact GH013 message;
+     * that a repository ruleset/admin change or pre-created branch is required.
+   - Do not pretend that a local-only branch is deliverable.
+
+4. EXPLICIT DIRECT-MAIN EXCEPTION
+   - Only when the user explicitly authorizes direct main in the same task.
+   - Require [direct-main] in the commit message.
+   - Keep the current CI gate.
+   - Direct-main is an exception, not the new default.
+
+5. NO-DEADLOCK REQUIREMENT
+   - An agent must not be trapped between:
+     * “you must create a PR branch before any edit”; and
+     * a GitHub ruleset that forbids creating the branch.
+   - In that state, the required behavior is deterministic escalation, not endless retries or silent local work.
+
+UPDATE scripts/git/prepare-work-branch.sh
+
+Make this helper safe and informative:
+
+- Run git fetch origin.
+- If already on a non-default branch supplied by the environment, support an explicit reuse mode rather than resetting it.
+- Never reset or overwrite an existing branch with uncommitted work.
+- Detect working-tree changes and refuse destructive checkout/reset behavior.
+- When branch creation/push fails with GH013, print a concise structured message:
+
+  BLOCKED_GITHUB_REF_CREATION
+  attempted_branch=<name>
+  base=origin/main
+  resolution=use an existing writable branch, pre-create the branch, or change the GitHub ruleset/bypass
+
+- Do not claim the local checkout itself proves the remote branch can be created.
+- Note that local git checkout can succeed while the later remote push fails. The helper or associated instructions must distinguish local branch creation from remote ref creation.
+
+Do not add credentials, bypass GitHub restrictions, or use force push.
+
+UPDATE scripts/git/assert-not-on-main-branch.sh
+
+- Preserve refusal on main by default.
+- Preserve ALLOW_DIRECT_MAIN_PUSH=1 as an explicit same-task override.
+- Improve its error message so restricted-ref environments receive both supported choices:
+  1. use/pre-create a writable PR branch;
+  2. obtain explicit direct-main authorization.
+- Do not automatically enable direct-main.
+
+GITHUB SERVER RULESET FINDING
+
+Inspect the repository’s active branch rulesets if the environment exposes them. Look specifically for:
+
+- target pattern;
+- “Restrict creations” rule;
+- bypass actors;
+- whether the Copilot coding agent/GitHub App is a bypass actor;
+- whether main updates are restricted;
+- whether branch names are limited by pattern.
+
+If the ruleset details are not accessible, say so plainly.
+
+Recommend one of these server-side configurations in the final result:
+
+Preferred:
+- Keep main protected.
+- Permit creation of non-default branches matching approved prefixes such as:
+  * copilot/**
+  * cursor/**
+  * feat/**
+  * fix/**
+  * redesign/**
+- Require PRs into main.
+
+Alternative:
+- Add the GitHub Copilot coding agent/GitHub App as a bypass actor for branch creation only, not for required PR review or main protection.
+
+Operational fallback:
+- A maintainer pre-creates the stage branch from current main and assigns Copilot to that branch.
+
+Do not recommend disabling all repository rules or removing main protection.
+
+EXPECTED RULE CLASSIFICATION DOCUMENT
+
+Create:
+
+docs/governance/REDESIGN_AGENT_RULE_APPLICABILITY.md
+
+Include a table with:
+
+- Rule/file
+- Status: KEEP / AMEND / CONDITIONAL / NOT TOUCHED
+- Redesign stages affected: A, B, C, D, E
+- Reason
+- Required amendment, if any
+
+Use this stage mapping:
+
+Stage A:
+- correctness patch;
+- planner/report/verifier prompt changes;
+- intent-driven section generation;
+- regression fixture.
+
+Stage B:
+- ResearchBrief;
+- primary/secondary intents;
+- requested artifacts;
+- deliverable contract auditor;
+- intent-specific verification.
+
+Stage C:
+- EZ Research intake;
+- clarification chat;
+- plan preview;
+- Research Lab preservation;
+- frontend run state and URL behavior.
+
+Stage D:
+- specialist agents;
+- capability registry;
+- adaptive orchestration;
+- source/tool specialization.
+
+Stage E:
+- evaluation corpus;
+- A/B testing;
+- quality/cost/latency optimization;
+- possible later fine-tuning.
+
+MINIMUM CLASSIFICATION EXPECTATIONS
+
+- Rule 10: KEEP; A-D when state/agent selection is written/read in multiple places.
+- Rule 11: KEEP; A-E.
+- Rule 12: CONDITIONAL; primarily C when trace/event UI changes.
+- Rule 13: KEEP; B-D for schema evolution and deployment skew.
+- Rule 14: KEEP; D for specialist tools/connectors.
+- Rule 15: KEEP; all stages.
+- Rule 16: KEEP; all stages with tests.
+- Rule 17: KEEP; A-D because report/planner primitives have many callers.
+- Rule 20: AMEND clarification only; A-D prompt and policy scope.
+- Rule 21: CONDITIONAL; only when tier/billing/add-on behavior changes.
+- Rule 22: KEEP; all stages.
+- Rules 23/24: CONDITIONAL; C-D attachments, files, crawling, temporary resources.
+- Cost-sidecar Rule 25: KEEP; A-E model/agent cost telemetry.
+- PM2 Rule 25: CONDITIONAL; deployment scripts only.
+- Rule 26: KEEP; C and marketing work.
+- Rule 27: AMEND; C-D adaptive pipeline visualization.
+- Rule 28: KEEP; A-B report templates/exports.
+- Rules 29/30: CONDITIONAL; C/marketing routes and scope documents.
+- Rule 31: KEEP; C and public copy.
+- Dossier Rule 32: KEEP; B-D when new metadata reaches dossiers.
+- PR Rule 32: AMEND; all stages.
+- Rule 33: AMEND compatibly; A-C ResearchBrief/plan gate.
+- Rule 34: KEEP; C.
+- Rule 35: KEEP; B-D lineage/revision/spinoff parity.
+- Rule 36: KEEP; C and marketing.
+
+TESTS AND VERIFICATION
+
+Run all governance-relevant checks available without changing application code:
+
+1. Validate every AGENTS.md rule-index link.
+2. Validate every referenced rule file exists.
+3. Shell syntax:
+   bash -n scripts/git/prepare-work-branch.sh
+   bash -n scripts/git/assert-not-on-main-branch.sh
+   bash -n scripts/ci/assert-main-push-authorized.sh
+4. Add focused shell tests or a safe test harness for:
+   - existing assigned feature branch is reused;
+   - dirty worktree is not reset;
+   - main is refused without override;
+   - explicit override permits the local guard;
+   - GH013 output is classified as blocked ref creation;
+   - no force push or destructive reset is introduced.
+5. Run markdown validation if configured.
+6. Run repository guard workflows/tests relevant to changed rule/script files.
+7. Show git diff --check output.
+
+Do not run a test that creates or deletes real remote branches merely to probe permissions unless the user separately authorizes that mutation.
+
+ACCEPTANCE CRITERIA
+
+The side task is complete only when:
+
+1. AGENTS.md, Rule 00, Rule 32, scripts, CI documentation, and the runbook no longer contradict one another.
+2. The workflow supports an existing assigned branch without forcing creation of a second branch.
+3. GH013 produces one deterministic escalation with viable remedies.
+4. Direct main remains opt-in and auditable.
+5. Main protection and PR review remain the preferred workflow.
+6. Rule 20 no longer implies that informational research requires falsification.
+7. Rule 27 anticipates adaptive specialist-agent orchestration instead of a fixed universal ten-stage run.
+8. Rule 33 anticipates ResearchBrief and deliverable-contract confirmation while preserving existing plan-gate safety.
+9. All unrelated correctness/security rules remain intact.
+10. A rule-applicability document maps the redesign stages to the surviving rules.
+11. The final report distinguishes repository-instruction fixes from the unresolved GitHub server-ruleset action.
+
+FINAL RESPONSE FORMAT
+
+Return:
+
+1. Root cause
+2. Files changed
+3. Rules kept
+4. Rules amended and why
+5. Rules deleted, if any, with exact justification
+6. Verification performed and results
+7. GitHub ruleset status
+8. Remaining manual/admin action
+9. Commit SHA and integration status
+
+Do not say “GH013 is fixed” unless a remote ref can actually be created or an authorized integration path succeeds.
