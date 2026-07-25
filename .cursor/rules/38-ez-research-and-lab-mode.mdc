@@ -1,0 +1,158 @@
+---
+description: EZ Research / Research Lab UX split — intake, clarification, and plan preview for the simplified research mode. Read before touching ResearchEasyPage, UnifiedResearchConsole, ResearchStandardPage, ResearchDeepPage, or intake-related components.
+alwaysApply: false
+globs:
+  - "frontend/src/pages/UnifiedResearchConsole.tsx"
+  - "frontend/src/pages/ResearchEasyPage.tsx"
+  - "frontend/src/pages/ResearchStandardPage.tsx"
+  - "frontend/src/pages/ResearchDeepPage.tsx"
+  - "frontend/src/components/research/ResearchBriefPreview.tsx"
+  - "frontend/src/components/research/ResearchClarificationChat.tsx"
+  - "frontend/src/components/research/ResearchDeliverablesChecklist.tsx"
+  - "frontend/src/components/research/ResearchAssumptionsEditor.tsx"
+---
+
+# Rule 38 — EZ Research / Research Lab UX split
+
+## Why this rule exists
+
+ResearchOne's current UI exposes all advanced controls (skeptic persona,
+research objective, report length, citation style, saved orchestration
+profile, model ensemble, add-ons, crawl depth, supplemental files) as
+the default entry point. These are valuable for expert users (Research
+Lab) but prevent general users from submitting research requests at all.
+
+`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md` section 8
+prescribes a two-layer interface:
+
+1. **EZ Research** (default) — an AI-guided intake that determines
+   intent, deliverables, depth, agents, and output format. Most
+   controls disappear for the end user.
+2. **Research Lab** — preserves ALL current advanced controls for
+   expert users, including model selection, custom skeptic personas,
+   saved orchestration profiles, objective selection, crawl depth,
+   add-ons, and source filters.
+
+This is an evolution, not a rebuild.
+
+## Invariants
+
+### I-1. EZ Research is the default tab; Research Lab is preserved in full
+
+`UnifiedResearchConsole.tsx` gains two tabs:
+- **EZ Research** (default, rendered first in DOM for SEO/first-paint)
+- **Research Lab**
+
+Research Lab must be the current `ResearchStandardPage` /
+`ResearchDeepPage` controls, unchanged. Zero regressions for expert
+users; Research Lab retains all existing controls and behaviors.
+
+### I-2. EZ Research entry surface
+
+EZ Research presents:
+- A natural-language prompt field (no "framing to test" copy — see R-A below).
+- Optional: document/URL attachments.
+- Depth selector: Standard / Deep (plain labels, no engine jargon).
+- A **"Plan my research"** trigger (not "Run" — user sees the plan before it executes).
+
+That is the complete primary entry surface. Everything else is hidden
+unless the plan preview or clarification chat surfaces it.
+
+### I-3. Intake clarification (optional, non-blocking)
+
+After the prompt is submitted:
+1. The system classifies intent via the `ResearchBrief` classifier.
+2. If confidence < threshold or the deliverable is ambiguous, the
+   system may ask up to **two clarifying questions** in a chat-style
+   interface (`ResearchClarificationChat.tsx`).
+3. Clarification is skippable — the user can proceed without answering.
+4. Do not block execution on clarification; blocking is the same UX
+   regression the current expert-only UI causes.
+
+### I-4. Plan preview shows the ResearchBrief in plain language
+
+The plan preview (`ResearchBriefPreview.tsx`) shows:
+- **What you asked for** (inferred intent, plain language)
+- **Deliverables** (`ResearchDeliverablesChecklist.tsx`) — each
+  artifact with its type and any required count (e.g. "10 market
+  opportunities")
+- **Agent team** — which specialist agents are selected and why
+  (one-line plain-language descriptions, not internal role names)
+- **Assumptions** (`ResearchAssumptionsEditor.tsx`) — system-inferred
+  assumptions the user may edit or correct (e.g. "Interpreted '24 hours'
+  as a buildability filter, not a falsification target")
+- **What's NOT included** — explicit scope boundary so users understand
+  what was intentionally excluded
+
+The plan preview is the plan gate (Rule 33). Confirmation triggers
+execution. Cancellation returns to the intake form.
+
+### I-5. Natural-language plan refinement
+
+Users may type changes to the plan in a plain-language field:
+- "Skip the patent analysis"
+- "Make revenue potential the top ranking criterion"
+- "Add a competitor comparison section"
+
+These are parsed and reflected in the deliverables checklist and
+assumptions editor before confirmation. Confirmations of an unrefined
+plan must not propagate changes that were not confirmed.
+
+### I-6. Auto-selection of depth, agents, and output template
+
+In EZ Research mode the system automatically selects:
+- Depth (Standard vs Deep) based on topic complexity and artifact type
+- Agent roster based on intent and secondary intents
+- Output template from `intentOutputTemplates.ts` based on confirmed intent
+- Source connectors appropriate to the domain
+
+Users may override these from the plan preview but are not required to.
+
+### I-7. Preserve Research Lab — no regressions
+
+Research Lab is the current UX, moved to a tab. All existing behaviors,
+form fields, and interactions must work identically. Before shipping
+EZ Research:
+
+- `grep` all existing `ResearchStandardPage.tsx` and `ResearchDeepPage.tsx`
+  props, state, and submission paths — confirm none are broken.
+- Run existing page tests unchanged.
+- Saved orchestration profiles load in Research Lab exactly as today.
+
+### I-8. Copy: "what you need to know or produce" — not "framing to test"
+
+Replace the existing `ResearchStandardPage` and `ResearchDeepPage`
+placeholder text:
+
+| Before | After |
+|---|---|
+| "Enter the exact framing you want tested" | "Describe what you need to know, find, or produce" |
+| "Research query to test" | "Your research question or task" |
+
+This is a Tier A copy change. Apply Rule 36 — run the banned-jargon
+CI check after the edit.
+
+### I-9. Rollout phases
+
+| Phase | Scope |
+|---|---|
+| **Stage A** (correctness) | No frontend changes. Fix planner/verifier intent pipeline. |
+| **Stage B** (ResearchBrief) | Backend ResearchBrief classifier + plan gate expansion. EZ Research UI stub (tab exists, renders a "coming soon" placeholder). |
+| **Stage C** (EZ Research) | Full EZ Research intake, clarification chat, plan preview, deliverables checklist, assumptions editor. Research Lab preserved as a tab. |
+| **Stage D** (specialist agents) | Adaptive agent roster visible in plan preview. Hero visualization reflects actual run agents. |
+
+Do not ship Stage C components before Stage B's `ResearchBrief`
+backend is landed and tested.
+
+## Pre-commit check
+
+- [ ] Is `ResearchEasyPage.tsx` gated by a Stage B check — does it
+      depend on `ResearchBrief` data from the backend?
+- [ ] Is Research Lab fully preserved — all existing `ResearchStandardPage`
+      and `ResearchDeepPage` functionality intact?
+- [ ] Have you run `assert-tier-a-no-banned-jargon.sh` after any
+      copy changes in the EZ entry form or plan preview?
+- [ ] Does the plan preview correctly reflect the `ResearchBrief`
+      deliverables and assumptions (not a simplified summary that could
+      drift from the actual execution plan)?
+- [ ] Have existing Research Lab page tests passed unchanged?

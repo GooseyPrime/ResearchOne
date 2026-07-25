@@ -34,11 +34,19 @@ fi
 case "$branch" in
   main|master)
     echo "::error::Refusing work on default branch '${branch}'."
-    echo "Create a PR branch from fresh origin/main:"
-    echo "  bash scripts/git/prepare-work-branch.sh <topic-slug>"
-    echo "Or, only when the user explicitly authorized direct-main in this request:"
-    echo "  ALLOW_DIRECT_MAIN_PUSH=1 git commit ..."
-    echo "Commit messages for authorized direct-main pushes must include [direct-main]."
+    echo ""
+    echo "Supported paths (choose one):"
+    echo ""
+    echo "  (1) Use or pre-create a writable PR branch:"
+    echo "        bash scripts/git/prepare-work-branch.sh <topic-slug>"
+    echo "      If GitHub blocks branch creation (GH013), ask a maintainer to pre-create"
+    echo "      the branch, then reuse it:"
+    echo "        bash scripts/git/prepare-work-branch.sh <topic-slug> --reuse"
+    echo ""
+    echo "  (2) Explicit direct-main authorization (same-request only):"
+    echo "        ALLOW_DIRECT_MAIN_PUSH=1 git commit ..."
+    echo "      Commit message must include [direct-main]."
+    echo "      Requires the user to state direct-main permission in the current message."
     exit 1
     ;;
 esac

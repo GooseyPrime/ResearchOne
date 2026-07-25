@@ -15,11 +15,19 @@ globs:
 
 ## Why this rule exists
 
-The strategic doc identifies the animated 10-stage pipeline as the
-visual proof of ResearchOne's differentiation — every competitor shows
-a static block diagram. An animated, flowing pipeline that visibly
-hands off work between agents *is* the demo: it conveys "this is a
-real multi-agent system" in 3 seconds without copy.
+The animated pipeline hero is the visual proof of ResearchOne's
+differentiation — every competitor shows a static block diagram.
+An animated, flowing pipeline that visibly hands off work between
+agents *is* the demo: it conveys "this is a real multi-agent system"
+in 3 seconds without copy.
+
+**Redesign update (July 2026):** ResearchOne is evolving from a
+fixed-stage universal pipeline into an adaptive research operating
+system. The hero visualization must eventually reflect actual
+orchestration — a stable core path with conditional specialist nodes,
+optional skeptic/adversarial branches, and skipped stages shown as
+visibly bypassed. The invariants below govern the current (Stages A–B)
+and near-term (Stage C) implementation.
 
 But animation is a place where well-meaning improvements destroy
 accessibility and ship broken on slow devices. This rule exists so
@@ -55,37 +63,60 @@ disabled, we get a known-good baseline.
 Label changes to the static visual must stay synchronized with
 `pipelineLayout.ts` and `heroPipelineAria.ts` in the same PR.
 
-### I-3. The 10 stages are canonical and named exactly as today
+### I-3. Core stages are canonical; specialist nodes are additive
 
-The stage list:
+**Current public framing (Stages A–B):**
+
+The stage list displayed in marketing and the static hero:
 
 ```
 Planner, Discovery, Retriever, Retriever Analysis, Reasoner, Skeptic,
 Drafting, Verifier, Report, Recordkeeping
 ```
 
-These are the phases the Master Brief markets and the strategic doc
-specifies. They are the labels visible on the static and animated hero.
-Do NOT rename, reorder, or collapse them in `pipelineLayout.ts`
-without coordinating with marketing — the stage names are referenced
-externally.
+These labels are the product's public contract for existing audiences.
+Do NOT rename, reorder, or collapse them without coordinating with
+marketing — they are referenced externally.
 
-Per Rule 25 I-9 reasoning by analogy: the canonical labels are the
-contract surface. WO-X may introduce new internal agent roles
-(`citation_formatter`) — those do NOT alter the hero's 10-stage
-public framing. The hero is marketing; the cost dashboard tracks
-implementation.
+**Adaptive orchestration (Stage C–D, forward):**
 
-### I-4. Skeptic node remains the visually distinguished step
+When the orchestrator gains specialist agents (market scout, competitor
+mapper, feasibility architect, story verifier, contract auditor, etc.),
+the hero visualization must reflect the actual agent roster for the run:
+
+- A **stable core path** (Planner → Retriever → Reasoner → Report) always visible.
+- **Conditional specialist nodes** render when the orchestration profile selects them.
+- **Skeptic / adversarial branch** renders only when the intent requires adversarial
+  review (adjudicative, causal_test, story_verification). It must not appear on
+  informational, exploratory, or recommendation runs.
+- **Skipped stages** are visibly bypassed or dimmed — not hidden entirely — so the
+  user can see that a stage was considered and skipped, not absent from the system.
+- When live orchestration metadata is available (e.g. `agentsToRun` from the run
+  event stream), the visualization reflects actual selection, not a static diagram.
+
+Until Stage C ships, the static 10-node diagram remains the canonical hero.
+Do not ship a partial adaptive view that shows fewer nodes than today without
+also exposing the "stage was skipped intentionally" affordance.
+
+### I-4. Skeptic node is visually distinguished — conditional on intent
 
 The existing static visual marks Skeptic with `animate-glow` and a
 brighter ring per the strategic doc's "Skeptic is the differentiator"
-positioning. The animated version must preserve this: Skeptic node
-gets a brighter background, larger ring, and beam handoffs in/out of
-Skeptic get extra emphasis (longer dwell, brighter beam head).
+positioning. When Skeptic runs (adjudicative and adversarial intents),
+the animated version must preserve this: Skeptic node gets a brighter
+background, larger ring, and beam handoffs in/out of Skeptic get extra
+emphasis (longer dwell, brighter beam head).
 
-If you de-emphasize Skeptic, you've broken the marketing visual.
-Don't.
+**Adaptive behavior:** When Skeptic is not selected by the orchestrator
+(informational, exploratory, opportunity-discovery intents), the node
+should render as a dimmed/bypassed stage — not removed. Removing it
+entirely would suggest the system lacks adversarial capability; dimming
+it communicates that this run did not require it. Until adaptive
+rendering ships (Stage C+), the static Skeptic is always shown
+prominently as a marketing differentiator.
+
+If you de-emphasize Skeptic universally (not per-run), you've broken the
+marketing visual. Don't.
 
 ### I-5. Beam color palette is read from persona, not hardcoded
 
