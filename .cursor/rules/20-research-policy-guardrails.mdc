@@ -104,7 +104,37 @@ Before adding a slug to a V2 default preset:
 
 Do not claim "multi-provider redundant" without a verified count.
 
-## Pre-commit check
+## Intent and falsification — clarification
+
+Rule 20 fences **only** the universal preambles in `backend/src/constants/prompts.ts`.
+It does **not** require every research request to become a falsifiable hypothesis.
+
+**Editable without a founder gate:** agent-specific prompts in
+`SYSTEM_PROMPTS` (`openrouterService.ts`), mode overlays in `modeOverlays.ts`,
+intent routing in `intentClassifier.ts` / `intentTaxonomy.ts`, report-section
+templates in `intentOutputTemplates.ts`, and verifier rubrics. These are the
+correct locations to implement intent-specific report contracts.
+
+**Intent-based exemption from hypothesis/falsification:**
+
+| Intent family | Requires hypothesis/falsification? |
+|---|---|
+| `adjudicative`, `causal_test`, `story_verification` | **Yes** — full skeptic / adversarial pipeline |
+| `factual`, `survey`, `comparison`, `explain`, `reference_lookup` | **No** — source-backed synthesis, uncertainty labels, no hypothesis field |
+| `exploratory`, `opportunity_discovery`, `market_research`, `feasibility` | **No** — deliverable list + feasibility screening; hypothesis conversion is the regression to fix |
+| `recommendation`, `implementation`, `how_to` | **No** — deliverable checklist; no adjudicative structure |
+| `literature_review`, `timeline` | **No** — structured enumeration; no falsification section |
+
+For informational and descriptive intents: omit `hypothesis` and
+`falsification_criteria` fields entirely. Preserve source citation
+integrity, uncertainty labels, and contradiction preservation when
+material contradictions exist. Non-sanitization remains binding for
+all intents.
+
+The redesign goal is to make falsification/adversarial review a
+**conditional tool**, not a mandatory section in every report. See
+`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md` for the
+full specification.
 
 If your patch touches a V2 default ensemble or the model allowlist:
 - [ ] Did you re-read `ResearchOne PolicyOne`?
