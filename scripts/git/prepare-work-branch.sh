@@ -62,10 +62,12 @@ if ! git show-ref --verify --quiet refs/remotes/origin/main; then
 fi
 
 # Create or reset the branch locally.
-if ! git checkout -B "$branch" origin/main 2>/tmp/git_checkout_err; then
-  cat /tmp/git_checkout_err >&2
+if ! git checkout -B "$branch" origin/main 2>/tmp/git_checkout_err_$$; then
+  cat /tmp/git_checkout_err_$$ >&2
+  rm -f /tmp/git_checkout_err_$$
   exit 1
 fi
+rm -f /tmp/git_checkout_err_$$
 
 echo "Ready on branch: $branch (base: origin/main)"
 echo ""

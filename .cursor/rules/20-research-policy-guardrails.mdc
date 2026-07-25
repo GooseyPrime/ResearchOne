@@ -117,6 +117,10 @@ correct locations to implement intent-specific report contracts.
 
 **Intent-based exemption from hypothesis/falsification:**
 
+The intent families below correspond to `ResearchIntent` values in
+`backend/src/services/planning/intentTaxonomy.ts`. When that file is
+updated to add new intents, extend this table accordingly.
+
 | Intent family | Requires hypothesis/falsification? |
 |---|---|
 | `adjudicative`, `causal_test`, `story_verification` | **Yes** — full skeptic / adversarial pipeline |
