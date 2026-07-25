@@ -15,7 +15,7 @@ import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
-import { generateIterativeReport } from './reportGenerator';
+import { generateIterativeReport, ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -130,8 +130,10 @@ function parseSkepticSidebarJson(raw: string): Array<Record<string, unknown>> {
 interface ResearchPlan {
   sub_questions: string[];
   retrieval_queries: string[];
-  hypothesis: string;
-  falsification_criteria: string[];
+  /** Present only for adjudicative intents (Rule 37). */
+  hypothesis?: string;
+  /** Present only for adjudicative intents (Rule 37). */
+  falsification_criteria?: string[];
   investigation_angles: string[];
 }
 
@@ -532,11 +534,21 @@ async function runResearchJobInner(
       const jsonMatch = plannerResult.content.match(/\{[\s\S]*\}/);
       plan = JSON.parse(jsonMatch?.[0] ?? plannerResult.content) as ResearchPlan;
     } catch {
+      // For adjudicative intents, backfill hypothesis/falsification as before.
+      // For descriptive/exploratory intents, do not manufacture these fields
+      // — the research topic is not a hypothesis to be falsified (Rule 37).
+      const isAdjudicative = ADJUDICATIVE_SECTION_INTENTS.has(orchProfile.intent);
       plan = {
         sub_questions: [researchQuery],
         retrieval_queries: [researchQuery],
-        hypothesis: researchQuery,
-        falsification_criteria: [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`],
+        ...(isAdjudicative
+          ? {
+              hypothesis: researchQuery,
+              falsification_criteria: [
+                `Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`,
+              ],
+            }
+          : {}),
         investigation_angles: ['Main investigation'],
       };
     }
@@ -550,15 +562,20 @@ async function runResearchJobInner(
     plan.sub_questions = Array.isArray(plan.sub_questions) && plan.sub_questions.length > 0
       ? plan.sub_questions.map((q) => String(q))
       : [researchQuery];
-    plan.falsification_criteria = Array.isArray(plan.falsification_criteria) && plan.falsification_criteria.length > 0
-      ? plan.falsification_criteria.map((c) => String(c))
-      : [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`];
+    // For adjudicative intents only: backfill falsification_criteria and hypothesis
+    // if the planner omitted them. For descriptive intents, leave them absent.
+    const isAdjudicativeIntent = ADJUDICATIVE_SECTION_INTENTS.has(orchProfile.intent);
+    if (isAdjudicativeIntent) {
+      plan.falsification_criteria = Array.isArray(plan.falsification_criteria) && plan.falsification_criteria.length > 0
+        ? plan.falsification_criteria.map((c) => String(c))
+        : [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`];
+      if (typeof plan.hypothesis !== 'string' || !plan.hypothesis.trim()) {
+        plan.hypothesis = researchQuery;
+      }
+    }
     plan.investigation_angles = Array.isArray(plan.investigation_angles) && plan.investigation_angles.length > 0
       ? plan.investigation_angles.map((a) => String(a))
       : ['Main investigation'];
-    if (typeof plan.hypothesis !== 'string' || !plan.hypothesis.trim()) {
-      plan.hypothesis = researchQuery;
-    }
 
     await query(
       `UPDATE research_runs SET plan=$1 WHERE id=$2`,
@@ -850,6 +867,7 @@ async function runResearchJobInner(
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         targetWordCount,
+        intentId: orchProfile.intent,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
             substep: 'section_generated',

@@ -3,11 +3,15 @@ export type IntentId =
   | 'survey'
   | 'adjudication'
   | 'investigation'
+  | 'story_verification'
   | 'literature_review'
   | 'comparative'
   | 'how_to'
   | 'recommendation'
   | 'exploratory'
+  | 'opportunity_discovery'
+  | 'feasibility'
+  | 'implementation'
   | 'position_brief'
   | 'timeline'
   | 'reference_lookup'
@@ -68,6 +72,18 @@ const TAX: IntentDefinition[] = [
     isMultiLayer: true,
   },
   {
+    id: 'story_verification',
+    displayLabel: 'Story verification',
+    shortDescription: 'Verify a developing news story or viral claim against primary sources.',
+    documentShape: 'Claim, source matrix, what is confirmed / unconfirmed / false, confidence.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [
+      /\b(is this true|going viral|viral (story|claim)|breaking news|news report|is this real)\b/i,
+      /\b(verify this (story|claim|report)|fact[- ]?check this)\b/i,
+    ],
+    isMultiLayer: false,
+  },
+  {
     id: 'literature_review',
     displayLabel: 'Literature review',
     shortDescription: 'Academic-register review of peer-reviewed sources.',
@@ -111,6 +127,42 @@ const TAX: IntentDefinition[] = [
     defaultOrchestrationProfile: 'wave5_placeholder_default',
     triggerPatterns: [/\b(surprising|interesting|explore|serendipity|brainstorm)\b/i],
     isMultiLayer: true,
+  },
+  {
+    id: 'opportunity_discovery',
+    displayLabel: 'Opportunity discovery',
+    shortDescription: 'Find market gaps, whitespace, or underserved needs; rank by viability.',
+    documentShape: 'Ranked opportunity list, project requirements per opportunity, actionable build plan.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [
+      /\b(whitespace|market gap|underserved|opportunity|opportunities)\b/i,
+      /\b(find (me )?\d+ (opportunities|ideas|niches|markets))\b/i,
+      /\b(what (can|could) I build|what (should|could) I (launch|create|start))\b/i,
+    ],
+    isMultiLayer: true,
+  },
+  {
+    id: 'feasibility',
+    displayLabel: 'Feasibility analysis',
+    shortDescription: 'Assess technical, economic, and operational viability of a plan or idea.',
+    documentShape: 'Feasibility dimensions, viability rating, risk factors, go/no-go recommendation.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [
+      /\b(feasib|viable|viability|can (this|it) be built|is it possible to)\b/i,
+      /\b(build in \d+ (hours?|days?|weeks?))\b/i,
+    ],
+    isMultiLayer: false,
+  },
+  {
+    id: 'implementation',
+    displayLabel: 'Implementation plan',
+    shortDescription: 'Step-by-step plan for executing a build, project, or process.',
+    documentShape: 'Ordered plan phases, tooling, detailed prompts or instructions, acceptance criteria.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [
+      /\b(implementation plan|build plan|how to implement|how to build|detailed prompts? (to|for)|guide (me|an AI) (to|through))\b/i,
+    ],
+    isMultiLayer: false,
   },
   {
     id: 'position_brief',
