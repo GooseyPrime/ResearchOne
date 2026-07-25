@@ -173,3 +173,44 @@ describe('Intent-Driven Report Contracts (Rule 37)', () => {
     expect(result.sections).toHaveLength(10);
   });
 });
+
+describe('distributeWordBudget with DESCRIPTIVE_SECTION_PLAN (Rule 37)', () => {
+  it('distributes REPORT_WORD_COUNT_MIN correctly across descriptive sections — each at floor', async () => {
+    const {
+      distributeWordBudget,
+      DESCRIPTIVE_SECTION_PLAN,
+      REPORT_WORD_COUNT_PER_SECTION_FLOOR,
+    } = await import('../services/reasoning/reportGenerator');
+
+    const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
+    const descriptiveMin = DESCRIPTIVE_SECTION_PLAN.length * floor;
+    const budgets = distributeWordBudget(descriptiveMin, DESCRIPTIVE_SECTION_PLAN);
+
+    // Every section should be at exactly the floor when total == n * floor
+    for (const sec of DESCRIPTIVE_SECTION_PLAN) {
+      expect(budgets.get(sec.key)).toBe(floor);
+    }
+    // Budget covers all sections and nothing extra
+    expect(budgets.size).toBe(DESCRIPTIVE_SECTION_PLAN.length);
+  });
+
+  it('distributes words proportionally for DESCRIPTIVE_SECTION_PLAN above floor', async () => {
+    const {
+      distributeWordBudget,
+      DESCRIPTIVE_SECTION_PLAN,
+      REPORT_WORD_COUNT_PER_SECTION_FLOOR,
+    } = await import('../services/reasoning/reportGenerator');
+
+    const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
+    const totalWords = DESCRIPTIVE_SECTION_PLAN.length * floor * 3; // well above floor
+    const budgets = distributeWordBudget(totalWords, DESCRIPTIVE_SECTION_PLAN);
+
+    // Every section should be at or above the floor
+    for (const sec of DESCRIPTIVE_SECTION_PLAN) {
+      expect(budgets.get(sec.key)).toBeGreaterThanOrEqual(floor);
+    }
+    // Sum should be within rounding slack (≤ section count words off from total)
+    const sum = [...budgets.values()].reduce((a, b) => a + b, 0);
+    expect(Math.abs(sum - totalWords)).toBeLessThanOrEqual(DESCRIPTIVE_SECTION_PLAN.length);
+  });
+});

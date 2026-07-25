@@ -182,13 +182,15 @@ export async function generateIterativeReport(args: {
   };
 
   // Select section plan based on intent (Rule 37).
-  // Adjudicative intents get the full falsification/contradiction plan.
-  // Descriptive/exploratory/discovery intents get a deliverable-focused plan.
-  // Unknown/legacy intents default to adjudicative for backward compatibility.
+  // Adjudicative intents get the full falsification/contradiction plan (SECTION_PLAN).
+  // Descriptive/exploratory/discovery intents get a deliverable-focused plan (DESCRIPTIVE_SECTION_PLAN).
+  // Undefined/null intentId (legacy runs before Stage A) intentionally defaults to SECTION_PLAN
+  // for backward compatibility — old runs assumed adjudicative structure.
   const activeSectionPlan =
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional: '' also falls through
     args.intentId && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
-      ? DESCRIPTIVE_SECTION_PLAN
-      : SECTION_PLAN;
+      ? DESCRIPTIVE_SECTION_PLAN  // non-adjudicative: deliverable-focused sections only
+      : SECTION_PLAN;             // adjudicative or legacy: full falsification/contradiction plan
 
   const targetWordCount = clampWordTarget(args.targetWordCount);
   const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);

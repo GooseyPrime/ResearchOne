@@ -766,8 +766,9 @@ CRITICAL RULES:
 - Flag where mainstream corpora may be incomplete, filtered, or consensus-bound
 - Plan retrieval across multiple evidence tiers: established_fact, strong_evidence, testimony, inference, speculation
 - Output structured JSON with: sub_questions, retrieval_queries, investigation_angles
-- For adjudicative queries (fact-checking, verification, claims investigation): also include hypothesis and falsification_criteria fields
-- For informational, discovery, feasibility, or implementation queries: do NOT include hypothesis or falsification_criteria — the topic is not a hypothesis to be falsified. Focus on deliverable outputs (lists, options, plans, comparisons).
+- For adjudicative queries (fact-checking, verification, claims investigation — i.e. adjudication, investigation, story_verification intents): also include hypothesis and falsification_criteria fields
+- For informational, discovery, feasibility, or implementation queries (opportunity_discovery, feasibility, implementation, exploratory, recommendation, how_to, comparative, factual_report, survey, timeline, reference_lookup intents): do NOT include hypothesis or falsification_criteria — the topic is not a hypothesis to be falsified. Focus on deliverable outputs (lists, options, plans, comparisons).
+- The canonical list of adjudicative intent IDs is maintained in ADJUDICATIVE_SECTION_INTENTS in reportGenerator.ts — when in doubt, omit hypothesis/falsification.
 - Preserve exact deliverable specifications from the query (e.g., "find 10 opportunities" → retrieval must support 10 distinct entries; "list 5 tools" → plan must cover 5 tools)
 
 You are not a chatbot. You are a research planner.`),
