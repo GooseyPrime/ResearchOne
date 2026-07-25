@@ -529,7 +529,7 @@ async function runResearchJobInner(
 
     let plan: ResearchPlan;
     const isAdjudicative =
-      !orchProfile.intent || ADJUDICATIVE_SECTION_INTENTS.has(orchProfile.intent);
+      orchProfile.intent == null || ADJUDICATIVE_SECTION_INTENTS.has(orchProfile.intent);
     try {
       const jsonMatch = plannerResult.content.match(/\{[\s\S]*\}/);
       plan = JSON.parse(jsonMatch?.[0] ?? plannerResult.content) as ResearchPlan;

@@ -174,7 +174,7 @@ export async function generateIterativeReport(args: {
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
   const activeSectionPlan =
-    args.intentId && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
+    args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
       ? DESCRIPTIVE_SECTION_PLAN
       : SECTION_PLAN;
 
