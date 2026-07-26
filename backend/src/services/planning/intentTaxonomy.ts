@@ -3,6 +3,10 @@ export type IntentId =
   | 'survey'
   | 'adjudication'
   | 'investigation'
+  | 'story_verification'
+  | 'opportunity_discovery'
+  | 'feasibility'
+  | 'implementation'
   | 'literature_review'
   | 'comparative'
   | 'how_to'
@@ -66,6 +70,42 @@ const TAX: IntentDefinition[] = [
     defaultOrchestrationProfile: 'wave5_placeholder_default',
     triggerPatterns: [/\b(contested|disputed|cover[- ]?up|who benefits|what really happened)\b/i],
     isMultiLayer: true,
+  },
+  {
+    id: 'story_verification',
+    displayLabel: 'Story verification',
+    shortDescription: 'Verify a specific narrative or reported account.',
+    documentShape: 'Claim, corroborating evidence, contradicting evidence, verdict.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [/\b(is (it|this) (true|accurate|real)|verify (this|the) (story|claim|report)|did (this|that) (really )?happen|fact[- ]?check (this|that))\b/i],
+    isMultiLayer: false,
+  },
+  {
+    id: 'opportunity_discovery',
+    displayLabel: 'Opportunity discovery',
+    shortDescription: 'Surface market or domain opportunities.',
+    documentShape: 'Landscape overview, opportunity gaps, sizing signals, recommended moves.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [/\b(market opportunity|white space|unmet (need|demand)|emerging (market|space)|where (is|are) (the )?(opportunity|gap))\b/i],
+    isMultiLayer: true,
+  },
+  {
+    id: 'feasibility',
+    displayLabel: 'Feasibility',
+    shortDescription: 'Assess whether a plan or idea is viable.',
+    documentShape: 'Viability criteria, enabling factors, blockers, risk register, recommendation.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [/\b(feasib|is (it|this) (viable|possible|realistic|practical)|can (we|I|it) (do|build|achieve)|what would it take)\b/i],
+    isMultiLayer: false,
+  },
+  {
+    id: 'implementation',
+    displayLabel: 'Implementation',
+    shortDescription: 'Step-by-step plan for executing a goal.',
+    documentShape: 'Prerequisites, phased plan, dependencies, milestones, risks.',
+    defaultOrchestrationProfile: 'wave5_placeholder_default',
+    triggerPatterns: [/\b(how (do|should|can) (we|I) (implement|build|execute|roll out|launch)|implementation plan|roadmap for|action plan)\b/i],
+    isMultiLayer: false,
   },
   {
     id: 'literature_review',

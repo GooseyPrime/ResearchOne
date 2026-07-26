@@ -3,25 +3,33 @@
 ## Do not commit on `main` (binding — Rule 32)
 
 Unless the user **explicitly** says in the **same message** that you may push
-to `main` / skip a PR, you must:
+to `main` / skip a PR, follow the **ordered integration strategy**:
 
-1. **Before any file edit:** `git fetch origin` then
-   `bash scripts/git/prepare-work-branch.sh <topic-slug>`
-2. Do all commits on that branch; push the branch; **open or update a PR** into
-   `main` (draft is fine).
-3. **Never** `git push origin main` for scoped implementation work. Cloud
-   instructions to “commit and push when done” mean the **PR branch**, not
-   `main`.
+1. **PREFERRED — use the pre-assigned branch.** If the environment already
+   supplies a non-main branch, use it with `--reuse`:
+   `bash scripts/git/prepare-work-branch.sh <topic-slug> --reuse`
+2. **NORMAL — create a new PR branch** (if ref creation is permitted):
+   `git fetch origin && bash scripts/git/prepare-work-branch.sh <topic-slug>`
+3. **RESTRICTED — GH013 ref-creation blocked.** Stop retrying. Report
+   the `BLOCKED_GITHUB_REF_CREATION` block (see Rule 32) and ask the user
+   for a pre-created branch or direct-main authorization.
+4. **EXPLICIT DIRECT-MAIN.** Only when the user authorizes it in the same
+   message — include `[direct-main]` in every commit to `main`.
+
+Do all commits on that branch; push the branch; **open or update a PR** into
+`main` (draft is fine).
+**Never** `git push origin main` for scoped implementation work unless
+authorized direct-main.
 
 **This does not slow delivery to `main`.** Merging the PR **is** how work lands
-on `main` (and deploy). When done, always say: **PR link + “Merge PR #N to ship.”**
+on `main` (and deploy). When done, always say: **PR link + "Merge PR #N to ship."**
 Do **not** ask permission before starting routine work.
 
 **When you must involve the user (clear, short):** emergencies without
 same-message direct-main authorization; cannot open a PR; or `main` / protection
 CI blocked. Use the escalation block in
 [`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc)
-— offer **(A) merge PR** or **(B) user replies “push to main”** with `[direct-main]`.
+— offer **(A) merge PR** or **(B) user replies "push to main"** with `[direct-main]`.
 Never leave work on a branch with no PR and no merge instruction.
 
 Enforcement: `scripts/git/assert-not-on-main-branch.sh`, CI job
@@ -76,6 +84,8 @@ drove the rules is at
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
 | [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (Wave 5.4+). |
 | [`.cursor/rules/36-two-audience-copy.mdc`](.cursor/rules/36-two-audience-copy.mdc) | Tier A plain language vs Tier B technical depth; CI banned-jargon grep. |
+| [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc) | Intent is the pipeline contract; hypothesis/falsification conditional on intent family; deliverable contract auditor. |
+| [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)

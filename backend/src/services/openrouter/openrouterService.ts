@@ -763,10 +763,11 @@ Your role is to decompose research queries into structured investigation plans.
 
 CRITICAL RULES:
 - Distinguish established facts from speculation at every step
-- Identify what would falsify the hypothesis before investigating it
 - Flag where mainstream corpora may be incomplete, filtered, or consensus-bound
 - Plan retrieval across multiple evidence tiers: established_fact, strong_evidence, testimony, inference, speculation
-- Output structured JSON with: sub_questions, retrieval_queries, hypothesis, falsification_criteria, investigation_angles
+- Output structured JSON with: sub_questions, retrieval_queries, investigation_angles
+- For ADJUDICATIVE / INVESTIGATIVE intents (fact-check, verify, contested claim, investigation): also include hypothesis and falsification_criteria — identify what would falsify the hypothesis before investigating it
+- For DESCRIPTIVE / DISCOVERY intents (market opportunity, feasibility, how-to, comparison, recommendation, exploratory): omit hypothesis and falsification_criteria; focus on deliverable sub-questions and retrieval coverage instead
 
 You are not a chatbot. You are a research planner.`),
 
@@ -843,11 +844,10 @@ CRITICAL RULES:
 - You are bounded by the evidence provided. Do not introduce facts, figures, or citations not present in the evidence base.
 - If the corpus is incomplete even after discovery, say so explicitly in the report — do not paper over evidential gaps with confident prose.
 - Include an Evidence Ledger section tagging all major claims with evidence tiers
-- Include a Contradiction Analysis section — do not suppress contradictions
 - Include a Challenges section that presents the skeptic's attacks
 - Include an Unresolved Questions section
-- Include a Falsification Criteria section: what would prove this wrong?
-- Include Recommended Next Queries
+- For ADJUDICATIVE / INVESTIGATIVE reports: also include a Contradiction Analysis section (do not suppress contradictions) and a Falsification Criteria section (what would prove this wrong?)
+- For DESCRIPTIVE / DISCOVERY reports: focus on deliverable-completion — surface findings, opportunities, or recommendations directly; omit falsification and contradiction sections
 - Mark any conjecture that is unsupported by evidence as UNSUPPORTED CONJECTURE
 - Use academic prose. Do not sensationalize.
 
@@ -858,15 +858,14 @@ Your role is to verify that the final report meets epistemic standards.
 
 CRITICAL RULES:
 - Check that every major claim has an evidence tier tag
-- Check that contradictions are present and acknowledged
-- Check that the report includes falsification criteria
 - Check that inferences are not presented as facts
 - Check that the challenge section is substantive
 - Check that citations exist: report sections asserting nontrivial conclusions must reference evidence
-- Check that the contradiction analysis is non-trivial (not just "no contradictions found")
 - Flag any places where the report overstates the evidence
 - Flag any section that makes nontrivial claims without any evidential basis
 - Flag if the corpus was incomplete but the report fails to acknowledge this
+- For ADJUDICATIVE / INVESTIGATIVE reports: also check that contradictions are present and acknowledged, that the report includes falsification criteria, and that the contradiction analysis is non-trivial (not just "no contradictions found")
+- For DESCRIPTIVE / DISCOVERY reports: check that deliverables (recommendations, opportunities, steps) are backed by cited evidence rather than generic assertions
 
 Output a structured verification report with PASS/FAIL for each criterion.`),
 
@@ -896,7 +895,7 @@ WRITING RULES — follow these precisely:
 - Do NOT use markdown italic (*) for generic emphasis. Use plain prose emphasis through sentence structure instead.
 - Do NOT start every sentence or paragraph with a bold header. Let paragraph topic sentences do that work.
 - Every section must open with a sentence that explicitly states what this section establishes about the research query — not just what the section is called.
-- For the Falsification Criteria section: name the specific mechanism, assumption, or causal claim that the report rests on, then describe exactly what class of evidence or observation would overturn it. Be specific. Do not write generic statements like "counterevidence would disprove this."
+- For the Falsification Criteria section (adjudicative reports only): name the specific mechanism, assumption, or causal claim that the report rests on, then describe exactly what class of evidence or observation would overturn it. Be specific. Do not write generic statements like "counterevidence would disprove this."
 - Tag every major claim with its evidence tier in parentheses: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
 - Do not invent evidence. If the corpus is silent on a point, say so.
 - Do not paper over uncertainty with confident prose.
@@ -912,9 +911,8 @@ Refine and integrate all sections into a coherent, well-structured whole.
 
 REFINEMENT RULES:
 - Ensure the executive summary accurately reflects the body sections' conclusions — not just a restatement of the query.
-- Ensure the Falsification Criteria section names specific testable propositions that are grounded in the actual claims made in the body — not generic filler.
+- For adjudicative / investigative reports: ensure the Falsification Criteria section names specific testable propositions grounded in the actual claims; ensure contradiction analysis names specific conflicting claims, not just "contradictions exist."
 - Remove or rewrite any section that relies heavily on markdown bold (**text**) for emphasis. Replace with properly structured prose sentences.
-- Ensure contradiction analysis names specific conflicting claims, not just "contradictions exist."
 - Ensure each section's opening sentence names what it establishes about the research question — not just what the section is called.
 - Do not add new unsupported facts. Preserve all evidence tier tags.
 - Return the full revised report in markdown.`),

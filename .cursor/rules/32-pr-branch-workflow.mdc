@@ -65,16 +65,60 @@ INTEGRATION — needs your call (<one-line reason, e.g. prod incident>)
 Do **not** use vague “let me know if you want a PR.” Either merge is ready, or the
 block above applies.
 
-## Mandatory first action (before any file edit)
+## Ordered integration strategy (before any file edit)
+
+Follow the **first applicable** path:
+
+### 1. PREFERRED — environment already provides a non-main branch
+
+If the coding environment (GitHub Copilot, Cursor Cloud, CI) supplies a
+pre-created, non-main branch:
+
+1. Confirm you are on that branch (`git rev-parse --abbrev-ref HEAD`).
+2. `git fetch origin` and verify the branch is based on current `origin/main`.
+3. Use it directly — **do not** attempt to create a second branch.
+4. Activate reuse mode if running the helper: `bash scripts/git/prepare-work-branch.sh <topic> --reuse`
+
+### 2. NORMAL — create a dedicated PR branch
+
+If no branch was pre-assigned and ref creation is permitted:
 
 1. `git fetch origin`
-2. `bash scripts/git/prepare-work-branch.sh <topic-slug>` (or equivalent:
-   `git checkout -B cursor/<topic> origin/main`)
+2. `bash scripts/git/prepare-work-branch.sh <topic-slug>` (creates `cursor/<topic>` from `origin/main`)
 3. State the branch name in the first reply for the scoped request.
 
-Do **not** stage, commit, or push until step 2 is done, except when the user
-**in the same message** authorized direct `main` (then include `[direct-main]`
-in every commit message on `main`).
+Do **not** stage, commit, or push until step 2 is done.
+
+### 3. RESTRICTED-REF ENVIRONMENT — GitHub returns GH013
+
+If `git push` fails with `GH013: Cannot create ref due to creations being restricted`:
+
+1. **Stop retrying** — further push attempts will also fail.
+2. Check whether the task provides an existing writable branch (Path 1 above).
+3. If one exists, use it.
+4. If none exists, **report the block deterministically**:
+
+```
+BLOCKED_GITHUB_REF_CREATION
+attempted_branch=<name>
+base=origin/main (SHA: <sha>)
+error=GH013: Cannot create ref due to creations being restricted
+
+Resolution — choose one:
+  (A) Ask a maintainer to pre-create branch '<name>' from main and assign Copilot to it.
+  (B) Ask a repo admin to allow creation of refs matching copilot/** or cursor/** in the repository ruleset.
+  (C) You (the user) reply "[direct-main]" in this thread to authorize direct-main for this governance task.
+```
+
+5. **Do not fabricate a PR** or claim work is integrated when only a local branch exists.
+
+### 4. EXPLICIT DIRECT-MAIN (same-request exception only)
+
+Only when the user explicitly states direct-main permission **in the current message**:
+
+- Include `[direct-main]` in every commit message on `main`.
+- The CI gate (`assert-main-push-authorized.sh`) allows it.
+- Direct-main is an **exception**, not the new default.
 
 ## Why this rule exists
 

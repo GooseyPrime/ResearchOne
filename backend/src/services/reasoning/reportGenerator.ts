@@ -20,6 +20,29 @@ const SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
 ];
 
+/** Descriptive / discovery section plan — used for non-adjudicative intents.
+ *  Omits `falsification_criteria` and `contradiction_analysis` (which are
+ *  only meaningful for causal-test / adjudicative queries) and adds
+ *  deliverable-focused sections instead. */
+export const DESCRIPTIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
+  { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
+  { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
+  { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
+  { title: 'Reasoning and Analysis', key: 'reasoning_analysis', weight: 1.6 },
+  { title: 'Synthesis and Conclusions', key: 'synthesis_conclusions', weight: 1.5 },
+  { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
+];
+
+/** Intent IDs that use the full adjudicative section plan (hypothesis +
+ *  falsification + contradiction).  All other intents use
+ *  `DESCRIPTIVE_SECTION_PLAN`.  `undefined` (legacy runs) defaults to the
+ *  adjudicative plan for backward compatibility. */
+export const ADJUDICATIVE_SECTION_INTENTS = new Set<string>([
+  'adjudication',
+  'investigation',
+  'story_verification',
+]);
+
 const MAX_SECTION_SUMMARY_CHARS = 1200;
 const MAX_ROLLING_SUMMARY_CHARS = 6000;
 
@@ -56,8 +79,15 @@ export function clampWordTarget(n: number | undefined): number {
  *  Contract: at totalWords == REPORT_WORD_COUNT_MIN every section sits at
  *  exactly the floor and the sum equals `totalWords` (verified by the
  *  reportLengthSteering test suite). For larger totals the sum tracks the
- *  request within ≤ SECTION_PLAN.length words of `Math.round` slack. */
-export function distributeWordBudget(totalWords: number): Map<string, number> {
+ *  request within ≤ sectionPlan.length words of `Math.round` slack.
+ *
+ *  `sectionPlan` defaults to `SECTION_PLAN` (adjudicative 10-section plan)
+ *  for backward compatibility. Pass `DESCRIPTIVE_SECTION_PLAN` for
+ *  non-adjudicative intent routing. */
+export function distributeWordBudget(
+  totalWords: number,
+  sectionPlan: Array<{ key: string; weight: number }> = SECTION_PLAN
+): Map<string, number> {
   const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
   const flooredKeys = new Set<string>();
 
@@ -68,12 +98,12 @@ export function distributeWordBudget(totalWords: number): Map<string, number> {
     changed = false;
     const flooredCost = flooredKeys.size * floor;
     const remainingTotal = Math.max(0, totalWords - flooredCost);
-    const remainingWeight = SECTION_PLAN
+    const remainingWeight = sectionPlan
       .filter((s) => !flooredKeys.has(s.key))
       .reduce((s, sec) => s + sec.weight, 0);
     if (remainingWeight === 0) break;
 
-    for (const sec of SECTION_PLAN) {
+    for (const sec of sectionPlan) {
       if (flooredKeys.has(sec.key)) continue;
       const share = remainingTotal * (sec.weight / remainingWeight);
       if (share < floor) {
@@ -85,12 +115,12 @@ export function distributeWordBudget(totalWords: number): Map<string, number> {
 
   const flooredCost = flooredKeys.size * floor;
   const remainingTotal = Math.max(0, totalWords - flooredCost);
-  const remainingWeight = SECTION_PLAN
+  const remainingWeight = sectionPlan
     .filter((s) => !flooredKeys.has(s.key))
     .reduce((s, sec) => s + sec.weight, 0);
 
   const budgets = new Map<string, number>();
-  for (const sec of SECTION_PLAN) {
+  for (const sec of sectionPlan) {
     if (flooredKeys.has(sec.key) || remainingWeight === 0) {
       budgets.set(sec.key, floor);
     } else {
@@ -137,8 +167,17 @@ export async function generateIterativeReport(args: {
    *  REPORT_WORD_COUNT_DEFAULT if not provided. */
   targetWordCount?: number;
   byokApiKeyOverride?: string;
+  /** Intent ID from the orchestration profile. `undefined` (legacy runs)
+   *  defaults to the full adjudicative section plan for backward
+   *  compatibility. */
+  intentId?: string;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
+  const activeSectionPlan =
+    args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
+      ? DESCRIPTIVE_SECTION_PLAN
+      : SECTION_PLAN;
+
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
@@ -146,7 +185,7 @@ export async function generateIterativeReport(args: {
     byokApiKeyOverride: args.byokApiKeyOverride,
   };
   const targetWordCount = clampWordTarget(args.targetWordCount);
-  const sectionBudgets = distributeWordBudget(targetWordCount);
+  const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
     ...v2,
@@ -155,7 +194,7 @@ export async function generateIterativeReport(args: {
       {
         role: 'user',
         content: `Generate a report outline for query "${args.query}".
-Required sections:\n${SECTION_PLAN.map((s) => `- ${s.title}`).join('\n')}
+Required sections:\n${activeSectionPlan.map((s) => `- ${s.title}`).join('\n')}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Evidence:\n${args.evidenceContext.slice(0, 8000)}
 Return strict JSON only.`,
@@ -167,16 +206,16 @@ Return strict JSON only.`,
   const outline = (outlinePayload?.outline ?? [])
     .map((s) => (s.title || '').trim())
     .filter(Boolean);
-  const resolvedOutline = outline.length > 0 ? outline : SECTION_PLAN.map((s) => s.title);
+  const resolvedOutline = outline.length > 0 ? outline : activeSectionPlan.map((s) => s.title);
 
   const sections: ReportSectionDraft[] = [];
   let rollingSummary = '';
 
-  for (let i = 0; i < SECTION_PLAN.length; i++) {
-    const section = SECTION_PLAN[i];
-    await args.onSectionProgress?.({ title: section.title, index: i + 1, total: SECTION_PLAN.length });
+  for (let i = 0; i < activeSectionPlan.length; i++) {
+    const section = activeSectionPlan[i];
+    await args.onSectionProgress?.({ title: section.title, index: i + 1, total: activeSectionPlan.length });
 
-    const sectionTarget = sectionBudgets.get(section.key) ?? Math.round(targetWordCount / SECTION_PLAN.length);
+    const sectionTarget = sectionBudgets.get(section.key) ?? Math.round(targetWordCount / activeSectionPlan.length);
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
 
     const sectionResult = await callRoleModel({
