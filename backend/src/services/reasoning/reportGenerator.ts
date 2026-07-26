@@ -7,7 +7,7 @@ export interface ReportSectionDraft {
   content: string;
 }
 
-const SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
+const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
   { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
@@ -55,10 +55,10 @@ export const REPORT_WORD_COUNT_PER_SECTION_FLOOR = 80;
 /** Bounds for user-supplied targetWordCount. Below the floor the report is
  *  too thin to be useful; above the ceiling the section drafter starts
  *  repeating itself even with steering, so we clamp to keep output
- *  substantive. The floor equals SECTION_PLAN.length × per-section floor so
+ *  substantive. The floor equals ADJUDICATIVE_SECTION_PLAN.length × per-section floor so
  *  the per-section budget allocator never has to overshoot the requested
  *  total to satisfy the per-section floor (Codex/Copilot PR #50 review). */
-export const REPORT_WORD_COUNT_MIN = SECTION_PLAN.length * REPORT_WORD_COUNT_PER_SECTION_FLOOR;
+export const REPORT_WORD_COUNT_MIN = ADJUDICATIVE_SECTION_PLAN.length * REPORT_WORD_COUNT_PER_SECTION_FLOOR;
 export const REPORT_WORD_COUNT_MAX = 12000;
 export const REPORT_WORD_COUNT_DEFAULT = 2200;
 
@@ -81,12 +81,12 @@ export function clampWordTarget(n: number | undefined): number {
  *  reportLengthSteering test suite). For larger totals the sum tracks the
  *  request within ≤ sectionPlan.length words of `Math.round` slack.
  *
- *  `sectionPlan` defaults to `SECTION_PLAN` (adjudicative 10-section plan)
+ *  `sectionPlan` defaults to `ADJUDICATIVE_SECTION_PLAN` (adjudicative 10-section plan)
  *  for backward compatibility. Pass `DESCRIPTIVE_SECTION_PLAN` for
  *  non-adjudicative intent routing. */
 export function distributeWordBudget(
   totalWords: number,
-  sectionPlan: Array<{ key: string; weight: number }> = SECTION_PLAN
+  sectionPlan: Array<{ key: string; weight: number }> = ADJUDICATIVE_SECTION_PLAN
 ): Map<string, number> {
   const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
   const flooredKeys = new Set<string>();
@@ -176,7 +176,7 @@ export async function generateIterativeReport(args: {
   const activeSectionPlan =
     args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
       ? DESCRIPTIVE_SECTION_PLAN
-      : SECTION_PLAN;
+      : ADJUDICATIVE_SECTION_PLAN;
 
   const v2 = {
     engineVersion: args.engineVersion,
