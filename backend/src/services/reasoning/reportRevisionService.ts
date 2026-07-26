@@ -13,6 +13,7 @@ import {
 } from './reasoningModelPolicy';
 import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchestratorNormalize';
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
+import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
 
 /** Source of an automated revision (Work Order T). Same pipeline as user revisions; UI/reporting only. */
@@ -147,12 +148,16 @@ export function inferInsertionIndex(sectionTypes: string[], insertion: { after_s
   return evidenceIdx >= 0 ? evidenceIdx + 1 : sectionTypes.length;
 }
 
-export function basicConsistencyChecks(sections: ReportSectionRow[]): string[] {
+export function basicConsistencyChecks(sections: ReportSectionRow[], intentId?: string): string[] {
   const map = toSectionMap(sections);
   const issues: string[] = [];
   if (!map.executive_summary || !map.executive_summary.content.trim()) issues.push('missing_executive_summary');
   if (!map.conclusion || !map.conclusion.content.trim()) issues.push('missing_conclusion');
-  if (!map.falsification_criteria || !map.falsification_criteria.content.trim()) {
+  // Falsification criteria only applies to adjudicative intents (adjudication, investigation,
+  // story_verification) and legacy runs with no intentId. Descriptive intents never produce
+  // this section, so checking for it would always produce a false positive (Rule 37).
+  const requiresFalsification = !intentId || ADJUDICATIVE_SECTION_INTENTS.has(intentId);
+  if (requiresFalsification && (!map.falsification_criteria || !map.falsification_criteria.content.trim())) {
     issues.push('missing_falsification_criteria');
   }
   return issues;
@@ -614,7 +619,12 @@ Return strict JSON.`,
   const verifierPayload = parseJson<{ passed?: boolean; findings?: unknown[]; required_fixes?: string[] }>(
     verifierResult.content
   ) ?? { passed: true, findings: [], required_fixes: [] };
-  const consistencyIssues = basicConsistencyChecks(revisedSections);
+  const consistencyIssues = basicConsistencyChecks(
+    revisedSections,
+    typeof baseReport.metadata?.orchestration_intent === 'string'
+      ? baseReport.metadata.orchestration_intent
+      : undefined
+  );
   const revisionImpactSummary = {
     requested_change: args.requestText,
     affected_sections: changePlan.affected_sections,

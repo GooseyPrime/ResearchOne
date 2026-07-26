@@ -73,6 +73,24 @@ describe('report revision helpers', () => {
     expect(issues).toContain('missing_conclusion');
     expect(issues).toContain('missing_falsification_criteria');
   });
+
+  it('does not flag missing_falsification_criteria for descriptive (non-adjudicative) intents', async () => {
+    const { basicConsistencyChecks } = await import('../services/reasoning/reportRevisionService');
+    const sections = [
+      { section_type: 'executive_summary', content: 'Summary of findings' },
+      { section_type: 'conclusion', content: 'Conclusions here' },
+      { section_type: 'findings', content: 'Key findings' },
+    ] as never;
+    // Descriptive intents should NOT require falsification_criteria
+    const descriptiveIssues = basicConsistencyChecks(sections, 'opportunity_discovery');
+    expect(descriptiveIssues).not.toContain('missing_falsification_criteria');
+    // Adjudicative intents still require falsification_criteria
+    const adjudicativeIssues = basicConsistencyChecks(sections, 'adjudication');
+    expect(adjudicativeIssues).toContain('missing_falsification_criteria');
+    // Legacy (no intentId) still requires falsification_criteria for backward compat
+    const legacyIssues = basicConsistencyChecks(sections, undefined);
+    expect(legacyIssues).toContain('missing_falsification_criteria');
+  });
 });
 
 describe('report revision history queries', () => {
