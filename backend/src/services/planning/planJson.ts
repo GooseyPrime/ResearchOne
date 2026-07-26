@@ -4,6 +4,8 @@ import { getIntentById } from './intentTaxonomy';
 import type { PlanPayload } from './planTypes';
 import { planSummaryFromPayload } from './planTypes';
 import { mergePlanPayloadWithCanonicalProfile } from './orchestrationRuntime';
+import type { ResearchBrief, EpistemicPosture, RequestedArtifact, UserConstraint } from './researchBrief';
+import { INTENT_EPISTEMIC_POSTURE, defaultResearchBrief } from './researchBrief';
 
 function extractJsonObject(raw: string): string | null {
   const t = raw.trim();
@@ -59,6 +61,90 @@ export function parseIntentClassifierJson(
   } catch (e) {
     logger.warn('plan_intent_classifier_json_parse_failed', { message: e instanceof Error ? e.message : String(e) });
     return { intent: fallbackIntent, confidence: 0.5, reasoning: 'Parser fallback — model output was not valid JSON.' };
+  }
+}
+
+const VALID_EPISTEMIC_POSTURES = new Set<string>([
+  'descriptive',
+  'decision',
+  'discovery',
+  'adjudicative',
+  'causal_test',
+]);
+
+function isEpistemicPosture(s: unknown): s is EpistemicPosture {
+  return typeof s === 'string' && VALID_EPISTEMIC_POSTURES.has(s);
+}
+
+function coerceArtifact(raw: unknown): RequestedArtifact | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const description = typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null;
+  if (!description) return null;
+  const exactCount =
+    typeof o.exactCount === 'number' && Number.isFinite(o.exactCount) && o.exactCount > 0
+      ? Math.round(o.exactCount)
+      : undefined;
+  const requiredFields = Array.isArray(o.requiredFields)
+    ? o.requiredFields.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : [];
+  return { description, exactCount, requiredFields: requiredFields.length > 0 ? requiredFields : undefined };
+}
+
+function coerceConstraint(raw: unknown): UserConstraint | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const description = typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null;
+  if (!description) return null;
+  return { description };
+}
+
+/**
+ * Phase B — parse the ResearchBrief JSON returned by RESEARCH_BRIEF_CLASSIFIER_PROMPT.
+ * Falls back to a minimal brief using the provided defaults when the model returns
+ * invalid or incomplete JSON.
+ */
+export function parseResearchBriefJson(
+  content: string,
+  fallbackIntent: IntentId
+): ResearchBrief {
+  try {
+    const slice = extractJsonObject(content);
+    if (!slice) throw new Error('no_json_object');
+    const o = JSON.parse(slice) as Record<string, unknown>;
+
+    const primaryIntent = isIntentId(o.primaryIntent) ? o.primaryIntent : fallbackIntent;
+    const secondaryIntent =
+      isIntentId(o.secondaryIntent) && o.secondaryIntent !== primaryIntent
+        ? o.secondaryIntent
+        : undefined;
+
+    const requestedArtifacts = Array.isArray(o.requestedArtifacts)
+      ? o.requestedArtifacts.map(coerceArtifact).filter((x): x is RequestedArtifact => x !== null)
+      : [];
+
+    const userConstraints = Array.isArray(o.userConstraints)
+      ? o.userConstraints.map(coerceConstraint).filter((x): x is UserConstraint => x !== null)
+      : [];
+
+    const epistemicPosture = isEpistemicPosture(o.epistemicPosture)
+      ? o.epistemicPosture
+      : (INTENT_EPISTEMIC_POSTURE[primaryIntent] ?? 'descriptive');
+
+    const confidence =
+      typeof o.confidence === 'number' && Number.isFinite(o.confidence)
+        ? Math.min(1, Math.max(0, o.confidence))
+        : 0.5;
+
+    const reasoning =
+      typeof o.reasoning === 'string' && o.reasoning.trim()
+        ? o.reasoning.trim()
+        : 'Classifier returned non-text reasoning.';
+
+    return { primaryIntent, secondaryIntent, requestedArtifacts, userConstraints, epistemicPosture, confidence, reasoning };
+  } catch (e) {
+    logger.warn('research_brief_json_parse_failed', { message: e instanceof Error ? e.message : String(e) });
+    return defaultResearchBrief(fallbackIntent, 0.5, 'Parser fallback — model output was not valid JSON.');
   }
 }
 

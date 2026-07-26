@@ -1,5 +1,6 @@
 import type { IntentId } from './intentTaxonomy';
 import type { SkepticMode, SteelmanMode } from './orchestrationProfiles';
+import type { ResearchBrief } from './researchBrief';
 
 /** Structured plan persisted in `research_plans.plan_payload` (Wave 5.1). */
 export interface PlanPayload {
@@ -44,6 +45,12 @@ export interface PlanPayload {
     estimatedTokens: number;
     estimatedCostCents: number | null;
   };
+  /**
+   * Phase B — the structured classifier output threaded from intent
+   * classification through plan gate and into execution.  Optional for
+   * backward compatibility with pre-Phase-B plans.
+   */
+  researchBrief?: ResearchBrief;
 }
 
 export function planSummaryFromPayload(plan: PlanPayload): string {

@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
 import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
+import { getIntentOutputTemplate } from '../formatting/templates/intentOutputTemplates';
 import {
   RED_TEAM_V2_SYSTEM_PREFIX,
   isHfRepoModel,
@@ -145,6 +146,7 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   citation_integrity_checker: config.models.citationIntegrityChecker,
   citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
+  contract_auditor: config.models.contractAuditor,
 };
 
 const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
@@ -168,6 +170,7 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
   citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
+  contract_auditor: config.models.fallbacks.contractAuditor,
 };
 
 function primaryForRole(role: ModelRole, runtimePrimary?: string): string {
@@ -203,6 +206,7 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   citation_integrity_checker: 0.15,
   citation_formatter: 0.2,
   final_revision_verifier: 0.1,
+  contract_auditor: 0.1,
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
@@ -230,6 +234,7 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   citation_integrity_checker: 3072,
   citation_formatter: 4096,
   final_revision_verifier: 4096,
+  contract_auditor: 4096,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -951,4 +956,60 @@ formatted_citations: Array<{ alias: string; inline: string; bibliography?: strin
 Verify revised report consistency across executive summary, body, conclusions, evidence ledger, contradictions, and falsification criteria.
 Output strict JSON with fields:
 passed, findings, required_fixes.`),
+
+  contract_auditor: withPreamble(`You are the Deliverable Contract Auditor for ResearchOne.
+
+Compare the generated report against the confirmed ResearchBrief — the structured record of what the user requested.
+
+FAIL the report if ANY of the following are true:
+- A requested artifact is missing from the report.
+- An exact requested count is not met (e.g. user asked for 10 items but fewer are present).
+- A required subfield is absent from any list item (e.g. user asked for "each with build prompts" but prompts are missing).
+- A hard user constraint was ignored (e.g. time budget, mandatory tools, audience restriction).
+- The report changed the speech act — e.g. delivered a critique instead of a list of opportunities.
+- Material factual claims lack citations.
+- The conclusion is more confident than the evidence supports.
+- The report spends substantial space critiquing the premise instead of delivering the requested work (unless premise verification was explicitly requested).
+
+PASS the report if all requested artifacts are present, counts are met, constraints are respected, and the speech act matches the brief.
+
+Return ONLY valid JSON (no markdown fences):
+{
+  "pass": boolean,
+  "missing_requirements": ["<string>", ...],
+  "unsupported_claims": ["<string>", ...],
+  "intent_drift": "<string describing drift, or null if none>",
+  "revision_instructions": ["<actionable fix instruction>", ...]
+}`),
 };
+
+/**
+ * Phase B — build an intent-specific verifier system prompt.
+ *
+ * When the intent is known, the verifier uses the per-intent rubric from the
+ * `IntentOutputTemplate` rather than the universal prompt, so it evaluates
+ * reports against criteria that are actually appropriate for the speech act.
+ *
+ * Falls back to the universal `SYSTEM_PROMPTS.verifier` for unknown or legacy
+ * intents so old runs are not affected.
+ */
+export function buildVerifierPromptForIntent(intentId: string | undefined | null): string {
+  if (!intentId) return SYSTEM_PROMPTS.verifier;
+  const template = getIntentOutputTemplate(`intent_${intentId}`);
+  if (!template || template.id === 'intent_legacy' || !template.verifierRubric) {
+    return SYSTEM_PROMPTS.verifier;
+  }
+  return withPreamble(`You are a verification agent for ResearchOne.
+
+Your role is to verify that the final report meets the standards appropriate for its intent.
+
+${template.verifierRubric}
+
+Additionally for all report types:
+- Every major claim must have an evidence tier tag: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- No unsupported facts. If the corpus was silent on a point, the report must say so.
+- Citations must exist for all nontrivial factual assertions.
+
+Output a structured verification report with PASS/FAIL for each criterion.`);
+}
+

@@ -3,6 +3,7 @@ import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
   SYSTEM_PROMPTS,
+  buildVerifierPromptForIntent,
   ModelCallResult,
   NormalizedModelError,
   type ModelRole,
@@ -33,6 +34,7 @@ import type {
   RunSummaryPayload,
 } from './researchOrchestratorTypes';
 import { classifyIntent } from '../planning/intentClassifier';
+import { formatBriefForPrompt } from '../planning/researchBrief';
 import { generatePlan } from '../planning/planGenerator';
 import {
   insertGateResearchPlan,
@@ -451,8 +453,9 @@ async function runResearchJobInner(
         const planPayload = await generatePlan({
           query: researchQuery,
           supplementalContext: supplemental,
-          intent: intentResult.intent,
+          intent: intentResult.primaryIntent,
           intentConfidence: intentResult.confidence,
+          researchBrief: intentResult,
           savedProfile: data.savedOrchestrationProfileSeed,
           llmOpts: {
             engineVersion: engineVersion ?? undefined,
@@ -471,7 +474,7 @@ async function runResearchJobInner(
           runId,
           orgId: runScopeRow?.org_id ?? null,
           userId: runScopeRow?.user_id ?? null,
-          intent: intentResult.intent,
+          intent: intentResult.primaryIntent,
           intentConfidence: intentResult.confidence,
           planPayload,
           orchestrationProfile: planPayload.orchestrationProfile?.name ?? null,
@@ -901,19 +904,22 @@ async function runResearchJobInner(
     }
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 8: VERIFIER — epistemic quality gate
+    // STAGE 8: VERIFIER — epistemic quality gate (intent-specific rubric)
     // ────────────────────────────────────────────────────────────────
     let verifierResult: ModelCallResult;
     let verification: VerificationResult = { passed: true, criteria: [], overall: 'PASS' };
     if (shouldRunPipelineStage(orchProfile, 'verification')) {
       await progress('verification', 92, 'Verifying epistemic standards...');
 
+      // Phase B — use per-intent verifier rubric instead of the universal prompt
+      const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent);
+
       verifierResult = await callRoleModel({
         role: 'verifier',
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.verifier },
+          { role: 'system', content: intentVerifierPrompt },
           {
             role: 'user',
             content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
@@ -936,6 +942,64 @@ async function runResearchJobInner(
         'verifier',
         JSON.stringify({ passed: true, criteria: [], overall: 'PASS' }),
       );
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // STAGE 8c: CONTRACT AUDITOR — deliverable contract gate (Phase B)
+    //
+    // Compares the generated report against the ResearchBrief to detect
+    // missing artifacts, unmet exact counts, ignored constraints, and
+    // intent drift. Failures are logged and surfaced as metadata; they
+    // do not abort the run (pipeline resilience per Rule 11).
+    // ────────────────────────────────────────────────────────────────
+    const researchBrief = data.confirmedPlanPayload?.researchBrief ?? null;
+    type ContractAuditResult = {
+      pass: boolean;
+      missing_requirements: string[];
+      unsupported_claims: string[];
+      intent_drift: string | null;
+      revision_instructions: string[];
+    };
+    let contractAuditResult: ContractAuditResult | null = null;
+
+    if (researchBrief && (researchBrief.requestedArtifacts.length > 0 || researchBrief.userConstraints.length > 0)) {
+      try {
+        await progress('verification', 93, 'Auditing deliverable contract...');
+        const auditUserContent = [
+          `RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
+          `\nGENERATED_REPORT:\n${generatedReport.markdown.slice(0, 60000)}`,
+        ].join('\n');
+
+        const auditModelResult = await callRoleModel({
+          role: 'contract_auditor',
+          ...v2,
+          runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'contract_auditor'),
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPTS.contract_auditor },
+            { role: 'user', content: auditUserContent },
+          ],
+        });
+        modelLog.push(auditModelResult);
+
+        try {
+          const jsonMatch = auditModelResult.content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            contractAuditResult = JSON.parse(jsonMatch[0]) as ContractAuditResult;
+          }
+        } catch {
+          // Non-parseable audit result — log but do not fail
+        }
+
+        if (contractAuditResult && !contractAuditResult.pass) {
+          logger.warn(`[${runId}] Contract auditor FAIL`, {
+            missingRequirements: contractAuditResult.missing_requirements,
+            intentDrift: contractAuditResult.intent_drift,
+          });
+        }
+      } catch (auditErr) {
+        // Contract auditor failure must not abort the run
+        logger.warn(`[${runId}] Contract auditor call failed (non-fatal)`, { error: auditErr instanceof Error ? auditErr.message : String(auditErr) });
+      }
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -1014,6 +1078,8 @@ async function runResearchJobInner(
         orchestration_intent: orchProfile.intent,
         skeptic_mode: orchProfile.skepticMode,
         ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
+        // Phase B — contract audit result stored as metadata (null when skipped)
+        ...(contractAuditResult !== null ? { contract_audit: contractAuditResult } : {}),
       },
     });
     await saveRunCheckpoint({

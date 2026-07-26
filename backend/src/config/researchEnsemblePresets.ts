@@ -36,6 +36,7 @@ const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   citationIntegrityChecker: 'citation_integrity_checker',
   citationFormatter: 'citation_formatter',
   finalRevisionVerifier: 'final_revision_verifier',
+  contractAuditor: 'contract_auditor',
 };
 
 function fromCodeDefaults(): Record<ReasoningModelRole, RoleModelPair> {
@@ -281,7 +282,8 @@ const V2_UTILITIES: Record<
   | 'citation_formatter'
   | 'revision_intake'
   | 'report_locator'
-  | 'final_revision_verifier',
+  | 'final_revision_verifier'
+  | 'contract_auditor',
   RoleModelPair
 > = {
   // All utility roles default to DeepSeek V3.2 (11 upstream providers,
@@ -295,6 +297,7 @@ const V2_UTILITIES: Record<
   revision_intake: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   report_locator: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   final_revision_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  contract_auditor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
 };
 
 function v2Mode(

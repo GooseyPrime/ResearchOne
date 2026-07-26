@@ -198,6 +198,8 @@ const config = {
       process.env.CITATION_INTEGRITY_CHECKER_MODEL || CODE_DEFAULT_REASONING_MODELS.citationIntegrityChecker,
     citationFormatter: process.env.CITATION_FORMATTER_MODEL || CODE_DEFAULT_REASONING_MODELS.citationFormatter,
     finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.finalRevisionVerifier,
+    /** Phase B — Deliverable Contract Auditor; env override for ops. */
+    contractAuditor: process.env.CONTRACT_AUDITOR_MODEL || CODE_DEFAULT_REASONING_MODELS.contractAuditor,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
     /** Wave 5.1 — intent/plan gate LLM; tier-uniform; env override for ops. */
@@ -227,6 +229,7 @@ const config = {
         process.env.CITATION_INTEGRITY_CHECKER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationIntegrityChecker,
       citationFormatter: process.env.CITATION_FORMATTER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationFormatter,
       finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.finalRevisionVerifier,
+      contractAuditor: process.env.CONTRACT_AUDITOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.contractAuditor,
     },
   },
 
@@ -449,6 +452,7 @@ const reasoningModelsForPolicy = {
   citation_integrity_checker: config.models.citationIntegrityChecker,
   citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
+  contract_auditor: config.models.contractAuditor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 const reasoningFallbacksForPolicy = {
@@ -472,6 +476,7 @@ const reasoningFallbacksForPolicy = {
   citation_integrity_checker: config.models.fallbacks.citationIntegrityChecker,
   citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
+  contract_auditor: config.models.fallbacks.contractAuditor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 validateReasoningModelPolicy({

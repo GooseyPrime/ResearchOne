@@ -6,12 +6,16 @@ import { ORCHESTRATION_PROFILES } from './orchestrationProfiles';
 import type { PlanPayload } from './planTypes';
 import { PLAN_GENERATOR_PROMPT } from './prompts';
 import { parsePlanGeneratorJson } from './planJson';
+import type { ResearchBrief } from './researchBrief';
+import { formatBriefForPrompt } from './researchBrief';
 
 export async function generatePlan(input: {
   query: string;
   supplementalContext?: string;
   intent: IntentId;
   intentConfidence: number;
+  /** Phase B — full ResearchBrief from the classifier; threaded into plan payload. */
+  researchBrief?: ResearchBrief;
   /** Wave 5.4 — optional saved profile seed merged into the planner prompt. */
   savedProfile?: { baseIntent: string; customizations: unknown; profileName?: string };
   llmOpts: {
@@ -26,7 +30,8 @@ export async function generatePlan(input: {
     config.openrouter.apiKey?.trim() || input.llmOpts.byokApiKeyOverride?.trim()
   );
   if (!hasOpenRouterCredential) {
-    return parsePlanGeneratorJson('{}', input.intent, input.intentConfidence);
+    const plan = parsePlanGeneratorJson('{}', input.intent, input.intentConfidence);
+    return input.researchBrief ? { ...plan, researchBrief: input.researchBrief } : plan;
   }
 
   let profileBlock = '';
@@ -35,7 +40,13 @@ export async function generatePlan(input: {
     profileBlock = `\nSAVED_ORCHESTRATION_PROFILE (${label} — starting point; reconcile with QUERY and current INTENT):\nBASE_INTENT: ${input.savedProfile.baseIntent}\nCUSTOMIZATIONS_JSON:\n${JSON.stringify(input.savedProfile.customizations ?? {}, null, 2)}\n`;
   }
 
-  const userBlock = `QUERY:\n${input.query}\n\nSUPPLEMENTAL:\n${input.supplementalContext ?? '(none)'}\n\nINTENT: ${input.intent} (${def?.displayLabel ?? input.intent})\nINTENT_CONFIDENCE: ${input.intentConfidence}\n${profileBlock}`;
+  // Phase B — include the ResearchBrief in the planner context so the plan
+  // preview accurately reflects the extracted artifacts and constraints.
+  const briefBlock = input.researchBrief
+    ? `\nRESEARCH_BRIEF (extracted by classifier — use this to guide plan output shape):\n${formatBriefForPrompt(input.researchBrief)}\n`
+    : '';
+
+  const userBlock = `QUERY:\n${input.query}\n\nSUPPLEMENTAL:\n${input.supplementalContext ?? '(none)'}\n\nINTENT: ${input.intent} (${def?.displayLabel ?? input.intent})\nINTENT_CONFIDENCE: ${input.intentConfidence}${briefBlock}${profileBlock}`;
 
   const res = await callRoleModel({
     role: 'planner',
@@ -64,6 +75,9 @@ export async function generatePlan(input: {
       ...plan.orchestrationProfile,
       name: ORCHESTRATION_PROFILES[input.intent]?.displayName ?? plan.orchestrationProfile.name,
     },
+    // Phase B — carry the ResearchBrief through to execution
+    ...(input.researchBrief && { researchBrief: input.researchBrief }),
   };
   return plan;
 }
+
