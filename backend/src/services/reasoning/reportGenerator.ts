@@ -19,7 +19,7 @@ export const ADJUDICATIVE_SECTION_INTENTS = new Set([
 ]);
 
 /** Full adjudicative / adversarial section plan (used for adjudication,
- *  investigation, story_verification, and unknown/legacy intents). */
+ *  investigation, story_verification, and undefined/legacy intentId runs). */
 export const SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },

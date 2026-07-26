@@ -534,8 +534,8 @@ async function runResearchJobInner(
       const jsonMatch = plannerResult.content.match(/\{[\s\S]*\}/);
       plan = JSON.parse(jsonMatch?.[0] ?? plannerResult.content) as ResearchPlan;
     } catch (parseErr) {
-      logger.debug({ runId, parseErr, plannerContentSnippet: plannerResult.content.slice(0, 200) },
-        'Planner JSON parse failed — using fallback plan skeleton');
+      logger.debug('Planner JSON parse failed — using fallback plan skeleton',
+        { runId, parseErr, plannerContentSnippet: plannerResult.content.slice(0, 200) });
       // For adjudicative intents, backfill hypothesis/falsification as before.
       // For descriptive/exploratory intents, do not manufacture these fields
       // — the research topic is not a hypothesis to be falsified (Rule 37).
