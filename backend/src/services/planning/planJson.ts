@@ -81,10 +81,11 @@ function coerceArtifact(raw: unknown): RequestedArtifact | null {
   const o = raw as Record<string, unknown>;
   const description = typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null;
   if (!description) return null;
-  const exactCount =
-    typeof o.exactCount === 'number' && Number.isFinite(o.exactCount) && o.exactCount > 0
-      ? Math.round(o.exactCount)
-      : undefined;
+  const exactCount = (() => {
+    if (typeof o.exactCount !== 'number' || !Number.isFinite(o.exactCount)) return undefined;
+    const rounded = Math.round(o.exactCount);
+    return rounded > 0 ? rounded : undefined;
+  })();
   const requiredFields = Array.isArray(o.requiredFields)
     ? o.requiredFields.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];

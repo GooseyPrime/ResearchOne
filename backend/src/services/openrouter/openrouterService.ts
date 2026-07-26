@@ -996,7 +996,7 @@ Return ONLY valid JSON (no markdown fences):
 export function buildVerifierPromptForIntent(intentId: string | undefined | null): string {
   if (!intentId) return SYSTEM_PROMPTS.verifier;
   const template = getIntentOutputTemplate(`intent_${intentId}`);
-  if (!template || template.id === 'intent_legacy' || !template.verifierRubric) {
+  if (!template || !template.verifierRubric) {
     return SYSTEM_PROMPTS.verifier;
   }
   return withPreamble(`You are a verification agent for ResearchOne.
