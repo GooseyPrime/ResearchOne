@@ -1,0 +1,151 @@
+---
+description: Intent-driven report contracts — the pipeline must honor user intent from classification through synthesis. Read before touching researchOrchestrator, reportGenerator, intentOutputTemplates, SYSTEM_PROMPTS, or the intent classifier.
+alwaysApply: true
+---
+
+# Rule 37 — Intent-driven report contracts
+
+## Why this rule exists
+
+ResearchOne's root-cause failure (documented in
+`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md`) is that
+intent classification happens correctly but is then discarded: the
+final planner, synthesizer, verifier, section drafter, and coherence
+refiner all independently re-impose a universal hypothesis-and-
+falsification schema regardless of what the user asked for.
+
+A market-discovery request ("find ten opportunities and give me build
+prompts") must produce a list, not a scientific refutation. This rule
+makes intent the controlling contract from classification to final
+output.
+
+## The cascade problem (four layers re-impose the same bias)
+
+The following locations independently force adjudicative structure.
+Fixing any one without the others causes partial regressions:
+
+1. **Planner** (`researchOrchestrator.ts` lines 506–565) — uses
+   universal hypothesis/falsification schema; parse fallback backfills
+   these fields from the raw query.
+2. **Report generator** (`reportGenerator.ts` lines 10–21) — defines
+   one immutable 10-section SECTION_PLAN; the Outline Architect's
+   suggestions are ignored; the section loop runs over the hard-coded
+   list.
+3. **SYSTEM_PROMPTS** (`openrouterService.ts`) — synthesizer, verifier,
+   section_drafter, and coherence_refiner all require Evidence Ledger,
+   Contradiction Analysis, Falsification Criteria, and Unresolved
+   Questions in every report.
+4. **Mode overlays** (`modeOverlays.ts`) — General Research default
+   requires competing hypotheses even for "find ten market opportunities."
+
+## Rules
+
+### R-1. Intent is the pipeline contract
+
+The confirmed `ResearchIntent` (or `ResearchBrief.primaryIntent`)
+must flow from classification → plan gate → execution planner →
+synthesis → section drafter → verifier. No stage may substitute a
+generic hypothesis plan when a specific intent was confirmed.
+
+The execution planner call must receive the intent and the
+`intentOutputTemplates` template id. It must use these as the report
+contract, not as advisory metadata.
+
+### R-2. intentOutputTemplates.ts is the canonical synthesis contract
+
+`backend/src/services/formatting/templates/intentOutputTemplates.ts`
+defines section structure for each intent. Templates must specify:
+- **required sections** — must appear in output
+- **optional sections** — may appear based on content
+- **conditional sections** — appear only when the intent or data warrants
+  (e.g. falsification only for `adjudicative` / `causal_test`)
+- **verifier rubric** — what the verifier checks for this intent
+- **delivery validation** — exact-count enforcement, required artifact types
+
+The synthesizer and section drafter receive the resolved template and
+loop over its section list — not a hard-coded `SECTION_PLAN`. The
+`narrativeHint` status of "future use" is the regression to fix.
+
+### R-3. Hypothesis and falsification are conditional
+
+| Intent family | hypothesis required | falsification required | adversarial review |
+|---|---|---|---|
+| `adjudicative`, `causal_test`, `story_verification` | ✅ Yes | ✅ Yes | ✅ Full skeptic |
+| `factual`, `survey`, `explain`, `reference_lookup`, `literature_review`, `timeline` | ❌ No | ❌ No | ⚪ Optional |
+| `exploratory`, `opportunity_discovery`, `market_research`, `feasibility` | ❌ No | ❌ No | ⚪ Optional |
+| `recommendation`, `implementation`, `how_to`, `comparison` | ❌ No | ❌ No | ⚪ Optional |
+
+For non-adjudicative intents: omit `hypothesis` and
+`falsification_criteria` fields from the plan; do not backfill them.
+Contradiction preservation, source citation integrity, and uncertainty
+labeling remain binding for all intents (non-sanitization rule, Rule 20).
+
+### R-4. Parse fallback must not manufacture a hypothesis
+
+When the planner's JSON cannot be parsed, the fallback must preserve
+the user's original query as the research topic — it must NOT set
+`hypothesis = user_query` or `falsification_criteria = generic_contradiction_sentence`.
+For non-adjudicative intents, omit both fields.
+
+### R-5. Exact requested counts are enforced
+
+When the user requests a specific number of items (e.g. "ten
+opportunities", "five comparisons"), that count must be:
+1. Extracted by the `ResearchBrief` classifier.
+2. Stored in `requestedArtifacts[].count`.
+3. Passed to the synthesizer and section drafter.
+4. Enforced by the Deliverable Contract Auditor (Stage B) before
+   the report reaches the user.
+
+Reporting "three opportunities with extensive falsification analysis"
+instead of "ten opportunities" is not a synthesis choice — it is an
+intent drift bug.
+
+### R-6. No second intent-blind hypothesis plan after confirmation
+
+After the user confirms the plan gate:
+- The execution planner must receive the confirmed intent and template.
+- It must not call a separate planner that ignores these.
+- The confirmed `ResearchBrief.outputContract` is the section blueprint.
+- Users effectively approved Plan A; delivering Plan B is a bug.
+
+### R-7. Deliverable Contract Auditor (Stage B+)
+
+A final `contract_auditor` role must verify the report BEFORE it
+reaches the user, checking:
+- All required artifacts are present.
+- Exact counts match the brief.
+- Forbidden sections (e.g. Falsification Criteria for a factual report)
+  are absent.
+- Report headings are controlled by the template, not the model's
+  initiative.
+
+The contract auditor differs from the skeptic: the skeptic challenges
+conclusions; the auditor ensures delivery. The attached failure prompt
+would pass an epistemic skeptic but fail a contract auditor instantly.
+
+### R-8. Regression fixture
+
+The exact prompt from `onlinbusinessreport.md` must be a fixture in
+the classifier and pipeline test suite. Tests must assert:
+- Intent resolves to `opportunity_discovery` + `feasibility` +
+  `implementation` (not `general_epistemic_research`).
+- Output contains ten opportunities.
+- Each opportunity has project needs and build prompts.
+- Falsification is not a top-level section.
+- Report spends < 10% of content questioning the 24-hour premise.
+- Selected agents include market scout, feasibility architect (Stage B+).
+
+## Pre-commit check
+
+- [ ] Did you touch `researchOrchestrator.ts` planner call? Confirm the
+      confirmed intent and template are passed in — not defaulted away.
+- [ ] Did you touch `reportGenerator.ts`? Confirm section loop uses the
+      intent template, not a hard-coded `SECTION_PLAN`.
+- [ ] Did you touch `SYSTEM_PROMPTS` synthesizer/verifier/drafter?
+      Confirm hypothesis/falsification requirements are conditional on intent.
+- [ ] Did you touch `modeOverlays.ts` General Research? Confirm it does
+      not force competing-hypothesis framing for non-adjudicative intents.
+- [ ] Did you touch the parse fallback? Confirm it does not backfill
+      `hypothesis = user_query` for non-adjudicative intents.
+- [ ] Are exact-count artifacts extracted and stored in the ResearchBrief?

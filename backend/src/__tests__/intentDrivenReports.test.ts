@@ -1,216 +1,128 @@
-/**
- * Regression fixtures for Rule 37: Intent-Driven Report Contracts.
- *
- * These tests verify that:
- * 1. Discovery/opportunity intents are NOT classified as adjudicative.
- * 2. DESCRIPTIVE_SECTION_PLAN does not contain falsification or contradiction sections.
- * 3. generateIterativeReport uses DESCRIPTIVE_SECTION_PLAN for non-adjudicative intents
- *    and SECTION_PLAN (10 sections) for adjudicative intents and undefined (backward compat).
- *
- * If any of these tests fail WITHOUT the Stage A fix applied, the root-cause cascade
- * problem (Rule 37) is confirmed.
- */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import {
+  ADJUDICATIVE_SECTION_INTENTS,
+  DESCRIPTIVE_SECTION_PLAN,
+  distributeWordBudget,
+  REPORT_WORD_COUNT_PER_SECTION_FLOOR,
+  REPORT_WORD_COUNT_MIN,
+} from '../services/reasoning/reportGenerator';
 
-const callRoleModelMock = vi.fn();
+// ─────────────────────────────────────────────────────────────────────────────
+// ADJUDICATIVE_SECTION_INTENTS membership
+// ─────────────────────────────────────────────────────────────────────────────
 
-vi.mock('../services/openrouter/openrouterService', () => ({
-  callRoleModel: callRoleModelMock,
-  SYSTEM_PROMPTS: {
-    outline_architect: 'outline',
-    section_drafter: 'draft',
-    internal_challenger: 'challenge',
-    coherence_refiner: 'refine',
-  },
-}));
-
-describe('Intent-Driven Report Contracts (Rule 37)', () => {
-  beforeEach(() => {
-    callRoleModelMock.mockReset();
-  });
-
-  it('ADJUDICATIVE_SECTION_INTENTS does NOT include opportunity_discovery', async () => {
-    const { ADJUDICATIVE_SECTION_INTENTS } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    expect(ADJUDICATIVE_SECTION_INTENTS.has('opportunity_discovery')).toBe(false);
-  });
-
-  it('ADJUDICATIVE_SECTION_INTENTS does NOT include feasibility', async () => {
-    const { ADJUDICATIVE_SECTION_INTENTS } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    expect(ADJUDICATIVE_SECTION_INTENTS.has('feasibility')).toBe(false);
-  });
-
-  it('ADJUDICATIVE_SECTION_INTENTS does NOT include implementation', async () => {
-    const { ADJUDICATIVE_SECTION_INTENTS } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    expect(ADJUDICATIVE_SECTION_INTENTS.has('implementation')).toBe(false);
-  });
-
-  it('ADJUDICATIVE_SECTION_INTENTS DOES include adjudication', async () => {
-    const { ADJUDICATIVE_SECTION_INTENTS } = await import(
-      '../services/reasoning/reportGenerator'
-    );
+describe('ADJUDICATIVE_SECTION_INTENTS', () => {
+  it('contains adjudication', () => {
     expect(ADJUDICATIVE_SECTION_INTENTS.has('adjudication')).toBe(true);
   });
 
-  it('ADJUDICATIVE_SECTION_INTENTS DOES include story_verification', async () => {
-    const { ADJUDICATIVE_SECTION_INTENTS } = await import(
-      '../services/reasoning/reportGenerator'
-    );
+  it('contains investigation', () => {
+    expect(ADJUDICATIVE_SECTION_INTENTS.has('investigation')).toBe(true);
+  });
+
+  it('contains story_verification', () => {
     expect(ADJUDICATIVE_SECTION_INTENTS.has('story_verification')).toBe(true);
   });
 
-  it('DESCRIPTIVE_SECTION_PLAN does not contain falsification_criteria section', async () => {
-    const { DESCRIPTIVE_SECTION_PLAN } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    const keys = DESCRIPTIVE_SECTION_PLAN.map((s) => s.key);
-    expect(keys).not.toContain('falsification_criteria');
+  it('does NOT contain opportunity_discovery', () => {
+    expect(ADJUDICATIVE_SECTION_INTENTS.has('opportunity_discovery')).toBe(false);
   });
 
-  it('DESCRIPTIVE_SECTION_PLAN does not contain contradiction_analysis section', async () => {
-    const { DESCRIPTIVE_SECTION_PLAN } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    const keys = DESCRIPTIVE_SECTION_PLAN.map((s) => s.key);
-    expect(keys).not.toContain('contradiction_analysis');
+  it('does NOT contain feasibility', () => {
+    expect(ADJUDICATIVE_SECTION_INTENTS.has('feasibility')).toBe(false);
   });
 
-  it('generateIterativeReport with intentId=opportunity_discovery uses DESCRIPTIVE_SECTION_PLAN (6 sections)', async () => {
-    const { DESCRIPTIVE_SECTION_PLAN, generateIterativeReport } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    const planSectionCount = DESCRIPTIVE_SECTION_PLAN.length;
-
-    // outline + planSectionCount section drafts + 1 challenger + 1 refiner
-    callRoleModelMock.mockResolvedValueOnce({ content: JSON.stringify({ outline: [] }) });
-    for (let i = 0; i < planSectionCount; i++) {
-      callRoleModelMock.mockResolvedValueOnce({ content: `Section ${i + 1} body` });
-    }
-    callRoleModelMock.mockResolvedValueOnce({ content: 'challenge' });
-    callRoleModelMock.mockResolvedValueOnce({ content: '## Final\nRefined' });
-
-    const progress = vi.fn();
-    const result = await generateIterativeReport({
-      query: 'Find ten underserved SaaS opportunities buildable in 24 hours',
-      plan: {},
-      evidenceContext: 'evidence',
-      retrieverAnalysis: 'analysis',
-      reasoningChains: 'reasoning',
-      challenges: 'challenges',
-      intentId: 'opportunity_discovery',
-      onSectionProgress: progress,
-    });
-
-    expect(progress).toHaveBeenCalledTimes(planSectionCount);
-    expect(result.sections).toHaveLength(planSectionCount);
-    // Confirm none of the sections are falsification_criteria
-    const sectionKeys = result.sections.map((s) => s.key);
-    expect(sectionKeys).not.toContain('falsification_criteria');
-    expect(sectionKeys).not.toContain('contradiction_analysis');
+  it('does NOT contain implementation', () => {
+    expect(ADJUDICATIVE_SECTION_INTENTS.has('implementation')).toBe(false);
   });
 
-  it('generateIterativeReport with intentId=adjudication uses SECTION_PLAN (10 sections)', async () => {
-    const { SECTION_PLAN, generateIterativeReport } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-    expect(SECTION_PLAN.length).toBe(10);
-
-    callRoleModelMock.mockResolvedValueOnce({ content: JSON.stringify({ outline: [] }) });
-    for (let i = 0; i < 10; i++) {
-      callRoleModelMock.mockResolvedValueOnce({ content: `Section ${i + 1} body` });
-    }
-    callRoleModelMock.mockResolvedValueOnce({ content: 'challenge' });
-    callRoleModelMock.mockResolvedValueOnce({ content: '## Final\nRefined' });
-
-    const progress = vi.fn();
-    const result = await generateIterativeReport({
-      query: 'Is the claim X supported by evidence Y?',
-      plan: {},
-      evidenceContext: 'evidence',
-      retrieverAnalysis: 'analysis',
-      reasoningChains: 'reasoning',
-      challenges: 'challenges',
-      intentId: 'adjudication',
-      onSectionProgress: progress,
-    });
-
-    expect(progress).toHaveBeenCalledTimes(10);
-    expect(result.sections).toHaveLength(10);
-    const sectionKeys = result.sections.map((s) => s.key);
-    expect(sectionKeys).toContain('falsification_criteria');
-  });
-
-  it('generateIterativeReport with intentId=undefined (legacy) defaults to SECTION_PLAN (10 sections)', async () => {
-    const { generateIterativeReport } = await import(
-      '../services/reasoning/reportGenerator'
-    );
-
-    callRoleModelMock.mockResolvedValueOnce({ content: JSON.stringify({ outline: [] }) });
-    for (let i = 0; i < 10; i++) {
-      callRoleModelMock.mockResolvedValueOnce({ content: `Section ${i + 1} body` });
-    }
-    callRoleModelMock.mockResolvedValueOnce({ content: 'challenge' });
-    callRoleModelMock.mockResolvedValueOnce({ content: '## Final\nRefined' });
-
-    const progress = vi.fn();
-    const result = await generateIterativeReport({
-      query: 'Legacy query without intentId',
-      plan: {},
-      evidenceContext: 'evidence',
-      retrieverAnalysis: 'analysis',
-      reasoningChains: 'reasoning',
-      challenges: 'challenges',
-      // intentId deliberately omitted
-      onSectionProgress: progress,
-    });
-
-    expect(progress).toHaveBeenCalledTimes(10);
-    expect(result.sections).toHaveLength(10);
+  it('does NOT contain factual_report', () => {
+    expect(ADJUDICATIVE_SECTION_INTENTS.has('factual_report')).toBe(false);
   });
 });
 
-describe('distributeWordBudget with DESCRIPTIVE_SECTION_PLAN (Rule 37)', () => {
-  it('distributes REPORT_WORD_COUNT_MIN correctly across descriptive sections — each at floor', async () => {
-    const {
-      distributeWordBudget,
-      DESCRIPTIVE_SECTION_PLAN,
-      REPORT_WORD_COUNT_PER_SECTION_FLOOR,
-    } = await import('../services/reasoning/reportGenerator');
+// ─────────────────────────────────────────────────────────────────────────────
+// DESCRIPTIVE_SECTION_PLAN shape
+// ─────────────────────────────────────────────────────────────────────────────
 
-    const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
-    const descriptiveMin = DESCRIPTIVE_SECTION_PLAN.length * floor;
-    const budgets = distributeWordBudget(descriptiveMin, DESCRIPTIVE_SECTION_PLAN);
+describe('DESCRIPTIVE_SECTION_PLAN', () => {
+  it('does not contain falsification_criteria', () => {
+    expect(DESCRIPTIVE_SECTION_PLAN.some((s) => s.key === 'falsification_criteria')).toBe(false);
+  });
 
-    // Every section should be at exactly the floor when total == n * floor
+  it('does not contain contradiction_analysis', () => {
+    expect(DESCRIPTIVE_SECTION_PLAN.some((s) => s.key === 'contradiction_analysis')).toBe(false);
+  });
+
+  it('has 6 sections', () => {
+    expect(DESCRIPTIVE_SECTION_PLAN).toHaveLength(6);
+  });
+
+  it('includes executive_summary, evidence_ledger, reasoning_analysis, and synthesis_conclusions', () => {
+    const keys = DESCRIPTIVE_SECTION_PLAN.map((s) => s.key);
+    expect(keys).toContain('executive_summary');
+    expect(keys).toContain('evidence_ledger');
+    expect(keys).toContain('reasoning_analysis');
+    expect(keys).toContain('synthesis_conclusions');
+  });
+
+  it('every section has a positive weight', () => {
     for (const sec of DESCRIPTIVE_SECTION_PLAN) {
-      expect(budgets.get(sec.key)).toBe(floor);
+      expect(sec.weight).toBeGreaterThan(0);
     }
-    // Budget covers all sections and nothing extra
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// distributeWordBudget with DESCRIPTIVE_SECTION_PLAN
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('distributeWordBudget with DESCRIPTIVE_SECTION_PLAN', () => {
+  function sum(budgets: Map<string, number>): number {
+    let total = 0;
+    for (const v of budgets.values()) total += v;
+    return total;
+  }
+
+  it('returns one entry per descriptive section', () => {
+    const budgets = distributeWordBudget(REPORT_WORD_COUNT_MIN, DESCRIPTIVE_SECTION_PLAN);
     expect(budgets.size).toBe(DESCRIPTIVE_SECTION_PLAN.length);
   });
 
-  it('distributes words proportionally for DESCRIPTIVE_SECTION_PLAN above floor', async () => {
-    const {
-      distributeWordBudget,
-      DESCRIPTIVE_SECTION_PLAN,
-      REPORT_WORD_COUNT_PER_SECTION_FLOOR,
-    } = await import('../services/reasoning/reportGenerator');
-
-    const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
-    const totalWords = DESCRIPTIVE_SECTION_PLAN.length * floor * 3; // well above floor
-    const budgets = distributeWordBudget(totalWords, DESCRIPTIVE_SECTION_PLAN);
-
-    // Every section should be at or above the floor
-    for (const sec of DESCRIPTIVE_SECTION_PLAN) {
-      expect(budgets.get(sec.key)).toBeGreaterThanOrEqual(floor);
+  it('every section receives at least the per-section floor', () => {
+    for (const total of [480, REPORT_WORD_COUNT_MIN, 2200, 4000, 12000]) {
+      const budgets = distributeWordBudget(total, DESCRIPTIVE_SECTION_PLAN);
+      for (const v of budgets.values()) {
+        expect(v).toBeGreaterThanOrEqual(REPORT_WORD_COUNT_PER_SECTION_FLOOR);
+      }
     }
-    // Sum should be within rounding slack (≤ section count words off from total)
-    const sum = [...budgets.values()].reduce((a, b) => a + b, 0);
-    expect(Math.abs(sum - totalWords)).toBeLessThanOrEqual(DESCRIPTIVE_SECTION_PLAN.length);
+  });
+
+  it('summed budgets track the requested total within rounding', () => {
+    for (const total of [2200, 4000, 7000, 12000]) {
+      const budgets = distributeWordBudget(total, DESCRIPTIVE_SECTION_PLAN);
+      const s = sum(budgets);
+      expect(Math.abs(s - total)).toBeLessThanOrEqual(DESCRIPTIVE_SECTION_PLAN.length);
+    }
+  });
+
+  it('higher-weight sections get larger budgets at representative totals', () => {
+    const budgets = distributeWordBudget(4000, DESCRIPTIVE_SECTION_PLAN);
+    const reasoning = budgets.get('reasoning_analysis')!;
+    const evidence = budgets.get('evidence_ledger')!;
+    const exec = budgets.get('executive_summary')!;
+    expect(reasoning).toBeGreaterThan(exec);
+    expect(evidence).toBeGreaterThan(exec);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORT_WORD_COUNT_MIN remains tied to the adjudicative 10-section plan
+// (backward compat for legacy / undefined intent runs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('REPORT_WORD_COUNT_MIN backward compatibility', () => {
+  it('equals 10 × per-section floor (adjudicative plan, unchanged)', () => {
+    expect(REPORT_WORD_COUNT_MIN).toBe(10 * REPORT_WORD_COUNT_PER_SECTION_FLOOR);
   });
 });

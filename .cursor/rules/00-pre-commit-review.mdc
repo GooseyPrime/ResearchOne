@@ -13,11 +13,16 @@ that drove this list is at `docs/retrospectives/2026-04-28-pr36-40-review-findin
 ## A. Before staging
 
 0. **PR branch (Rule 32).** Unless the user authorized direct `main` in **this
-   request**, run `bash scripts/git/assert-not-on-main-branch.sh` before
-   `git add` / `git commit`. For a new scoped request, the **first** action
-   must be `bash scripts/git/prepare-work-branch.sh <topic>` (or checkout a
-   named PR branch that is still open). Never push to `origin/main` without
-   same-request authorization and `[direct-main]` in the commit message.
+   request**, follow the ordered integration strategy before `git add` / `git commit`:
+   - **Path 1 (preferred):** If the environment supplies a non-main branch, use it:
+     `bash scripts/git/prepare-work-branch.sh <topic> --reuse`
+   - **Path 2 (normal):** Create from fresh `origin/main`:
+     `bash scripts/git/prepare-work-branch.sh <topic>`
+   - **Path 3 (GH013 blocked):** Stop retrying; output the `BLOCKED_GITHUB_REF_CREATION`
+     block and wait for user to provide a branch or authorize direct-main.
+   - **Path 4 (authorized):** Same-request direct-main — include `[direct-main]` in every
+     commit message on `main`.
+   Never push to `origin/main` without same-request authorization and `[direct-main]` in the commit message.
 1. **Read the full file**, not just the diff, around every edit. About a
    third of the bugs were visible only when the surrounding function or
    call site was read end-to-end.

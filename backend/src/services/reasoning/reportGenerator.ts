@@ -7,20 +7,7 @@ export interface ReportSectionDraft {
   content: string;
 }
 
-/**
- * Intents that require the full adjudicative section plan (hypothesis,
- * falsification criteria, contradiction analysis). All other intents use the
- * descriptive section plan.
- */
-export const ADJUDICATIVE_SECTION_INTENTS = new Set([
-  'adjudication',
-  'investigation',
-  'story_verification',
-]);
-
-/** Full adjudicative / adversarial section plan (used for adjudication,
- *  investigation, story_verification, and undefined/legacy intentId runs). */
-export const SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
+const SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
   { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
@@ -33,18 +20,28 @@ export const SECTION_PLAN: Array<{ title: string; key: string; weight: number }>
   { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
 ];
 
-/** Descriptive section plan for informational, exploratory, recommendation,
- *  opportunity-discovery, feasibility, implementation, comparative, how-to,
- *  factual, survey, timeline, and similar non-adjudicative intents.
- *  No Falsification Criteria or Contradiction Analysis sections. */
+/** Descriptive / discovery section plan — used for non-adjudicative intents.
+ *  Omits `falsification_criteria` and `contradiction_analysis` (which are
+ *  only meaningful for causal-test / adjudicative queries) and adds
+ *  deliverable-focused sections instead. */
 export const DESCRIPTIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
-  { title: 'Findings', key: 'findings', weight: 1.8 },
-  { title: 'Analysis', key: 'analysis', weight: 1.6 },
-  { title: 'Recommendations', key: 'recommendations', weight: 1.2 },
-  { title: 'Caveats and Limitations', key: 'caveats_limitations', weight: 0.5 },
-  { title: 'Next Steps', key: 'next_steps', weight: 0.5 },
+  { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
+  { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
+  { title: 'Reasoning and Analysis', key: 'reasoning_analysis', weight: 1.6 },
+  { title: 'Synthesis and Conclusions', key: 'synthesis_conclusions', weight: 1.5 },
+  { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
 ];
+
+/** Intent IDs that use the full adjudicative section plan (hypothesis +
+ *  falsification + contradiction).  All other intents use
+ *  `DESCRIPTIVE_SECTION_PLAN`.  `undefined` (legacy runs) defaults to the
+ *  adjudicative plan for backward compatibility. */
+export const ADJUDICATIVE_SECTION_INTENTS = new Set<string>([
+  'adjudication',
+  'investigation',
+  'story_verification',
+]);
 
 const MAX_SECTION_SUMMARY_CHARS = 1200;
 const MAX_ROLLING_SUMMARY_CHARS = 6000;
@@ -82,10 +79,14 @@ export function clampWordTarget(n: number | undefined): number {
  *  Contract: at totalWords == REPORT_WORD_COUNT_MIN every section sits at
  *  exactly the floor and the sum equals `totalWords` (verified by the
  *  reportLengthSteering test suite). For larger totals the sum tracks the
- *  request within ≤ SECTION_PLAN.length words of `Math.round` slack. */
+ *  request within ≤ sectionPlan.length words of `Math.round` slack.
+ *
+ *  `sectionPlan` defaults to `SECTION_PLAN` (adjudicative 10-section plan)
+ *  for backward compatibility. Pass `DESCRIPTIVE_SECTION_PLAN` for
+ *  non-adjudicative intent routing. */
 export function distributeWordBudget(
   totalWords: number,
-  sectionPlan: Array<{ key: string; weight: number }> = SECTION_PLAN,
+  sectionPlan: Array<{ key: string; weight: number }> = SECTION_PLAN
 ): Map<string, number> {
   const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
   const flooredKeys = new Set<string>();
@@ -166,32 +167,23 @@ export async function generateIterativeReport(args: {
    *  REPORT_WORD_COUNT_DEFAULT if not provided. */
   targetWordCount?: number;
   byokApiKeyOverride?: string;
-  /** Intent ID from the confirmed orchestration profile (Rule 37).
-   *  Adjudicative intents use the full SECTION_PLAN including falsification
-   *  and contradiction sections. All other intents use DESCRIPTIVE_SECTION_PLAN.
-   *  When undefined (legacy runs), defaults to the adjudicative plan for
-   *  backward compatibility. */
+  /** Intent ID from the orchestration profile. `undefined` (legacy runs)
+   *  defaults to the full adjudicative section plan for backward
+   *  compatibility. */
   intentId?: string;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
+  const activeSectionPlan =
+    args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
+      ? DESCRIPTIVE_SECTION_PLAN
+      : SECTION_PLAN;
+
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
     allowFallbackByRole: args.allowFallbackByRole,
     byokApiKeyOverride: args.byokApiKeyOverride,
   };
-
-  // Select section plan based on intent (Rule 37).
-  // Adjudicative intents get the full falsification/contradiction plan (SECTION_PLAN).
-  // Descriptive/exploratory/discovery intents get a deliverable-focused plan (DESCRIPTIVE_SECTION_PLAN).
-  // Undefined/null intentId (legacy runs before Stage A) intentionally defaults to SECTION_PLAN
-  // for backward compatibility — old runs assumed adjudicative structure.
-  const activeSectionPlan =
-    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional: '' also falls through
-    args.intentId && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
-      ? DESCRIPTIVE_SECTION_PLAN  // non-adjudicative: deliverable-focused sections only
-      : SECTION_PLAN;             // adjudicative or legacy: full falsification/contradiction plan
-
   const targetWordCount = clampWordTarget(args.targetWordCount);
   const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
   const outlineResponse = await callRoleModel({

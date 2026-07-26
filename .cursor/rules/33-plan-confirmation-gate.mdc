@@ -1,5 +1,5 @@
 ---
-description: Plan confirmation gate (Wave 5.1 Rule 33)
+description: Plan confirmation gate (Wave 5.1 Rule 33) — extended for ResearchBrief and deliverable contract (Redesign Stage B)
 alwaysApply: true
 ---
 
@@ -21,8 +21,56 @@ Wave 5.1 parks V2 runs in `plan_pending_confirmation` after intent classificatio
 8. **Confirm → resume job ordering** — `POST …/plan/confirm` enqueues the BullMQ resume job (with retries/backoff) before confirming the plan row so Redis outages never persist a confirmed plan without a queued worker; idempotent when the dedupe job id already exists (PR #128).
 9. **`async` + deploy-skew `catch`** — Inside an `async function` try/catch around `queryOne`, use `return await queryOne(...)` (not `return queryOne(...)`). Otherwise Postgres rejections resolve as promise rejections on the outer function and never invoke `catch`, so `42703` fallbacks silently fail (PR #128 Codex).
 
+## ResearchBrief extension (Redesign Stage B)
+
+When Stage B ships, the plan-gate contract expands from a single
+`{intent, confidence}` result to a full `ResearchBrief`:
+
+```ts
+interface ResearchBrief {
+  primaryIntent: ResearchIntent;       // e.g. 'opportunity_discovery'
+  secondaryIntents?: ResearchIntent[]; // e.g. ['feasibility', 'implementation']
+  requestedArtifacts: {
+    type: string;                      // 'list' | 'report' | 'comparison' | 'prompt_pack' | ...
+    count?: number;                    // exact count when stated (e.g. 10 opportunities)
+    label?: string;                    // "build prompts", "market opportunities"
+  }[];
+  depth: 'standard' | 'deep';
+  epistemicPosture: 'descriptive' | 'discovery' | 'decision' | 'adjudicative' | 'causal_test';
+  constraints?: string[];              // "24-hour build window", "under $1,200"
+  assumptions?: string[];             // system-inferred, shown to user for review
+  selectedAgents: string[];            // from AgentCapability registry
+  outputContract: string;             // template id from intentOutputTemplates.ts
+}
+```
+
+**Plan-gate UI (Stage C):** The plan preview must show:
+- Detected primary and secondary intents (plain language)
+- Requested deliverables and exact counts
+- Agent roster and roles
+- Assumptions made by the classifier (editable by user)
+- Output template / report shape
+
+**Binding downstream:** The confirmed `ResearchBrief` and its `outputContract` are
+binding on the execution planner. The execution planner **must not** silently
+replace them with a second intent-blind hypothesis plan. Passing the confirmed
+intent and template into synthesis is a correctness requirement, not optional.
+
+**Backward compatibility:** Legacy plans without a `ResearchBrief` (pre-Stage-B
+runs, historical records) must degrade gracefully. Treat absent fields as
+`null` / empty; do not error. Use Postgres `42703` catch (Rule 13) for new
+columns until migration is confirmed applied.
+
+**Natural-language refinement:** Users may request plan changes in plain
+language ("skip patent analysis", "rank by revenue potential"). The plan
+refinement handler must parse these and update the `ResearchBrief`
+before re-presenting the plan gate. Confirmations of an unrefined plan
+must not propagate changes that were not yet confirmed.
+
 - [ ] Plan mutations: grep for `UPDATE research_plans` / `plan_revisions` outside `planWriteService` and the gate routes — there should be no new stragglers.
 - [ ] Did `deriveRunState` gain `plan_pending_confirmation` whenever the backend `CanonicalRunStatus` did (Rule 17)?
 - [ ] Cancel path: wallet hold release + `research:plan_cancelled` parity with `planWriteService.cancelRunAtPlanGate`.
 - [ ] Confirm / queue ordering documented if you change write-then-queue vs queue-then-write for resume jobs (see rule §8).
 - [ ] Deploy-skew DB helpers: primary query uses `await` so `catch` sees Postgres errors (see rule §9).
+- [ ] (Stage B+) `ResearchBrief.outputContract` passed into synthesis — grep that the execution planner receives it.
+- [ ] (Stage B+) `ResearchBrief.requestedArtifacts[].count` enforced at verifier — grep the verifier rubric.

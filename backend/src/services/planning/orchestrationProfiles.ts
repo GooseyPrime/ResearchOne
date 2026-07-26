@@ -66,7 +66,7 @@ function skipOnly(...skipped: PipelineStage[]): {
   };
 }
 
-/** One profile per intent (12 + legacy fallback). */
+/** One profile per intent (16 + legacy fallback). */
 export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefinition> = {
   factual_report: P({
     intent: 'factual_report',
@@ -114,7 +114,34 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     agentsToSkip: [],
     skepticMode: 'gate',
     steelmanMode: 'standard',
-    outputTemplateId: 'intent_story_verification',
+    outputTemplateId: 'intent_adjudication',
+    expectedLengthRange: { minWords: 2000, maxWords: 8000 },
+  }),
+  opportunity_discovery: P({
+    intent: 'opportunity_discovery',
+    displayName: 'Opportunity discovery',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
+    expectedLengthRange: { minWords: 2000, maxWords: 10000 },
+  }),
+  feasibility: P({
+    intent: 'feasibility',
+    displayName: 'Feasibility',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
+    expectedLengthRange: { minWords: 1500, maxWords: 8000 },
+  }),
+  implementation: P({
+    intent: 'implementation',
+    displayName: 'Implementation',
+    ...skipOnly('challenge'),
+    skepticMode: 'off',
+    steelmanMode: 'off',
+    outputTemplateId: 'intent_factual_report',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
   literature_review: P({
@@ -165,33 +192,6 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     steelmanMode: 'off',
     outputTemplateId: 'intent_exploratory',
     expectedLengthRange: { minWords: 1200, maxWords: 7000 },
-  }),
-  opportunity_discovery: P({
-    intent: 'opportunity_discovery',
-    displayName: 'Opportunity discovery',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
-    steelmanMode: 'off',
-    outputTemplateId: 'intent_opportunity_discovery',
-    expectedLengthRange: { minWords: 2000, maxWords: 12000 },
-  }),
-  feasibility: P({
-    intent: 'feasibility',
-    displayName: 'Feasibility analysis',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
-    steelmanMode: 'off',
-    outputTemplateId: 'intent_feasibility',
-    expectedLengthRange: { minWords: 1500, maxWords: 8000 },
-  }),
-  implementation: P({
-    intent: 'implementation',
-    displayName: 'Implementation plan',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
-    steelmanMode: 'off',
-    outputTemplateId: 'intent_implementation',
-    expectedLengthRange: { minWords: 1500, maxWords: 10000 },
   }),
   position_brief: P({
     intent: 'position_brief',
