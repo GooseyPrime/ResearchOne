@@ -147,6 +147,12 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
   contract_auditor: config.models.contractAuditor,
+  market_scout: config.models.marketScout,
+  competitor_mapper: config.models.competitorMapper,
+  demand_signal_analyst: config.models.demandSignalAnalyst,
+  feasibility_architect: config.models.feasibilityArchitect,
+  story_verifier: config.models.storyVerifier,
+  timeline_reconstructor: config.models.timelineReconstructor,
 };
 
 const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
@@ -171,6 +177,12 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
   contract_auditor: config.models.fallbacks.contractAuditor,
+  market_scout: config.models.fallbacks.marketScout,
+  competitor_mapper: config.models.fallbacks.competitorMapper,
+  demand_signal_analyst: config.models.fallbacks.demandSignalAnalyst,
+  feasibility_architect: config.models.fallbacks.feasibilityArchitect,
+  story_verifier: config.models.fallbacks.storyVerifier,
+  timeline_reconstructor: config.models.fallbacks.timelineReconstructor,
 };
 
 function primaryForRole(role: ModelRole, runtimePrimary?: string): string {
@@ -207,6 +219,12 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   citation_formatter: 0.2,
   final_revision_verifier: 0.1,
   contract_auditor: 0.1,
+  market_scout: 0.3,
+  competitor_mapper: 0.3,
+  demand_signal_analyst: 0.3,
+  feasibility_architect: 0.3,
+  story_verifier: 0.3,
+  timeline_reconstructor: 0.3,
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
@@ -235,6 +253,12 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   citation_formatter: 4096,
   final_revision_verifier: 4096,
   contract_auditor: 4096,
+  market_scout: 8192,
+  competitor_mapper: 8192,
+  demand_signal_analyst: 8192,
+  feasibility_architect: 8192,
+  story_verifier: 8192,
+  timeline_reconstructor: 8192,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -981,6 +1005,30 @@ Return ONLY valid JSON (no markdown fences):
   "intent_drift": "<string describing drift, or null if none>",
   "revision_instructions": ["<actionable fix instruction>", ...]
 }`),
+
+  market_scout: withPreamble(`You are the Market Scout.
+Identify whitespace opportunities, underserved demand, and emerging openings relevant to the brief.
+Return concise findings grounded in observable market signals.`),
+
+  competitor_mapper: withPreamble(`You are the Competitor Mapper.
+Map incumbent alternatives, positioning, strengths, weaknesses, and visible feature gaps.
+Return a structured comparison grounded in cited evidence.`),
+
+  demand_signal_analyst: withPreamble(`You are the Demand Signal Analyst.
+Read complaints, search behavior, community requests, and procurement signals to estimate demand intensity.
+Highlight what signals are strong, weak, or ambiguous.`),
+
+  feasibility_architect: withPreamble(`You are the Feasibility Architect.
+Evaluate implementation complexity, stack fit, staffing needs, timeline risk, and critical dependencies.
+Distinguish buildable paths from speculative ones.`),
+
+  story_verifier: withPreamble(`You are the Story Verifier.
+Cross-check reported accounts against corroborating, contradictory, and missing evidence.
+Separate what is confirmed, disputed, and still unresolved.`),
+
+  timeline_reconstructor: withPreamble(`You are the Timeline Reconstructor.
+Rebuild chronology from fragmented evidence, noting sequence confidence and unresolved gaps.
+Prefer dated primary artifacts when available.`),
 };
 
 /**
@@ -1020,4 +1068,3 @@ Output strict JSON in the following shape and nothing else:
   "overall": "PASS" | "FAIL"
 }`);
 }
-

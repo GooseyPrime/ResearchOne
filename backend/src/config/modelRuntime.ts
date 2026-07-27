@@ -90,6 +90,30 @@ export function baseModelsFromConfig(): ResolvedModels {
         primary: config.models.contractAuditor,
         fallback: config.models.fallbacks.contractAuditor,
       },
+      market_scout: {
+        primary: config.models.marketScout,
+        fallback: config.models.fallbacks.marketScout,
+      },
+      competitor_mapper: {
+        primary: config.models.competitorMapper,
+        fallback: config.models.fallbacks.competitorMapper,
+      },
+      demand_signal_analyst: {
+        primary: config.models.demandSignalAnalyst,
+        fallback: config.models.fallbacks.demandSignalAnalyst,
+      },
+      feasibility_architect: {
+        primary: config.models.feasibilityArchitect,
+        fallback: config.models.fallbacks.feasibilityArchitect,
+      },
+      story_verifier: {
+        primary: config.models.storyVerifier,
+        fallback: config.models.fallbacks.storyVerifier,
+      },
+      timeline_reconstructor: {
+        primary: config.models.timelineReconstructor,
+        fallback: config.models.fallbacks.timelineReconstructor,
+      },
     },
   };
 }

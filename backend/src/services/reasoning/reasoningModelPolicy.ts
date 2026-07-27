@@ -25,6 +25,12 @@ export const REASONING_MODEL_ROLES = [
   'citation_formatter',
   'final_revision_verifier',
   'contract_auditor',
+  'market_scout',
+  'competitor_mapper',
+  'demand_signal_analyst',
+  'feasibility_architect',
+  'story_verifier',
+  'timeline_reconstructor',
 ] as const;
 
 export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];

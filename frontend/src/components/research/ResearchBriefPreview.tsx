@@ -1,4 +1,5 @@
 import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
+import { AGENT_DISPLAY_DESCRIPTIONS } from '../../lib/agentDisplayDescriptions';
 import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchDeliverablesChecklist from './ResearchDeliverablesChecklist';
 import ResearchAssumptionsEditor from './ResearchAssumptionsEditor';
@@ -41,6 +42,43 @@ function inferredAssumptions(planPayload: Record<string, unknown>): string[] {
   return assumptions;
 }
 
+function readAgentTeam(planPayload: Record<string, unknown>): Array<{
+  id: string;
+  name: string;
+  description: string;
+  isSpecialist: boolean;
+}> {
+  const agentsRaw = (planPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
+  if (!Array.isArray(agentsRaw)) return [];
+  const specialistIds = new Set([
+    'market_scout',
+    'competitor_mapper',
+    'demand_signal_analyst',
+    'feasibility_architect',
+    'story_verifier',
+    'timeline_reconstructor',
+  ]);
+  const seen = new Set<string>();
+  return agentsRaw
+    .filter((agent): agent is string => typeof agent === 'string')
+    .map((agent) => agent.trim())
+    .filter(Boolean)
+    .filter((agent) => {
+      if (seen.has(agent)) return false;
+      seen.add(agent);
+      return agent in AGENT_DISPLAY_DESCRIPTIONS;
+    })
+    .map((agent) => ({
+      id: agent,
+      ...AGENT_DISPLAY_DESCRIPTIONS[agent],
+      isSpecialist: specialistIds.has(agent),
+    }))
+    .sort((a, b) => {
+      if (a.isSpecialist !== b.isSpecialist) return a.isSpecialist ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
 export default function ResearchBriefPreview({
   planPayload,
   disabled = false,
@@ -57,6 +95,7 @@ export default function ResearchBriefPreview({
       ? brief.confidence
       : ((planPayload.intent as Record<string, unknown> | undefined)?.confidence as number | undefined);
   const deliverables = brief?.requestedArtifacts ?? [];
+  const agentTeam = readAgentTeam(planPayload);
   const assumptions = [
     ...inferredAssumptions(planPayload),
     ...(brief?.userConstraints ?? []).map((c) => c.description).filter(Boolean),
@@ -78,6 +117,34 @@ export default function ResearchBriefPreview({
         <p className="text-slate-500 uppercase tracking-wide mb-1">Deliverables</p>
         <ResearchDeliverablesChecklist artifacts={deliverables} />
       </div>
+
+      {agentTeam.length > 0 ? (
+        <div>
+          <p className="text-slate-500 uppercase tracking-wide mb-1">Agent team</p>
+          <div className="space-y-2">
+            {agentTeam.map((agent) => (
+              <div
+                key={agent.id}
+                className={`rounded-md border px-2.5 py-2 ${
+                  agent.isSpecialist
+                    ? 'border-sky-500/30 bg-sky-950/20'
+                    : 'border-surface-100 bg-[#0b0d14]/50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <p className="text-slate-100 font-medium">{agent.name}</p>
+                  {agent.isSpecialist ? (
+                    <span className="rounded-full border border-sky-500/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-200">
+                      Specialist
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-slate-400">{agent.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <p className="text-slate-500 uppercase tracking-wide mb-1">Assumptions</p>

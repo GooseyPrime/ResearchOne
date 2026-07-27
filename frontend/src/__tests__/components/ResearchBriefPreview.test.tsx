@@ -38,4 +38,32 @@ describe('ResearchBriefPreview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use edits in refinement' }));
     expect(onAssumptionEditsReady).toHaveBeenCalled();
   });
+
+  it('renders specialist and core agent team descriptions when present in the plan', () => {
+    render(
+      <MemoryRouter>
+        <ResearchBriefPreview
+          planPayload={{
+            intent: { id: 'opportunity_discovery', confidence: 0.92 },
+            orchestrationProfile: {
+              agentsWillRun: ['planner', 'market_scout', 'feasibility_architect', 'report_generation'],
+            },
+            researchBrief: {
+              primaryIntent: 'opportunity_discovery',
+              requestedArtifacts: [],
+              userConstraints: [],
+            },
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Agent team')).toBeTruthy();
+    expect(screen.getByText('Market Scout')).toBeTruthy();
+    expect(screen.getByText('Scans for whitespace opportunities and unserved demand.')).toBeTruthy();
+    expect(screen.getByText('Research Planner')).toBeTruthy();
+    expect(screen.getAllByText('Specialist').length).toBeGreaterThan(0);
+    // REVERT-CHECK: ResearchBriefPreview.tsx — if the Agent team section stops
+    // reading orchestrationProfile.agentsWillRun, these labels and descriptions disappear.
+  });
 });

@@ -5,6 +5,7 @@
 import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';
 import type { PlanPayload } from './planTypes';
 import type { IntentId } from './intentTaxonomy';
+import { selectAgentsForBrief } from '../reasoning/agentCapabilityRegistry';
 import {
   getOrchestrationProfileForIntent,
   type OrchestrationProfileDefinition,
@@ -19,6 +20,13 @@ export function resolveOrchestrationProfileFromJob(data: ResearchJobData): Orche
 /** Enrich persisted plan_payload with canonical run/skip lists and template ids. */
 export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPayload {
   const canon = getOrchestrationProfileForIntent(plan.intent.id);
+  const selectedAgents = selectAgentsForBrief(
+    plan.intent.id,
+    plan.researchBrief?.secondaryIntent
+  );
+  const mergedAgents = Array.from(
+    new Set([...canon.agentsToRun, ...selectedAgents.map((agent) => agent.id)])
+  );
   const weights =
     plan.orchestrationProfile.sourceClassWeights &&
     typeof plan.orchestrationProfile.sourceClassWeights === 'object'
@@ -41,7 +49,7 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
       skepticMode: canon.skepticMode,
       steelmanMode: canon.steelmanMode,
       sourceClassWeights: weights,
-      agentsWillRun: [...canon.agentsToRun],
+      agentsWillRun: mergedAgents,
       agentsWillSkip: [...canon.agentsToSkip],
       expectedLengthRange: { ...canon.expectedLengthRange },
       description:

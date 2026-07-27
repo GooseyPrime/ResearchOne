@@ -234,6 +234,21 @@ describe('AnimatedPipelineHero — accessibility (Rule 27 I-8)', () => {
   });
 });
 
+describe('AnimatedPipelineHero — specialist nodes (Stage D)', () => {
+  it('renders conditional specialist nodes in the animated desktop layout', () => {
+    const { container } = render(<AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate />);
+    const marketScout = container.querySelector('[data-stage-id="market_scout"]');
+    const feasibilityArchitect = container.querySelector('[data-stage-id="feasibility_architect"]');
+    const storyVerifier = container.querySelector('[data-stage-id="story_verifier"]');
+    expect(marketScout).toBeInTheDocument();
+    expect(feasibilityArchitect).toBeInTheDocument();
+    expect(storyVerifier).toBeInTheDocument();
+    expect(marketScout?.getAttribute('data-conditional')).toBe('true');
+    // REVERT-CHECK: pipelineLayout.ts / AnimatedPipelineHero.tsx — if the
+    // specialist stage list is removed from the render path, these nodes vanish.
+  });
+});
+
 describe('AnimatedPipelineHero — no banned filter usage (Rule 27 I-7)', () => {
   it('rendered DOM contains no filter:drop-shadow or filter:blur', () => {
     const { container } = render(
