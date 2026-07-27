@@ -206,7 +206,7 @@ export interface SystemHealth {
   nodeEnv?: string;
   status: 'ok' | 'degraded' | 'down';
   timestamp: string;
-  checks: {
+  checks?: {
     api: { ok: boolean; latencyMs?: number };
     db: { ok: boolean; latencyMs?: number };
     redis: { ok: boolean; latencyMs?: number };
@@ -220,7 +220,7 @@ export interface SystemHealth {
     parallel?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
     scite?: { configured: boolean; ok: boolean; latencyMs?: number; reason?: string };
   };
-  restartAvailable: boolean;
+  restartAvailable?: boolean;
 }
 
 export interface Report {

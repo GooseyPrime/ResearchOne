@@ -206,7 +206,7 @@ export default function SystemStatusModal({
                   {health.timestamp}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Object.entries(health.checks).map(([name, check]) => (
+                  {Object.entries(health.checks ?? {}).map(([name, check]) => (
                     <div
                       key={name}
                       className="bg-surface-200 rounded-lg px-3 py-2 text-xs border border-indigo-900/20"

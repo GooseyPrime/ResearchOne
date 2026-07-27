@@ -101,6 +101,7 @@ export default function Layout() {
   });
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
+  const canViewSystemStatusDetails = isAllowlistedAdmin;
 
   const { data: subscriptionData, isLoading: subLoading, isError: subError } = useBillingSubscriptionQuery();
 
@@ -201,15 +202,19 @@ export default function Layout() {
     };
   }, []);
 
-  const overallColor = healthIsError
-    ? 'bg-red-400'
+  const overallColor = canViewSystemStatusDetails
+    ? healthIsError
+      ? 'bg-red-400'
+      : health?.status === 'ok'
+        ? 'bg-green-400'
+        : health?.status === 'degraded'
+          ? 'bg-amber-400'
+          : health?.status === 'down'
+            ? 'bg-red-400'
+            : 'bg-slate-500'
     : health?.status === 'ok'
       ? 'bg-green-400'
-      : health?.status === 'degraded'
-        ? 'bg-amber-400'
-        : health?.status === 'down'
-          ? 'bg-red-400'
-          : 'bg-slate-500';
+      : 'bg-red-400';
 
   const statusLabel = healthIsError
     ? 'unreachable'
@@ -301,22 +306,34 @@ export default function Layout() {
             <ActiveRunBadge />
             {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}
             <UserButton />
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"
-              onClick={() => setHealthOpen(true)}
-              aria-expanded={healthOpen}
-              aria-haspopup="dialog"
-            >
-              <div
-                className={clsx(
-                  'w-1.5 h-1.5 rounded-full',
-                  healthFetching && 'animate-pulse',
-                  overallColor
-                )}
-              />
-              <span className="text-xs text-slate-500">System {statusLabel}</span>
-            </button>
+            {canViewSystemStatusDetails ? (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"
+                onClick={() => setHealthOpen(true)}
+                aria-expanded={healthOpen}
+                aria-haspopup="dialog"
+              >
+                <div
+                  className={clsx(
+                    'w-1.5 h-1.5 rounded-full',
+                    healthFetching && 'animate-pulse',
+                    overallColor
+                  )}
+                />
+                <span className="text-xs text-slate-500">System {statusLabel}</span>
+              </button>
+            ) : (
+              <div className="flex items-center" aria-label="System status">
+                <div
+                  className={clsx(
+                    'w-2 h-2 rounded-full',
+                    healthFetching && 'animate-pulse',
+                    overallColor
+                  )}
+                />
+              </div>
+            )}
           </div>
         </header>
 
@@ -327,19 +344,21 @@ export default function Layout() {
         </main>
       </div>
 
-      <SystemStatusModal
-        open={healthOpen}
-        onClose={() => setHealthOpen(false)}
-        health={health}
-        healthLoading={healthPending}
-        healthError={healthIsError ? (healthError instanceof Error ? healthError : new Error(String(healthError))) : null}
-        onRefreshHealth={refreshHealth}
-        onRestart={handleRestart}
-        restartBusy={restartBusy}
-        isAllowlistedAdmin={isAllowlistedAdmin}
-        breakGlassAdminToken={breakGlassToken}
-        onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
-      />
+      {canViewSystemStatusDetails && (
+        <SystemStatusModal
+          open={healthOpen}
+          onClose={() => setHealthOpen(false)}
+          health={health}
+          healthLoading={healthPending}
+          healthError={healthIsError ? (healthError instanceof Error ? healthError : new Error(String(healthError))) : null}
+          onRefreshHealth={refreshHealth}
+          onRestart={handleRestart}
+          restartBusy={restartBusy}
+          isAllowlistedAdmin={isAllowlistedAdmin}
+          breakGlassAdminToken={breakGlassToken}
+          onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
+        />
+      )}
 
       <Notifications />
     </div>

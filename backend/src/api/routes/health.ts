@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { timingSafeEqual } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import axios from 'axios';
@@ -211,15 +212,56 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   };
 }
 
+function bearerOrAdminHeaderToken(req: { header: (name: string) => string | undefined }): string | null {
+  const x = req.header('x-admin-token')?.trim();
+  if (x) return x;
+  const raw = (req.header('authorization') || '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('Bearer ')) return raw.slice('Bearer '.length).trim() || null;
+  return raw;
+}
+
+function requestCanViewHealthDetails(req: {
+  auth?: { userId?: string | null };
+  header: (name: string) => string | undefined;
+}): boolean {
+  const userId = req.auth?.userId ?? null;
+  if (userId && config.admin.userIds.includes(userId)) return true;
+  const token = bearerOrAdminHeaderToken(req);
+  return Boolean(
+    config.admin.token &&
+      token &&
+      token.length === config.admin.token.length &&
+      timingSafeEqual(Buffer.from(token), Buffer.from(config.admin.token)),
+  );
+}
+
+function publicHealthPayload(payload: Awaited<ReturnType<typeof buildHealth>>) {
+  return {
+    status: payload.status,
+    timestamp: payload.timestamp,
+  };
+}
+
 router.get('/', async (req, res) => {
   const payload = await buildHealth(req);
-  res.status(payload.status === 'down' ? 503 : 200).json(payload);
+  const status = payload.status === 'down' ? 503 : 200;
+  if (requestCanViewHealthDetails(req)) {
+    res.status(status).json(payload);
+    return;
+  }
+  res.status(status).json(publicHealthPayload(payload));
 });
 
 router.get('/ready', async (req, res) => {
   const payload = await buildHealth(req);
   const ready = payload.status !== 'down';
-  res.status(ready ? 200 : 503).json({ ready, ...payload });
+  const status = ready ? 200 : 503;
+  if (requestCanViewHealthDetails(req)) {
+    res.status(status).json({ ready, ...payload });
+    return;
+  }
+  res.status(status).json({ ready, ...publicHealthPayload(payload) });
 });
 
 export default router;
