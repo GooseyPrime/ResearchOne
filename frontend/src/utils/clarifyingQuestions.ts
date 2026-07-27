@@ -33,5 +33,5 @@ export function buildClarifyingQuestions(query: string): string[] {
   if (!SCOPE_BOUNDARY_PATTERN.test(trimmed)) {
     questions.push('Any scope boundaries we should enforce (timeline, geography, budget, or target audience)?');
   }
-  return questions.slice(0, 2);
+  return questions;
 }

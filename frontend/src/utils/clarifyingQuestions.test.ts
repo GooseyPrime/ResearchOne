@@ -73,7 +73,7 @@ describe('buildClarifyingQuestions', () => {
     expect(questions.length).toBeLessThanOrEqual(2);
   });
 
-  it('returns only scope question when short prompt already contains a scope keyword', () => {
+  it('returns only output question when short prompt already contains a scope keyword', () => {
     // Prompt: short (< CLARIFY_MIN_WORDS) and contains a SCOPE_BOUNDARY_PATTERN word.
     const prompt = 'research within EU';
     const words = prompt.trim().split(/\s+/).filter(Boolean);
