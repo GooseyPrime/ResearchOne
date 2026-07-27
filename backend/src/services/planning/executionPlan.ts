@@ -2,7 +2,7 @@ import type { PipelineStage, OrchestrationProfileDefinition } from './orchestrat
 import type { ResearchBrief } from './researchBrief';
 import {
   CORE_AGENT_IDS,
-  SPECIALIST_AGENT_IDS,
+  SPECIALIST_AGENT_ID_LIST,
   selectAgentsForBrief,
   type AgentRoleId,
   type SpecialistAgentId,
@@ -48,7 +48,9 @@ export function buildCanonicalExecutionPlan(input: {
   );
   const specialists = selected
     .map((agent) => agent.id)
-    .filter((id): id is SpecialistAgentId => SPECIALIST_AGENT_IDS.has(id));
+    .filter((id): id is SpecialistAgentId =>
+      (SPECIALIST_AGENT_ID_LIST as readonly string[]).includes(id)
+    );
 
   const unavailable = input.runtimeAvailability?.unavailableSpecialists ?? {};
   const runnableSpecialists = specialists.filter((id) => !unavailable[id]);

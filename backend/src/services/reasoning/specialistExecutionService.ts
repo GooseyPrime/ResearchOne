@@ -165,7 +165,7 @@ export async function runSpecialistExecution(input: {
         bundle.degradedCoverageReasons.push(`${agent}: invalid_output`);
         return;
       }
-      bundle.outputs[agent] = parsed as SpecialistOutputMap[typeof agent];
+      bundle.outputs[agent] = parsed as never;
       bundle.statuses[agent] = 'succeeded';
       bundle.ran.push(agent);
       await input.onCheckpoint?.(`specialist_${agent}`, {
