@@ -1,0 +1,536 @@
+RESEARCHONE REDESIGN — PHASE D COMPLETION AND PHASE E HANDOFF
+COPY-READY IMPLEMENTATION PROMPT FOR REPOSITORY CODING AGENTS
+
+Repository: GooseyPrime/ResearchOne
+Baseline reviewed: origin/main at merge commit 552017798963d61a4166a232676556f9ffcbdf31 (PR #178)
+Canonical status file: docs/redesign-phase-status.md
+Canonical redesign report: ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md
+
+MISSION
+
+Finish the redesign as an all-purpose deep-research system. Complete the three items still listed under "Remaining in Phase D," correct the incomplete or misleading Stage D wiring found during review, then prepare Phase E so it measures actual end-to-end behavior rather than scaffolding.
+
+Do not return another planning-only response. Inspect the current repository, implement the work in reviewable PRs, test the actual execution path, update docs/redesign-phase-status.md in every redesign PR, and follow Rule 39.
+
+FOUNDER DECISIONS — DO NOT BLOCK FOR THESE ANSWERS
+
+The following product/architecture decisions are now specified:
+
+1. Specialist agents must actually execute.
+   "Registered," "selected," "shown in the UI," and "has a system prompt" do not count as execution. A specialist is complete only when an applicable confirmed ResearchBrief causes a real call, its output is parsed and validated, its result is supplied to downstream reasoning/synthesis, its cost/latency is recorded, and an end-to-end test proves the output affects the report.
+
+2. The confirmed ResearchBrief is the source of truth.
+   Use primary intent, secondary intent, requested artifacts, exact counts, user constraints, epistemic posture, and confirmed assumptions. Do not reclassify the user's speech act during execution. Do not create a second intent-blind plan.
+
+3. The UI may advertise only the executable roster.
+   "Agents that will run" must be derived from the same execution plan the worker consumes. Do not combine pipeline-stage IDs with agent-role IDs. Do not show a specialist merely because it exists in a registry. If a provider or required capability is unavailable and the specialist will be skipped, the preview must say that plainly or omit it before confirmation.
+
+4. Use existing source-provider infrastructure before adding vendors.
+   The repository already contains general web, Brave, Tavily, arXiv, Crossref, OpenAlex, PubMed Central, ClinicalTrials.gov, Scite, USPTO, and direct URL fetch providers. Build a source-connector registry and route these by intent and source class. Do not block Phase D on procuring a new paid API. New vendor integrations may be proposed only after a tested gap is demonstrated.
+
+5. Quantitative work must use deterministic computation for arithmetic.
+   Models may decide what to calculate and explain the result, but they must not be the sole calculator. Add a bounded deterministic calculation layer for supported operations. Never use eval, arbitrary user code, or an unrestricted code-execution sandbox.
+
+6. Quantitative outputs must carry provenance.
+   Every material number must retain source/chunk or input-field references, units, transformation/formula, assumptions, and uncertainty or limitations. The Data Quality Auditor must be able to reproduce or reject the calculation.
+
+7. Specialist failures are fail-soft but visible.
+   A failed specialist must not silently disappear or fabricate an empty success. Record status as succeeded, skipped, unavailable, invalid_output, or failed; preserve the reason; continue when the report can still be responsibly produced; and surface degraded coverage to the report contract/verifier.
+
+8. Cost and latency remain bounded.
+   Run independent specialists in parallel where the capability registry permits it. Enforce per-agent timeouts, output limits, and run-level budgets. Reuse the existing callRoleModel and cost-sidecar instrumentation rather than creating a second LLM-call pathway.
+
+9. No universal falsification regression.
+   Informational, descriptive, comparative, implementation, and opportunity requests must not be forced into proof/disproof framing. Story verification and adjudication may use explicit verdict/confidence structures when appropriate.
+
+10. Phase E begins only after Phase D is genuinely executable.
+    Scaffold-only tests do not satisfy Phase D.
+
+MANDATORY PRE-WORK
+
+Read these files completely before editing:
+
+- AGENTS.md
+- .cursor/rules/00-pre-commit-review.mdc
+- .cursor/rules/10-state-machine-and-error-handling.mdc
+- .cursor/rules/11-error-handling-and-logging.mdc
+- .cursor/rules/13-deploy-skew-and-schema.mdc
+- .cursor/rules/14-third-party-api-contracts.mdc
+- .cursor/rules/15-doc-pr-code-parity.mdc
+- .cursor/rules/16-tests-must-fail-without-the-fix.mdc
+- .cursor/rules/17-ripple-and-grep-callers.mdc
+- .cursor/rules/20-research-policy.mdc
+- .cursor/rules/25-cost-sidecar-and-unit-economics.mdc
+- .cursor/rules/27-animated-pipeline-hero.mdc
+- .cursor/rules/33-plan-confirmation-gate.mdc
+- .cursor/rules/37-intent-driven-report-contracts.mdc
+- .cursor/rules/38-ez-research-and-lab-mode.mdc
+- .cursor/rules/39-redesign-phase-checklist.mdc
+- docs/redesign-phase-status.md
+- ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md
+- backend/src/services/reasoning/researchOrchestrator.ts
+- backend/src/services/reasoning/researchOrchestratorTypes.ts
+- backend/src/services/reasoning/agentCapabilityRegistry.ts
+- backend/src/services/planning/orchestrationRuntime.ts
+- backend/src/services/planning/orchestrationProfiles.ts
+- backend/src/services/planning/planGenerator.ts
+- backend/src/services/planning/planJson.ts
+- backend/src/services/planning/planTypes.ts
+- backend/src/services/planning/researchBrief.ts
+- backend/src/services/planning/intentTaxonomy.ts
+- backend/src/services/discovery/discoveryOrchestrator.ts
+- backend/src/services/discovery/providerTypes.ts
+- every file under backend/src/services/discovery/providers/
+- backend/src/services/openrouter/openrouterService.ts
+- backend/src/services/telemetry/costSidecar.ts
+- frontend/src/components/research/ResearchBriefPreview.tsx
+- frontend/src/components/research/PlanConfirmationPanel.tsx
+- frontend/src/components/landing/PersonaAwareHero.tsx
+- frontend/src/components/landing/visual/AnimatedPipelineHero.tsx
+- frontend/src/components/landing/visual/PipelineSchematic.tsx
+
+Before changing interfaces, grep all callers and persisted JSON readers. Preserve deploy-skew compatibility for plans and runs created before these fields exist.
+
+KNOWN DEFECTS TO RESOLVE BEFORE CALLING PHASE D COMPLETE
+
+A. orchestrationRuntime.ts currently mixes canonical pipeline-stage names with agent IDs in agentsWillRun. This creates near-duplicates such as planning/planner and can claim that agents run when they do not.
+
+B. generatePlan() attaches researchBrief after parsePlanGeneratorJson() has already performed canonical enrichment. As a result, secondaryIntent may be missing during agent selection. The no-OpenRouter fallback path has the same ordering problem.
+
+C. selectAgentsForBrief() always returns five nominal core agents even when the canonical intent profile skips one of the corresponding execution stages. The executable roster must come from one canonical execution-plan representation.
+
+D. No callRoleModel invocation currently executes market_scout, competitor_mapper, demand_signal_analyst, feasibility_architect, story_verifier, or timeline_reconstructor.
+
+E. AnimatedPipelineHero has adaptive specialist nodes, but the production PersonaAwareHero still uses PipelineSchematic. Direct component tests do not prove the adaptive hero is reachable.
+
+F. agentsRan is currently based on orchProfile.agentsToRun, so it cannot honestly report specialist execution.
+
+G. "All roles threaded through configuration" in PR #178 is not equivalent to end-to-end wiring. Correct documentation that implies otherwise.
+
+IMPLEMENTATION ORDER
+
+Deliver this as three focused PRs unless an existing assigned branch/PR requires a different split:
+
+PR D1 — Canonical execution plan and actual specialist execution
+PR D2 — Quantitative/Data Quality specialists
+PR D3 — Source connector routing and production UI truthfulness
+
+Do not start Phase E implementation until D1–D3 acceptance criteria pass.
+
+PR D1 — CANONICAL EXECUTION PLAN AND SPECIALIST RUNNER
+
+1. Introduce a typed canonical execution plan.
+
+Create or extend a type used by both planning and runtime with at least:
+
+- intent and secondaryIntent
+- corePipelineStages: PipelineStage[]
+- specialistAgents: SpecialistAgentId[]
+- sourceConnectors/sourceClasses selected
+- execution groups/dependencies
+- skip reasons
+- expected output contract/template
+- plan version
+
+Use distinct types for PipelineStage and AgentRole. Never store both as ambiguous strings in one array.
+
+For backward compatibility, accept legacy plans and derive the new execution plan at resume time. Persist the canonical plan when possible. Do not break already parked plan-gate runs.
+
+2. Fix ResearchBrief ordering.
+
+Attach ResearchBrief before canonical execution-plan derivation, in:
+
+- the normal LLM plan path;
+- the no-credential fallback path;
+- persisted-plan coercion/resume;
+- plan refinement if it can change intent, secondary intent, artifacts, or constraints.
+
+Add a regression test:
+
+Primary intent = comparative
+Secondary intent = feasibility
+
+The resulting execution plan must include the specialists triggered by both intents, including feasibility_architect, without duplicates.
+
+3. Make one function authoritative.
+
+Replace separate UI selection and runtime selection logic with one canonical builder, for example:
+
+buildExecutionPlan(confirmedResearchBrief, canonicalProfile, runtimeAvailability)
+
+Both the confirmation preview and worker must consume the same persisted result. The frontend may receive a display-safe descriptor generated from this plan, but it must not independently reimplement selection rules.
+
+4. Implement a specialist runner.
+
+Create a bounded service, for example specialistExecutionService.ts, that:
+
+- accepts the confirmed ResearchBrief, canonical execution plan, evidenceContext, plan, query, model runtime options, BYOK override, and progress/checkpoint callbacks;
+- calls callRoleModel for selected specialist roles;
+- validates JSON into the typed output contract;
+- retries/falls back only through existing model policy;
+- records modelLog/cost telemetry through the existing callRoleModel path;
+- saves checkpoints with stable keys;
+- returns a structured SpecialistExecutionBundle with status per selected agent;
+- never turns an invalid JSON payload into a silent success.
+
+Suggested dependency groups:
+
+Group 1 after retrieval/evidence is ready, parallel where selected:
+- market_scout
+- competitor_mapper
+- demand_signal_analyst
+- timeline_reconstructor
+
+Group 2:
+- story_verifier may consume timeline output when both are selected; otherwise it uses evidence directly.
+- feasibility_architect may consume market/competitor/demand outputs for opportunity-discovery work; for standalone feasibility it uses evidence directly.
+
+Do not force every selected specialist into a sequential chain.
+
+5. Supply outputs downstream.
+
+Add a bounded, clearly delimited SPECIALIST_FINDINGS block to:
+
+- general reasoner input;
+- intent-specific report generation/synthesis input;
+- verifier/contract auditor context where needed.
+
+The synthesizer must distinguish specialist findings from source evidence. Specialist outputs are analysis, not independent sources. Claims in the final report must still cite underlying evidence.
+
+6. Runtime truthfulness.
+
+Persist and expose:
+
+- agentsPlanned
+- agentsRan
+- agentsSkipped
+- specialistExecution statuses
+- degradedCoverage reasons
+
+agentsRan must be populated from completed execution results, not from the plan. The plan preview should say "Planned specialist team" until execution begins, unless the existing copy can accurately promise execution given availability checks.
+
+7. Production hero.
+
+Mount the adaptive visualization in the actual production hero or intentionally merge its behavior into the production PipelineSchematic. Do not leave AnimatedPipelineHero reachable only from tests. The landing page has no run-specific roster, so it may show conditional specialists dimmed as examples. The plan/run surface must render the actual canonical roster/status where the design calls for it.
+
+PR D1 ACCEPTANCE TESTS
+
+- opportunity_discovery executes market_scout, competitor_mapper, demand_signal_analyst, and feasibility_architect.
+- story_verification executes story_verifier and timeline_reconstructor when chronology is material.
+- adjudication does not automatically execute story_verifier solely because verification-like language exists; preserve the explicit adjudication profile unless the confirmed secondary intent selects it.
+- comparative + secondary feasibility selects and executes the correct union.
+- reference_lookup does not advertise skipped reasoner/synthesis roles as separate agents.
+- reverting the specialist-runner call makes at least one test fail.
+- a specialist model failure produces degraded status but does not fabricate a result or abort a responsibly completable run.
+- specialist model usage appears in modelLog and cost telemetry.
+- BYOK is forwarded through every specialist call.
+- production component test proves the adaptive visual path is mounted.
+
+PR D2 — QUANTITATIVE ANALYST AND DATA QUALITY AUDITOR
+
+1. Extend intent taxonomy.
+
+Add explicit intents:
+
+- data_analysis
+- forecast
+
+Update every exhaustive intent map, parser allowlist, orchestration profile, template, classifier prompt, verifier rubric, frontend display descriptor, and regression test. A grep for all IntentId switches/maps must show no silent fallback.
+
+Do not route every request containing a number to data_analysis.
+
+2. Add specialist capabilities.
+
+Add:
+
+quantitative_analyst
+- Trigger for data_analysis and forecast.
+- Also eligible for comparative, opportunity_discovery, feasibility, literature_review, and recommendation only when requested artifacts/constraints call for numerical comparison, calculations, a table, sizing, rates, trends, or projections.
+
+data_quality_auditor
+- Trigger when the output relies on multiple datasets, conflicting numeric claims, extracted tables, projections, or exact numerical deliverables.
+- May run after quantitative_analyst because it audits inputs and computations.
+
+Do not select these solely from intent strings. Extend capability selection to support artifact/capability predicates from the full ResearchBrief.
+
+3. Define strict structured outputs.
+
+QuantitativeAnalystOutput must include at least:
+
+- metrics/results
+- units
+- input values with source/chunk references
+- formulas/operations
+- deterministic calculation result
+- assumptions
+- uncertainty/limitations
+- missing data
+
+DataQualityAuditOutput must include at least:
+
+- pass/warn/fail
+- reproducibility status
+- input/source problems
+- unit/denominator/time-window mismatches
+- calculation discrepancies
+- sensitivity concerns
+- corrections
+- confidence
+
+4. Add a deterministic calculation service.
+
+Support a bounded initial operation set suitable for the product:
+
+- sum, difference, product, ratio, percentage, percentage change
+- mean, median, min, max
+- weighted average
+- simple compound annual growth rate when periods are valid
+- ranking and normalized score with declared weights
+
+Reject unsupported operations clearly. Validate finite numbers, units, denominators, date periods, and divide-by-zero. No eval and no arbitrary code.
+
+The LLM proposes a typed calculation request; the deterministic service executes it; the agent explains the returned result. The Data Quality Auditor rechecks the calculation request/result and source provenance.
+
+5. Quantitative report contract.
+
+Intent templates and verifier rubrics must require:
+
+- traceable inputs;
+- consistent units and periods;
+- formulas or method;
+- distinction between observed, calculated, estimated, and forecast values;
+- uncertainty and missing data;
+- no false precision.
+
+PR D2 ACCEPTANCE TESTS
+
+- a numerical comparison request invokes quantitative_analyst and produces deterministically checked results.
+- a forecast request labels assumptions and uncertainty and invokes data_quality_auditor.
+- an ordinary factual prompt mentioning a year does not invoke quantitative specialists.
+- mismatched units or periods produce an audit warning/failure.
+- divide-by-zero and non-finite inputs are rejected safely.
+- exact-count deliverables are still enforced by the contract auditor.
+- revert checks prove selection, computation, audit, and synthesis integration.
+
+PR D3 — SOURCE CONNECTOR REGISTRY, ROUTING, AND AVAILABILITY
+
+1. Inventory before adding.
+
+Document the actual contract and configuration requirements of all existing providers:
+
+- GenericWebSearchProvider
+- BraveSearchProvider
+- TavilySearchProvider
+- Arxiv
+- Crossref
+- OpenAlex
+- PubMed Central
+- ClinicalTrials.gov
+- Scite
+- USPTO
+- URL fetch
+
+Confirm which providers are currently called by discoveryOrchestrator. Existing file presence is not runtime wiring.
+
+2. Add a typed connector registry.
+
+Each connector descriptor should include:
+
+- id and display-safe name
+- supported source classes/domains
+- intents/capabilities served
+- credential/config availability check
+- cost class
+- parallelism/rate-limit metadata
+- result normalization contract
+- provenance fields
+- health/timeout behavior
+
+Use the existing source-class classifier and ResearchBrief. Do not let a model directly execute arbitrary tools or URLs; the backend chooses from allowlisted connectors and applies existing URL-fetch security policy.
+
+3. Required routing policy.
+
+Use this initial mapping:
+
+- General informational/investigative/story work:
+  Tavily/Brave/generic cascade plus direct URL fetch for selected sources.
+
+- Literature review and scholarly factual work:
+  Crossref + OpenAlex; add arXiv for relevant preprints; PubMed Central and ClinicalTrials.gov for biomedical/clinical topics; Scite when configured for citation context.
+
+- Patent/prior-art work:
+  USPTO plus general web/direct official URLs.
+
+- Opportunity, competitor, demand, feasibility:
+  General web cascade and direct source fetching. Specialists create targeted query families such as pricing pages, product documentation, procurement notices, customer complaints, public filings, and official statistics. Do not pretend the existing web search rank is market truth.
+
+- Quantitative/data analysis:
+  Prefer primary datasets, official statistics, filings, and tables discovered through applicable providers. Preserve the dataset URL, access date, table/field identity, unit, and period.
+
+- Reference lookup:
+  Use the smallest adequate connector set.
+
+4. Browser/tool specialization.
+
+For Phase D, "browser specialization" means:
+
+- specialist-specific bounded search-query generation;
+- connector selection by source class;
+- direct URL fetch and existing site-crawl/ingestion where appropriate;
+- graceful detection of thin/JavaScript-only pages;
+- auditable provenance and fetch status.
+
+Do not introduce a headless browser dependency merely to check the Phase D box. First add a typed "render_required/unavailable" outcome for thin JS pages. A future rendered-browser connector can be proposed with security, SSRF, resource, licensing, and operational analysis if the golden suite shows material failure.
+
+5. Availability and fallbacks.
+
+At plan time, resolve configured connector availability. Never advertise Scite, Brave, or another credentialed provider when its configuration is absent. Fall back to available connectors and tell the plan/report what coverage is reduced.
+
+Provider failure must:
+
+- retain attempted connector and reason;
+- try an allowed fallback when policy permits;
+- avoid treating zero results as proof of absence;
+- surface coverage limitations to specialists, verifier, and final report.
+
+PR D3 ACCEPTANCE TESTS
+
+- literature_review actually calls scholarly providers when configured.
+- patent intent actually calls USPTO routing.
+- opportunity_discovery uses targeted general-web/direct-source query families.
+- unconfigured provider is not advertised and falls back cleanly.
+- provider timeout/zero results do not become a claim that evidence does not exist.
+- normalized results preserve URL/provider/query/access metadata.
+- URL fetch maintains existing SSRF and sanitization protections.
+- production plan preview accurately describes source classes/coverage without exposing API keys or confusing vendor jargon in EZ mode.
+
+PHASE E — EVALUATION AND OPTIMIZATION
+
+After D1–D3 merge, implement Phase E in separate PRs.
+
+E1. Golden prompt suite
+
+Build fixtures across every intent and depth combination, with extra regression cases for:
+
+- the original online-opportunity failure prompt;
+- pure informational overview;
+- comparative decision;
+- story verification;
+- explicit true/false adjudication;
+- timeline reconstruction;
+- feasibility/implementation;
+- literature review;
+- quantitative analysis;
+- forecast;
+- reference lookup;
+- primary intent plus materially different secondary intent;
+- unavailable connector;
+- specialist failure/degraded run.
+
+Each fixture needs machine-checkable expectations:
+
+- correct primary/secondary intent;
+- required/forbidden specialists;
+- required/forbidden source classes;
+- required artifacts and exact counts;
+- forbidden framing/sections;
+- citation/provenance requirements;
+- maximum allowed premise-questioning for non-adjudicative work;
+- cost/latency budget;
+- contract-audit outcome.
+
+Use mocked providers/models for deterministic CI and a separately gated live evaluation job for real provider/model quality. Do not make ordinary PR CI depend on live paid APIs.
+
+E2. A/B framework
+
+Do not deploy uncontrolled copy changes. Define versioned variants for:
+
+- clarification-question strategy;
+- plan-preview wording;
+- report template/outline.
+
+Measure:
+
+- plan confirmation without edits;
+- clarification completion/abandonment;
+- contract-audit pass rate;
+- user revision requests;
+- report completion;
+- cost and latency;
+- qualitative rating where available.
+
+Protect privacy and avoid logging raw sensitive prompts unnecessarily. Feature-flag variants and retain a deterministic assignment key.
+
+E3. Routing optimization
+
+Tune only from golden-suite results and production telemetry. Optimization order:
+
+1. contract correctness and citation support;
+2. intent/deliverable fidelity;
+3. coverage;
+4. latency;
+5. cost.
+
+Never reduce cost by silently omitting a specialist required for the confirmed contract. Prefer conditional selection, parallelism, smaller adequate models, bounded context, and connector minimization.
+
+E4. Fine-tuning decision
+
+Do not fine-tune during initial Phase E. First collect enough labeled examples of:
+
+- corrected intent/secondary intent;
+- plan edits;
+- agent-routing corrections;
+- contract-audit failures;
+- accepted/rejected outputs.
+
+Create a decision memo with dataset size/quality, privacy/licensing, baseline versus tuned evaluation, deployment cost, rollback, and drift monitoring. Fine-tune only if prompt/rule-based routing remains a demonstrated bottleneck.
+
+CROSS-CUTTING TEST AND SAFETY REQUIREMENTS
+
+- Every behavior test must fail when its production fix is reverted; include the repository's required REVERT-CHECK comments.
+- Preserve BYOK propagation.
+- Preserve model fallbacks and reasoning-model policy.
+- Preserve cost-sidecar single instrumentation point.
+- Preserve cancellation, retry, checkpoint, and resume semantics.
+- Preserve old PlanPayload/read compatibility.
+- Do not introduce model slugs or vendor names into EZ-mode user-facing copy.
+- Do not duplicate backend routing rules in frontend constants; expose display-safe canonical descriptors.
+- Do not mark a checklist item [x] based only on types, prompts, registry entries, or direct-render tests.
+- Run focused tests, full backend/frontend typecheck, relevant integration tests, and CI guards.
+
+DOCUMENTATION AND PR REQUIREMENTS
+
+For each PR:
+
+1. Update docs/redesign-phase-status.md honestly.
+2. Copy the current and next phase sections into the PR body as required by Rule 39.
+3. State what executes in production versus what remains scaffolded.
+4. Include an "Availability and degraded behavior" section.
+5. Include exact test commands and results.
+6. Include cost/latency impact.
+7. Include migration/deploy-skew notes, even when no migration is needed.
+8. Include a review-disposition table for all automated review comments.
+
+Do not change Phase D to Complete until all of these are true:
+
+- selected specialists are invoked in the real worker;
+- their parsed outputs influence the final report;
+- planned/running/completed/skipped agent states are truthful;
+- quantitative analyst and data-quality audit are operational;
+- existing source connectors are selected and executed by intent/source class;
+- production UI uses the canonical display-safe execution plan;
+- the known PR #178 defects listed above are resolved;
+- end-to-end revert-check tests cover representative opportunity, story, quantitative, and scholarly/patent routes.
+
+FINAL RESPONSE FORMAT TO THE FOUNDER
+
+Return:
+
+1. PR link(s), branch(es), and commit SHA(s).
+2. Phase checklist with honest [x]/[ ] status.
+3. Exact user-visible behavior now working.
+4. Exact specialist and connector calls proven to execute.
+5. Test commands and results.
+6. Cost/latency and degraded-mode behavior.
+7. Remaining Phase E items.
+8. Any decision that truly requires founder action. Do not re-ask questions answered in this prompt.
