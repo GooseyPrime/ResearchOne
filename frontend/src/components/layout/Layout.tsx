@@ -201,15 +201,15 @@ export default function Layout() {
     };
   }, []);
 
-  const overallColor = healthIsError
-    ? 'bg-red-400'
-    : health?.status === 'ok'
-      ? 'bg-green-400'
-      : health?.status === 'degraded'
-        ? 'bg-amber-400'
-        : health?.status === 'down'
-          ? 'bg-red-400'
-          : 'bg-slate-500';
+  let overallColor = 'bg-slate-500';
+  if (healthIsError || health?.status === 'down') {
+    overallColor = 'bg-red-400';
+  } else if (health?.status === 'ok') {
+    overallColor = 'bg-green-400';
+  } else if (health?.status === 'degraded') {
+    overallColor = 'bg-amber-400';
+  }
+  // health undefined (still loading) remains slate-500 — no false-positive red
 
   const statusLabel = healthIsError
     ? 'unreachable'
@@ -328,18 +328,18 @@ export default function Layout() {
       </div>
 
       <SystemStatusModal
-        open={healthOpen}
-        onClose={() => setHealthOpen(false)}
-        health={health}
-        healthLoading={healthPending}
-        healthError={healthIsError ? (healthError instanceof Error ? healthError : new Error(String(healthError))) : null}
-        onRefreshHealth={refreshHealth}
-        onRestart={handleRestart}
-        restartBusy={restartBusy}
-        isAllowlistedAdmin={isAllowlistedAdmin}
-        breakGlassAdminToken={breakGlassToken}
-        onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
-      />
+          open={healthOpen}
+          onClose={() => setHealthOpen(false)}
+          health={health}
+          healthLoading={healthPending}
+          healthError={healthIsError ? (healthError instanceof Error ? healthError : new Error(String(healthError))) : null}
+          onRefreshHealth={refreshHealth}
+          onRestart={handleRestart}
+          restartBusy={restartBusy}
+          isAllowlistedAdmin={isAllowlistedAdmin}
+          breakGlassAdminToken={breakGlassToken}
+          onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
+        />
 
       <Notifications />
     </div>

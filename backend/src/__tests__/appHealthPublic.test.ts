@@ -60,8 +60,13 @@ vi.mock('@clerk/backend', () => ({
 describe('Express app — public health vs authenticated monitors', () => {
   let port = 0;
   let server: http.Server | undefined;
+  const adminRuntimeToken = 'test-admin-runtime-token';
+  const originalAdminRuntimeToken = process.env.ADMIN_RUNTIME_TOKEN;
+  const originalAdminUserIds = process.env.ADMIN_USER_IDS;
 
   beforeAll(async () => {
+    process.env.ADMIN_RUNTIME_TOKEN = adminRuntimeToken;
+    process.env.ADMIN_USER_IDS = 'user_admin';
     const { default: app } = await import('../api/app');
     server = http.createServer(app);
     await new Promise<void>((resolve, reject) => {
@@ -77,6 +82,10 @@ describe('Express app — public health vs authenticated monitors', () => {
     await new Promise<void>((resolve, reject) => {
       server!.close((err) => (err ? reject(err) : resolve()));
     });
+    if (originalAdminRuntimeToken === undefined) delete process.env.ADMIN_RUNTIME_TOKEN;
+    else process.env.ADMIN_RUNTIME_TOKEN = originalAdminRuntimeToken;
+    if (originalAdminUserIds === undefined) delete process.env.ADMIN_USER_IDS;
+    else process.env.ADMIN_USER_IDS = originalAdminUserIds;
   });
 
   beforeEach(() => {
@@ -98,9 +107,9 @@ describe('Express app — public health vs authenticated monitors', () => {
     process.env.SCITE_API_KEY = 'test-scite-key';
   });
 
-  async function get(path: string): Promise<{ status: number; body: string }> {
+  async function get(path: string, headers?: Record<string, string>): Promise<{ status: number; body: string }> {
     const res = await fetch(`http://127.0.0.1:${port}${path}`, {
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(headers ?? {}) },
     });
     const body = await res.text();
     return { status: res.status, body };
@@ -114,6 +123,24 @@ describe('Express app — public health vs authenticated monitors', () => {
   it('GET /api/health/ready without Authorization is not 401', async () => {
     const { status } = await get('/api/health/ready');
     expect(status).not.toBe(401);
+  });
+
+  it('redacts health details for non-admin requests', async () => {
+    const { status, body } = await get('/api/health');
+    expect([200, 503]).toContain(status);
+    const payload = JSON.parse(body) as Record<string, unknown>;
+    expect(payload.status).toBeTypeOf('string');
+    expect(payload.timestamp).toBeTypeOf('string');
+    expect(payload.checks).toBeUndefined();
+    expect(payload.restartAvailable).toBeUndefined();
+  });
+
+  it('includes detailed health checks with a valid admin runtime token', async () => {
+    const { status, body } = await get('/api/health', { 'x-admin-token': adminRuntimeToken });
+    expect([200, 503]).toContain(status);
+    const payload = JSON.parse(body) as Record<string, unknown>;
+    expect(payload.checks).toBeDefined();
+    expect(payload.restartAvailable).toBeDefined();
   });
 
   it('GET /health without Authorization is not 401 (non-/api prefix)', async () => {
