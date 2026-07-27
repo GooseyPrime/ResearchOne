@@ -47,7 +47,7 @@ import {
   mergePlanPayloadWithCanonicalProfile,
   resolveOrchestrationProfileFromJob,
 } from '../planning/orchestrationRuntime';
-import { buildCanonicalExecutionPlan } from '../planning/executionPlan';
+import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
 import {
   applyAdversarialTwinToSkepticMode,
   buildRunAddonPipelineEffects,
@@ -490,7 +490,7 @@ async function runResearchJobInner(
   let wave53SteelmanPassCount = 0;
   let wave53SteelmanByClaimKey = new Map<string, string>();
   let specialistFindingsBlock = '';
-  let specialistStatuses = { ...(canonicalExecutionPlan.statuses ?? {}) } as Record<string, string>;
+  let specialistStatuses = { ...(canonicalExecutionPlan.statuses ?? {}) } as Record<string, SpecialistExecutionStatus>;
   let specialistSkipped: string[] = [];
   let degradedCoverageReasons: string[] = [];
   let specialistRan: string[] = [];
@@ -1039,16 +1039,20 @@ async function runResearchJobInner(
       });
     }
 
-    specialistFindingsBlock = specialistFindings
-      .map((item) => {
-        const displayName = capabilityMap.get(item.role as SpecialistAgentId)?.displayName ?? item.role;
-        if (item.failed) {
-          return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
-        }
-        if (!item.content.trim()) return `### ${displayName}\nNo specialist findings returned.`;
-        return `### ${displayName}\n${item.content}`;
-      })
-      .join('\n\n');
+    // Only use legacy inline specialist findings if the new execution service path did not
+    // already populate specialistFindingsBlock (i.e., canonicalExecutionPlan had no specialist agents).
+    if (!specialistFindingsBlock && specialistFindings.length > 0) {
+      specialistFindingsBlock = specialistFindings
+        .map((item) => {
+          const displayName = capabilityMap.get(item.role as SpecialistAgentId)?.displayName ?? item.role;
+          if (item.failed) {
+            return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
+          }
+          if (!item.content.trim()) return `### ${displayName}\nNo specialist findings returned.`;
+          return `### ${displayName}\n${item.content}`;
+        })
+        .join('\n\n');
+    }
 
     // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {

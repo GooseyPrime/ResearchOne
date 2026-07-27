@@ -79,10 +79,11 @@ export function buildCanonicalExecutionPlan(input: {
       id === 'market_scout' ||
       id === 'competitor_mapper' ||
       id === 'demand_signal_analyst' ||
-      id === 'timeline_reconstructor'
+      id === 'timeline_reconstructor' ||
+      id === 'data_analysis_specialist'
   );
   const group2 = runnableSpecialists.filter(
-    (id) => id === 'story_verifier' || id === 'feasibility_architect'
+    (id) => id === 'story_verifier' || id === 'feasibility_architect' || id === 'quantitative_quality_auditor'
   );
   const executionGroups = [group1, group2].filter((g) => g.length > 0);
 

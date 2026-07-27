@@ -73,6 +73,10 @@ function validateSpecialistOutput(agent: SpecialistAgentId, raw: unknown): boole
       return typeof raw.verdict === 'string' && Array.isArray(raw.corroborating) && Array.isArray(raw.contradicting);
     case 'timeline_reconstructor':
       return Array.isArray(raw.events) && Array.isArray(raw.gaps) && typeof raw.summary === 'string';
+    case 'data_analysis_specialist':
+      return Array.isArray(raw.metrics) && typeof raw.trend_summary === 'string' && isConfidenceBand(raw.confidence);
+    case 'quantitative_quality_auditor':
+      return Array.isArray(raw.checks) && typeof raw.risk_summary === 'string' && isConfidenceBand(raw.confidence);
     default:
       return false;
   }
