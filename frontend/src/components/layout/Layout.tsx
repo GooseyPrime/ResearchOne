@@ -321,7 +321,7 @@ export default function Layout() {
                 <span className="text-xs text-slate-500">System {statusLabel}</span>
               </button>
             ) : (
-              <div className="flex items-center" aria-label="System status">
+              <div className="flex items-center">
                 <div
                   className={clsx(
                     'w-2 h-2 rounded-full',

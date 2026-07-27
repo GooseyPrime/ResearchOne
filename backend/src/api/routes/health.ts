@@ -212,7 +212,7 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   };
 }
 
-function extractAuthTokenFromRequest(req: { header: (name: string) => string | undefined }): string | null {
+function extractTokenFromRequestForHealthAuth(req: { header: (name: string) => string | undefined }): string | null {
   const adminToken = req.header('x-admin-token')?.trim();
   if (adminToken) return adminToken;
   const raw = (req.header('authorization') || '').trim();
@@ -227,7 +227,7 @@ export function requestCanViewHealthDetails(req: {
 }): boolean {
   const userId = req.auth?.userId ?? null;
   if (userId && config.admin.userIds.includes(userId)) return true;
-  const token = extractAuthTokenFromRequest(req);
+  const token = extractTokenFromRequestForHealthAuth(req);
   return Boolean(
     config.admin.token &&
       token &&
