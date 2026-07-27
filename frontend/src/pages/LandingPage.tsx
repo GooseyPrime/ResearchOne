@@ -41,11 +41,11 @@ export default function LandingPage() {
             READY_TO_START
           </span>
           <h2 data-ev-id="ev_1527402fb9" className="text-3xl sm:text-4xl font-bold text-r1-heading leading-tight mb-4">
-            Research that defends itself.
+            Research that adapts to your question.
           </h2>
           <p data-ev-id="ev_856644994c" className="text-xl text-r1-muted leading-relaxed mb-8">
-            Start your first multi-agent research run and see how the skeptic check
-            transforms raw queries into citation-backed dossiers.
+            Start your first research run and see how intent-driven routing turns your
+            question into a structured, citation-backed dossier.
           </p>
           <div data-ev-id="ev_72b490abe2" className="flex flex-wrap justify-center gap-4">
             <Link

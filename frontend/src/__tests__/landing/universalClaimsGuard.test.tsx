@@ -12,6 +12,12 @@ function renderInRouter(node: ReactElement) {
   return renderToString(<MemoryRouter>{node}</MemoryRouter>);
 }
 
+/** Strip HTML tags so patterns are matched against visible text only,
+ *  avoiding false negatives when a phrase is split across elements. */
+function extractText(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 const FORBIDDEN_UNIVERSAL_PATTERNS: readonly RegExp[] = [
   /(every|all)\s+reports?\s+require\s+falsification/i,
   /skeptic(\s+agent)?\s+(on|for)\s+every\s+(claim|conclusion)/i,
@@ -31,9 +37,9 @@ describe('user-facing universal-claim guardrails', () => {
 
   for (const surface of surfaces) {
     it(`${surface.name} does not include forbidden universal claims`, () => {
-      const html = surface.html();
+      const text = extractText(surface.html());
       FORBIDDEN_UNIVERSAL_PATTERNS.forEach((pattern) => {
-        expect(html).not.toMatch(pattern);
+        expect(text).not.toMatch(pattern);
       });
     });
   }

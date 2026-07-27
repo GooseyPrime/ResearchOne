@@ -593,10 +593,10 @@ export default function BillingPage() {
                 });
               }}
             />
-            Remind me when my monitor token balance is empty
+            Auto top-up when balance hits zero
           </label>
           <p className="text-xs text-slate-500">
-            Preference only — automatic Stripe charging when depleted is not enabled yet; you will be
+            Preference only — automatic Stripe charges when depleted are not enabled yet; you will be
             notified to buy tokens manually.
           </p>
           {monitorTokensQuery.data?.autoTopupEnabled ? (
