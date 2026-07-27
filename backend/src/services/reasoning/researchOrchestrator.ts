@@ -47,6 +47,7 @@ import {
   mergePlanPayloadWithCanonicalProfile,
   resolveOrchestrationProfileFromJob,
 } from '../planning/orchestrationRuntime';
+import { buildCanonicalExecutionPlan } from '../planning/executionPlan';
 import {
   applyAdversarialTwinToSkepticMode,
   buildRunAddonPipelineEffects,
@@ -66,6 +67,7 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
+import { runSpecialistExecution } from './specialistExecutionService';
 
 export type {
   CreditChargeContext,
@@ -343,11 +345,29 @@ async function runResearchJobInner(
     resolveOrchestrationProfileFromJob(data),
     runAddons
   );
+  const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
+  const sourceClassesFromPlan =
+    data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
+      ? data.confirmedPlanPayload.sourceStrategy.weightedClasses
+      : [];
+  const canonicalExecutionPlan =
+    data.confirmedPlanPayload?.executionPlan ??
+    data.confirmedPlanPayload?.orchestrationProfile?.executionPlan ??
+    buildCanonicalExecutionPlan({
+      profile: orchProfile,
+      researchBrief: confirmedResearchBrief,
+      sourceClasses: sourceClassesFromPlan,
+    });
 
   let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
   let wave53SourceClassBreakdown: Record<string, number> = {};
   let wave53SteelmanPassCount = 0;
   let wave53SteelmanByClaimKey = new Map<string, string>();
+  let specialistFindingsBlock = '';
+  let specialistStatuses = { ...(canonicalExecutionPlan.statuses ?? {}) } as Record<string, string>;
+  let specialistSkipped: string[] = [];
+  let degradedCoverageReasons: string[] = [];
+  let specialistRan: string[] = [];
 
   const progress = async (
     stage: string,
@@ -719,6 +739,46 @@ async function runResearchJobInner(
       retrieverResult = orchestrationStubModelResult('retriever', 'Retriever analysis skipped by orchestration profile.');
     }
 
+    if (canonicalExecutionPlan.specialistAgents.length > 0) {
+      await progress('reasoning', 42, 'Executing specialist analysis team...', {
+        substep: 'specialist_started',
+      });
+      const specialistExecution = await runSpecialistExecution({
+        runId,
+        query: researchQuery,
+        plan,
+        evidenceContext,
+        executionPlan: canonicalExecutionPlan,
+        researchBrief: confirmedResearchBrief,
+        engineVersion: v2.engineVersion,
+        researchObjective: v2.researchObjective,
+        allowFallbackByRole: v2.allowFallbackByRole,
+        byokApiKeyOverride,
+        onProgress: async (message) => {
+          await progress('reasoning', 45, message, { substep: 'specialist_running' });
+        },
+        onCheckpoint: async (key, snapshot) => {
+          await saveRunCheckpoint({
+            runId,
+            stage: 'reasoning',
+            checkpointKey: key,
+            snapshot,
+          });
+        },
+      });
+      modelLog.push(...specialistExecution.modelCalls);
+      specialistStatuses = { ...specialistExecution.statuses };
+      specialistSkipped = [...specialistExecution.skipped];
+      specialistRan = [...specialistExecution.ran];
+      degradedCoverageReasons = [...specialistExecution.degradedCoverageReasons];
+      if (specialistExecution.findingsForPrompt.trim()) {
+        specialistFindingsBlock = `SPECIALIST_FINDINGS (analysis only; not independent evidence):\n${specialistExecution.findingsForPrompt}`;
+      }
+      await progress('reasoning', 47, 'Specialist analysis completed.', {
+        substep: 'specialist_done',
+      });
+    }
+
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
@@ -734,7 +794,7 @@ async function runResearchJobInner(
           { role: 'system', content: buildReasonerSystemPrompt() },
           {
             role: 'user',
-            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
+            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\n${specialistFindingsBlock}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
           },
         ],
       });
@@ -856,6 +916,7 @@ async function runResearchJobInner(
         retrieverAnalysis: retrieverResult.content,
         reasoningChains: reasonerResult.content,
         challenges: challengesForSynthesis,
+        specialistFindings: specialistFindingsBlock,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
@@ -952,7 +1013,7 @@ async function runResearchJobInner(
     // intent drift. Failures are logged and surfaced as metadata; they
     // do not abort the run (pipeline resilience per Rule 11).
     // ────────────────────────────────────────────────────────────────
-    const researchBrief = data.confirmedPlanPayload?.researchBrief ?? null;
+    const researchBrief = confirmedResearchBrief ?? null;
     type ContractAuditResult = {
       pass: boolean;
       missing_requirements: string[];
@@ -1078,6 +1139,31 @@ async function runResearchJobInner(
         output_template_id: outputTemplateId,
         orchestration_intent: orchProfile.intent,
         skeptic_mode: orchProfile.skepticMode,
+        agents_planned: Array.from(
+          new Set([...canonicalExecutionPlan.coreAgentRoles, ...canonicalExecutionPlan.specialistAgents])
+        ),
+        agents_ran: Array.from(
+          new Set([
+            'planner',
+            shouldRunPipelineStage(orchProfile, 'retriever_analysis') ? 'retriever' : null,
+            shouldRunPipelineStage(orchProfile, 'reasoning') ? 'reasoner' : null,
+            'synthesizer',
+            shouldRunPipelineStage(orchProfile, 'verification') ? 'verifier' : null,
+            ...specialistRan,
+          ].filter((v): v is string => Boolean(v)))
+        ),
+        agents_skipped: Array.from(
+          new Set([
+            ...specialistSkipped,
+            ...canonicalExecutionPlan.corePipelineStages
+              .filter((stage) => !shouldRunPipelineStage(orchProfile, stage))
+              .map((stage) => `stage:${stage}`),
+          ])
+        ),
+        specialist_execution: {
+          statuses: specialistStatuses,
+          degraded_coverage_reasons: degradedCoverageReasons,
+        },
         ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
         // Phase B — contract audit result stored as metadata (null when skipped)
         contract_audit: contractAuditResult,
@@ -1166,8 +1252,24 @@ async function runResearchJobInner(
     await aggregateAndPersistDossierStatistics(runId, {
       profileDisplayName: orchProfile.displayName,
       intentId: orchProfile.intent,
-      agentsRan: [...orchProfile.agentsToRun],
-      agentsSkipped: [...orchProfile.agentsToSkip],
+      agentsRan: Array.from(
+        new Set([
+          'planner',
+          shouldRunPipelineStage(orchProfile, 'retriever_analysis') ? 'retriever' : null,
+          shouldRunPipelineStage(orchProfile, 'reasoning') ? 'reasoner' : null,
+          'synthesizer',
+          shouldRunPipelineStage(orchProfile, 'verification') ? 'verifier' : null,
+          ...specialistRan,
+        ].filter((v): v is string => Boolean(v)))
+      ),
+      agentsSkipped: Array.from(
+        new Set([
+          ...specialistSkipped,
+          ...canonicalExecutionPlan.corePipelineStages
+            .filter((stage) => !shouldRunPipelineStage(orchProfile, stage))
+            .map((stage) => `stage:${stage}`),
+        ])
+      ),
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
       sourceClassBreakdown:

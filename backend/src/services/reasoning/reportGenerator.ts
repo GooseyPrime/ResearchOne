@@ -159,6 +159,7 @@ export async function generateIterativeReport(args: {
   retrieverAnalysis: string;
   reasoningChains: string;
   challenges: string;
+  specialistFindings?: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
@@ -197,6 +198,7 @@ export async function generateIterativeReport(args: {
 Required sections:\n${activeSectionPlan.map((s) => `- ${s.title}`).join('\n')}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Evidence:\n${args.evidenceContext.slice(0, 8000)}
+Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, 8000)}
 Return strict JSON only.`,
       },
     ],
@@ -231,6 +233,7 @@ Plan: ${JSON.stringify(args.plan)}
 Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
+Specialist findings: ${args.specialistFindings ?? 'none'}
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}

@@ -21,6 +21,10 @@ type ResearchBrief = {
 type OrchestrationProfile = {
   agentsWillRun?: unknown[];
   agentsWillSkip?: unknown[];
+  executionPlan?: {
+    coreAgentRoles?: unknown[];
+    specialistAgents?: unknown[];
+  };
 };
 
 function readResearchBrief(planPayload: Record<string, unknown>): ResearchBrief | null {
@@ -55,8 +59,21 @@ function readAgentTeam(planPayload: Record<string, unknown>): Array<{
   isSpecialist: boolean;
 }> {
   const profile = planPayload.orchestrationProfile;
-  const agentsRaw =
+  const executionPlan =
     profile !== null && typeof profile === 'object'
+      ? (profile as OrchestrationProfile).executionPlan
+      : undefined;
+  const executionAgents = [
+    ...(Array.isArray(executionPlan?.coreAgentRoles)
+      ? executionPlan.coreAgentRoles.filter((v): v is string => typeof v === 'string')
+      : []),
+    ...(Array.isArray(executionPlan?.specialistAgents)
+      ? executionPlan.specialistAgents.filter((v): v is string => typeof v === 'string')
+      : []),
+  ];
+  const agentsRaw = executionAgents.length > 0
+    ? executionAgents
+    : profile !== null && typeof profile === 'object'
       ? (profile as OrchestrationProfile).agentsWillRun
       : undefined;
   if (!Array.isArray(agentsRaw)) return [];
@@ -122,7 +139,7 @@ export default function ResearchBriefPreview({
 
       {agentTeam.length > 0 ? (
         <div>
-          <p className="text-slate-500 uppercase tracking-wide mb-1">Agent team</p>
+          <p className="text-slate-500 uppercase tracking-wide mb-1">Planned specialist team</p>
           <div className="space-y-2">
             {agentTeam.map((agent) => (
               <div

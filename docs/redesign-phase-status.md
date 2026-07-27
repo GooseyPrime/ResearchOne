@@ -51,14 +51,18 @@ Tracks implementation progress against the plan in
 - [x] Story / timeline agents: `story_verifier`, `timeline_reconstructor`
 - [x] All 6 specialist roles threaded through: `REASONING_MODEL_ROLES` → `defaultModels` → `config/index` env overrides → `modelRuntime` → `researchEnsemblePresets` → `openrouterService` (prompts, temperatures, max_tokens) → `costSidecar.rolePhaseFor()`
 - [x] Adaptive orchestration: `mergePlanPayloadWithCanonicalProfile` merges selected specialist IDs into `agentsWillRun`
+- [x] Canonical execution plan persisted on plan payload and consumed by runtime + preview (`executionPlan`)
+- [x] Specialist execution runner invokes selected roles through `callRoleModel` with structured validation and fail-soft statuses
+- [x] Specialist findings flow into reasoner/synthesis context as bounded `SPECIALIST_FINDINGS` analysis blocks
+- [x] Truthful run metadata now persists planned/ran/skipped specialists + degraded coverage reasons
 - [x] Plan preview — "Agent team" block with `agentDisplayDescriptions.ts` (plain-language names/descriptions)
 - [x] Hero adaptive visualization: `SPECIALIST_PIPELINE_STAGES`, `resolveNodeOpacity`, `agentsToRun` prop on `AnimatedPipelineHero`
+- [x] Production hero now mounts `AnimatedPipelineHero` via `PersonaAwareHero`
 - [x] Backend unit tests for registry selection logic (dedup, intent routing, adjudication core-only)
 - [x] Frontend tests for hero opacity logic and agent team display
 
 ### Remaining in Phase D
 
-- [ ] Actual specialist execution wiring (execution calls are informational in this PR; specialists are selected but not yet invoked in the pipeline)
 - [ ] Data-analysis and quantitative-quality specialist agents (not yet defined in registry)
 - [ ] Additional source connectors and browser/tool specialization for specialist roles
 

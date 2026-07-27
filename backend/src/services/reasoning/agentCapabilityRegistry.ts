@@ -1,7 +1,27 @@
 import type { IntentId } from '../planning/intentTaxonomy';
 
+export const CORE_AGENT_IDS = [
+  'planner',
+  'retriever',
+  'reasoner',
+  'synthesizer',
+  'verifier',
+] as const;
+export type CoreAgentId = (typeof CORE_AGENT_IDS)[number];
+
+export const SPECIALIST_AGENT_ID_LIST = [
+  'market_scout',
+  'competitor_mapper',
+  'demand_signal_analyst',
+  'feasibility_architect',
+  'story_verifier',
+  'timeline_reconstructor',
+] as const;
+export type SpecialistAgentId = (typeof SPECIALIST_AGENT_ID_LIST)[number];
+export type AgentRoleId = CoreAgentId | SpecialistAgentId;
+
 export interface AgentCapability {
-  id: string;
+  id: AgentRoleId;
   displayName: string;
   description: string;
   supportedIntents: readonly IntentId[];
@@ -12,7 +32,7 @@ export interface AgentCapability {
 
 const CORE_AGENT_CAPABILITIES = [
   {
-    id: 'planner',
+    id: CORE_AGENT_IDS[0],
     displayName: 'Research Planner',
     description: 'Decomposes the request into a structured investigation plan.',
     supportedIntents: [] as const,
@@ -21,7 +41,7 @@ const CORE_AGENT_CAPABILITIES = [
     isSpecialist: false,
   },
   {
-    id: 'retriever',
+    id: CORE_AGENT_IDS[1],
     displayName: 'Source Investigator',
     description: 'Searches and evaluates source material needed for the run.',
     supportedIntents: [] as const,
@@ -30,7 +50,7 @@ const CORE_AGENT_CAPABILITIES = [
     isSpecialist: false,
   },
   {
-    id: 'reasoner',
+    id: CORE_AGENT_IDS[2],
     displayName: 'Evidence Reasoner',
     description: 'Builds analytical chains from the retrieved evidence.',
     supportedIntents: [] as const,
@@ -39,7 +59,7 @@ const CORE_AGENT_CAPABILITIES = [
     isSpecialist: false,
   },
   {
-    id: 'synthesizer',
+    id: CORE_AGENT_IDS[3],
     displayName: 'Report Writer',
     description: 'Drafts the final deliverable from the confirmed plan.',
     supportedIntents: [] as const,
@@ -48,7 +68,7 @@ const CORE_AGENT_CAPABILITIES = [
     isSpecialist: false,
   },
   {
-    id: 'verifier',
+    id: CORE_AGENT_IDS[4],
     displayName: 'Citation Verifier',
     description: 'Checks that claims remain supported and uncertainty stays explicit.',
     supportedIntents: [] as const,
@@ -60,7 +80,7 @@ const CORE_AGENT_CAPABILITIES = [
 
 const SPECIALIST_AGENT_CAPABILITIES = [
   {
-    id: 'market_scout',
+    id: SPECIALIST_AGENT_ID_LIST[0],
     displayName: 'Market Scout',
     description: 'Scans for whitespace opportunities and unserved demand.',
     supportedIntents: ['opportunity_discovery', 'comparative', 'recommendation'] as const,
@@ -69,7 +89,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     isSpecialist: true,
   },
   {
-    id: 'competitor_mapper',
+    id: SPECIALIST_AGENT_ID_LIST[1],
     displayName: 'Competitor Mapper',
     description: 'Maps alternatives, positioning, and feature gaps.',
     supportedIntents: ['opportunity_discovery', 'comparative', 'recommendation'] as const,
@@ -78,7 +98,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     isSpecialist: true,
   },
   {
-    id: 'demand_signal_analyst',
+    id: SPECIALIST_AGENT_ID_LIST[2],
     displayName: 'Demand Signal Analyst',
     description: 'Reads complaints, search trends, and procurement signals.',
     supportedIntents: ['opportunity_discovery', 'feasibility'] as const,
@@ -87,7 +107,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     isSpecialist: true,
   },
   {
-    id: 'feasibility_architect',
+    id: SPECIALIST_AGENT_ID_LIST[3],
     displayName: 'Feasibility Architect',
     description: 'Evaluates buildability, stack, timeline, and resource constraints.',
     supportedIntents: ['feasibility', 'implementation', 'opportunity_discovery'] as const,
@@ -96,7 +116,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     isSpecialist: true,
   },
   {
-    id: 'story_verifier',
+    id: SPECIALIST_AGENT_ID_LIST[4],
     displayName: 'Story Verifier',
     description: 'Cross-checks reported accounts against corroborating evidence.',
     supportedIntents: ['story_verification', 'investigation'] as const,
@@ -105,7 +125,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     isSpecialist: true,
   },
   {
-    id: 'timeline_reconstructor',
+    id: SPECIALIST_AGENT_ID_LIST[5],
     displayName: 'Timeline Reconstructor',
     description: 'Reconstructs chronologies from fragmented sources.',
     supportedIntents: ['timeline', 'story_verification', 'investigation'] as const,
@@ -122,7 +142,7 @@ export const AGENT_CAPABILITY_REGISTRY = [
 
 /** Canonical set of specialist agent IDs — single source of truth for UI/frontend checks. */
 export const SPECIALIST_AGENT_IDS = new Set(
-  SPECIALIST_AGENT_CAPABILITIES.map((a) => a.id)
+  SPECIALIST_AGENT_ID_LIST
 );
 
 // ────────────────────────────────────────────────────────────────────────────
