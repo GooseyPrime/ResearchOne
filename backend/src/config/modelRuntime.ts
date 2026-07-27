@@ -114,6 +114,14 @@ export function baseModelsFromConfig(): ResolvedModels {
         primary: config.models.timelineReconstructor,
         fallback: config.models.fallbacks.timelineReconstructor,
       },
+      data_analysis_specialist: {
+        primary: config.models.dataAnalysisSpecialist,
+        fallback: config.models.fallbacks.dataAnalysisSpecialist,
+      },
+      quantitative_quality_auditor: {
+        primary: config.models.quantitativeQualityAuditor,
+        fallback: config.models.fallbacks.quantitativeQualityAuditor,
+      },
     },
   };
 }

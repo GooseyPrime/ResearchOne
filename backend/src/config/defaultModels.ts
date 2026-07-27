@@ -31,6 +31,8 @@ export const CODE_DEFAULT_REASONING_MODELS = {
   feasibilityArchitect: 'anthropic/claude-sonnet-4',
   storyVerifier: 'anthropic/claude-sonnet-4',
   timelineReconstructor: 'anthropic/claude-sonnet-4',
+  dataAnalysisSpecialist: 'anthropic/claude-sonnet-4',
+  quantitativeQualityAuditor: 'anthropic/claude-sonnet-4',
   embedding: 'openai/text-embedding-3-small',
 } as const;
 
@@ -63,4 +65,6 @@ export const CODE_DEFAULT_REASONING_FALLBACKS = {
   feasibilityArchitect: 'deepseek/deepseek-r1',
   storyVerifier: 'openai/o3-mini',
   timelineReconstructor: 'openai/o3-mini',
+  dataAnalysisSpecialist: 'deepseek/deepseek-r1',
+  quantitativeQualityAuditor: 'openai/o3-mini',
 } as const;

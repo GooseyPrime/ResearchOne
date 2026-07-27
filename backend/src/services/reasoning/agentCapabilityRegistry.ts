@@ -113,7 +113,27 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     canRunInParallel: false,
     isSpecialist: true,
   },
+  {
+    id: 'data_analysis_specialist',
+    displayName: 'Data Analysis Specialist',
+    description: 'Runs quantitative analysis over metrics, benchmarks, and trend data.',
+    supportedIntents: ['comparative', 'survey', 'recommendation', 'opportunity_discovery'] as const,
+    costClass: 'high' as const,
+    canRunInParallel: true,
+    isSpecialist: true,
+  },
+  {
+    id: 'quantitative_quality_auditor',
+    displayName: 'Quantitative Quality Auditor',
+    description: 'Audits statistical quality, assumptions, and numerical consistency.',
+    supportedIntents: ['comparative', 'survey', 'adjudication', 'investigation'] as const,
+    costClass: 'medium' as const,
+    canRunInParallel: false,
+    isSpecialist: true,
+  },
 ] satisfies readonly AgentCapability[];
+
+export type SpecialistAgentId = (typeof SPECIALIST_AGENT_CAPABILITIES)[number]['id'];
 
 export const AGENT_CAPABILITY_REGISTRY = [
   ...CORE_AGENT_CAPABILITIES,
@@ -124,6 +144,10 @@ export const AGENT_CAPABILITY_REGISTRY = [
 export const SPECIALIST_AGENT_IDS = new Set(
   SPECIALIST_AGENT_CAPABILITIES.map((a) => a.id)
 );
+
+export function isSpecialistAgentId(id: string): id is SpecialistAgentId {
+  return SPECIALIST_AGENT_IDS.has(id);
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Specialist agent response types
@@ -168,6 +192,18 @@ export interface TimelineReconstructorOutput {
   events: Array<{ date: string; event: string; confidence: 'high' | 'medium' | 'low'; sources: string[] }>;
   gaps: string[];
   summary: string;
+}
+
+export interface DataAnalysisSpecialistOutput {
+  metrics: Array<{ metric: string; value: string; interpretation: string }>;
+  trend_summary: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface QuantitativeQualityAuditorOutput {
+  checks: Array<{ check: string; result: 'pass' | 'warn' | 'fail'; note: string }>;
+  risk_summary: string;
+  confidence: 'low' | 'medium' | 'high';
 }
 
 /**
