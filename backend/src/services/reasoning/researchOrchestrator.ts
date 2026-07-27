@@ -972,6 +972,7 @@ async function runResearchJobInner(
 
         const auditModelResult = await callRoleModel({
           role: 'contract_auditor',
+          callPurpose: 'phase_b_contract_audit',
           ...v2,
           runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'contract_auditor'),
           messages: [
@@ -1079,7 +1080,7 @@ async function runResearchJobInner(
         skeptic_mode: orchProfile.skepticMode,
         ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
         // Phase B — contract audit result stored as metadata (null when skipped)
-        ...(contractAuditResult !== null ? { contract_audit: contractAuditResult } : {}),
+        contract_audit: contractAuditResult,
       },
     });
     await saveRunCheckpoint({

@@ -38,6 +38,10 @@ const INTENT_IDS = new Set<string>([
   'position_brief',
   'timeline',
   'reference_lookup',
+  'story_verification',
+  'opportunity_discovery',
+  'feasibility',
+  'implementation',
   'legacy',
 ]);
 

@@ -994,9 +994,12 @@ Return ONLY valid JSON (no markdown fences):
  * intents so old runs are not affected.
  */
 export function buildVerifierPromptForIntent(intentId: string | undefined | null): string {
-  if (!intentId) return SYSTEM_PROMPTS.verifier;
+  // 'legacy' intents and missing intentId use the universal verifier prompt.
+  if (!intentId || intentId === 'legacy') return SYSTEM_PROMPTS.verifier;
   const template = getIntentOutputTemplate(`intent_${intentId}`);
-  if (!template || !template.verifierRubric) {
+  // getIntentOutputTemplate always returns intent_legacy as fallback for unknown ids;
+  // when template.intentId doesn't match the requested intent the lookup missed — fall back.
+  if (!template.verifierRubric || template.intentId !== intentId) {
     return SYSTEM_PROMPTS.verifier;
   }
   return withPreamble(`You are a verification agent for ResearchOne.
@@ -1010,6 +1013,11 @@ Additionally for all report types:
 - No unsupported facts. If the corpus was silent on a point, the report must say so.
 - Citations must exist for all nontrivial factual assertions.
 
-Output a structured verification report with PASS/FAIL for each criterion.`);
+Output strict JSON in the following shape and nothing else:
+{
+  "passed": true | false,
+  "criteria": [{ "criterion": "...", "status": "PASS" | "FAIL", "note": "..." }],
+  "overall": "PASS" | "FAIL"
+}`);
 }
 
