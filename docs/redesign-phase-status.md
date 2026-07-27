@@ -60,17 +60,9 @@ Tracks implementation progress against the plan in
 - [x] Production hero now mounts `AnimatedPipelineHero` via `PersonaAwareHero`
 - [x] Backend unit tests for registry selection logic (dedup, intent routing, adjudication core-only)
 - [x] Frontend tests for hero opacity logic and agent team display
-<<<<<<< HEAD
-
-### Remaining in Phase D
-
-- [ ] Data-analysis and quantitative-quality specialist agents (not yet defined in registry)
-- [ ] Additional source connectors and browser/tool specialization for specialist roles
-=======
 - [x] Actual specialist execution wiring (selected specialist agents are invoked, checkpointed, and surfaced to synthesis metadata)
 - [x] Data-analysis and quantitative-quality specialist agents (`data_analysis_specialist`, `quantitative_quality_auditor`)
 - [x] Additional source connectors and provider specialization for specialist roles (OpenAlex, Crossref, arXiv, PMC, USPTO, ClinicalTrials, Parallel)
->>>>>>> origin/main
 
 ---
 

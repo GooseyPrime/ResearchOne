@@ -69,15 +69,12 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
-<<<<<<< HEAD
 import { runSpecialistExecution } from './specialistExecutionService';
-=======
 import {
   AGENT_CAPABILITY_REGISTRY,
   isSpecialistAgentId,
   selectAgentsForBrief,
 } from './agentCapabilityRegistry';
->>>>>>> origin/main
 
 export type {
   CreditChargeContext,
@@ -342,7 +339,6 @@ function v2CallOpts(
 
 function computeAgentExecutionTelemetry(args: {
   orchProfile: OrchestrationProfileDefinition;
-  plannedCoreStages: readonly PipelineStage[];
   plannedSpecialists: readonly string[];
   specialistRan: readonly string[];
   specialistSkipped: readonly string[];
@@ -357,13 +353,17 @@ function computeAgentExecutionTelemetry(args: {
       ...args.specialistRan,
     ].filter((v): v is string => Boolean(v)))
   );
+  // Use the profile's skipped stages directly, mapped to agent names rather than
+  // stage IDs, so telemetry stays in agent-id space. Filtering agentsToRun by
+  // !shouldRunPipelineStage would always yield empty because agentsToRun only
+  // contains stages that pass that check.
   const skipped = Array.from(
     new Set([
       ...args.specialistSkipped,
-      ...args.plannedCoreStages
-        .filter((stage) => !shouldRunPipelineStage(args.orchProfile, stage))
-        .map((stage) => `stage:${stage}`),
-    ])
+      !shouldRunPipelineStage(args.orchProfile, 'retriever_analysis') ? 'retriever' : null,
+      !shouldRunPipelineStage(args.orchProfile, 'reasoning') ? 'reasoner' : null,
+      !shouldRunPipelineStage(args.orchProfile, 'verification') ? 'verifier' : null,
+    ].filter((v): v is string => Boolean(v)))
   );
   const planned = Array.from(new Set(['planner', 'retriever', 'reasoner', 'synthesizer', 'verifier', ...args.plannedSpecialists]));
   return { planned, ran, skipped };
@@ -457,7 +457,6 @@ async function runResearchJobInner(
     resolveOrchestrationProfileFromJob(data),
     runAddons
   );
-<<<<<<< HEAD
   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
   const sourceClassesFromPlan =
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
@@ -471,7 +470,6 @@ async function runResearchJobInner(
       researchBrief: confirmedResearchBrief,
       sourceClasses: sourceClassesFromPlan,
     });
-=======
   const specialistAgentIds = (() => {
     const fromPlan = data.confirmedPlanPayload?.orchestrationProfile?.agentsWillRun
       ?.filter((id): id is string => typeof id === 'string' && isSpecialistAgentId(id));
@@ -485,7 +483,6 @@ async function runResearchJobInner(
       .filter((agent) => agent.isSpecialist)
       .map((agent) => agent.id);
   })();
->>>>>>> origin/main
 
   let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
   let wave53SourceClassBreakdown: Record<string, number> = {};
@@ -1345,7 +1342,6 @@ async function runResearchJobInner(
     await progress('saving', 94, 'Saving report to corpus...');
         const agentExecutionTelemetry = computeAgentExecutionTelemetry({
           orchProfile,
-          plannedCoreStages: canonicalExecutionPlan.corePipelineStages,
           plannedSpecialists: canonicalExecutionPlan.specialistAgents,
           specialistRan,
           specialistSkipped,
@@ -1493,13 +1489,8 @@ async function runResearchJobInner(
     await aggregateAndPersistDossierStatistics(runId, {
       profileDisplayName: orchProfile.displayName,
       intentId: orchProfile.intent,
-<<<<<<< HEAD
       agentsRan: agentExecutionTelemetry.ran,
       agentsSkipped: agentExecutionTelemetry.skipped,
-=======
-      agentsRan: [...new Set([...orchProfile.agentsToRun, ...specialistAgentIds])],
-      agentsSkipped: [...orchProfile.agentsToSkip],
->>>>>>> origin/main
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
       sourceClassBreakdown:
