@@ -28,6 +28,13 @@ describe('agentCapabilityRegistry', () => {
     // removed, market_scout incorrectly appears here and this fails.
   });
 
+  it('does not select story_verifier for adjudication briefs (core agents only)', () => {
+    const ids = selectAgentsForBrief('adjudication').map((agent) => agent.id);
+    expect(ids).not.toContain('story_verifier');
+    // REVERT-CHECK: agentCapabilityRegistry.ts — if adjudication is re-added to
+    // story_verifier.supportedIntents, story_verifier incorrectly appears here and this fails.
+  });
+
   it('selects story_verifier for story_verification briefs', () => {
     const ids = selectAgentsForBrief('story_verification').map((agent) => agent.id);
     expect(ids).toContain('story_verifier');

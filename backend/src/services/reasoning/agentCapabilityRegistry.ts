@@ -99,7 +99,7 @@ const SPECIALIST_AGENT_CAPABILITIES = [
     id: 'story_verifier',
     displayName: 'Story Verifier',
     description: 'Cross-checks reported accounts against corroborating evidence.',
-    supportedIntents: ['story_verification', 'adjudication', 'investigation'] as const,
+    supportedIntents: ['story_verification', 'investigation'] as const,
     costClass: 'medium' as const,
     canRunInParallel: false,
     isSpecialist: true,

@@ -68,7 +68,7 @@ function readAgentTeam(planPayload: Record<string, unknown>): Array<{
     .filter((agent) => {
       if (seen.has(agent)) return false;
       seen.add(agent);
-      return agent in AGENT_DISPLAY_DESCRIPTIONS;
+      return Object.prototype.hasOwnProperty.call(AGENT_DISPLAY_DESCRIPTIONS, agent);
     })
     .map((agent) => ({
       id: agent,
