@@ -74,6 +74,7 @@ function provider(key: ProviderKey): SearchProvider {
 const SPECIALIST_CONNECTOR_KEYS: Partial<Record<SpecialistAgentId, readonly ProviderKey[]>> = {
   market_scout: ['parallel'],
   demand_signal_analyst: ['parallel'],
+  competitor_mapper: ['parallel'],
   story_verifier: ['openalex', 'crossref'],
   timeline_reconstructor: ['openalex', 'crossref'],
   data_analysis_specialist: ['arxiv', 'pmc', 'uspto', 'clinicaltrials'],

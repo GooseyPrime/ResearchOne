@@ -948,7 +948,7 @@ async function runResearchJobInner(
 
     // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {
-      await progress('reasoning', 52, 'Steelman pass: strengthening formulations before critique...', {
+      await progress('reasoning', 62, 'Steelman pass: strengthening formulations before critique...', {
         substep: 'steelman_started',
       });
       const steel = await runSteelmanPass({
