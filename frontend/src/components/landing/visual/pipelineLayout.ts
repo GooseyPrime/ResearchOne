@@ -80,8 +80,10 @@ export const PIPELINE_STAGES: readonly PipelineStage[] = [
 
 export const SPECIALIST_PIPELINE_STAGES: readonly PipelineStage[] = [
   { id: 'market_scout', label: 'Market Scout', phase: 'reason', conditional: true, x: 80, y: 180 },
+  { id: 'data_analysis_specialist', label: 'Data Analysis Specialist', phase: 'reason', conditional: true, x: 245, y: 180 },
   { id: 'feasibility_architect', label: 'Feasibility Architect', phase: 'reason', conditional: true, x: 410, y: 180 },
   { id: 'story_verifier', label: 'Story Verifier', phase: 'reason', conditional: true, x: 600, y: 180 },
+  { id: 'quantitative_quality_auditor', label: 'Quant QA Auditor', phase: 'reason', conditional: true, x: 790, y: 180 },
 ] as const;
 
 /* ────────────────────────────────────────────────────────────────

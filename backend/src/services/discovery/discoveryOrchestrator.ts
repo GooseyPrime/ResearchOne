@@ -26,6 +26,7 @@ import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
+import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
   DiscoveryRunSummary,
@@ -36,6 +37,49 @@ import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
 import { BraveSearchProvider } from './providers/braveSearch';
 import { TavilySearchProvider } from './providers/tavilySearch';
+import { OpenAlexSearchProvider } from './providers/openAlexSearch';
+import { CrossrefSearchProvider } from './providers/crossrefSearch';
+import { ArxivSearchProvider } from './providers/arxivSearch';
+import { PubmedCentralSearchProvider } from './providers/pubmedCentralSearch';
+import { UsptoSearchProvider } from './providers/usptoSearch';
+import { ClinicalTrialsSearchProvider } from './providers/clinicalTrialsSearch';
+import { ParallelSearchProvider } from './providers/parallelSearch';
+
+const PROVIDER_BUILDERS = {
+  tavily: () => new TavilySearchProvider(),
+  brave: () => new BraveSearchProvider(),
+  generic: () => new GenericWebSearchProvider(),
+  parallel: () => new ParallelSearchProvider(),
+  openalex: () => new OpenAlexSearchProvider(),
+  crossref: () => new CrossrefSearchProvider(),
+  arxiv: () => new ArxivSearchProvider(),
+  pmc: () => new PubmedCentralSearchProvider(),
+  uspto: () => new UsptoSearchProvider(),
+  clinicaltrials: () => new ClinicalTrialsSearchProvider(),
+} as const;
+
+type ProviderKey = keyof typeof PROVIDER_BUILDERS;
+const providerCache = new Map<ProviderKey, SearchProvider>();
+
+function provider(key: ProviderKey): SearchProvider {
+  // Provider classes are expected to be stateless wrappers around external APIs.
+  // We memoize instances to avoid repeated construction within long-lived workers.
+  const cached = providerCache.get(key);
+  if (cached) return cached;
+  const built = PROVIDER_BUILDERS[key]();
+  providerCache.set(key, built);
+  return built;
+}
+
+const SPECIALIST_CONNECTOR_KEYS: Partial<Record<SpecialistAgentId, readonly ProviderKey[]>> = {
+  market_scout: ['parallel'],
+  demand_signal_analyst: ['parallel'],
+  story_verifier: ['openalex', 'crossref'],
+  timeline_reconstructor: ['openalex', 'crossref'],
+  data_analysis_specialist: ['arxiv', 'pmc', 'uspto', 'clinicaltrials'],
+  quantitative_quality_auditor: ['arxiv', 'pmc', 'uspto', 'clinicaltrials'],
+  feasibility_architect: ['arxiv', 'pmc', 'uspto', 'clinicaltrials'],
+};
 
 /** Discovery planner system prompt (round 1 — initial search). */
 const DISCOVERY_PLANNER_PROMPT = `You are a discovery planning agent for ResearchOne, a disciplined research system.
@@ -84,19 +128,28 @@ Output JSON with this exact schema:
 }`;
 
 /** Get the configured search provider(s) */
-function getSearchProviders(): SearchProvider[] {
+function getSearchProviders(specialistAgentIds: readonly string[] = []): SearchProvider[] {
+  const connectorKeys = new Set<ProviderKey>();
+  for (const specialistId of specialistAgentIds) {
+    if (!isSpecialistAgentId(specialistId)) continue;
+    for (const key of SPECIALIST_CONNECTOR_KEYS[specialistId] ?? []) {
+      connectorKeys.add(key);
+    }
+  }
+  const specialistConnectors = [...connectorKeys].map((key) => provider(key));
+
   const providerName = config.discovery.provider;
   switch (providerName) {
     case 'cascade':
-      return [new TavilySearchProvider(), new BraveSearchProvider(), new GenericWebSearchProvider()];
+      return [provider('tavily'), provider('brave'), provider('generic'), ...specialistConnectors];
     case 'brave':
-      return [new BraveSearchProvider()];
+      return [provider('brave'), ...specialistConnectors];
     case 'generic':
-      return [new GenericWebSearchProvider()];
+      return [provider('generic'), ...specialistConnectors];
     case 'tavily':
-      return [new TavilySearchProvider()];
+      return [provider('tavily'), ...specialistConnectors];
     default:
-      return [new TavilySearchProvider()];
+      return [provider('tavily'), ...specialistConnectors];
   }
 }
 
@@ -141,6 +194,7 @@ export async function runDiscoveryOrchestrator(args: {
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
+  specialistAgentIds?: string[];
   /** Per-run add-on override (parallel_search → higher ingest cap). */
   maxIngestCapOverride?: number;
   /** Optional callback fired after each discovery round so the parent
@@ -170,10 +224,23 @@ async function runDiscoveryOrchestratorInner(args: {
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
   userId?: string;
+  specialistAgentIds?: string[];
   maxIngestCapOverride?: number;
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
-  const { runId, researchQuery, plan, engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride, userId, maxIngestCapOverride, onRoundComplete } = args;
+  const {
+    runId,
+    researchQuery,
+    plan,
+    engineVersion,
+    researchObjective,
+    allowFallbackByRole,
+    byokApiKeyOverride,
+    userId,
+    specialistAgentIds,
+    maxIngestCapOverride,
+    onRoundComplete,
+  } = args;
   const startTime = Date.now();
 
   if (!config.discovery.enabled) {
@@ -239,7 +306,7 @@ async function runDiscoveryOrchestratorInner(args: {
   logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
 
   // ─── Step 2: Execute search queries ─────────────────────────────────────────
-  const providers = getSearchProviders();
+  const providers = getSearchProviders(specialistAgentIds ?? []);
   const orderedProviders = isSensitiveTopic(researchQuery)
     ? [...providers].sort((a, b) => (a.name === 'brave' ? -1 : b.name === 'brave' ? 1 : 0))
     : providers;

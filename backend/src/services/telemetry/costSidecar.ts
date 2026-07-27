@@ -142,6 +142,8 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
     case 'feasibility_architect':
     case 'story_verifier':
     case 'timeline_reconstructor':
+    case 'data_analysis_specialist':
+    case 'quantitative_quality_auditor':
       return 'Reasoning';
     case 'citation_formatter':
       return 'Citation Mapping';

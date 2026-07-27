@@ -43,6 +43,8 @@ const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   feasibilityArchitect: 'feasibility_architect',
   storyVerifier: 'story_verifier',
   timelineReconstructor: 'timeline_reconstructor',
+  dataAnalysisSpecialist: 'data_analysis_specialist',
+  quantitativeQualityAuditor: 'quantitative_quality_auditor',
 };
 
 function fromCodeDefaults(): Record<ReasoningModelRole, RoleModelPair> {
@@ -295,7 +297,9 @@ const V2_UTILITIES: Record<
   | 'demand_signal_analyst'
   | 'feasibility_architect'
   | 'story_verifier'
-  | 'timeline_reconstructor',
+  | 'timeline_reconstructor'
+  | 'data_analysis_specialist'
+  | 'quantitative_quality_auditor',
   RoleModelPair
 > = {
   // All utility roles default to DeepSeek V3.2 (11 upstream providers,
@@ -316,6 +320,8 @@ const V2_UTILITIES: Record<
   feasibility_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   story_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   timeline_reconstructor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  data_analysis_specialist: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  quantitative_quality_auditor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
 };
 
 function v2Mode(

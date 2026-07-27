@@ -31,6 +31,8 @@ export const REASONING_MODEL_ROLES = [
   'feasibility_architect',
   'story_verifier',
   'timeline_reconstructor',
+  'data_analysis_specialist',
+  'quantitative_quality_auditor',
 ] as const;
 
 export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];

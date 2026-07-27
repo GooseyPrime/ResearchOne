@@ -159,6 +159,7 @@ export async function generateIterativeReport(args: {
   retrieverAnalysis: string;
   reasoningChains: string;
   challenges: string;
+  specialistFindings?: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
@@ -231,6 +232,7 @@ Plan: ${JSON.stringify(args.plan)}
 Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
+Specialist findings: ${args.specialistFindings || 'none'}
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}

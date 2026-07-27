@@ -40,11 +40,11 @@ Tracks implementation progress against the plan in
 
 ---
 
-## Phase D — specialist expansion 🔄 In progress (current PR)
+## Phase D — specialist expansion ✅ Complete (current PR)
 
 ### Completed in this PR
 
-- [x] Typed `AgentCapability` registry (`agentCapabilityRegistry.ts`) with 5 core + 6 specialist roles
+- [x] Typed `AgentCapability` registry (`agentCapabilityRegistry.ts`) with 5 core + specialist roles
 - [x] `selectAgentsForBrief(primaryIntent, secondaryIntent)` — intent-driven agent selection
 - [x] `SPECIALIST_AGENT_IDS` single source of truth (backend + frontend)
 - [x] Market / opportunity agents: `market_scout`, `competitor_mapper`, `demand_signal_analyst`, `feasibility_architect`
@@ -55,18 +55,15 @@ Tracks implementation progress against the plan in
 - [x] Hero adaptive visualization: `SPECIALIST_PIPELINE_STAGES`, `resolveNodeOpacity`, `agentsToRun` prop on `AnimatedPipelineHero`
 - [x] Backend unit tests for registry selection logic (dedup, intent routing, adjudication core-only)
 - [x] Frontend tests for hero opacity logic and agent team display
-
-### Remaining in Phase D
-
-- [ ] Actual specialist execution wiring (execution calls are informational in this PR; specialists are selected but not yet invoked in the pipeline)
-- [ ] Data-analysis and quantitative-quality specialist agents (not yet defined in registry)
-- [ ] Additional source connectors and browser/tool specialization for specialist roles
+- [x] Actual specialist execution wiring (selected specialist agents are invoked, checkpointed, and surfaced to synthesis metadata)
+- [x] Data-analysis and quantitative-quality specialist agents (`data_analysis_specialist`, `quantitative_quality_auditor`)
+- [x] Additional source connectors and provider specialization for specialist roles (OpenAlex, Crossref, arXiv, PMC, USPTO, ClinicalTrials, Parallel)
 
 ---
 
-## Phase E — evaluation and optimization ⏳ Not started
+## Phase E — evaluation and optimization 🔄 In progress
 
-- [ ] Build the golden-prompt suite (one report per intent × depth combination)
+- [x] Build the golden-prompt suite (one report per intent × depth combination baseline + coverage tests)
 - [ ] A/B test intake questions and report templates
 - [ ] Tune agent-selection rules for quality, cost, and latency
 - [ ] Consider fine-tuning after sufficient labeled routing data is collected
