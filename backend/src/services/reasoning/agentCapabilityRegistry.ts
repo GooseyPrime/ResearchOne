@@ -120,13 +120,64 @@ export const AGENT_CAPABILITY_REGISTRY = [
   ...SPECIALIST_AGENT_CAPABILITIES,
 ] as const satisfies readonly AgentCapability[];
 
+/** Canonical set of specialist agent IDs — single source of truth for UI/frontend checks. */
+export const SPECIALIST_AGENT_IDS = new Set(
+  SPECIALIST_AGENT_CAPABILITIES.map((a) => a.id)
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// Specialist agent response types
+// These are the TypeScript interfaces for parsing structured JSON responses
+// from specialist agents when execution is wired in follow-on commits.
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface MarketScoutOutput {
+  opportunities: Array<{ title: string; demand_signal: string; market_gap: string }>;
+  summary: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface CompetitorMapperOutput {
+  competitors: Array<{ name: string; positioning: string; strengths: string[]; weaknesses: string[] }>;
+  gap_summary: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface DemandSignalOutput {
+  signals: Array<{ type: string; description: string; strength: 'strong' | 'moderate' | 'weak' }>;
+  demand_summary: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export interface FeasibilityArchitectOutput {
+  feasibility_verdict: 'high' | 'medium' | 'low' | 'not_feasible';
+  risks: Array<{ factor: string; severity: 'high' | 'medium' | 'low'; mitigation: string }>;
+  buildable_paths: string[];
+  summary: string;
+}
+
+export interface StoryVerifierOutput {
+  verdict: 'confirmed' | 'disputed' | 'unverified' | 'false';
+  corroborating: string[];
+  contradicting: string[];
+  unresolved: string[];
+  summary: string;
+}
+
+export interface TimelineReconstructorOutput {
+  events: Array<{ date: string; event: string; confidence: 'high' | 'medium' | 'low'; sources: string[] }>;
+  gaps: string[];
+  summary: string;
+}
+
 export function selectAgentsForBrief(
   primaryIntent: IntentId | undefined,
   secondaryIntent?: IntentId | string
 ): AgentCapability[] {
   // IntentId is a union of string literals, but secondaryIntent also accepts
-  // raw strings from legacy callers. The typeof guards narrow out undefined
-  // and ensure empty strings are skipped before Set insertion.
+  // raw strings from legacy callers. The typeof guards ensure that only
+  // non-empty string values are added to requestedIntents — filtering out
+  // undefined, null, and empty-string inputs before Set insertion.
   const requestedIntents = new Set<string>();
   if (typeof primaryIntent === 'string' && primaryIntent.trim()) requestedIntents.add(primaryIntent);
   if (typeof secondaryIntent === 'string' && secondaryIntent.trim()) requestedIntents.add(secondaryIntent);

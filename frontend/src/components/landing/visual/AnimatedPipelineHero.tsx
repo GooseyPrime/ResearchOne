@@ -196,8 +196,7 @@ export default function AnimatedPipelineHero({
               const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
               const isSkeptic = stage.id === 'skeptic';
               const isSpecialist = stage.conditional === true;
-              const isSelectedSpecialist =
-                isSpecialist && (agentsToRun === undefined ? false : selectedAgents.has(stage.id));
+              const isSelectedSpecialist = isSpecialist && selectedAgents.has(stage.id);
               const specialistOpacity = resolveNodeOpacity(isSpecialist, agentsToRun, isSelectedSpecialist);
 
               const ringColor = isSkeptic

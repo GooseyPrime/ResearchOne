@@ -13,3 +13,16 @@ export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; descript
   contract_auditor: { name: 'Contract Auditor', description: 'Checks that every requested deliverable was actually delivered.' },
   skeptic: { name: 'Skeptic', description: 'Challenges key conclusions for high-stakes recommendations.' },
 };
+
+/**
+ * Single source of truth for which agent IDs are specialist (conditional).
+ * Mirrors `SPECIALIST_AGENT_CAPABILITIES` in `agentCapabilityRegistry.ts`.
+ */
+export const SPECIALIST_AGENT_IDS = new Set([
+  'market_scout',
+  'competitor_mapper',
+  'demand_signal_analyst',
+  'feasibility_architect',
+  'story_verifier',
+  'timeline_reconstructor',
+]);

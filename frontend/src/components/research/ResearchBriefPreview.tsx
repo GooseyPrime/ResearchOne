@@ -1,5 +1,5 @@
 import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
-import { AGENT_DISPLAY_DESCRIPTIONS } from '../../lib/agentDisplayDescriptions';
+import { AGENT_DISPLAY_DESCRIPTIONS, SPECIALIST_AGENT_IDS } from '../../lib/agentDisplayDescriptions';
 import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchDeliverablesChecklist from './ResearchDeliverablesChecklist';
 import ResearchAssumptionsEditor from './ResearchAssumptionsEditor';
@@ -60,14 +60,6 @@ function readAgentTeam(planPayload: Record<string, unknown>): Array<{
       ? (profile as OrchestrationProfile).agentsWillRun
       : undefined;
   if (!Array.isArray(agentsRaw)) return [];
-  const specialistIds = new Set([
-    'market_scout',
-    'competitor_mapper',
-    'demand_signal_analyst',
-    'feasibility_architect',
-    'story_verifier',
-    'timeline_reconstructor',
-  ]);
   const seen = new Set<string>();
   return agentsRaw
     .filter((agent): agent is string => typeof agent === 'string')
@@ -81,7 +73,7 @@ function readAgentTeam(planPayload: Record<string, unknown>): Array<{
     .map((agent) => ({
       id: agent,
       ...AGENT_DISPLAY_DESCRIPTIONS[agent],
-      isSpecialist: specialistIds.has(agent),
+      isSpecialist: SPECIALIST_AGENT_IDS.has(agent),
     }))
     .sort((a, b) => {
       if (a.isSpecialist !== b.isSpecialist) return a.isSpecialist ? -1 : 1;
