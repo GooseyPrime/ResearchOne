@@ -234,7 +234,11 @@ Plan: ${JSON.stringify(args.plan)}
 Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
+<<<<<<< HEAD
 Specialist findings: ${args.specialistFindings ?? 'none'}
+=======
+Specialist findings: ${args.specialistFindings || 'none'}
+>>>>>>> origin/main
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}

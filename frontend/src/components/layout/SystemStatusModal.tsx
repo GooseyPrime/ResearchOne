@@ -206,7 +206,7 @@ export default function SystemStatusModal({
                   {health.timestamp}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Object.entries(health.checks).map(([name, check]) => (
+                  {Object.entries(health.checks ?? {}).map(([name, check]) => (
                     <div
                       key={name}
                       className="bg-surface-200 rounded-lg px-3 py-2 text-xs border border-indigo-900/20"
@@ -235,7 +235,7 @@ export default function SystemStatusModal({
                     {restartBusy ? 'Restarting…' : 'Restart runtime'}
                   </button>
                 )}
-                {health.restartAvailable && !isAllowlistedAdmin && (
+                {!isAllowlistedAdmin && (
                   <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200/80 px-3 py-2 text-xs text-slate-400 space-y-2">
                     <p className="font-medium text-slate-300">Break-glass admin token</p>
                     <p>

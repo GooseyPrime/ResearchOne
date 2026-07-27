@@ -1,0 +1,1021 @@
+RESEARCHONE USER GUIDANCE AND UX COPY IMPLEMENTATION BRIEF
+
+Repository reviewed: GooseyPrime/ResearchOne
+Baseline reviewed: origin/main at 79aacf3 (PR #179 merged)
+Purpose: coding-agent handoff for a site-wide guidance, terminology, onboarding, and instructional-copy correction
+
+IMPORTANT OPERATING INSTRUCTION
+
+Treat this as a product-correctness task, not a marketing polish task. The redesign made ResearchOne an all-purpose deep-research system that can perform descriptive information gathering, explanation, comparison, synthesis, discovery, implementation research, quantitative analysis, and claim/story verification. The current interface still teaches portions of the former universal-hypothesis/falsification workflow. That mismatch can cause the planner, user, and report expectations to drift back toward the exact failure the redesign was intended to correct.
+
+Do not rewrite copy in isolation from actual behavior. Before changing a capability statement, trace the relevant frontend component, API response, entitlement rule, and worker behavior. If the UI promises a behavior that the code does not perform, either implement the behavior in the same workstream or narrow the copy to the behavior that exists. Never make unsupported absolute claims.
+
+======================================================================
+1. EXECUTIVE FINDINGS
+======================================================================
+
+P0 — The in-app Guide directly contradicts the redesign.
+
+frontend/src/pages/GuidePage.tsx still:
+
+- calls the product “Disciplined anomaly research”;
+- defines ResearchOne primarily around incomplete, filtered, distorted, or consensus-bound information;
+- tells every user to write a “specific, testable query”;
+- tells every user to state what would falsify the angle;
+- tells every user to review “Falsification Criteria” first;
+- says ResearchOne will not generate a report without falsification criteria;
+- presents a Skeptic step as universal.
+
+This must be replaced, not patched sentence by sentence. Falsification and adversarial verification are valid for relevant intents, but they are not universal prerequisites for informational research.
+
+P0 — Public marketing still promises a fixed pipeline and universal Skeptic behavior.
+
+Confirmed stale or overbroad statements appear in:
+
+- frontend/src/components/landing/Hero.tsx
+- frontend/src/components/landing/HeroPipelineVisual.tsx
+- frontend/src/components/landing/PipelineDiagram.tsx
+- frontend/src/components/landing/PipelineSchematic.tsx
+- frontend/src/components/landing/ModeMatrix.tsx
+- frontend/src/components/landing/TrustStrip.tsx
+- frontend/src/components/landing/WhatCompetitorsActuallySay.tsx
+- frontend/src/components/landing/SourceProvenancePanel.tsx
+- frontend/src/components/landing/pipelineSchematicData.ts
+- frontend/src/components/landing/heroPipelineAria.ts
+- frontend/src/components/landing/persona/personaContent.ts
+- frontend/src/components/r1-vault/StickyVaultCore.tsx
+- frontend/src/components/r1-vault/MethodologyPipeline.tsx
+- frontend/src/content/landingFeatureCards.ts
+- frontend/src/content/marketingFaqItems.ts
+- frontend/src/content/researchoneUiData.ts
+- frontend/src/pages/MethodologyPage.tsx
+- frontend/src/pages/PricingPage.tsx
+
+Search the full repository for “ten-stage,” “10-stage,” “every claim,” “every objective,” “falsification,” “Skeptic,” “all five modes,” “anomaly research,” and similar variants. Do not blindly delete every use. Preserve contextual mentions when the selected intent or report actually uses adversarial checking. Remove statements that make those methods universal.
+
+P0 — EZ mode still exposes internal orchestration concepts.
+
+The EZ flow is directionally correct, but plan review contains terms such as classifier confidence, detected intent, competence check, refinement rounds, connector classes, and an internal agent roster. These are useful diagnostics in Research Lab, not primary concepts for a general user.
+
+P0 — Account and Billing are two competing “account” surfaces.
+
+/account contains identity/security, ingestion consent, plan-confirmation preferences, and saved orchestration profiles. /app/billing is titled “Account” and contains subscription, wallet, monitor tokens, add-ons, and history. Users cannot form a stable mental model.
+
+P0 — User-facing billing errors expose deployment instructions.
+
+The “Monitor token packs are not configured yet” state tells ordinary users to run a Stripe bootstrap command and set environment variables. Configuration remediation belongs in an administrator-only status surface and deployment documentation, never on a customer account page.
+
+P1 — Onboarding starts with “Pipeline B,” an internal data-pipeline name.
+
+The first product experience asks for consent before showing the user how to run research and uses the term “sanitized global ingestion layer (Pipeline B).” Consent must remain explicit, but the choice needs a plain-language heading, a concise data-use explanation, examples of eligible/excluded content, a privacy-policy link, and a clear “this does not affect research access” statement. “Pipeline B” may appear under technical details, not as the primary user label.
+
+P1 — Expert data tools are presented as neighboring navigation labels without a workflow.
+
+Corpus, Ingest, Atlas, Embedding Viz, and Knowledge Graph are distinct tools with prerequisites and privacy implications. Each needs a first-run explanation, “when to use this,” and a next action. Atlas must disclose that it is a third-party export and what data leaves ResearchOne.
+
+P1 — Pricing and entitlement language is inconsistent.
+
+Examples include “all five modes,” a BYOK card that implies unlimited runs without adequately explaining platform subscription versus provider charges, and add-on eligibility language that contradicts itself (“requires Pro, BYOK, Team, or Sovereign” followed by “available on Pro, Team, and Sovereign”). Resolve these against current entitlement code.
+
+P1 — /docs is a public documentation stub.
+
+A visible Docs route that is explicitly a stub reduces trust. Replace it with a useful documentation hub in this project or remove it from public navigation until it is ready. Do not leave a placeholder linked from the header/footer.
+
+======================================================================
+2. PRODUCT LANGUAGE MODEL TO USE EVERYWHERE
+======================================================================
+
+Adopt the following user-facing mental model.
+
+ResearchOne helps a user answer a research question by:
+
+1. understanding the requested outcome;
+2. proposing a research plan;
+3. gathering and reading relevant sources;
+4. selecting specialist analysis appropriate to the request;
+5. checking important claims and limitations;
+6. producing a cited report that distinguishes evidence, interpretation, uncertainty, and contradiction.
+
+The analysis is adaptive. A descriptive request should not be turned into a hypothesis. A verification request should receive explicit claim decomposition, corroboration, counterevidence, and a verdict standard. A quantitative request should use quantitative specialists when sufficient data exists. A comparison should use stable criteria. A discovery request should distinguish observed gaps from speculative opportunities.
+
+Canonical user-facing request families:
+
+- Learn or explain: “Explain how municipal bond insurance works and summarize the current market.”
+- Compare or choose: “Compare these three products for a small medical practice.”
+- Verify a claim or story: “Check whether the claims in this article are supported.”
+- Synthesize a field: “Map the major approaches to long-duration energy storage.”
+- Find opportunities or gaps: “Identify underserved problems in residential heat-pump installation.”
+- Plan or implement: “Create an evidence-based implementation plan for SOC 2 readiness.”
+- Analyze numbers: “Extract the reported metrics and compare performance across these studies.”
+
+These are examples, not new hard-coded mode names. The user can describe an outcome naturally; EZ mode should route it.
+
+Canonical terms:
+
+- “EZ Research”: guided research in plain language; ResearchOne chooses the approach.
+- “Research Lab”: advanced controls for experienced users who want to influence methods, specialists, sources, models, formats, or verification intensity.
+- “Research plan”: the proposed question, scope, deliverables, sources, approach, assumptions, exclusions, expected time, and expected charge.
+- “Requirements”: user-supplied constraints that must be followed.
+- “Assumptions”: system-proposed interpretations caused by ambiguity; the user can correct them.
+- “Dossier”: one research project containing the request, confirmed plan, run history, report, sources, revisions, and related spinoffs.
+- “Revision”: update a section of the current report; it does not automatically repeat the entire research process.
+- “Spinoff”: start a new full research run using a prior report as context.
+- “Corpus”: the user’s reusable source collection.
+- “Ingest”: add material to the reusable corpus.
+- “Attachments”: sources or context used for one research request unless the UI explicitly offers to save them to the corpus.
+- “Living Report”: monitoring that checks a finalized report for relevant new information during a defined active period.
+- “Reverse-Citation Watch”: monitoring for later works that cite sources or works associated with a report, if that is the implemented behavior.
+
+Internal terms to hide from EZ-mode default views:
+
+- classifier confidence;
+- competence check;
+- refinement rounds;
+- orchestration profile;
+- connector class;
+- pipeline B;
+- agent enum or agent IDs;
+- V1/V2;
+- backend stage names;
+- model slug;
+- source-corroboration enum IDs.
+
+Plain-language replacements:
+
+- “Detected intent” -> “What ResearchOne thinks you need”
+- “Classifier confidence” -> “How sure we are” only when useful; otherwise omit
+- “Orchestration profile” -> “Saved research setup”
+- “Supplemental URL” -> “Web pages to read”
+- “Supplemental context” -> “Extra instructions or background”
+- “Filter tags” -> “Limit research to these source tags”
+- “Pipeline trace” -> “Research progress”; offer “Technical trace” separately
+- “Ingestion consent” -> “Help improve shared research intelligence”
+- “Falsification criteria” -> use “Verification standard” for story/claim verification or “Test criteria” for hypothesis testing; do not render for unrelated intents
+
+======================================================================
+3. REQUIRED CHANGES BY USER JOURNEY
+======================================================================
+
+3.1 PUBLIC HOME, METHODOLOGY, FAQ, COMPARE, PERSONAS, AND PRICING
+
+Replace fixed-pipeline positioning with adaptive-method positioning.
+
+Recommended hero direction:
+
+Heading:
+“Deep research that adapts to the question.”
+
+Supporting copy:
+“Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or claim verification. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.”
+
+Do not promise:
+
+- exactly ten stages on every run;
+- exactly seven agents on every run;
+- a Skeptic on every claim;
+- quantitative extraction on every run;
+- a fixed pipeline shape;
+- a result that “proves” truth;
+- universal falsification criteria;
+- static operational status, uptime, or SLA facts unless dynamically backed and contractually true.
+
+Methodology should explain both shared safeguards and adaptive methods.
+
+Shared safeguards can include:
+
+- source attribution;
+- claim-to-source binding where supported;
+- separation of evidence from interpretation;
+- uncertainty and contradiction handling;
+- source-quality/context checks;
+- traceability of plan and run;
+- verification appropriate to the requested outcome.
+
+Adaptive examples:
+
+- descriptive research: coverage, organization, currency, and source diversity;
+- comparison: consistent criteria and comparable evidence;
+- story verification: claim decomposition, corroboration, counterevidence, and verdict rules;
+- quantitative research: extraction, unit normalization, calculations, and data-quality checks;
+- discovery: observed needs, existing attempts, constraints, and uncertainty;
+- implementation: requirements, dependencies, risks, and ordered actions.
+
+FAQ must answer:
+
+- What kinds of questions can I ask?
+- When should I use EZ Research versus Research Lab?
+- What is Standard versus Deep?
+- How does ResearchOne choose specialists?
+- Does it always try to prove or disprove something? Answer: no.
+- Can it verify a news story, document, or claim?
+- What happens when sources disagree?
+- What does a citation mean, and what does it not guarantee?
+- Will it read a link merely pasted in the question? Reflect actual behavior precisely.
+- What is the difference between attachments and the Corpus?
+- What is stored, shared, or private?
+- What does a report cost and when am I charged?
+- What is a Dossier?
+- What is a Living Report?
+- What does BYOK change?
+- What happens if a run fails?
+
+Pricing:
+
+- Replace compressed dash-separated feature strings with scannable feature rows.
+- Explain Standard and Deep beside the first occurrence.
+- Verify all quotas and eligibility against code.
+- Replace “all five modes” if the redesigned request families are adaptive rather than five fixed modes.
+- Explain wallet credits versus subscription quotas.
+- Explain BYOK subscription cost versus charges billed by the model provider.
+- State whether BYOK runs are actually unlimited, rate-limited, or subject to fair use and non-model platform costs.
+- Correct add-on eligibility contradictions.
+- Make “Coming soon” unmistakable and prevent checkout paths for unavailable features.
+
+3.2 ONBOARDING
+
+Files:
+
+- frontend/src/pages/OnboardingPage.tsx
+- related signup-tier and consent components/tests
+
+Do not lead with internal architecture. Recommended structure:
+
+Step 1: “What would you like to research?”
+Show three to six selectable examples and allow free text. This can prefill the first EZ request but must not block signup.
+
+Step 2: “Choose how your eligible content may be used”
+Primary explanation:
+“You can allow sanitized excerpts from eligible research to improve shared research intelligence. Choosing No does not reduce your access to ResearchOne.”
+
+Add:
+
+- “What may be included”
+- “What is never included”
+- link to privacy/acceptable-use details
+- link to change this choice later
+- no preselected consent
+
+Place “Technical name: Pipeline B” inside an optional disclosure only if operators truly need users to know it.
+
+Step 3: plan and billing expectation.
+Explain the selected starting plan and where checkout will occur. Replace “continue to Account” with “continue to Billing & usage.”
+
+Step 4: quick-start checklist after entry:
+
+- Ask a question in EZ Research
+- Review the proposed plan
+- Confirm scope and expected cost
+- Follow progress
+- Read the report and sources
+
+3.3 RESEARCH CONSOLE: EZ VERSUS RESEARCH LAB
+
+Files include:
+
+- frontend/src/pages/UnifiedResearchConsole.tsx
+- frontend/src/pages/ResearchEasyPage.tsx
+- frontend/src/pages/ResearchStandardPage.tsx
+- frontend/src/pages/ResearchDeepPage.tsx
+- frontend/src/components/research/ResearchEngineModeToggle.tsx
+- frontend/src/components/research/ResearchClarificationChat.tsx
+- frontend/src/components/research/PlanConfirmationPanel.tsx
+- frontend/src/components/research/ResearchBriefPreview.tsx
+- frontend/src/components/research/AttachmentDropZone.tsx
+- frontend/src/components/research/SkepticPersonaSelector.tsx
+- related helpers/content/tests
+
+At the EZ/Lab toggle, add a persistent one-sentence distinction:
+
+EZ Research:
+“Describe the result you need. ResearchOne chooses the research approach and specialists, then shows you the plan before work begins.”
+
+Research Lab:
+“Control methods, sources, report format, verification intensity, specialist roles, and other advanced settings.”
+
+Remember the user’s last choice, but make EZ the first-run default.
+
+EZ prompt field:
+
+Label: “What do you want to know, decide, verify, find, or produce?”
+
+Helper:
+“Include the audience, timeframe, region, required sources, and desired output when they matter. You can also attach files or web pages.”
+
+Rotate accessible examples across informational, comparison, verification, opportunity, quantitative, and implementation work. Do not use a single anomaly-oriented example.
+
+Standard versus Deep:
+
+Use outcome-based descriptions and show plan eligibility/cost before submission. Example:
+
+- Standard: “Faster research for focused questions and concise reports.”
+- Deep: “Broader source work, more specialist analysis, and longer reports for complex or high-stakes questions.”
+
+Do not describe Standard/Deep only as V1/V2 or “heavier models.” Exact capability differences must match implementation.
+
+Attachments and web pages:
+
+- State whether the item is used for this run only.
+- State whether pasted URLs in the prompt are automatically fetched. If not, detect them and offer “Add these as pages to read.”
+- For URL ingestion, show fetched/failed status before plan confirmation where possible.
+- Explain that one URL reads one page unless the user explicitly chooses a site crawl.
+- Explain supported file types and size limits.
+- Explain JavaScript-heavy, paywalled, authenticated, or bot-blocked pages may not be readable.
+
+Clarification:
+
+Current “optional, you can skip” messaging is good but incomplete. Add:
+“If you skip a question, ResearchOne will show the assumption it plans to use so you can correct it before the run.”
+
+Do not ask questions whose answers can be safely expressed as editable plan assumptions. Ask only when the answer materially changes scope, method, cost, legality, safety, or deliverables.
+
+3.4 PLAN REVIEW AND CONFIRMATION
+
+EZ-mode plan review should show, in this order:
+
+1. What you asked for
+2. What the report will deliver
+3. Scope: timeframe, geography, audience, and included subjects
+4. Sources to read or seek
+5. How ResearchOne will approach it
+6. Your requirements
+7. Assumptions to confirm
+8. What is not included
+9. Expected depth/time
+10. Expected quota or wallet charge
+
+Required semantic correction:
+
+Do not merge user requirements/constraints into assumptions. Requirements are authoritative user instructions. Assumptions are system interpretations and must be separately editable.
+
+Replace generic exclusions such as “anything not listed is out of scope” with concrete exclusions, coverage limitations, unavailable sources, and unresolved ambiguities.
+
+In EZ mode:
+
+- collapse the internal agent roster under “Technical details”;
+- summarize it as “How we’ll approach it”;
+- do not show classifier confidence by default;
+- do not show competence checks, refinement-round counts, enum IDs, or connector classes;
+- show specialist roles as planned capabilities, not guarantees that a named agent has already executed.
+
+In Research Lab:
+
+- retain detailed routing and agent information;
+- provide a glossary for each control;
+- clearly distinguish “planned,” “running,” “completed,” “skipped,” and “failed.”
+
+Confirmation:
+
+Replace bare “Confirm & run” with contextual copy such as:
+“Confirm and start research”
+Helper: “This starts source retrieval and analysis and uses [quota/estimated wallet amount].”
+
+Auto-confirm:
+
+- explain the behavior before it is enabled;
+- provide a conspicuous pause/cancel control;
+- do not auto-confirm low-confidence plans, materially changed plans, plans with unresolved safety/legal issues, or plans whose cost exceeds the user’s configured threshold;
+- reconsider the current five-second timer. Ten seconds is a safer minimum, but the decisive requirement is genuine notice and a reliable way to stop it;
+- display a countdown with accessible live-region behavior;
+- keep the account preference editable.
+
+3.5 RUN PROGRESS, STATUS, FAILURE, AND RECOVERY
+
+Progress should answer:
+
+- What is happening now?
+- What has completed?
+- Is ResearchOne waiting for me?
+- Can I leave this page?
+- What will happen next?
+- Was I charged?
+
+Use plain-language stages first, technical trace second.
+
+Examples:
+
+- “Building your research plan”
+- “Finding candidate sources”
+- “Reading selected sources”
+- “Analyzing the evidence”
+- “Checking important claims and limitations”
+- “Writing and verifying the report”
+
+Do not show a universal “Challenge/Skeptic” stage when it was not selected.
+
+Failures:
+
+The first failure view must show:
+
+- plain-language failure summary;
+- whether the run can be retried;
+- whether the request/plan/attachments were preserved;
+- whether quota or funds were released/refunded;
+- recommended next action;
+- support link and request ID.
+
+Put stack-like diagnostics, provider/model details, raw trace output, and operator remediation under “Technical details.”
+
+Network errors:
+
+Replace raw Axios “Network Error” with:
+“ResearchOne could not reach the service. Your data was not submitted. Check your connection and try again.”
+If the health endpoint also fails, show a service-status link. Do not claim the user’s internet is at fault when the backend may be unavailable.
+
+3.6 DOSSIERS, REPORTS, REVISIONS, AND SPINOFFS
+
+Files include:
+
+- frontend/src/pages/DossiersPage.tsx
+- frontend/src/pages/DossierDetailPage.tsx
+- frontend/src/pages/ReportDetailPage.tsx
+- frontend/src/pages/ReportSpinoffPage.tsx
+- frontend/src/components/dossiers/*
+- related reports pages/components
+
+Add a first-use definition:
+“A Dossier keeps one research project together: the request, confirmed plan, progress, report, sources, revisions, and related follow-up research.”
+
+Define status labels in place. Add empty-state CTA: “Start your first research project.”
+
+Dossier detail:
+
+- render plan JSON as a structured, human-readable plan;
+- place raw JSON under “Raw technical data”;
+- label whether each specialist was planned or actually executed;
+- show lineage among original run, revisions, and spinoffs.
+
+Resolve Dossiers versus Reports:
+
+- If Reports is a legacy duplicate surface, redirect it to the relevant Dossier/report route and remove duplicate navigation.
+- If Reports remains separate, explain the distinction wherever either term appears.
+
+Report reading:
+
+- Begin with “Answer at a glance,” scope, freshness/as-of date, and key limitations.
+- Explain evidence labels on first use and via persistent glossary.
+- Explain that a citation supports a nearby statement but does not guarantee the source is correct.
+- Make contradictions easy to find without implying every disagreement invalidates the report.
+- Distinguish planned sources from sources actually used.
+- If references exist but claim mapping is absent, do not show an empty state that implies there were no sources.
+
+Falsification criteria:
+
+- Preserve for legacy reports and hypothesis-testing/adjudicative intents when actually generated.
+- For claim/story verification, prefer “Verification standard.”
+- For hypothesis testing, “Test criteria” is acceptable.
+- Hide the section for descriptive, explanatory, comparative, or implementation reports when it is not relevant.
+- Remove dashboard metrics that mark falsification as “Pending” for every report.
+
+Revision versus spinoff copy at the action point:
+
+- Revise this report: “Update selected sections using the existing report and any new material you add. This does not automatically repeat the full research process.”
+- Start follow-up research: “Create a new, fully researched Dossier using this report as context. Normal plan and billing rules apply.”
+
+Broaden the revision placeholder from “assumptions to test” to:
+“Tell ResearchOne what to correct, expand, recheck, or rewrite. Mention any facts, sources, constraints, or conclusions that need attention.”
+
+Sharing:
+
+Before creating a link, explain whether it is public, unlisted, authenticated, revocable, and whether sources/attachments are included.
+
+3.7 ACCOUNT, BILLING, WALLET, SUBSCRIPTIONS, AND MONITOR TOKENS
+
+Files include:
+
+- frontend/src/pages/AccountPage.tsx
+- frontend/src/pages/BillingPage.tsx
+- frontend/src/components/account/*
+- frontend/src/components/billing/*
+- monitor-token and add-on components
+
+Create one coherent Account hub or use unambiguous names:
+
+- Profile & security
+- Research preferences
+- Saved research setups
+- Billing & usage
+- Add-ons and monitoring
+- Data contribution
+
+At minimum, rename /app/billing from “Account” to “Billing & usage,” and place direct links between it and /account.
+
+Billing overview must explain three separate systems:
+
+1. Subscription plan and included quota
+2. Wallet credits for eligible pay-per-run charges or overages
+3. Monitor tokens for time-limited report monitoring
+
+Do not assume users understand which balance a feature consumes.
+
+Monitor token configuration failure:
+
+Ordinary-user copy:
+“Monitor token purchases are temporarily unavailable. Existing tokens and active monitors are unaffected. Please try again later or contact support.”
+
+Only say existing tokens/monitors are unaffected if verified by behavior. Otherwise use:
+“Monitor token purchases are temporarily unavailable. Check System Status or contact support.”
+
+Administrator-only status may show:
+“Stripe monitor-token price IDs are missing” and the bootstrap/env remediation.
+
+Never show STRIPE_SECRET_KEY, npx bootstrap commands, price environment-variable names, API-host instructions, or redeploy instructions to an ordinary user.
+
+Monitor-token pack buttons should state price and result:
+“Buy 5 monitor tokens — $25”
+Helper: “You’ll continue to Stripe to complete the purchase.”
+
+Explain:
+
+- which monitor types consume tokens;
+- how many tokens activation uses;
+- the active period;
+- whether a token itself expires before use;
+- what pause/resume does;
+- renewal behavior;
+- refund behavior;
+- whether Reverse-Citation Watch is subscription-based or token-based.
+
+The current code/copy appears inconsistent about whether tokens apply only to Living Reports or also to Reverse-Citation Watch. Resolve this from backend billing and entitlement behavior before writing final copy.
+
+Auto top-up:
+
+The current checkbox is misleading if it does not automatically charge a payment method. Until automatic charging exists, rename it:
+“Remind me when my wallet is empty”
+Do not call it “Auto top-up.”
+
+Subscription cancellation:
+
+Before confirmation, show the effective cancellation date, access that remains, add-on impact, report retention, and whether unused wallet credits or tokens remain.
+
+History:
+
+Define paid, pending, failed, refunded, credit, debit, and adjustment. Show a useful empty state and support path for an unrecognized transaction.
+
+3.8 ADD-ONS AND MONITORS
+
+Files include:
+
+- frontend/src/pages/AddOnsPage.tsx
+- frontend/src/pages/MonitorsPage.tsx and detail/create pages
+- Living Report and Reverse-Citation Watch components/routes
+
+Lead with outcomes, not billing primitives.
+
+Living Report:
+“Keep a finalized report under review for a defined period. ResearchOne periodically checks for relevant new sources and shows what may change the report.”
+
+Reverse-Citation Watch:
+Describe precisely what is watched, which works qualify, where citations are searched, update frequency, and notification behavior. Do not suggest universal coverage.
+
+For each add-on show:
+
+- what it does;
+- prerequisites;
+- what it monitors or enhances;
+- update frequency;
+- duration;
+- exact price or balance used;
+- what triggers a notification;
+- how to pause/cancel;
+- limitations.
+
+Explain the monitor lifecycle:
+
+finalized report -> eligible monitor -> select duration/type -> see exact cost -> activate -> receive updates -> renew/expire/cancel.
+
+Do not present “coming soon” cards as usable features. Offer a waitlist or contact action, or remove them.
+
+Every monitor empty state needs:
+
+- a one-sentence explanation;
+- eligibility;
+- link to an eligible finalized report;
+- token/billing link when necessary.
+
+3.9 CORPUS, INGEST, ATLAS, EMBEDDING VISUALIZATION, KNOWLEDGE GRAPH
+
+Navigation:
+
+Group these under “Data & evidence” or another clear parent. Keep primary research navigation short. On first use, show a workflow:
+
+Ingest material -> review it in Corpus -> create embeddings/derived views -> explore in Embedding Viz or export to Atlas -> use findings in Research.
+
+Corpus:
+
+- Define private versus shared material.
+- State how content enters the Corpus.
+- Explain whether deleting a source affects past reports.
+- Explain tags, chunks, claims, and contradictions in plain language.
+- Show tier/plan requirements.
+
+Ingest:
+
+Primary intro:
+“Use Ingest when you want material available across future research projects. For a single request, attach files or web pages in Research instead.”
+
+Explain:
+
+- URL fetch versus site crawl;
+- one page versus same-origin crawl;
+- crawl layer meaning and estimated maximum scope;
+- supported formats and limits;
+- JavaScript/paywall/authentication limitations;
+- processing statuses;
+- duplicates;
+- tags and later retrieval;
+- privacy/data-contribution choice;
+- deletion consequences.
+
+Replace stale placeholder tags such as “anomaly” with neutral examples:
+“climate-policy, client-a, 2026-market-data”
+
+Atlas:
+
+- Explain that Atlas export and in-browser Embedding Viz are different.
+- Identify Nomic Atlas as a third party.
+- State exactly what text/metadata is exported.
+- Require a clear privacy warning and confirmation.
+- Explain that clusters represent similarity, not truth, importance, or correctness.
+
+Embedding Viz:
+
+- Define point, cluster, distance, color, and filters.
+- Empty state should link to Ingest/Research and describe the prerequisite.
+- State that outliers are leads, not automatically meaningful or correct.
+
+Knowledge Graph:
+
+- Define source, claim, report, contradiction, and relationship nodes/edges.
+- Explain click, hover, search, filters, and reset.
+- State that the graph is a derived view of available material, not a complete map of reality.
+- Provide an empty-state CTA.
+
+3.10 BYOK
+
+Files:
+
+- frontend/src/pages/BYOKConfigPage.tsx
+- public BYOK page and billing/entitlement copy
+
+Current key-security bullets are a useful start. Add:
+
+- which research calls use the user’s key;
+- whether every specialist supports every provider;
+- how model/provider selection works;
+- what ResearchOne subscription/platform charges still apply;
+- what the provider bills separately;
+- what happens when the provider rejects, rate-limits, or exhausts the key;
+- whether ResearchOne falls back to a platform key, and whether the user can prohibit fallback;
+- how replacement and deletion affect queued/running work;
+- link to each provider’s key-management page;
+- warning never to paste a key into a prompt or support message.
+
+Replace “route research runs through your account” with a precise description grounded in behavior.
+
+3.11 NAVIGATION, CONTEXTUAL HELP, AND EMPTY STATES
+
+Current top-level app navigation is too flat. Recommended primary structure:
+
+- Research
+- Dossiers
+- Monitoring
+- Data & evidence
+- Billing & usage
+- Help
+
+Advanced/admin functions should not compete with the core first-run journey.
+
+Add:
+
+- descriptive labels in expanded navigation;
+- page-level “What is this?” help;
+- first-run dismissible introductions;
+- contextual help beside irreversible, costly, privacy-relevant, or technical controls;
+- useful empty-state actions;
+- links from errors to the exact recovery destination;
+- a searchable glossary/docs hub.
+
+Do not rely on hover-only tooltips for critical information. Tooltips must be keyboard accessible and must supplement visible labels.
+
+======================================================================
+4. REBUILD THE GUIDE AND DOCS
+======================================================================
+
+Replace frontend/src/pages/GuidePage.tsx with a task-oriented guide in this order:
+
+1. 60-second quick start
+2. EZ Research versus Research Lab
+3. How to write a useful request
+4. Example requests by outcome
+5. Files, web pages, and the reusable Corpus
+6. How to review the plan
+7. Standard versus Deep
+8. Following a run
+9. Reading evidence, citations, uncertainty, and contradictions
+10. Revision versus follow-up research
+11. Dossiers
+12. Living Reports and Reverse-Citation Watch
+13. Corpus, Ingest, Embedding Viz, Atlas, and Knowledge Graph
+14. Billing, wallet, and monitor tokens
+15. Privacy, data contribution, and BYOK
+16. Troubleshooting
+17. Under the hood for advanced users
+
+Recommended quick start:
+
+“Open Research and stay in EZ Research. Describe what you want to know, decide, verify, find, or produce. Add any files or web pages ResearchOne must read. Answer clarifying questions or skip them. Review the proposed scope, assumptions, sources, deliverables, and expected charge. Confirm the plan, follow progress, then read the report together with its sources and limitations.”
+
+Prompt-writing guidance:
+
+“A good request states the outcome, not an artificial hypothesis.”
+
+Template:
+“Research [topic/question] for [audience/purpose]. Cover [scope/time/place]. Use or prioritize [required sources]. Compare or verify [important points]. Deliver [format].”
+
+Verification template:
+“Evaluate the important factual claims in [story/document]. Separate confirmed, contradicted, unsupported, and unresolved claims. Use independent primary sources where available and explain the verification standard.”
+
+Informational template:
+“Explain [topic] for [audience]. Cover [subtopics and timeframe], compare major viewpoints, and identify what is well established versus uncertain.”
+
+The advanced “Under the hood” section can explain routing, agents, source tiers, models, traces, and fixed internal identifiers. It must not be the first-use guide.
+
+/docs:
+
+Build a real public docs hub from the same canonical content system, including:
+
+- Getting started
+- Research methods
+- Sources and attachments
+- Reports and Dossiers
+- Monitoring
+- Data tools
+- Billing
+- Privacy and security
+- Troubleshooting
+- Glossary
+
+If this cannot be completed in the current workstream, remove Docs links until it is.
+
+======================================================================
+5. COPY ARCHITECTURE TO PREVENT FUTURE DRIFT
+======================================================================
+
+Do not continue scattering capability claims through dozens of components.
+
+Create a typed canonical content/capability layer, for example:
+
+- frontend/src/content/productGlossary.ts
+- frontend/src/content/researchMethods.ts
+- frontend/src/content/planHelp.ts
+- frontend/src/content/billingHelp.ts
+- frontend/src/content/dataToolsHelp.ts
+- frontend/src/content/errorMessages.ts
+
+Use shared copy across landing, FAQ, Guide, onboarding, tooltips, and empty states where the factual statement is the same.
+
+Separate:
+
+- stable product definitions;
+- plan/tier facts fetched from backend configuration;
+- runtime availability/status;
+- marketing headlines;
+- technical/admin remediation.
+
+Do not hard-code dynamic prices, quotas, pack sizes, active periods, provider availability, or feature status in multiple frontend files. Prefer backend-delivered catalog/config values and format them through shared components.
+
+Introduce an audience property for help content:
+
+- user
+- advanced
+- admin
+
+Never render admin remediation to a normal user.
+
+======================================================================
+6. ACCESSIBILITY AND PLAIN-LANGUAGE REQUIREMENTS
+======================================================================
+
+- Target approximately grade 8 reading level for core user flows.
+- Define a product-specific term at first use.
+- Use sentence case for labels.
+- Prefer verbs that describe outcomes.
+- Do not use acronyms without expansion.
+- Do not use color alone to indicate evidence strength, run status, or billing state.
+- All disclosures, help icons, tabs, countdowns, errors, and progress changes must be keyboard and screen-reader accessible.
+- Critical instructions must be visible, not tooltip-only.
+- Error copy must identify what happened, what was preserved, and what the user can do.
+- Buttons must say what will happen; avoid ambiguous “Continue,” “Manage,” “Submit,” and icon-only actions where consequences matter.
+- Mobile layouts must retain explanations and cost/privacy warnings rather than hiding them.
+- No emojis in instructional or error copy unless the established design system explicitly requires them.
+
+======================================================================
+7. IMPLEMENTATION ORDER
+======================================================================
+
+PR 1 — Correct dangerous contradictions
+
+- Replace Guide’s universal falsification/anomaly instructions.
+- Remove universal fixed-pipeline/Skeptic claims from public surfaces.
+- Remove deployment commands and secrets/config language from customer billing errors.
+- Correct misleading Auto top-up wording.
+- Correct Account versus Billing naming.
+- Add regression tests for forbidden universal claims.
+
+PR 2 — EZ journey and plan review
+
+- Explain EZ versus Lab.
+- Improve prompt/examples/depth/attachment guidance.
+- Separate requirements from assumptions.
+- Simplify plan review and hide internals.
+- Add charge/time and auto-confirm clarity.
+- Improve progress/failure/recovery copy.
+
+PR 3 — Dossiers and reports
+
+- Define Dossiers.
+- Resolve Reports duplication.
+- Structure plan display instead of raw JSON.
+- Make falsification/verification sections intent-aware.
+- Clarify revision/spinoff/share behavior.
+- Improve evidence/citation explanations.
+
+PR 4 — Account, billing, add-ons, monitoring
+
+- Create coherent Account information architecture.
+- Explain subscription, wallet, and tokens.
+- Resolve token/RCW semantic inconsistency.
+- Add lifecycle/cost/eligibility help.
+- Add user-safe configuration failure states.
+
+PR 5 — Data and evidence tools
+
+- Add navigation grouping and first-run workflow.
+- Add Corpus/Ingest/Atlas/Viz/Graph definitions, privacy, limits, and CTAs.
+- Add third-party export disclosure.
+
+PR 6 — Public docs and copy architecture
+
+- Replace /docs stub.
+- Centralize canonical definitions and dynamic plan facts.
+- Align pricing, FAQ, methodology, compare, personas, security, and public BYOK.
+
+Keep PRs surgical. Do not combine unrelated visual redesign, backend refactors, or speculative new features unless necessary to make a copy promise true.
+
+======================================================================
+8. REQUIRED TESTS
+======================================================================
+
+Add automated tests for:
+
+1. Forbidden universal-copy regression
+
+Fail if user-facing core copy contains unqualified variants of:
+
+- “every report requires falsification”
+- “Skeptic on every claim”
+- “every objective passes through the same pipeline”
+- “each mode runs the full ten-stage pipeline”
+- “write a testable query” as universal first-run instruction
+
+Allow contextual uses in legacy-report labels, advanced settings, verification flows, and technical documentation.
+
+2. Route-level guidance contract
+
+For every major route, assert:
+
+- visible page heading;
+- one-sentence purpose;
+- primary next action or useful empty state;
+- help/glossary access for non-obvious concepts;
+- no admin-only remediation for ordinary users.
+
+Routes:
+
+- /
+- /pricing
+- /methodology
+- /faq
+- /docs
+- /onboarding
+- /account
+- /app/research
+- /app/dossiers
+- dossier detail
+- report detail
+- /app/add-ons
+- monitor list/detail/create
+- /app/corpus
+- /app/ingest
+- /app/atlas
+- /app/embedding-viz
+- /app/knowledge-graph
+- /app/billing
+- /app/byok
+- /app/guide
+
+3. Intent-aware report language
+
+- descriptive plan/report does not require falsification;
+- comparison plan uses comparison criteria;
+- verification plan exposes verification standard;
+- quantitative plan states data availability/units/limitations;
+- legacy report with falsification data remains readable.
+
+4. Requirements versus assumptions
+
+- user constraints render under Requirements;
+- system inferences render under Assumptions;
+- editing/dismissing an assumption cannot silently remove a user requirement.
+
+5. Entitlement and pricing consistency
+
+- frontend plan facts derive from one catalog/config source;
+- unavailable/coming-soon features cannot initiate checkout;
+- monitor token pack absence produces user-safe copy;
+- admin status retains actionable configuration detail;
+- wallet reminder is not called Auto top-up without automatic charging.
+
+6. Accessibility
+
+- keyboard operation;
+- focus management;
+- live progress/countdown announcements;
+- labels for icon actions;
+- no color-only status;
+- critical tooltip content has visible equivalent.
+
+7. Link integrity
+
+- no public navigation to placeholder Docs;
+- Guide links resolve;
+- empty-state CTAs resolve;
+- Account/Billing cross-links resolve;
+- support/status/privacy links resolve.
+
+======================================================================
+9. DEFINITION OF DONE
+======================================================================
+
+This work is complete only when:
+
+- A new user can understand the product without knowing research-method jargon.
+- A user can submit a purely informational request without being told to invent a falsifiable hypothesis.
+- A user can submit a story/claim-verification request and see a clear verification method.
+- EZ mode explains the outcome and hides orchestration internals by default.
+- Research Lab retains advanced control with definitions.
+- The research plan clearly separates user requirements, system assumptions, concrete exclusions, sources, deliverables, and expected cost.
+- All important buttons state their consequence.
+- The user can tell the difference among subscription quota, wallet funds, and monitor tokens.
+- No customer-facing page exposes server commands, secret-key examples, environment variables, or redeployment instructions.
+- Dossiers, reports, revisions, and spinoffs have distinct definitions.
+- Corpus, Ingest, Atlas, Embedding Viz, and Knowledge Graph each explain when to use them, prerequisites, privacy implications, and next steps.
+- Public landing, Methodology, FAQ, Pricing, Guide, and in-product copy describe one coherent product.
+- Dynamic price/tier/status facts have one authoritative source.
+- Legacy reports remain readable.
+- Existing research, billing, authentication, consent, and monitoring behavior is not broken.
+- Tests prevent a future return to universal-falsification or fixed-pipeline claims.
+
+======================================================================
+10. AGENT EXECUTION INSTRUCTIONS
+======================================================================
+
+Before editing:
+
+1. Read repository agent rules and scoped instructions.
+2. Pull the latest main and inventory all user-facing strings, including ARIA labels, tooltips, toasts, empty states, validation messages, error fallbacks, emails, and public metadata.
+3. Trace capabilities and entitlement claims to backend code/config.
+4. Produce a short discrepancy table: current copy, actual behavior, replacement, file.
+5. Flag genuine product decisions rather than inventing behavior. Decisions that must be resolved include:
+   - exact Standard versus Deep differences;
+   - whether prompt-pasted URLs are fetched;
+   - monitor token applicability and expiration;
+   - Reverse-Citation Watch billing model;
+   - BYOK fallback and non-model charges;
+   - Reports versus Dossiers;
+   - data included in Atlas export;
+   - what “sanitized eligible content” precisely includes/excludes.
+
+During editing:
+
+1. Preserve existing route behavior unless this brief explicitly calls for an information-architecture correction.
+2. Prefer shared typed content over duplicated strings.
+3. Keep normal-user, advanced, and admin guidance separate.
+4. Do not add unsupported capability claims.
+5. Update tests with each PR.
+6. Include screenshots for desktop and mobile primary states, empty states, errors, and plan confirmation.
+
+Before merge:
+
+1. Run lint, typecheck, unit/integration tests, and frontend build.
+2. Run repository-wide stale-copy searches.
+3. Test one request from each request family in EZ mode.
+4. Test a low-confidence clarification and skipped clarification.
+5. Test Standard and Deep entitlement/cost display.
+6. Test report completion, failure, retry, revision, and spinoff.
+7. Test billing with configured and missing Stripe price IDs.
+8. Test each expert tool with data and without data.
+9. Have a non-technical reviewer perform the first-run flow without coaching.
+10. Record any remaining copy-versus-behavior discrepancy as a blocking issue, not a documentation footnote.
+
+END OF IMPLEMENTATION BRIEF

@@ -69,7 +69,15 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
+<<<<<<< HEAD
 import { runSpecialistExecution } from './specialistExecutionService';
+=======
+import {
+  AGENT_CAPABILITY_REGISTRY,
+  isSpecialistAgentId,
+  selectAgentsForBrief,
+} from './agentCapabilityRegistry';
+>>>>>>> origin/main
 
 export type {
   CreditChargeContext,
@@ -131,6 +139,79 @@ function parseSkepticSidebarJson(raw: string): Array<Record<string, unknown>> {
   } catch {
     return [];
   }
+}
+
+function parseJsonObjectBestEffort(raw: string): Record<string, unknown> | null {
+  const parseCandidate = (candidate: string): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const t = raw.trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidates = [fence?.[1]?.trim(), t].filter((x): x is string => typeof x === 'string' && x.length > 0);
+  for (const candidate of candidates) {
+    const whole = parseCandidate(candidate);
+    if (whole) return whole;
+    const match = candidate.match(/\{[\s\S]*\}/);
+    if (!match) continue;
+    const sliced = parseCandidate(match[0]);
+    if (sliced) return sliced;
+  }
+  return null;
+}
+
+interface SpecialistFinding {
+  role: string;
+  content: string;
+  parsed: Record<string, unknown> | null;
+  failed: boolean;
+  errorHint?: string;
+}
+
+type SpecialistModelRole = Extract<
+  ModelRole,
+  | 'market_scout'
+  | 'competitor_mapper'
+  | 'demand_signal_analyst'
+  | 'feasibility_architect'
+  | 'story_verifier'
+  | 'timeline_reconstructor'
+  | 'data_analysis_specialist'
+  | 'quantitative_quality_auditor'
+>;
+
+const SPECIALIST_EVIDENCE_CONTEXT_LIMIT: Partial<Record<SpecialistModelRole, number>> = {
+  market_scout: 45000,
+  competitor_mapper: 45000,
+  demand_signal_analyst: 45000,
+  feasibility_architect: 65000,
+  story_verifier: 65000,
+  timeline_reconstructor: 65000,
+  data_analysis_specialist: 85000,
+  quantitative_quality_auditor: 85000,
+};
+
+const SPECIALIST_MODEL_ROLE_SET = new Set<SpecialistModelRole>([
+  'market_scout',
+  'competitor_mapper',
+  'demand_signal_analyst',
+  'feasibility_architect',
+  'story_verifier',
+  'timeline_reconstructor',
+  'data_analysis_specialist',
+  'quantitative_quality_auditor',
+]);
+
+function isSpecialistModelRole(roleId: string): roleId is SpecialistModelRole {
+  return SPECIALIST_MODEL_ROLE_SET.has(roleId as SpecialistModelRole);
 }
 
 interface ResearchPlan {
@@ -376,6 +457,7 @@ async function runResearchJobInner(
     resolveOrchestrationProfileFromJob(data),
     runAddons
   );
+<<<<<<< HEAD
   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
   const sourceClassesFromPlan =
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
@@ -389,6 +471,21 @@ async function runResearchJobInner(
       researchBrief: confirmedResearchBrief,
       sourceClasses: sourceClassesFromPlan,
     });
+=======
+  const specialistAgentIds = (() => {
+    const fromPlan = data.confirmedPlanPayload?.orchestrationProfile?.agentsWillRun
+      ?.filter((id): id is string => typeof id === 'string' && isSpecialistAgentId(id));
+    if (fromPlan && fromPlan.length > 0) return Array.from(new Set(fromPlan));
+    const fallbackIntentId = data.confirmedPlanPayload?.intent?.id;
+    if (!fallbackIntentId) return [];
+    return selectAgentsForBrief(
+      fallbackIntentId,
+      data.confirmedPlanPayload?.researchBrief?.secondaryIntent
+    )
+      .filter((agent) => agent.isSpecialist)
+      .map((agent) => agent.id);
+  })();
+>>>>>>> origin/main
 
   let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
   let wave53SourceClassBreakdown: Record<string, number> = {};
@@ -650,6 +747,7 @@ async function runResearchJobInner(
         allowFallbackByRole,
         byokApiKeyOverride,
         userId: creditCtx?.userId,
+        specialistAgentIds,
         maxIngestCapOverride: addonEffects.maxIngestCapOverride,
         onRoundComplete: async ({ round, candidatesAfter }) => {
           const pct = round === 1 ? 15 : 17;
@@ -850,9 +948,113 @@ async function runResearchJobInner(
       reasonerResult = orchestrationStubModelResult('reasoner', stubReasoningFromRetriever(retrieverResult.content));
     }
 
+    const specialistFindings: SpecialistFinding[] = [];
+    const capabilityMap = new Map(
+      AGENT_CAPABILITY_REGISTRY
+        .filter((agent) => agent.isSpecialist)
+        .map((agent) => [agent.id, agent])
+    );
+    if (specialistAgentIds.length > 0) {
+      await progress('reasoning', 56, 'Running specialist analyses for this intent...', {
+        substep: 'specialists_started',
+        detail: specialistAgentIds.join(', '),
+      });
+
+      const runSpecialistRole = async (roleId: SpecialistModelRole): Promise<SpecialistFinding> => {
+        try {
+          const evidenceLimit = SPECIALIST_EVIDENCE_CONTEXT_LIMIT[roleId] ?? 60000;
+          const evidenceSlice = evidenceSliceByLimit.get(evidenceLimit)
+            ?? (() => {
+              const sliced = evidenceContext.slice(0, evidenceLimit);
+              evidenceSliceByLimit.set(evidenceLimit, sliced);
+              return sliced;
+            })();
+          const specialistResult = await callRoleModel({
+            role: roleId,
+            ...v2,
+            runtimeOverrides: runtimeOverrideForRole(runModelOverrides, roleId),
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPTS[roleId] },
+              {
+                role: 'user',
+                content:
+                  `Research Query: ${researchQuery}\n\n` +
+                  `Plan:\n${JSON.stringify(plan, null, 2)}\n\n` +
+                  `Retriever Analysis:\n${retrieverResult.content}\n\n` +
+                  `Reasoning Output:\n${reasonerResult.content}\n\n` +
+                  `Evidence Chunks:\n${evidenceSlice}\n\n` +
+                  `Return only the JSON schema requested in your instructions.`,
+              },
+            ],
+          });
+          modelLog.push(specialistResult);
+          const parsed = parseJsonObjectBestEffort(specialistResult.content);
+          await saveRunCheckpoint({
+            runId,
+            stage: 'reasoning',
+            checkpointKey: `specialist_${roleId}`,
+            snapshot: { role: roleId, output: specialistResult.content },
+          });
+          return {
+            role: roleId,
+            content: specialistResult.content,
+            parsed,
+            failed: false,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const errorHint = /timeout|timed out/i.test(message)
+            ? 'timeout'
+            : /429|rate limit/i.test(message)
+              ? 'rate_limit'
+              : /json|parse/i.test(message)
+                ? 'invalid_response'
+                : 'execution_error';
+          logger.warn(`[${runId}] specialist execution failed for ${roleId}`, {
+            error: message,
+            errorHint,
+          });
+          return {
+            role: roleId,
+            content: '',
+            parsed: null,
+            failed: true,
+            errorHint,
+          };
+        }
+      };
+
+      const typedSpecialistRoles = specialistAgentIds.filter(isSpecialistModelRole);
+      const evidenceSliceByLimit = new Map<number, string>();
+      const parallelizable = typedSpecialistRoles.filter((id) => capabilityMap.get(id)?.canRunInParallel);
+      const sequential = typedSpecialistRoles.filter((id) => !capabilityMap.get(id)?.canRunInParallel);
+
+      const parallelResults = await Promise.all(parallelizable.map((roleId) => runSpecialistRole(roleId)));
+      specialistFindings.push(...parallelResults);
+      for (const roleId of sequential) {
+        specialistFindings.push(await runSpecialistRole(roleId));
+      }
+
+      await progress('reasoning', 59, 'Specialist analyses completed', {
+        substep: 'specialists_done',
+        detail: `${specialistFindings.filter((item) => !item.failed).length}/${specialistFindings.length} successful`,
+      });
+    }
+
+    const specialistFindingsBlock = specialistFindings
+      .map((item) => {
+        const displayName = capabilityMap.get(item.role)?.displayName ?? item.role;
+        if (item.failed) {
+          return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
+        }
+        if (!item.content.trim()) return `### ${displayName}\nNo specialist findings returned.`;
+        return `### ${displayName}\n${item.content}`;
+      })
+      .join('\n\n');
+
     // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {
-      await progress('reasoning', 52, 'Steelman pass: strengthening formulations before critique...', {
+      await progress('reasoning', 62, 'Steelman pass: strengthening formulations before critique...', {
         substep: 'steelman_started',
       });
       const steel = await runSteelmanPass({
@@ -990,7 +1192,9 @@ async function runResearchJobInner(
               `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
               `# Executive Summary\n(direct answer)\n# Evidence\n(short bullets tied to chunk IDs where possible)\n` +
               `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
-              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\nEvidence:\n${evidenceContext.slice(0, 60000)}`,
+              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
+              `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
+              `Evidence:\n${evidenceContext.slice(0, 60000)}`,
           },
         ],
       });
@@ -1194,6 +1398,14 @@ async function runResearchJobInner(
           degraded_coverage_reasons: degradedCoverageReasons,
         },
         ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
+        specialist_findings: specialistFindings.map((finding) => ({
+          role: finding.role,
+          failed: finding.failed,
+          error_hint: finding.errorHint ?? null,
+          parsed: finding.parsed,
+          parsed_preview: finding.parsed ? Object.keys(finding.parsed).slice(0, 5) : null,
+          content_preview: finding.parsed ? null : finding.content ? finding.content.slice(0, 500) : null,
+        })),
         // Phase B — contract audit result stored as metadata (null when skipped)
         contract_audit: contractAuditResult,
       },
@@ -1281,8 +1493,13 @@ async function runResearchJobInner(
     await aggregateAndPersistDossierStatistics(runId, {
       profileDisplayName: orchProfile.displayName,
       intentId: orchProfile.intent,
+<<<<<<< HEAD
       agentsRan: agentExecutionTelemetry.ran,
       agentsSkipped: agentExecutionTelemetry.skipped,
+=======
+      agentsRan: [...new Set([...orchProfile.agentsToRun, ...specialistAgentIds])],
+      agentsSkipped: [...orchProfile.agentsToSkip],
+>>>>>>> origin/main
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
       sourceClassBreakdown:

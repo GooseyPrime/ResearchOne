@@ -209,6 +209,10 @@ const config = {
     storyVerifier: process.env.STORY_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.storyVerifier,
     timelineReconstructor:
       process.env.TIMELINE_RECONSTRUCTOR_MODEL || CODE_DEFAULT_REASONING_MODELS.timelineReconstructor,
+    dataAnalysisSpecialist:
+      process.env.DATA_ANALYSIS_SPECIALIST_MODEL || CODE_DEFAULT_REASONING_MODELS.dataAnalysisSpecialist,
+    quantitativeQualityAuditor:
+      process.env.QUANTITATIVE_QUALITY_AUDITOR_MODEL || CODE_DEFAULT_REASONING_MODELS.quantitativeQualityAuditor,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
     /** Wave 5.1 — intent/plan gate LLM; tier-uniform; env override for ops. */
@@ -249,6 +253,10 @@ const config = {
       storyVerifier: process.env.STORY_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.storyVerifier,
       timelineReconstructor:
         process.env.TIMELINE_RECONSTRUCTOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.timelineReconstructor,
+      dataAnalysisSpecialist:
+        process.env.DATA_ANALYSIS_SPECIALIST_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.dataAnalysisSpecialist,
+      quantitativeQualityAuditor:
+        process.env.QUANTITATIVE_QUALITY_AUDITOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.quantitativeQualityAuditor,
     },
   },
 
@@ -478,6 +486,8 @@ const reasoningModelsForPolicy = {
   feasibility_architect: config.models.feasibilityArchitect,
   story_verifier: config.models.storyVerifier,
   timeline_reconstructor: config.models.timelineReconstructor,
+  data_analysis_specialist: config.models.dataAnalysisSpecialist,
+  quantitative_quality_auditor: config.models.quantitativeQualityAuditor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 const reasoningFallbacksForPolicy = {
@@ -508,6 +518,8 @@ const reasoningFallbacksForPolicy = {
   feasibility_architect: config.models.fallbacks.feasibilityArchitect,
   story_verifier: config.models.fallbacks.storyVerifier,
   timeline_reconstructor: config.models.fallbacks.timelineReconstructor,
+  data_analysis_specialist: config.models.fallbacks.dataAnalysisSpecialist,
+  quantitative_quality_auditor: config.models.fallbacks.quantitativeQualityAuditor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 validateReasoningModelPolicy({

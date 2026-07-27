@@ -49,6 +49,12 @@ describe('agentCapabilityRegistry', () => {
     // removed from feasibility_architect, one of these expectations fails.
   });
 
+  it('selects data and quantitative specialists for comparative briefs', () => {
+    const ids = selectAgentsForBrief('comparative').map((agent) => agent.id);
+    expect(ids).toContain('data_analysis_specialist');
+    expect(ids).toContain('quantitative_quality_auditor');
+  });
+
   it('does not return duplicate agents when primary and secondary intents overlap', () => {
     const ids = selectAgentsForBrief('opportunity_discovery', 'comparative').map((agent) => agent.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -62,7 +68,7 @@ describe('agentCapabilityRegistry', () => {
 
   it('defines cost class and parallelism for every specialist agent', () => {
     const specialists = AGENT_CAPABILITY_REGISTRY.filter((agent) => agent.isSpecialist);
-    expect(specialists.length).toBe(6);
+    expect(specialists.length).toBe(8);
     specialists.forEach((agent) => {
       expect(['low', 'medium', 'high']).toContain(agent.costClass);
       expect(typeof agent.canRunInParallel).toBe('boolean');

@@ -153,6 +153,8 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   feasibility_architect: config.models.feasibilityArchitect,
   story_verifier: config.models.storyVerifier,
   timeline_reconstructor: config.models.timelineReconstructor,
+  data_analysis_specialist: config.models.dataAnalysisSpecialist,
+  quantitative_quality_auditor: config.models.quantitativeQualityAuditor,
 };
 
 const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
@@ -183,6 +185,8 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   feasibility_architect: config.models.fallbacks.feasibilityArchitect,
   story_verifier: config.models.fallbacks.storyVerifier,
   timeline_reconstructor: config.models.fallbacks.timelineReconstructor,
+  data_analysis_specialist: config.models.fallbacks.dataAnalysisSpecialist,
+  quantitative_quality_auditor: config.models.fallbacks.quantitativeQualityAuditor,
 };
 
 function primaryForRole(role: ModelRole, runtimePrimary?: string): string {
@@ -225,6 +229,8 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   feasibility_architect: 0.3,
   story_verifier: 0.3,
   timeline_reconstructor: 0.3,
+  data_analysis_specialist: 0.25,
+  quantitative_quality_auditor: 0.15,
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
@@ -259,6 +265,8 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   feasibility_architect: 8192,
   story_verifier: 8192,
   timeline_reconstructor: 8192,
+  data_analysis_specialist: 8192,
+  quantitative_quality_auditor: 8192,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -1073,6 +1081,28 @@ Return ONLY valid JSON (no markdown fences):
   "events": [{ "date": "<ISO date or approximate>", "event": "<string>", "confidence": "high|medium|low", "sources": ["<string>"] }],
   "gaps": ["<description of chronological gap>"],
   "summary": "<plain-language paragraph>"
+}`),
+
+ data_analysis_specialist: withPreamble(`You are the Data Analysis Specialist.
+Extract measurable indicators from the evidence and interpret what the numbers imply.
+Prefer reproducible metrics, trend deltas, and benchmark comparisons over prose-only judgments.
+If the corpus does not contain enough quantitative data, return an empty metrics array and explain the gap.
+Return a valid JSON object:
+{
+ "metrics": [{ "metric": "<string>", "value": "<string>", "interpretation": "<string>" }],
+ "trend_summary": "<plain-language paragraph>",
+ "confidence": "low|medium|high"
+}`),
+
+ quantitative_quality_auditor: withPreamble(`You are the Quantitative Quality Auditor.
+Audit statistical quality in the analysis: denominator integrity, sample representativeness, baseline comparability, and arithmetic consistency.
+Flag where metrics are weakly supported or where uncertainty should be explicit.
+If no quantitative claims are present, return checks with pass/warn results that state why quantitative confidence is limited.
+Return a valid JSON object:
+{
+ "checks": [{ "check": "<string>", "result": "pass|warn|fail", "note": "<string>" }],
+ "risk_summary": "<plain-language paragraph>",
+ "confidence": "low|medium|high"
 }`),
 };
 

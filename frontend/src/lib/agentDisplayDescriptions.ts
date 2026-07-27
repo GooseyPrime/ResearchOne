@@ -5,6 +5,8 @@ export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; descript
   feasibility_architect: { name: 'Feasibility Architect', description: 'Evaluates buildability, stack, timeline, and resource constraints.' },
   story_verifier: { name: 'Story Verifier', description: 'Cross-checks reported accounts against corroborating evidence.' },
   timeline_reconstructor: { name: 'Timeline Reconstructor', description: 'Reconstructs chronologies from fragmented sources.' },
+  data_analysis_specialist: { name: 'Data Analysis Specialist', description: 'Extracts quantitative metrics, benchmark deltas, and trend signals from evidence.' },
+  quantitative_quality_auditor: { name: 'Quantitative Quality Auditor', description: 'Audits statistical quality, numerical consistency, and measurement caveats.' },
   planner: { name: 'Research Planner', description: 'Decomposes your request into a structured investigation plan.' },
   retriever: { name: 'Source Investigator', description: 'Searches and evaluates sources across the public web.' },
   reasoner: { name: 'Evidence Reasoner', description: 'Weighs evidence and builds the analytical framework.' },
@@ -25,4 +27,6 @@ export const SPECIALIST_AGENT_IDS = new Set([
   'feasibility_architect',
   'story_verifier',
   'timeline_reconstructor',
+  'data_analysis_specialist',
+  'quantitative_quality_auditor',
 ]);
