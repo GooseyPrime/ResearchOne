@@ -12,6 +12,7 @@ import type {
 } from './agentCapabilityRegistry';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
+const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
 
 type SpecialistOutputMap = {
   market_scout: MarketScoutOutput;
@@ -33,11 +34,16 @@ export interface SpecialistExecutionBundle {
   degradedCoverageReasons: string[];
 }
 
-function extractJson(raw: string): unknown {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fenced?.[1] ?? raw).trim();
-  const obj = body.match(/\{[\s\S]*\}$/);
-  return JSON.parse((obj?.[0] ?? body).trim());
+function extractJson(agent: SpecialistAgentId, raw: string): unknown {
+  try {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const body = (fenced?.[1] ?? raw).trim();
+    const obj = body.match(/\{[\s\S]*\}$/);
+    return JSON.parse((obj?.[0] ?? body).trim());
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`${agent} returned non-JSON output: ${detail}`);
+  }
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -66,12 +72,18 @@ function validateSpecialistOutput(agent: SpecialistAgentId, raw: unknown): boole
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let settled = false;
   const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => {
+      if (!settled) reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
   });
   try {
-    return await Promise.race([promise, timeout]);
+    const value = await Promise.race([promise, timeout]);
+    settled = true;
+    return value;
   } finally {
+    settled = true;
     if (timer) clearTimeout(timer);
   }
 }
@@ -117,7 +129,7 @@ export async function runSpecialistExecution(input: {
     `QUERY: ${input.query}`,
     `PLAN: ${JSON.stringify(input.plan)}`,
     input.researchBrief ? `RESEARCH_BRIEF: ${JSON.stringify(input.researchBrief)}` : '',
-    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, 50000)}`,
+    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}`,
   ].filter(Boolean).join('\n\n');
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
@@ -135,7 +147,9 @@ export async function runSpecialistExecution(input: {
     const deps = input.executionPlan.dependsOn[agent] ?? [];
     const depPayload: Record<string, unknown> = {};
     for (const dep of deps) {
-      if (bundle.outputs[dep]) depPayload[dep] = bundle.outputs[dep] as unknown;
+      if (Object.prototype.hasOwnProperty.call(bundle.outputs, dep)) {
+        depPayload[dep] = bundle.outputs[dep] as unknown;
+      }
     }
     try {
       const result = await withTimeout(
@@ -157,7 +171,7 @@ export async function runSpecialistExecution(input: {
         agent
       );
       bundle.modelCalls.push(result);
-      const parsed = extractJson(result.content);
+      const parsed = extractJson(agent, result.content);
       if (!validateSpecialistOutput(agent, parsed)) {
         bundle.statuses[agent] = 'invalid_output';
         bundle.skipped.push(agent);

@@ -66,9 +66,6 @@ export function buildCanonicalExecutionPlan(input: {
 
   const hasTimeline = runnableSpecialists.includes('timeline_reconstructor');
   const hasStory = runnableSpecialists.includes('story_verifier');
-  const hasMarket = runnableSpecialists.includes('market_scout');
-  const hasCompetitor = runnableSpecialists.includes('competitor_mapper');
-  const hasDemand = runnableSpecialists.includes('demand_signal_analyst');
   const hasFeasibility = runnableSpecialists.includes('feasibility_architect');
 
   const group1 = runnableSpecialists.filter(
@@ -86,9 +83,11 @@ export function buildCanonicalExecutionPlan(input: {
   const dependsOn: Partial<Record<SpecialistAgentId, SpecialistAgentId[]>> = {};
   if (hasStory && hasTimeline) dependsOn.story_verifier = ['timeline_reconstructor'];
   if (hasFeasibility) {
-    const deps = (['market_scout', 'competitor_mapper', 'demand_signal_analyst'] as const).filter((id) =>
-      runnableSpecialists.includes(id)
-    );
+    const deps = [
+      SPECIALIST_AGENT_ID_LIST[0],
+      SPECIALIST_AGENT_ID_LIST[1],
+      SPECIALIST_AGENT_ID_LIST[2],
+    ].filter((id) => runnableSpecialists.includes(id));
     if (deps.length > 0) dependsOn.feasibility_architect = [...deps];
   }
 
