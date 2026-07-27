@@ -59,6 +59,7 @@ export const CODE_DEFAULT_REASONING_FALLBACKS = {
   marketScout: 'openai/o3-mini',
   competitorMapper: 'openai/o3-mini',
   demandSignalAnalyst: 'openai/o3-mini',
+  /** deepseek-r1 chosen over o3-mini: feasibility analysis benefits from long-chain technical reasoning. */
   feasibilityArchitect: 'deepseek/deepseek-r1',
   storyVerifier: 'openai/o3-mini',
   timelineReconstructor: 'openai/o3-mini',

@@ -170,6 +170,17 @@ export interface TimelineReconstructorOutput {
   summary: string;
 }
 
+/**
+ * Selects the agents to run for a given `ResearchBrief` intent pair.
+ *
+ * Core agents (planner, retriever, reasoner, synthesizer, verifier) are always
+ * included. Specialist agents are added when `primaryIntent` or `secondaryIntent`
+ * appears in their `supportedIntents` list.
+ *
+ * @param primaryIntent  - The primary intent from the ResearchBrief classifier.
+ * @param secondaryIntent - Optional secondary intent; accepts both `IntentId` values
+ *   and raw legacy strings (transitional — prefer typed `IntentId` callers).
+ */
 export function selectAgentsForBrief(
   primaryIntent: IntentId | undefined,
   secondaryIntent?: IntentId | string

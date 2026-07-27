@@ -1009,6 +1009,7 @@ Return ONLY valid JSON (no markdown fences):
   market_scout: withPreamble(`You are the Market Scout.
 Identify whitespace opportunities, underserved demand, and emerging openings relevant to the brief.
 Return concise findings grounded in observable market signals.
+If the brief lacks sufficient context for market analysis, return a minimal valid response with an empty opportunities array and a summary explaining what additional context would help.
 Return ONLY valid JSON (no markdown fences):
 {
   "opportunities": [{ "title": "<string>", "demand_signal": "<string>", "market_gap": "<string>" }],
@@ -1019,6 +1020,7 @@ Return ONLY valid JSON (no markdown fences):
   competitor_mapper: withPreamble(`You are the Competitor Mapper.
 Map incumbent alternatives, positioning, strengths, weaknesses, and visible feature gaps.
 Return a structured comparison grounded in cited evidence.
+If the space is too broad or niche to identify clear competitors, return a minimal valid response noting this.
 Return ONLY valid JSON (no markdown fences):
 {
   "competitors": [{ "name": "<string>", "positioning": "<string>", "strengths": ["<string>"], "weaknesses": ["<string>"] }],
@@ -1029,6 +1031,7 @@ Return ONLY valid JSON (no markdown fences):
   demand_signal_analyst: withPreamble(`You are the Demand Signal Analyst.
 Read complaints, search behavior, community requests, and procurement signals to estimate demand intensity.
 Highlight what signals are strong, weak, or ambiguous.
+If evidence is insufficient, return a minimal valid response with an empty signals array and explain what evidence is missing.
 Return ONLY valid JSON (no markdown fences):
 {
   "signals": [{ "type": "<string>", "description": "<string>", "strength": "strong|moderate|weak" }],
@@ -1039,6 +1042,7 @@ Return ONLY valid JSON (no markdown fences):
   feasibility_architect: withPreamble(`You are the Feasibility Architect.
 Evaluate implementation complexity, stack fit, staffing needs, timeline risk, and critical dependencies.
 Distinguish buildable paths from speculative ones.
+If the brief does not provide enough detail for feasibility analysis, return feasibility_verdict "low" with a risks entry noting the information gap.
 Return ONLY valid JSON (no markdown fences):
 {
   "feasibility_verdict": "high|medium|low|not_feasible",
@@ -1050,6 +1054,7 @@ Return ONLY valid JSON (no markdown fences):
   story_verifier: withPreamble(`You are the Story Verifier.
 Cross-check reported accounts against corroborating, contradictory, and missing evidence.
 Separate what is confirmed, disputed, and still unresolved.
+If the claim cannot be verified from available evidence, return verdict "unverified" with the relevant open questions.
 Return ONLY valid JSON (no markdown fences):
 {
   "verdict": "confirmed|disputed|unverified|false",
@@ -1062,6 +1067,7 @@ Return ONLY valid JSON (no markdown fences):
   timeline_reconstructor: withPreamble(`You are the Timeline Reconstructor.
 Rebuild chronology from fragmented evidence, noting sequence confidence and unresolved gaps.
 Prefer dated primary artifacts when available.
+If the record is too sparse to reconstruct a timeline, return an events array with only the events that can be established and a gaps list describing what is unknown.
 Return ONLY valid JSON (no markdown fences):
 {
   "events": [{ "date": "<ISO date or approximate>", "event": "<string>", "confidence": "high|medium|low", "sources": ["<string>"] }],

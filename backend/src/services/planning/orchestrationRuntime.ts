@@ -24,6 +24,10 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     plan.intent.id,
     plan.researchBrief?.secondaryIntent
   );
+  // Ordering: canonical core agents first (preserves pipeline order), specialist
+  // agents appended. Set deduplicates in case the profile already lists a specialist.
+  // Specialist agents are informational metadata for Stage D; execution wiring
+  // is progressive in follow-on commits.
   const mergedAgents = Array.from(
     new Set([...canon.agentsToRun, ...selectedAgents.map((agent) => agent.id)])
   );

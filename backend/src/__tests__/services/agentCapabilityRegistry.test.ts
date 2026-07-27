@@ -45,6 +45,10 @@ describe('agentCapabilityRegistry', () => {
   it('does not return duplicate agents when primary and secondary intents overlap', () => {
     const ids = selectAgentsForBrief('opportunity_discovery', 'comparative').map((agent) => agent.id);
     expect(new Set(ids).size).toBe(ids.length);
+    // For this intent pair market_scout and competitor_mapper both match; verify they
+    // appear exactly once each.
+    expect(ids.filter((id) => id === 'market_scout')).toHaveLength(1);
+    expect(ids.filter((id) => id === 'competitor_mapper')).toHaveLength(1);
     // REVERT-CHECK: agentCapabilityRegistry.ts — if deduplication is removed,
     // overlapping specialist matches would duplicate ids and this fails.
   });
