@@ -86,6 +86,7 @@ drove the rules is at
 | [`.cursor/rules/36-two-audience-copy.mdc`](.cursor/rules/36-two-audience-copy.mdc) | Tier A plain language vs Tier B technical depth; CI banned-jargon grep. |
 | [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc) | Intent is the pipeline contract; hypothesis/falsification conditional on intent family; deliverable contract auditor. |
 | [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |
+| [`.cursor/rules/39-redesign-phase-checklist.mdc`](.cursor/rules/39-redesign-phase-checklist.mdc) | Every redesign-phase PR must update `docs/redesign-phase-status.md` and include the phase checklist in the PR description. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
