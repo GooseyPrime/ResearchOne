@@ -50,6 +50,7 @@ export default function UnifiedResearchConsole({
   useEffect(() => {
     setMode(initialMode);
     if (initialMode === 'deep') setSurface('lab');
+    else setSurface('easy');
   }, [initialMode]);
 
   useEffect(() => {

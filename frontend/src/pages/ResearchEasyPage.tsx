@@ -23,10 +23,11 @@ const OUTPUT_FORMAT_PATTERN = /\b(compare|rank|recommend|steps|plan|roadmap|tabl
 /**
  * Lightweight ambiguity heuristic for optional pre-plan clarifications.
  * We trigger at most two questions when the prompt appears underspecified:
- * - Fewer than CLARIFY_MIN_WORDS words: prompt is too short to infer scope or output shape.
+ * - Fewer than CLARIFY_MIN_WORDS words: prompt is too short to infer output shape (ask for type).
+ *   If the prompt is long enough but lacks explicit format markers, ask how to organize results instead.
  * - No SCOPE_BOUNDARY match: user hasn't named a timeline, geography, budget, or audience.
- * - No OUTPUT_FORMAT match: user hasn't indicated what kind of artifact they want.
- * At most two questions are surfaced (slice(-2)) to avoid overwhelming the user.
+ * The two categories (output shape and scope) are kept mutually exclusive to avoid asking
+ * two similar output-format questions when both word-count and format checks fire.
  */
 function buildClarifyingQuestions(query: string): string[] {
   const trimmed = query.trim();
@@ -34,14 +35,14 @@ function buildClarifyingQuestions(query: string): string[] {
   const words = trimmed.split(/\s+/).filter(Boolean);
   const questions: string[] = [];
 
+  // Short prompts lack output shape entirely; longer prompts may still lack a format preference.
   if (words.length < CLARIFY_MIN_WORDS) {
     questions.push('What specific output do you need (for example: comparison, ranked list, implementation steps)?');
+  } else if (!OUTPUT_FORMAT_PATTERN.test(trimmed)) {
+    questions.push('How should results be organized (ranked options, narrative briefing, or step-by-step guide)?');
   }
   if (!SCOPE_BOUNDARY_PATTERN.test(trimmed)) {
     questions.push('Any scope boundaries we should enforce (timeline, geography, budget, or target audience)?');
-  }
-  if (!OUTPUT_FORMAT_PATTERN.test(trimmed)) {
-    questions.push('How should results be organized (ranked options, narrative briefing, or step-by-step guide)?');
   }
   return questions.slice(0, 2);
 }

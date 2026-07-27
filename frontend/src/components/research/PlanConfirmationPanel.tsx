@@ -36,7 +36,7 @@ function readIntentId(payload: Record<string, unknown>): string {
 function extractAgents(planPayload: Record<string, unknown>): string[] {
   const agentsRaw = (planPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
   return Array.isArray(agentsRaw)
-    ? agentsRaw.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+    ? agentsRaw.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
     : [];
 }
 
