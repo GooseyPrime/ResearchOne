@@ -795,7 +795,7 @@ async function runResearchJobInner(
           { role: 'system', content: buildReasonerSystemPrompt() },
           {
             role: 'user',
-            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}${specialistPromptBlock}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
+            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}${specialistPromptBlock}\n\nINSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
           },
         ],
       });

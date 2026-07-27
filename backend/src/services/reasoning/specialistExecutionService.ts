@@ -50,15 +50,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
 
+function isConfidenceBand(v: unknown): v is 'low' | 'medium' | 'high' {
+  return v === 'low' || v === 'medium' || v === 'high';
+}
+
 function validateSpecialistOutput(agent: SpecialistAgentId, raw: unknown): boolean {
   if (!isRecord(raw)) return false;
   switch (agent) {
     case 'market_scout':
-      return Array.isArray(raw.opportunities) && typeof raw.summary === 'string' && typeof raw.confidence === 'string';
+      return Array.isArray(raw.opportunities) && typeof raw.summary === 'string' && isConfidenceBand(raw.confidence);
     case 'competitor_mapper':
-      return Array.isArray(raw.competitors) && typeof raw.gap_summary === 'string' && typeof raw.confidence === 'string';
+      return Array.isArray(raw.competitors) && typeof raw.gap_summary === 'string' && isConfidenceBand(raw.confidence);
     case 'demand_signal_analyst':
-      return Array.isArray(raw.signals) && typeof raw.demand_summary === 'string' && typeof raw.confidence === 'string';
+      return Array.isArray(raw.signals) && typeof raw.demand_summary === 'string' && isConfidenceBand(raw.confidence);
     case 'feasibility_architect':
       return typeof raw.feasibility_verdict === 'string' && Array.isArray(raw.risks) && Array.isArray(raw.buildable_paths);
     case 'story_verifier':
@@ -80,7 +84,6 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   });
   try {
     const value = await Promise.race([promise, timeout]);
-    settled = true;
     return value;
   } finally {
     settled = true;
