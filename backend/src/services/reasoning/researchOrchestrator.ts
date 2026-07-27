@@ -74,6 +74,7 @@ import {
   AGENT_CAPABILITY_REGISTRY,
   isSpecialistAgentId,
   selectAgentsForBrief,
+  type SpecialistAgentId,
 } from './agentCapabilityRegistry';
 
 export type {
@@ -1038,9 +1039,9 @@ async function runResearchJobInner(
       });
     }
 
-    const specialistFindingsBlock = specialistFindings
+    specialistFindingsBlock = specialistFindings
       .map((item) => {
-        const displayName = capabilityMap.get(item.role)?.displayName ?? item.role;
+        const displayName = capabilityMap.get(item.role as SpecialistAgentId)?.displayName ?? item.role;
         if (item.failed) {
           return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
         }

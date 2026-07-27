@@ -16,6 +16,8 @@ export const SPECIALIST_AGENT_ID_LIST = [
   'feasibility_architect',
   'story_verifier',
   'timeline_reconstructor',
+  'data_analysis_specialist',
+  'quantitative_quality_auditor',
 ] as const;
 export type SpecialistAgentId = (typeof SPECIALIST_AGENT_ID_LIST)[number];
 export type AgentRoleId = CoreAgentId | SpecialistAgentId;
@@ -153,8 +155,6 @@ const SPECIALIST_AGENT_CAPABILITIES = [
   },
 ] satisfies readonly AgentCapability[];
 
-export type SpecialistAgentId = (typeof SPECIALIST_AGENT_CAPABILITIES)[number]['id'];
-
 export const AGENT_CAPABILITY_REGISTRY = [
   ...CORE_AGENT_CAPABILITIES,
   ...SPECIALIST_AGENT_CAPABILITIES,
@@ -166,7 +166,7 @@ export const SPECIALIST_AGENT_IDS = new Set(
 );
 
 export function isSpecialistAgentId(id: string): id is SpecialistAgentId {
-  return SPECIALIST_AGENT_IDS.has(id);
+  return SPECIALIST_AGENT_IDS.has(id as SpecialistAgentId);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

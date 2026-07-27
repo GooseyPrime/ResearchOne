@@ -3,9 +3,11 @@ import type { CanonicalExecutionPlan, SpecialistExecutionStatus } from '../plann
 import type { ResearchBrief } from '../planning/researchBrief';
 import type {
   CompetitorMapperOutput,
+  DataAnalysisSpecialistOutput,
   DemandSignalOutput,
   FeasibilityArchitectOutput,
   MarketScoutOutput,
+  QuantitativeQualityAuditorOutput,
   StoryVerifierOutput,
   TimelineReconstructorOutput,
   SpecialistAgentId,
@@ -21,6 +23,8 @@ type SpecialistOutputMap = {
   feasibility_architect: FeasibilityArchitectOutput;
   story_verifier: StoryVerifierOutput;
   timeline_reconstructor: TimelineReconstructorOutput;
+  data_analysis_specialist: DataAnalysisSpecialistOutput;
+  quantitative_quality_auditor: QuantitativeQualityAuditorOutput;
 };
 
 export interface SpecialistExecutionBundle {
