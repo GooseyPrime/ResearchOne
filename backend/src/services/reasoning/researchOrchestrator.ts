@@ -918,7 +918,7 @@ async function runResearchJobInner(
         `Plan:\n${JSON.stringify(plan, null, 2)}`,
         `Evidence Analysis:\n${retrieverResult.content}`,
         `Evidence Chunks:\n${evidenceContext}`,
-        specialistPromptBlock.trim(),
+        specialistPromptBlock,
         'INSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.',
       ].filter(Boolean).join('\n\n');
 
@@ -1345,14 +1345,14 @@ async function runResearchJobInner(
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
-        const agentExecutionTelemetry = computeAgentExecutionTelemetry({
-          orchProfile,
-          plannedSpecialists: canonicalExecutionPlan.specialistAgents,
-          specialistRan,
-          specialistSkipped,
-        });
+    const agentExecutionTelemetry = computeAgentExecutionTelemetry({
+      orchProfile,
+      plannedSpecialists: canonicalExecutionPlan.specialistAgents,
+      specialistRan,
+      specialistSkipped,
+    });
 
-        const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
+    const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
     const reportSections = parseReportSections(reportMarkdown);
     const readerFrontMatter = buildReaderFrontMatter({
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
