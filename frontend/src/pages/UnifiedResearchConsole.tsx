@@ -109,11 +109,10 @@ export default function UnifiedResearchConsole({
             </p>
           </div>
 
-          <div className="inline-flex rounded-lg border border-surface-100 bg-surface-200/60 p-1" role="tablist" aria-label="Research surface">
+          <div className="inline-flex rounded-lg border border-surface-100 bg-surface-200/60 p-1" role="group" aria-label="Research surface">
             <button
               type="button"
-              role="tab"
-              aria-selected={surface === 'easy'}
+              aria-pressed={surface === 'easy'}
               className={clsx(
                 'rounded-md px-3 py-1.5 text-xs font-medium transition',
                 surface === 'easy' ? 'bg-accent text-r1-bg' : 'text-slate-300 hover:text-slate-100'
@@ -124,8 +123,7 @@ export default function UnifiedResearchConsole({
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={surface === 'lab'}
+              aria-pressed={surface === 'lab'}
               className={clsx(
                 'rounded-md px-3 py-1.5 text-xs font-medium transition',
                 surface === 'lab' ? 'bg-accent text-r1-bg' : 'text-slate-300 hover:text-slate-100'

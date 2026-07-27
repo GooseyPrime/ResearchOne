@@ -2,12 +2,7 @@ import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
 import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchDeliverablesChecklist from './ResearchDeliverablesChecklist';
 import ResearchAssumptionsEditor from './ResearchAssumptionsEditor';
-
-type RequestedArtifact = {
-  description: string;
-  exactCount?: number;
-  requiredFields?: string[];
-};
+import type { RequestedArtifact } from './researchBriefTypes';
 
 type UserConstraint = {
   description: string;

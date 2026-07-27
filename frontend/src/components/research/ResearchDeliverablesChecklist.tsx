@@ -1,8 +1,4 @@
-type RequestedArtifact = {
-  description: string;
-  exactCount?: number;
-  requiredFields?: string[];
-};
+import type { RequestedArtifact } from './researchBriefTypes';
 
 export default function ResearchDeliverablesChecklist({
   artifacts,

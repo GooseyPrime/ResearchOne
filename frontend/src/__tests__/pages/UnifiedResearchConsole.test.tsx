@@ -65,7 +65,7 @@ describe('UnifiedResearchConsole', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Research Lab' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Research Lab' }));
     expect(screen.getByTestId('standard-page')).toBeTruthy();
     fireEvent.click(screen.getByTestId('mode-toggle'));
     expect(onModeChange).toHaveBeenCalledWith('deep');
