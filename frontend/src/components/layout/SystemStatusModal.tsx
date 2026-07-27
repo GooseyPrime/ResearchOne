@@ -235,7 +235,7 @@ export default function SystemStatusModal({
                     {restartBusy ? 'Restarting…' : 'Restart runtime'}
                   </button>
                 )}
-                {health.restartAvailable && !isAllowlistedAdmin && (
+                {!isAllowlistedAdmin && (
                   <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200/80 px-3 py-2 text-xs text-slate-400 space-y-2">
                     <p className="font-medium text-slate-300">Break-glass admin token</p>
                     <p>

@@ -228,12 +228,10 @@ export function requestCanViewHealthDetails(req: {
   const userId = req.auth?.userId ?? null;
   if (userId && config.admin.userIds.includes(userId)) return true;
   const token = extractTokenFromRequestForHealthAuth(req);
-  return Boolean(
-    config.admin.token &&
-      token &&
-      token.length === config.admin.token.length &&
-      timingSafeEqual(Buffer.from(token), Buffer.from(config.admin.token)),
-  );
+  if (!config.admin.token || !token) return false;
+  const tokenBuf = Buffer.from(token);
+  const expectedBuf = Buffer.from(config.admin.token);
+  return tokenBuf.length === expectedBuf.length && timingSafeEqual(tokenBuf, expectedBuf);
 }
 
 function publicHealthPayload(payload: Awaited<ReturnType<typeof buildHealth>>) {

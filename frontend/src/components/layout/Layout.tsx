@@ -101,7 +101,6 @@ export default function Layout() {
   });
 
   const isAllowlistedAdmin = authMe?.isAdmin === true;
-  const canViewSystemStatusDetails = isAllowlistedAdmin;
 
   const { data: subscriptionData, isLoading: subLoading, isError: subError } = useBillingSubscriptionQuery();
 
@@ -203,15 +202,14 @@ export default function Layout() {
   }, []);
 
   let overallColor = 'bg-slate-500';
-  if (!canViewSystemStatusDetails) {
-    overallColor = health?.status === 'ok' ? 'bg-green-400' : 'bg-red-400';
-  } else if (healthIsError || health?.status === 'down') {
+  if (healthIsError || health?.status === 'down') {
     overallColor = 'bg-red-400';
   } else if (health?.status === 'ok') {
     overallColor = 'bg-green-400';
   } else if (health?.status === 'degraded') {
     overallColor = 'bg-amber-400';
   }
+  // health undefined (still loading) remains slate-500 — no false-positive red
 
   const statusLabel = healthIsError
     ? 'unreachable'
@@ -303,37 +301,22 @@ export default function Layout() {
             <ActiveRunBadge />
             {/* Sign-out redirect is configured on <ClerkProvider afterSignOutUrl> (Clerk v6 no longer takes it on UserButton). */}
             <UserButton />
-            {canViewSystemStatusDetails ? (
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"
-                onClick={() => setHealthOpen(true)}
-                aria-expanded={healthOpen}
-                aria-haspopup="dialog"
-              >
-                <div
-                  className={clsx(
-                    'w-1.5 h-1.5 rounded-full',
-                    healthFetching && 'animate-pulse',
-                    overallColor
-                  )}
-                />
-                <span className="text-xs text-slate-500">System {statusLabel}</span>
-              </button>
-            ) : (
-              <div className="flex items-center">
-                <div
-                  className={clsx(
-                    'w-2 h-2 rounded-full',
-                    healthFetching && 'animate-pulse',
-                    overallColor
-                  )}
-                />
-                <span className="sr-only">
-                  {health?.status === 'ok' ? 'System operational' : 'System issues detected'}
-                </span>
-              </div>
-            )}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-surface-200/50"
+              onClick={() => setHealthOpen(true)}
+              aria-expanded={healthOpen}
+              aria-haspopup="dialog"
+            >
+              <div
+                className={clsx(
+                  'w-1.5 h-1.5 rounded-full',
+                  healthFetching && 'animate-pulse',
+                  overallColor
+                )}
+              />
+              <span className="text-xs text-slate-500">System {statusLabel}</span>
+            </button>
           </div>
         </header>
 
@@ -344,8 +327,7 @@ export default function Layout() {
         </main>
       </div>
 
-      {canViewSystemStatusDetails && (
-        <SystemStatusModal
+      <SystemStatusModal
           open={healthOpen}
           onClose={() => setHealthOpen(false)}
           health={health}
@@ -358,7 +340,6 @@ export default function Layout() {
           breakGlassAdminToken={breakGlassToken}
           onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
         />
-      )}
 
       <Notifications />
     </div>
