@@ -62,9 +62,11 @@ describe('Express app — public health vs authenticated monitors', () => {
   let server: http.Server | undefined;
   const adminRuntimeToken = 'test-admin-runtime-token';
   const originalAdminRuntimeToken = process.env.ADMIN_RUNTIME_TOKEN;
+  const originalAdminUserIds = process.env.ADMIN_USER_IDS;
 
   beforeAll(async () => {
     process.env.ADMIN_RUNTIME_TOKEN = adminRuntimeToken;
+    process.env.ADMIN_USER_IDS = 'user_admin';
     const { default: app } = await import('../api/app');
     server = http.createServer(app);
     await new Promise<void>((resolve, reject) => {
@@ -82,6 +84,8 @@ describe('Express app — public health vs authenticated monitors', () => {
     });
     if (originalAdminRuntimeToken === undefined) delete process.env.ADMIN_RUNTIME_TOKEN;
     else process.env.ADMIN_RUNTIME_TOKEN = originalAdminRuntimeToken;
+    if (originalAdminUserIds === undefined) delete process.env.ADMIN_USER_IDS;
+    else process.env.ADMIN_USER_IDS = originalAdminUserIds;
   });
 
   beforeEach(() => {

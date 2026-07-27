@@ -212,22 +212,22 @@ export async function buildHealth(req: { app: { get: (k: string) => unknown } })
   };
 }
 
-function bearerOrAdminHeaderToken(req: { header: (name: string) => string | undefined }): string | null {
-  const x = req.header('x-admin-token')?.trim();
-  if (x) return x;
+function extractAuthTokenFromRequest(req: { header: (name: string) => string | undefined }): string | null {
+  const adminToken = req.header('x-admin-token')?.trim();
+  if (adminToken) return adminToken;
   const raw = (req.header('authorization') || '').trim();
   if (!raw) return null;
   if (raw.startsWith('Bearer ')) return raw.slice('Bearer '.length).trim() || null;
   return raw;
 }
 
-function requestCanViewHealthDetails(req: {
+export function requestCanViewHealthDetails(req: {
   auth?: { userId?: string | null };
   header: (name: string) => string | undefined;
 }): boolean {
   const userId = req.auth?.userId ?? null;
   if (userId && config.admin.userIds.includes(userId)) return true;
-  const token = bearerOrAdminHeaderToken(req);
+  const token = extractAuthTokenFromRequest(req);
   return Boolean(
     config.admin.token &&
       token &&

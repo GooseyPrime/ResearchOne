@@ -202,19 +202,16 @@ export default function Layout() {
     };
   }, []);
 
-  const overallColor = canViewSystemStatusDetails
-    ? healthIsError
-      ? 'bg-red-400'
-      : health?.status === 'ok'
-        ? 'bg-green-400'
-        : health?.status === 'degraded'
-          ? 'bg-amber-400'
-          : health?.status === 'down'
-            ? 'bg-red-400'
-            : 'bg-slate-500'
-    : health?.status === 'ok'
-      ? 'bg-green-400'
-      : 'bg-red-400';
+  let overallColor = 'bg-slate-500';
+  if (!canViewSystemStatusDetails) {
+    overallColor = health?.status === 'ok' ? 'bg-green-400' : 'bg-red-400';
+  } else if (healthIsError || health?.status === 'down') {
+    overallColor = 'bg-red-400';
+  } else if (health?.status === 'ok') {
+    overallColor = 'bg-green-400';
+  } else if (health?.status === 'degraded') {
+    overallColor = 'bg-amber-400';
+  }
 
   const statusLabel = healthIsError
     ? 'unreachable'
@@ -332,6 +329,9 @@ export default function Layout() {
                     overallColor
                   )}
                 />
+                <span className="sr-only">
+                  {health?.status === 'ok' ? 'System operational' : 'System issues detected'}
+                </span>
               </div>
             )}
           </div>

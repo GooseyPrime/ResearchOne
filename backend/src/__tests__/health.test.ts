@@ -86,7 +86,7 @@ vi.mock('../config', () => ({
       providerBaseUrl: '',
     },
     exports: { dir: '/tmp/exports' },
-    admin: { token: 'admintoken', userIds: [] },
+    admin: { token: 'admintoken', userIds: ['user_admin'] },
   },
 }));
 
@@ -181,5 +181,14 @@ describe('health route payload', () => {
     expect(result.checks.db.ok).toBe(false);
     expect(result.checks.db.rlsReady).toBe(false);
     expect(result.checks.db.reason).toContain('application_role');
+  });
+
+  it('allows health details for allowlisted Clerk admins', async () => {
+    const { requestCanViewHealthDetails } = await import('../api/routes/health');
+    const canView = requestCanViewHealthDetails({
+      auth: { userId: 'user_admin' },
+      header: () => undefined,
+    });
+    expect(canView).toBe(true);
   });
 });
