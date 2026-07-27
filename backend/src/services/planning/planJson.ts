@@ -104,7 +104,7 @@ function coerceConstraint(raw: unknown): UserConstraint | null {
   return { description };
 }
 
-function readResearchBriefWithFallback(raw: unknown, fallbackIntent: IntentId): ResearchBrief | undefined {
+function parseResearchBriefOrUndefined(raw: unknown, fallbackIntent: IntentId): ResearchBrief | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const o = raw as Record<string, unknown>;
   const primaryIntent = isIntentId(o.primaryIntent) ? o.primaryIntent : fallbackIntent;
@@ -270,7 +270,7 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
           : null,
   };
 
-  const briefFromPayload = readResearchBriefWithFallback(o.researchBrief, id);
+  const briefFromPayload = parseResearchBriefOrUndefined(o.researchBrief, id);
 
   const base: PlanPayload = {
     intent: { id, displayLabel, confidence, reasoning },

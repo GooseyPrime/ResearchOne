@@ -75,20 +75,19 @@ function validateSpecialistOutput(agent: SpecialistAgentId, raw: unknown): boole
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let settled = false;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => {
-      if (!settled) reject(new Error(`${label} timed out after ${ms}ms`));
-    }, ms);
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
   });
-  try {
-    const value = await Promise.race([promise, timeout]);
-    return value;
-  } finally {
-    settled = true;
-    if (timer) clearTimeout(timer);
-  }
 }
 
 function formatFindingsForPrompt(bundle: SpecialistExecutionBundle): string {
@@ -128,11 +127,12 @@ export async function runSpecialistExecution(input: {
     degradedCoverageReasons: [],
   };
 
+  const evidenceTruncated = input.evidenceContext.length > MAX_EVIDENCE_CONTEXT_CHARS;
   const context = [
     `QUERY: ${input.query}`,
     `PLAN: ${JSON.stringify(input.plan)}`,
     input.researchBrief ? `RESEARCH_BRIEF: ${JSON.stringify(input.researchBrief)}` : '',
-    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}`,
+    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
   ].filter(Boolean).join('\n\n');
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
@@ -150,7 +150,7 @@ export async function runSpecialistExecution(input: {
     const deps = input.executionPlan.dependsOn[agent] ?? [];
     const depPayload: Record<string, unknown> = {};
     for (const dep of deps) {
-      if (Object.prototype.hasOwnProperty.call(bundle.outputs, dep)) {
+      if (Object.hasOwn(bundle.outputs, dep)) {
         depPayload[dep] = bundle.outputs[dep] as unknown;
       }
     }

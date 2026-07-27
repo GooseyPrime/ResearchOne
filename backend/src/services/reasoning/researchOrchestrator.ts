@@ -55,6 +55,8 @@ import {
 } from './runAddons';
 import {
   PIPELINE_STAGES,
+  type PipelineStage,
+  type OrchestrationProfileDefinition,
   shouldRunPipelineStage,
 } from '../planning/orchestrationProfiles';
 import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
@@ -255,6 +257,35 @@ function v2CallOpts(
     researchObjective: researchObjective ?? undefined,
     allowFallbackByRole,
   };
+}
+
+function computeAgentExecutionTelemetry(args: {
+  orchProfile: OrchestrationProfileDefinition;
+  plannedCoreStages: readonly PipelineStage[];
+  plannedSpecialists: readonly string[];
+  specialistRan: readonly string[];
+  specialistSkipped: readonly string[];
+}) {
+  const ran = Array.from(
+    new Set([
+      'planner',
+      shouldRunPipelineStage(args.orchProfile, 'retriever_analysis') ? 'retriever' : null,
+      shouldRunPipelineStage(args.orchProfile, 'reasoning') ? 'reasoner' : null,
+      'synthesizer',
+      shouldRunPipelineStage(args.orchProfile, 'verification') ? 'verifier' : null,
+      ...args.specialistRan,
+    ].filter((v): v is string => Boolean(v)))
+  );
+  const skipped = Array.from(
+    new Set([
+      ...args.specialistSkipped,
+      ...args.plannedCoreStages
+        .filter((stage) => !shouldRunPipelineStage(args.orchProfile, stage))
+        .map((stage) => `stage:${stage}`),
+    ])
+  );
+  const planned = Array.from(new Set(['planner', 'retriever', 'reasoner', 'synthesizer', 'verifier', ...args.plannedSpecialists]));
+  return { planned, ran, skipped };
 }
 
 /**
@@ -786,6 +817,14 @@ async function runResearchJobInner(
     if (shouldRunPipelineStage(orchProfile, 'reasoning')) {
       await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });
       const specialistPromptBlock = specialistFindingsBlock ? `\n\n${specialistFindingsBlock}` : '';
+      const reasonerUserPrompt = [
+        `Research Query: ${researchQuery}`,
+        `Plan:\n${JSON.stringify(plan, null, 2)}`,
+        `Evidence Analysis:\n${retrieverResult.content}`,
+        `Evidence Chunks:\n${evidenceContext}`,
+        specialistPromptBlock.trim(),
+        'INSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.',
+      ].filter(Boolean).join('\n\n');
 
       reasonerResult = await callRoleModel({
         role: 'reasoner',
@@ -795,7 +834,7 @@ async function runResearchJobInner(
           { role: 'system', content: buildReasonerSystemPrompt() },
           {
             role: 'user',
-            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}${specialistPromptBlock}\n\nINSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
+            content: reasonerUserPrompt,
           },
         ],
       });
@@ -1100,8 +1139,15 @@ async function runResearchJobInner(
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
+        const agentExecutionTelemetry = computeAgentExecutionTelemetry({
+          orchProfile,
+          plannedCoreStages: canonicalExecutionPlan.corePipelineStages,
+          plannedSpecialists: canonicalExecutionPlan.specialistAgents,
+          specialistRan,
+          specialistSkipped,
+        });
 
-    const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
+        const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
     const reportSections = parseReportSections(reportMarkdown);
     const readerFrontMatter = buildReaderFrontMatter({
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
@@ -1140,27 +1186,9 @@ async function runResearchJobInner(
         output_template_id: outputTemplateId,
         orchestration_intent: orchProfile.intent,
         skeptic_mode: orchProfile.skepticMode,
-        agents_planned: Array.from(
-          new Set([...canonicalExecutionPlan.coreAgentRoles, ...canonicalExecutionPlan.specialistAgents])
-        ),
-        agents_ran: Array.from(
-          new Set([
-            'planner',
-            shouldRunPipelineStage(orchProfile, 'retriever_analysis') ? 'retriever' : null,
-            shouldRunPipelineStage(orchProfile, 'reasoning') ? 'reasoner' : null,
-            'synthesizer',
-            shouldRunPipelineStage(orchProfile, 'verification') ? 'verifier' : null,
-            ...specialistRan,
-          ].filter((v): v is string => Boolean(v)))
-        ),
-        agents_skipped: Array.from(
-          new Set([
-            ...specialistSkipped,
-            ...canonicalExecutionPlan.corePipelineStages
-              .filter((stage) => !shouldRunPipelineStage(orchProfile, stage))
-              .map((stage) => `stage:${stage}`),
-          ])
-        ),
+        agents_planned: agentExecutionTelemetry.planned,
+        agents_ran: agentExecutionTelemetry.ran,
+        agents_skipped: agentExecutionTelemetry.skipped,
         specialist_execution: {
           statuses: specialistStatuses,
           degraded_coverage_reasons: degradedCoverageReasons,
@@ -1253,24 +1281,8 @@ async function runResearchJobInner(
     await aggregateAndPersistDossierStatistics(runId, {
       profileDisplayName: orchProfile.displayName,
       intentId: orchProfile.intent,
-      agentsRan: Array.from(
-        new Set([
-          'planner',
-          shouldRunPipelineStage(orchProfile, 'retriever_analysis') ? 'retriever' : null,
-          shouldRunPipelineStage(orchProfile, 'reasoning') ? 'reasoner' : null,
-          'synthesizer',
-          shouldRunPipelineStage(orchProfile, 'verification') ? 'verifier' : null,
-          ...specialistRan,
-        ].filter((v): v is string => Boolean(v)))
-      ),
-      agentsSkipped: Array.from(
-        new Set([
-          ...specialistSkipped,
-          ...canonicalExecutionPlan.corePipelineStages
-            .filter((stage) => !shouldRunPipelineStage(orchProfile, stage))
-            .map((stage) => `stage:${stage}`),
-        ])
-      ),
+      agentsRan: agentExecutionTelemetry.ran,
+      agentsSkipped: agentExecutionTelemetry.skipped,
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
       sourceClassBreakdown:

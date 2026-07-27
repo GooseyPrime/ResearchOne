@@ -139,7 +139,7 @@ export default function ResearchBriefPreview({
 
       {agentTeam.length > 0 ? (
         <div>
-          <p className="text-slate-500 uppercase tracking-wide mb-1">Planned specialist team</p>
+          <p className="text-slate-500 uppercase tracking-wide mb-1">Agent team</p>
           <div className="space-y-2">
             {agentTeam.map((agent) => (
               <div

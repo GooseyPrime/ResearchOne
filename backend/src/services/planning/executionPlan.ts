@@ -31,6 +31,12 @@ export interface CanonicalExecutionPlan {
   statuses?: Partial<Record<SpecialistAgentId, SpecialistExecutionStatus>>;
 }
 
+const FEASIBILITY_UPSTREAM_SPECIALISTS: readonly SpecialistAgentId[] = [
+  'market_scout',
+  'competitor_mapper',
+  'demand_signal_analyst',
+];
+
 interface RuntimeAvailability {
   unavailableSpecialists?: Partial<Record<SpecialistAgentId, string>>;
 }
@@ -83,11 +89,7 @@ export function buildCanonicalExecutionPlan(input: {
   const dependsOn: Partial<Record<SpecialistAgentId, SpecialistAgentId[]>> = {};
   if (hasStory && hasTimeline) dependsOn.story_verifier = ['timeline_reconstructor'];
   if (hasFeasibility) {
-    const deps = [
-      SPECIALIST_AGENT_ID_LIST[0],
-      SPECIALIST_AGENT_ID_LIST[1],
-      SPECIALIST_AGENT_ID_LIST[2],
-    ].filter((id) => runnableSpecialists.includes(id));
+    const deps = FEASIBILITY_UPSTREAM_SPECIALISTS.filter((id) => runnableSpecialists.includes(id));
     if (deps.length > 0) dependsOn.feasibility_architect = [...deps];
   }
 
