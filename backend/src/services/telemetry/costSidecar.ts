@@ -133,6 +133,7 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
     case 'verifier':
     case 'citation_integrity_checker':
     case 'final_revision_verifier':
+    case 'contract_auditor':
       return 'Verification';
     case 'citation_formatter':
       return 'Citation Mapping';

@@ -24,6 +24,7 @@ export const REASONING_MODEL_ROLES = [
   'citation_integrity_checker',
   'citation_formatter',
   'final_revision_verifier',
+  'contract_auditor',
 ] as const;
 
 export type ReasoningModelRole = (typeof REASONING_MODEL_ROLES)[number];
@@ -74,6 +75,8 @@ export type ModelCallPurpose =
   | 'wave5_intent_classification'
   | 'wave5_plan_generation'
   | 'wave5_plan_refinement'
+  | 'phase_b_research_brief_classification'
+  | 'phase_b_contract_audit'
   | 'default';
 
 /**

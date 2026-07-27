@@ -86,6 +86,10 @@ export function baseModelsFromConfig(): ResolvedModels {
         primary: config.models.finalRevisionVerifier,
         fallback: config.models.fallbacks.finalRevisionVerifier,
       },
+      contract_auditor: {
+        primary: config.models.contractAuditor,
+        fallback: config.models.fallbacks.contractAuditor,
+      },
     },
   };
 }

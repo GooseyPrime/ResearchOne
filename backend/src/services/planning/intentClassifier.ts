@@ -2,8 +2,10 @@ import { config } from '../../config';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { IntentId } from './intentTaxonomy';
 import { getIntentById, INTENT_TAXONOMY } from './intentTaxonomy';
-import { INTENT_CLASSIFIER_PROMPT } from './prompts';
-import { parseIntentClassifierJson } from './planJson';
+import { RESEARCH_BRIEF_CLASSIFIER_PROMPT } from './prompts';
+import { parseResearchBriefJson } from './planJson';
+import type { ResearchBrief } from './researchBrief';
+import { defaultResearchBrief, INTENT_EPISTEMIC_POSTURE } from './researchBrief';
 
 const LEXICAL_CONFIDENCE = 0.92;
 const LLM_LOW_CONFIDENCE_CAP = 0.84;
@@ -28,6 +30,15 @@ function lexicalLayer(query: string, supplemental?: string): { intent: IntentId;
   return null;
 }
 
+/**
+ * Phase B — classifyIntent now returns a full ResearchBrief.
+ *
+ * The lexical layer still provides a fast path for high-signal queries, but
+ * now constructs a default brief (no secondary intent, no artifact extraction)
+ * so callers always receive a consistent type.  The LLM path uses the upgraded
+ * RESEARCH_BRIEF_CLASSIFIER_PROMPT to extract secondary intent, requested
+ * artifacts, exact counts, user constraints, and epistemic posture.
+ */
 export async function classifyIntent(
   query: string,
   supplementalContext: string | undefined,
@@ -37,26 +48,26 @@ export async function classifyIntent(
     allowFallbackByRole: Record<string, boolean>;
     byokApiKeyOverride?: string;
   }
-): Promise<{ intent: IntentId; confidence: number; reasoning: string }> {
+): Promise<ResearchBrief> {
   const lex = lexicalLayer(query, supplementalContext);
   if (lex && lex.matches > 0) {
     const def = getIntentById(lex.intent);
-    return {
-      intent: lex.intent,
-      confidence: LEXICAL_CONFIDENCE,
-      reasoning: `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)).`,
-    };
+    return defaultResearchBrief(
+      lex.intent,
+      LEXICAL_CONFIDENCE,
+      `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
+    );
   }
 
   const hasOpenRouterCredential = Boolean(
     config.openrouter.apiKey?.trim() || llmOpts.byokApiKeyOverride?.trim()
   );
   if (!hasOpenRouterCredential) {
-    return {
-      intent: 'factual_report',
-      confidence: 0.55,
-      reasoning: 'OpenRouter key unavailable — defaulted to factual_report with low confidence.',
-    };
+    return defaultResearchBrief(
+      'factual_report',
+      0.55,
+      'OpenRouter key unavailable — defaulted to factual_report with low confidence.'
+    );
   }
 
   const userBlock = `QUERY:\n${query}\n\nSUPPLEMENTAL:\n${supplementalContext ?? '(none)'}\n`;
@@ -66,22 +77,29 @@ export async function classifyIntent(
     engineVersion: llmOpts.engineVersion,
     researchObjective: llmOpts.researchObjective,
     allowFallbackByRole: llmOpts.allowFallbackByRole,
-    callPurpose: 'wave5_intent_classification',
+    callPurpose: 'phase_b_research_brief_classification',
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: llmOpts.byokApiKeyOverride,
     messages: [
-      { role: 'system', content: INTENT_CLASSIFIER_PROMPT },
+      { role: 'system', content: RESEARCH_BRIEF_CLASSIFIER_PROMPT },
       { role: 'user', content: userBlock },
     ],
   });
 
-  const parsed = parseIntentClassifierJson(res.content, 'factual_report');
-  if (parsed.intent === 'legacy') {
-    return { ...parsed, intent: 'factual_report', reasoning: `${parsed.reasoning} (legacy remapped to factual_report)` };
+  const brief = parseResearchBriefJson(res.content, 'factual_report');
+
+  // Remap legacy to factual_report
+  if (brief.primaryIntent === 'legacy') {
+    brief.primaryIntent = 'factual_report';
+    brief.reasoning = `${brief.reasoning} (legacy remapped to factual_report)`;
+    brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE['factual_report'];
   }
-  // Layer 3 — soft cap so gate UI can flag "review carefully" without blocking
-  if (parsed.confidence < 0.85) {
-    return { ...parsed, confidence: Math.min(parsed.confidence, LLM_LOW_CONFIDENCE_CAP) };
+
+  // Soft cap for low-confidence results so the gate UI can flag them
+  if (brief.confidence < 0.85) {
+    brief.confidence = Math.min(brief.confidence, LLM_LOW_CONFIDENCE_CAP);
   }
-  return parsed;
+
+  return brief;
 }
+
