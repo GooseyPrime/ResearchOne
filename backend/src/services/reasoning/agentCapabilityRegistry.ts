@@ -124,6 +124,9 @@ export function selectAgentsForBrief(
   primaryIntent: IntentId | undefined,
   secondaryIntent?: IntentId | string
 ): AgentCapability[] {
+  // IntentId is a union of string literals, but secondaryIntent also accepts
+  // raw strings from legacy callers. The typeof guards narrow out undefined
+  // and ensure empty strings are skipped before Set insertion.
   const requestedIntents = new Set<string>();
   if (typeof primaryIntent === 'string' && primaryIntent.trim()) requestedIntents.add(primaryIntent);
   if (typeof secondaryIntent === 'string' && secondaryIntent.trim()) requestedIntents.add(secondaryIntent);

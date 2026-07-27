@@ -50,6 +50,24 @@ import {
 
 const MD_MIN_WIDTH_QUERY = '(min-width: 768px)';
 
+/**
+ * Resolves the CSS opacity for a pipeline node.
+ * - Core nodes are always fully opaque.
+ * - Specialist (conditional) nodes when no agentsToRun is provided: dimmed (0.45) to
+ *   indicate they are possible but not selected for a specific run.
+ * - Specialist nodes that ARE in agentsToRun: fully opaque (1).
+ * - Specialist nodes NOT in agentsToRun: visibly bypassed (0.3) — not hidden (Rule 27).
+ */
+function resolveNodeOpacity(
+  isSpecialist: boolean,
+  agentsToRun: readonly string[] | undefined,
+  isSelectedSpecialist: boolean
+): number {
+  if (!isSpecialist) return 1;
+  if (agentsToRun === undefined) return 0.45;
+  return isSelectedSpecialist ? 1 : 0.3;
+}
+
 export interface AnimatedPipelineHeroProps {
   /** Resolved persona from `PersonaAwareHero` — keeps beam palette in sync when `data-persona` updates after mount. */
   resolvedPersona?: string;
@@ -180,8 +198,7 @@ export default function AnimatedPipelineHero({
               const isSpecialist = stage.conditional === true;
               const isSelectedSpecialist =
                 isSpecialist && (agentsToRun === undefined ? false : selectedAgents.has(stage.id));
-              const specialistOpacity =
-                !isSpecialist ? 1 : agentsToRun === undefined ? 0.45 : isSelectedSpecialist ? 1 : 0.3;
+              const specialistOpacity = resolveNodeOpacity(isSpecialist, agentsToRun, isSelectedSpecialist);
 
               const ringColor = isSkeptic
                 ? palette.skepticRing

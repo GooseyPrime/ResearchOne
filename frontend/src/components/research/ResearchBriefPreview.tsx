@@ -17,6 +17,12 @@ type ResearchBrief = {
   confidence?: number;
 };
 
+/** Typed shape of the `orchestrationProfile` block inside a `PlanPayload`. */
+type OrchestrationProfile = {
+  agentsWillRun?: unknown[];
+  agentsWillSkip?: unknown[];
+};
+
 function readResearchBrief(planPayload: Record<string, unknown>): ResearchBrief | null {
   const brief = planPayload.researchBrief;
   if (!brief || typeof brief !== 'object') return null;
@@ -48,7 +54,11 @@ function readAgentTeam(planPayload: Record<string, unknown>): Array<{
   description: string;
   isSpecialist: boolean;
 }> {
-  const agentsRaw = (planPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
+  const profile = planPayload.orchestrationProfile;
+  const agentsRaw =
+    profile !== null && typeof profile === 'object'
+      ? (profile as OrchestrationProfile).agentsWillRun
+      : undefined;
   if (!Array.isArray(agentsRaw)) return [];
   const specialistIds = new Set([
     'market_scout',
