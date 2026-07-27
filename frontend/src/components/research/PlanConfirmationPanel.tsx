@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { BookmarkPlus, ClipboardCheck, Loader2, MessageSquareText, XCircle } from 'lucide-react';
 import { INTENT_DISPLAY_LABELS, INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
+import { humanizeIdentifier } from '../../utils/formatIdentifiers';
+import ResearchBriefPreview from './ResearchBriefPreview';
 import {
   cancelRunPlanAtGate,
   confirmRunPlanAtGate,
@@ -29,6 +31,13 @@ function readIntentId(payload: Record<string, unknown>): string {
   const intent = payload.intent as Record<string, unknown> | undefined;
   const id = intent?.id;
   return typeof id === 'string' && id.trim() ? id.trim() : 'legacy';
+}
+
+function extractAgents(planPayload: Record<string, unknown>): string[] {
+  const agentsRaw = (planPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
+  return Array.isArray(agentsRaw)
+    ? agentsRaw.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+    : [];
 }
 
 const AUTO_CONFIRM_SECONDS = 5;
@@ -241,6 +250,7 @@ export default function PlanConfirmationPanel({
 
   const topic = (localPayload.topicAnalysis as Record<string, unknown> | undefined)?.summary;
   const topicStr = typeof topic === 'string' ? topic : '';
+  const agents = extractAgents(localPayload);
 
   const showStreakHint =
     planPrefs &&
@@ -332,6 +342,23 @@ export default function PlanConfirmationPanel({
         ) : null}
         <p className="text-slate-500">Refinement rounds: {rounds}</p>
       </div>
+
+      {agents.length > 0 ? (
+        <div className="rounded-lg border border-surface-100 bg-surface-200/40 p-3 space-y-1 text-xs">
+          <p className="text-slate-500 uppercase tracking-wide">Agent team</p>
+          <ul className="list-disc pl-4 space-y-1 text-slate-200">
+            {agents.map((agent) => (
+              <li key={agent}>{humanizeIdentifier(agent)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <ResearchBriefPreview
+        planPayload={localPayload}
+        disabled={busy}
+        onAssumptionEditsReady={(nextInstruction) => setInstruction(nextInstruction)}
+      />
 
       <div className="space-y-2">
         <label className="block text-xs font-medium text-slate-400" htmlFor="plan-refine-input">

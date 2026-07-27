@@ -777,7 +777,7 @@ export default function ResearchDeepPage() {
       <div className="card-glow p-6 space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="section-title block mb-2">Deep Research query</label>
+            <label className="section-title block mb-2">Your research question or task</label>
             <textarea
               className="textarea min-h-28 text-base"
               placeholder="What is the relationship between mitochondrial dysfunction and cancer metabolism?"
@@ -785,7 +785,7 @@ export default function ResearchDeepPage() {
               onChange={(e) => setQuery(e.target.value)}
               disabled={mutation.isPending || formLocked}
             />
-            <p className="text-xs text-slate-500 mt-1">Be specific and include the exact framing you want tested.</p>
+            <p className="text-xs text-slate-500 mt-1">Describe what you need to know, find, or produce.</p>
           </div>
 
           <SkepticPersonaSelector
