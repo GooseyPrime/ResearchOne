@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { BookmarkPlus, ClipboardCheck, Loader2, MessageSquareText, XCircle } from 'lucide-react';
 import { INTENT_DISPLAY_LABELS, INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
+import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchBriefPreview from './ResearchBriefPreview';
 import {
   cancelRunPlanAtGate,
@@ -30,14 +31,6 @@ function readIntentId(payload: Record<string, unknown>): string {
   const intent = payload.intent as Record<string, unknown> | undefined;
   const id = intent?.id;
   return typeof id === 'string' && id.trim() ? id.trim() : 'legacy';
-}
-
-function humanizeAgentName(agent: string): string {
-  return agent
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function extractAgents(planPayload: Record<string, unknown>): string[] {
@@ -355,7 +348,7 @@ export default function PlanConfirmationPanel({
           <p className="text-slate-500 uppercase tracking-wide">Agent team</p>
           <ul className="list-disc pl-4 space-y-1 text-slate-200">
             {agents.map((agent) => (
-              <li key={agent}>{humanizeAgentName(agent)}</li>
+              <li key={agent}>{humanizeIdentifier(agent)}</li>
             ))}
           </ul>
         </div>

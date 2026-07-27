@@ -61,6 +61,8 @@ export default function UnifiedResearchConsole({
 
   const handleModeChange = useCallback(
     (next: ResearchEngineMode) => {
+      // Any mode-toggle interaction originates from the Research Lab tab;
+      // always surface Lab so the mode toggle and Lab content stay visible.
       setSurface('lab');
       if (next === 'deep' && !tierGateUnknown && !canAccessDeep) {
         setShowDeepUpgrade(true);

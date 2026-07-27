@@ -7,7 +7,8 @@ function normalize(items: string[]): string[] {
 
 function normalizeForCompare(items: string[]): string {
   // Order-independent compare: reordering assumptions alone does not count as an edit.
-  return normalize(items).sort((a, b) => a.localeCompare(b)).join('\n');
+  // 'en' locale is used explicitly for stable, cross-environment sort results.
+  return normalize(items).sort((a, b) => a.localeCompare(b, 'en')).join('\n');
 }
 
 export default function ResearchAssumptionsEditor({

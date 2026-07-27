@@ -1,4 +1,5 @@
 import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
+import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchDeliverablesChecklist from './ResearchDeliverablesChecklist';
 import ResearchAssumptionsEditor from './ResearchAssumptionsEditor';
 
@@ -30,13 +31,6 @@ function readIntentId(planPayload: Record<string, unknown>, brief: ResearchBrief
   if (typeof brief?.primaryIntent === 'string' && brief.primaryIntent.trim()) return brief.primaryIntent;
   const fromPlan = (planPayload.intent as Record<string, unknown> | undefined)?.id;
   return typeof fromPlan === 'string' && fromPlan.trim() ? fromPlan : undefined;
-}
-
-function humanizeKey(text: string): string {
-  return text
-    .replace(/[_-]+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function inferredAssumptions(planPayload: Record<string, unknown>): string[] {
@@ -78,7 +72,7 @@ export default function ResearchBriefPreview({
       <div>
         <p className="text-slate-500 uppercase tracking-wide">What you asked for</p>
         <p className="mt-1 text-slate-100 font-medium">
-          {INTENT_DISPLAY_LABELS[intentId ?? ''] ?? (intentId ? humanizeKey(intentId) : 'General research request')}
+          {INTENT_DISPLAY_LABELS[intentId ?? ''] ?? (intentId ? humanizeIdentifier(intentId) : 'General research request')}
         </p>
         {confidence != null ? (
           <p className="text-[11px] text-slate-400 mt-1">Classifier confidence: {(confidence * 100).toFixed(0)}%</p>

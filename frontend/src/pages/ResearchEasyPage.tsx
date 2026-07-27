@@ -11,10 +11,11 @@ import { applySupplementalIngestNotifications } from '../utils/supplementalInges
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 
 type EasyDepth = 'standard' | 'deep';
-// Prompts under ~12 words rarely contain enough specificity for scope and output shape;
-// empirically, requests above this length usually include at least one boundary keyword.
+// Requests under ~12 words rarely contain enough context for scope and output shape;
+// this threshold is an initial heuristic and can be tuned as usage data accumulates.
 const CLARIFY_MIN_WORDS = 12;
 // Scope-boundary keywords signal the user has already constrained geography, timeline, or audience.
+// Common words like 'by'/'within' are intentionally included as weak but fast signals.
 const SCOPE_BOUNDARY_PATTERN = /\b(by|within|deadline|budget|scope|market|region|industry)\b/i;
 // Output-format keywords indicate the user knows what artifact they want (table, steps, etc.).
 const OUTPUT_FORMAT_PATTERN = /\b(compare|rank|recommend|steps|plan|roadmap|table)\b/i;
