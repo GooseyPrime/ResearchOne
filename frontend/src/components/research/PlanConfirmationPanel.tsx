@@ -40,6 +40,13 @@ function humanizeAgentName(agent: string): string {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+function extractAgents(planPayload: Record<string, unknown>): string[] {
+  const agentsRaw = (planPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
+  return Array.isArray(agentsRaw)
+    ? agentsRaw.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+    : [];
+}
+
 const AUTO_CONFIRM_SECONDS = 5;
 
 export default function PlanConfirmationPanel({
@@ -250,10 +257,7 @@ export default function PlanConfirmationPanel({
 
   const topic = (localPayload.topicAnalysis as Record<string, unknown> | undefined)?.summary;
   const topicStr = typeof topic === 'string' ? topic : '';
-  const agentsRaw = (localPayload.orchestrationProfile as Record<string, unknown> | undefined)?.agentsWillRun;
-  const agents = Array.isArray(agentsRaw)
-    ? agentsRaw.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
-    : [];
+  const agents = extractAgents(localPayload);
 
   const showStreakHint =
     planPrefs &&

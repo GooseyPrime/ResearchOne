@@ -5,6 +5,11 @@ function normalize(items: string[]): string[] {
   return items.map((item) => item.trim()).filter(Boolean);
 }
 
+function normalizeForCompare(items: string[]): string {
+  // Order-independent compare: reordering assumptions alone does not count as an edit.
+  return normalize(items).sort((a, b) => a.localeCompare(b)).join('\n');
+}
+
 export default function ResearchAssumptionsEditor({
   assumptions,
   disabled = false,
@@ -21,10 +26,10 @@ export default function ResearchAssumptionsEditor({
   }, [assumptions]);
 
   const cleaned = useMemo(() => normalize(drafts), [drafts]);
-  const baseline = useMemo(() => normalize(assumptions), [assumptions]);
-
-  const hasChanges =
-    cleaned.length !== baseline.length || cleaned.some((item, idx) => item !== baseline[idx]);
+  const hasChanges = useMemo(
+    () => normalizeForCompare(drafts) !== normalizeForCompare(assumptions),
+    [drafts, assumptions]
+  );
 
   return (
     <div className="space-y-2">

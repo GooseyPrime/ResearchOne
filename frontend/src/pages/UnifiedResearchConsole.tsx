@@ -61,12 +61,11 @@ export default function UnifiedResearchConsole({
 
   const handleModeChange = useCallback(
     (next: ResearchEngineMode) => {
+      setSurface('lab');
       if (next === 'deep' && !tierGateUnknown && !canAccessDeep) {
         setShowDeepUpgrade(true);
-        setSurface('lab');
         return;
       }
-      setSurface('lab');
       setMode(next);
       onModeChange(next);
     },

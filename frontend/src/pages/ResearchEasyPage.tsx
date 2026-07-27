@@ -11,20 +11,28 @@ import { applySupplementalIngestNotifications } from '../utils/supplementalInges
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 
 type EasyDepth = 'standard' | 'deep';
+const CLARIFY_MIN_WORDS = 12;
+const SCOPE_BOUNDARY_PATTERN = /\b(by|within|deadline|budget|scope|market|region|industry)\b/i;
+const OUTPUT_FORMAT_PATTERN = /\b(compare|rank|recommend|steps|plan|roadmap|table)\b/i;
 
+/**
+ * Lightweight ambiguity heuristic for optional pre-plan clarifications.
+ * We trigger at most two questions when the prompt appears underspecified:
+ * short requests, missing explicit scope boundaries, or missing output-shape hints.
+ */
 function buildClarifyingQuestions(query: string): string[] {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const words = trimmed.split(/\s+/).filter(Boolean);
   const questions: string[] = [];
 
-  if (words.length < 12) {
+  if (words.length < CLARIFY_MIN_WORDS) {
     questions.push('What specific output do you need (for example: comparison, ranked list, implementation steps)?');
   }
-  if (!/\b(by|within|deadline|budget|scope|market|region|industry)\b/i.test(trimmed)) {
+  if (!SCOPE_BOUNDARY_PATTERN.test(trimmed)) {
     questions.push('Any scope boundaries we should enforce (timeline, geography, budget, or target audience)?');
   }
-  if (!/\b(compare|rank|recommend|steps|plan|roadmap|table)\b/i.test(trimmed)) {
+  if (!OUTPUT_FORMAT_PATTERN.test(trimmed)) {
     questions.push('How should results be organized (ranked options, narrative briefing, or step-by-step guide)?');
   }
   return questions.slice(0, 2);
@@ -48,6 +56,7 @@ export default function ResearchEasyPage() {
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
 
   const deepLocked = !tierGateUnknown && !canAccessDeep;
+  const selectedEngineVersion = depth === 'deep' ? 'v2' : undefined;
 
   useEffect(() => {
     if (deepLocked && depth === 'deep') setDepth('standard');
@@ -69,7 +78,7 @@ export default function ResearchEasyPage() {
       return startResearch({
         query: query.trim(),
         supplemental: `${supplemental.trim()}${extra}`.trim() || undefined,
-        engineVersion: depth === 'deep' ? 'v2' : undefined,
+        engineVersion: selectedEngineVersion,
         supplementalFiles: files,
         supplementalUrls: urls,
         supplementalUrlCrawl: urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
@@ -81,7 +90,7 @@ export default function ResearchEasyPage() {
         researchLabel: 'Research',
         defaultStartedMessage: 'Research started — tracking detailed progress...',
       });
-      navigate(liveResearchUrl(data.runId, { engineVersion: depth === 'deep' ? 'v2' : undefined, focusPlan: true }));
+      navigate(liveResearchUrl(data.runId, { engineVersion: selectedEngineVersion, focusPlan: true }));
     },
     onError: (err) => {
       addNotification('error', extractApiError(err));
@@ -96,7 +105,7 @@ export default function ResearchEasyPage() {
       return;
     }
     setClarifyQuestions(generated);
-    setClarifyAnswers(new Array(generated.length).fill(''));
+    setClarifyAnswers(Array.from({ length: generated.length }, () => ''));
     setClarifyOpen(true);
   };
 
