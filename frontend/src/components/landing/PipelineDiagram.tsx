@@ -14,7 +14,7 @@ const STAGES = [
 export default function PipelineDiagram() {
   return (
     <div className="rounded-xl border border-white/10 bg-r1-bg-deep p-5">
-      <p className="mb-4 text-sm text-r1-text-muted">10 stages. 7 specialized agents. One report.</p>
+      <p className="mb-4 text-sm text-r1-text-muted">Illustrative 10-stage specialist flow.</p>
       <p className="mb-4 text-sm text-r1-text-muted">Illustrative specialist stages. Actual routing adapts to the request.</p>
       <div className="grid gap-2 md:grid-cols-5">
         {STAGES.map((stage, index) => (

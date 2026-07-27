@@ -93,7 +93,7 @@ describe('AnimatedPipelineHero — reduced motion fallback (Rule 27 I-1)', () =>
   it('the static fallback contains the existing aria-label text', () => {
     render(<AnimatedPipelineHero forceReducedMotion={true} />);
     expect(
-      screen.getByLabelText(/ResearchOne ten-stage pipeline grouped into four phases/i)
+      screen.getByLabelText(/Example ResearchOne flow grouped into four phases/i)
     ).toBeInTheDocument();
   });
 });

@@ -35,14 +35,14 @@ const QUOTES: readonly QuoteCard[] = [
     attribution: 'OpenAI, Deep Research System Card (Feb 25, 2025).',
     url: 'https://openai.com/index/deep-research-system-card/',
     counterLine:
-      'A Skeptic agent on every claim is how we make the distinction explicit — not a hope, a stage.',
+      'ResearchOne surfaces uncertainty and contradiction as first-class outputs and raises verification depth when the request needs stronger adjudication.',
   },
   {
     quote: 'source bias transfer and over-association of unrelated facts.',
     attribution: 'Stanford STORM project team, methodology page.',
     url: 'https://storm-project.stanford.edu/research/storm/',
     counterLine:
-      'Honest self-criticism, and a known failure mode for any retrieval-only system. Contradiction preservation and a skeptic pass are how we counter it.',
+      'Honest self-criticism is essential. ResearchOne preserves contradictions and uses stronger verification paths when source quality or claim risk requires it.',
   },
 ];
 

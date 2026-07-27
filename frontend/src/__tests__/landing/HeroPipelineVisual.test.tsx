@@ -8,7 +8,7 @@ describe('HeroPipelineVisual', () => {
   it('renders all 4 phase headers', () => {
     expect(html).toContain('PLAN');
     expect(html).toContain('RETRIEVE &amp; READ');
-    expect(html).toContain('REASON &amp; CHALLENGE');
+    expect(html).toContain('REASON &amp; VERIFY');
     expect(html).toContain('WRITE &amp; CITE');
   });
 
@@ -32,7 +32,7 @@ describe('HeroPipelineVisual', () => {
 
   it('has accessible visually-hidden description', () => {
     expect(html).toContain('sr-only');
-    expect(html).toContain('ResearchOne pipeline has four phases');
+    expect(html).toContain('This example ResearchOne flow has four phases');
   });
 
   it('has aria-label on Skeptic chip', () => {
