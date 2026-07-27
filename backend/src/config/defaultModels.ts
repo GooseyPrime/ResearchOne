@@ -25,6 +25,12 @@ export const CODE_DEFAULT_REASONING_MODELS = {
   citationFormatter: 'openai/o4-mini',
   finalRevisionVerifier: 'anthropic/claude-sonnet-4',
   contractAuditor: 'anthropic/claude-sonnet-4',
+  marketScout: 'anthropic/claude-sonnet-4',
+  competitorMapper: 'anthropic/claude-sonnet-4',
+  demandSignalAnalyst: 'anthropic/claude-sonnet-4',
+  feasibilityArchitect: 'anthropic/claude-sonnet-4',
+  storyVerifier: 'anthropic/claude-sonnet-4',
+  timelineReconstructor: 'anthropic/claude-sonnet-4',
   embedding: 'openai/text-embedding-3-small',
 } as const;
 
@@ -50,4 +56,11 @@ export const CODE_DEFAULT_REASONING_FALLBACKS = {
   citationFormatter: 'openai/gpt-4o-mini',
   finalRevisionVerifier: 'openai/o3-mini',
   contractAuditor: 'openai/o3-mini',
+  marketScout: 'openai/o3-mini',
+  competitorMapper: 'openai/o3-mini',
+  demandSignalAnalyst: 'openai/o3-mini',
+  /** deepseek-r1 chosen over o3-mini: feasibility analysis benefits from long-chain technical reasoning. */
+  feasibilityArchitect: 'deepseek/deepseek-r1',
+  storyVerifier: 'openai/o3-mini',
+  timelineReconstructor: 'openai/o3-mini',
 } as const;

@@ -38,6 +38,8 @@ export interface PipelineStage {
   phase: 'plan' | 'retrieve' | 'reason' | 'synthesize';
   /** True for the Skeptic stage — rendered with extra emphasis per Rule 27 I-4. */
   emphasis?: boolean;
+  /** True when the node is conditional on the selected agent roster. */
+  conditional?: boolean;
   /** Viewport position in the 1000 × 360 SVG coordinate space. */
   x: number;
   y: number;
@@ -74,6 +76,12 @@ export const PIPELINE_STAGES: readonly PipelineStage[] = [
   { id: 'verifier',            label: 'Verifier',             phase: 'synthesize', x: 560, y: 270 },
   { id: 'report',              label: 'Report',               phase: 'synthesize', x: 380, y: 270 },
   { id: 'persistence',         label: 'Recordkeeping',        phase: 'synthesize', x: 180, y: 270 },
+] as const;
+
+export const SPECIALIST_PIPELINE_STAGES: readonly PipelineStage[] = [
+  { id: 'market_scout', label: 'Market Scout', phase: 'reason', conditional: true, x: 80, y: 180 },
+  { id: 'feasibility_architect', label: 'Feasibility Architect', phase: 'reason', conditional: true, x: 410, y: 180 },
+  { id: 'story_verifier', label: 'Story Verifier', phase: 'reason', conditional: true, x: 600, y: 180 },
 ] as const;
 
 /* ────────────────────────────────────────────────────────────────

@@ -37,6 +37,12 @@ const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   citationFormatter: 'citation_formatter',
   finalRevisionVerifier: 'final_revision_verifier',
   contractAuditor: 'contract_auditor',
+  marketScout: 'market_scout',
+  competitorMapper: 'competitor_mapper',
+  demandSignalAnalyst: 'demand_signal_analyst',
+  feasibilityArchitect: 'feasibility_architect',
+  storyVerifier: 'story_verifier',
+  timelineReconstructor: 'timeline_reconstructor',
 };
 
 function fromCodeDefaults(): Record<ReasoningModelRole, RoleModelPair> {
@@ -283,7 +289,13 @@ const V2_UTILITIES: Record<
   | 'revision_intake'
   | 'report_locator'
   | 'final_revision_verifier'
-  | 'contract_auditor',
+  | 'contract_auditor'
+  | 'market_scout'
+  | 'competitor_mapper'
+  | 'demand_signal_analyst'
+  | 'feasibility_architect'
+  | 'story_verifier'
+  | 'timeline_reconstructor',
   RoleModelPair
 > = {
   // All utility roles default to DeepSeek V3.2 (11 upstream providers,
@@ -298,6 +310,12 @@ const V2_UTILITIES: Record<
   report_locator: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   final_revision_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
   contract_auditor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  market_scout: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  competitor_mapper: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  demand_signal_analyst: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  feasibility_architect: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  story_verifier: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
+  timeline_reconstructor: pair(V2M.DEEPSEEK_V32, V2M.DEEPSEEK_V31),
 };
 
 function v2Mode(

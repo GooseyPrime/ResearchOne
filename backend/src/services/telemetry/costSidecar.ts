@@ -135,6 +135,14 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
     case 'final_revision_verifier':
     case 'contract_auditor':
       return 'Verification';
+    case 'market_scout':
+    case 'competitor_mapper':
+    case 'demand_signal_analyst':
+      return 'Discovery';
+    case 'feasibility_architect':
+    case 'story_verifier':
+    case 'timeline_reconstructor':
+      return 'Reasoning';
     case 'citation_formatter':
       return 'Citation Mapping';
     case 'plain_language_synthesizer':

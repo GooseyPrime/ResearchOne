@@ -1,0 +1,67 @@
+---
+description: Every PR that implements or extends a redesign phase must include a phase status checklist reference in the PR description and update docs/redesign-phase-status.md.
+alwaysApply: true
+---
+
+# Rule 39 — Redesign phase PRs must include and update the phase checklist
+
+## Why this rule exists
+
+PRs #175–#178 ship staged implementation of the ResearchOne redesign plan
+(`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md`). Reviewers and
+future agents cannot verify what was done, what remains in the current phase,
+or what sits in a later phase without a canonical tracking document.
+
+## What you must do for every redesign-phase PR
+
+### 1. Update `docs/redesign-phase-status.md` in the same commit
+
+- Mark every item in the current phase section as `[x]` when it is fully
+  implemented.
+- Add new `[ ]` items for any scope discovered during implementation that is
+  not in the phase definition but belongs in the same phase.
+- Leave items that are **intentionally deferred** as `[ ]` under a
+  "Remaining in Phase X" sub-section so readers know what ships next.
+- Do **not** mark an item complete if it is only scaffolded or informational
+  (e.g. "execution wired progressively" is not complete).
+
+### 2. Include the phase status checklist in the PR description
+
+Copy the current and next-phase sections from
+`docs/redesign-phase-status.md` directly into the PR body so that the PR
+diff tells the complete story without requiring a click to the file.
+
+The PR description must contain:
+
+```
+## Redesign phase status
+
+### Phase X — <name> (this PR)
+- [x] …completed item…
+- [ ] …remaining item still in Phase X…
+
+### Phase X+1 — <name> (upcoming)
+- [ ] …first item planned for next phase…
+```
+
+### 3. Pre-merge verification
+
+Before running `report_progress` on a redesign PR:
+
+1. `grep -n '\[ \]' docs/redesign-phase-status.md` — review every unchecked
+   item and confirm it is either legitimately deferred or should be `[x]`.
+2. Confirm the PR body (the description passed to `report_progress` or the
+   GitHub PR body) contains the phase status block.
+3. Confirm `docs/redesign-phase-status.md` is included in the staged files.
+
+## Scope
+
+This rule applies when:
+- The branch name or commit message contains `stage-[a-z]`, `phase-[a-z]`,
+  or references a redesign phase by letter.
+- The PR title or body references the redesign report.
+- You are asked to continue a redesign phase.
+
+## File location
+
+`docs/redesign-phase-status.md`

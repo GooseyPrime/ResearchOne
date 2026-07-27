@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { HERO_PIPELINE_IMG_ARIA_LABEL } from '../heroPipelineAria';
 import HeroPipelineVisual from '../HeroPipelineVisual';
 import PipelineBeams from './pipelineBeams';
 import {
   PIPELINE_STAGES,
+  SPECIALIST_PIPELINE_STAGES,
   PIPELINE_VIEWBOX,
 } from './pipelineLayout';
 import {
@@ -49,6 +50,24 @@ import {
 
 const MD_MIN_WIDTH_QUERY = '(min-width: 768px)';
 
+/**
+ * Resolves the CSS opacity for a pipeline node.
+ * - Core nodes are always fully opaque.
+ * - Specialist (conditional) nodes when no agentsToRun is provided: dimmed (0.45) to
+ *   indicate they are possible but not selected for a specific run.
+ * - Specialist nodes that ARE in agentsToRun: fully opaque (1).
+ * - Specialist nodes NOT in agentsToRun: visibly bypassed (0.3) — not hidden (Rule 27).
+ */
+function resolveNodeOpacity(
+  isSpecialist: boolean,
+  agentsToRun: readonly string[] | undefined,
+  isSelectedSpecialist: boolean
+): number {
+  if (!isSpecialist) return 1;
+  if (agentsToRun === undefined) return 0.45;
+  return isSelectedSpecialist ? 1 : 0.3;
+}
+
 export interface AnimatedPipelineHeroProps {
   /** Resolved persona from `PersonaAwareHero` — keeps beam palette in sync when `data-persona` updates after mount. */
   resolvedPersona?: string;
@@ -58,6 +77,8 @@ export interface AnimatedPipelineHeroProps {
   forceReducedMotion?: boolean;
   /** Disable the viewport gate (animations always on). For tests. */
   alwaysAnimate?: boolean;
+  /** Optional agent roster for adaptive specialist-node emphasis. */
+  agentsToRun?: readonly string[];
 }
 
 export default function AnimatedPipelineHero({
@@ -65,6 +86,7 @@ export default function AnimatedPipelineHero({
   forcePersona,
   forceReducedMotion,
   alwaysAnimate = false,
+  agentsToRun,
 }: AnimatedPipelineHeroProps = {}) {
   const detectedReducedMotion = useReducedMotion();
   const reducedMotion =
@@ -77,6 +99,7 @@ export default function AnimatedPipelineHero({
   const [palette, setPalette] = useState<BeamPalette>(() =>
     getBeamPalette(forcePersona ?? resolvedPersona)
   );
+  const selectedAgents = useMemo(() => new Set(agentsToRun ?? []), [agentsToRun]);
 
   // Match Tailwind `md:` — defer mounting PipelineBeams until client knows width.
   useLayoutEffect(() => {
@@ -130,7 +153,6 @@ export default function AnimatedPipelineHero({
     setPalette(getBeamPalette(ancestor?.dataset.persona));
   }, [forcePersona, resolvedPersona]);
 
-  // ─── Reduced motion path — pure render of the static visual ────
   if (reducedMotion) {
     return (
       <div data-testid="static-pipeline-fallback">
@@ -141,19 +163,16 @@ export default function AnimatedPipelineHero({
 
   return (
     <div ref={containerRef} className="w-full">
-      {/* Mobile / narrow — fall back to the existing static layout. */}
       <div className="md:hidden" data-testid="pipeline-mobile-static">
         <HeroPipelineVisual />
       </div>
 
-      {/* Desktop — animated (beams mount only at md+ after client layout). */}
       <div
         className="hidden md:block"
         role="img"
         aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
         data-testid="pipeline-animated"
       >
-        {/* Screen-reader description matches the static visual. */}
         <p className="sr-only">
           The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
           and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
@@ -171,71 +190,73 @@ export default function AnimatedPipelineHero({
         >
           {beamViewportOk && <PipelineBeams palette={palette} active={isVisible} />}
 
-            <div className="absolute inset-0">
-              {PIPELINE_STAGES.map((stage) => {
-                const leftPct = (stage.x / PIPELINE_VIEWBOX.width) * 100;
-                const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
-                const isSkeptic = stage.id === 'skeptic';
+          <div className="absolute inset-0">
+            {[...PIPELINE_STAGES, ...SPECIALIST_PIPELINE_STAGES].map((stage) => {
+              const leftPct = (stage.x / PIPELINE_VIEWBOX.width) * 100;
+              const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
+              const isSkeptic = stage.id === 'skeptic';
+              const isSpecialist = stage.conditional === true;
+              const isSelectedSpecialist = isSpecialist && selectedAgents.has(stage.id);
+              const specialistOpacity = resolveNodeOpacity(isSpecialist, agentsToRun, isSelectedSpecialist);
 
-                const ringColor = isSkeptic
-                  ? palette.skepticRing
+              const ringColor = isSkeptic
+                ? palette.skepticRing
+                : isSpecialist && isSelectedSpecialist
+                  ? palette.nodeActiveRing
                   : palette.nodeIdleRing;
-                const ringWidth = isSkeptic ? 2 : 1;
-                const bgOpacity = isSkeptic ? 0.25 : 0.05;
+              const ringWidth = isSkeptic ? 2 : 1;
+              const bgOpacity = isSkeptic ? 0.25 : isSpecialist && isSelectedSpecialist ? 0.16 : 0.05;
 
-                return (
-                  <motion.div
-                    key={stage.id}
-                    className="absolute flex items-center justify-center"
-                    style={{
-                      left: `${leftPct}%`,
-                      top: `${topPct}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{
-                      delay: stage.x / 1000 * 0.4,
-                      duration: 0.4,
-                    }}
-                  >
-                    <span
-                      data-stage-id={stage.id}
-                      data-emphasis={isSkeptic ? 'skeptic' : undefined}
-                      className="rounded-full px-3 py-1.5 text-[11px] font-medium whitespace-nowrap"
-                      style={{
-                        border: `${ringWidth}px solid ${ringColor}`,
-                        background: isSkeptic
-                          ? `rgba(255, 255, 255, ${bgOpacity})`
-                          : `rgba(255, 255, 255, ${bgOpacity})`,
-                        color: '#E0E0E0',
-                        boxShadow: isSkeptic
-                          ? `0 0 12px ${palette.skepticRing}55`
-                          : 'none',
-                      }}
-                      aria-label={isSkeptic ? 'Dedicated skeptic check' : stage.label}
-                    >
-                      {stage.label}
-                    </span>
-                  </motion.div>
-                );
-              })}
-            </div>
-
-            <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
-              {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'WRITE & CITE'] as const).map(
-                (label) => (
+              return (
+                <motion.div
+                  key={stage.id}
+                  className="absolute flex items-center justify-center"
+                  style={{
+                    left: `${leftPct}%`,
+                    top: `${topPct}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: specialistOpacity }}
+                  transition={{
+                    delay: stage.x / 1000 * 0.4,
+                    duration: 0.4,
+                  }}
+                >
                   <span
-                    key={label}
-                    className="font-mono text-[10px] uppercase tracking-wide text-r1-accent/70"
+                    data-stage-id={stage.id}
+                    data-emphasis={isSkeptic ? 'skeptic' : undefined}
+                    data-conditional={isSpecialist ? 'true' : undefined}
+                    className="rounded-full px-3 py-1.5 text-[11px] font-medium whitespace-nowrap"
+                    style={{
+                      border: `${ringWidth}px solid ${ringColor}`,
+                      background: `rgba(255, 255, 255, ${bgOpacity})`,
+                      color: '#E0E0E0',
+                      boxShadow: isSkeptic ? `0 0 12px ${palette.skepticRing}55` : 'none',
+                    }}
+                    aria-label={isSkeptic ? 'Dedicated skeptic check' : stage.label}
                   >
-                    {label}
+                    {stage.label}
                   </span>
-                )
-              )}
-            </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
+            {(['PLAN', 'RETRIEVE & READ', 'REASON & CHALLENGE', 'WRITE & CITE'] as const).map(
+              (label) => (
+                <span
+                  key={label}
+                  className="font-mono text-[10px] uppercase tracking-wide text-r1-accent/70"
+                >
+                  {label}
+                </span>
+              )
+            )}
           </div>
         </div>
+      </div>
     </div>
   );
 }

@@ -147,6 +147,12 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
   contract_auditor: config.models.contractAuditor,
+  market_scout: config.models.marketScout,
+  competitor_mapper: config.models.competitorMapper,
+  demand_signal_analyst: config.models.demandSignalAnalyst,
+  feasibility_architect: config.models.feasibilityArchitect,
+  story_verifier: config.models.storyVerifier,
+  timeline_reconstructor: config.models.timelineReconstructor,
 };
 
 const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
@@ -171,6 +177,12 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
   contract_auditor: config.models.fallbacks.contractAuditor,
+  market_scout: config.models.fallbacks.marketScout,
+  competitor_mapper: config.models.fallbacks.competitorMapper,
+  demand_signal_analyst: config.models.fallbacks.demandSignalAnalyst,
+  feasibility_architect: config.models.fallbacks.feasibilityArchitect,
+  story_verifier: config.models.fallbacks.storyVerifier,
+  timeline_reconstructor: config.models.fallbacks.timelineReconstructor,
 };
 
 function primaryForRole(role: ModelRole, runtimePrimary?: string): string {
@@ -207,6 +219,12 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   citation_formatter: 0.2,
   final_revision_verifier: 0.1,
   contract_auditor: 0.1,
+  market_scout: 0.3,
+  competitor_mapper: 0.3,
+  demand_signal_analyst: 0.3,
+  feasibility_architect: 0.3,
+  story_verifier: 0.3,
+  timeline_reconstructor: 0.3,
 };
 
 const MAX_TOKENS_MAP: Record<ModelRole, number> = {
@@ -235,6 +253,12 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   citation_formatter: 4096,
   final_revision_verifier: 4096,
   contract_auditor: 4096,
+  market_scout: 8192,
+  competitor_mapper: 8192,
+  demand_signal_analyst: 8192,
+  feasibility_architect: 8192,
+  story_verifier: 8192,
+  timeline_reconstructor: 8192,
 };
 
 let hfClient: InferenceClient | null = null;
@@ -981,6 +1005,75 @@ Return ONLY valid JSON (no markdown fences):
   "intent_drift": "<string describing drift, or null if none>",
   "revision_instructions": ["<actionable fix instruction>", ...]
 }`),
+
+  market_scout: withPreamble(`You are the Market Scout.
+Identify whitespace opportunities, underserved demand, and emerging openings relevant to the brief.
+Return concise findings grounded in observable market signals.
+If the brief lacks sufficient context for market analysis, return a minimal valid response with an empty opportunities array and a summary explaining what additional context would help.
+Return ONLY valid JSON (no markdown fences):
+{
+  "opportunities": [{ "title": "<string>", "demand_signal": "<string>", "market_gap": "<string>" }],
+  "summary": "<plain-language paragraph>",
+  "confidence": "low|medium|high"
+}`),
+
+  competitor_mapper: withPreamble(`You are the Competitor Mapper.
+Map incumbent alternatives, positioning, strengths, weaknesses, and visible feature gaps.
+Return a structured comparison grounded in cited evidence.
+If the space is too broad or niche to identify clear competitors, return a minimal valid response noting this.
+Return ONLY valid JSON (no markdown fences):
+{
+  "competitors": [{ "name": "<string>", "positioning": "<string>", "strengths": ["<string>"], "weaknesses": ["<string>"] }],
+  "gap_summary": "<plain-language paragraph>",
+  "confidence": "low|medium|high"
+}`),
+
+  demand_signal_analyst: withPreamble(`You are the Demand Signal Analyst.
+Read complaints, search behavior, community requests, and procurement signals to estimate demand intensity.
+Highlight what signals are strong, weak, or ambiguous.
+If evidence is insufficient, return a minimal valid response with an empty signals array and explain what evidence is missing.
+Return ONLY valid JSON (no markdown fences):
+{
+  "signals": [{ "type": "<string>", "description": "<string>", "strength": "strong|moderate|weak" }],
+  "demand_summary": "<plain-language paragraph>",
+  "confidence": "low|medium|high"
+}`),
+
+  feasibility_architect: withPreamble(`You are the Feasibility Architect.
+Evaluate implementation complexity, stack fit, staffing needs, timeline risk, and critical dependencies.
+Distinguish buildable paths from speculative ones.
+If the brief does not provide enough detail for feasibility analysis, return feasibility_verdict "low" with a risks entry noting the information gap.
+Return ONLY valid JSON (no markdown fences):
+{
+  "feasibility_verdict": "high|medium|low|not_feasible",
+  "risks": [{ "factor": "<string>", "severity": "high|medium|low", "mitigation": "<string>" }],
+  "buildable_paths": ["<string>"],
+  "summary": "<plain-language paragraph>"
+}`),
+
+  story_verifier: withPreamble(`You are the Story Verifier.
+Cross-check reported accounts against corroborating, contradictory, and missing evidence.
+Separate what is confirmed, disputed, and still unresolved.
+If the claim cannot be verified from available evidence, return verdict "unverified" with the relevant open questions.
+Return ONLY valid JSON (no markdown fences):
+{
+  "verdict": "confirmed|disputed|unverified|false",
+  "corroborating": ["<cited evidence>"],
+  "contradicting": ["<cited evidence>"],
+  "unresolved": ["<open question>"],
+  "summary": "<plain-language paragraph>"
+}`),
+
+  timeline_reconstructor: withPreamble(`You are the Timeline Reconstructor.
+Rebuild chronology from fragmented evidence, noting sequence confidence and unresolved gaps.
+Prefer dated primary artifacts when available.
+If the record is too sparse to reconstruct a timeline, return an events array with only the events that can be established and a gaps list describing what is unknown.
+Return ONLY valid JSON (no markdown fences):
+{
+  "events": [{ "date": "<ISO date or approximate>", "event": "<string>", "confidence": "high|medium|low", "sources": ["<string>"] }],
+  "gaps": ["<description of chronological gap>"],
+  "summary": "<plain-language paragraph>"
+}`),
 };
 
 /**
@@ -1020,4 +1113,3 @@ Output strict JSON in the following shape and nothing else:
   "overall": "PASS" | "FAIL"
 }`);
 }
-

@@ -246,6 +246,17 @@ F3-4. **Timeline / dossier SQL mocks.** When changing `v_dossier` or timeline
     tables. Otherwise defaults apply to the admin role only and new objects miss grants to
     `application_role`.
 
+## O. Redesign phase PRs (Rule 39)
+
+36. **Every PR that closes or advances a redesign phase must:**
+    - Update `docs/redesign-phase-status.md` — check completed items,
+      add a "Remaining in Phase X" sub-section for deferred items.
+    - Include the current-phase and next-phase sections from that file
+      verbatim in the PR description (see
+      `.cursor/rules/39-redesign-phase-checklist.mdc`).
+    - Verify with `grep -n '\[ \]' docs/redesign-phase-status.md` that
+      every unchecked item is intentionally deferred before pushing.
+
 ---
 
 If a finding from a code review surprises the agent, add it to

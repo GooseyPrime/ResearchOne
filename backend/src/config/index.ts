@@ -200,6 +200,15 @@ const config = {
     finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.finalRevisionVerifier,
     /** Phase B — Deliverable Contract Auditor; env override for ops. */
     contractAuditor: process.env.CONTRACT_AUDITOR_MODEL || CODE_DEFAULT_REASONING_MODELS.contractAuditor,
+    marketScout: process.env.MARKET_SCOUT_MODEL || CODE_DEFAULT_REASONING_MODELS.marketScout,
+    competitorMapper: process.env.COMPETITOR_MAPPER_MODEL || CODE_DEFAULT_REASONING_MODELS.competitorMapper,
+    demandSignalAnalyst:
+      process.env.DEMAND_SIGNAL_ANALYST_MODEL || CODE_DEFAULT_REASONING_MODELS.demandSignalAnalyst,
+    feasibilityArchitect:
+      process.env.FEASIBILITY_ARCHITECT_MODEL || CODE_DEFAULT_REASONING_MODELS.feasibilityArchitect,
+    storyVerifier: process.env.STORY_VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.storyVerifier,
+    timelineReconstructor:
+      process.env.TIMELINE_RECONSTRUCTOR_MODEL || CODE_DEFAULT_REASONING_MODELS.timelineReconstructor,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
     /** Wave 5.1 — intent/plan gate LLM; tier-uniform; env override for ops. */
@@ -230,6 +239,16 @@ const config = {
       citationFormatter: process.env.CITATION_FORMATTER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.citationFormatter,
       finalRevisionVerifier: process.env.FINAL_REVISION_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.finalRevisionVerifier,
       contractAuditor: process.env.CONTRACT_AUDITOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.contractAuditor,
+      marketScout: process.env.MARKET_SCOUT_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.marketScout,
+      competitorMapper:
+        process.env.COMPETITOR_MAPPER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.competitorMapper,
+      demandSignalAnalyst:
+        process.env.DEMAND_SIGNAL_ANALYST_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.demandSignalAnalyst,
+      feasibilityArchitect:
+        process.env.FEASIBILITY_ARCHITECT_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.feasibilityArchitect,
+      storyVerifier: process.env.STORY_VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.storyVerifier,
+      timelineReconstructor:
+        process.env.TIMELINE_RECONSTRUCTOR_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.timelineReconstructor,
     },
   },
 
@@ -453,6 +472,12 @@ const reasoningModelsForPolicy = {
   citation_formatter: config.models.citationFormatter,
   final_revision_verifier: config.models.finalRevisionVerifier,
   contract_auditor: config.models.contractAuditor,
+  market_scout: config.models.marketScout,
+  competitor_mapper: config.models.competitorMapper,
+  demand_signal_analyst: config.models.demandSignalAnalyst,
+  feasibility_architect: config.models.feasibilityArchitect,
+  story_verifier: config.models.storyVerifier,
+  timeline_reconstructor: config.models.timelineReconstructor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 const reasoningFallbacksForPolicy = {
@@ -477,6 +502,12 @@ const reasoningFallbacksForPolicy = {
   citation_formatter: config.models.fallbacks.citationFormatter,
   final_revision_verifier: config.models.fallbacks.finalRevisionVerifier,
   contract_auditor: config.models.fallbacks.contractAuditor,
+  market_scout: config.models.fallbacks.marketScout,
+  competitor_mapper: config.models.fallbacks.competitorMapper,
+  demand_signal_analyst: config.models.fallbacks.demandSignalAnalyst,
+  feasibility_architect: config.models.fallbacks.feasibilityArchitect,
+  story_verifier: config.models.fallbacks.storyVerifier,
+  timeline_reconstructor: config.models.fallbacks.timelineReconstructor,
 } satisfies Record<ReasoningModelRole, string | undefined>;
 
 validateReasoningModelPolicy({
