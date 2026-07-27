@@ -11,14 +11,21 @@ import { applySupplementalIngestNotifications } from '../utils/supplementalInges
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 
 type EasyDepth = 'standard' | 'deep';
+// Prompts under ~12 words rarely contain enough specificity for scope and output shape;
+// empirically, requests above this length usually include at least one boundary keyword.
 const CLARIFY_MIN_WORDS = 12;
+// Scope-boundary keywords signal the user has already constrained geography, timeline, or audience.
 const SCOPE_BOUNDARY_PATTERN = /\b(by|within|deadline|budget|scope|market|region|industry)\b/i;
+// Output-format keywords indicate the user knows what artifact they want (table, steps, etc.).
 const OUTPUT_FORMAT_PATTERN = /\b(compare|rank|recommend|steps|plan|roadmap|table)\b/i;
 
 /**
  * Lightweight ambiguity heuristic for optional pre-plan clarifications.
  * We trigger at most two questions when the prompt appears underspecified:
- * short requests, missing explicit scope boundaries, or missing output-shape hints.
+ * - Fewer than CLARIFY_MIN_WORDS words: prompt is too short to infer scope or output shape.
+ * - No SCOPE_BOUNDARY match: user hasn't named a timeline, geography, budget, or audience.
+ * - No OUTPUT_FORMAT match: user hasn't indicated what kind of artifact they want.
+ * At most two questions are surfaced (slice(-2)) to avoid overwhelming the user.
  */
 function buildClarifyingQuestions(query: string): string[] {
   const trimmed = query.trim();
