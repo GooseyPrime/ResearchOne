@@ -14,8 +14,8 @@ export type MarketingHeadEntry = {
 const DEFAULT: MarketingHeadEntry = {
   title: 'ResearchOne',
   description:
-    'ResearchOne — disciplined anomaly research. Reasoning-first epistemic policy: preserve contradictions, source-corroboration discipline, provenance you can verify.',
-  ogTitle: 'ResearchOne — Disciplined Anomaly Research Platform',
+    'ResearchOne — deep research that adapts to the question. Plan-first workflows, specialist analysis, and cited reports with uncertainty and contradictions made visible.',
+  ogTitle: 'ResearchOne — Adaptive Deep Research Platform',
 };
 
 const BY_PATH: Record<string, MarketingHeadEntry> = {
@@ -28,7 +28,7 @@ const BY_PATH: Record<string, MarketingHeadEntry> = {
   '/methodology': {
     title: 'Methodology — ResearchOne',
     description:
-      'Ten stages, seven agents, one adversarial Skeptic — how ResearchOne builds defensible research output.',
+      'How ResearchOne plans, reads sources, applies specialist analysis, and verifies findings based on your research objective.',
     ogTitle: 'Methodology — ResearchOne',
   },
   '/faq': {

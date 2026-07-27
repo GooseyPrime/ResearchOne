@@ -32,8 +32,9 @@ export default function IngestionConsentToggle() {
           <h3 className="text-sm font-medium text-slate-200">ResearchOne shared corpus</h3>
           <p className="mt-1 text-xs text-slate-400">
             When enabled, eligible sanitized excerpts from your research may be added to the shared
-            ResearchOne corpus (Pipeline B). Turning this off stops new contributions; material already
-            added cannot be removed. This is separate from your private Ingest workspace on paid plans.
+            ResearchOne corpus. Turning this off stops new contributions; material already
+            contributed remains in aggregated datasets. Technical name: Pipeline B. This is separate from
+            your private Ingest workspace on paid plans.
           </p>
         </div>
         <button

@@ -599,7 +599,8 @@ export default function ResearchStandardPage() {
             <span className="text-gradient">Start Research</span>
           </h1>
           <p className="text-slate-400 mt-2 text-sm">
-            Disciplined anomaly research with source-corroboration-tiered reporting and full-stage telemetry.
+            Describe what you want to know, decide, verify, find, or produce. ResearchOne proposes a plan,
+            then runs source-aware analysis for that outcome.
           </p>
         </div>
       )}

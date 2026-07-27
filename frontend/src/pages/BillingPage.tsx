@@ -263,11 +263,18 @@ export default function BillingPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6 text-slate-200">
-      <h1 className="text-2xl font-semibold">Account</h1>
+      <h1 className="text-2xl font-semibold">Billing &amp; usage</h1>
       <p className="mt-2 max-w-2xl text-sm text-slate-400">
         Checkout opens on Stripe, where you can enter a promotion code if you have one for an eligible
         purchase. For subscriptions (plans and report add-ons), Stripe omits payment details when the
         amount due is $0 after discounts.
+      </p>
+      <p className="mt-2 max-w-2xl text-sm text-slate-400">
+        Need profile, security, or research preferences? Go to{' '}
+        <Link to="/account" className="text-indigo-400 hover:text-indigo-300">
+          Account settings
+        </Link>
+        .
       </p>
 
       {billingIntent === 'pro' || billingIntent === 'student' ? (
@@ -300,7 +307,7 @@ export default function BillingPage() {
       ) : null}
       {legacyCheckoutWarning ? (
         <p className="mt-4 rounded-md border border-amber-700/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
-          Checkout succeeded, but this return URL did not include a session id. Refresh in a minute or open Account
+          Checkout succeeded, but this return URL did not include a session id. Refresh in a minute or open Billing &amp; usage
           again if your plan has not updated.
         </p>
       ) : null}
@@ -561,13 +568,9 @@ export default function BillingPage() {
             ))
           ) : (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100/90">
-              <p className="font-medium text-amber-200">Monitor token packs are not configured yet</p>
+              <p className="font-medium text-amber-200">Monitor token purchases are temporarily unavailable</p>
               <p className="mt-1 text-amber-100/80">
-                Run{' '}
-                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">STRIPE_SECRET_KEY=sk_… npx tsx scripts/stripe-bootstrap.ts</code>{' '}
-                and set the printed{' '}
-                <code className="rounded bg-black/30 px-1 py-0.5 text-xs">STRIPE_PRICE_ID_MONITOR_TOKEN_PACK_*</code>{' '}
-                values on the API host, then redeploy.
+                Existing tokens and active monitors are unaffected. Please try again later or contact support.
               </p>
             </div>
           )}
@@ -590,10 +593,10 @@ export default function BillingPage() {
                 });
               }}
             />
-            Auto top-up when balance hits zero
+            Remind me when my monitor token balance is empty
           </label>
           <p className="text-xs text-slate-500">
-            Preference only — automatic Stripe charges when depleted are not enabled yet; you will be
+            Preference only — automatic Stripe charging when depleted is not enabled yet; you will be
             notified to buy tokens manually.
           </p>
           {monitorTokensQuery.data?.autoTopupEnabled ? (

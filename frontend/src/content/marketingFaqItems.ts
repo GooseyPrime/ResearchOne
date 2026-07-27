@@ -3,7 +3,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'How is ResearchOne different from mainstream deep research assistants?',
     answer:
-      'Mainstream assistants optimize for fast cited answers. ResearchOne uses a ten-stage multi-agent pipeline with a dedicated Skeptic and explicit source-corroboration tiering, built for defensible long-form reports where contradictions must survive and the output must outlive the chat.',
+      'Mainstream assistants optimize for fast cited answers. ResearchOne builds a plan first, gathers and reads sources, then applies specialist analysis based on your requested outcome. It keeps evidence, interpretation, uncertainty, and contradictions visible in one cited report.',
   },
   {
     question: 'What does the Skeptic agent actually do?',
@@ -42,7 +42,7 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'How is this different from ChatGPT Deep Research or Claude Research?',
     answer:
-      'ResearchOne exposes a named ten-stage pipeline with a Skeptic outside the single-model draft, per-claim citation bind, and explicit source-corroboration tiers. The comparison is structural auditability versus a single chat-shaped pass.',
+      'ResearchOne is plan-first and outcome-adaptive: it can run different specialist methods for explanation, comparison, verification, implementation research, or quantitative analysis. The comparison is structural auditability and explicit uncertainty handling versus a single chat-shaped pass.',
   },
   {
     question: 'What does the Skeptic agent actually do?',

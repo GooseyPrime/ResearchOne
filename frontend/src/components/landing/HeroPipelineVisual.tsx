@@ -10,7 +10,7 @@ const PHASES = [
     stages: ['Retriever', 'Retriever Analysis'],
   },
   {
-    label: 'REASON & CHALLENGE',
+    label: 'REASON & VERIFY',
     stages: ['Reasoner', 'Skeptic'],
   },
   {
@@ -27,10 +27,10 @@ export default function HeroPipelineVisual() {
       aria-label={HERO_PIPELINE_IMG_ARIA_LABEL}
     >
       <p className="sr-only">
-        The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner and Discovery stages.
+        This example ResearchOne flow has four phases. Phase one, Plan, includes the Planner and Discovery stages.
         Phase two, Retrieve and Read, includes the Retriever and Retriever Analysis stages.
-        Phase three, Reason and Challenge, includes the Reasoner and Skeptic stages. The Skeptic is a dedicated
-        check that argues against the draft before it proceeds.
+        Phase three, Reason and Verify, includes the Reasoner and Skeptic stages when additional adversarial checking
+        is needed.
         Phase four, Write and Cite, includes the Drafting, Verifier, Report, and Recordkeeping stages.
       </p>
 

@@ -1,4 +1,5 @@
 import { UserProfile } from '@clerk/react';
+import { Link } from 'react-router-dom';
 import PlanConfirmationSettingsCard from '../components/account/PlanConfirmationSettingsCard';
 import SavedOrchestrationProfilesCard from '../components/account/SavedOrchestrationProfilesCard';
 import IngestionConsentToggle from '../components/account/IngestionConsentToggle';
@@ -12,6 +13,13 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-r1-bg px-4 py-10">
+      <div className="mx-auto mb-4 max-w-5xl rounded-lg border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-300">
+        Need subscription, wallet, tokens, or invoices? Open{' '}
+        <Link to="/app/billing" className="text-indigo-400 hover:text-indigo-300">
+          Billing &amp; usage
+        </Link>
+        .
+      </div>
       <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-8 items-start justify-center">
         <div className="w-full flex justify-center">
           <UserProfile path="/account" routing="path" />
