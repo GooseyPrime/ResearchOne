@@ -8,7 +8,7 @@ type GuideSection = {
   links?: Array<{ to: string; label: string }>;
 };
 
-const QUICK_START_STEPS = [
+const QUICK_START_CHECKLIST = [
   'Open Research and stay in EZ Research.',
   'Describe what you want to know, decide, verify, find, or produce.',
   'Add files or web pages that ResearchOne must read.',
@@ -166,9 +166,9 @@ export default function GuidePage() {
       </div>
 
       <section className="card p-6 space-y-4 border border-accent/20 bg-accent/5">
-        <h2 className="text-base font-semibold text-white">60-second quick start</h2>
+        <h2 className="text-base font-semibold text-white">Quick start checklist</h2>
         <ol className="space-y-2 list-decimal list-inside text-sm text-slate-300 leading-relaxed">
-          {QUICK_START_STEPS.map((step) => (
+          {QUICK_START_CHECKLIST.map((step) => (
             <li key={step}>{step}</li>
           ))}
         </ol>

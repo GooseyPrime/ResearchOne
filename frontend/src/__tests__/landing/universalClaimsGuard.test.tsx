@@ -13,11 +13,11 @@ function renderInRouter(node: ReactElement) {
 }
 
 const FORBIDDEN_UNIVERSAL_PATTERNS: readonly RegExp[] = [
-  /every report requires falsification/i,
-  /skeptic on every claim/i,
-  /every objective passes through the same pipeline/i,
-  /each mode runs the full ten-stage pipeline/i,
-  /write a specific,?\s*testable query\.?/i,
+  /(every|all)\s+reports?\s+require\s+falsification/i,
+  /skeptic(\s+agent)?\s+(on|for)\s+every\s+(claim|conclusion)/i,
+  /every\s+objective\s+passes\s+through\s+the\s+same\s+pipeline/i,
+  /each\s+mode\s+runs\s+the\s+full\s+ten-?stage\s+pipeline/i,
+  /write\s+a\s+specific,?\s*testable\s+query\.?/i,
 ];
 
 describe('user-facing universal-claim guardrails', () => {
