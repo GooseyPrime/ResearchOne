@@ -75,6 +75,15 @@ describe('PersonaAwareHero — default state matches Hero / personaContent defau
       expect(section?.getAttribute('data-persona')).toBe('default');
     });
   });
+
+  it('mounts the adaptive animated pipeline hero in production path', async () => {
+    renderHero();
+    await waitFor(() => {
+      expect(screen.getByTestId('pipeline-animated')).toBeInTheDocument();
+    });
+    // REVERT-CHECK: PersonaAwareHero.tsx — if this reverts to PipelineSchematic,
+    // AnimatedPipelineHero test ids disappear and this fails.
+  });
 });
 
 describe('PersonaAwareHero — forcePersona', () => {

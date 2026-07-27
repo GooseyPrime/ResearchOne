@@ -104,6 +104,42 @@ function coerceConstraint(raw: unknown): UserConstraint | null {
   return { description };
 }
 
+function parseResearchBriefOrUndefined(raw: unknown, fallbackIntent: IntentId): ResearchBrief | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const primaryIntent = isIntentId(o.primaryIntent) ? o.primaryIntent : fallbackIntent;
+  const secondaryIntent =
+    isIntentId(o.secondaryIntent) && o.secondaryIntent !== primaryIntent
+      ? o.secondaryIntent
+      : undefined;
+  const requestedArtifacts = Array.isArray(o.requestedArtifacts)
+    ? o.requestedArtifacts.map(coerceArtifact).filter((x): x is RequestedArtifact => x !== null)
+    : [];
+  const userConstraints = Array.isArray(o.userConstraints)
+    ? o.userConstraints.map(coerceConstraint).filter((x): x is UserConstraint => x !== null)
+    : [];
+  const epistemicPosture = isEpistemicPosture(o.epistemicPosture)
+    ? o.epistemicPosture
+    : (INTENT_EPISTEMIC_POSTURE[primaryIntent] ?? 'descriptive');
+  const confidence =
+    typeof o.confidence === 'number' && Number.isFinite(o.confidence)
+      ? Math.min(1, Math.max(0, o.confidence))
+      : 0.5;
+  const reasoning =
+    typeof o.reasoning === 'string' && o.reasoning.trim()
+      ? o.reasoning.trim()
+      : 'Research brief missing reasoning.';
+  return {
+    primaryIntent,
+    secondaryIntent,
+    requestedArtifacts,
+    userConstraints,
+    epistemicPosture,
+    confidence,
+    reasoning,
+  };
+}
+
 /**
  * Phase B — parse the ResearchBrief JSON returned by RESEARCH_BRIEF_CLASSIFIER_PROMPT.
  * Falls back to a minimal brief using the provided defaults when the model returns
@@ -234,6 +270,8 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
           : null,
   };
 
+  const briefFromPayload = parseResearchBriefOrUndefined(o.researchBrief, id);
+
   const base: PlanPayload = {
     intent: { id, displayLabel, confidence, reasoning },
     topicAnalysis,
@@ -241,6 +279,7 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
     sourceStrategy,
     outputShape,
     estimatedCost,
+    ...(briefFromPayload ? { researchBrief: briefFromPayload } : {}),
   };
   return mergePlanPayloadWithCanonicalProfile(base);
 }
@@ -254,12 +293,18 @@ export function planPayloadFromUnknown(
   return coercePlanPayload(raw, intentFallback, confFallback);
 }
 
-export function parsePlanGeneratorJson(content: string, intentFallback: IntentId, confFallback: number): PlanPayload {
+export function parsePlanGeneratorJson(
+  content: string,
+  intentFallback: IntentId,
+  confFallback: number,
+  researchBrief?: ResearchBrief
+): PlanPayload {
   try {
     const slice = extractJsonObject(content);
     if (!slice) throw new Error('no_json_object');
     const o = JSON.parse(slice);
-    return coercePlanPayload(o, intentFallback, confFallback);
+    const plan = coercePlanPayload(o, intentFallback, confFallback);
+    return researchBrief ? mergePlanPayloadWithCanonicalProfile({ ...plan, researchBrief }) : plan;
   } catch (e) {
     logger.warn('plan_generator_json_parse_failed', { message: e instanceof Error ? e.message : String(e) });
     const def = getIntentById(intentFallback);
@@ -298,7 +343,9 @@ export function parsePlanGeneratorJson(content: string, intentFallback: IntentId
         estimatedCostCents: null,
       },
     };
-    return mergePlanPayloadWithCanonicalProfile(stub);
+    return mergePlanPayloadWithCanonicalProfile(
+      researchBrief ? { ...stub, researchBrief } : stub
+    );
   }
 }
 
@@ -311,7 +358,14 @@ export function parsePlanRefinementJson(
     if (!slice) throw new Error('no_json_object');
     const o = JSON.parse(slice) as Record<string, unknown>;
     const revisedRaw = o.revisedPlan;
-    const revisedPlan = coercePlanPayload(revisedRaw, currentPlan.intent.id, currentPlan.intent.confidence);
+    const revisedPlanRaw = coercePlanPayload(revisedRaw, currentPlan.intent.id, currentPlan.intent.confidence);
+    const revisedPlan = mergePlanPayloadWithCanonicalProfile({
+      ...revisedPlanRaw,
+      researchBrief:
+        revisedPlanRaw.researchBrief ??
+        currentPlan.researchBrief ??
+        defaultResearchBrief(currentPlan.intent.id, currentPlan.intent.confidence, currentPlan.intent.reasoning),
+    });
     const diffSummary = typeof o.diffSummary === 'string' ? o.diffSummary : 'Refinement applied.';
     const icRaw = o.intentChange && typeof o.intentChange === 'object' ? (o.intentChange as Record<string, unknown>) : {};
     const from = isIntentId(icRaw.from) ? icRaw.from : currentPlan.intent.id;

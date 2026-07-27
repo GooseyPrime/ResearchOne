@@ -30,8 +30,12 @@ export async function generatePlan(input: {
     config.openrouter.apiKey?.trim() || input.llmOpts.byokApiKeyOverride?.trim()
   );
   if (!hasOpenRouterCredential) {
-    const plan = parsePlanGeneratorJson('{}', input.intent, input.intentConfidence);
-    return input.researchBrief ? { ...plan, researchBrief: input.researchBrief } : plan;
+    return parsePlanGeneratorJson(
+      '{}',
+      input.intent,
+      input.intentConfidence,
+      input.researchBrief
+    );
   }
 
   let profileBlock = '';
@@ -62,22 +66,23 @@ export async function generatePlan(input: {
     ],
   });
 
-  let plan = parsePlanGeneratorJson(res.content, input.intent, input.intentConfidence);
-  plan = {
-    ...plan,
+  const parsedPlan = parsePlanGeneratorJson(
+    res.content,
+    input.intent,
+    input.intentConfidence,
+    input.researchBrief
+  );
+  return {
+    ...parsedPlan,
     intent: {
-      ...plan.intent,
+      ...parsedPlan.intent,
       id: input.intent,
-      displayLabel: def?.displayLabel ?? plan.intent.displayLabel,
+      displayLabel: def?.displayLabel ?? parsedPlan.intent.displayLabel,
       confidence: input.intentConfidence,
     },
     orchestrationProfile: {
-      ...plan.orchestrationProfile,
-      name: ORCHESTRATION_PROFILES[input.intent]?.displayName ?? plan.orchestrationProfile.name,
+      ...parsedPlan.orchestrationProfile,
+      name: ORCHESTRATION_PROFILES[input.intent]?.displayName ?? parsedPlan.orchestrationProfile.name,
     },
-    // Phase B — carry the ResearchBrief through to execution
-    ...(input.researchBrief && { researchBrief: input.researchBrief }),
   };
-  return plan;
 }
-

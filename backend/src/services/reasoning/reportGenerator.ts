@@ -45,6 +45,7 @@ export const ADJUDICATIVE_SECTION_INTENTS = new Set<string>([
 
 const MAX_SECTION_SUMMARY_CHARS = 1200;
 const MAX_ROLLING_SUMMARY_CHARS = 6000;
+const MAX_SPECIALIST_FINDINGS_CHARS = 8000;
 
 /** Per-section floor — even short presets must give each section enough
  *  budget to write a coherent paragraph. The total minimum
@@ -198,6 +199,7 @@ export async function generateIterativeReport(args: {
 Required sections:\n${activeSectionPlan.map((s) => `- ${s.title}`).join('\n')}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Evidence:\n${args.evidenceContext.slice(0, 8000)}
+Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
 Return strict JSON only.`,
       },
     ],
@@ -232,7 +234,7 @@ Plan: ${JSON.stringify(args.plan)}
 Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
-Specialist findings: ${args.specialistFindings || 'none'}
+Specialist findings: ${args.specialistFindings ?? 'none'}
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}

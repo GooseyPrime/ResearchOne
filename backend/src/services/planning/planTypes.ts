@@ -1,6 +1,7 @@
 import type { IntentId } from './intentTaxonomy';
 import type { SkepticMode, SteelmanMode } from './orchestrationProfiles';
 import type { ResearchBrief } from './researchBrief';
+import type { CanonicalExecutionPlan } from './executionPlan';
 
 /** Structured plan persisted in `research_plans.plan_payload` (Wave 5.1). */
 export interface PlanPayload {
@@ -29,6 +30,8 @@ export interface PlanPayload {
     /** Placeholder map until Wave 5.3 classifier. */
     sourceClassWeights?: Record<string, number>;
     expectedLengthRange?: { minWords: number; maxWords: number };
+    /** Canonical runtime plan consumed by both preview and worker (Phase D1). */
+    executionPlan?: CanonicalExecutionPlan;
   };
   sourceStrategy: {
     summary: string;
@@ -51,6 +54,11 @@ export interface PlanPayload {
    * backward compatibility with pre-Phase-B plans.
    */
   researchBrief?: ResearchBrief;
+  /**
+   * Canonical execution plan persisted on the plan payload.
+   * Optional for backward compatibility with legacy plans.
+   */
+  executionPlan?: CanonicalExecutionPlan;
 }
 
 export function planSummaryFromPayload(plan: PlanPayload): string {

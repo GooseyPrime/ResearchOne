@@ -47,6 +47,7 @@ import {
   mergePlanPayloadWithCanonicalProfile,
   resolveOrchestrationProfileFromJob,
 } from '../planning/orchestrationRuntime';
+import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
 import {
   applyAdversarialTwinToSkepticMode,
   buildRunAddonPipelineEffects,
@@ -54,6 +55,8 @@ import {
 } from './runAddons';
 import {
   PIPELINE_STAGES,
+  type PipelineStage,
+  type OrchestrationProfileDefinition,
   shouldRunPipelineStage,
 } from '../planning/orchestrationProfiles';
 import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
@@ -66,10 +69,12 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
+import { runSpecialistExecution } from './specialistExecutionService';
 import {
   AGENT_CAPABILITY_REGISTRY,
   isSpecialistAgentId,
   selectAgentsForBrief,
+  type SpecialistAgentId,
 } from './agentCapabilityRegistry';
 
 export type {
@@ -333,6 +338,38 @@ function v2CallOpts(
   };
 }
 
+function computeAgentExecutionTelemetry(args: {
+  orchProfile: OrchestrationProfileDefinition;
+  plannedSpecialists: readonly string[];
+  specialistRan: readonly string[];
+  specialistSkipped: readonly string[];
+}) {
+  const ran = Array.from(
+    new Set([
+      'planner',
+      shouldRunPipelineStage(args.orchProfile, 'retriever_analysis') ? 'retriever' : null,
+      shouldRunPipelineStage(args.orchProfile, 'reasoning') ? 'reasoner' : null,
+      'synthesizer',
+      shouldRunPipelineStage(args.orchProfile, 'verification') ? 'verifier' : null,
+      ...args.specialistRan,
+    ].filter((v): v is string => Boolean(v)))
+  );
+  // Use the profile's skipped stages directly, mapped to agent names rather than
+  // stage IDs, so telemetry stays in agent-id space. Filtering agentsToRun by
+  // !shouldRunPipelineStage would always yield empty because agentsToRun only
+  // contains stages that pass that check.
+  const skipped = Array.from(
+    new Set([
+      ...args.specialistSkipped,
+      !shouldRunPipelineStage(args.orchProfile, 'retriever_analysis') ? 'retriever' : null,
+      !shouldRunPipelineStage(args.orchProfile, 'reasoning') ? 'reasoner' : null,
+      !shouldRunPipelineStage(args.orchProfile, 'verification') ? 'verifier' : null,
+    ].filter((v): v is string => Boolean(v)))
+  );
+  const planned = Array.from(new Set(['planner', 'retriever', 'reasoner', 'synthesizer', 'verifier', ...args.plannedSpecialists]));
+  return { planned, ran, skipped };
+}
+
 /**
  * Public entry point. Establishes the cost-telemetry run scope so all
  * nested `callRoleModel` calls (orchestrator, discovery, report
@@ -421,6 +458,19 @@ async function runResearchJobInner(
     resolveOrchestrationProfileFromJob(data),
     runAddons
   );
+  const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
+  const sourceClassesFromPlan =
+    data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
+      ? data.confirmedPlanPayload.sourceStrategy.weightedClasses
+      : [];
+  const canonicalExecutionPlan =
+    data.confirmedPlanPayload?.executionPlan ??
+    data.confirmedPlanPayload?.orchestrationProfile?.executionPlan ??
+    buildCanonicalExecutionPlan({
+      profile: orchProfile,
+      researchBrief: confirmedResearchBrief,
+      sourceClasses: sourceClassesFromPlan,
+    });
   const specialistAgentIds = (() => {
     const fromPlan = data.confirmedPlanPayload?.orchestrationProfile?.agentsWillRun
       ?.filter((id): id is string => typeof id === 'string' && isSpecialistAgentId(id));
@@ -439,6 +489,11 @@ async function runResearchJobInner(
   let wave53SourceClassBreakdown: Record<string, number> = {};
   let wave53SteelmanPassCount = 0;
   let wave53SteelmanByClaimKey = new Map<string, string>();
+  let specialistFindingsBlock = '';
+  let specialistStatuses: Partial<Record<SpecialistAgentId, SpecialistExecutionStatus>> = canonicalExecutionPlan.statuses ?? {};
+  let specialistSkipped: string[] = [];
+  let degradedCoverageReasons: string[] = [];
+  let specialistRan: string[] = [];
 
   const progress = async (
     stage: string,
@@ -811,12 +866,61 @@ async function runResearchJobInner(
       retrieverResult = orchestrationStubModelResult('retriever', 'Retriever analysis skipped by orchestration profile.');
     }
 
+    if (canonicalExecutionPlan.specialistAgents.length > 0) {
+      await progress('reasoning', 42, 'Executing specialist analysis team...', {
+        substep: 'specialist_started',
+      });
+      const specialistExecution = await runSpecialistExecution({
+        runId,
+        query: researchQuery,
+        plan,
+        evidenceContext,
+        executionPlan: canonicalExecutionPlan,
+        researchBrief: confirmedResearchBrief,
+        engineVersion: v2.engineVersion,
+        researchObjective: v2.researchObjective,
+        allowFallbackByRole: v2.allowFallbackByRole,
+        byokApiKeyOverride,
+        onProgress: async (message) => {
+          await progress('reasoning', 45, message, { substep: 'specialist_running' });
+        },
+        onCheckpoint: async (key, snapshot) => {
+          await saveRunCheckpoint({
+            runId,
+            stage: 'reasoning',
+            checkpointKey: key,
+            snapshot,
+          });
+        },
+      });
+      modelLog.push(...specialistExecution.modelCalls);
+      specialistStatuses = { ...specialistExecution.statuses };
+      specialistSkipped = [...specialistExecution.skipped];
+      specialistRan = [...specialistExecution.ran];
+      degradedCoverageReasons = [...specialistExecution.degradedCoverageReasons];
+      if (specialistExecution.findingsForPrompt.trim()) {
+        specialistFindingsBlock = `SPECIALIST_FINDINGS (analysis only; not independent evidence):\n${specialistExecution.findingsForPrompt}`;
+      }
+      await progress('reasoning', 47, 'Specialist analysis completed.', {
+        substep: 'specialist_done',
+      });
+    }
+
     // ────────────────────────────────────────────────────────────────
     // STAGE 5: REASONER — build structured arguments
     // ────────────────────────────────────────────────────────────────
     let reasonerResult: ModelCallResult;
     if (shouldRunPipelineStage(orchProfile, 'reasoning')) {
       await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });
+      const specialistPromptBlock = specialistFindingsBlock ? `\n\n${specialistFindingsBlock}` : '';
+      const reasonerUserPrompt = [
+        `Research Query: ${researchQuery}`,
+        `Plan:\n${JSON.stringify(plan, null, 2)}`,
+        `Evidence Analysis:\n${retrieverResult.content}`,
+        `Evidence Chunks:\n${evidenceContext}`,
+        specialistPromptBlock,
+        'INSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.',
+      ].filter(Boolean).join('\n\n');
 
       reasonerResult = await callRoleModel({
         role: 'reasoner',
@@ -826,7 +930,7 @@ async function runResearchJobInner(
           { role: 'system', content: buildReasonerSystemPrompt() },
           {
             role: 'user',
-            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nEvidence Analysis:\n${retrieverResult.content}\n\nEvidence Chunks:\n${evidenceContext}\n\nBuild detailed reasoning chains. Tag every claim with evidence tier.`,
+            content: reasonerUserPrompt,
           },
         ],
       });
@@ -935,16 +1039,22 @@ async function runResearchJobInner(
       });
     }
 
-    const specialistFindingsBlock = specialistFindings
-      .map((item) => {
-        const displayName = capabilityMap.get(item.role)?.displayName ?? item.role;
-        if (item.failed) {
-          return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
-        }
-        if (!item.content.trim()) return `### ${displayName}\nNo specialist findings returned.`;
-        return `### ${displayName}\n${item.content}`;
-      })
-      .join('\n\n');
+    // Only use legacy inline specialist findings if the new execution service path did not
+    // already populate specialistFindingsBlock (i.e., canonicalExecutionPlan had no specialist agents).
+    if (!specialistFindingsBlock && specialistFindings.length > 0) {
+      specialistFindingsBlock = specialistFindings
+        .map((item) => {
+          const displayName = isSpecialistAgentId(item.role)
+            ? capabilityMap.get(item.role)?.displayName ?? item.role
+            : item.role;
+          if (item.failed) {
+            return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
+          }
+          if (!item.content.trim()) return `### ${displayName}\nNo specialist findings returned.`;
+          return `### ${displayName}\n${item.content}`;
+        })
+        .join('\n\n');
+    }
 
     // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {
@@ -1151,7 +1261,7 @@ async function runResearchJobInner(
     // intent drift. Failures are logged and surfaced as metadata; they
     // do not abort the run (pipeline resilience per Rule 11).
     // ────────────────────────────────────────────────────────────────
-    const researchBrief = data.confirmedPlanPayload?.researchBrief ?? null;
+    const researchBrief = confirmedResearchBrief ?? null;
     type ContractAuditResult = {
       pass: boolean;
       missing_requirements: string[];
@@ -1237,6 +1347,12 @@ async function runResearchJobInner(
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
+    const agentExecutionTelemetry = computeAgentExecutionTelemetry({
+      orchProfile,
+      plannedSpecialists: canonicalExecutionPlan.specialistAgents,
+      specialistRan,
+      specialistSkipped,
+    });
 
     const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
     const reportSections = parseReportSections(reportMarkdown);
@@ -1277,6 +1393,13 @@ async function runResearchJobInner(
         output_template_id: outputTemplateId,
         orchestration_intent: orchProfile.intent,
         skeptic_mode: orchProfile.skepticMode,
+        agents_planned: agentExecutionTelemetry.planned,
+        agents_ran: agentExecutionTelemetry.ran,
+        agents_skipped: agentExecutionTelemetry.skipped,
+        specialist_execution: {
+          statuses: specialistStatuses,
+          degraded_coverage_reasons: degradedCoverageReasons,
+        },
         ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
         specialist_findings: specialistFindings.map((finding) => ({
           role: finding.role,
@@ -1373,8 +1496,8 @@ async function runResearchJobInner(
     await aggregateAndPersistDossierStatistics(runId, {
       profileDisplayName: orchProfile.displayName,
       intentId: orchProfile.intent,
-      agentsRan: [...new Set([...orchProfile.agentsToRun, ...specialistAgentIds])],
-      agentsSkipped: [...orchProfile.agentsToSkip],
+      agentsRan: agentExecutionTelemetry.ran,
+      agentsSkipped: agentExecutionTelemetry.skipped,
       stageDurations: stageDurationPayload,
       skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
       sourceClassBreakdown:

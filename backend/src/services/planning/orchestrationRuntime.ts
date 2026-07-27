@@ -5,11 +5,11 @@
 import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';
 import type { PlanPayload } from './planTypes';
 import type { IntentId } from './intentTaxonomy';
-import { selectAgentsForBrief } from '../reasoning/agentCapabilityRegistry';
 import {
   getOrchestrationProfileForIntent,
   type OrchestrationProfileDefinition,
 } from './orchestrationProfiles';
+import { buildCanonicalExecutionPlan } from './executionPlan';
 
 export function resolveOrchestrationProfileFromJob(data: ResearchJobData): OrchestrationProfileDefinition {
   const id = data.confirmedPlanPayload?.intent?.id as IntentId | undefined;
@@ -20,16 +20,16 @@ export function resolveOrchestrationProfileFromJob(data: ResearchJobData): Orche
 /** Enrich persisted plan_payload with canonical run/skip lists and template ids. */
 export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPayload {
   const canon = getOrchestrationProfileForIntent(plan.intent.id);
-  const selectedAgents = selectAgentsForBrief(
-    plan.intent.id,
-    plan.researchBrief?.secondaryIntent
-  );
-  // Ordering: canonical core agents first (preserves pipeline order), specialist
-  // agents appended. Set deduplicates in case the profile already lists a specialist.
-  // Specialist agents are informational metadata for Stage D; execution wiring
-  // is progressive in follow-on commits.
-  const mergedAgents = Array.from(
-    new Set([...canon.agentsToRun, ...selectedAgents.map((agent) => agent.id)])
+  const executionPlan = buildCanonicalExecutionPlan({
+    profile: canon,
+    researchBrief: plan.researchBrief,
+    sourceClasses: Array.isArray(plan.sourceStrategy?.weightedClasses)
+      ? plan.sourceStrategy.weightedClasses
+      : [],
+  });
+  const mergedAgents = Array.from(new Set([...executionPlan.coreAgentRoles, ...executionPlan.specialistAgents]));
+  const skippedAgents = executionPlan.specialistAgents.filter(
+    (id) => executionPlan.statuses?.[id] === 'unavailable' || executionPlan.statuses?.[id] === 'skipped'
   );
   const weights =
     plan.orchestrationProfile.sourceClassWeights &&
@@ -54,11 +54,13 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
       steelmanMode: canon.steelmanMode,
       sourceClassWeights: weights,
       agentsWillRun: mergedAgents,
-      agentsWillSkip: [...canon.agentsToSkip],
+      agentsWillSkip: skippedAgents,
+      executionPlan,
       expectedLengthRange: { ...canon.expectedLengthRange },
       description:
         plan.orchestrationProfile.description?.trim() ||
-        `${canon.displayName} profile — ${canon.agentsToRun.length} pipeline stages active.`,
+        `${canon.displayName} profile — ${executionPlan.corePipelineStages.length} stages active.`,
     },
+    executionPlan,
   };
 }
