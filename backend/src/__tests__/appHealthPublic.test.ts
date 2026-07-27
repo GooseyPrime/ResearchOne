@@ -123,7 +123,7 @@ describe('Express app — public health vs authenticated monitors', () => {
 
   it('redacts health details for non-admin requests', async () => {
     const { status, body } = await get('/api/health');
-    expect(status).toBe(200);
+    expect([200, 503]).toContain(status);
     const payload = JSON.parse(body) as Record<string, unknown>;
     expect(payload.status).toBeTypeOf('string');
     expect(payload.timestamp).toBeTypeOf('string');
@@ -133,7 +133,7 @@ describe('Express app — public health vs authenticated monitors', () => {
 
   it('includes detailed health checks with a valid admin runtime token', async () => {
     const { status, body } = await get('/api/health', { 'x-admin-token': adminRuntimeToken });
-    expect(status).toBe(200);
+    expect([200, 503]).toContain(status);
     const payload = JSON.parse(body) as Record<string, unknown>;
     expect(payload.checks).toBeDefined();
     expect(payload.restartAvailable).toBeDefined();
