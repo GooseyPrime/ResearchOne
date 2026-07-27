@@ -3,6 +3,7 @@ import type { ResearchRun } from '../utils/api';
 import { Link } from 'react-router-dom';
 import { FlaskConical } from 'lucide-react';
 import clsx from 'clsx';
+import ResearchEasyPage from './ResearchEasyPage';
 import ResearchStandardPage from './ResearchStandardPage';
 import ResearchDeepPage from './ResearchDeepPage';
 import { ResearchPageShellProvider } from './ResearchPageContext';
@@ -31,6 +32,7 @@ export default function UnifiedResearchConsole({
   syncEngineForRun,
 }: UnifiedResearchConsoleProps) {
   const [mode, setMode] = useState<ResearchEngineMode>(initialMode);
+  const [surface, setSurface] = useState<'easy' | 'lab'>(initialMode === 'deep' ? 'lab' : 'easy');
   const [showDeepUpgrade, setShowDeepUpgrade] = useState(false);
   const pendingRunHandoffRef = useRef<ResearchRun | null>(null);
   const { canAccessDeep, tierGateUnknown } = useCanAccessDeepResearch();
@@ -47,6 +49,7 @@ export default function UnifiedResearchConsole({
 
   useEffect(() => {
     setMode(initialMode);
+    if (initialMode === 'deep') setSurface('lab');
   }, [initialMode]);
 
   useEffect(() => {
@@ -60,8 +63,10 @@ export default function UnifiedResearchConsole({
     (next: ResearchEngineMode) => {
       if (next === 'deep' && !tierGateUnknown && !canAccessDeep) {
         setShowDeepUpgrade(true);
+        setSurface('lab');
         return;
       }
+      setSurface('lab');
       setMode(next);
       onModeChange(next);
     },
@@ -84,7 +89,7 @@ export default function UnifiedResearchConsole({
       <div
         className={clsx(
           'mx-auto px-6 py-8 space-y-6',
-          mode === 'deep' ? 'max-w-[1500px]' : 'max-w-5xl'
+          surface === 'lab' && mode === 'deep' ? 'max-w-[1500px]' : 'max-w-5xl'
         )}
       >
         <div className="space-y-4">
@@ -102,14 +107,45 @@ export default function UnifiedResearchConsole({
             </p>
           </div>
 
-          <ResearchEngineModeToggle
-            mode={mode}
-            onModeChange={handleModeChange}
-            deepLocked={!tierGateUnknown && !canAccessDeep}
-          />
+          <div className="inline-flex rounded-lg border border-surface-100 bg-surface-200/60 p-1" role="tablist" aria-label="Research surface">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={surface === 'easy'}
+              className={clsx(
+                'rounded-md px-3 py-1.5 text-xs font-medium transition',
+                surface === 'easy' ? 'bg-accent text-r1-bg' : 'text-slate-300 hover:text-slate-100'
+              )}
+              onClick={() => setSurface('easy')}
+            >
+              EZ Research
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={surface === 'lab'}
+              className={clsx(
+                'rounded-md px-3 py-1.5 text-xs font-medium transition',
+                surface === 'lab' ? 'bg-accent text-r1-bg' : 'text-slate-300 hover:text-slate-100'
+              )}
+              onClick={() => setSurface('lab')}
+            >
+              Research Lab
+            </button>
+          </div>
+
+          {surface === 'lab' ? (
+            <ResearchEngineModeToggle
+              mode={mode}
+              onModeChange={handleModeChange}
+              deepLocked={!tierGateUnknown && !canAccessDeep}
+            />
+          ) : null}
         </div>
 
-        {mode === 'deep' ? (
+        {surface === 'easy' ? (
+          <ResearchEasyPage key="research-easy-console" />
+        ) : mode === 'deep' ? (
           <ResearchDeepPage key="research-deep-console" />
         ) : (
           <ResearchStandardPage key="research-standard-console" />
