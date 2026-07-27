@@ -490,7 +490,7 @@ async function runResearchJobInner(
   let wave53SteelmanPassCount = 0;
   let wave53SteelmanByClaimKey = new Map<string, string>();
   let specialistFindingsBlock = '';
-  let specialistStatuses = { ...(canonicalExecutionPlan.statuses ?? {}) } as Record<string, SpecialistExecutionStatus>;
+  let specialistStatuses: Partial<Record<SpecialistAgentId, SpecialistExecutionStatus>> = canonicalExecutionPlan.statuses ?? {};
   let specialistSkipped: string[] = [];
   let degradedCoverageReasons: string[] = [];
   let specialistRan: string[] = [];
@@ -1044,7 +1044,9 @@ async function runResearchJobInner(
     if (!specialistFindingsBlock && specialistFindings.length > 0) {
       specialistFindingsBlock = specialistFindings
         .map((item) => {
-          const displayName = capabilityMap.get(item.role as SpecialistAgentId)?.displayName ?? item.role;
+          const displayName = isSpecialistAgentId(item.role)
+            ? capabilityMap.get(item.role)?.displayName ?? item.role
+            : item.role;
           if (item.failed) {
             return `### ${displayName}\nAnalysis unavailable due to specialist execution error (${item.errorHint ?? 'unknown_error'}).`;
           }
