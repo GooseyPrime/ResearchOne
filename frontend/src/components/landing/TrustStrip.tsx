@@ -1,6 +1,6 @@
 const PILLARS = [
   'Source-corroboration tiers · Tier 1 → Tier 4',
-  'Dedicated Skeptic check',
+  'Verification depth adapts to the request',
   'Living, versioned reports',
 ] as const;
 
@@ -8,7 +8,7 @@ const PILLARS = [
 export default function TrustStrip() {
   return (
     <div className="mx-auto w-full max-w-6xl border-t border-white/10 px-4 pt-8 sm:px-6">
-      <p className="sr-only">Trust signals: source-corroboration discipline, skeptic check, and versioned reports.</p>
+      <p className="sr-only">Trust signals: source-corroboration discipline, adaptive verification, and versioned reports.</p>
       <ul className="flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
         {PILLARS.map((label) => (
           <li key={label} className="list-none">

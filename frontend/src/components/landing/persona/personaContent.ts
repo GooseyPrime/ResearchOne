@@ -44,9 +44,9 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   // ──────────────────────────────────────────────────────────────
   default: {
     eyebrow: 'DEEP RESEARCH PLATFORM',
-    headline: 'Research that defends itself.',
+    headline: 'Deep research that adapts to the question.',
     subhead:
-      'ResearchOne runs a 10-stage, 7-agent pipeline — including a dedicated Skeptic — so every claim ships with the citation, the counter-claim, and the version it came from.',
+      'Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or claim verification. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.',
     ctas: [
       { label: 'Open a sample report', to: '/sample-report', variant: 'primary' },
       { label: 'See the methodology', to: '/methodology', variant: 'secondary' },
@@ -86,7 +86,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       { label: 'See a Convergence Analysis report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
       { label: 'How it works',                       to: '/methodology',                            variant: 'secondary' },
     ],
-    proofLine: 'Skeptic agent on every claim \u00B7 Five source-corroboration tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
+    proofLine: 'Specialist verification when needed \u00B7 Five source-corroboration tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
   },
 
   // ──────────────────────────────────────────────────────────────

@@ -33,10 +33,11 @@ export function MethodologyPipeline() {
             RESEARCH_METHODOLOGY
           </span>
           <h2 data-ev-id="ev_d1f741f85b" className="text-3xl sm:text-4xl font-bold text-r1-heading leading-tight text-center">
-            The nine-stage pipeline
+            A representative research flow
           </h2>
           <p data-ev-id="ev_65f9d76f57" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '16px auto 0' }} className="text-lg text-r1-muted leading-relaxed text-center">
-            Every research objective passes through a multi-agent pipeline where each stage has specialized responsibilities. The Skeptic stage is the key differentiator.
+            ResearchOne adapts specialist routing to the objective. This view shows a common deep-research
+            path and where adversarial review can be applied.
           </p>
         </div>
 

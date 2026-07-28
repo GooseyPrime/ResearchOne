@@ -15,7 +15,7 @@ const VIEW_W = PIPELINE_SCHEMATIC_VIEWBOX.width;
 const VIEW_H = PIPELINE_SCHEMATIC_VIEWBOX.height;
 
 export const PIPELINE_SCHEMATIC_ARIA_LABEL =
-  'ResearchOne ten-stage pipeline from Intake through Living State, with a Skeptic adversarial loop between Synthesis, Skeptic Pass, and Citation Bind';
+  'Illustrative ResearchOne specialist flow from intake through versioned reporting, with an optional adversarial verification loop';
 
 function hexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
@@ -48,7 +48,7 @@ function PipelineSchematicMobile() {
           </p>
           {s.index === 7 ? (
             <p className="mt-2 inline-flex rounded-full border border-[#D45B9E]/60 bg-[#D45B9E]/10 px-2 py-1 text-[10px] font-medium text-[#D45B9E]">
-              Skeptic loop — adversarial review
+              Optional verification loop
             </p>
           ) : null}
         </article>
@@ -160,9 +160,8 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
           data-testid="pipeline-schematic"
         >
           <p className="sr-only">
-            Ten named stages from Intake through Living State. A Skeptic pass branches beneath the main spine
-            between Synthesis, Skeptic Pass, and Citation Bind. Ambient markers show sources moving along the spine
-            and counter-flow on the Skeptic loop when motion is enabled.
+            This diagram shows one illustrative specialist flow. Some runs use fewer steps and different routing based
+            on scope, depth, and verification needs. Ambient markers show source movement through the flow when motion is enabled.
           </p>
           <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="h-auto w-full max-w-full">
             <defs>
@@ -239,14 +238,14 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
               </g>
             ) : null}
 
-            {/* Skeptic loop label */}
+            {/* Optional verification loop label */}
             <text
               x={(PIPELINE_CAPSULE_CENTERS_X[5] + PIPELINE_CAPSULE_CENTERS_X[7]) / 2}
               y={PIPELINE_SKEPTIC_APEX_Y + 24}
               textAnchor="middle"
               className="fill-[#D45B9E] text-[11px] font-medium"
             >
-              Skeptic loop
+              Optional verification loop
             </text>
 
             {PIPELINE_SCHEMATIC_STAGES.map((s) => {

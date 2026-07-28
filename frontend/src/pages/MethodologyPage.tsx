@@ -24,7 +24,7 @@ export default function MethodologyPage() {
             How ResearchOne works
           </h1>
           <p data-ev-id="ev_aa5ad26f36" className="mt-4 text-xl text-r1-muted leading-relaxed">
-            A transparent look at the multi-agent pipeline that powers every research run.
+            A transparent look at shared safeguards and adaptive methods across different research goals.
           </p>
         </div>
       </section>
@@ -57,9 +57,9 @@ export default function MethodologyPage() {
                 Why we argue against our own draft
               </h3>
               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
-                The Skeptic step is the key differentiator. Before any report is finalized,
-                a dedicated check systematically argues against every conclusion,
-                looking for logical gaps, weak source corroboration, and alternative interpretations.
+                For verification-heavy or high-stakes work, ResearchOne can run adversarial checks before
+                finalizing a report. These checks challenge important conclusions, look for weak
+                corroboration, and surface alternative interpretations.
               </p>
               <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
                 {[
@@ -114,7 +114,8 @@ export default function MethodologyPage() {
             See the methodology in action
           </h2>
           <p data-ev-id="ev_c131e13bf2" style={{ display: 'block', width: '100%', maxWidth: '600px', margin: '0 auto 32px auto' }} className="text-r1-muted text-center">
-            Explore a complete research report to see how the pipeline produces citation-backed dossiers with a dedicated skeptic check.
+            Explore a complete research report to see how planning, source reading, analysis, and verification
+            combine into a cited dossier.
           </p>
           <div data-ev-id="ev_c741136543" className="flex flex-wrap justify-center gap-4">
             <Link

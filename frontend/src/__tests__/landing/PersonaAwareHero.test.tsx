@@ -49,10 +49,10 @@ describe('PersonaAwareHero — default state matches Hero / personaContent defau
     renderHero();
     await waitFor(() => {
       expect(screen.getByText('DEEP RESEARCH PLATFORM')).toBeInTheDocument();
-      expect(screen.getByText('Research that defends itself.')).toBeInTheDocument();
+      expect(screen.getByText('Deep research that adapts to the question.')).toBeInTheDocument();
       expect(
         screen.getByText(
-          /ResearchOne runs a 10-stage, 7-agent pipeline — including a dedicated Skeptic/
+          /ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report/
         )
       ).toBeInTheDocument();
     });

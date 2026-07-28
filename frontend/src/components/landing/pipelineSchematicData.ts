@@ -1,4 +1,4 @@
-/** 10-stage / 7-agent marketing schematic — Wave 2 (site audit §2.1.1). */
+/** Illustrative specialist schematic for marketing surfaces. */
 
 export type StageAgentKind =
   | 'planner'
@@ -37,7 +37,7 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agentKind: 'planner',
     input: 'Scoped objective',
     output: 'Sub-questions',
-    rationale: 'Breaks the objective into retrievable sub-questions and falsification targets.',
+    rationale: 'Breaks the objective into retrievable sub-questions and verification targets when needed.',
   },
   {
     index: 3,
@@ -82,7 +82,7 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agentKind: 'skeptic',
     input: 'Draft synthesis',
     output: 'Counter-claims + preserved contradictions',
-    rationale: 'Dedicated adversarial pass — challenges every material claim before binding.',
+    rationale: 'Adversarial review pass that pressure-tests key claims when verification-heavy analysis is selected.',
   },
   {
     index: 8,

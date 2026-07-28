@@ -43,10 +43,11 @@ export function StickyVaultCore() {
             PIPELINE_ARCHITECTURE
           </span>
           <h2 data-ev-id="ev_0624e8cc08" className="text-3xl sm:text-4xl font-bold text-white leading-tight">
-            Ten-stage adversarial pipeline
+            Adaptive specialist research flow
           </h2>
           <p data-ev-id="ev_6350d2a197" style={{ display: 'block', width: '100%' }} className="mt-4 text-xl text-slate-400 leading-relaxed">
-            Every research objective passes through a multi-agent pipeline designed to challenge assumptions and strengthen conclusions.
+            ResearchOne applies specialist stages according to the requested outcome, available sources,
+            and selected depth.
           </p>
         </div>
       </div>

@@ -12,10 +12,10 @@ import type { FeatureCardProps } from '../components/landing/FeatureCard';
 export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
   {
     icon: Shield,
-    headline: 'Skeptic agent, by design',
+    headline: 'Adaptive verification, by design',
     description:
-      'A dedicated skeptic check challenges every claim before the report is bound.',
-    metric: '1 of 7 agents',
+      'Verification intensity scales with the request, evidence quality, and risk profile.',
+    metric: 'Intent-aware checks',
   },
   {
     icon: Layers,

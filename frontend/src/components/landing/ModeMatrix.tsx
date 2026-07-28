@@ -80,7 +80,8 @@ export default function ModeMatrix() {
         </table>
       </div>
       <p className="mt-4 text-sm text-r1-text-muted">
-        Each mode runs the full ten-stage pipeline. Mode-specific overlays adjust the planner, skeptic, and report writer.
+        ResearchOne adapts methods to the request. Verification, specialist routing, and report structure vary by
+        objective, sources, and chosen depth.
       </p>
     </div>
   );
