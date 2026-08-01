@@ -69,6 +69,34 @@ Optional (feature-flag / deployment-specific):
 - [ ] TLS 1.2 minimum enforced
 - [ ] TLS Labs A+ rating on api.researchone.io
 
+### Emma API TLS topology
+
+The repository **owns** `/etc/nginx/sites-available/researchone` — every deploy via
+`scripts/sync-nginx-api-site.sh` overwrites it with `scripts/nginx/researchone-api-site.conf`.
+The repo nginx template therefore **must** contain the full TLS server block; Certbot is
+responsible only for the certificate material on disk.
+
+| Item | Value |
+|---|---|
+| Primary API domain | `api.researchone.io` |
+| Legacy API domain | `research-api.intellmeai.com` |
+| Both domains resolve to | `45.55.250.106` (Emma VM) |
+| Backend (Node) | `127.0.0.1:3001` |
+| Certbot certificate name | `research-api.intellmeai.com` |
+| Certificate covers | `api.researchone.io`, `research-api.intellmeai.com` |
+| fullchain | `/etc/letsencrypt/live/research-api.intellmeai.com/fullchain.pem` |
+| privkey | `/etc/letsencrypt/live/research-api.intellmeai.com/privkey.pem` |
+| HTTPS health endpoint | `https://api.researchone.io/api/health` → HTTP 200 |
+| Legacy health endpoint | `https://research-api.intellmeai.com/api/health` → HTTP 200 |
+
+`scripts/sync-nginx-api-site.sh` validates all four Let's Encrypt files exist before
+installing the config; it fails with a clear error rather than silently deploying
+HTTP-only service if the certificate is missing.
+
+Certificate renewal (`certbot renew`) runs independently (cron/systemd timer).  The
+application deploy process does not issue or renew certificates; it only installs the
+repository nginx template that references the already-issued certificate.
+
 ## 6. Rate Limiting
 - [x] 500 req/15min default on `/api/*`
 - [x] 10 req/min on `/api/auth` and `/api/webhooks`
