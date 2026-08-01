@@ -12,6 +12,7 @@ on:
       - 'frontend/src/**'
       - 'scripts/ci/**'
       - 'scripts/git/**'
+      - 'scripts/nginx/**'
       - '.github/workflows/ci-guards.yml'
       - '.cursor/rules/**'
       - 'docs/marketing/**'
@@ -22,6 +23,7 @@ on:
       - 'frontend/src/**'
       - 'scripts/ci/**'
       - 'scripts/git/**'
+      - 'scripts/nginx/**'
       - '.github/workflows/ci-guards.yml'
       - '.cursor/rules/**'
       - 'docs/marketing/**'
@@ -61,3 +63,13 @@ jobs:
             exit 1
           fi
           echo "PR head branch ok: $head"
+
+  nginx-tls-config:
+    name: Nginx TLS config has no HTTP-only regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert Nginx config contains required TLS directives
+        run: bash "${{ github.workspace }}/scripts/ci/assert-nginx-tls-config.sh"
