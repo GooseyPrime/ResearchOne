@@ -42,7 +42,7 @@ fi
 echo "[nginx] checking required TLS certificate files"
 TLS_MISSING=0
 for f in "${REQUIRED_TLS_FILES[@]}"; do
-  if [[ ! -f "${f}" ]]; then
+  if ! sudo test -f "${f}"; then
     echo "[nginx] ERROR: required TLS file missing: ${f}" >&2
     TLS_MISSING=1
   fi

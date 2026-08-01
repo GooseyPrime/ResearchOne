@@ -37,6 +37,8 @@ check "ssl_certificate directive"               "ssl_certificate[[:space:]]"
 check "ssl_certificate_key directive"           "ssl_certificate_key[[:space:]]"
 # HTTP listener (redirect block)
 check "listen 80 block"                         "listen[[:space:]]+80"
+# Default server for port 80 to prevent open-redirect on unknown Host headers
+check "default_server reject block on port 80"  "listen[[:space:]]+80[[:space:]]+default_server"
 # HTTP→HTTPS redirect
 check "HTTPS redirect (return 301 https)"       "return[[:space:]]+301[[:space:]]+https://"
 # Upload body limit
