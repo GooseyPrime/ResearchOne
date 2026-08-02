@@ -1,0 +1,1018 @@
+RESEARCHONE RESEARCH QUALITY CORRECTION
+IMPLEMENTATION BRIEF FOR REPOSITORY CODING AGENTS
+
+Date: 2026-08-02
+Revision: 1.1
+Repository: GooseyPrime/ResearchOne
+Reviewed main-branch commit: 9d56cb8487c9ecb221ed52e5616b6b23e515c41f
+Test run: c08f9b73-258f-4e86-bb96-6a1fbd0cf33b
+Additional assessment reviewed: "ResearchOne Architecture Audit & Remediation Plan: Fixing Epistemic Hijacking" (Google Gemini PDF, 2026-08-02)
+
+MISSION
+
+Correct ResearchOne so that it reliably produces the research deliverable the user confirmed, supports genuinely deep and auditable research across a wide range of research types, minimizes bias and misinformation through an always-on evidence-integrity core, and applies the unique PolicyOne methodology only to the subset of runs for which it is selected or appropriate.
+
+This is a runtime-correctness task, not a copy-editing exercise and not a request to add more prompts to an already prompt-heavy pipeline. The current failure is architectural: a correct ResearchBrief is created, but the execution planner, generic section generator, non-blocking validators, and universal PolicyOne prompt treatment override or ignore it.
+
+ResearchOne must not equate rigor with adversarial treatment of every topic. Ordinary research should answer the question from the best available sources with calibrated uncertainty. Bias-aware synthesis should broaden and balance the evidence base. Claim verification should adjudicate a disputed claim. PolicyOne should be a distinct investigative option. These are different jobs.
+
+
+1. EXECUTIVE VERDICT
+
+The attached test run is a failed deliverable and must not be represented as a successful research report.
+
+The plan correctly classified the request as opportunity_discovery with implementation as a secondary intent. It extracted an exact count of 10 and the required fields: basic project needs, detailed AI prompts, narrative briefing, step-by-step implementation guide, and success ranking. It also planned 25-45 sources.
+
+The completed run then:
+
+- switched to a generic six-section epistemic report;
+- used GENERAL_EPISTEMIC_RESEARCH rather than an opportunity-appropriate objective;
+- retrieved 63 chunks from only 6 sources;
+- did not provide the requested ranked list of 10 complete opportunities;
+- did not provide detailed build, test, and deployment prompts per opportunity;
+- did not provide a step-by-step implementation guide per opportunity;
+- spent most of the report disputing the phrase "no fail";
+- claimed that ten opportunities had been identified while naming only three and never presenting the ten records;
+- used internal labels such as "Chunk 10" instead of reader-usable citations and a source list;
+- finalized the report even though the contract auditor should have failed it immediately;
+- consumed 250,692 tokens and 39 minutes 1 second, including duplicate and over-broad specialist execution.
+
+This run failed intent fidelity, artifact completeness, evidence coverage, citation usability, cost efficiency, and finalization integrity.
+
+The repository's docs/redesign-phase-status.md currently marks Phases A-D complete. That status is contradicted by the live runtime and must be corrected. Phase A and Phase B acceptance criteria are not met end to end. Phase D also contains a duplicate specialist path and lacks the promised deterministic quantitative layer.
+
+
+2. EVIDENCE FROM THE TEST RUN
+
+2.1 What the confirmed plan required
+
+The confirmed plan contained the correct controlling contract:
+
+- primary intent: opportunity_discovery;
+- secondary intent: implementation;
+- exact output count: 10;
+- ranked opportunities;
+- narrative briefing for each;
+- basic project needs for each;
+- detailed AI prompts for each;
+- step-by-step implementation guide for each;
+- success ranking;
+- 24-hour production constraint;
+- required use or consideration of Stripe, Claude Code, Codex, hosting, databases, and AI APIs;
+- expected source count: 25-45.
+
+2.2 What execution actually produced
+
+The run summary shows:
+
+- objective: GENERAL_EPISTEMIC_RESEARCH;
+- source count: 6;
+- evidence chunks: 63;
+- fixed synthesis sections: Executive Summary, Research Question and Scope, Evidence Ledger, Reasoning and Analysis, Synthesis and Conclusions, Recommended Next Queries;
+- skeptic skipped;
+- contract auditor called but not enforced;
+- market_scout and feasibility_architect invoked once through the canonical specialist runner and again through the older inline specialist path;
+- total tokens: 250,692.
+
+2.3 False completeness in the final report
+
+The final report says, "Ten plausible opportunities were identified," but the report contains no ten-item artifact. It mentions HIPAA-compliant forms, PSD2 connectors, and an AI prompt optimizer, but does not provide the remaining items or the required fields.
+
+This is more serious than a weak report. It is a contradiction between the prose and the deliverable. A deterministic artifact validator would have caught it without an LLM call.
+
+2.4 Plain-language output inherited the failure
+
+The plain-language report is readable, but it summarizes the wrong deliverable. It does not recover the missing ten opportunities or prompt packs. Plain-language generation must occur only after the primary report passes its contract.
+
+2.5 Dossier front matter is still adjudicative
+
+The dossier displays a "Falsification target" for an opportunity-discovery report and inserts generic text when no target exists. This violates the repository's own intent-routing rules. Non-adjudicative dossiers should show intent-relevant metrics such as opportunity count, evidence coverage, constraint compliance, and validation status.
+
+2.6 Evaluation of the additional Gemini assessment
+
+The additional assessment correctly identified four useful facts:
+
+- the factual-report template overrode the opportunity-discovery contract;
+- the phrase "no fail" should receive a proportionate caveat rather than replace the deliverable;
+- discovery queries were too macro-level for practical microservice opportunity validation;
+- the selected specialist set was too broad and expensive for the actual deliverable.
+
+Its recommended artifact-completeness gate and intent-specific report templates should be adopted.
+
+Three recommendations require modification rather than direct adoption:
+
+- Do not implement a blanket "PolicyOne bypass." Separate the always-on evidence-integrity core from optional premise adjudication and PolicyOne analysis. Otherwise the bypass could also suppress legitimate misinformation detection.
+- Do not hard-code GitHub, Product Hunt, Indie Hackers, or Reddit as universal discovery constraints. Treat them as configurable source classes for developer feasibility, launch history, and user-demand signals. They are useful evidence for some fields, but not authoritative evidence for market size, law, security, medicine, or factual truth.
+- Do not make 5-8 minutes a universal success target. Set latency and cost budgets by depth and artifact contract. A quick or standard builder report should be fast; deep and exhaustive research should prioritize complete, auditable coverage and disclose an ETA or budget stop.
+
+The assessment's "epistemic hijacking" label describes the symptom. The deeper defect is cross-axis contamination: research intent, premise treatment, depth, analytical methodology, source strategy, writer style, and specialist selection are being collapsed into one generic epistemic workflow.
+
+
+3. CONFIRMED ROOT CAUSES IN THE REPOSITORY
+
+3.1 Wrong template IDs in orchestrationProfiles.ts
+
+File: backend/src/services/planning/orchestrationProfiles.ts
+
+The repository contains intent-specific templates named:
+
+- intent_opportunity_discovery;
+- intent_feasibility;
+- intent_implementation.
+
+However, the orchestration profiles for all three intents point to intent_factual_report. This is a direct configuration defect.
+
+Required correction:
+
+- opportunity_discovery -> intent_opportunity_discovery
+- feasibility -> intent_feasibility
+- implementation -> intent_implementation
+
+Add an exhaustive test asserting that each non-legacy intent maps to a template whose intentId equals the profile intent. No profile may silently reuse intent_factual_report unless factual_report is the actual intent.
+
+3.2 reportGenerator.ts ignores intentOutputTemplates.ts
+
+Files:
+
+- backend/src/services/reasoning/reportGenerator.ts
+- backend/src/services/formatting/templates/intentOutputTemplates.ts
+
+generateIterativeReport chooses between only two hard-coded arrays:
+
+- ADJUDICATIVE_SECTION_PLAN;
+- DESCRIPTIVE_SECTION_PLAN.
+
+Every non-adjudicative request therefore receives the same six generic sections. The existing intent template descriptors, section lists, narrative hints, verifier rubrics, and required deliverables do not control drafting.
+
+This is the primary reason the report did not contain an opportunity table, opportunity cards, implementation guidance, or prompt pack.
+
+Required correction:
+
+- Resolve the confirmed template by expectedOutputTemplateId.
+- Convert template sections into typed section specifications with id, title, purpose, required/optional/forbidden status, schema, and word-weight.
+- Pass those section specifications to the outline architect and section drafter.
+- Iterate over the resolved intent template, never a generic descriptive fallback when a known intent exists.
+- Treat a missing or mismatched known-intent template as a hard internal error, not a silent factual-report fallback.
+
+3.3 A second planner runs after plan confirmation without the confirmed contract
+
+File: backend/src/services/reasoning/researchOrchestrator.ts
+
+After confirmation, the worker calls the planner with the raw query and asks it to "Produce a structured JSON research plan." The user message does not include the confirmed ResearchBrief, requested artifacts, constraints, source strategy, output shape, or template ID.
+
+The resulting ResearchPlan contains only:
+
+- sub_questions;
+- retrieval_queries;
+- optional hypothesis;
+- optional falsification_criteria;
+- investigation_angles.
+
+This is Plan B running after the user approved Plan A. It is structurally incapable of preserving the full deliverable contract.
+
+Required correction:
+
+- Do not reclassify or re-plan the speech act after confirmation.
+- Replace the second planner with an Execution Query Strategist that accepts the complete confirmed ResearchBrief and produces only subquestions, query families, source targets, coverage requirements, and dependencies.
+- Preserve requestedArtifacts, exact counts, required fields, constraints, success criteria, source strategy, analysis mode, premise treatment, methodology modules, depth, and template ID unchanged.
+- The execution planner must be unable to downgrade or substitute the confirmed intent.
+
+3.4 The ResearchBrief implementation is an incomplete version of the redesign specification
+
+File: backend/src/services/planning/researchBrief.ts
+
+The current type stores a singular secondaryIntent and loosely described artifacts and constraints. It omits important fields specified in the redesign report:
+
+- multiple secondary intents;
+- typed artifact kind;
+- research depth;
+- audience;
+- user goal;
+- source requirements;
+- freshness;
+- allowed and excluded domains;
+- primary-source preference;
+- assumptions requiring confirmation;
+- explicit success criteria;
+- selected analysis mode, premise treatment, and methodology modules;
+- epistemic posture independent of intent.
+
+Required replacement shape:
+
+ResearchBriefV2
+
+- primaryIntent
+- secondaryIntents[]
+- depth: quick | standard | deep | exhaustive
+- analysisMode: neutral_synthesis | bias_aware_synthesis | claim_verification | policyone_investigative | hybrid_dual_lane
+- premiseTreatment: accept_as_scope | note_uncertainty | verify | adversarial_test
+- methodologyModules[]
+  - evidence_integrity, always enabled
+  - systematic_review, quantitative_analysis, policyone, or other explicitly selected modules
+- epistemicPosture: descriptive | balanced | skeptical | adversarial
+- userGoal
+- audience
+- requestedArtifacts[]
+  - id
+  - kind
+  - description
+  - exactCount
+  - requiredFields[]
+  - outputFormat
+- constraints[]
+  - id
+  - description
+  - severity: hard | preference
+  - validationRule when deterministic validation is possible
+- sourceRequirements
+  - minimumUsableSources
+  - targetUsableSources
+  - minimumIndependentDomains
+  - primarySourcesPreferred
+  - scholarlyOnly
+  - freshness
+  - allowedDomains[]
+  - excludedDomains[]
+- assumptionsRequiringConfirmation[]
+- successCriteria[]
+- confidence
+- reasoning
+
+Do not infer analysisMode solely from colorful wording in the request. For example, "no fail" should normally set premiseTreatment to note_uncertainty and convert the ranking criterion to risk-adjusted probability of success. It must not automatically switch an opportunity-discovery task to claim verification, adversarial analysis, or PolicyOne.
+
+Support legacy payload coercion, but do not let legacy defaults overwrite confirmed V2 values.
+
+3.5 The contract auditor is advisory despite being described as a gate
+
+File: backend/src/services/reasoning/researchOrchestrator.ts
+
+The contract audit comment calls it a gate, but the code explicitly states that failures "do not abort the run." A failed result is logged and stored as metadata, after which the report is finalized.
+
+That makes the auditor observational telemetry, not quality control.
+
+Required correction:
+
+- Run deterministic artifact validation before the LLM auditor.
+- On failure, set report state to needs_revision.
+- Feed revision_instructions to a bounded repair pass.
+- Re-run deterministic validation and the contract auditor.
+- Permit at most two repair cycles.
+- Finalize as completed only on pass.
+- If repair cannot satisfy the contract, save the draft as failed_contract or completed_degraded, visibly explain what is missing, and do not label it finalized.
+- Contract-auditor parse failure must be treated as audit_unavailable, not pass.
+
+3.6 The epistemic verifier is also non-binding
+
+File: backend/src/services/reasoning/researchOrchestrator.ts
+
+Verification defaults to passed=true. A parse failure continues. A parsed FAIL also does not trigger revision, downgrade, or stop finalization.
+
+Required correction:
+
+- Default verification state to unknown, not pass.
+- Validate verifier JSON with a schema.
+- A verifier FAIL must trigger a repair loop or degraded/failed status.
+- A verifier parsing or provider failure must never silently become PASS.
+- Store per-criterion results and display them in report diagnostics.
+
+3.7 Duplicate specialist execution
+
+Files:
+
+- backend/src/services/reasoning/researchOrchestrator.ts
+- backend/src/services/reasoning/specialistExecutionService.ts
+
+The canonical runSpecialistExecution path executes the selected specialists before the reasoner. Later, the older inline runSpecialistRole block executes specialistAgentIds again. The run summary confirms the duplication.
+
+Required correction:
+
+- Delete the legacy inline specialist execution block.
+- Keep one authoritative specialistExecutionService path.
+- Feed its validated outputs to the reasoner, report generator, verifier, and contract auditor.
+- Assert through telemetry tests that every planned specialist has no more than one model invocation per attempt unless an explicit retry is recorded.
+
+3.8 Source strategy is planned but not enforced
+
+Files:
+
+- backend/src/services/discovery/discoveryOrchestrator.ts
+- backend/src/services/reasoning/researchOrchestrator.ts
+- backend/src/config/index.ts
+
+The confirmed plan expected 25-45 sources. Runtime defaults cap discovery ingestion at 10. Retrieval executes at most five queries, each with a fixed top-K, and then proceeds regardless of source count, source independence, coverage, or remaining gaps.
+
+The system retrieved 63 chunks from only 6 sources. Chunk volume was mistaken for source breadth.
+
+Required correction:
+
+- Thread sourceRequirements and depth into discovery.
+- Distinguish candidates, queued sources, successfully ingested sources, usable sources, independent domains, and evidence-bearing sources.
+- Replace the fixed two-round search with a bounded coverage loop.
+- Continue discovery while critical subquestions or artifact fields lack evidence, subject to run budget.
+- Enforce the confirmed minimum usable-source requirement or mark the report degraded before drafting.
+- Permit depth-specific budgets rather than a universal cap of 10.
+- Make source quality and independence more important than raw count.
+
+Recommended defaults, adjustable by topic:
+
+- quick: 3-8 usable sources;
+- standard: 8-15 usable sources;
+- deep: 20-40 usable sources;
+- exhaustive: 40-80+ usable sources or a documented saturation stop.
+
+These are budgets, not proof of quality. A primary-source-heavy question may need fewer; a market landscape may need more. The confirmed plan should state the actual criteria.
+
+3.9 Discovery ranking lacks coverage and diversity controls
+
+File: backend/src/services/discovery/discoveryOrchestrator.ts
+
+Candidates are sorted mostly by provider score and rank, then ingested until maxIngest is reached. There is no explicit balancing by subquestion, source class, domain, independence group, recency, geography, evidence direction, or requested artifact field.
+
+Required correction:
+
+Implement a Source Selection Matrix that scores:
+
+- relevance to a specific subquestion;
+- coverage of a required artifact field;
+- primary vs secondary status;
+- provenance quality;
+- recency;
+- independence from already selected sources;
+- domain diversity;
+- support vs contradiction role;
+- extractability;
+- duplication/content similarity;
+- known commercial or institutional conflicts.
+
+Use quota-aware selection so ten highly ranked pages from one vendor cannot crowd out primary documents, customer complaints, competitor pricing, technical documentation, and contrary evidence.
+
+3.9.1 Intent- and field-specific source recipes
+
+Discovery must select source classes from the deliverable contract, not from one global domain list. For an opportunity-discovery plus implementation report, generate different query families for different evidence cells:
+
+- pain and demand signals: user forums, issue trackers, support communities, reviews, procurement requests, search trends, and credible surveys;
+- competitor reality: official product pages, pricing, changelogs, documentation, app marketplaces, customer reviews, shutdown records, and funding/company filings where relevant;
+- build feasibility: official API documentation, SDK repositories, platform limits, terms of service, security requirements, hosting/database documentation, and maintained implementation examples;
+- market or regulatory constraints: primary statutes, regulator guidance, standards bodies, official statistics, and high-quality industry research;
+- acquisition feasibility: channel rules, marketplace policies, ad costs where available, community norms, and comparable launch evidence.
+
+GitHub, Product Hunt, Indie Hackers, and Reddit can be valuable within those recipes, but their role must be labeled. A GitHub issue may be strong direct evidence of a technical defect; a Reddit complaint may be a useful demand signal; neither alone proves market size or factual consensus.
+
+Query generation should include the artifact field, target user, domain vocabulary, geography/time window when relevant, and desired source class. Search should pivot from macro-market terms to narrow workflow and failure-language terms such as "manual," "spreadsheet," "workaround," "API missing," "feature request," "pricing," "integration," and "alternative" when opportunity gaps are being tested.
+
+3.10 Citation mapping is too lossy and too model-dependent
+
+File: backend/src/services/reasoning/citationMapper.ts
+
+The default citation pass sees only the first 20 chunks, only 250 characters per chunk, and only 400 characters per report section. In this test, 43 of 63 chunks were outside the default citation context. The final report exposed internal chunk numbers instead of complete reader citations.
+
+Required correction:
+
+- Assign stable evidence aliases before drafting.
+- Draft from evidence records that already contain source ID, canonical URL, title, author/organization, publication date, retrieval date, exact quotation or extracted passage, locator, and evidence direction.
+- Require every material claim to carry one or more evidence IDs during structured drafting.
+- Render inline citations or footnotes and a complete Sources/References section.
+- Validate that cited evidence actually entails the claim.
+- Check URL integrity and source existence deterministically.
+- Use the model for semantic entailment assistance, not for inventing IDs or reconstructing provenance after prose is written.
+- Never expose only "Chunk 10" to an end user.
+
+3.11 Universal scientific prose causes repetitive, wrong-shaped reports
+
+File: backend/src/services/openrouter/openrouterService.ts
+
+The section_drafter prompt says it is drafting a scientific research report, prefers paragraphs over lists, requires every section to open with "what this section establishes," and requires visible evidence-tier tags on every major claim.
+
+That instruction directly conflicts with opportunity tables, ranked lists, build specifications, prompt packs, how-to steps, comparisons, and many plain factual reports. It produced the repetitive phrase "This section establishes" throughout the test report.
+
+Required correction:
+
+- Replace one universal section-drafter prompt with a shared integrity core plus an intent-template-specific writer contract.
+- Opportunity discovery must prefer structured cards and tables.
+- How-to and implementation must prefer numbered procedures and acceptance criteria.
+- Comparative reports must prefer a consistent matrix.
+- Literature reviews must include methods and references.
+- Story verification must use claim-by-claim assessment.
+- Evidence-tier tags should be stored in structured metadata and shown where useful, not forced into every sentence.
+
+3.12 PolicyOne is currently universal rather than a subset methodology
+
+Files:
+
+- ResearchOne PolicyOne
+- backend/src/constants/prompts.ts
+- backend/src/services/openrouter/openrouterService.ts
+- backend/src/constants/modeOverlays.ts
+
+SYSTEM_PROMPTS are built with withPreamble(), so the PolicyOne reasoning-first preamble affects general roles broadly. The test also ran with GENERAL_EPISTEMIC_RESEARCH, whose overlay forces competing hypotheses even though the confirmed intent was opportunity discovery.
+
+This conflates at least six independent concepts:
+
+- what the user wants produced;
+- how deep and expensive the research should be;
+- whether the user's premise should be accepted, qualified, verified, or challenged;
+- how aggressively competing viewpoints should be sought;
+- which evidence classes are appropriate;
+- whether PolicyOne's investigative method should be applied.
+
+Required correction:
+
+3.12.1 Always-on Evidence Integrity Core
+
+Every research mode must retain a small, non-adversarial integrity core:
+
+- no fabricated facts, quotations, calculations, products, or citations;
+- traceable provenance for material claims;
+- distinction among sourced fact, calculation, inference, hypothesis, and recommendation;
+- source-quality, recency, independence, conflict-of-interest, and duplication assessment;
+- uncertainty calibrated to the actual evidence;
+- citation-to-claim entailment checks;
+- corrections when the available evidence materially contradicts a factual assertion.
+
+This is how ResearchOne minimizes bias and misinformation across all research types. It must not force every report to debate the user's framing or create artificial counterclaims.
+
+3.12.2 First-class AnalysisMode axis
+
+1. neutral_synthesis
+   Pure research from the best available sources. Answer the stated question, summarize uncertainty and limitations, and do not manufacture a controversy. Default for reference research, descriptive factual work, ordinary literature reviews, how-to, feasibility, implementation, and many opportunity-discovery tasks.
+
+2. bias_aware_synthesis
+   Broadens source ownership, geography, incentives, schools of thought, and supporting/contrary evidence to reduce selection and framing bias. It still answers the user's question and does not become a debunking exercise.
+
+3. claim_verification
+   Used when the requested artifact is a truth assessment, fact-check, misinformation analysis, story verification, or adjudication of a specific claim. Requires explicit claim decomposition, evidence for and against, verdict criteria, and unresolved uncertainty.
+
+4. policyone_investigative
+   Available for investigations, anomaly correlation, contested-history work, institutional-conflict analysis, evidence-suppression hypotheses, or explicit user selection. It preserves contradictions and anomalies without treating them as automatically true.
+
+5. hybrid_dual_lane
+   Runs a conventional evidence lane and a PolicyOne anomaly-preservation lane, then compares them without forcing either lane to win. Appropriate for selected high-stakes, contested, or institutionally sensitive questions.
+
+Depth remains a separate quick | standard | deep | exhaustive axis. "Deep research" does not mean "PolicyOne," "skeptical," or "adversarial."
+
+3.12.3 Premise treatment
+
+Premise handling must also be explicit:
+
+- accept_as_scope: treat the wording as task context without adjudicating it;
+- note_uncertainty: preserve the task while replacing an absolute with a calibrated caveat;
+- verify: make the premise itself a research question;
+- adversarial_test: actively seek falsifiers because the user or research design requires it.
+
+For the failed request, "no fail" should map to note_uncertainty. The report should say that no outcome can be guaranteed, translate the phrase into transparent risk-adjusted success criteria, and then deliver all ten opportunities. A phrase such as "guaranteed," "best," "true," or "proven" must never by itself select PolicyOne or convert the speech act.
+
+PolicyOne activation rules:
+
+- Explicit user selection controls unless applying it would conflict with a higher-priority safety or legal requirement.
+- A saved profile may select it, but the plan preview must show it.
+- The classifier may recommend it, but the user-confirmed brief is authoritative.
+- Do not auto-activate it merely because the request is "deep," unusual, non-consensus, or emphatically worded.
+- Do not auto-activate it for ordinary market opportunity, implementation, comparison, how-to, direct lookup, or descriptive research.
+- Record analysis mode, premise treatment, methodology modules, and rationale in plan, run, report metadata, and UI.
+
+PolicyOne quality safeguards:
+
+- Preserve source wording and anomalous claims literally.
+- Do not treat consensus as proof.
+- Do not treat non-consensus as proof.
+- Do not convert absence of evidence into evidence of suppression.
+- Test ordinary explanations, measurement error, selection bias, fraud, and suppression hypotheses symmetrically.
+- Require provenance and independent corroboration for every lane.
+- Clearly label the PolicyOne lane as a methodology, not as a higher truth tier.
+- Preserve contradictions through synthesis rather than manufacturing them.
+
+Do not delete PolicyOne's differentiating features. Scope and discipline them.
+
+3.13 Reader front matter always inserts falsification language
+
+File: backend/src/services/reasoning/researchOrchestrator.ts
+
+buildReaderFrontMatter always emits a Counterevidence/Falsification metric and generic fallback text. This is why the opportunity dossier shows a pending falsification target.
+
+Required correction:
+
+Generate front-matter metrics by intent template:
+
+Opportunity discovery:
+
+- opportunities delivered / requested;
+- opportunities with complete required fields;
+- constraints passed / failed;
+- usable sources and independent domains;
+- evidence coverage by opportunity;
+- validation experiments provided;
+- contract status.
+
+Adjudication/investigation:
+
+- claim conflicts;
+- corroborating and contradicting evidence;
+- falsification targets;
+- confidence and unresolved questions.
+
+No generic falsification fallback may appear on non-adjudicative reports.
+
+3.14 Phase E golden prompts do not evaluate outputs
+
+File: backend/src/services/planning/goldenPromptSuite.ts
+
+The suite is currently a list of prompt strings. It does not run the pipeline, validate the output artifact, score citation accuracy, check source coverage, or compare cost and latency. Coverage tests prove only that every intent has a prompt string.
+
+Required correction:
+
+Build an executable evaluation harness with stored fixtures, deterministic validators, scored rubrics, and regression thresholds. Phase E should not be marked meaningfully underway until this exists.
+
+3.15 Quantitative specialist implementation is not deterministic
+
+Files:
+
+- backend/src/services/reasoning/agentCapabilityRegistry.ts
+- backend/src/services/openrouter/openrouterService.ts
+
+DataAnalysisSpecialistOutput stores metric values as strings. The repository contains no deterministic calculation layer implementing the Phase D completion brief's requirements for formulas, units, input provenance, assumptions, and reproducibility.
+
+Required correction:
+
+- Add data_analysis and forecast intents.
+- Add a bounded calculation service supporting approved arithmetic, descriptive statistics, ratios, growth rates, weighted scores, confidence intervals where inputs permit, and sensitivity tables.
+- Never use eval or unrestricted model-generated code.
+- Store inputs, units, formulas, transformations, assumptions, and source IDs.
+- Make the quantitative quality auditor recompute and verify outputs.
+- Reopen the Phase D checkbox until acceptance tests prove this behavior.
+
+
+4. TARGET RESEARCH ARCHITECTURE
+
+4.1 Keep the controlling axes independent
+
+Every confirmed run must persist these independent decisions:
+
+- Intent: what must be produced.
+- Secondary intents: additional deliverables or analyses.
+- Depth: how broad and iterative the work should be.
+- Analysis mode: neutral synthesis, bias-aware synthesis, claim verification, PolicyOne investigative, or hybrid dual lane.
+- Premise treatment: accept as scope, note uncertainty, verify, or adversarially test.
+- Methodology modules: always-on evidence integrity plus any explicitly selected systematic, quantitative, PolicyOne, or domain-specific module.
+- Epistemic posture: descriptive, balanced, skeptical, or adversarial, subordinate to the confirmed analysis mode.
+- Source strategy: which evidence classes, freshness, domains, and minimum coverage are required.
+- Deliverable contract: exact artifacts, counts, fields, formats, and success criteria.
+
+Do not let researchObjective or engineVersion overwrite intent.
+
+4.2 Contract-first execution flow
+
+Use this pipeline:
+
+1. Intake and clarification.
+2. Compile and validate ResearchBriefV2.
+3. User confirms the brief and assumptions.
+4. Create an immutable DeliverableContract.
+5. Build a coverage matrix from required artifact fields and subquestions.
+6. Generate query families by field and source class.
+7. Search, ingest, assess, and deduplicate sources.
+8. Run gap analysis.
+9. Pivot and repeat within the depth/budget limit until coverage or saturation criteria are met.
+10. Build a structured EvidenceGraph.
+11. Run only the selected specialists once.
+12. Create the structured artifact first.
+13. Validate exact counts, required fields, constraints, and evidence links deterministically.
+14. Render narrative sections from the validated artifact.
+15. Run citation entailment, quantitative audit, epistemic verifier, and contract auditor.
+16. Repair failed criteria in a bounded loop.
+17. Generate plain-language output only from a passing primary report.
+18. Finalize with a truthful status and complete citations.
+
+4.3 Coverage matrix
+
+For an opportunity report, rows should be opportunity candidates and columns should include:
+
+- target customer;
+- painful problem;
+- demand evidence;
+- competitor evidence;
+- current workaround;
+- differentiation;
+- 24-hour MVP scope;
+- required stack/services;
+- monetization;
+- acquisition route;
+- risks/disqualifiers;
+- cheapest validation test;
+- confidence;
+- source IDs.
+
+Do not draft the final ten until candidate coverage supports selection. Keep more than ten candidates during research, score them, then select the top ten.
+
+4.4 Opportunity scoring
+
+Use an explicit, inspectable scoring model. Example dimensions:
+
+- pain urgency: 15%;
+- evidence of demand: 15%;
+- competitive whitespace: 15%;
+- 24-hour MVP feasibility: 20%;
+- founder/tool fit: 10%;
+- monetization speed: 10%;
+- customer acquisition accessibility: 10%;
+- regulatory/security burden: negative 5% or a disqualifier.
+
+Weights must be visible and adjustable. Scores must reference evidence and assumptions. Avoid fake precision; use ranges or ordinal bands when data is weak.
+
+4.5 Structured artifact before prose
+
+For the failing test, synthesis should first produce a validated object resembling:
+
+- analysisMode, premiseTreatment, and methodologyModules;
+- scoringModel;
+- opportunities[10];
+  - rank;
+  - name;
+  - targetCustomer;
+  - problem;
+  - evidenceOfGap[];
+  - existingAlternatives[];
+  - differentiation;
+  - mvp24HourScope;
+  - excludedFromMvp[];
+  - stackAndServices[];
+  - monetization;
+  - acquisitionPlan;
+  - risks[];
+  - validationExperiment;
+  - successProbabilityBand;
+  - evidenceIds[];
+  - buildPrompt;
+  - testPrompt;
+  - deploymentPrompt;
+  - acceptanceCriteria[];
+- portfolioComparison;
+- recommendedFirstBuild;
+- sources[];
+
+Validate this object with a schema. Then render the report. Narrative prose must never be the only representation of a requested enumerated artifact.
+
+4.6 Capability-based specialist selection and EZ/Lab boundaries
+
+Do not choose specialists because a run is labeled "research," "deep," "EZ," or "Lab." Compile the smallest capability plan that can satisfy the contract and coverage matrix.
+
+For the failed request, market-gap assessment, feasibility, and implementation planning are relevant; a generic adversarial epistemic swarm is not. Candidate generation can be broad, but expensive specialists should run only after preliminary candidates exist and only on the candidates or fields that need their capability.
+
+EZ Research should be a lower-depth preset with a smaller source and specialist budget, while retaining the same contract, provenance, citation, and validation guarantees. Lab Mode should describe an execution/build workspace, not silently disable research when the task includes evidence-dependent claims. Deep Research should expand coverage and iteration, not automatically change the analysis mode.
+
+Persist a rationale for every specialist invocation. Enforce one invocation per planned specialist per attempt, explicit retry records, per-stage token/time budgets, and a visible degraded state when a required capability fails. Cache reusable source assessments and candidate evidence so repair loops do not repeat discovery wholesale.
+
+
+5. WORLD-CLASS RESEARCH QUALITY CONTROLS
+
+5.1 Source assessment
+
+Store separate scores for:
+
+- provenance;
+- relevance;
+- recency;
+- methodological quality;
+- independence;
+- directness of support;
+- conflict of interest;
+- extractability;
+- corroboration;
+- contradiction role.
+
+Do not collapse these into the existing evidence tier. Evidence tier describes the claim/evidence relationship; source assessment describes source characteristics.
+
+5.2 Evidence records
+
+Every evidence record should include:
+
+- evidence ID;
+- source ID;
+- canonical URL;
+- title;
+- author or organization;
+- published/updated date;
+- retrieval date;
+- exact passage or data values;
+- locator;
+- supported or challenged claim IDs;
+- extraction method;
+- source class;
+- provenance score;
+- limitations;
+- independence group.
+
+5.3 Citation integrity
+
+A report passes only when:
+
+- every material factual claim has a usable citation;
+- the cited passage entails the claim;
+- sources are present and accessible or clearly archived;
+- quotations are exact;
+- numerical claims identify their inputs;
+- references render complete bibliographic data or a complete web citation;
+- internal chunk IDs remain available for audit but are not the sole reader citation.
+
+5.4 Honest completion states
+
+Use these report states:
+
+- drafting;
+- needs_more_research;
+- needs_revision;
+- verification_failed;
+- contract_failed;
+- completed_degraded;
+- completed;
+- finalized.
+
+Finalized must mean every required gate passed. It must not mean merely that the pipeline reached the save function.
+
+5.5 Deep-research stop rules
+
+Stop searching when one of these is true:
+
+- all critical coverage cells meet their evidence threshold;
+- new discovery rounds produce negligible unique evidence and saturation is documented;
+- the confirmed cost/time budget is exhausted;
+- required sources are inaccessible and the limitation is explicit;
+- the user cancels.
+
+Do not stop merely because two discovery rounds ran or five queries completed.
+
+
+6. REQUIRED CODE CHANGES BY FILE
+
+Critical files:
+
+1. backend/src/services/planning/researchBrief.ts
+   Implement ResearchBriefV2 and legacy coercion.
+
+2. backend/src/services/planning/planTypes.ts
+   Persist analysis mode, premise treatment, methodology modules, depth, source requirements, success criteria, typed artifacts, and immutable deliverable contract.
+
+3. backend/src/services/planning/planJson.ts
+   Parse and validate all V2 fields. Do not discard artifact kinds or multiple secondary intents.
+
+4. backend/src/services/planning/planGenerator.ts
+   Build the canonical execution plan only after the complete brief exists.
+
+5. backend/src/services/planning/orchestrationProfiles.ts
+   Correct template mappings and separate intent from analysis mode, premise treatment, methodology modules, and posture.
+
+6. backend/src/services/planning/executionPlan.ts
+   Carry template ID, analysis mode, premise treatment, methodology modules, depth, source plan, specialist plan, budgets, and contract version.
+
+7. backend/src/services/reasoning/researchOrchestrator.ts
+   Remove the second intent-blind planner behavior, remove duplicate specialists, enforce gates, add repair loops, make front matter intent-specific, and finalize truthfully.
+
+8. backend/src/services/reasoning/reportGenerator.ts
+   Replace binary section plans with resolved intent templates and structured-artifact-first generation.
+
+9. backend/src/services/formatting/templates/intentOutputTemplates.ts
+   Expand templates to required/optional/forbidden sections, artifact schemas, writer guidance, verifier rubric, and rendering rules.
+
+10. backend/src/services/openrouter/openrouterService.ts
+    Split the always-on evidence-integrity core from intent writer prompts and apply PolicyOne only when the selected analysis mode or methodology module requires it.
+
+11. backend/src/constants/prompts.ts
+    Preserve PolicyOne text, but expose prompt composers that apply it only when the selected mode/module requires it. This change is explicitly authorized by the product requirement in this brief; do not silently alter the policy's wording in the same PR.
+
+12. backend/src/constants/modeOverlays.ts
+    Stop GENERAL_EPISTEMIC_RESEARCH from forcing competing hypotheses on non-adjudicative intents. Map objectives as optional analytical overlays subordinate to the confirmed contract.
+
+13. backend/src/services/discovery/discoveryOrchestrator.ts
+    Accept source requirements and coverage matrix, use adaptive rounds, select for diversity and coverage, and report usable source outcomes.
+
+14. backend/src/services/retrieval/retrievalService.ts
+    Add per-subquestion retrieval and coverage-aware ranking; preserve source diversity.
+
+15. backend/src/services/reasoning/citationMapper.ts
+    Replace lossy post-hoc mapping with evidence-alias-aware claim citations and deterministic validation.
+
+16. backend/src/services/reasoning/agentCapabilityRegistry.ts
+    Add missing specialist capabilities such as implementation planner, monetization analyst, regulatory specialist, literature reviewer, and source assessor only where justified. Do not add agents without executable tools and tests.
+
+17. frontend plan and dossier surfaces
+    Show intent, depth, analysis mode, premise treatment, optional methodology modules, deliverable contract, source targets, and gate status in plain language. Remove non-applicable falsification metrics.
+
+18. docs/redesign-phase-status.md
+    Reopen failed phases and distinguish scaffolding from demonstrated end-to-end completion.
+
+
+7. IMPLEMENTATION SEQUENCE
+
+PR 1: Stop false completion and restore contract control
+
+- Correct template mappings.
+- Thread the confirmed ResearchBrief and template through execution.
+- Make reportGenerator use the actual intent template.
+- Add structured artifact validation.
+- Make contract/verifier failures block finalization or trigger repair.
+- Remove duplicate specialist execution.
+- Make reader front matter intent-specific.
+- Add the exact failing run as an integration fixture.
+
+PR 1 is the emergency correctness patch. Do not wait for broader architecture work before shipping it.
+
+PR 2: Source coverage and citation integrity
+
+- Implement coverage matrix and depth-aware source budgets.
+- Add adaptive search/pivot rounds.
+- Add diversity-aware source selection.
+- Create evidence records and claim-to-evidence aliases before drafting.
+- Render real inline citations and Sources.
+- Add citation entailment and URL integrity gates.
+
+PR 3: Research modes, premise treatment, and PolicyOne isolation
+
+- Add AnalysisMode, PremiseTreatment, and composable methodology modules.
+- Keep the Evidence Integrity Core active for every run.
+- Compose neutral, bias-aware, claim-verification, PolicyOne, and hybrid prompts without changing the deliverable template.
+- Add visible plan disclosure and user override for premise-adjudicating modes.
+- Add hybrid dual-lane comparison.
+- Add tests proving PolicyOne does not leak into ordinary opportunity, how-to, comparison, or factual runs.
+
+PR 4: Full ResearchBriefV2 and specialist completion
+
+- Multiple secondary intents.
+- Typed artifact kinds.
+- Audience, source requirements, assumptions, success criteria, and depth.
+- Deterministic quantitative service and provenance.
+- Missing executable specialists that materially improve defined intents.
+
+PR 5: Executable Phase E evaluation
+
+- Run the complete golden-prompt matrix.
+- Store expected contracts and deterministic validators.
+- Score quality, cost, latency, and citation correctness.
+- Add regression thresholds to CI/nightly evaluation.
+- Update phase status only from measured results.
+
+
+8. REQUIRED TESTS
+
+8.1 Exact failing-request integration test
+
+Use the exact request from run c08f9b73-258f-4e86-bb96-6a1fbd0cf33b.
+
+Assert:
+
+- primary intent is opportunity_discovery;
+- secondary intents include implementation and feasibility when inferred/confirmed;
+- template is intent_opportunity_discovery;
+- analysis mode defaults to neutral_synthesis for this task;
+- premise treatment is note_uncertainty for "no fail";
+- PolicyOne is absent unless the user selected it;
+- output contains exactly 10 opportunity objects;
+- every object contains every confirmed required field;
+- every opportunity includes build, test, and deployment prompts;
+- every opportunity has evidence IDs;
+- the ranked table and detailed cards agree on order and names;
+- no top-level falsification section exists;
+- less than 10% of report content critiques the premise;
+- the report may reframe "no fail" as a risk label, but must still deliver the requested ten;
+- contract auditor passes;
+- verifier passes;
+- plain-language version also contains all ten;
+- only one invocation occurs per selected specialist per attempt;
+- completion is impossible when exact count or required fields are missing.
+
+8.2 Template integrity tests
+
+- Every non-legacy intent resolves to a matching template.
+- Template sections drive report generation.
+- Forbidden sections are absent.
+- Required sections are present.
+- Unknown known-intent template mismatch throws rather than silently falling back.
+
+8.3 Auditor enforcement tests
+
+- Missing count triggers needs_revision.
+- Missing field triggers needs_revision.
+- Repair instructions are applied.
+- Second pass revalidates.
+- Exhausted repair budget produces contract_failed or completed_degraded, never finalized.
+- Auditor JSON parse failure does not pass.
+
+8.4 Source coverage tests
+
+- A deep plan targeting 25 usable sources cannot finalize with 6 without degraded status and explicit explanation.
+- Multiple chunks from one source count as one source.
+- Domain diversity quotas work.
+- Failed ingestion is not counted as usable.
+- New search rounds target uncovered fields.
+- Saturation is recorded when additional rounds yield no meaningful evidence.
+- Opportunity queries cover demand, competitors, build feasibility, constraints, and acquisition with appropriate source classes.
+- Community posts and reviews are labeled as demand or experience signals and cannot alone satisfy authoritative factual or market-size cells.
+- Domain constraints are recipe-driven and configurable, not hard-coded globally.
+
+8.5 Citation tests
+
+- Every material claim resolves to evidence records.
+- Evidence passage entails the claim or the verifier flags it.
+- References include canonical URLs and source metadata.
+- The last 43 of 63 chunks are not made invisible by an arbitrary first-20 slice.
+- Internal chunk labels are never the only user-facing citation.
+
+8.6 Analysis-mode and PolicyOne isolation tests
+
+- Neutral opportunity discovery retains provenance, citation, uncertainty, and fabrication checks but does not receive the PolicyOne preamble.
+- Bias-aware synthesis diversifies sources without turning the report into premise adjudication.
+- Claim-verification mode decomposes and adjudicates the specified claim without changing unrelated deliverables.
+- Explicit PolicyOne investigation does receive it.
+- Hybrid mode runs both lanes and labels them.
+- The words "no fail," "guaranteed," "best," "true," and "proven" do not independently change intent or activate PolicyOne.
+- note_uncertainty produces a concise caveat and preserves every requested artifact.
+- Lack of evidence is never automatically labeled suppression.
+- Consensus and contrarian claims are both subjected to source/provenance checks.
+- Analysis mode, premise treatment, and methodology modules appear in plan and report metadata.
+
+8.7 Cost and execution tests
+
+- Specialists execute once unless a recorded retry occurs.
+- Duplicate specialist paths fail CI.
+- Cost and latency budgets are enforced by depth.
+- Failed specialists remain visible as degraded coverage.
+- Model token spend is attributable to each stage and repair loop.
+- Quick, standard, deep, and exhaustive runs have distinct budgets and measured service-level targets; no single 5-8 minute threshold is applied to all research.
+- EZ mode reduces breadth without disabling contract, provenance, citation, and validation gates.
+- Lab Mode does not erase evidence requirements for research-dependent build claims.
+
+
+9. EVALUATION SCORECARD
+
+Score each golden-prompt output on 100 points:
+
+- Intent and speech-act fidelity: 20
+- Requested artifact completeness: 20
+- Evidence quality and coverage: 15
+- Citation accuracy and usability: 15
+- Analytical rigor and uncertainty calibration: 10
+- Source diversity and independence: 10
+- Structure and readability: 5
+- Cost/latency efficiency: 5
+
+Hard failures regardless of score:
+
+- exact requested count missing;
+- required artifact missing;
+- material factual claims without citations;
+- fabricated source, quotation, product, number, or citation;
+- report finalized after a failed contract audit;
+- analysis mode, premise treatment, or methodology modules differ from the confirmed plan;
+- user constraint silently ignored;
+- structured artifact and narrative contradict each other.
+
+Suggested release threshold:
+
+- no hard failures;
+- overall score >= 85;
+- citation accuracy >= 95% on audited material claims;
+- artifact completeness = 100%;
+- no intent-specific golden case regresses by more than 5 points.
+
+
+10. ACCEPTANCE CRITERIA FOR THE NEW TEST RUN
+
+The corrected system must produce:
+
+- exactly 10 ranked, genuinely distinct opportunities;
+- a transparent scoring method;
+- evidence of demand and competitor gaps for each;
+- a realistic 24-hour MVP boundary for each;
+- required stack and services for each;
+- monetization and acquisition path for each;
+- explicit risks and disqualifiers for each;
+- a cheapest validation experiment for each;
+- build, test, and deployment prompts for each;
+- acceptance criteria for the AI coding agent;
+- a portfolio comparison;
+- one recommended first build with reasoning;
+- inline citations and a complete source list;
+- an honest label such as high-probability, experimental, or insufficiently validated instead of an unsupported guarantee;
+- no irrelevant falsification section;
+- contract and verifier PASS before finalized status.
+
+The report may correctly state that "no fail" cannot be guaranteed. That caveat belongs in the methodology/caveats area and risk labels. It must not replace the requested work.
+
+
+11. DOCUMENTATION STATUS CORRECTION
+
+Update docs/redesign-phase-status.md immediately:
+
+- Phase A: reopen intent-driven final report sections until intent templates control runtime output.
+- Phase B: reopen final contract audit until failures block finalization and repair is tested.
+- Phase D: reopen specialist execution cleanup because duplicate execution exists; reopen quantitative completion because deterministic computation/provenance is absent.
+- Phase E: label the golden suite as fixture scaffolding, not evaluation, until full pipeline outputs are scored.
+
+Do not mark a phase complete because types, prompts, UI labels, or tests exist. Completion requires a deployed end-to-end run that satisfies the acceptance contract.
+
+
+12. FINAL INSTRUCTION TO CODING AGENTS
+
+Do not try to solve this by making the current prompts longer.
+
+Make the confirmed deliverable contract executable and authoritative. Build structured artifacts before prose. Enforce deterministic counts and fields. Research until coverage criteria or an explicit budget stop. Preserve complete provenance. Make validators change run state. Apply PolicyOne as a selected methodology, not a universal bias. Remove duplicate work. Then prove the exact failed request passes end to end.
+
+The current system is sophisticated enough to spend 250,000 tokens explaining why it did not do the requested task. The correction is to make it impossible to call that success.
