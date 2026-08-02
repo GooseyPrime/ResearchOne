@@ -15,7 +15,7 @@ describe('specialistExecutionService duplicate execution guard', () => {
     callRoleModelMock.mockReset();
   });
 
-  it('runs each specialist at most once per attempt even when duplicated in groups', async () => {
+  it('runs each specialist at most once per attempt even when duplicated in the same group', async () => {
     callRoleModelMock
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -46,8 +46,7 @@ describe('specialistExecutionService duplicate execution guard', () => {
         specialistAgents: ['market_scout', 'competitor_mapper'],
         sourceClasses: [],
         executionGroups: [
-          ['market_scout', 'competitor_mapper'],
-          ['market_scout'],
+          ['market_scout', 'competitor_mapper', 'market_scout'],
         ],
         dependsOn: {},
         skipReasons: {},

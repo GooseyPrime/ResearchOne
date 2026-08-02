@@ -75,6 +75,12 @@ import {
   type SpecialistAgentId,
 } from './agentCapabilityRegistry';
 import { reportRunErrorToGitHub } from '../githubErrorReporter';
+import {
+  mapGateStatusToReportRowStatus,
+  mapGateStatusToRunStatus,
+  shouldRunPipelineBFromGateStatus,
+  type ReportGateStatus,
+} from './reportGateStatus';
 
 export type {
   CreditChargeContext,
@@ -1323,11 +1329,15 @@ async function runResearchJobInner(
       deterministic_metrics?: Record<string, number>;
     };
     let contractAuditResult: ContractAuditResult | null = null;
+    const runContractAudit = async (markdown: string): Promise<void> => {
+      if (!researchBrief || (researchBrief.requestedArtifacts.length === 0 && researchBrief.userConstraints.length === 0)) {
+        contractAuditResult = null;
+        return;
+      }
 
-    if (researchBrief && (researchBrief.requestedArtifacts.length > 0 || researchBrief.userConstraints.length > 0)) {
       const deterministic = runDeterministicContractValidation({
         intentId: orchProfile.intent,
-        markdown: generatedReport.markdown,
+        markdown,
         brief: researchBrief,
       });
       contractAuditResult = {
@@ -1343,7 +1353,7 @@ async function runResearchJobInner(
         await progress('verification', 93, 'Auditing deliverable contract...');
         const auditUserContent = [
           `RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
-          `\nGENERATED_REPORT:\n${generatedReport.markdown.slice(0, 60000)}`,
+          `\nGENERATED_REPORT:\n${markdown.slice(0, 60000)}`,
         ].join('\n');
 
         const auditModelResult = await callRoleModel({
@@ -1415,11 +1425,38 @@ async function runResearchJobInner(
           status: 'audit_unavailable',
         };
       }
-    }
+    };
+    await runContractAudit(generatedReport.markdown);
 
-    let reportStatus: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' = 'completed';
-    const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
-    const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
+    const recomputeReportStatus = (): ReportGateStatus => {
+      let nextStatus: ReportGateStatus = 'completed';
+      const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
+      const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
+      if (contractFailed && verifierFailed) {
+        nextStatus = 'contract_failed';
+      } else if (contractFailed) {
+        nextStatus = 'contract_failed';
+      } else if (verifierFailed) {
+        nextStatus = 'verification_failed';
+      } else if (sourceCoverageShortfall) {
+        nextStatus = 'completed_degraded';
+        contractAuditResult = {
+          pass: false,
+          missing_requirements: [
+            ...(contractAuditResult?.missing_requirements ?? []),
+            `usable_sources_shortfall:${usableSourcesObserved}/${minimumUsableSources}`,
+          ],
+          unsupported_claims: contractAuditResult?.unsupported_claims ?? [],
+          intent_drift: contractAuditResult?.intent_drift ?? null,
+          revision_instructions: [
+            ...(contractAuditResult?.revision_instructions ?? []),
+            `Increase usable independent sources from ${usableSourcesObserved} to at least ${minimumUsableSources}, or explicitly downgrade output status with the shortfall disclosed.`,
+          ],
+          status: contractAuditResult?.status ?? 'fail',
+        };
+      }
+      return nextStatus;
+    };
     const minimumUsableSources = data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min;
     const usableSourcesObserved = new Set(
       allChunks
@@ -1431,41 +1468,26 @@ async function runResearchJobInner(
       Number.isFinite(minimumUsableSources) &&
       minimumUsableSources > 0 &&
       usableSourcesObserved < minimumUsableSources;
-    if (contractFailed && verifierFailed) {
-      reportStatus = 'contract_failed';
-    } else if (contractFailed) {
-      reportStatus = 'contract_failed';
-    } else if (verifierFailed) {
-      reportStatus = 'verification_failed';
-    } else if (sourceCoverageShortfall) {
-      reportStatus = 'completed_degraded';
-      contractAuditResult = {
-        pass: false,
-        missing_requirements: [
-          ...(contractAuditResult?.missing_requirements ?? []),
-          `usable_sources_shortfall:${usableSourcesObserved}/${minimumUsableSources}`,
-        ],
-        unsupported_claims: contractAuditResult?.unsupported_claims ?? [],
-        intent_drift: contractAuditResult?.intent_drift ?? null,
-        revision_instructions: [
-          ...(contractAuditResult?.revision_instructions ?? []),
-          `Increase usable independent sources from ${usableSourcesObserved} to at least ${minimumUsableSources}, or explicitly downgrade output status with the shortfall disclosed.`,
-        ],
-        status: contractAuditResult?.status ?? 'fail',
-      };
-    }
+    let reportStatus: ReportGateStatus = recomputeReportStatus();
 
     if (reportStatus !== 'completed') {
-      await progress('verification', 93, 'Contract or verifier gate failed; attempting bounded repair pass.', {
-        substep: 'repair_started',
-      });
-      const revisionInstructions = [
-        ...(contractAuditResult?.revision_instructions ?? []),
-        ...(verification.criteria ?? [])
-          .filter((criterion) => criterion.status === 'FAIL')
-          .map((criterion) => `${criterion.criterion}: ${criterion.note}`),
-      ];
-      if (revisionInstructions.length > 0) {
+      const MAX_REPAIR_ATTEMPTS = 2;
+      for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS && reportStatus !== 'completed'; attempt += 1) {
+        await progress('verification', 93, 'Contract or verifier gate failed; attempting bounded repair pass.', {
+          substep: 'repair_started',
+          detail: `attempt_${attempt}`,
+        });
+        const contractRevisionInstructions =
+          (contractAuditResult as ContractAuditResult | null)?.revision_instructions ?? [];
+        const revisionInstructions = [
+          ...contractRevisionInstructions,
+          ...(verification.criteria ?? [])
+            .filter((criterion) => criterion.status === 'FAIL')
+            .map((criterion) => `${criterion.criterion}: ${criterion.note}`),
+        ];
+        if (revisionInstructions.length === 0) {
+          break;
+        }
         const repairResult = await callRoleModel({
           role: 'coherence_refiner',
           ...v2,
@@ -1480,6 +1502,42 @@ async function runResearchJobInner(
         });
         modelLog.push(repairResult);
         generatedReport = { markdown: repairResult.content.trim() || generatedReport.markdown };
+
+        if (shouldRunPipelineStage(orchProfile, 'verification')) {
+          const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent);
+          const reverifyResult = await callRoleModel({
+            role: 'verifier',
+            ...v2,
+            runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
+            messages: [
+              { role: 'system', content: intentVerifierPrompt },
+              {
+                role: 'user',
+                content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+              },
+            ],
+          });
+          modelLog.push(reverifyResult);
+          verificationUnavailable = false;
+          try {
+            const jsonMatch = reverifyResult.content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              verification = JSON.parse(jsonMatch[0]) as VerificationResult;
+              if (verification.overall !== 'PASS') {
+                verification.passed = false;
+              }
+            } else {
+              verificationUnavailable = true;
+              verification = { passed: false, criteria: [], overall: 'UNKNOWN' };
+            }
+          } catch {
+            verificationUnavailable = true;
+            verification = { passed: false, criteria: [], overall: 'UNKNOWN' };
+          }
+        }
+
+        await runContractAudit(generatedReport.markdown);
+        reportStatus = recomputeReportStatus();
       }
     }
 
@@ -1537,8 +1595,9 @@ async function runResearchJobInner(
     const fieldsCompleteCount =
       orchProfile.intent === 'opportunity_discovery' ? fieldCompletenessForOpportunities(opportunityObjects) : undefined;
     const constraintsPassed = confirmedResearchBrief?.userConstraints.length ?? 0;
-    const constraintsFailed =
-      reportStatus === 'completed' ? 0 : Math.max(1, contractAuditResult?.missing_requirements?.length ?? 1);
+    const contractMissingRequirements =
+      (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [];
+    const constraintsFailed = reportStatus === 'completed' ? 0 : Math.max(1, contractMissingRequirements.length || 1);
     const usableSourceCount = new Set(
       allChunks
         .map((chunk) => chunk.source_url?.trim())
@@ -1583,6 +1642,7 @@ async function runResearchJobInner(
       supplementalAttachments: Array.isArray(prov?.supplemental_attachments)
         ? (prov.supplemental_attachments as Record<string, unknown>[])
         : [],
+      reportGateStatus: reportStatus,
       userId: creditCtx?.userId,
       wave52Metadata: {
         output_template_id: outputTemplateId,
@@ -1668,9 +1728,25 @@ async function runResearchJobInner(
     }
 
     // Update run with model log, report_id, and completion
+    const runTerminalStatus = mapGateStatusToRunStatus(reportStatus);
+    const runFailureMeta =
+      runTerminalStatus === 'completed'
+        ? {}
+        : {
+            gate_status: reportStatus,
+            verification,
+            contract_audit: contractAuditResult,
+          };
     await query(
-      `UPDATE research_runs SET status=$1, completed_at=NOW(), model_log=$2, report_id=$3, failed_stage=NULL, failure_meta='{}'::jsonb WHERE id=$4`,
-      [reportStatus, JSON.stringify(modelLog), reportId, runId]
+      `UPDATE research_runs SET status=$1, completed_at=NOW(), model_log=$2, report_id=$3, failed_stage=$4, failure_meta=$5::jsonb WHERE id=$6`,
+      [
+        runTerminalStatus,
+        JSON.stringify(modelLog),
+        reportId,
+        runTerminalStatus === 'completed' ? null : 'verification',
+        JSON.stringify(runFailureMeta),
+        runId,
+      ]
     );
     patchAgentExecutionsReportIdForRun(runId, reportId);
 
@@ -1704,7 +1780,7 @@ async function runResearchJobInner(
     });
 
     // Credit charge: consume hold on success, decrement subscription quota
-    if (creditCtx && reportStatus === 'completed') {
+    if (creditCtx && runTerminalStatus === 'completed') {
       try {
         if (creditCtx.holdId && creditCtx.userId) {
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
@@ -1723,19 +1799,19 @@ async function runResearchJobInner(
       await releaseHold(creditCtx.holdId, creditCtx.userId).catch((err) => {
         logger.warn('credit_hold_release_non_success_status_failed', {
           runId,
-          status: reportStatus,
+          status: runTerminalStatus,
           error: err instanceof Error ? err.message : String(err),
         });
       });
     }
 
     // Pipeline B: evaluate eligibility and enqueue sanitized artifact if eligible
-    if (creditCtx?.userId) {
+    if (creditCtx?.userId && shouldRunPipelineBFromGateStatus(reportStatus)) {
       try {
         const { evaluatePipelineBEligibility } = await import('../ingestion/pipelineBEligibility');
         const { getUserTier } = await import('../tier/tierService');
         const userTier = await getUserTier(creditCtx.userId);
-        const eligibility = await evaluatePipelineBEligibility(runId, creditCtx.userId, userTier.tier, 'completed');
+        const eligibility = await evaluatePipelineBEligibility(runId, creditCtx.userId, userTier.tier, runTerminalStatus);
         if (eligibility.eligible) {
           const { sanitize } = await import('../ingestion/sanitizationGate');
           const { pipelineBIngestionQueue } = await import('../../queue/queues');
@@ -2223,6 +2299,7 @@ async function saveReport(args: {
   modelEnsemble?: Record<string, unknown>;
   supplementalText: string;
   supplementalAttachments: Record<string, unknown>[];
+  reportGateStatus: ReportGateStatus;
   userId?: string;
   /** Wave 5.2 — merged into `reports.metadata` (JSON-safe keys). */
   wave52Metadata?: Record<string, unknown>;
@@ -2240,6 +2317,7 @@ async function saveReport(args: {
     modelEnsemble,
     supplementalText,
     supplementalAttachments,
+    reportGateStatus,
     userId,
     wave52Metadata,
   } = args;
@@ -2258,18 +2336,20 @@ async function saveReport(args: {
       runId,
       researchQuery.slice(0, 200),
       researchQuery,
+      mapGateStatusToReportRowStatus(reportGateStatus),
       sections.find(s => s.type === 'executive_summary')?.content ?? '',
       sections.find(s => s.type === 'conclusion')?.content ?? '',
       safeFalsification,
       new Set(safeChunks.map((c) => c.source_url)).size,
       safeChunks.length,
+      reportGateStatus === 'completed' ? new Date() : null,
     ];
     let reportResult: { rows: Array<{ id: string }> };
     await client.query('SAVEPOINT pre_report_insert');
     try {
       reportResult = await client.query(
         `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at, user_id)
-         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW(), $9) RETURNING id`,
+         VALUES ($1, $2, $3, $4::report_status, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
         [...baseParams, userId ?? null]
       );
     } catch (insertErr) {
@@ -2277,7 +2357,7 @@ async function saveReport(args: {
       await client.query('ROLLBACK TO SAVEPOINT pre_report_insert');
       reportResult = await client.query(
         `INSERT INTO reports (run_id, title, query, status, executive_summary, conclusion, falsification_criteria, source_count, chunk_count, finalized_at)
-         VALUES ($1, $2, $3, 'finalized', $4, $5, $6, $7, $8, NOW()) RETURNING id`,
+         VALUES ($1, $2, $3, $4::report_status, $5, $6, $7, $8, $9, $10) RETURNING id`,
         baseParams
       );
     }
@@ -2318,15 +2398,19 @@ async function saveReport(args: {
     );
   });
 
-  // Best-effort: set retention expiry timestamps on the newly-finalized report.
-  // Deploy-skew safe — markReportFinalizedRetention catches 42703 if migration 028 hasn't applied.
+  // Best-effort retention timestamps. Finalized report retention is applied only
+  // when all gates pass; non-passing reports remain under review.
   try {
-    await markReportFinalizedRetention(reportId, new Date());
-    await markRunTerminalRetention(runId, 'completed', new Date());
+    const runStatus = mapGateStatusToRunStatus(reportGateStatus);
+    if (reportGateStatus === 'completed') {
+      await markReportFinalizedRetention(reportId, new Date());
+    }
+    await markRunTerminalRetention(runId, runStatus, new Date());
   } catch (retErr) {
-    logger.warn('retention_mark_finalized_error', {
+    logger.warn('retention_mark_terminal_error', {
       reportId,
       runId,
+      reportGateStatus,
       error: retErr instanceof Error ? retErr.message : 'Unknown',
     });
   }

@@ -143,9 +143,15 @@ export async function runSpecialistExecution(input: {
     input.researchBrief ? `RESEARCH_BRIEF: ${JSON.stringify(input.researchBrief)}` : '',
     `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
   ].filter(Boolean).join('\n\n');
+  const claimed = new Set<SpecialistAgentId>();
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
-    if (bundle.statuses[agent] === 'succeeded' || bundle.statuses[agent] === 'failed' || bundle.statuses[agent] === 'invalid_output') {
+    if (
+      claimed.has(agent) ||
+      bundle.statuses[agent] === 'succeeded' ||
+      bundle.statuses[agent] === 'failed' ||
+      bundle.statuses[agent] === 'invalid_output'
+    ) {
       bundle.reasons[agent] = bundle.reasons[agent] ?? 'duplicate_planned';
       return;
     }
@@ -158,6 +164,7 @@ export async function runSpecialistExecution(input: {
       bundle.degradedCoverageReasons.push(`${agent}: ${reason}`);
       return;
     }
+    claimed.add(agent);
 
     await input.onProgress?.(`Executing specialist: ${agent}`);
     const deps = input.executionPlan.dependsOn[agent] ?? [];
