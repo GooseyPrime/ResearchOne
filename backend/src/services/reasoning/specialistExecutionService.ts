@@ -12,6 +12,7 @@ import type {
   TimelineReconstructorOutput,
   SpecialistAgentId,
 } from './agentCapabilityRegistry';
+import { normalizeDeterministicMetricChecks } from './deterministicQuant';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
 const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
@@ -193,6 +194,17 @@ export async function runSpecialistExecution(input: {
         bundle.reasons[agent] = 'Model returned invalid structured output.';
         bundle.degradedCoverageReasons.push(`${agent}: invalid_output`);
         return;
+      }
+      if (agent === 'data_analysis_specialist' && isRecord(parsed) && Array.isArray(parsed.metrics)) {
+        const normalized = normalizeDeterministicMetricChecks(
+          (parsed.metrics as Array<{ metric?: unknown; value?: unknown }>)
+            .map((item) => ({
+              metric: typeof item.metric === 'string' ? item.metric : 'unknown',
+              value: typeof item.value === 'string' ? item.value : '',
+            }))
+        );
+        parsed.deterministic_checks = normalized.checks;
+        parsed.deterministic_summary = normalized.summary;
       }
       bundle.outputs[agent] = parsed as never;
       bundle.statuses[agent] = 'succeeded';
