@@ -32,6 +32,43 @@ export interface RunErrorReportArgs {
 
 const GITHUB_API_BASE = 'https://api.github.com';
 
+/** Labels that must exist in the target repo before we create an issue. */
+const REQUIRED_LABELS: Array<{ name: string; color: string; description: string }> = [
+  { name: 'auto-reported', color: 'e11d48', description: 'Opened automatically by the error reporter' },
+  { name: 'run-error', color: 'f97316', description: 'Research-run terminal failure' },
+];
+
+/**
+ * Ensures every label in REQUIRED_LABELS exists in the target repo.
+ * Creates missing labels; ignores 422 (label already exists) silently.
+ * Any other error is swallowed — label creation failures must not block issue creation.
+ */
+async function ensureRequiredLabels(
+  owner: string,
+  repo: string,
+  headers: Record<string, string>
+): Promise<void> {
+  for (const label of REQUIRED_LABELS) {
+    try {
+      await axios.post(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/labels`,
+        label,
+        { headers, timeout: 10_000 }
+      );
+    } catch (err: unknown) {
+      // 422 = label already exists — that is the happy path on subsequent calls.
+      // Any other status is also swallowed; issue creation will be attempted regardless.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 422) {
+        logger.warn('githubErrorReporter: could not ensure label', {
+          label: label.name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+}
+
 function buildIssueTitle(args: RunErrorReportArgs): string {
   const stage = args.stage ?? 'unknown';
   const classification = String(args.failureMeta?.classification ?? 'unknown_error');
@@ -66,7 +103,7 @@ ${metaBlock}
 \`\`\`
 
 ---
-*This issue was opened automatically by the ResearchOne error reporter. If this error is a known transient, close the issue and add the \`wont-fix\` label. Otherwise, triage and assign.*
+*This issue was opened automatically by the ResearchOne error reporter. If this error is a known transient, close the issue and add the \`wontfix\` label. Otherwise, triage and assign.*
 `;
 }
 
@@ -91,6 +128,13 @@ export async function reportRunErrorToGitHub(args: RunErrorReportArgs): Promise<
   try {
     const title = buildIssueTitle(args);
     const body = buildIssueBody(args);
+    const headers = {
+      Authorization: `token ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    };
+
+    await ensureRequiredLabels(owner, repo, headers);
 
     await axios.post(
       `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`,
@@ -100,11 +144,7 @@ export async function reportRunErrorToGitHub(args: RunErrorReportArgs): Promise<
         labels: ['bug', 'auto-reported', 'run-error'],
       },
       {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
+        headers,
         timeout: 10_000,
       }
     );
