@@ -325,6 +325,17 @@ const config = {
     branch: process.env.FEATURED_REPORT_GITHUB_BRANCH || 'main',
   },
 
+  /** Optional: open GitHub Issues for terminal run errors so agents can triage and respond */
+  errorReportGithub: {
+    token: process.env.ERROR_REPORT_GITHUB_TOKEN || '',
+    owner:
+      (process.env.ERROR_REPORT_GITHUB_OWNER || '').trim() ||
+      (rawNodeEnv === 'production' ? '' : 'GooseyPrime'),
+    repo:
+      (process.env.ERROR_REPORT_GITHUB_REPO || '').trim() ||
+      (rawNodeEnv === 'production' ? '' : 'ResearchOne'),
+  },
+
   admin: {
     token: process.env.ADMIN_RUNTIME_TOKEN || '',
     userIds: (process.env.ADMIN_USER_IDS || '')

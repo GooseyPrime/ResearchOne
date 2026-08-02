@@ -76,6 +76,7 @@ import {
   selectAgentsForBrief,
   type SpecialistAgentId,
 } from './agentCapabilityRegistry';
+import { reportRunErrorToGitHub } from '../githubErrorReporter';
 
 export type {
   CreditChargeContext,
@@ -1784,6 +1785,20 @@ async function runResearchJobInner(
           });
         }
       }
+    }
+
+    // Fire-and-forget: report terminal failures to GitHub Issues so agents
+    // can triage and respond. Never awaited — must not affect the error path.
+    if (finalStatus === 'aborted') {
+      void reportRunErrorToGitHub({
+        runId,
+        stage: currentStage,
+        errorMessage: failureDetails.errorMessage,
+        failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
+        query: researchQuery,
+        userId: creditCtx?.userId ?? null,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     throw enrichedError;
