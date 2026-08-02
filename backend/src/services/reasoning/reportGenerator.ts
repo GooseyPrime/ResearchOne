@@ -1,10 +1,17 @@
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
+import { getIntentOutputTemplate, INTENT_OUTPUT_TEMPLATES } from '../formatting/templates/intentOutputTemplates';
 
 export interface ReportSectionDraft {
   title: string;
   key: string;
   content: string;
+}
+
+interface RuntimeSectionPlanEntry {
+  title: string;
+  key: string;
+  weight: number;
 }
 
 const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
@@ -42,6 +49,12 @@ export const ADJUDICATIVE_SECTION_INTENTS = new Set<string>([
   'investigation',
   'story_verification',
 ]);
+
+const KNOWN_NON_LEGACY_INTENTS = new Set<string>(
+  Object.values(INTENT_OUTPUT_TEMPLATES)
+    .map((template) => template.intentId)
+    .filter((intentId) => intentId !== 'legacy')
+);
 
 const MAX_SECTION_SUMMARY_CHARS = 1200;
 const MAX_ROLLING_SUMMARY_CHARS = 6000;
@@ -153,6 +166,24 @@ function safeJsonParse<T>(value: string): T | null {
   }
 }
 
+function titleFromTemplateSection(sectionKey: string): string {
+  return sectionKey
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function sectionPlanFromTemplate(templateId: string): RuntimeSectionPlanEntry[] {
+  const template = getIntentOutputTemplate(templateId);
+  const weight = template.sections.length > 0 ? 1 / template.sections.length : 1;
+  return template.sections.map((sectionKey) => ({
+    key: sectionKey,
+    title: titleFromTemplateSection(sectionKey),
+    weight,
+  }));
+}
+
 export async function generateIterativeReport(args: {
   query: string;
   plan: unknown;
@@ -173,12 +204,32 @@ export async function generateIterativeReport(args: {
    *  defaults to the full adjudicative section plan for backward
    *  compatibility. */
   intentId?: string;
+  outputTemplateId?: string;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
-  const activeSectionPlan =
-    args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
-      ? DESCRIPTIVE_SECTION_PLAN
-      : ADJUDICATIVE_SECTION_PLAN;
+  let activeSectionPlan: RuntimeSectionPlanEntry[];
+  let templateNarrativeHint = '';
+  let templateVerifierRubric = '';
+  let templateRequiredDeliverables: readonly string[] = [];
+  if (args.outputTemplateId) {
+    const template = getIntentOutputTemplate(args.outputTemplateId);
+    if (args.intentId && template.intentId !== args.intentId) {
+      throw new Error(
+        `INTENT_TEMPLATE_MISMATCH: intent=${args.intentId} template=${args.outputTemplateId} templateIntent=${template.intentId}`
+      );
+    }
+    activeSectionPlan = sectionPlanFromTemplate(args.outputTemplateId);
+    templateNarrativeHint = template.narrativeHint;
+    templateVerifierRubric = template.verifierRubric;
+    templateRequiredDeliverables = template.requiredDeliverables;
+  } else if (args.intentId && KNOWN_NON_LEGACY_INTENTS.has(args.intentId)) {
+    throw new Error(`INTENT_TEMPLATE_MISSING: known intent "${args.intentId}" requires outputTemplateId`);
+  } else {
+    activeSectionPlan =
+      args.intentId != null && !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId)
+        ? DESCRIPTIVE_SECTION_PLAN
+        : ADJUDICATIVE_SECTION_PLAN;
+  }
 
   const v2 = {
     engineVersion: args.engineVersion,
@@ -197,6 +248,9 @@ export async function generateIterativeReport(args: {
         role: 'user',
         content: `Generate a report outline for query "${args.query}".
 Required sections:\n${activeSectionPlan.map((s) => `- ${s.title}`).join('\n')}
+Template narrative guidance:\n${templateNarrativeHint || 'none'}
+Required deliverables:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
+Intent verifier rubric:\n${templateVerifierRubric || 'none'}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Evidence:\n${args.evidenceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
@@ -235,6 +289,9 @@ Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
+Template narrative guidance: ${templateNarrativeHint || 'none'}
+Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
+Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}

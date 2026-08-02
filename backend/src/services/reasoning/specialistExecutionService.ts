@@ -144,6 +144,10 @@ export async function runSpecialistExecution(input: {
   ].filter(Boolean).join('\n\n');
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
+    if (bundle.statuses[agent] === 'succeeded' || bundle.statuses[agent] === 'failed' || bundle.statuses[agent] === 'invalid_output') {
+      bundle.reasons[agent] = bundle.reasons[agent] ?? 'duplicate_planned';
+      return;
+    }
     const preStatus = input.executionPlan.statuses?.[agent];
     if (preStatus === 'unavailable' || preStatus === 'skipped') {
       bundle.statuses[agent] = preStatus;

@@ -34,12 +34,12 @@ const VERIFIER_RETRACTED_RULE = `If the report cites any source with institution
 
 export const MODE_OVERLAYS: Record<ResearchMode, Partial<Record<AgentRole, string>>> = {
   GENERAL_EPISTEMIC_RESEARCH: {
-    planner: 'Focus on broad epistemic coverage. Identify multiple competing hypotheses and ensure the plan explores each. Avoid premature narrowing.',
-    retriever: `${RETRIEVER_ANALYSIS_SCITE_ADDITION}\n\nRetrieve from the widest possible source range. Prefer diversity of perspective over confirmation of a single thesis.`,
-    reasoner: 'Apply multi-hypothesis reasoning. Maintain parallel reasoning chains for competing explanations. Do not prematurely select a winner.',
-    skeptic: `${SKEPTIC_V2_SCITE_ADDITION}\n\nChallenge every major conclusion with at least one structurally valid counter-argument. Flag assumptions that are treated as axioms without justification.`,
-    synthesizer: 'Present competing interpretations side by side. The synthesis must preserve unresolved tension — do not smooth contradictions into false consensus.',
-    verifier: `${VERIFIER_RETRACTED_RULE}\n\nVerify epistemic completeness: are all major competing hypotheses represented? Are contradictions preserved, not hidden?`,
+    planner: 'Prioritize intent fidelity and deliverable completeness. Do not reclassify the user request after plan confirmation.',
+    retriever: `${RETRIEVER_ANALYSIS_SCITE_ADDITION}\n\nRetrieve diverse, high-quality sources while matching source classes to the confirmed intent and required artifact fields.`,
+    reasoner: 'Use neutral synthesis by default: answer the confirmed request directly, calibrate uncertainty, and avoid manufacturing adversarial framing.',
+    skeptic: `${SKEPTIC_V2_SCITE_ADDITION}\n\nApply critique proportionally to evidence quality and gaps; do not dominate non-adjudicative reports with premise attacks.`,
+    synthesizer: 'Preserve contract-required structure (tables, ranked lists, procedures) and produce complete artifacts before extra narrative expansion.',
+    verifier: `${VERIFIER_RETRACTED_RULE}\n\nVerify contract completeness, citation traceability, and uncertainty calibration before allowing finalization.`,
     plain_language_synthesizer: 'Write for an intelligent non-specialist. Preserve the nuance and uncertainty of the full report. Do not oversimplify contested points.',
     outline_architect: 'Structure the report to reflect the breadth of inquiry. Each major hypothesis should have its own section.',
   },

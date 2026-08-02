@@ -75,18 +75,18 @@ export async function mapAndPersistCitations(args: {
   sourceClassMap?: SourceClassMap;
   /** Alias for `sourceClassMap`. */
   sourceClassByChunkId?: SourceClassMap;
-  /** Max chunks in LLM context (smart_citations add-on uses 40). */
+  /** Max chunks in LLM context (smart_citations add-on can raise this). */
   chunkContextLimit?: number;
 }): Promise<CitationMapResult> {
   const { runId, reportId, chunks, claims, reportSections, discoverySummary } = args;
   const wave53Maps = args.sourceClassMap ?? args.sourceClassByChunkId;
-  const chunkLimit = args.chunkContextLimit ?? 20;
+  const chunkLimit = args.chunkContextLimit ?? Math.min(Math.max(chunks.length, 40), 200);
 
   logger.info(`[citations:${runId}] Mapping citations for ${reportSections.length} sections`);
 
   const chunkContext = chunks
     .slice(0, chunkLimit)
-    .map(c => `[CHUNK ${c.id}] Source: ${c.source_url || c.source_title || 'unknown'}\n${c.content.slice(0, 250)}`)
+    .map(c => `[CHUNK ${c.id}] Source URL: ${c.source_url || 'unknown'}\nTitle: ${c.source_title || 'unknown'}\nChunk Index: ${typeof c.chunk_index === 'number' ? c.chunk_index : 'unknown'}\n${c.content.slice(0, 700)}`)
     .join('\n---\n');
 
   const sectionContext = reportSections
