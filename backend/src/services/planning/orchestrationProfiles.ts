@@ -114,7 +114,7 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     agentsToSkip: [],
     skepticMode: 'gate',
     steelmanMode: 'standard',
-    outputTemplateId: 'intent_adjudication',
+    outputTemplateId: 'intent_story_verification',
     expectedLengthRange: { minWords: 2000, maxWords: 8000 },
   }),
   opportunity_discovery: P({
@@ -123,7 +123,7 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     ...skipOnly('challenge'),
     skepticMode: 'off',
     steelmanMode: 'off',
-    outputTemplateId: 'intent_factual_report',
+    outputTemplateId: 'intent_opportunity_discovery',
     expectedLengthRange: { minWords: 2000, maxWords: 10000 },
   }),
   feasibility: P({
@@ -132,7 +132,7 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     ...skipOnly('challenge'),
     skepticMode: 'off',
     steelmanMode: 'off',
-    outputTemplateId: 'intent_factual_report',
+    outputTemplateId: 'intent_feasibility',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
   implementation: P({
@@ -141,7 +141,7 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     ...skipOnly('challenge'),
     skepticMode: 'off',
     steelmanMode: 'off',
-    outputTemplateId: 'intent_factual_report',
+    outputTemplateId: 'intent_implementation',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
   literature_review: P({
