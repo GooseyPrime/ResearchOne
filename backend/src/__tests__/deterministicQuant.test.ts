@@ -16,4 +16,17 @@ describe('deterministicQuant', () => {
     expect(result.summary.crossUnitAggregationBlocked).toBe(true);
     expect(result.checks[2]?.parsedValue).toBeNull();
   });
+
+  it('normalizes magnitude suffixes and words', () => {
+    const result = normalizeDeterministicMetricChecks([
+      { metric: 'TAM', value: '$1.2M' },
+      { metric: 'Users', value: '500k users' },
+      { metric: 'Market', value: '3 billion USD' },
+    ]);
+
+    expect(result.checks[0]?.parsedValue).toBe(1_200_000);
+    expect(result.checks[1]?.parsedValue).toBe(500_000);
+    expect(result.checks[2]?.parsedValue).toBe(3_000_000_000);
+    expect(result.summary.unitSummaries.USD?.count).toBe(2);
+  });
 });

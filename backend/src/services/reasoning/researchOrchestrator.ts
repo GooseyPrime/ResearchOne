@@ -361,18 +361,91 @@ function countIndependentDomains(chunks: RetrievedChunk[]): number {
   return domains.size;
 }
 
+function parseOpportunityTitleLine(line: string): string | null {
+  const trimmed = line.trim();
+  const normalized = trimmed
+    .replace(/^[-*+]\s+/, '')
+    .replace(/^\*\*/, '')
+    .replace(/\*\*$/, '')
+    .trim();
+  const numbered = normalized.match(/^#?\s*(\d+)[\.\):]\s+(.+)$/);
+  if (numbered) return `Opportunity ${numbered[1]}: ${numbered[2].trim()}`;
+  const named = normalized.match(/^opportunity\s*#?\s*(\d+)\s*[:\-–]\s*(.+)$/i);
+  if (named) return `Opportunity ${named[1]}: ${named[2].trim()}`;
+  return null;
+}
+
+function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
+  const lines = markdown
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line.includes('|'));
+  if (lines.length < 3) return [];
+
+  const separatorRegex = /^\|?\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)*\s*\|?$/;
+  for (let i = 0; i < lines.length - 2; i += 1) {
+    const headerLine = lines[i];
+    const separatorLine = lines[i + 1];
+    if (!separatorRegex.test(separatorLine)) continue;
+
+    const headers = headerLine
+      .split('|')
+      .map((cell) => cell.trim())
+      .filter(Boolean)
+      .map((header) => header.toLowerCase());
+    if (headers.length === 0) continue;
+
+    const looksOpportunityTable = headers.some((header) =>
+      /opportunity|title|idea|rank|problem|customer|confidence/.test(header)
+    );
+    if (!looksOpportunityTable) continue;
+
+    const titleIndex = headers.findIndex((header) => /opportunity|title|idea|name/.test(header));
+    const rankIndex = headers.findIndex((header) => /rank|#|order/.test(header));
+    const out: Array<{ title: string; body: string }> = [];
+
+    for (let rowIndex = i + 2; rowIndex < lines.length; rowIndex += 1) {
+      const rowLine = lines[rowIndex];
+      if (separatorRegex.test(rowLine)) continue;
+      const values = rowLine
+        .split('|')
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+      if (values.length === 0 || values.length < Math.min(headers.length, 2)) continue;
+      const rankToken = rankIndex >= 0 ? values[rankIndex] : '';
+      const titleToken = titleIndex >= 0 ? values[titleIndex] : values[Math.min(1, values.length - 1)];
+      const isOpportunityRow =
+        /^#?\d+$/.test(rankToken) || /^opportunity\s*#?\d+/i.test(titleToken) || Boolean(titleToken);
+      if (!isOpportunityRow) continue;
+      const title = /^opportunity/i.test(titleToken)
+        ? titleToken
+        : `${/^#?\d+$/.test(rankToken) ? `Opportunity ${rankToken}` : 'Opportunity'}: ${titleToken}`;
+      const body = headers
+        .map((header, idx) => `${header}: ${values[idx] ?? ''}`)
+        .join('\n')
+        .trim();
+      out.push({ title: title.trim(), body });
+    }
+
+    if (out.length > 0) return out;
+  }
+
+  return [];
+}
+
 function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title: string; body: string }> {
   const lines = markdown.split('\n');
   const out: Array<{ title: string; body: string }> = [];
   let current: { title: string; body: string[] } | null = null;
   for (const line of lines) {
-    const header = line.match(/^#{2,4}\s+(.+)$/);
-    if (header) {
-      if (current && current.body.join('\n').trim()) {
-        out.push({ title: current.title, body: current.body.join('\n') });
+    const header = line.match(/^#{1,4}\s+(.+)$/);
+    const listTitle = parseOpportunityTitleLine(line) ?? (header ? parseOpportunityTitleLine(header[1] ?? '') : null);
+    if (header || listTitle) {
+      if (current) {
+        out.push({ title: current.title, body: current.body.join('\n').trim() });
       }
-      const title = header[1].trim();
-      if (/^opportunity\s*\d+/i.test(title) || /^#?\d+\.\s+/.test(title)) {
+      const title = listTitle ?? header?.[1]?.trim() ?? '';
+      if (/^opportunity\s*#?\s*\d+/i.test(title)) {
         current = { title, body: [] };
       } else {
         current = null;
@@ -381,10 +454,11 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
     }
     if (current) current.body.push(line);
   }
-  if (current && current.body.join('\n').trim()) {
-    out.push({ title: current.title, body: current.body.join('\n') });
+  if (current) {
+    out.push({ title: current.title, body: current.body.join('\n').trim() });
   }
-  return out;
+  if (out.length > 0) return out;
+  return parseOpportunityRowsFromMarkdownTable(markdown);
 }
 
 function fieldCompletenessForOpportunities(opportunities: Array<{ title: string; body: string }>): number {
@@ -1390,21 +1464,29 @@ async function runResearchJobInner(
           } else {
             contractAuditResult = {
               pass: false,
-              missing_requirements: [],
-              unsupported_claims: [],
+              missing_requirements: contractAuditResult?.missing_requirements ?? [],
+              unsupported_claims: contractAuditResult?.unsupported_claims ?? [],
               intent_drift: 'contract_auditor_parse_error',
-              revision_instructions: ['Contract auditor did not return parseable JSON.'],
+              revision_instructions: [
+                ...(contractAuditResult?.revision_instructions ?? []),
+                'Contract auditor did not return parseable JSON.',
+              ],
               status: 'audit_unavailable',
+              deterministic_metrics: contractAuditResult?.deterministic_metrics,
             };
           }
         } catch {
           contractAuditResult = {
             pass: false,
-            missing_requirements: [],
-            unsupported_claims: [],
+            missing_requirements: contractAuditResult?.missing_requirements ?? [],
+            unsupported_claims: contractAuditResult?.unsupported_claims ?? [],
             intent_drift: 'contract_auditor_parse_error',
-            revision_instructions: ['Contract auditor returned invalid JSON output.'],
+            revision_instructions: [
+              ...(contractAuditResult?.revision_instructions ?? []),
+              'Contract auditor returned invalid JSON output.',
+            ],
             status: 'audit_unavailable',
+            deterministic_metrics: contractAuditResult?.deterministic_metrics,
           };
         }
 
@@ -1418,11 +1500,15 @@ async function runResearchJobInner(
         logger.warn(`[${runId}] Contract auditor call failed`, { error: auditErr instanceof Error ? auditErr.message : String(auditErr) });
         contractAuditResult = {
           pass: false,
-          missing_requirements: [],
-          unsupported_claims: [],
+          missing_requirements: contractAuditResult?.missing_requirements ?? [],
+          unsupported_claims: contractAuditResult?.unsupported_claims ?? [],
           intent_drift: 'contract_auditor_unavailable',
-          revision_instructions: ['Contract auditor provider call failed.'],
+          revision_instructions: [
+            ...(contractAuditResult?.revision_instructions ?? []),
+            'Contract auditor provider call failed.',
+          ],
           status: 'audit_unavailable',
+          deterministic_metrics: contractAuditResult?.deterministic_metrics,
         };
       }
     };
@@ -1470,9 +1556,13 @@ async function runResearchJobInner(
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
 
-    if (reportStatus !== 'completed') {
+    if (reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
       const MAX_REPAIR_ATTEMPTS = 2;
-      for (let attempt = 1; attempt <= MAX_REPAIR_ATTEMPTS && reportStatus !== 'completed'; attempt += 1) {
+      for (
+        let attempt = 1;
+        attempt <= MAX_REPAIR_ATTEMPTS && reportStatus !== 'completed' && reportStatus !== 'completed_degraded';
+        attempt += 1
+      ) {
         await progress('verification', 93, 'Contract or verifier gate failed; attempting bounded repair pass.', {
           substep: 'repair_started',
           detail: `attempt_${attempt}`,

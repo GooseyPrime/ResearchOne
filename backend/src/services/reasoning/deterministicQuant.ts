@@ -14,10 +14,38 @@ interface UnitSummary {
   meanValue: number;
 }
 
+const MAGNITUDE_MULTIPLIERS: Record<string, number> = {
+  k: 1_000,
+  thousand: 1_000,
+  m: 1_000_000,
+  mm: 1_000_000,
+  mn: 1_000_000,
+  million: 1_000_000,
+  b: 1_000_000_000,
+  bn: 1_000_000_000,
+  billion: 1_000_000_000,
+  t: 1_000_000_000_000,
+  trillion: 1_000_000_000_000,
+};
+
 function parseNumberFromText(value: string): number | null {
-  const cleaned = value.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
-  if (!cleaned) return null;
-  const parsed = Number(cleaned[0]);
+  const normalized = value.replace(/,/g, '');
+  const compactMatch = normalized.match(/(-?\d+(?:\.\d+)?)\s*(k|m|mm|mn|b|bn|t)\b(?!\s*\/)/i);
+  const wordMatch = normalized.match(/(-?\d+(?:\.\d+)?)\s*(thousand|million|billion|trillion)\b/i);
+  const plainMatch = normalized.match(/-?\d+(\.\d+)?/);
+
+  const matched = compactMatch ?? wordMatch;
+  if (matched) {
+    const magnitude = matched[2]?.toLowerCase();
+    const base = Number(matched[1]);
+    const multiplier = magnitude ? MAGNITUDE_MULTIPLIERS[magnitude] : undefined;
+    if (!Number.isFinite(base) || multiplier == null) return null;
+    const scaled = base * multiplier;
+    return Number.isFinite(scaled) ? scaled : null;
+  }
+
+  if (!plainMatch) return null;
+  const parsed = Number(plainMatch[0]);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
