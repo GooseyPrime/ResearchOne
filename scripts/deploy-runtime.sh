@@ -237,10 +237,20 @@ try:
 except json.JSONDecodeError as e:
     print("[deploy] ERROR: health response is not JSON:", e, file=sys.stderr)
     sys.exit(1)
-for key in ("status", "timestamp", "version", "gitSha", "nodeEnv"):
+for key in ("status", "timestamp"):
     if key not in data:
         print(f"[deploy] ERROR: health missing key: {key}", file=sys.stderr)
         sys.exit(1)
+detail_keys = ("service", "version", "gitSha", "nodeEnv")
+present_detail_keys = [key for key in detail_keys if key in data]
+if present_detail_keys and len(present_detail_keys) != len(detail_keys):
+    missing = [key for key in detail_keys if key not in data]
+    print(
+        "[deploy] ERROR: health returned a partial detailed payload; missing keys:",
+        ", ".join(missing),
+        file=sys.stderr,
+    )
+    sys.exit(1)
 for bad in ("envFile", "env_file"):
     if bad in data:
         print("[deploy] ERROR: health must not expose env file path", file=sys.stderr)
@@ -251,10 +261,10 @@ if data.get("status") == "down":
     sys.exit(1)
 print(
     "[deploy] smoke OK:",
-    data.get("service"),
-    data.get("version"),
-    data.get("gitSha"),
-    data.get("nodeEnv"),
+    data.get("service", "public-health"),
+    data.get("version", "n/a"),
+    data.get("gitSha", "n/a"),
+    data.get("nodeEnv", "n/a"),
     "payload_status=" + str(data.get("status")),
 )
 PY
