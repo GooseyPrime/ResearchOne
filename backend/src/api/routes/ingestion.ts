@@ -14,7 +14,6 @@ import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
 import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
 import { assertPublicHttpUrl, UrlFetchPolicyError } from '../../services/ingestion/urlFetchPolicy';
-import { logger } from '../../utils/logger';
 import { clampCrawlLayers } from '../../services/ingestion/siteCrawl';
 
 const router = Router();

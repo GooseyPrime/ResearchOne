@@ -31,7 +31,6 @@ import {
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { getWalletSummary } from '../../services/billing/walletService';
-import { logger } from '../../utils/logger';
 import {
   buildCreditChargeContextForRun,
   type CreditChargeContext,
