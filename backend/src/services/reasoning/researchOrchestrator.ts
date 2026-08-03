@@ -1595,9 +1595,7 @@ async function runResearchJobInner(
     const fieldsCompleteCount =
       orchProfile.intent === 'opportunity_discovery' ? fieldCompletenessForOpportunities(opportunityObjects) : undefined;
     const constraintsPassed = confirmedResearchBrief?.userConstraints.length ?? 0;
-    const contractMissingRequirements =
-      (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [];
-    const constraintsFailed = reportStatus === 'completed' ? 0 : Math.max(1, contractMissingRequirements.length || 1);
+    const constraintsFailed = reportStatus === 'completed' ? 0 : contractMissingRequirements.length;
     const usableSourceCount = new Set(
       allChunks
         .map((chunk) => chunk.source_url?.trim())
