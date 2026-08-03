@@ -501,7 +501,6 @@ async function runDiscoveryOrchestratorInner(args: {
   // ─── Step 3: Score/rank candidates ──────────────────────────────────────────
   // Sort by score descending, then rank ascending.
   const ranked = [...allCandidates].sort((a, b) => b.score - a.score || a.rank - b.rank);
-  const domainSeen = new Set<string>();
 
   // ─── Step 4: Check which candidates are already in corpus ───────────────────
   const selected: DiscoverySource[] = [];
@@ -510,12 +509,6 @@ async function runDiscoveryOrchestratorInner(args: {
   for (let i = 0; i < ranked.length && selected.length < maxIngest; i++) {
     const candidate = ranked[i];
     const normalised = normalizeUrl(candidate.url);
-    try {
-      domainSeen.add(new URL(candidate.url).hostname.replace(/^www\./i, '').toLowerCase());
-    } catch {
-      // ignore malformed URL domains
-    }
-
     // Check if already ingested
     const alreadyIngested = await queryOne<{ id: string }>(
       `SELECT id FROM sources WHERE url=$1 OR url=$2`,

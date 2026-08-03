@@ -19,11 +19,11 @@ export const REASONING_FIRST_PREAMBLE = `REASONING-FIRST EPISTEMIC POLICY (MANDA
 - Mark unsupported speculation clearly, but do not suppress inquiry based only on consensus recall.`;
 
 export function withPreamble(prompt: string): string {
-  return `${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
+  return `${REASONING_FIRST_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
 }
 
 export function withPolicyOnePreamble(prompt: string): string {
-  return `${REASONING_FIRST_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
+  return withPreamble(prompt);
 }
 
 /**

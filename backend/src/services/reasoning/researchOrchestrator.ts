@@ -256,7 +256,7 @@ function buildReaderFrontMatter(args: {
           label: 'Constraint status',
           narrative:
             typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
-              ? `${args.constraintsPassed} constraints passed; ${args.constraintsFailed} constraints failed.`
+              ? `${args.constraintsPassed} user constraints were provided; ${args.constraintsFailed} unresolved contract requirements remained at finalize time.`
               : 'Constraint pass/fail tracking unavailable.',
         },
         {
@@ -1594,6 +1594,8 @@ async function runResearchJobInner(
     const deliveredOpportunityCount = opportunityObjects.length;
     const fieldsCompleteCount =
       orchProfile.intent === 'opportunity_discovery' ? fieldCompletenessForOpportunities(opportunityObjects) : undefined;
+    const contractMissingRequirements =
+      (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [];
     const constraintsPassed = confirmedResearchBrief?.userConstraints.length ?? 0;
     const constraintsFailed = reportStatus === 'completed' ? 0 : contractMissingRequirements.length;
     const usableSourceCount = new Set(
