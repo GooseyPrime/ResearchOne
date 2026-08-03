@@ -11,7 +11,6 @@ import { atlasExportQueue } from '../../queue/queues';
 import * as fs from 'fs';
 import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
 import { config } from '../../config';
-import { logger } from '../../utils/logger';
 
 const router = Router();
 

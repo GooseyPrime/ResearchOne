@@ -12,6 +12,7 @@ import type {
   TimelineReconstructorOutput,
   SpecialistAgentId,
 } from './agentCapabilityRegistry';
+import { normalizeDeterministicMetricChecks } from './deterministicQuant';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
 const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
@@ -142,8 +143,18 @@ export async function runSpecialistExecution(input: {
     input.researchBrief ? `RESEARCH_BRIEF: ${JSON.stringify(input.researchBrief)}` : '',
     `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
   ].filter(Boolean).join('\n\n');
+  const claimed = new Set<SpecialistAgentId>();
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
+    if (
+      claimed.has(agent) ||
+      bundle.statuses[agent] === 'succeeded' ||
+      bundle.statuses[agent] === 'failed' ||
+      bundle.statuses[agent] === 'invalid_output'
+    ) {
+      bundle.reasons[agent] = bundle.reasons[agent] ?? 'duplicate_planned';
+      return;
+    }
     const preStatus = input.executionPlan.statuses?.[agent];
     if (preStatus === 'unavailable' || preStatus === 'skipped') {
       bundle.statuses[agent] = preStatus;
@@ -153,6 +164,7 @@ export async function runSpecialistExecution(input: {
       bundle.degradedCoverageReasons.push(`${agent}: ${reason}`);
       return;
     }
+    claimed.add(agent);
 
     await input.onProgress?.(`Executing specialist: ${agent}`);
     const deps = input.executionPlan.dependsOn[agent] ?? [];
@@ -189,6 +201,17 @@ export async function runSpecialistExecution(input: {
         bundle.reasons[agent] = 'Model returned invalid structured output.';
         bundle.degradedCoverageReasons.push(`${agent}: invalid_output`);
         return;
+      }
+      if (agent === 'data_analysis_specialist' && isRecord(parsed) && Array.isArray(parsed.metrics)) {
+        const normalized = normalizeDeterministicMetricChecks(
+          (parsed.metrics as Array<{ metric?: unknown; value?: unknown }>)
+            .map((item) => ({
+              metric: typeof item.metric === 'string' ? item.metric : 'unknown',
+              value: typeof item.value === 'string' ? item.value : '',
+            }))
+        );
+        parsed.deterministic_checks = normalized.checks;
+        parsed.deterministic_summary = normalized.summary;
       }
       bundle.outputs[agent] = parsed as never;
       bundle.statuses[agent] = 'succeeded';

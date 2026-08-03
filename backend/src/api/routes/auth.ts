@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { query } from '../../db/pool';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { config } from '../../config';
 import {

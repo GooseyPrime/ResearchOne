@@ -8,23 +8,26 @@ Tracks implementation progress against the plan in
 
 ---
 
-## Phase A — correctness patch ✅ Complete (PR #175)
+## Phase A — correctness patch ⚠️ Reopened (runtime acceptance not met)
 
 - [x] Remove universal falsification from planner and verifier
 - [x] Make final report sections intent-driven (`ADJUDICATIVE_SECTION_PLAN`, `DESCRIPTIVE_SECTION_PLAN`, routing)
 - [x] Pass confirmed intent/template into synthesis
 - [x] Add regression fixture for the attached failure prompt
 - [x] Intent-aware consistency checks in verifier
+- [ ] Ensure runtime synthesis is driven by resolved intent templates end-to-end (not generic adjudicative/descriptive section fallbacks)
 
 ---
 
-## Phase B — ResearchBrief and contract audit ✅ Complete (PR #176)
+## Phase B — ResearchBrief and contract audit ⚠️ Reopened (gate not enforced)
 
 - [x] Introduce primary/secondary intents and requested-artifact extraction
 - [x] Exact-count and required-field extraction in ResearchBrief
 - [x] Final Deliverable Contract Auditor wired into pipeline
 - [x] Intent-specific verifier rubrics
 - [x] `INTENT_IDS` completeness and verifier fallback fixes
+- [ ] Make contract-audit and verifier failures block finalization or force bounded repair loops
+- [ ] Prevent runs from being marked finalized/completed when required contract fields are missing
 
 ---
 
@@ -40,7 +43,7 @@ Tracks implementation progress against the plan in
 
 ---
 
-## Phase D — specialist expansion ✅ Complete (current PR)
+## Phase D — specialist expansion ⚠️ Reopened (duplicate path + quantitative gap)
 
 ### Completed in this PR
 
@@ -63,12 +66,15 @@ Tracks implementation progress against the plan in
 - [x] Actual specialist execution wiring (selected specialist agents are invoked, checkpointed, and surfaced to synthesis metadata)
 - [x] Data-analysis and quantitative-quality specialist agents (`data_analysis_specialist`, `quantitative_quality_auditor`)
 - [x] Additional source connectors and provider specialization for specialist roles (OpenAlex, Crossref, arXiv, PMC, USPTO, ClinicalTrials, Parallel)
+- [ ] Remove duplicate specialist execution paths so each selected specialist runs once per attempt unless an explicit retry is recorded
+- [ ] Add deterministic quantitative computation/provenance validation (inputs, units, formulas, reproducible outputs)
 
 ---
 
-## Phase E — evaluation and optimization 🔄 In progress
+## Phase E — evaluation and optimization 🔄 In progress (fixture scaffolding only)
 
-- [x] Build the golden-prompt suite (one report per intent × depth combination baseline + coverage tests)
+- [x] Build golden-prompt fixtures (one report per intent × depth combination baseline + coverage tests)
+- [ ] Execute full pipeline golden evaluations with deterministic artifact/citation validation and scored pass/fail thresholds
 - [ ] A/B test intake questions and report templates
 - [ ] Tune agent-selection rules for quality, cost, and latency
 - [ ] Consider fine-tuning after sufficient labeled routing data is collected

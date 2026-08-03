@@ -198,6 +198,8 @@ export async function runDiscoveryOrchestrator(args: {
   specialistAgentIds?: string[];
   /** Per-run add-on override (parallel_search → higher ingest cap). */
   maxIngestCapOverride?: number;
+  minUsableSources?: number;
+  maxCoverageRounds?: number;
   /** Optional callback fired after each discovery round so the parent
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
@@ -227,6 +229,8 @@ async function runDiscoveryOrchestratorInner(args: {
   userId?: string;
   specialistAgentIds?: string[];
   maxIngestCapOverride?: number;
+  minUsableSources?: number;
+  maxCoverageRounds?: number;
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const {
@@ -240,6 +244,8 @@ async function runDiscoveryOrchestratorInner(args: {
     userId,
     specialistAgentIds,
     maxIngestCapOverride,
+    minUsableSources,
+    maxCoverageRounds,
     onRoundComplete,
   } = args;
   const startTime = Date.now();
@@ -448,6 +454,37 @@ async function runDiscoveryOrchestratorInner(args: {
     logger.info(`[discovery:${runId}] Skipping round 2 — query budget exhausted`);
   }
 
+  // ─── Additional bounded coverage rounds ─────────────────────────────────────
+  const roundsCap = Math.max(2, Math.min(maxCoverageRounds ?? 4, 6));
+  let nextRound = 3;
+  while (
+    nextRound <= roundsCap &&
+    queriesExecuted.length < totalQueryBudget &&
+    allCandidates.length < (minUsableSources ?? maxIngest) * 2
+  ) {
+    const remainingBudget = Math.max(0, totalQueryBudget - queriesExecuted.length);
+    if (remainingBudget <= 0) break;
+    const uncoveredHint = [
+      'demand signals',
+      'competitor reality',
+      'technical feasibility',
+      'regulatory constraints',
+      'monetization',
+      'acquisition',
+    ];
+    const seed = discoveryPlan.discovery_queries[nextRound % discoveryPlan.discovery_queries.length] ?? researchQuery;
+    const extraQueries = uncoveredHint
+      .map((hint) => `${seed} ${hint}`)
+      .filter((q) => !queriesExecuted.includes(q))
+      .slice(0, Math.min(3, remainingBudget));
+    if (extraQueries.length === 0) break;
+    const roundNew = await runSearchRound(nextRound, extraQueries, discoveryPlan.exclusion_patterns);
+    logger.info(`[discovery:${runId}] Round ${nextRound} complete: +${roundNew} candidates (total ${allCandidates.length})`);
+    try { await onRoundComplete?.({ round: nextRound, candidatesAfter: allCandidates.length }); } catch { /* non-fatal */ }
+    if (roundNew === 0) break;
+    nextRound += 1;
+  }
+
   logger.info(`[discovery:${runId}] Total candidates after ${roundsExecuted} round(s): ${allCandidates.length}`);
 
   // Persist the round count on the run row so the FailedRunReportPage trace
@@ -462,7 +499,7 @@ async function runDiscoveryOrchestratorInner(args: {
   }
 
   // ─── Step 3: Score/rank candidates ──────────────────────────────────────────
-  // Sort by score descending, then rank ascending
+  // Sort by score descending, then rank ascending.
   const ranked = [...allCandidates].sort((a, b) => b.score - a.score || a.rank - b.rank);
 
   // ─── Step 4: Check which candidates are already in corpus ───────────────────
@@ -472,7 +509,6 @@ async function runDiscoveryOrchestratorInner(args: {
   for (let i = 0; i < ranked.length && selected.length < maxIngest; i++) {
     const candidate = ranked[i];
     const normalised = normalizeUrl(candidate.url);
-
     // Check if already ingested
     const alreadyIngested = await queryOne<{ id: string }>(
       `SELECT id FROM sources WHERE url=$1 OR url=$2`,

@@ -923,17 +923,17 @@ Output the complete plain-language report in markdown only.`),
 Produce a structured report outline and section order for the current query and evidence context.
 Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
 
-  section_drafter: withPreamble(`You are the Section Drafter for a scientific research report.
+  section_drafter: withPreamble(`You are the Section Drafter for an intent-driven research deliverable.
 Draft exactly one section of the report using the provided plan, evidence, and prior section context.
 
 WRITING RULES — follow these precisely:
-- Write in clear, direct academic prose. Paragraphs, not bullet points, unless bullet points genuinely help (e.g., an Evidence Ledger or list of unresolved questions).
+- Match the section shape to the requested deliverable contract. Use tables, ranked lists, cards, numbered procedures, or concise paragraphs as appropriate for the intent.
 - Do NOT use markdown bold (**) for decorative emphasis. Bold is reserved only for a term being defined for the first time in a section. Do not bold phrases mid-sentence.
 - Do NOT use markdown italic (*) for generic emphasis. Use plain prose emphasis through sentence structure instead.
 - Do NOT start every sentence or paragraph with a bold header. Let paragraph topic sentences do that work.
-- Every section must open with a sentence that explicitly states what this section establishes about the research query — not just what the section is called.
+- Use a direct opening sentence, but do not force repetitive boilerplate.
 - For the Falsification Criteria section (adjudicative reports only): name the specific mechanism, assumption, or causal claim that the report rests on, then describe exactly what class of evidence or observation would overturn it. Be specific. Do not write generic statements like "counterevidence would disprove this."
-- Tag every major claim with its evidence tier in parentheses: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Preserve claim-to-evidence traceability. Do not expose internal chunk IDs as the only citation format.
 - Do not invent evidence. If the corpus is silent on a point, say so.
 - Do not paper over uncertainty with confident prose.
 
@@ -943,7 +943,7 @@ Return the section body text only. Do not include the section title as a heading
 Challenge weak links, hidden assumptions, and brittle conclusions in a draft section set.
 Output concise actionable critiques only.`),
 
-  coherence_refiner: withPreamble(`You are the Coherence Refiner for a scientific research report.
+  coherence_refiner: withPreamble(`You are the Coherence Refiner for an intent-driven research deliverable.
 Refine and integrate all sections into a coherent, well-structured whole.
 
 REFINEMENT RULES:

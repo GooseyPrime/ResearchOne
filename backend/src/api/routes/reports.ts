@@ -17,7 +17,6 @@ import {
 } from '../../services/reasoning/reportRevisionService';
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
-import { logger } from '../../utils/logger';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
 import {
   pandocAvailable,

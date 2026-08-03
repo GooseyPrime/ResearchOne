@@ -22,6 +22,10 @@ export function withPreamble(prompt: string): string {
   return `${REASONING_FIRST_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
 }
 
+export function withPolicyOnePreamble(prompt: string): string {
+  return withPreamble(prompt);
+}
+
 /**
  * For extraction / OCR / cleanup LLM calls: preserve source wording; no consensus "fixes".
  */
