@@ -5,6 +5,7 @@
  * final Deliverable Contract Auditor.
  */
 import type { IntentId } from './intentTaxonomy';
+import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 
 /**
  * Epistemic posture determines which pipeline tools are activated.
@@ -45,10 +46,18 @@ export interface UserConstraint {
  */
 export interface ResearchBrief {
   primaryIntent: IntentId;
+  /** Requested methodology: 'auto' | 'standard' | 'policyone' */
+  requestedMethodology: 'auto' | 'standard' | 'policyone';
+  /** Resolved methodology after triage */
+  resolvedMethodology: 'standard' | 'policyone';
+  /** How methodology was resolved */
+  methodologyResolutionSource: 'user' | 'triage' | 'fallback';
   /** Optional secondary intent when the request is composite (e.g., discovery + implementation). */
   secondaryIntent?: IntentId;
   /** The deliverables the user asked for, extracted verbatim from the query. */
   requestedArtifacts: RequestedArtifact[];
+  /** Requested presentation formats e.g. ['narrative_briefing', 'ranked_options'] */
+  requestedFormats?: string[];
   /** Hard constraints the report must satisfy (e.g., "build in 24 hours", "use Stripe"). */
   userConstraints: UserConstraint[];
   /** The epistemic posture that governs which pipeline agents activate. */
@@ -57,6 +66,14 @@ export interface ResearchBrief {
   confidence: number;
   /** Short explanation of why this brief was extracted. */
   reasoning: string;
+  /** Requested research objective: 'AUTO' or a ResearchObjective */
+  requestedResearchObjective?: 'AUTO' | ResearchObjective;
+  /** Resolved research objective */
+  resolvedResearchObjective?: ResearchObjective;
+  /** How objective was resolved */
+  objectiveResolutionSource?: 'user' | 'triage' | 'fallback';
+  /** Why this objective was selected */
+  objectiveResolutionReason?: string;
 }
 
 /** Map from IntentId to its natural epistemic posture (used as fallback when LLM omits it). */
@@ -80,20 +97,59 @@ export const INTENT_EPISTEMIC_POSTURE: Record<IntentId, EpistemicPosture> = {
   legacy: 'descriptive',
 };
 
+
+export function resolveMethodologyFromIntent(intent: IntentId): 'standard' | 'policyone' {
+  switch (intent) {
+    case 'adjudication':
+    case 'investigation':
+    case 'story_verification':
+      return 'policyone';
+    default:
+      return 'standard';
+  }
+}
+
+export function resolveObjectiveFromIntent(intent: IntentId): ResearchObjective {
+  switch (intent) {
+    case 'opportunity_discovery':
+    case 'exploratory':
+      return 'NOVEL_APPLICATION_DISCOVERY';
+    case 'investigation':
+    case 'story_verification':
+    case 'adjudication':
+      return 'INVESTIGATIVE_SYNTHESIS';
+    case 'comparative':
+    case 'recommendation':
+      return 'GENERAL_EPISTEMIC_RESEARCH';
+    default:
+      return 'GENERAL_EPISTEMIC_RESEARCH';
+  }
+}
+
 /** Return a safe default ResearchBrief when the classifier fails. */
 export function defaultResearchBrief(
   intent: IntentId,
   confidence: number,
   reasoning: string
 ): ResearchBrief {
+  const resolvedMethodology = resolveMethodologyFromIntent(intent);
+  const resolvedResearchObjective = resolveObjectiveFromIntent(intent);
   return {
     primaryIntent: intent,
+    requestedMethodology: 'auto',
+    resolvedMethodology,
+    methodologyResolutionSource: 'fallback',
     secondaryIntent: undefined,
     requestedArtifacts: [],
+    requestedFormats: undefined,
     userConstraints: [],
     epistemicPosture: INTENT_EPISTEMIC_POSTURE[intent] ?? 'descriptive',
     confidence,
     reasoning,
+    requestedResearchObjective: 'AUTO',
+    resolvedResearchObjective,
+    objectiveResolutionSource: 'fallback',
+    objectiveResolutionReason: `Defaulted from intent ${intent}.`,
   };
 }
 
@@ -103,6 +159,13 @@ export function formatBriefForPrompt(brief: ResearchBrief): string {
     `PRIMARY_INTENT: ${brief.primaryIntent}`,
     brief.secondaryIntent ? `SECONDARY_INTENT: ${brief.secondaryIntent}` : '',
     `EPISTEMIC_POSTURE: ${brief.epistemicPosture}`,
+    `REQUESTED_METHODOLOGY: ${brief.requestedMethodology}`,
+    `RESOLVED_METHODOLOGY: ${brief.resolvedMethodology}`,
+    `METHODOLOGY_RESOLUTION_SOURCE: ${brief.methodologyResolutionSource}`,
+    `REQUESTED_RESEARCH_OBJECTIVE: ${brief.requestedResearchObjective ?? 'AUTO'}`,
+    `RESOLVED_RESEARCH_OBJECTIVE: ${brief.resolvedResearchObjective ?? 'GENERAL_EPISTEMIC_RESEARCH'}`,
+    brief.objectiveResolutionSource ? `OBJECTIVE_RESOLUTION_SOURCE: ${brief.objectiveResolutionSource}` : '',
+    brief.objectiveResolutionReason ? `OBJECTIVE_RESOLUTION_REASON: ${brief.objectiveResolutionReason}` : '',
     `CONFIDENCE: ${brief.confidence.toFixed(2)}`,
   ];
   if (brief.requestedArtifacts.length > 0) {
@@ -115,6 +178,9 @@ export function formatBriefForPrompt(brief: ResearchBrief): string {
           : '';
       lines.push(`  - ${a.description}${countNote}${fieldsNote}`);
     }
+  }
+  if (brief.requestedFormats && brief.requestedFormats.length > 0) {
+    lines.push(`REQUESTED_FORMATS: ${brief.requestedFormats.join(', ')}`);
   }
   if (brief.userConstraints.length > 0) {
     lines.push(`USER_CONSTRAINTS:`);

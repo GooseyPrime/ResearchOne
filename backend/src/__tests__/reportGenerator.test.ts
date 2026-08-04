@@ -10,6 +10,8 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     internal_challenger: 'challenge',
     coherence_refiner: 'refine',
   },
+  getSystemPrompt: (_role: string, _isAdjudicative: boolean) => 'mock-system-prompt',
+  buildVerifierPromptForIntent: (_intentId: string | undefined, _isAdjudicative: boolean) => 'mock-verifier-prompt',
 }));
 
 describe('iterative report generator', () => {

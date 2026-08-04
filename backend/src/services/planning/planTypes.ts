@@ -5,6 +5,13 @@ import type { CanonicalExecutionPlan } from './executionPlan';
 
 /** Structured plan persisted in `research_plans.plan_payload` (Wave 5.1). */
 export interface PlanPayload {
+  requestedFormats?: string[];
+  targetWordCount?: number;
+  requestedMethodology?: string;
+  resolvedMethodology?: string;
+  resolvedResearchObjective?: string;
+  objectiveResolutionSource?: string;
+  objectiveResolutionReason?: string;
   intent: {
     id: IntentId;
     displayLabel: string;

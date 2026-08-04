@@ -74,7 +74,7 @@ export default function ResearchEasyPage() {
 
   const openClarificationOrSubmit = () => {
     if (!query.trim() || mutation.isPending) return;
-    const generated = buildClarifyingQuestions(query);
+    const generated = buildClarifyingQuestions(query, {});
     if (generated.length === 0) {
       void mutation.mutate({ includeClarifications: false });
       return;

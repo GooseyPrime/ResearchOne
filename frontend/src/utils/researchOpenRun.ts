@@ -24,6 +24,8 @@ export function researchRequestFromRun(run: ResearchRun): ResearchRequestFormSli
 export type DeepResearchRequestFormSlice = ResearchRequestFormSlice & {
   researchObjective?: ResearchObjective;
   citationStyle?: CitationStyleSlug;
+  requestedFormats?: string[];
+  targetWordCount?: number;
   supplementalUrlLines: string[];
 };
 
@@ -50,11 +52,21 @@ export function deepResearchRequestFromRun(run: ResearchRun): DeepResearchReques
   const style = run.citation_style;
   const citationStyle =
     typeof style === 'string' && style.length > 0 ? (style as CitationStyleSlug) : undefined;
+  const requestedFormats = Array.isArray((run as ResearchRun & { requested_formats?: unknown }).requested_formats)
+    ? ((run as ResearchRun & { requested_formats?: unknown }).requested_formats as unknown[])
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : undefined;
+  const targetWordCount =
+    typeof (run as ResearchRun & { target_word_count?: unknown }).target_word_count === 'number'
+      ? ((run as ResearchRun & { target_word_count?: number }).target_word_count as number)
+      : undefined;
 
   return {
     ...base,
     researchObjective,
     citationStyle,
+    requestedFormats,
+    targetWordCount,
     supplementalUrlLines: urlLines,
   };
 }

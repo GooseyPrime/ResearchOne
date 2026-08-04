@@ -1,4 +1,4 @@
-import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import { getIntentOutputTemplate, INTENT_OUTPUT_TEMPLATES } from '../formatting/templates/intentOutputTemplates';
 
@@ -206,6 +206,8 @@ export async function generateIterativeReport(args: {
   intentId?: string;
   outputTemplateId?: string;
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
+  skipChallenger?: boolean;
+  isAdjudicative?: boolean;
 }): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
   let activeSectionPlan: RuntimeSectionPlanEntry[];
   let templateNarrativeHint = '';
@@ -236,6 +238,7 @@ export async function generateIterativeReport(args: {
     researchObjective: args.researchObjective,
     allowFallbackByRole: args.allowFallbackByRole,
     byokApiKeyOverride: args.byokApiKeyOverride,
+    isAdjudicative: args.isAdjudicative,
   };
   const targetWordCount = clampWordTarget(args.targetWordCount);
   const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
@@ -243,7 +246,7 @@ export async function generateIterativeReport(args: {
     role: 'outline_architect',
     ...v2,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPTS.outline_architect },
+      { role: 'system', content: getSystemPrompt('outline_architect', args.isAdjudicative ?? false) },
       {
         role: 'user',
         content: `Generate a report outline for query "${args.query}".
@@ -279,7 +282,7 @@ Return strict JSON only.`,
       role: 'section_drafter',
       ...v2,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.section_drafter },
+        { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? false) },
         {
           role: 'user',
           content: `Section to draft: ${section.title}
@@ -307,25 +310,31 @@ Return section body text only.`,
     );
   }
 
-  const challenger = await callRoleModel({
-    role: 'internal_challenger',
-    ...v2,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPTS.internal_challenger },
-      {
-        role: 'user',
-        content: `Challenge this draft report for weak assumptions and unsupported jumps:\n${sections
-          .map((s) => `## ${s.title}\n${s.content}`)
-          .join('\n\n')}`,
-      },
-    ],
-  });
+  const challenger = args.skipChallenger
+    ? { content: '', model: 'skipped-by-profile', role: 'internal_challenger', promptTokens: 0, completionTokens: 0, durationMs: 0, usedFallback: false, primaryModel: 'skipped-by-profile' }
+    : await callRoleModel({
+        role: 'internal_challenger',
+        ...v2,
+        isAdjudicative: args.isAdjudicative,
+        messages: [
+          { role: 'system', content: getSystemPrompt('internal_challenger', args.isAdjudicative ?? false) },
+          {
+            role: 'user',
+            content: `Challenge this draft report for weak assumptions and unsupported jumps:
+${sections
+              .map((s) => `## ${s.title}
+${s.content}`)
+              .join('\n\n')}`,
+          },
+        ],
+      });
+
 
   const refinement = await callRoleModel({
     role: 'coherence_refiner',
     ...v2,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPTS.coherence_refiner },
+      { role: 'system', content: getSystemPrompt('coherence_refiner', args.isAdjudicative ?? false) },
       {
         role: 'user',
         content: `Refine report text while preserving epistemic integrity.
