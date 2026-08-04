@@ -690,6 +690,7 @@ async function runResearchJobInner(
     engineVersion,
     researchObjective,
     targetWordCount,
+    requestedFormats: data.requestedFormats,
     citationStyle,
     creditChargeContext: creditCtx,
     addons: runAddons.length > 0 ? [...runAddons] : undefined,

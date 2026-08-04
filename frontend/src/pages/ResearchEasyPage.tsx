@@ -6,8 +6,7 @@ import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import ResearchClarificationChat from '../components/research/ResearchClarificationChat';
 import { useCanAccessDeepResearch } from '../hooks/useCanAccessDeepResearch';
 import { useStore } from '../store/useStore';
-import { extractApiError, startResearch, type CitationStyleSlug } from '../utils/api';
-import ResearchOutputControls, { normalizeReportFormats, resolveTargetWordCount, type ReportLengthPreset } from '../components/research/ResearchOutputControls';
+import { extractApiError, startResearch } from '../utils/api';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 import { buildClarifyingQuestions } from '../utils/clarifyingQuestions';
@@ -30,11 +29,6 @@ export default function ResearchEasyPage() {
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
-  const [objective, setObjective] = useState<string>('AUTO');
-  const [reportFormats, setReportFormats] = useState<string[]>(['automatic']);
-  const [reportLengthPreset, setReportLengthPreset] = useState<ReportLengthPreset>('standard');
-  const [reportLengthCustom, setReportLengthCustom] = useState(2200);
-  const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
 
   const deepLocked = !tierGateUnknown && !canAccessDeep;
   const selectedEngineVersion = depth === 'deep' ? 'v2' : undefined;
@@ -56,16 +50,10 @@ export default function ResearchEasyPage() {
   const mutation = useMutation({
     mutationFn: (opts: { includeClarifications: boolean }) => {
       const extra = opts.includeClarifications && clarityBlock ? `\n\n${clarityBlock}` : '';
-      const normalizedFormats = normalizeReportFormats(reportFormats);
       return startResearch({
         query: query.trim(),
         supplemental: `${supplemental.trim()}${extra}`.trim() || undefined,
         engineVersion: selectedEngineVersion,
-        researchObjective: objective !== 'AUTO' ? (objective as never) : undefined,
-        requestedResearchObjective: objective,
-        requestedFormats: normalizedFormats.includes('automatic') ? undefined : normalizedFormats,
-        targetWordCount: resolveTargetWordCount(reportLengthPreset, reportLengthCustom),
-        citationStyle,
         supplementalFiles: files,
         supplementalUrls: urls,
         supplementalUrlCrawl: urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
@@ -86,7 +74,7 @@ export default function ResearchEasyPage() {
 
   const openClarificationOrSubmit = () => {
     if (!query.trim() || mutation.isPending) return;
-    const generated = buildClarifyingQuestions(query, { reportFormats: normalizeReportFormats(reportFormats) });
+    const generated = buildClarifyingQuestions(query, {});
     if (generated.length === 0) {
       void mutation.mutate({ includeClarifications: false });
       return;
@@ -132,21 +120,6 @@ export default function ResearchEasyPage() {
             disabled={mutation.isPending}
           />
         </label>
-
-        <ResearchOutputControls
-          objective={objective}
-          onObjectiveChange={setObjective}
-          reportFormats={reportFormats}
-          onReportFormatsChange={setReportFormats}
-          reportLengthPreset={reportLengthPreset}
-          onReportLengthPresetChange={setReportLengthPreset}
-          reportLengthCustom={reportLengthCustom}
-          onReportLengthCustomChange={setReportLengthCustom}
-          citationStyle={citationStyle}
-          onCitationStyleChange={setCitationStyle}
-          disabled={mutation.isPending}
-          compact
-        />
 
         <div className="space-y-2">
           <p className="text-xs text-slate-300">Depth</p>

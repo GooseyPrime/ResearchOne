@@ -254,19 +254,37 @@ export async function insertQueuedResearchRunWithLineage(params: {
     // migration 046 not applied — fall through without lineage
   }
 
+  const requestedFormatsJson = requestedFormats != null ? JSON.stringify(requestedFormats) : null;
+
   const withAddonsScoped = await tryInsert(
     `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology, user_id, org_id, selected_addons)
      VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15::jsonb)`,
-    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology, userId, orgId, selectedAddonsJson]
+    [...baseArgs, requestedFormatsJson, requestedResearchObjective, requestedMethodology, userId, orgId, selectedAddonsJson]
   );
   if (withAddonsScoped) return;
+
+  // migration 053 not applied — fall back to INSERT without requested_* columns
+  const withAddonsScopedNoRequested = await tryInsert(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id, selected_addons)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb)`,
+    [...baseArgs, userId, orgId, selectedAddonsJson]
+  );
+  if (withAddonsScopedNoRequested) return;
 
   const withScoped = await tryInsert(
     `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology, user_id, org_id)
      VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)`,
-    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology, userId, orgId]
+    [...baseArgs, requestedFormatsJson, requestedResearchObjective, requestedMethodology, userId, orgId]
   );
   if (withScoped) return;
+
+  // migration 053 not applied — fall back without requested_* columns
+  const withScopedNoRequested = await tryInsert(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
+    [...baseArgs, userId, orgId]
+  );
+  if (withScopedNoRequested) return;
 
   if (userId) {
     const err = new Error(
@@ -277,9 +295,17 @@ export async function insertQueuedResearchRunWithLineage(params: {
     throw err;
   }
 
-  await query(
+  const withRequested = await tryInsert(
     `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology)
      VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12)`,
-    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology]
+    [...baseArgs, requestedFormatsJson, requestedResearchObjective, requestedMethodology]
+  );
+  if (withRequested) return;
+
+  // migration 053 not applied — fall back without requested_* columns
+  await query(
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
+    [...baseArgs]
   );
 }
