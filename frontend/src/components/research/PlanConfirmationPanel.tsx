@@ -45,12 +45,17 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
 
   const skepticRaw = (profile.skepticMode ?? profile.skeptic_mode ?? 'off') as string;
   const steelmanRaw = (profile.steelmanMode ?? profile.steelman_mode ?? 'off') as string;
+  const addons = Array.isArray(payload.addons) ? payload.addons : [];
+  const hasAdversarialTwin = addons.includes('adversarial_twin');
+  const effectiveSkepticRaw = skepticRaw === 'off' && hasAdversarialTwin ? 'gate' : skepticRaw;
   const displayName =
-    typeof profile.displayName === 'string'
-      ? profile.displayName
-      : typeof profile.display_name === 'string'
-        ? profile.display_name
-        : null;
+   typeof profile.name === 'string'
+     ? profile.name
+     : typeof profile.displayName === 'string'
+       ? profile.displayName
+       : typeof profile.display_name === 'string'
+         ? profile.display_name
+         : null;
 
   const skepticMap: Record<string, string> = {
     off: 'Off (no dedicated challenge pass)',
@@ -66,7 +71,7 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
   };
 
   return {
-    skepticLabel: skepticMap[skepticRaw] ?? skepticRaw,
+    skepticLabel: skepticMap[effectiveSkepticRaw] ?? effectiveSkepticRaw,
     steelmanLabel: steelmanMap[steelmanRaw] ?? steelmanRaw,
     profileName: displayName,
   };

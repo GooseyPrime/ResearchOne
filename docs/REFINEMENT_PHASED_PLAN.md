@@ -33,7 +33,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 - [x] Live progress labels normalized to pipeline vocabulary
   - Planning → Discovery → Retrieval → Reasoning → Challenge → Synthesis → Verification
   - File: `frontend/src/utils/researchLiveStatus.ts` (+ any stage maps in ResearchDeepPage)
-- [x] Advisory goal chips on Deep Research form
+- [ ] Advisory goal chips on Deep Research form
   - Phrases that steer natural language toward common intents without hard-forcing classifier
   - Do not bypass the plan gate
 
