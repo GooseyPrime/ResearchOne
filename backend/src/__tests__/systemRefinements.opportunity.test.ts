@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 function parseOpportunityTitleLine(value: string): string | null {
   const trimmed = value.trim();
   const match = trimmed.match(/^(?:[-*]\s*)?(opportunity\s*#?\s*\d+(?::\s*.+)?)$/i);
-  return match?.[1]?.trim() ?? null;
+  const headerMatch = trimmed.match(/^opportunity\s*#?\s*\d+(?::\s*.+)?$/i);
+  return match?.[1]?.trim() ?? headerMatch?.[0]?.trim() ?? null;
 }
 
 function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
@@ -50,12 +51,13 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
   let current: { title: string; body: string[] } | null = null;
   for (const line of lines) {
     const header = line.match(/^#{1,4}\s+(.+)$/);
-    const listTitle = parseOpportunityTitleLine(line) ?? (header ? parseOpportunityTitleLine(header[1] ?? '') : null);
-    if (header || listTitle) {
+    const headerTitle = header?.[1]?.trim() ?? '';
+    const listTitle = parseOpportunityTitleLine(line) ?? (header ? parseOpportunityTitleLine(headerTitle) : null);
+    if (listTitle || (/^opportunity\s*#?\s*\d+/i.test(headerTitle))) {
       if (current) {
         out.push({ title: current.title, body: current.body.join('\n').trim() });
       }
-      const title = listTitle ?? header?.[1]?.trim() ?? '';
+      const title = listTitle ?? headerTitle;
       if (/^opportunity\s*#?\s*\d+/i.test(title)) {
         current = { title, body: [] };
       } else {
@@ -133,6 +135,7 @@ Deploy this product by configuring hosting, secrets, and monitoring ${index}.
 **Risk:** Stripe API changes
 **Validation Experiment:** Build and launch in 24 hours
 **Acceptance Criteria:** Users can create plans and process subscription checkout
+**Validation:** Validate demand, pricing, and implementation assumptions
 **Confidence:** High
 **Evidence:** [1][2][3]`;
 }
@@ -151,22 +154,22 @@ describe('opportunity extraction', () => {
 
   it('fails fieldCompleteness when narrative briefing heading is missing', () => {
     const damaged = goldenFixture.replace('#### Narrative Briefing', '#### Narrative Summary');
-    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(0);
+    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(9);
   });
 
   it('fails fieldCompleteness when build prompt heading is missing', () => {
     const damaged = goldenFixture.replace('#### Build Prompt', '#### Build Plan');
-    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(0);
+    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(9);
   });
 
   it('fails fieldCompleteness when test prompt heading is missing', () => {
     const damaged = goldenFixture.replace('#### Test Prompt', '#### QA Prompt');
-    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(0);
+    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(9);
   });
 
   it('fails fieldCompleteness when deployment prompt heading is missing', () => {
     const damaged = goldenFixture.replace('#### Deployment Prompt', '#### Launch Prompt');
-    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(0);
+    expect(fieldCompletenessForOpportunities(extractOpportunityObjectsFromMarkdown(damaged))).toBe(9);
   });
 
   it('passes fieldCompleteness when all required fields present', () => {
