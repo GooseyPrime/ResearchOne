@@ -32,6 +32,50 @@ function readIntentId(payload: Record<string, unknown>): string {
   return typeof id === 'string' && id.trim() ? id.trim() : 'legacy';
 }
 
+/** Human labels for skeptic / steelman modes from orchestration profile. */
+function readEpistemicPosture(payload: Record<string, unknown>): {
+  skepticLabel: string;
+  steelmanLabel: string;
+  profileName: string | null;
+} {
+  const profile =
+    (payload.orchestrationProfile as Record<string, unknown> | undefined) ??
+    (payload.orchestration_profile as Record<string, unknown> | undefined) ??
+    {};
+
+  const skepticRaw = (profile.skepticMode ?? profile.skeptic_mode ?? 'off') as string;
+  const steelmanRaw = (profile.steelmanMode ?? profile.steelman_mode ?? 'off') as string;
+  const addons = Array.isArray(payload.addons) ? payload.addons : [];
+  const hasAdversarialTwin = addons.includes('adversarial_twin');
+  const effectiveSkepticRaw = skepticRaw === 'off' && hasAdversarialTwin ? 'gate' : skepticRaw;
+  const displayName =
+   typeof profile.name === 'string'
+     ? profile.name
+     : typeof profile.displayName === 'string'
+       ? profile.displayName
+       : typeof profile.display_name === 'string'
+         ? profile.display_name
+         : null;
+
+  const skepticMap: Record<string, string> = {
+    off: 'Off (no dedicated challenge pass)',
+    annotate: 'Annotate (sidebar challenges)',
+    gate: 'Gate (challenge before synthesis)',
+  };
+  const steelmanMap: Record<string, string> = {
+    off: 'Off',
+    standard: 'Standard',
+    per_option: 'Per-option',
+    as_product: 'As product (position brief)',
+    symmetric: 'Symmetric (strongest case + counter)',
+  };
+
+  return {
+    skepticLabel: skepticMap[effectiveSkepticRaw] ?? effectiveSkepticRaw,
+    steelmanLabel: steelmanMap[steelmanRaw] ?? steelmanRaw,
+    profileName: displayName,
+  };
+}
 
 const AUTO_CONFIRM_SECONDS = 5;
 
@@ -98,6 +142,7 @@ export default function PlanConfirmationPanel({
   const intentDesc = INTENT_SHORT_DESCRIPTIONS[intentKey] ?? '';
   const intentConfidence = readPlanIntentConfidence(localPayload);
   const competenceText = readTopicCompetenceAssessment(localPayload);
+  const posture = readEpistemicPosture(localPayload);
 
   const autoConfirmActive =
     planPrefs != null && shouldStartPlanAutoConfirmCountdown(planPrefs, localPayload, rounds);
@@ -320,6 +365,27 @@ export default function PlanConfirmationPanel({
         </div>
         <p className="text-slate-200 font-medium">{intentLabel}</p>
         {intentDesc ? <p className="text-slate-400 mt-1">{intentDesc}</p> : null}
+
+        {/* Epistemic posture — Phase 1 visibility */}
+        <div className="pt-2 mt-2 border-t border-surface-100/60 space-y-1.5">
+          <span className="text-slate-500 uppercase tracking-wide">Epistemic posture</span>
+          {posture.profileName ? (
+            <p className="text-slate-300 text-[11px]">Profile: {posture.profileName}</p>
+          ) : null}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
+            <span>
+              <span className="text-slate-500">Skeptic:</span> {posture.skepticLabel}
+            </span>
+            <span>
+              <span className="text-slate-500">Steelman:</span> {posture.steelmanLabel}
+            </span>
+          </div>
+          <p className="text-slate-500 text-[11px] leading-snug">
+            ResearchOne preserves contradictions and may seek supporting evidence for non-mainstream claims when the
+            intent calls for investigation or adjudication (PolicyOne stance).
+          </p>
+        </div>
+
         {topicStr ? (
           <div>
             <span className="text-slate-500 uppercase tracking-wide">Topic read</span>
@@ -421,7 +487,7 @@ export default function PlanConfirmationPanel({
           className="btn-primary inline-flex items-center gap-2 text-xs"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
-          Confirm &amp; run
+          Confirm & run
         </button>
         <button
           type="button"

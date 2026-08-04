@@ -1,9 +1,13 @@
-/** Display labels for Wave 5.1 intent ids (aligned with backend `intentTaxonomy.ts`). */
+/** Display labels for Wave 5.1+ intent ids (aligned with backend `intentTaxonomy.ts`). */
 export const INTENT_DISPLAY_LABELS: Record<string, string> = {
   factual_report: 'Factual report',
   survey: 'Survey',
   adjudication: 'Adjudication',
   investigation: 'Investigation',
+  story_verification: 'Story verification',
+  opportunity_discovery: 'Opportunity discovery',
+  feasibility: 'Feasibility',
+  implementation: 'Implementation',
   literature_review: 'Literature review',
   comparative: 'Comparative',
   how_to: 'How-to',
