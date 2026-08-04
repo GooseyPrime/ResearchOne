@@ -1324,6 +1324,8 @@ async function runResearchJobInner(
         targetWordCount,
         intentId: orchProfile.intent,
         outputTemplateId,
+        isAdjudicative,
+        skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
             substep: 'section_generated',

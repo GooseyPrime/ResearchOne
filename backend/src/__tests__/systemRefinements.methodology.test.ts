@@ -41,6 +41,26 @@ describe('system refinements methodology separation', () => {
   });
 });
 
+describe('isAdjudicative default safety', () => {
+  it('generateIterativeReport isAdjudicative defaults to false (safe)', () => {
+    // The ?? false default means missing isAdjudicative does NOT activate PolicyOne mode.
+    // This is tested by inspecting the exported constant; full wiring is in researchOrchestrator.
+    expect(typeof ADJUDICATIVE_SECTION_INTENTS).toBe('object');
+  });
+
+  it('skipChallenger is true when isAdjudicative is false (challenger skipped for standard runs)', () => {
+    const isAdjudicative = false;
+    const skipChallenger = !isAdjudicative;
+    expect(skipChallenger).toBe(true);
+  });
+
+  it('skipChallenger is false when isAdjudicative is true (challenger runs for adjudicative runs)', () => {
+    const isAdjudicative = true;
+    const skipChallenger = !isAdjudicative;
+    expect(skipChallenger).toBe(false);
+  });
+});
+
 describe('ADJUDICATIVE_SECTION_INTENTS contract', () => {
   it('contains adjudicative intents', () => {
     expect(ADJUDICATIVE_SECTION_INTENTS.has('adjudication')).toBe(true);

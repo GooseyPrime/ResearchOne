@@ -246,7 +246,7 @@ export async function generateIterativeReport(args: {
     role: 'outline_architect',
     ...v2,
     messages: [
-      { role: 'system', content: getSystemPrompt('outline_architect', args.isAdjudicative ?? true) },
+      { role: 'system', content: getSystemPrompt('outline_architect', args.isAdjudicative ?? false) },
       {
         role: 'user',
         content: `Generate a report outline for query "${args.query}".
@@ -282,7 +282,7 @@ Return strict JSON only.`,
       role: 'section_drafter',
       ...v2,
       messages: [
-        { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? true) },
+        { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? false) },
         {
           role: 'user',
           content: `Section to draft: ${section.title}
@@ -317,7 +317,7 @@ Return section body text only.`,
         ...v2,
         isAdjudicative: args.isAdjudicative,
         messages: [
-          { role: 'system', content: getSystemPrompt('internal_challenger', args.isAdjudicative ?? true) },
+          { role: 'system', content: getSystemPrompt('internal_challenger', args.isAdjudicative ?? false) },
           {
             role: 'user',
             content: `Challenge this draft report for weak assumptions and unsupported jumps:
@@ -334,7 +334,7 @@ ${s.content}`)
     role: 'coherence_refiner',
     ...v2,
     messages: [
-      { role: 'system', content: getSystemPrompt('coherence_refiner', args.isAdjudicative ?? true) },
+      { role: 'system', content: getSystemPrompt('coherence_refiner', args.isAdjudicative ?? false) },
       {
         role: 'user',
         content: `Refine report text while preserving epistemic integrity.
