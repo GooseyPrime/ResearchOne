@@ -1,0 +1,336 @@
+Complete this entire correction in the current PR. Do not divide it into follow-up PRs, create a roadmap for later implementation, or stop after scaffolding. Implement, test, and validate every requirement below on this PR branch.
+
+First inspect the current branch, `AGENTS.md`, relevant Cursor rules, the changes already made for the research-quality overhaul, and the production code paths. Do not assume the default branch represents the current PR.
+
+## Regression being corrected
+
+Use failed run `3f6b4828-4b09-4421-8abc-429e426dff5c` and its original opportunity-discovery request as an end-to-end regression case.
+
+That run:
+
+* Requested exactly 10 opportunities, narrative briefings, basic project needs, and detailed build, test, and deployment prompts.
+* Produced 10 entries, but zero satisfied all requested fields.
+* Used a combined “Build/Test/Deploy Prompts” label that contradicted the validator’s separate required markers.
+* Included 56 percentage claims with no visible URL citations.
+* Reached synthesis with only two usable sources from one independent domain.
+* Applied extensive structural-mechanism and counterevidence analysis to an ordinary opportunity-discovery request.
+* Returned an unparseable/unknown verifier result.
+* Saved an under-review report and correctly failed the gate, but subsequently emitted “Research complete”/completion events.
+* Used generic whole-report repair instead of repairing the missing contract fields.
+
+The run demonstrated improved throughput and correct exact-count extraction, but not successful research completion. Its failures involved brittle Markdown validation, incomplete deliverable fulfillment, inadequate usable-source coverage, missing visible citations, PolicyOne intent drift, verifier parsing failure, and incorrect terminal completion events. Fix all of these together; do not treat adding two headings as resolution.
+
+Preserve the useful behavior: an unacceptable report must remain blocked, plain-language output must not be generated, and the report may be retained as `under_review` for diagnosis. Correct everything that caused the report to be unacceptable.
+
+## 1. Restore EZ Research output controls
+
+`frontend/src/pages/ResearchEasyPage.tsx` currently submits only the query, context, depth, and attachments. Add the following visible controls to EZ Research:
+
+* Research objective.
+* Report format.
+* Report length.
+* Citation style if citation selection remains supported elsewhere.
+
+Extract shared controls from `ResearchDeepPage.tsx` where practical so EZ and Research Lab cannot drift.
+
+Report format must allow one or more requested presentation formats, including:
+
+* Automatic/best fit.
+* Ranked options.
+* Narrative briefing.
+* Step-by-step guide.
+* Comparison table.
+* Structured report or technical specification.
+
+“Automatic” must be mutually exclusive. The other formats must support multiple selection—the failed test request explicitly requested ranked options, narratives, and a guide together.
+
+Report length must retain the existing presets and custom word count:
+
+* Short: approximately 1,200 words.
+* Standard: approximately 2,200 words.
+* Long: approximately 4,000 words.
+* Extra long: approximately 7,000 words.
+* Custom: backend-clamped safe word count.
+
+These cannot be cosmetic controls. Thread the selections through the request API, database/run record, plan payload, confirmed brief, resume job, synthesis, report metadata, request reopening, and run history. Both Standard and Deep selections from EZ must either honor them or return a clear validation error; do not silently ignore them.
+
+When the user has already selected report formats, clarification generation must not ask the same format question again.
+
+## 2. Make automatic objective selection visible and persistent
+
+Do not treat a missing V2 objective as an immediate hidden default to `GENERAL_EPISTEMIC_RESEARCH`.
+
+Introduce separate concepts such as:
+
+* `requestedResearchObjective`: `AUTO` or an explicit objective.
+* `resolvedResearchObjective`: the actual canonical objective used.
+* `objectiveResolutionSource`: `user`, `triage`, or `fallback`.
+* `objectiveResolutionReason`: concise classifier/fallback explanation.
+
+EZ Research should default to “Automatic — ResearchOne selects from the request.”
+
+The intent classifier/planner must resolve the objective during triage. The classifier should return both the research intent and recommended research objective under a validated structured schema. Use deterministic fallback mapping if the classifier fails.
+
+Examples:
+
+* Opportunity discovery or application whitespace normally resolves to `NOVEL_APPLICATION_DISCOVERY`.
+* Investigations, adjudication, and story verification normally resolve to `INVESTIGATIVE_SYNTHESIS`.
+* Explicit patent/prior-art work resolves to `PATENT_GAP_ANALYSIS`.
+* Cross-signal anomaly work resolves to `ANOMALY_CORRELATION`.
+* Ordinary factual, survey, implementation, or how-to work normally resolves to `GENERAL_EPISTEMIC_RESEARCH`.
+
+Intent and objective remain separate fields. “Opportunity discovery” is the intent; “Application Discovery” is the objective/model configuration.
+
+When the plan becomes available:
+
+* Update the actual Research Objective dropdown to display the resolved objective.
+* Show a small “Selected by ResearchOne from detected intent” indicator when resolution source is triage.
+* Display intent and objective separately in the plan confirmation panel.
+* Keep the requested `AUTO` value in persisted metadata so the provenance is not lost.
+* Persist the resolved objective on the run and plan before execution.
+* Show the same objective when reopening the request or viewing its dossier/history.
+
+If the user changes the resolved objective before plan confirmation, mark the source as `user`, update the persisted plan, reapply canonical orchestration, and revalidate entitlements and billing. Never let the dropdown, plan, queued job, and runtime objective diverge.
+
+Automatic resolution must respect tier permissions. Do not charge or authorize the run as General Research and then silently execute a more expensive/restricted objective. Resolve authorization and wallet/credit handling against the actual objective before the costly pipeline proceeds.
+
+## 3. Separate general research from PolicyOne methodology
+
+ResearchOne must resist misinformation and minimize bias without forcing every report into adversarial PolicyOne analysis.
+
+Add explicit methodology state:
+
+* Requested methodology: `auto`, `standard`, or `policyone`.
+* Resolved methodology.
+* Resolution reason/source.
+
+Default behavior:
+
+* Descriptive, survey, implementation, how-to, feasibility, recommendation, and opportunity-discovery work uses neutral `standard` research unless the request specifically requires adjudication.
+* Adjudication, investigation, causal testing, disputed-story verification, and explicit PolicyOne requests may resolve to `policyone`.
+* Standard research still evaluates source quality, conflicts, citation support, and uncertainty. It must not automatically frame the topic as a falsification exercise or manufacture counterarguments.
+
+Remove the universal PolicyOne leakage from the prompt composition and challenge path. In particular, inspect:
+
+* `backend/src/constants/prompts.ts`
+* `backend/src/services/openrouter/openrouterService.ts`
+* `backend/src/constants/modeOverlays.ts`
+* `backend/src/services/reasoning/reportGenerator.ts`
+
+Do not prepend the structural-mechanism/falsification preamble to every role and intent. Do not run `internal_challenger` universally. Challenge agents should run only when the canonical profile, selected methodology, add-on, or coordinator recovery decision requires them.
+
+This request is explicit authorization to change the behavior of `REASONING_FIRST_PREAMBLE` and `RED_TEAM_V2_SYSTEM_PREFIX` as necessary to stop universal PolicyOne routing.
+
+## 4. Add a first-class research coordinating agent
+
+Implement a dedicated `research_coordinator` or `quality_coordinator` role inside the existing research-run architecture. It must supervise one user run, not create a duplicate orchestration pipeline or a second report.
+
+The coordinator owns the confirmed deliverable contract and evaluates bounded checkpoints:
+
+1. Plan/contract completeness before discovery.
+2. Usable evidence coverage after ingestion and retrieval.
+3. Required specialist completion.
+4. Draft contract and citation coverage.
+5. Verifier/auditor results and targeted recovery.
+6. Final terminal status.
+
+Its output must use a strict validated schema such as:
+
+* `continue`
+* `recover`
+* `block`
+* deficiencies
+* bounded recovery actions
+* explanation
+
+Allowed recovery actions should be narrowly enumerated, for example:
+
+* Run additional discovery queries.
+* Retry a required failed specialist once.
+* Retrieve missing evidence classes.
+* Repair specified structured fields.
+* Retry a malformed verifier response.
+* Block the report when recovery budgets are exhausted.
+
+Persist coordinator checkpoint decisions in run telemetry so the UI and run summary explain what happened.
+
+Deterministic gates remain authoritative. An LLM coordinator cannot declare success when exact counts, required fields, source thresholds, citation coverage, or verifier schemas fail. If the coordinator model fails, deterministic checkpoint logic must still produce a safe decision.
+
+Use strict limits on rounds, calls, time, and tokens. No infinite recovery loops.
+
+## 5. Replace Markdown-marker checking with a canonical deliverable contract
+
+Create one canonical `DeliverableContract` derived from:
+
+* Confirmed `ResearchBrief`.
+* Requested artifacts and exact counts.
+* Required per-item fields.
+* User constraints.
+* Requested report formats.
+* Target length.
+* Intent template.
+* Methodology.
+
+Use this same object for synthesis, validation, repair, the coordinator, plan preview, and final audit.
+
+For the opportunity-discovery regression, every one of the 10 items must include at least:
+
+* Rank and title.
+* Narrative briefing.
+* Basic project needs.
+* Opportunity/problem and intended user.
+* Evidence of demand or whitespace.
+* Known alternatives/competitors and differentiation.
+* 24-hour MVP feasibility and dependencies.
+* Risks and validation steps.
+* Separate build prompt.
+* Separate test prompt.
+* Separate deployment prompt.
+* Item-level supporting citations.
+
+Generate a structured intermediate object under a validated schema, then render the Markdown report. Do not determine compliance by searching arbitrary Markdown for literal headings.
+
+Repair should receive a typed missing-field map and patch only invalid/missing fields. Revalidate the structured object before rerendering. Remove generic whole-report rewrites as the primary contract-repair mechanism.
+
+5A. Distinguish rendering defects from missing research content
+
+The failed audit does not establish that the requested information existed semantically and merely lacked headings. Do not implement a blind heading-prepending fix.
+
+Represent every opportunity as a validated structured object. For the regression fixture, require fields including:
+
+narrativeBriefing
+basicProjectNeeds
+buildPrompt
+testPrompt
+deploymentPrompt
+item-level evidence references
+
+The Markdown renderer—not the synthesizer—must emit the exact required headings from these validated keys:
+
+#### Narrative Briefing
+#### Basic Project Needs
+#### Build Prompt
+#### Test Prompt
+#### Deployment Prompt
+
+Classify contract failures by item and field:
+
+missing: field does not exist.
+empty: field is blank or trivial.
+invalid: field violates its schema or content requirements.
+uncited: material content lacks supporting evidence.
+render_mismatch: valid structured content exists but the Markdown representation is wrong.
+
+Recovery must depend on the failure type:
+
+For render_mismatch, rerender deterministically without another model call.
+For missing, empty, invalid, or uncited, send only the affected item IDs, fields, source context, and constraints to a targeted structured repair call.
+Preserve already valid fields and opportunity ordering.
+Do not send the complete report to coherence_refiner for a major rewrite.
+Revalidate the repaired structured object before rendering.
+
+The opportunity template in intentOutputTemplates.ts must define both the semantic field schema and its Markdown rendering map. Do not maintain separate prompt, validator, repair, and renderer definitions that can drift.
+
+For the golden regression run:
+
+Exactly 10 opportunity objects must be produced.
+opportunitiesWithAllRequiredFields must equal 10.
+All exact rendered headings must appear within every opportunity.
+Separate build, test, and deployment prompts must exist.
+First-pass contract validation should pass with zero repair calls.
+If a deliberately damaged fixture is tested, only the damaged fields may be repaired.
+
+Record first-pass success, repair-call count, repair tokens, and repair duration. The performance goal under the same test environment should be under 15 minutes, but runtime alone is not a pass/fail substitute for evidence and contract quality.
+
+## 6. Enforce evidence and specialist readiness before synthesis
+
+Discovery coverage must be measured after ingestion and retrieval, not from raw candidate count.
+
+Track and expose separately:
+
+* Candidates found.
+* Sources successfully ingested.
+* Usable retrieved sources.
+* Usable sources cited.
+* Independent cited domains.
+* Coverage by required evidence class.
+
+For the golden opportunity-discovery test, require meaningful competitor/product evidence, customer-demand evidence, market/industry evidence, and implementation-feasibility evidence. Use configurable intent-aware thresholds; the regression must not synthesize a confident market-whitespace report from two sources on one domain.
+
+Required specialists must have an explicit completion policy. If `competitor_mapper` or another intent-required specialist fails, retry within budget and then block or visibly degrade the run. Do not silently continue as though it completed.
+
+Every material numeric claim must map to a visible citation. Final reports must use resolvable user-facing source citations/URLs, not internal chunk identifiers.
+
+## 7. Harden verifier, repair, and terminal status
+
+Replace greedy JSON extraction and permissive parsing for verifier/auditor outputs with strict schemas and structured-output/JSON mode where supported.
+
+On malformed output:
+
+* Retry the verifier once with a minimal schema-repair prompt.
+* Record the parse failure.
+* Return a typed unavailable result if still invalid.
+* Let the coordinator choose recovery or blocking.
+
+`UNKNOWN` with empty criteria is not a successful verification.
+
+Fix terminal event handling so:
+
+* `research:completed`, `run_completed`, “Research complete,” and 100% success are emitted only for a genuinely completed run.
+* Failed or under-review quality-gate results emit failure/quality-gate events.
+* The summary status matches the database status.
+* Report repair rounds and full-run retry attempts are reported as different counters.
+* Credits/holds are consumed or released according to the actual terminal outcome.
+
+Do not modify Emma deployment, Certbot, Nginx, or PM2 configuration unless a directly related test proves it is required for this application change.
+
+## Acceptance tests required in this PR
+
+Add executable backend, frontend, and orchestration tests covering:
+
+* EZ displays report format, length, objective, and citation controls.
+* Multiple report formats and custom length reach the API payload.
+* Auto objective resolves from triage and updates the visible dropdown.
+* Requested and resolved objectives persist and survive request reopening.
+* User objective override updates the plan/runtime consistently.
+* Objective authorization/billing uses the resolved objective.
+* Standard opportunity research does not receive PolicyOne framing or universal challenger execution.
+* Explicit PolicyOne/adjudicative research still receives the required methodology.
+* Coordinator checkpoint decisions and bounded recovery.
+* Post-ingestion usable-source/domain coverage triggers additional discovery or blocks.
+* Required specialist failure cannot silently pass.
+* Exactly 10 structured opportunities with every required field.
+* Separate build, test, and deployment prompts.
+* Numeric/material claims have valid citations.
+* Malformed verifier JSON is retried and then safely blocked.
+* Failed verification never emits completion events.
+* Repair attempts and run retries display separately.
+* Selected formats and target length appear in the plan and final report metadata.
+
+Extend the golden evaluation using the exact failed opportunity request. It must exercise real production contract/routing/validation functions; a test that merely scores a handcrafted good report is insufficient.
+
+Hard failures for that fixture include:
+
+* Not exactly 10 opportunities.
+* Any missing required per-item field.
+* Combined prompts instead of three separate prompts.
+* Inadequate usable sources or independent domains.
+* Unsupported numeric claims.
+* No visible source citations.
+* PolicyOne structural-mechanism framing without selection.
+* Wrong or invisible resolved objective.
+* Requested report formats or length being ignored.
+* Completion events after a failed gate.
+
+Run all repository-prescribed tests, type checks, lint, and builds for affected packages. Report pre-existing failures separately with evidence. Do not describe scaffolding, mocked fixtures, or passing unit tests as completed runtime acceptance unless the production execution path is actually covered.
+
+When finished, leave one consolidated PR comment containing:
+
+* Commits added.
+* Runtime behavior changed.
+* Database/data-contract changes.
+* Tests added and exact results.
+* The golden regression result.
+* Any remaining limitation.
+
+Do not recommend additional PRs. If something remains incomplete, continue implementing it in this PR.
