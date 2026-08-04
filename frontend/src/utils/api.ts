@@ -679,6 +679,12 @@ export interface StartResearchPayload {
   targetWordCount?: number;
   /** Citation style for academic exports (stored on the run for downstream formatting). */
   citationStyle?: CitationStyleSlug;
+  /** Requested presentation formats for planning/report generation. */
+  requestedFormats?: string[];
+  /** Persist user intent even when objective routing remains automatic. */
+  requestedResearchObjective?: 'AUTO' | ResearchObjective;
+  /** Reserved methodology hint for future routing. */
+  requestedMethodology?: string;
   /** Wave 5.4 — optional saved orchestration profile (paid tiers). */
   savedOrchestrationProfileId?: string;
   /** Per-run wallet add-ons (keys from billing add-on catalog). */
@@ -702,6 +708,15 @@ export const startResearch = (data: StartResearchPayload) => {
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (typeof rest.targetWordCount === 'number') {
       form.append('targetWordCount', String(rest.targetWordCount));
+    }
+    if (rest.requestedFormats?.length) {
+      form.append('requestedFormats', JSON.stringify(rest.requestedFormats));
+    }
+    if (rest.requestedResearchObjective) {
+      form.append('requestedResearchObjective', rest.requestedResearchObjective);
+    }
+    if (rest.requestedMethodology) {
+      form.append('requestedMethodology', rest.requestedMethodology);
     }
     if (rest.citationStyle) {
       form.append('citation_style', rest.citationStyle);
@@ -742,6 +757,9 @@ export const startResearch = (data: StartResearchPayload) => {
       supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
       supplementalUrlCrawl,
       addons: rest.addons?.length ? rest.addons : undefined,
+      requestedFormats: rest.requestedFormats?.length ? rest.requestedFormats : undefined,
+      requestedResearchObjective: rest.requestedResearchObjective,
+      requestedMethodology: rest.requestedMethodology,
     })
     .then((r) => r.data);
 };
@@ -767,6 +785,15 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (typeof rest.targetWordCount === 'number') {
       form.append('targetWordCount', String(rest.targetWordCount));
+    }
+    if (rest.requestedFormats?.length) {
+      form.append('requestedFormats', JSON.stringify(rest.requestedFormats));
+    }
+    if (rest.requestedResearchObjective) {
+      form.append('requestedResearchObjective', rest.requestedResearchObjective);
+    }
+    if (rest.requestedMethodology) {
+      form.append('requestedMethodology', rest.requestedMethodology);
     }
     if (rest.citationStyle) {
       form.append('citation_style', rest.citationStyle);
@@ -808,6 +835,9 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
       supplementalUrls: hasSupplementalUrls ? supplementalUrls : undefined,
       supplementalUrlCrawl,
       addons: rest.addons?.length ? rest.addons : undefined,
+      requestedFormats: rest.requestedFormats?.length ? rest.requestedFormats : undefined,
+      requestedResearchObjective: rest.requestedResearchObjective,
+      requestedMethodology: rest.requestedMethodology,
     })
     .then((r) => r.data);
 };

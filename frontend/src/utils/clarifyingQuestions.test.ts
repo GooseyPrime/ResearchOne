@@ -85,6 +85,12 @@ describe('buildClarifyingQuestions', () => {
     expect(questions[0]).toMatch(/output/i);
   });
 
+
+  it('skips output-format clarification when report formats are already selected', () => {
+    const questions = buildClarifyingQuestions('research', { reportFormats: ['comparison_table'] });
+    expect(questions).toEqual(['Any scope boundaries we should enforce (timeline, geography, budget, or target audience)?']);
+  });
+
   it('is case-insensitive for keyword matching', () => {
     const promptWithUpperCase = `Please COMPARE the top platforms available to enterprise teams WITHIN the US market for the coming year`;
     expect(buildClarifyingQuestions(promptWithUpperCase)).toEqual([]);

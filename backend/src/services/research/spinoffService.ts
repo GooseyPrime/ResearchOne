@@ -165,6 +165,9 @@ export async function insertQueuedResearchRunWithLineage(params: {
   engineVersion: string | null;
   researchObjective: string | null;
   targetWordCount: number | null;
+  requestedFormats?: string[] | null;
+  requestedResearchObjective?: string | null;
+  requestedMethodology?: string | null;
   userId: string | null;
   orgId: string | null;
   lineage?: SpinoffLineage;
@@ -181,6 +184,9 @@ export async function insertQueuedResearchRunWithLineage(params: {
     engineVersion,
     researchObjective,
     targetWordCount,
+    requestedFormats = null,
+    requestedResearchObjective = null,
+    requestedMethodology = null,
     userId,
     orgId,
     lineage,
@@ -249,16 +255,16 @@ export async function insertQueuedResearchRunWithLineage(params: {
   }
 
   const withAddonsScoped = await tryInsert(
-    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id, selected_addons)
-     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb)`,
-    [...baseArgs, userId, orgId, selectedAddonsJson]
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology, user_id, org_id, selected_addons)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15::jsonb)`,
+    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology, userId, orgId, selectedAddonsJson]
   );
   if (withAddonsScoped) return;
 
   const withScoped = await tryInsert(
-    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, user_id, org_id)
-     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10, $11)`,
-    [...baseArgs, userId, orgId]
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology, user_id, org_id)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)`,
+    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology, userId, orgId]
   );
   if (withScoped) return;
 
@@ -272,8 +278,8 @@ export async function insertQueuedResearchRunWithLineage(params: {
   }
 
   await query(
-    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count)
-     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9)`,
-    [...baseArgs]
+    `INSERT INTO research_runs (id, title, query, supplemental, status, model_overrides, supplemental_attachments, engine_version, research_objective, target_word_count, requested_formats, requested_research_objective, requested_methodology)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12)`,
+    [...baseArgs, JSON.stringify(requestedFormats ?? []), requestedResearchObjective, requestedMethodology]
   );
 }

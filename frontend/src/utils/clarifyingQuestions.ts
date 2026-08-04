@@ -18,17 +18,21 @@ export const OUTPUT_FORMAT_PATTERN = /\b(compare|rank|recommend|steps|plan|roadm
  * The two categories (output shape and scope) are kept mutually exclusive to avoid asking
  * two similar output-format questions when both word-count and format checks fire.
  */
-export function buildClarifyingQuestions(query: string): string[] {
+export function buildClarifyingQuestions(query: string, options?: { reportFormats?: string[] }): string[] {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const words = trimmed.split(/\s+/).filter(Boolean);
   const questions: string[] = [];
 
+  const hasExplicitReportFormats = Array.isArray(options?.reportFormats) && options!.reportFormats.some((format) => format !== 'automatic');
+
   // Short prompts lack output shape entirely; longer prompts may still lack a format preference.
-  if (words.length < CLARIFY_MIN_WORDS) {
-    questions.push('What specific output do you need (for example: comparison, ranked list, implementation steps)?');
-  } else if (!OUTPUT_FORMAT_PATTERN.test(trimmed)) {
-    questions.push('How should results be organized (ranked options, narrative briefing, or step-by-step guide)?');
+  if (!hasExplicitReportFormats) {
+    if (words.length < CLARIFY_MIN_WORDS) {
+      questions.push('What specific output do you need (for example: comparison, ranked list, implementation steps)?');
+    } else if (!OUTPUT_FORMAT_PATTERN.test(trimmed)) {
+      questions.push('How should results be organized (ranked options, narrative briefing, or step-by-step guide)?');
+    }
   }
   if (!SCOPE_BOUNDARY_PATTERN.test(trimmed)) {
     questions.push('Any scope boundaries we should enforce (timeline, geography, budget, or target audience)?');

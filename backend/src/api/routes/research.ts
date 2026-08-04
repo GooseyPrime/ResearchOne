@@ -183,16 +183,25 @@ async function handleStartResearchRun(
       let engineVersion: string | undefined;
       let researchObjectiveRaw: unknown;
       let targetWordCountRaw: unknown;
-      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string; targetWordCount?: unknown };
+      let requestedFormatsRaw: unknown;
+      let requestedResearchObjectiveRaw: unknown;
+      let requestedMethodologyRaw: unknown;
+      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string; targetWordCount?: unknown; requestedFormats?: unknown; requestedResearchObjective?: unknown; requestedMethodology?: unknown };
       if (isMultipart) {
         const ev = body.engineVersion;
         engineVersion = typeof ev === 'string' ? ev.trim() : undefined;
         researchObjectiveRaw = body.researchObjective;
         targetWordCountRaw = body.targetWordCount;
+        requestedFormatsRaw = body.requestedFormats;
+        requestedResearchObjectiveRaw = body.requestedResearchObjective;
+        requestedMethodologyRaw = body.requestedMethodology;
       } else {
         engineVersion = typeof jsonBodyFull.engineVersion === 'string' ? jsonBodyFull.engineVersion.trim() : undefined;
         researchObjectiveRaw = jsonBodyFull.researchObjective;
         targetWordCountRaw = jsonBodyFull.targetWordCount;
+        requestedFormatsRaw = jsonBodyFull.requestedFormats;
+        requestedResearchObjectiveRaw = jsonBodyFull.requestedResearchObjective;
+        requestedMethodologyRaw = jsonBodyFull.requestedMethodology;
       }
       let targetWordCount: number | undefined;
       const parsedWords =
@@ -208,6 +217,19 @@ async function handleStartResearchRun(
         // SECTION_PLAN.length × per-section floor (10 × 80 = 800).
         targetWordCount = Math.max(800, Math.min(12000, Math.round(parsedWords)));
       }
+
+      const requestedFormatsParsed = isMultipart
+        ? typeof requestedFormatsRaw === 'string'
+          ? parseJsonField<unknown[]>(requestedFormatsRaw, [])
+          : requestedFormatsRaw
+        : requestedFormatsRaw;
+      const requestedFormats = Array.isArray(requestedFormatsParsed)
+        ? requestedFormatsParsed.filter((f): f is string => typeof f === 'string')
+        : undefined;
+      const requestedResearchObjective =
+        typeof requestedResearchObjectiveRaw === 'string' ? requestedResearchObjectiveRaw : undefined;
+      const requestedMethodology =
+        typeof requestedMethodologyRaw === 'string' ? requestedMethodologyRaw : undefined;
 
       const files = (req.files as Express.Multer.File[] | undefined) ?? [];
 
@@ -373,15 +395,18 @@ async function handleStartResearchRun(
         engineVersion: eng === 'v2' ? 'v2' : null,
         researchObjective: researchObjective ?? null,
         targetWordCount: targetWordCount ?? null,
+        requestedFormats: requestedFormats ?? null,
+        requestedResearchObjective: requestedResearchObjective ?? null,
+        requestedMethodology: requestedMethodology ?? null,
         userId: userId ?? null,
         orgId,
         lineage: spinoffLineage,
         selectedAddonsJson,
       });
 
-      if (citationStyle) {
+      if (citationStyle || requestedFormats || requestedResearchObjective || requestedMethodology) {
         try {
-          await query(`UPDATE research_runs SET citation_style=$1 WHERE id=$2`, [citationStyle, runId]);
+          await query(`UPDATE research_runs SET citation_style=COALESCE($1, citation_style), requested_formats=COALESCE($2::jsonb, requested_formats), requested_research_objective=COALESCE($3, requested_research_objective), requested_methodology=COALESCE($4, requested_methodology) WHERE id=$5`, [citationStyle ?? null, requestedFormats ? JSON.stringify(requestedFormats) : null, requestedResearchObjective ?? null, requestedMethodology ?? null, runId]);
         } catch (citeErr) {
           const citeCode = (citeErr as { code?: string } | null)?.code;
           if (citeCode !== '42703') throw citeErr;
@@ -431,6 +456,9 @@ async function handleStartResearchRun(
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
           targetWordCount,
+          requestedFormats,
+          requestedResearchObjective,
+          requestedMethodology,
           citationStyle,
           creditChargeContext,
           savedOrchestrationProfileSeed,
