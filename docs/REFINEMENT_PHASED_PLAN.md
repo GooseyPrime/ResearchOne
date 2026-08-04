@@ -37,11 +37,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
   - Phrases that steer natural language toward common intents without hard-forcing classifier
   - Do not bypass the plan gate
 
-**Acceptance criteria**
-- All 16+ intents have display labels + short descriptions on frontend
-- Plan gate shows Intent + confidence + Epistemic posture
-- Live runs use friendly stage names
-- Goal chips are advisory only
+**Status: Complete (PR #188 merged)**
 
 ---
 
@@ -50,23 +46,19 @@ This plan implements the recommendations from the August 2026 platform audit. It
 **Goal:** Make PolicyOne / adversarial stance understandable and controllable by users.
 
 ### Deliverables
-- Surface a short, plain-language explanation of "how ResearchOne thinks" on:
-  - PlanConfirmationPanel (expandable)
-  - Methodology / Guide pages
-  - First-run / onboarding
-- Explicit posture indicators that differentiate:
-  - Neutral / encyclopedic paths
-  - Challenge / skeptic-gate paths
-  - Steelman / position-brief paths
-- Intent override or "I meant a different research goal" control at the plan gate (lightweight)
-- Marketing copy updates that celebrate the "slivers of truth / outlier bridging" capability without requiring every user to be in adversarial mode
-- In-app tooltips / help text for each major intent
+- [x] Create `frontend/src/content/howResearchOneThinks.ts`
+  - `HOW_RESEARCHONE_THINKS_SHORT`, `HOW_RESEARCHONE_THINKS_SECTIONS`, `OUTLIER_BRIDGING_MARKETING`
+  - `POSTURE_FAMILIES` (neutral / challenge / steelman) + `resolvePostureFamily`
+  - `INTENT_HELP_TEXT` for all major intents, `INTENT_OVERRIDE_OPTIONS`
+  - `buildIntentOverrideRefineInstruction`, `ONBOARDING_HOW_IT_THINKS_TEASER`
+  - `OUTLIER_BRIDGING_ONE_LINER` (re-exported from `landingFeatureCards.ts`)
+- [x] `PlanConfirmationPanel.tsx` — posture family badge, intent help text, expandable "How ResearchOne thinks", "I meant a different research goal" intent override control
+- [x] `MethodologyPage.tsx` — "How ResearchOne thinks" section with HOW_RESEARCHONE_THINKS_SECTIONS + posture-by-path cards, OUTLIER_BRIDGING_MARKETING intro
+- [x] `GuidePage.tsx` — "How ResearchOne thinks" guide section; plan-review body updated to mention posture + intent retarget
+- [x] `OnboardingPage.tsx` — first-run "How ResearchOne thinks" teaser with links to /methodology and /app/guide
+- [x] Marketing: `howYourReportIsMade.ts` steps updated to mention intent/posture; `landingFeatureCards.ts` Contradictions card updated with outlier bridge copy
 
-**Key files likely touched**
-- `frontend/src/components/research/PlanConfirmationPanel.tsx`
-- `frontend/src/pages/MethodologyPage.tsx`, `GuidePage.tsx`, `OnboardingPage.tsx`
-- Marketing content under `frontend/src/content/` and landing components
-- Possibly `frontend/src/lib/agentDisplayDescriptions.ts` for posture language
+**Status: In progress**
 
 ---
 
@@ -121,8 +113,8 @@ This plan implements the recommendations from the August 2026 platform audit. It
 
 | Phase | Status          | Notes                                      |
 |-------|-----------------|--------------------------------------------|
-| 1     | In progress     | PR #188 — implementing routing visibility |
-| 2     | Ready to start  | After PR 188 is merged & closed            |
+| 1     | Complete        | PR #188 merged                            |
+| 2     | In progress     | Epistemic transparency & user guidance     |
 | 3     | Planned        | After Phase 2                              |
 | 4     | Planned         | Can partially overlap with later phases    |
 | 5     | Ongoing         | This document is the living artifact       |

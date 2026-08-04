@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import { BookmarkPlus, ClipboardCheck, Loader2, MessageSquareText, XCircle } from 'lucide-react';
+import { BookmarkPlus, ChevronDown, ChevronUp, ClipboardCheck, HelpCircle, Loader2, MessageSquareText, XCircle } from 'lucide-react';
 import { INTENT_DISPLAY_LABELS, INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
+import {
+  buildIntentOverrideRefineInstruction,
+  HOW_RESEARCHONE_THINKS_SHORT,
+  INTENT_HELP_TEXT,
+  INTENT_OVERRIDE_OPTIONS,
+  POSTURE_FAMILIES,
+  resolvePostureFamily,
+} from '../../content/howResearchOneThinks';
 import ResearchBriefPreview from './ResearchBriefPreview';
 import {
   cancelRunPlanAtGate,
@@ -37,6 +45,8 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
   skepticLabel: string;
   steelmanLabel: string;
   profileName: string | null;
+  skepticMode: string;
+  steelmanMode: string;
 } {
   const profile =
     (payload.orchestrationProfile as Record<string, unknown> | undefined) ??
@@ -74,6 +84,8 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
     skepticLabel: skepticMap[effectiveSkepticRaw] ?? effectiveSkepticRaw,
     steelmanLabel: steelmanMap[steelmanRaw] ?? steelmanRaw,
     profileName: displayName,
+    skepticMode: effectiveSkepticRaw,
+    steelmanMode: steelmanRaw,
   };
 }
 
@@ -116,6 +128,9 @@ export default function PlanConfirmationPanel({
   const [saveBusy, setSaveBusy] = useState(false);
   const [secLeft, setSecLeft] = useState<number | null>(null);
   const [countdownPaused, setCountdownPaused] = useState(false);
+  const [howItThinksOpen, setHowItThinksOpen] = useState(false);
+  const [intentOverrideId, setIntentOverrideId] = useState('');
+  const [intentOverrideBusy, setIntentOverrideBusy] = useState(false);
   const pauseRef = useRef(false);
   const firedRef = useRef(false);
   const countdownCbRef = useRef({
@@ -140,9 +155,16 @@ export default function PlanConfirmationPanel({
   const intentKey = readIntentId(localPayload);
   const intentLabel = INTENT_DISPLAY_LABELS[intentKey] ?? intentKey.replace(/_/g, ' ');
   const intentDesc = INTENT_SHORT_DESCRIPTIONS[intentKey] ?? '';
+  const intentHelpText = INTENT_HELP_TEXT[intentKey] ?? '';
   const intentConfidence = readPlanIntentConfidence(localPayload);
   const competenceText = readTopicCompetenceAssessment(localPayload);
   const posture = readEpistemicPosture(localPayload);
+  const postureFamily = resolvePostureFamily({
+    skepticMode: posture.skepticMode,
+    steelmanMode: posture.steelmanMode,
+    intentId: intentKey,
+  });
+  const postureFamilyDef = POSTURE_FAMILIES.find((p) => p.id === postureFamily.id) ?? postureFamily;
 
   const autoConfirmActive =
     planPrefs != null && shouldStartPlanAutoConfirmCountdown(planPrefs, localPayload, rounds);
@@ -223,6 +245,30 @@ export default function PlanConfirmationPanel({
     } catch (e) {
       onNotify('error', extractApiError(e));
     } finally {
+      onBusy(false);
+    }
+  };
+
+  const handleIntentOverride = async () => {
+    const targetId = intentOverrideId.trim();
+    if (!targetId) return;
+    const option = INTENT_OVERRIDE_OPTIONS.find((o) => o.id === targetId);
+    if (!option) return;
+    setIntentOverrideBusy(true);
+    onBusy(true);
+    try {
+      const refineText = buildIntentOverrideRefineInstruction(option.id, option.label);
+      const res = await refineRunPlanAtGate(snapshot.runId, refineText);
+      setLocalPayload(res.revisedPlan);
+      setLocalPlanId(res.planId);
+      setRounds(res.refinementRounds);
+      setIntentOverrideId('');
+      onGatePlanMutated?.();
+      onNotify('success', `Plan re-routed to "${option.label}".`);
+    } catch (e) {
+      onNotify('error', extractApiError(e));
+    } finally {
+      setIntentOverrideBusy(false);
       onBusy(false);
     }
   };
@@ -363,12 +409,33 @@ export default function PlanConfirmationPanel({
             {intentConfidence != null ? ` (${(intentConfidence * 100).toFixed(0)}%)` : ''}
           </span>
         </div>
-        <p className="text-slate-200 font-medium">{intentLabel}</p>
+        <div className="flex items-start gap-1.5">
+          <p className="text-slate-200 font-medium">{intentLabel}</p>
+          {intentHelpText ? (
+            <span title={intentHelpText}>
+              <HelpCircle size={13} className="text-slate-500 mt-0.5 flex-shrink-0 cursor-help" aria-label={intentHelpText} />
+            </span>
+          ) : null}
+        </div>
         {intentDesc ? <p className="text-slate-400 mt-1">{intentDesc}</p> : null}
+        {intentHelpText ? (
+          <p className="text-slate-500 text-[11px] leading-snug">{intentHelpText}</p>
+        ) : null}
 
-        {/* Epistemic posture — Phase 1 visibility */}
+        {/* Epistemic posture — Phase 1 visibility + Phase 2 posture family badge */}
         <div className="pt-2 mt-2 border-t border-surface-100/60 space-y-1.5">
-          <span className="text-slate-500 uppercase tracking-wide">Epistemic posture</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-500 uppercase tracking-wide">Epistemic posture</span>
+            <span
+              className={clsx(
+                'rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide',
+                postureFamilyDef.badgeClass,
+              )}
+              title={postureFamilyDef.shortDescription}
+            >
+              {postureFamilyDef.label}
+            </span>
+          </div>
           {posture.profileName ? (
             <p className="text-slate-300 text-[11px]">Profile: {posture.profileName}</p>
           ) : null}
@@ -386,6 +453,22 @@ export default function PlanConfirmationPanel({
           </p>
         </div>
 
+        {/* "How ResearchOne thinks" expandable */}
+        <div className="pt-2 mt-2 border-t border-surface-100/60">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+            onClick={() => setHowItThinksOpen((v) => !v)}
+            aria-expanded={howItThinksOpen}
+          >
+            {howItThinksOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            How ResearchOne thinks
+          </button>
+          {howItThinksOpen ? (
+            <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">{HOW_RESEARCHONE_THINKS_SHORT}</p>
+          ) : null}
+        </div>
+
         {topicStr ? (
           <div>
             <span className="text-slate-500 uppercase tracking-wide">Topic read</span>
@@ -399,6 +482,39 @@ export default function PlanConfirmationPanel({
           </div>
         ) : null}
         <p className="text-slate-500">Refinement rounds: {rounds}</p>
+      </div>
+
+      {/* Intent override control */}
+      <div className="rounded-lg border border-surface-100 bg-surface-200/20 p-3 space-y-2 text-xs">
+        <p className="text-slate-400 font-medium">I meant a different research goal…</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={intentOverrideId}
+            onChange={(e) => setIntentOverrideId(e.target.value)}
+            disabled={busy || intentOverrideBusy}
+            className="rounded border border-surface-100 bg-[#0b0d14] px-2 py-1 text-xs text-slate-200 disabled:opacity-50 flex-1 min-w-0"
+            aria-label="Select a different research intent"
+          >
+            <option value="">Select intent…</option>
+            {INTENT_OVERRIDE_OPTIONS.filter((o) => o.id !== intentKey).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label} — {o.shortDescription}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void handleIntentOverride()}
+            disabled={busy || intentOverrideBusy || !intentOverrideId}
+            className="btn-secondary inline-flex items-center gap-1.5 text-xs disabled:opacity-50"
+          >
+            {intentOverrideBusy ? <Loader2 size={12} className="animate-spin" /> : null}
+            Apply
+          </button>
+        </div>
+        <p className="text-slate-600 text-[11px]">
+          Sends a refinement instruction to re-route this plan. The plan gate stays open for your review.
+        </p>
       </div>
 
 

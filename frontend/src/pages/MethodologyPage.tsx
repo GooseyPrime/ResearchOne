@@ -10,6 +10,11 @@ import {
   HOW_YOUR_REPORT_IS_MADE_HEADING,
   HOW_YOUR_REPORT_IS_MADE_STEPS,
 } from '@/content/howYourReportIsMade';
+import {
+  HOW_RESEARCHONE_THINKS_SECTIONS,
+  OUTLIER_BRIDGING_MARKETING,
+  POSTURE_FAMILIES,
+} from '@/content/howResearchOneThinks';
 
 export default function MethodologyPage() {
   return (
@@ -107,6 +112,38 @@ export default function MethodologyPage() {
         </div>
       </section>
       
+      {/* How ResearchOne thinks */}
+      <section className="py-16 bg-r1-canvas border-b border-r1-border">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-r1-heading mb-3">How ResearchOne thinks</h2>
+          <p className="max-w-3xl text-[15px] text-r1-muted leading-relaxed mb-8">{OUTLIER_BRIDGING_MARKETING}</p>
+
+          <div className="grid sm:grid-cols-2 gap-6 mb-10">
+            {HOW_RESEARCHONE_THINKS_SECTIONS.map((section) => (
+              <div key={section.id} className="r1-panel p-5 space-y-2">
+                <h3 className="text-base font-semibold text-r1-heading">{section.heading}</h3>
+                <p className="text-sm text-r1-muted leading-relaxed">{section.body}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Posture family cards */}
+          <h3 className="text-lg font-semibold text-r1-heading mb-4">Research posture by path</h3>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {POSTURE_FAMILIES.map((family) => (
+              <div key={family.id} className="r1-panel p-5 space-y-2">
+                <span
+                  className={`inline-block rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide ${family.badgeClass}`}
+                >
+                  {family.label}
+                </span>
+                <p className="text-sm text-r1-muted leading-relaxed">{family.shortDescription}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section data-ev-id="ev_e8c1910adb" className="py-20 bg-r1-canvas border-t border-r1-border">
         <div data-ev-id="ev_87d67152b4" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
