@@ -52,6 +52,9 @@ describe('orchestrationRuntime canonical execution plan', () => {
         epistemicPosture: 'decision',
         confidence: 0.9,
         reasoning: 'composite',
+        requestedMethodology: 'auto',
+        resolvedMethodology: 'standard',
+        methodologyResolutionSource: 'fallback',
       },
     });
     const specialists = merged.executionPlan?.specialistAgents ?? [];
