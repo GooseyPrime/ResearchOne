@@ -10,6 +10,13 @@ export const RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK = `RESEARCH INTEGRITY — K
 - Flag when conclusions depend on thin, homogeneous, or unverifiable sources.
 - Preserve uncertainty and contradictions; do not smooth anomalies to fit a tidy narrative.`;
 
+export const STANDARD_RESEARCH_PREAMBLE = `STANDARD RESEARCH INTEGRITY POLICY (MANDATORY):
+- Reason from evidence, mechanism, and clearly stated uncertainty.
+- Match the user's requested deliverable and methodology without injecting adversarial framing unless the task calls for adjudication or investigation.
+- Distinguish established findings, cited evidence, and informed inference.
+- Preserve contradictions and evidence gaps explicitly.
+- Do not overstate confidence, and do not suppress legitimate uncertainty.`;
+
 export const REASONING_FIRST_PREAMBLE = `REASONING-FIRST EPISTEMIC POLICY (MANDATORY):
 - Reason from structure, mechanism, and causal constraints first; use corpus recall as support, never as a hard stop.
 - Distinguish clearly: (a) mainstream consensus, (b) currently cited evidence, (c) unexplored reasoning paths.
@@ -20,6 +27,10 @@ export const REASONING_FIRST_PREAMBLE = `REASONING-FIRST EPISTEMIC POLICY (MANDA
 
 export function withPreamble(prompt: string): string {
   return `${REASONING_FIRST_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
+}
+
+export function withStandardPreamble(prompt: string): string {
+  return `${STANDARD_RESEARCH_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
 }
 
 export function withPolicyOnePreamble(prompt: string): string {

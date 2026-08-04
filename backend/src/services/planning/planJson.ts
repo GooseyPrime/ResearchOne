@@ -5,7 +5,12 @@ import type { PlanPayload } from './planTypes';
 import { planSummaryFromPayload } from './planTypes';
 import { mergePlanPayloadWithCanonicalProfile } from './orchestrationRuntime';
 import type { ResearchBrief, EpistemicPosture, RequestedArtifact, UserConstraint } from './researchBrief';
-import { INTENT_EPISTEMIC_POSTURE, defaultResearchBrief } from './researchBrief';
+import {
+  INTENT_EPISTEMIC_POSTURE,
+  defaultResearchBrief,
+  resolveMethodologyFromIntent,
+  resolveObjectiveFromIntent,
+} from './researchBrief';
 
 function extractJsonObject(raw: string): string | null {
   const t = raw.trim();
@@ -118,6 +123,9 @@ function parseResearchBriefOrUndefined(raw: unknown, fallbackIntent: IntentId): 
   const userConstraints = Array.isArray(o.userConstraints)
     ? o.userConstraints.map(coerceConstraint).filter((x): x is UserConstraint => x !== null)
     : [];
+  const requestedFormats = Array.isArray(o.requestedFormats)
+    ? o.requestedFormats.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : undefined;
   const epistemicPosture = isEpistemicPosture(o.epistemicPosture)
     ? o.epistemicPosture
     : (INTENT_EPISTEMIC_POSTURE[primaryIntent] ?? 'descriptive');
@@ -129,14 +137,50 @@ function parseResearchBriefOrUndefined(raw: unknown, fallbackIntent: IntentId): 
     typeof o.reasoning === 'string' && o.reasoning.trim()
       ? o.reasoning.trim()
       : 'Research brief missing reasoning.';
+  const resolvedMethodology =
+    o.resolvedMethodology === 'standard' || o.resolvedMethodology === 'policyone'
+      ? o.resolvedMethodology
+      : resolveMethodologyFromIntent(primaryIntent);
+  const requestedMethodology =
+    o.requestedMethodology === 'auto' || o.requestedMethodology === 'standard' || o.requestedMethodology === 'policyone'
+      ? o.requestedMethodology
+      : 'auto';
+  const methodologyResolutionSource =
+    o.methodologyResolutionSource === 'user' || o.methodologyResolutionSource === 'triage' || o.methodologyResolutionSource === 'fallback'
+      ? o.methodologyResolutionSource
+      : 'fallback';
+  const requestedResearchObjective =
+    o.requestedResearchObjective === 'AUTO' || typeof o.requestedResearchObjective === 'string'
+      ? (o.requestedResearchObjective as ResearchBrief['requestedResearchObjective'])
+      : 'AUTO';
+  const resolvedResearchObjective =
+    typeof o.resolvedResearchObjective === 'string'
+      ? (o.resolvedResearchObjective as ResearchBrief['resolvedResearchObjective'])
+      : resolveObjectiveFromIntent(primaryIntent);
+  const objectiveResolutionSource =
+    o.objectiveResolutionSource === 'user' || o.objectiveResolutionSource === 'triage' || o.objectiveResolutionSource === 'fallback'
+      ? o.objectiveResolutionSource
+      : 'fallback';
+  const objectiveResolutionReason =
+    typeof o.objectiveResolutionReason === 'string' && o.objectiveResolutionReason.trim()
+      ? o.objectiveResolutionReason.trim()
+      : `Resolved from primary intent ${primaryIntent}.`;
   return {
     primaryIntent,
+    requestedMethodology,
+    resolvedMethodology,
+    methodologyResolutionSource,
     secondaryIntent,
     requestedArtifacts,
+    requestedFormats,
     userConstraints,
     epistemicPosture,
     confidence,
     reasoning,
+    requestedResearchObjective,
+    resolvedResearchObjective,
+    objectiveResolutionSource,
+    objectiveResolutionReason,
   };
 }
 
@@ -167,6 +211,9 @@ export function parseResearchBriefJson(
     const userConstraints = Array.isArray(o.userConstraints)
       ? o.userConstraints.map(coerceConstraint).filter((x): x is UserConstraint => x !== null)
       : [];
+    const requestedFormats = Array.isArray(o.requestedFormats)
+      ? o.requestedFormats.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : undefined;
 
     const epistemicPosture = isEpistemicPosture(o.epistemicPosture)
       ? o.epistemicPosture
@@ -182,7 +229,44 @@ export function parseResearchBriefJson(
         ? o.reasoning.trim()
         : 'Classifier returned non-text reasoning.';
 
-    return { primaryIntent, secondaryIntent, requestedArtifacts, userConstraints, epistemicPosture, confidence, reasoning };
+    return {
+      primaryIntent,
+      requestedMethodology:
+        o.requestedMethodology === 'auto' || o.requestedMethodology === 'standard' || o.requestedMethodology === 'policyone'
+          ? o.requestedMethodology
+          : 'auto',
+      resolvedMethodology:
+        o.resolvedMethodology === 'standard' || o.resolvedMethodology === 'policyone'
+          ? o.resolvedMethodology
+          : resolveMethodologyFromIntent(primaryIntent),
+      methodologyResolutionSource:
+        o.methodologyResolutionSource === 'user' || o.methodologyResolutionSource === 'triage' || o.methodologyResolutionSource === 'fallback'
+          ? o.methodologyResolutionSource
+          : 'fallback',
+      secondaryIntent,
+      requestedArtifacts,
+      requestedFormats,
+      userConstraints,
+      epistemicPosture,
+      confidence,
+      reasoning,
+      requestedResearchObjective:
+        o.requestedResearchObjective === 'AUTO' || typeof o.requestedResearchObjective === 'string'
+          ? (o.requestedResearchObjective as ResearchBrief['requestedResearchObjective'])
+          : 'AUTO',
+      resolvedResearchObjective:
+        typeof o.resolvedResearchObjective === 'string'
+          ? (o.resolvedResearchObjective as ResearchBrief['resolvedResearchObjective'])
+          : resolveObjectiveFromIntent(primaryIntent),
+      objectiveResolutionSource:
+        o.objectiveResolutionSource === 'user' || o.objectiveResolutionSource === 'triage' || o.objectiveResolutionSource === 'fallback'
+          ? o.objectiveResolutionSource
+          : 'fallback',
+      objectiveResolutionReason:
+        typeof o.objectiveResolutionReason === 'string' && o.objectiveResolutionReason.trim()
+          ? o.objectiveResolutionReason.trim()
+          : `Resolved from primary intent ${primaryIntent}.`,
+    };
   } catch (e) {
     logger.warn('research_brief_json_parse_failed', { message: e instanceof Error ? e.message : String(e) });
     return defaultResearchBrief(fallbackIntent, 0.5, 'Parser fallback — model output was not valid JSON.');
@@ -273,6 +357,13 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
   const briefFromPayload = parseResearchBriefOrUndefined(o.researchBrief, id);
 
   const base: PlanPayload = {
+    requestedFormats: Array.isArray(o.requestedFormats) ? o.requestedFormats.filter((x): x is string => typeof x === 'string') : undefined,
+    targetWordCount: typeof o.targetWordCount === 'number' && Number.isFinite(o.targetWordCount) ? Math.round(o.targetWordCount) : undefined,
+    requestedMethodology: typeof o.requestedMethodology === 'string' ? o.requestedMethodology : briefFromPayload?.requestedMethodology,
+    resolvedMethodology: typeof o.resolvedMethodology === 'string' ? o.resolvedMethodology : briefFromPayload?.resolvedMethodology,
+    resolvedResearchObjective: typeof o.resolvedResearchObjective === 'string' ? o.resolvedResearchObjective : briefFromPayload?.resolvedResearchObjective,
+    objectiveResolutionSource: typeof o.objectiveResolutionSource === 'string' ? o.objectiveResolutionSource : briefFromPayload?.objectiveResolutionSource,
+    objectiveResolutionReason: typeof o.objectiveResolutionReason === 'string' ? o.objectiveResolutionReason : briefFromPayload?.objectiveResolutionReason,
     intent: { id, displayLabel, confidence, reasoning },
     topicAnalysis,
     orchestrationProfile,

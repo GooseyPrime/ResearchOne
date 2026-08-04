@@ -240,20 +240,25 @@ FAIL if: the report asserts definitive conclusions where the evidence is explora
     sections: ['overview', 'opportunities_list', 'viability_analysis', 'build_guidance', 'caveats'],
     sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Ranked opportunity list; each opportunity includes project requirements and actionable build plan. No falsification section.',
+    narrativeHint: 'Ranked opportunity list; each opportunity must use these exact Markdown headings within every item: #### Narrative Briefing, #### Basic Project Needs, #### Build Prompt, #### Test Prompt, #### Deployment Prompt. Keep build, test, and deployment prompts separate. No falsification section.',
     verifierRubric: `PASS criteria for an Opportunity Discovery report:
 - The requested number of opportunities is present (if an exact count was stated).
-- Each opportunity has a description, viability signal, and evidence citation.
+- Each opportunity has a description, viability signal, evidence citation, and the exact required subheadings.
+- Build, test, and deployment prompts must be separate sections, not combined into one prompt.
 - If build guidance was requested, each opportunity includes actionable build steps.
 - User constraints (e.g., time/budget/tool limits) are respected — opportunities violating stated constraints must be flagged or excluded.
 - The report does not critique the premise instead of delivering opportunities.
 - No falsification or contradiction-analysis sections (not applicable to this intent).
-FAIL if: requested artifact count is not met, opportunities lack viability evidence, user constraints are ignored, or the report spends substantial space testing the premise rather than delivering the opportunity list.`,
+FAIL if: requested artifact count is not met, opportunities lack viability evidence, required subheadings are missing, build/test/deployment prompts are combined, user constraints are ignored, or the report spends substantial space testing the premise rather than delivering the opportunity list.`,
     requiredDeliverables: [
-      'Landscape overview',
-      'Ranked or enumerated list of opportunities (count per user request)',
-      'Viability signal or evidence for each opportunity',
-      'Build guidance per opportunity (if requested)',
+      'Exactly N ranked opportunity items (one per user-requested count)',
+      'Each opportunity: Narrative Briefing section',
+      'Each opportunity: Basic Project Needs section',
+      'Each opportunity: Build Prompt section',
+      'Each opportunity: Test Prompt section',
+      'Each opportunity: Deployment Prompt section',
+      'Each opportunity: item-level supporting citations',
+      'Separate build, test, and deployment prompts (not combined)',
       'Caveats and uncertainty',
     ],
   },

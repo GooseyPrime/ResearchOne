@@ -5,7 +5,12 @@ import { getIntentById, INTENT_TAXONOMY } from './intentTaxonomy';
 import { RESEARCH_BRIEF_CLASSIFIER_PROMPT } from './prompts';
 import { parseResearchBriefJson } from './planJson';
 import type { ResearchBrief } from './researchBrief';
-import { defaultResearchBrief, INTENT_EPISTEMIC_POSTURE } from './researchBrief';
+import {
+  defaultResearchBrief,
+  INTENT_EPISTEMIC_POSTURE,
+  resolveMethodologyFromIntent,
+  resolveObjectiveFromIntent,
+} from './researchBrief';
 
 const LEXICAL_CONFIDENCE = 0.92;
 const LLM_LOW_CONFIDENCE_CAP = 0.84;
@@ -94,6 +99,15 @@ export async function classifyIntent(
     brief.reasoning = `${brief.reasoning} (legacy remapped to factual_report)`;
     brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE['factual_report'];
   }
+
+  brief.requestedMethodology = brief.requestedMethodology ?? 'auto';
+  brief.resolvedMethodology = brief.resolvedMethodology ?? resolveMethodologyFromIntent(brief.primaryIntent);
+  brief.methodologyResolutionSource = brief.methodologyResolutionSource ?? 'triage';
+  brief.requestedResearchObjective = brief.requestedResearchObjective ?? 'AUTO';
+  brief.resolvedResearchObjective = brief.resolvedResearchObjective ?? resolveObjectiveFromIntent(brief.primaryIntent);
+  brief.objectiveResolutionSource = brief.objectiveResolutionSource ?? 'triage';
+  brief.objectiveResolutionReason =
+    brief.objectiveResolutionReason ?? `Resolved from primary intent ${brief.primaryIntent}.`;
 
   // Soft cap for low-confidence results so the gate UI can flag them
   if (brief.confidence < 0.85) {

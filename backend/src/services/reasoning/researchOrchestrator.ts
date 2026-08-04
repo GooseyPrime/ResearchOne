@@ -4,6 +4,7 @@ import {
   callRoleModel,
   SYSTEM_PROMPTS,
   buildVerifierPromptForIntent,
+  getSystemPrompt,
   ModelCallResult,
   NormalizedModelError,
   type ModelRole,
@@ -171,6 +172,33 @@ interface ResearchFailureDetails {
   failureMeta: Record<string, unknown>;
   retryable: boolean;
 }
+
+function parseVerifierResult(raw: string): VerificationResult | null {
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as VerificationResult;
+  } catch {
+    // fall through
+  }
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as VerificationResult;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function normalizeVerificationResult(result: VerificationResult | null): VerificationResult {
+  if (!result) return { passed: false, criteria: [], overall: 'PARSE_FAILED' };
+  const overall = typeof result.overall === 'string' ? result.overall : 'UNKNOWN';
+  const criteria = Array.isArray(result.criteria) ? result.criteria : [];
+  const passed = overall === 'PASS' && criteria.length > 0 && result.passed !== false;
+  return { passed, criteria, overall };
+}
+
 const RETRIEVAL_PROGRESS_BASE = 22;
 const RETRIEVAL_PROGRESS_CAP = 34;
 
@@ -474,6 +502,8 @@ function fieldCompletenessForOpportunities(opportunities: Array<{ title: string;
     'acquisition',
     'risk',
     'validation',
+    'narrative briefing',
+    'basic project needs',
     'build prompt',
     'test prompt',
     'deployment prompt',
@@ -520,7 +550,7 @@ function runDeterministicContractValidation(args: {
     if (completeFields !== opportunities.length) {
       missing.push('required_fields_missing_in_opportunities');
       revision.push(
-        'Each opportunity must include target customer, problem, demand evidence, competitors, differentiation, MVP scope, stack/services, monetization, acquisition, risks, validation experiment, evidence IDs, build/test/deploy prompts, acceptance criteria, and confidence.'
+        'Each opportunity must include narrative briefing, basic project needs, target customer, problem, demand evidence, competitors, differentiation, MVP scope, stack/services, monetization, acquisition, risks, validation experiment, evidence IDs, separate build/test/deployment prompts, acceptance criteria, and confidence.'
       );
     }
   }
@@ -880,6 +910,7 @@ async function runResearchJobInner(
 
     let plan: ResearchPlan;
     const isAdjudicative =
+      confirmedResearchBrief?.resolvedMethodology === 'policyone' ||
       orchProfile.intent == null || ADJUDICATIVE_SECTION_INTENTS.has(orchProfile.intent);
     if (confirmedResearchBrief) {
       plan = buildExecutionResearchPlanFromConfirmedBrief({
@@ -894,7 +925,7 @@ async function runResearchJobInner(
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'planner'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.planner },
+          { role: 'system', content: getSystemPrompt('planner', isAdjudicative) },
           {
             role: 'user',
             content: `Research Query: ${researchQuery}\n\n${supplemental ? `Supplemental Context:\n${supplemental}\n\n` : ''}Produce a structured JSON research plan.`,
@@ -1313,7 +1344,7 @@ async function runResearchJobInner(
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'synthesizer'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.synthesizer },
+          { role: 'system', content: getSystemPrompt('synthesizer', isAdjudicative) },
           {
             role: 'user',
             content:
@@ -1346,11 +1377,12 @@ async function runResearchJobInner(
       await progress('verification', 92, 'Verifying epistemic standards...');
 
       // Phase B — use per-intent verifier rubric instead of the universal prompt
-      const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent);
+      const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent, isAdjudicative);
 
       verifierResult = await callRoleModel({
         role: 'verifier',
         ...v2,
+        isAdjudicative,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
         messages: [
           { role: 'system', content: intentVerifierPrompt },
@@ -1362,19 +1394,28 @@ async function runResearchJobInner(
       });
       modelLog.push(verifierResult);
 
-      try {
-        const jsonMatch = verifierResult.content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          verification = JSON.parse(jsonMatch[0]) as VerificationResult;
-          if (verification.overall !== 'PASS') {
-            verification.passed = false;
-          }
-        } else {
-          verificationUnavailable = true;
-        }
-      } catch {
-        verificationUnavailable = true;
+      let parsedVerification = parseVerifierResult(verifierResult.content);
+      if (!parsedVerification) {
+        const repairVerifierResult = await callRoleModel({
+          role: 'verifier',
+          ...v2,
+          isAdjudicative,
+          runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
+          messages: [
+            { role: 'system', content: intentVerifierPrompt },
+            {
+              role: 'user',
+              content: `Return ONLY valid JSON matching the VerificationResult schema for this report. Do not include markdown fences or commentary. REPORT:
+
+${generatedReport.markdown}`,
+            },
+          ],
+        });
+        modelLog.push(repairVerifierResult);
+        parsedVerification = parseVerifierResult(repairVerifierResult.content);
       }
+      verification = normalizeVerificationResult(parsedVerification);
+      verificationUnavailable = verification.overall === 'PARSE_FAILED';
     } else {
       await progress('verification', 92, 'Verification skipped for this intent profile', { substep: 'stage_skipped' });
       verifierResult = orchestrationStubModelResult(
@@ -1594,10 +1635,11 @@ async function runResearchJobInner(
         generatedReport = { markdown: repairResult.content.trim() || generatedReport.markdown };
 
         if (shouldRunPipelineStage(orchProfile, 'verification')) {
-          const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent);
+          const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent, isAdjudicative);
           const reverifyResult = await callRoleModel({
             role: 'verifier',
             ...v2,
+            isAdjudicative,
             runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
             messages: [
               { role: 'system', content: intentVerifierPrompt },
@@ -1609,21 +1651,28 @@ async function runResearchJobInner(
           });
           modelLog.push(reverifyResult);
           verificationUnavailable = false;
-          try {
-            const jsonMatch = reverifyResult.content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              verification = JSON.parse(jsonMatch[0]) as VerificationResult;
-              if (verification.overall !== 'PASS') {
-                verification.passed = false;
-              }
-            } else {
-              verificationUnavailable = true;
-              verification = { passed: false, criteria: [], overall: 'UNKNOWN' };
-            }
-          } catch {
-            verificationUnavailable = true;
-            verification = { passed: false, criteria: [], overall: 'UNKNOWN' };
+          let reparsedVerification = parseVerifierResult(reverifyResult.content);
+          if (!reparsedVerification) {
+            const repairReverifyResult = await callRoleModel({
+              role: 'verifier',
+              ...v2,
+              isAdjudicative,
+              runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'verifier'),
+              messages: [
+                { role: 'system', content: intentVerifierPrompt },
+                {
+                  role: 'user',
+                  content: `Return ONLY valid JSON matching the VerificationResult schema for this revised report. Do not include markdown fences or commentary. REPORT:
+
+${generatedReport.markdown}`,
+                },
+              ],
+            });
+            modelLog.push(repairReverifyResult);
+            reparsedVerification = parseVerifierResult(repairReverifyResult.content);
           }
+          verification = normalizeVerificationResult(reparsedVerification);
+          verificationUnavailable = verification.overall === 'PARSE_FAILED';
         }
 
         await runContractAudit(generatedReport.markdown);
@@ -1927,15 +1976,28 @@ async function runResearchJobInner(
       }
     }
 
-    await progress('done', 100, 'Research complete');
-    await appendRunProgressEvent(runId, {
-      runId,
-      stage: 'done',
-      percent: 100,
-      message: 'Research complete',
-      timestamp: new Date().toISOString(),
-      eventType: 'run_completed',
-    });
+    if (runTerminalStatus === 'completed') {
+      await progress('done', 100, 'Research complete');
+      await appendRunProgressEvent(runId, {
+        runId,
+        stage: 'done',
+        percent: 100,
+        message: 'Research complete',
+        timestamp: new Date().toISOString(),
+        eventType: 'run_completed',
+      });
+    } else {
+      await progress('done', 100, `Research run finished with status: ${reportStatus}`);
+      await appendRunProgressEvent(runId, {
+        runId,
+        stage: 'done',
+        percent: 100,
+        message: `Research run finished with gate status: ${reportStatus}`,
+        timestamp: new Date().toISOString(),
+        eventType: 'run_quality_gate_failed',
+        gateStatus: reportStatus,
+      });
+    }
 
     await query(
       `UPDATE research_runs SET progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL, resume_job_payload=NULL WHERE id=$1`,
