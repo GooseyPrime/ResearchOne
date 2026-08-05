@@ -243,6 +243,23 @@ export default function AnimatedPipelineHero({
             })}
           </div>
 
+          {/* Contradiction bridge overlay — Möbius dual-stroke motif at the Reasoner→Skeptic turn.
+              Positioned near the right edge of the hero where the pipeline turns from top to bottom row.
+              Two arcs (cyan + amber) cross at their midpoints, encoding "contradictions preserved, not collapsed". */}
+          <div
+            className="absolute pointer-events-none"
+            aria-hidden="true"
+            style={{ right: '5%', top: '25%', width: '7%', height: '50%' }}
+          >
+            <svg viewBox="0 0 40 80" fill="none" className="w-full h-full opacity-30">
+              {/* Upper arc — consensus cluster (left-to-right then back) */}
+              <path d="M4 16 Q20 4 36 16 Q20 28 4 40" stroke={palette.nodeActiveRing} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+              {/* Lower arc — anomaly bridge (crosses at midpoint, mirrors upper) */}
+              <path d="M4 40 Q20 52 36 64" stroke={palette.skepticRing} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+              <path d="M36 16 Q20 52 4 64" stroke={palette.nodeActiveRing} strokeWidth="1.2" strokeLinecap="round" strokeDasharray="3 3" fill="none" />
+            </svg>
+          </div>
+
           <div className="absolute top-2 left-0 right-0 flex justify-between px-6 pointer-events-none">
             {(['PLAN', 'RETRIEVE & READ', 'REASON & VERIFY', 'WRITE & CITE'] as const).map(
               (label) => (

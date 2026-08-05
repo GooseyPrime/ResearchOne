@@ -58,7 +58,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 - [x] `OnboardingPage.tsx` — first-run "How ResearchOne thinks" teaser with links to /methodology and /app/guide
 - [x] Marketing: `howYourReportIsMade.ts` steps updated to mention intent/posture; `landingFeatureCards.ts` Contradictions card updated with outlier bridge copy
 
-**Status: In progress**
+**Status: Complete (PR #190 merged)**
 
 ---
 
@@ -67,12 +67,13 @@ This plan implements the recommendations from the August 2026 platform audit. It
 **Goal:** Align visual identity with the selected Contradiction Ring logo and the epistemic philosophy.
 
 ### Deliverables
-- Integrate Logo Option 3 across header, favicon, OG images, marketing
-- Update hero / pipeline diagrams / animated visuals to emphasize:
-  - Bridges between consensus clusters and anomalies
-  - Non-collapse of contradiction (Möbius / dual-stroke motifs)
-- Consistent lab-notebook + depth aesthetic
-- Dark-mode first polish on plan gate, live status, dossier views
+- [x] Integrate Logo Option 3 (Contradiction Ring) in R1TopRail header
+- [x] Add favicon.svg with Contradiction Ring mark
+- [x] Update AnimatedPipelineHero — add contradiction bridge node with dual-stroke Möbius motif
+- [x] Dark-mode polish: PlanConfirmationPanel, LiveStatusBanner, dossier status badges
+- [ ] OG image + public marketing branding parity
+
+**Status: In progress**
 
 ---
 
@@ -114,8 +115,8 @@ This plan implements the recommendations from the August 2026 platform audit. It
 | Phase | Status          | Notes                                      |
 |-------|-----------------|--------------------------------------------|
 | 1     | Complete        | PR #188 merged                            |
-| 2     | In progress     | Epistemic transparency & user guidance     |
-| 3     | Planned        | After Phase 2                              |
+| 2     | Complete        | PR #190 merged                            |
+| 3     | In progress     | Core branding shipped; OG/marketing parity remains |
 | 4     | Planned         | Can partially overlap with later phases    |
 | 5     | Ongoing         | This document is the living artifact       |
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Contradiction Ring (Option 3): rounded hexagon + dual Möbius-like parallel strokes -->
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#0A0E1A"/>
+  <!-- Rounded hexagon outline -->
+  <path d="M16 3 L27 9.5 L27 22.5 L16 29 L5 22.5 L5 9.5 Z"
+        stroke="#2DD4BF" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
+  <!-- Upper stroke (cyan) — consensus cluster arc -->
+  <path d="M10 13 C12.5 9.75 15 9.75 16 16 C17 22.25 19.5 22.25 22 19"
+        stroke="#2DD4BF" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <!-- Lower stroke (amber) — anomaly bridge arc -->
+  <path d="M10 19 C12.5 22.25 15 22.25 16 16 C17 9.75 19.5 9.75 22 13"
+        stroke="#F59E0B" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>
