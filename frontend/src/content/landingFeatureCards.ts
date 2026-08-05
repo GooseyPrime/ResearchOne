@@ -27,7 +27,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: Scale,
     headline: 'Contradictions, preserved',
     description:
-      'We do not silently smooth disagreement. Conflicting claims survive into the final report—and investigation paths actively seek outlier bridges when the claim may hold truth.',
+      'We do not silently smooth disagreement. Conflicting claims survive, outlier bridges included.',
     metric: '0 silent rewrites',
   },
   {
