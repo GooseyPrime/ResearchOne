@@ -129,19 +129,14 @@ export function resolvePostureFamily({
   steelmanMode: string;
   intentId: string;
 }): PostureFamily {
-  // Steelman overrides skeptic when both are active
-  if (
-    steelmanMode !== 'off' ||
-    intentId === 'position_brief'
-  ) {
+  // "steelmanMode" is used by multiple intents (often "standard"), but the *posture family*
+  // should only be Steelman for explicit position-brief style runs.
+  if (intentId === 'position_brief' || steelmanMode === 'as_product') {
     return POSTURE_FAMILIES.find((p) => p.id === 'steelman')!;
   }
-  if (
-    skepticMode !== 'off' ||
-    intentId === 'investigation' ||
-    intentId === 'adjudication' ||
-    intentId === 'story_verification'
-  ) {
+
+  // "challenge" posture corresponds to a skeptic gate (not sidebar-only annotations).
+  if (skepticMode === 'gate') {
     return POSTURE_FAMILIES.find((p) => p.id === 'challenge')!;
   }
   return POSTURE_FAMILIES.find((p) => p.id === 'neutral')!;
