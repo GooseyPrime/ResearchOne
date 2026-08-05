@@ -28,7 +28,7 @@ const KIND_META: Record<
     title: 'Living Report',
     price: '1 token / 2 months per report',
     description:
-      'Continuous monitoring of new sources. When Parallel Monitor signals a material change, we run the same revision pipeline as a manual request — PolicyOne, no shortcut prompts.',
+      'Continuous monitoring of new sources. When Parallel Monitor signals a material change, we run the same revision pipeline as a manual request — full verification workflow, no shortcut prompts.',
     icon: Radar,
   },
   reverse_citation_watch: {
