@@ -123,7 +123,7 @@ export function SampleReportView() {
 
               <div data-ev-id="ev_df0d20a3f9" className="p-4 border-b border-r1-border flex items-center gap-2">
                 <GitBranch className="w-4 h-4 text-r1-amber" />
-                <span data-ev-id="ev_e90873dfe8" className="r1-mono-label text-[10px]">CONTRADICTION_LEDGER</span>
+                <span data-ev-id="ev_e90873dfe8" className="r1-mono-label text-[10px]">SOURCE_DISAGREEMENTS</span>
               </div>
               <div data-ev-id="ev_0faf268a0f" className="p-5">
                 {report.contradictions.map((contradiction) =>

@@ -71,8 +71,7 @@ export default function MethodologyPage() {
                 'Challenges claim confidence levels',
                 'Identifies unsupported assertions',
                 'Flags potential confirmation bias',
-                'Surfaces contradictory evidence'].
-                map((item, i) =>
+                'Surfaces contradictory evidence'].map((item, i) =>
                 <li data-ev-id="ev_0dc4f9f082" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
                     <span data-ev-id="ev_367358ce9f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-skeptic" />
                     {item}
@@ -99,8 +98,7 @@ export default function MethodologyPage() {
                 'Source disagreements are surfaced, not hidden',
                 'Each conflict includes source attribution',
                 'Severity levels help prioritize review',
-                'Resolution notes when conflicts are resolved'].
-                map((item, i) =>
+                'Resolution notes when conflicts are resolved'].map((item, i) =>
                 <li data-ev-id="ev_4739b33387" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
                     <span data-ev-id="ev_ac7058838a" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-amber" />
                     {item}

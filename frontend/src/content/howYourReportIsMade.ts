@@ -15,6 +15,6 @@ export const HOW_YOUR_REPORT_IS_MADE_STEPS = [
 export const SKEPTIC_MARKETING_ONE_LINER =
   'Research that argues against itself before it concludes.';
 
-/** Celebrates outlier bridging without forcing adversarial mode on every user. */
+/** Celebrates outlier bridging without forcing a challenge workflow on every user. */
 export const OUTLIER_BRIDGING_ONE_LINER =
   'When investigation is the goal, we keep relevant minority findings and alternative interpretations in view—without forcing every question into a challenge workflow.';
