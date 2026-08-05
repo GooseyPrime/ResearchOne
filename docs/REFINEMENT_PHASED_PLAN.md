@@ -68,7 +68,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 
 ### Deliverables
 - [x] Integrate Logo Option 3 (Contradiction Ring) in R1TopRail header
-- [x] Replace favicon.svg with Contradiction Ring mark
+- [x] Add favicon.svg with Contradiction Ring mark
 - [x] Update AnimatedPipelineHero — add contradiction bridge node with dual-stroke Möbius motif
 - [x] Dark-mode polish: PlanConfirmationPanel, LiveStatusBanner, dossier status badges
 
@@ -115,7 +115,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 |-------|-----------------|--------------------------------------------|
 | 1     | Complete        | PR #188 merged                            |
 | 2     | Complete        | PR #190 merged                            |
-| 3     | In progress     | Visual & branding alignment                |
+| 3     | Complete        | PR #191 completed visual & branding work   |
 | 4     | Planned         | Can partially overlap with later phases    |
 | 5     | Ongoing         | This document is the living artifact       |
 
