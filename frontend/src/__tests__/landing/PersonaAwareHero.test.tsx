@@ -95,10 +95,10 @@ describe('PersonaAwareHero — forcePersona', () => {
     });
   });
 
-  it('forcePersona="uap" renders the UAP variant', async () => {
+  it('forcePersona="uap" renders the neutral investigative variant', async () => {
     renderHero({ forcePersona: 'uap' });
     await waitFor(() => {
-      expect(screen.getByText(/weak signals on the record/i)).toBeInTheDocument();
+      expect(screen.getByText(/contested public-record questions/i)).toBeInTheDocument();
     });
   });
 

@@ -454,8 +454,8 @@ export default function PlanConfirmationPanel({
             </span>
           </div>
           <p className="text-slate-500 text-[11px] leading-snug">
-            ResearchOne preserves contradictions and may seek supporting evidence for non-mainstream claims when the
-            intent calls for investigation or adjudication (PolicyOne stance).
+            When the selected intent calls for investigation or adjudication, ResearchOne gathers supporting and
+            opposing evidence and keeps genuine source disagreements visible.
           </p>
         </div>
 

@@ -15,7 +15,7 @@ const VIEW_W = PIPELINE_SCHEMATIC_VIEWBOX.width;
 const VIEW_H = PIPELINE_SCHEMATIC_VIEWBOX.height;
 
 export const PIPELINE_SCHEMATIC_ARIA_LABEL =
-  'Illustrative ResearchOne specialist flow from intake through versioned reporting, with an optional adversarial verification loop';
+  'Illustrative ResearchOne specialist flow from intake through versioned reporting, with an optional challenge verification loop';
 
 function hexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
@@ -233,7 +233,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
                   textAnchor="middle"
                   className="fill-r1-accent text-[11px]"
                 >
-                  + adversarial review
+                  + challenge review
                 </text>
               </g>
             ) : null}

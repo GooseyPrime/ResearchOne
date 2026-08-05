@@ -56,13 +56,13 @@ export default function MethodologyPage() {
             {/* Skeptic check */}
             <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-skeptic/20">
               <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-skeptic/50 text-r1-skeptic">
-                SKEPTIC_CHECK
+                CHALLENGE_REVIEW
               </span>
               <h3 data-ev-id="ev_d800821cdc" className="text-xl font-bold text-r1-heading mb-4">
                 Why we argue against our own draft
               </h3>
               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
-                For verification-heavy or high-stakes work, ResearchOne can run adversarial checks before
+                For verification-heavy or high-stakes work, ResearchOne can run independent challenge checks before
                 finalizing a report. These checks challenge important conclusions, look for weak
                 corroboration, and surface alternative interpretations.
               </p>
@@ -84,19 +84,19 @@ export default function MethodologyPage() {
             {/* Contradiction preservation */}
             <div data-ev-id="ev_587712de5f" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-amber/20">
               <span data-ev-id="ev_5dffdd583e" className="r1-tag mb-4 inline-flex r1-tag-amber">
-                CONTRADICTION_LEDGER
+                SOURCE_DISAGREEMENTS
               </span>
               <h3 data-ev-id="ev_fabd1bd0c7" className="text-xl font-bold text-r1-heading mb-4">
                 Truth is messy. Our reports reflect that.
               </h3>
               <p data-ev-id="ev_7f41472e59" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
-                Unlike systems that silently resolve conflicts, ResearchOne preserves 
-                contradictions in a dedicated ledger. When sources disagree, we show you 
+                Unlike systems that silently resolve conflicts, ResearchOne preserves
+                source disagreements in a dedicated review layer. When sources disagree, we show you
                 both perspectives with full context.
               </p>
               <ul data-ev-id="ev_fb2d7422a3" className="flex flex-col gap-2">
                 {[
-                'Contradictions are surfaced, not hidden',
+                'Source disagreements are surfaced, not hidden',
                 'Each conflict includes source attribution',
                 'Severity levels help prioritize review',
                 'Resolution notes when conflicts are resolved'].

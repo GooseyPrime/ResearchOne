@@ -29,7 +29,7 @@ export default function HeroPipelineVisual() {
       <p className="sr-only">
         This example ResearchOne flow has four phases. Phase one, Plan, includes the Planner and Discovery stages.
         Phase two, Retrieve and Read, includes the Retriever and Retriever Analysis stages.
-        Phase three, Reason and Verify, includes the Reasoner and Skeptic stages when additional adversarial checking
+        Phase three, Reason and Verify, includes the Reasoner and Skeptic stages when additional challenge checking
         is needed.
         Phase four, Write and Cite, includes the Drafting, Verifier, Report, and Recordkeeping stages.
       </p>

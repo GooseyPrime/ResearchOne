@@ -95,7 +95,7 @@ const MODES: Array<{
     icon: GitBranch,
     color: 'text-research-blue',
     definition:
-      'A meta-analytical type designed to find underlying frameworks connecting disparate fields of high strangeness or fringe physics (e.g., correlating consciousness studies with quantum entanglement or UAP observables).',
+      'A meta-analytical type designed to find underlying frameworks across sparse, heterogeneous, or weakly connected evidence sets.',
     capabilities: [
       'Large-scale pattern recognition',
       'Statistical correlation of margin data',
@@ -146,10 +146,10 @@ export default function ResearchV2GuidePage() {
       <div className="card p-4 flex items-start gap-3 border border-indigo-900/30">
         <HelpCircle className="text-slate-500 flex-shrink-0 mt-0.5" size={18} />
         <p className="text-sm text-slate-400 leading-relaxed">
-          Deep Research uses a reasoning-first policy (see <span className="font-mono">ResearchOne PolicyOne</span>):
+          Deep Research uses a reasoning-first research policy:
           the platform shifts agent configurations and models by research type to support literature rigor, investigative
-          tracing, patent whitespace, applied feasibility, or cross-domain correlation — without assuming a single
-          narrative by default. Pages you need in the corpus must be listed under{' '}
+          tracing, patent whitespace, applied feasibility, or cross-domain correlation. Pages you need in the corpus
+          must be listed under{' '}
           <span className="text-slate-200">Attach supporting files / URLs</span> on the research form; URLs mentioned
           only in the query are not auto-fetched.
         </p>
@@ -163,7 +163,7 @@ export default function ResearchV2GuidePage() {
         <p className="text-sm text-slate-300 leading-relaxed">
           V2 default primaries are chosen by <span className="text-slate-100">inference-time behavior</span> under
           ResearchOne's reasoning-first system prompt — not by training labels alone. Defaults must pass live routing
-          checks: preserve anomalous claims literally, avoid debunk-by-recall, and keep chain-of-thought intact on
+          checks: preserve source fidelity, avoid unsupported corrective detours, and keep chain-of-thought intact on
           reasoner roles. That typically means open-weights thinking models with light RLHF, abliterated weights, or
           steerable low-refusal instruct lines with verified multi-upstream redundancy on critical paths. RLHF
           refusal-aligned closed pipelines and unabliterated instruct bases are{' '}
@@ -179,10 +179,10 @@ export default function ResearchV2GuidePage() {
             </div>
             <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
               <li>Follow the operator system prompt as authority</li>
-              <li>Preserve anomalous claims literally — no auto-correct, no debunking</li>
+              <li>Preserve operator intent and source language without silent rewriting</li>
               <li>Keep R1-style chain-of-thought reasoning intact (reasoner role)</li>
-              <li>Produce structured JSON / markdown without alignment filtering</li>
-              <li>Allow skeptic / internal challenger roles to stress-test mainstream consensus</li>
+              <li>Produce structured JSON / markdown without hidden alignment filtering</li>
+              <li>Allow skeptic / internal challenger roles to stress-test important conclusions</li>
             </ul>
           </div>
           <div className="rounded-md border border-red-800/40 bg-red-950/20 p-3 space-y-1">
@@ -191,9 +191,9 @@ export default function ResearchV2GuidePage() {
               <span className="text-xs font-semibold text-red-300">What V2 primaries MUST NOT do</span>
             </div>
             <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
-              <li>Refuse anomalous queries (no live RLHF refusal head)</li>
-              <li>Silently sanitize, omit, or debunk suppressed-knowledge claims</li>
-              <li>Inject mainstream-consensus counter-sources not in the corpus</li>
+              <li>Refuse lawful research queries by default</li>
+              <li>Silently sanitize, omit, or rewrite claims that are present in the provided record</li>
+              <li>Inject counter-sources that are not in the corpus</li>
               <li>Route through a closed-source moderation pipeline we do not control</li>
               <li>Be an aligned-base Llama / Qwen / DeepSeek instruct slug without abliteration</li>
             </ul>
@@ -212,7 +212,7 @@ export default function ResearchV2GuidePage() {
 
         <p className="text-xs text-slate-500">
           Full criteria: see <span className="font-mono">docs/V2_MODEL_SELECTION_CRITERIA.md</span> in the repository.
-          Policy: <span className="font-mono">ResearchOne PolicyOne</span>.
+          Policy: <span className="font-mono">reasoning-first research policy</span>.
         </p>
       </div>
 

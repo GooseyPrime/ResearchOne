@@ -37,7 +37,7 @@ export function MethodologyPipeline() {
           </h2>
           <p data-ev-id="ev_65f9d76f57" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '16px auto 0' }} className="text-lg text-r1-muted leading-relaxed text-center">
             ResearchOne adapts specialist routing to the objective. This view shows a common deep-research
-            path and where adversarial review can be applied.
+            path and where challenge review can be applied.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export function MethodologyPipeline() {
                 {isSkeptic &&
                 <div data-ev-id="ev_23492da6c8" className="absolute -top-2 -right-2">
                     <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-skeptic/50 text-r1-skeptic bg-r1-canvas">
-                      ADVERSARIAL
+                      CHALLENGE
                     </span>
                   </div>
                 }
@@ -117,7 +117,7 @@ export function MethodologyPipeline() {
         {/* Disclaimer */}
         <div data-ev-id="ev_cd72f40668" className="mt-16 w-full">
           <p data-ev-id="ev_c086f371fd" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '0 auto' }} className="text-sm text-r1-muted border border-r1-border rounded-lg p-4 bg-r1-panel text-center">
-            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not claim to detect absolute truth. It structures data, preserves contradictions, and forces conclusions through adversarial review to maximize epistemic quality.
+            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not claim to detect absolute truth. It structures data, keeps source disagreements visible, and runs challenge review when needed to strengthen the final report.
           </p>
         </div>
       </div>

@@ -72,21 +72,20 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   },
 
   // ──────────────────────────────────────────────────────────────
-  // UAP / paranormal disclosure community.
-  // Emphasizes weak-signal preservation and absence of institutional
-  // gatekeeping per the strategic doc.
+  // Internally routed persona id preserved for tests/beam selection.
+  // Public-facing copy stays neutral and professional.
   // ──────────────────────────────────────────────────────────────
   uap: {
-    eyebrow: 'For non-consensus research',
-    headline: 'A research engine that keeps weak signals on the record.',
+    eyebrow: 'For investigative research',
+    headline: 'A research engine for contested public-record questions.',
     subhead:
-      'Built on open-weight models with no alignment filter overriding what the sources actually say. ' +
-      'Convergence Analysis mode: map weak signals, preserve contradictions, surface what the official story omits.',
+      'Built for complex questions where records, timelines, and source accounts do not line up cleanly. ' +
+      'ResearchOne maps the evidence, keeps source disagreements visible, and helps you review competing interpretations without flattening them.',
     ctas: [
-      { label: 'See a Convergence Analysis report', to: '/sample-report?topic=anomaly-correlation', variant: 'primary' },
-      { label: 'How it works',                       to: '/methodology',                            variant: 'secondary' },
+      { label: 'See an investigative report', to: '/sample-report?topic=investigative', variant: 'primary' },
+      { label: 'How it works',                to: '/methodology',                  variant: 'secondary' },
     ],
-    proofLine: 'Specialist verification when needed \u00B7 Five source-corroboration tiers from established_fact to speculation \u00B7 You see the reasoning, not just the verdict.',
+    proofLine: 'Specialist verification when needed \u00B7 Source-corroboration tiers stay visible \u00B7 You see the evidence trail, not just the verdict.',
   },
 
   // ──────────────────────────────────────────────────────────────

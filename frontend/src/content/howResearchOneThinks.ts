@@ -9,11 +9,11 @@
 // ---------------------------------------------------------------------------
 
 export const HOW_RESEARCHONE_THINKS_SHORT =
-  'ResearchOne routes every query through an intent classifier, picks an investigation posture ' +
+  'ResearchOne routes every query through an intent classifier, picks a research posture ' +
   '(neutral, challenge, or steelman), then runs a multi-agent pipeline: plan → retrieve → reason → ' +
-  'challenge (when warranted) → synthesize → verify. Contradictions between sources are preserved, ' +
-  'never silently resolved. For investigation and adjudication paths, the system actively seeks ' +
-  'supporting evidence for non-mainstream claims — it does not default to debunking.';
+  'optional challenge → synthesize → verify. Source disagreements stay visible, never silently ' +
+  'flattened. For investigation and verification paths, the system gathers supporting and opposing ' +
+  'evidence before finalizing the report.';
 
 // ---------------------------------------------------------------------------
 // Expandable methodology sections
@@ -31,7 +31,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
     heading: 'Intent routing',
     body:
       'Before planning starts, ResearchOne classifies your query into one of 16+ research intents — ' +
-      'from encyclopedic fact retrieval to adversarial investigation. The detected intent selects the ' +
+      'from encyclopedic fact retrieval to investigation or verification. The detected intent selects the ' +
       'orchestration profile: which specialist agents run, which are skipped, and what epistemic posture ' +
       'the pipeline adopts. You see the detected intent and its confidence at the plan gate and can ' +
       'redirect to a different intent if the classification missed the mark.',
@@ -43,27 +43,26 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
       'Sources are retrieved and read before any reasoning is written. The reasoning agent then drafts ' +
       'findings grounded in those sources, with a citation for every claim. A separate challenge step ' +
       '(skeptic agent) then argues against the draft — catching unsupported assertions, weak corroboration, ' +
-      'and potential confirmation bias — before synthesis. This means conclusions face internal adversarial ' +
-      'pressure before you see them.',
+      'and potential confirmation bias — before synthesis. This means conclusions go through an internal ' +
+      'challenge review before you see them.',
   },
   {
     id: 'policyone',
-    heading: 'PolicyOne stance',
+    heading: 'Investigation and verification paths',
     body:
-      'PolicyOne governs investigation, adjudication, story-verification, and position-brief paths. ' +
-      'On these paths the pipeline assumes that fringe or non-mainstream claims may contain truth and ' +
-      'actively seeks supporting evidence rather than defaulting to consensus debunking. ' +
-      'The goal is a symmetric account: the strongest case for and against, with outlier evidence surfaced ' +
-      'and bridged to the mainstream cluster rather than discarded.',
+      'For investigation, adjudication, story-verification, and position-brief paths, the pipeline gathers ' +
+      'supporting and opposing evidence and compares them side by side. The goal is a balanced account: ' +
+      'the strongest case for and against, with relevant minority findings or alternative interpretations ' +
+      'included when they matter to the research goal.',
   },
   {
     id: 'contradiction-preservation',
-    heading: 'Contradiction preservation',
+    heading: 'Source disagreements stay visible',
     body:
-      'When sources genuinely disagree, ResearchOne preserves that disagreement in a contradiction ledger. ' +
+      'When sources genuinely disagree, ResearchOne preserves that disagreement in a source-disagreement ledger. ' +
       'Conflicting claims survive into the final report with full source attribution and severity levels. ' +
       'The system never silently rewrites, smooths, or collapses genuine conflict into a false consensus. ' +
-      'You can inspect every preserved contradiction and its supporting sources.',
+      'You can inspect every preserved disagreement and its supporting sources.',
   },
 ];
 
@@ -72,12 +71,12 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
 // ---------------------------------------------------------------------------
 
 export const OUTLIER_BRIDGING_MARKETING =
-  'On investigation paths, ResearchOne does not stop at the consensus cluster. It actively bridges ' +
-  'outlier evidence — minority findings, contested data, alternative interpretations — back into the ' +
-  'main account so you see the full evidential landscape, not a curated majority view.';
+  'On investigation paths, ResearchOne includes relevant minority findings, contested data, and alternative ' +
+  'interpretations when they matter to the question—so you can see the full evidential landscape, not just ' +
+  'the easiest summary.';
 
 export const OUTLIER_BRIDGING_ONE_LINER =
-  'Outlier evidence bridged to consensus — not discarded.';
+  'Relevant minority findings remain in view when they matter.';
 
 // ---------------------------------------------------------------------------
 // Posture families
@@ -97,7 +96,7 @@ export const POSTURE_FAMILIES: readonly PostureFamily[] = [
     id: 'neutral',
     label: 'Neutral',
     shortDescription:
-      'Encyclopedic or survey posture. The pipeline retrieves, synthesizes, and verifies without a dedicated adversarial challenge step. Best for factual reports, how-to guides, and reference lookups.',
+      'Encyclopedic or survey posture. The pipeline retrieves, synthesizes, and verifies without a dedicated challenge step. Best for factual reports, how-to guides, and reference lookups.',
     badgeClass: 'text-slate-300 border-slate-600',
   },
   {
@@ -148,15 +147,15 @@ export function resolvePostureFamily({
 
 export const INTENT_HELP_TEXT: Record<string, string> = {
   factual_report:
-    'Closed-record encyclopedic answer. The pipeline retrieves established sources and synthesizes a factual summary. No adversarial challenge step.',
+    'Closed-record encyclopedic answer. The pipeline retrieves established sources and synthesizes a factual summary. No dedicated challenge step.',
   survey:
     'Layered exposition across multiple sub-topics or viewpoints. Neutral posture; the pipeline maps the terrain rather than adjudicating claims.',
   adjudication:
     'Fact-check a specific claim or proposition. Challenge posture: the pipeline argues for and against the claim before delivering a verdict with evidence.',
   investigation:
-    'Symmetric deep-dive on a contested or complex topic. PolicyOne applies: outlier evidence is bridged, not discarded. Challenge posture.',
+    'Symmetric deep-dive on a complex topic. Challenge posture with supporting and opposing evidence gathered side by side.',
   story_verification:
-    'Verify a specific narrative or reported account claim-by-claim. Challenge posture with contradiction preservation.',
+    'Verify a specific narrative or reported account claim-by-claim. Challenge posture with source disagreements kept visible.',
   opportunity_discovery:
     'Surface under-served problems, market gaps, or domain opportunities. Neutral-to-survey posture focused on pattern recognition.',
   feasibility:
@@ -233,7 +232,6 @@ export function buildIntentOverrideRefineInstruction(
 // ---------------------------------------------------------------------------
 
 export const ONBOARDING_HOW_IT_THINKS_TEASER =
-  'ResearchOne uses an intent-aware multi-agent pipeline: it classifies your research goal, picks an ' +
-  'investigation posture (neutral, challenge, or steelman), and runs a reasoning-first pipeline that ' +
-  'preserves contradictions and bridges outlier evidence — it does not force a consensus answer. ' +
-  'You review and approve the plan before any retrieval runs.';
+  'ResearchOne uses an intent-aware multi-agent pipeline: it classifies your research goal, picks a ' +
+  'research posture (neutral, challenge, or steelman), and runs a reasoning-first pipeline that keeps ' +
+  'source disagreements visible when they matter. You review and approve the plan before any retrieval runs.';

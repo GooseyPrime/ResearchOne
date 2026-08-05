@@ -51,7 +51,7 @@ export function FeatureVaultList() {
                   </h3>
                   {isSkeptic &&
                   <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-skeptic/50 text-r1-skeptic">
-                      ADVERSARIAL
+                      CHALLENGE
                     </span>
                   }
                 </div>

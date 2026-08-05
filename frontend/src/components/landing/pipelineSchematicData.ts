@@ -73,7 +73,7 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agentKind: 'synthesizer',
     input: 'Atomic claims',
     output: 'Draft synthesis',
-    rationale: 'Drafts the narrative spine while preserving tier and contradiction signals.',
+    rationale: 'Drafts the narrative spine while preserving tier and source-disagreement signals.',
   },
   {
     index: 7,
@@ -81,8 +81,8 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agent: 'Skeptic',
     agentKind: 'skeptic',
     input: 'Draft synthesis',
-    output: 'Counter-claims + preserved contradictions',
-    rationale: 'Adversarial review pass that pressure-tests key claims when verification-heavy analysis is selected.',
+    output: 'Counter-claims + preserved disagreements',
+    rationale: 'Challenge review pass that pressure-tests key claims when verification-heavy analysis is selected.',
   },
   {
     index: 8,
@@ -100,7 +100,7 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
     agentKind: 'renderer',
     input: 'Bound claims',
     output: 'Document v1.0',
-    rationale: 'Produces the reader-facing document with citations, tiers, and preserved tension.',
+    rationale: 'Produces the reader-facing document with citations, tiers, and preserved source context.',
   },
   {
     index: 10,
