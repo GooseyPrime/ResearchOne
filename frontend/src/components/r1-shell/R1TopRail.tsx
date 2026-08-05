@@ -53,12 +53,35 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
               className="flex items-center gap-3 group r1-focus-ring rounded">
 
               <div data-ev-id="ev_0df0dbb5af" className="relative w-8 h-8">
-                {/* Logo mark - abstract pipeline/vault icon */}
-                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" className="w-full h-full">
-                  <rect data-ev-id="ev_60e74c806c" x="2" y="8" width="28" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" className="text-r1-border-strong" />
-                  <circle data-ev-id="ev_09a97be0ff" cx="10" cy="16" r="3" className="fill-r1-cyan" />
-                  <circle data-ev-id="ev_71154d503e" cx="22" cy="16" r="3" className="fill-r1-amber" />
-                  <line data-ev-id="ev_955a88ffe4" x1="13" y1="16" x2="19" y2="16" stroke="currentColor" strokeWidth="1.5" className="text-r1-muted" />
+                {/* Logo mark — Contradiction Ring (Option 3): rounded hexagon with dual parallel Möbius strokes */}
+                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" aria-label="ResearchOne Contradiction Ring logo" className="w-full h-full">
+                  {/* Rounded hexagon outline */}
+                  <path
+                    d="M16 2 L27 8.5 L27 23.5 L16 30 L5 23.5 L5 8.5 Z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                    className="text-r1-border-strong"
+                    fill="none"
+                  />
+                  {/* Upper parallel stroke — one side of the Möbius loop */}
+                  <path
+                    d="M10 13 Q13 10 16 13 Q19 16 22 13"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    fill="none"
+                    className="text-r1-cyan"
+                  />
+                  {/* Lower parallel stroke — bridging anomaly/consensus (crosses upper at midpoint) */}
+                  <path
+                    d="M10 19 Q13 22 16 19 Q19 16 22 19"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    fill="none"
+                    className="text-r1-amber"
+                  />
                 </svg>
               </div>
               <span data-ev-id="ev_1c62c7b621" className="text-r1-heading font-semibold tracking-tight text-lg">
