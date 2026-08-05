@@ -27,7 +27,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: Scale,
     headline: 'Contradictions, preserved',
     description:
-      'We do not silently smooth disagreement. Conflicting claims survive into the final report. On investigation paths, outlier evidence is bridged to the consensus cluster — not discarded.',
+      'We do not silently smooth disagreement. Conflicting claims survive, outlier bridges included.',
     metric: '0 silent rewrites',
   },
   {
@@ -49,5 +49,3 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     metric: 'BYOK · Sovereign',
   },
 ];
-
-export { OUTLIER_BRIDGING_ONE_LINER } from './howResearchOneThinks';
