@@ -71,8 +71,9 @@ This plan implements the recommendations from the August 2026 platform audit. It
 - [x] Add favicon.svg with Contradiction Ring mark
 - [x] Update AnimatedPipelineHero — add contradiction bridge node with dual-stroke Möbius motif
 - [x] Dark-mode polish: PlanConfirmationPanel, LiveStatusBanner, dossier status badges
+- [ ] OG image + public marketing branding parity
 
-**Status: Complete (PR #191)**
+**Status: In progress**
 
 ---
 
@@ -115,7 +116,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 |-------|-----------------|--------------------------------------------|
 | 1     | Complete        | PR #188 merged                            |
 | 2     | Complete        | PR #190 merged                            |
-| 3     | Complete        | PR #191 completed visual & branding work   |
+| 3     | In progress     | Core branding shipped; OG/marketing parity remains |
 | 4     | Planned         | Can partially overlap with later phases    |
 | 5     | Ongoing         | This document is the living artifact       |
 

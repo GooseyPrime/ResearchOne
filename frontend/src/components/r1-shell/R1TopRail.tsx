@@ -66,7 +66,7 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
                   />
                   {/* Upper parallel stroke — one side of the Möbius loop */}
                   <path
-                    d="M10 13 Q13 10 16 13 Q19 16 22 13"
+                    d="M10 13 C12.5 9.75 15 9.75 16 16 C17 22.25 19.5 22.25 22 19"
                     stroke="currentColor"
                     strokeWidth="1.5"
                     strokeLinecap="round"
@@ -75,7 +75,7 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
                   />
                   {/* Lower parallel stroke — bridging anomaly/consensus (crosses upper at midpoint) */}
                   <path
-                    d="M10 19 Q13 22 16 19 Q19 16 22 19"
+                    d="M10 19 C12.5 22.25 15 22.25 16 16 C17 9.75 19.5 9.75 22 13"
                     stroke="currentColor"
                     strokeWidth="1.5"
                     strokeLinecap="round"
