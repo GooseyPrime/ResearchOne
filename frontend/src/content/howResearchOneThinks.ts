@@ -171,21 +171,21 @@ export const INTENT_HELP_TEXT: Record<string, string> = {
   literature_review:
     'Academic-register synthesis of peer-reviewed sources. Neutral posture; citation quality and recency weighted heavily.',
   comparative:
-    'Structured comparison across options along consistent dimensions. Neutral posture; each dimension evaluated independently.',
+    'Structured comparison across options along consistent dimensions. Challenge posture: a skeptic gate critiques each option before synthesis.',
   how_to:
     'Procedural guide answering "how do I…" questions. Lightweight neutral posture focused on actionable steps.',
   recommendation:
-    'Decision support with elicited constraints. Neutral posture that surfaces trade-offs against stated criteria.',
+    'Decision support with elicited constraints. Challenge posture: the draft recommendation is critiqued before synthesis to surface weak assumptions.',
   exploratory:
     'Discovery and serendipity mode. Broad neutral retrieval to map unknown territory before committing to a direction.',
   position_brief:
     'Rhetorical aid: strongest case for a stated position. Steelman posture — the pipeline builds the most compelling argument, then offers symmetric counter-case.',
   timeline:
-    'Chronological ordering of events. Neutral posture; temporal accuracy and source corroboration prioritized.',
+    'Chronological ordering of events. Challenge posture: the pipeline cross-checks for inconsistencies and weak sourcing before synthesis.',
   reference_lookup:
     'Single-fact or single-definition retrieval. Lightest pipeline — fast neutral retrieval, no challenge step.',
   legacy:
-    'Pre-taxonomy run; intent inferred conservatively. Neutral posture with standard challenge configuration.',
+    'Pre-taxonomy run; intent inferred conservatively. Challenge posture with a skeptic gate before synthesis.',
 };
 
 // ---------------------------------------------------------------------------
