@@ -12,10 +12,59 @@ import {
   resolveObjectiveFromIntent,
 } from './researchBrief';
 
-const LEXICAL_CONFIDENCE = 0.92;
-const LLM_LOW_CONFIDENCE_CAP = 0.84;
+/** High confidence only when lexical evidence is strong. */
+const LEXICAL_CONFIDENCE_STRONG = 0.92;
+/** Single specific-intent hit — still useful but plan gate should show medium. */
+const LEXICAL_CONFIDENCE_MODERATE = 0.78;
 
-function lexicalLayer(query: string, supplemental?: string): { intent: IntentId; matches: number } | null {
+/**
+ * Intents with relatively precise trigger language. A single pattern hit is
+ * enough to accept the lexical fast path for these ids.
+ */
+const HIGH_SPECIFICITY_INTENTS = new Set<IntentId>([
+  'adjudication',
+  'story_verification',
+  'literature_review',
+  'reference_lookup',
+  'position_brief',
+  'timeline',
+  'implementation',
+  'feasibility',
+  'opportunity_discovery',
+  'comparative',
+  'how_to',
+  'recommendation',
+]);
+
+/** Prefer more specific intents when hit counts are tied. */
+const SPECIFICITY_RANK: IntentId[] = [
+  'reference_lookup',
+  'story_verification',
+  'adjudication',
+  'position_brief',
+  'literature_review',
+  'timeline',
+  'implementation',
+  'feasibility',
+  'opportunity_discovery',
+  'comparative',
+  'how_to',
+  'recommendation',
+  'investigation',
+  'survey',
+  'exploratory',
+  'factual_report',
+];
+
+function specificityScore(id: IntentId): number {
+  const idx = SPECIFICITY_RANK.indexOf(id);
+  return idx === -1 ? SPECIFICITY_RANK.length : idx;
+}
+
+function lexicalLayer(
+  query: string,
+  supplemental?: string
+): { intent: IntentId; matches: number; confidence: number } | null {
   const text = `${query}\n${supplemental ?? ''}`.toLowerCase();
   const hits: Array<{ id: IntentId; n: number }> = [];
   for (const def of Object.values(INTENT_TAXONOMY)) {
@@ -27,11 +76,47 @@ function lexicalLayer(query: string, supplemental?: string): { intent: IntentId;
     }
     if (n > 0) hits.push({ id: def.id, n });
   }
-  if (hits.length === 1) return { intent: hits[0].id, matches: hits[0].n };
-  if (hits.length > 1) {
-    hits.sort((a, b) => b.n - a.n);
-    if (hits[0].n > hits[1].n) return { intent: hits[0].id, matches: hits[0].n };
+  if (hits.length === 0) return null;
+
+  hits.sort((a, b) => {
+    if (b.n !== a.n) return b.n - a.n;
+    return specificityScore(a.id) - specificityScore(b.id);
+  });
+
+  const top = hits[0];
+  const runner = hits[1];
+
+  if (hits.length === 1) {
+    // Broad single-token intents (e.g. exploratory "interesting") are brittle —
+    // defer to the LLM unless the intent is high-specificity or multi-hit.
+    if (HIGH_SPECIFICITY_INTENTS.has(top.id) || top.n >= 2) {
+      return {
+        intent: top.id,
+        matches: top.n,
+        confidence: top.n >= 2 ? LEXICAL_CONFIDENCE_STRONG : LEXICAL_CONFIDENCE_MODERATE,
+      };
+    }
+    return null;
   }
+
+  // Multiple intents matched: require a clear margin, else LLM.
+  if (top.n > runner.n) {
+    return {
+      intent: top.id,
+      matches: top.n,
+      confidence: top.n >= 2 ? LEXICAL_CONFIDENCE_STRONG : LEXICAL_CONFIDENCE_MODERATE,
+    };
+  }
+
+  // Tie on hit count — prefer higher-specificity intent only when ranks differ.
+  if (specificityScore(top.id) < specificityScore(runner.id)) {
+    return {
+      intent: top.id,
+      matches: top.n,
+      confidence: LEXICAL_CONFIDENCE_MODERATE,
+    };
+  }
+
   return null;
 }
 
@@ -59,7 +144,7 @@ export async function classifyIntent(
     const def = getIntentById(lex.intent);
     return defaultResearchBrief(
       lex.intent,
-      LEXICAL_CONFIDENCE,
+      lex.confidence,
       `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
     );
   }
@@ -111,9 +196,8 @@ export async function classifyIntent(
 
   // Soft cap for low-confidence results so the gate UI can flag them
   if (brief.confidence < 0.85) {
-    brief.confidence = Math.min(brief.confidence, LLM_LOW_CONFIDENCE_CAP);
+    brief.confidence = Math.min(brief.confidence, 0.84);
   }
 
   return brief;
 }
-
