@@ -263,11 +263,12 @@ export default function PlanConfirmationPanel({
       setLocalPayload(res.revisedPlan);
       setLocalPlanId(res.planId);
       setRounds(res.refinementRounds);
-      setIntentOverrideId('');
-      onGatePlanMutated?.();
       if (returnedIntentId === option.id) {
+        setIntentOverrideId('');
+        onGatePlanMutated?.();
         onNotify('success', `Plan re-routed to "${option.label}".`);
       } else {
+        // Keep select populated so the user can retry; do not fire gate-mutated.
         onNotify('error', 'The plan could not be re-routed to the selected goal. Please review the updated plan and try again.');
       }
     } catch (e) {
