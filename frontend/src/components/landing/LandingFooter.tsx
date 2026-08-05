@@ -8,7 +8,7 @@ export default function LandingFooter() {
         <div className="mb-8 border-b border-white/10 pb-8">
           <p className="font-serif text-lg text-r1-text">ResearchOne</p>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-r1-text-muted">
-            We do not sanitize. We do not debunk by recall. We do not silently smooth contradictions.
+            Multi-agent research platform. Citation-backed reports with challenge review and source-disagreement tracking.
           </p>
         </div>
         <div className="grid gap-8 text-sm text-r1-text-muted sm:grid-cols-2 md:grid-cols-5">

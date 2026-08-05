@@ -191,8 +191,8 @@ export default function ResearchV2GuidePage() {
               <span className="text-xs font-semibold text-red-300">What V2 primaries MUST NOT do</span>
             </div>
             <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
-              <li>Refuse lawful research queries by default</li>
-              <li>Silently sanitize, omit, or rewrite claims that are present in the provided record</li>
+              <li>Refuse research queries</li>
+              <li>Silently sanitize, omit, or rewrite claims</li>
               <li>Inject counter-sources that are not in the corpus</li>
               <li>Route through a closed-source moderation pipeline we do not control</li>
               <li>Be an aligned-base Llama / Qwen / DeepSeek instruct slug without abliteration</li>
