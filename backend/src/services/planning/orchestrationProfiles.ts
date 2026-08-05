@@ -23,7 +23,7 @@ export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 export type SkepticMode = 'off' | 'gate' | 'annotate';
 
-/** Placeholder until Wave 5.3 wires steelman agent. */
+/** Steelman intensity; applied by runSteelmanPass in researchOrchestrator when mode !== off. */
 export type SteelmanMode = 'off' | 'standard' | 'per_option' | 'as_product' | 'symmetric';
 
 export interface OrchestrationProfileDefinition {
