@@ -78,20 +78,14 @@ This plan implements the recommendations from the August 2026 platform audit. It
 **Goal:** Replace placeholders and make routing reliable.
 
 ### Deliverables
-- Retire or flesh out `wave5_placeholder_*` profiles
-- Ensure every IntentId has a production-grade OrchestrationProfile
-- Improve lexical + LLM classifier robustness (reduce brittleness)
-- Complete steelman agent wiring (Wave 5.3)
-- Unify intent → profile → mode resolution paths
-- Stage-name and marketing vocabulary parity
+- [x] Retire `wave5_placeholder_*` — taxonomy `defaultOrchestrationProfile` is the intent id; plan/prompt stubs use `canonical_profile`
+- [x] Every IntentId has a production `ORCHESTRATION_PROFILES` entry; parity tests enforce taxonomy ↔ profile ↔ template
+- [x] Lexical classifier hardened (specificity ranks, weak single-hits defer to LLM)
+- [x] Steelman wired via `runSteelmanPass` when `steelmanMode !== 'off'`
+- [x] Runtime unification via `mergePlanPayloadWithCanonicalProfile` / `resolveOrchestrationProfileFromJob`
+- [x] Frontend lint: Rules of Hooks fixed in `MonitorToggle.tsx`
 
-**Key backend files**
-- `backend/src/services/planning/orchestrationProfiles.ts`
-- `backend/src/services/planning/intentTaxonomy.ts`
-- `backend/src/services/reasoning/researchOrchestrator.ts`
-- Classifier / planning services
-
-**Status: Ready to start**
+**Status: Complete**
 
 ---
 
@@ -115,7 +109,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 | 1     | Complete        | PR #188 merged                            |
 | 2     | Complete        | PR #190 merged                            |
 | 3     | Complete        | PR #191 branding + PR #192 public neutrality on main |
-| 4     | Ready to start  | Orchestration hardening                   |
+| 4     | Complete        | Placeholders retired; classifier + hooks fixed on main |
 | 5     | Ongoing         | This document is the living artifact       |
 
 ---
