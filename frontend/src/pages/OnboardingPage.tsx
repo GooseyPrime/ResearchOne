@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { parseSignupTierFromSearch, signupTierLabel, type SignupInitialTier } from '../utils/signupTier';
 import api from '../utils/api';
+import { ONBOARDING_HOW_IT_THINKS_TEASER } from '../content/howResearchOneThinks';
 
 type PipelineChoice = 'yes' | 'no' | null;
 
@@ -110,6 +111,19 @@ export default function OnboardingPage() {
             : ' — continue to Billing & usage to complete Stripe checkout for this plan.'}{' '}
           You can change plans anytime from Billing & usage.
         </p>
+      </section>
+
+      <section className="mt-8 rounded-xl border border-white/10 bg-r1-bg-deep p-6 space-y-3">
+        <h2 className="font-serif text-xl text-r1-text">How ResearchOne thinks</h2>
+        <p className="text-sm leading-relaxed text-r1-text-muted">{ONBOARDING_HOW_IT_THINKS_TEASER}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link to="/methodology" className="text-r1-accent underline-offset-2 hover:underline">
+            Full methodology
+          </Link>
+          <Link to="/app/guide" className="text-r1-accent underline-offset-2 hover:underline">
+            Guide
+          </Link>
+        </div>
       </section>
 
       {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
