@@ -1,20 +1,22 @@
 # ResearchOne Refinement Phased Plan
 
 **Status:** Living document for all agents and contributors.  
-**Last updated:** 2026-08-04  
+**Last updated:** 2026-08-05  
 **Logo decision:** Option 3 — The Contradiction Ring (Möbius-style parallel strokes in a rounded hexagon). Symbolizes preservation of contradiction without forced collapse; bridges consensus and anomaly.
 
 This plan implements the recommendations from the August 2026 platform audit. It preserves the original PolicyOne / adversarial research DNA (reasoning-first, assume fringe claims may contain truth, seek supporting evidence + outlier connections, refuse silent debunking) while making the system correctly route *any* user research intent through the multi-agent pipeline.
+
+**Public surfaces** must present ResearchOne as a neutral, professional multi-agent research platform. Internal engine behavior (PolicyOne, investigation paths, contested-topic handling) remains; public marketing and guidance copy must not brand the product as fringe, conspiracy, UAP, or adversarial-identity focused (see PR #192).
 
 ---
 
 ## Guiding Principles
 
 1. **Epistemic transparency** — Users must see *how* ResearchOne will think about their query (intent, skeptic/steelman posture, stages).
-2. **PolicyOne DNA is non-negotiable** for investigation / adjudication / story_verification / position_brief paths.
+2. **PolicyOne DNA is non-negotiable** for investigation / adjudication / story_verification / position_brief paths (engine behavior).
 3. **Intent-driven orchestration** — Every IntentId maps to a concrete OrchestrationProfile (agentsToRun/Skip, skepticMode, steelmanMode).
-4. **No silent defaults** that hide adversarial capability or force consensus-only answers.
-5. **Human-readable everything** — Stage labels, posture labels, and guidance use plain language.
+4. **No silent defaults** that hide investigation capability or force consensus-only answers in the pipeline.
+5. **Human-readable everything** — Stage labels, posture labels, and guidance use plain, professional language on public surfaces.
 
 ---
 
@@ -43,20 +45,13 @@ This plan implements the recommendations from the August 2026 platform audit. It
 
 ## Phase 2 — Epistemic Transparency & User Guidance
 
-**Goal:** Make PolicyOne / adversarial stance understandable and controllable by users.
+**Goal:** Make research posture understandable and controllable by users.
 
 ### Deliverables
 - [x] Create `frontend/src/content/howResearchOneThinks.ts`
-  - `HOW_RESEARCHONE_THINKS_SHORT`, `HOW_RESEARCHONE_THINKS_SECTIONS`, `OUTLIER_BRIDGING_MARKETING`
-  - `POSTURE_FAMILIES` (neutral / challenge / steelman) + `resolvePostureFamily`
-  - `INTENT_HELP_TEXT` for all major intents, `INTENT_OVERRIDE_OPTIONS`
-  - `buildIntentOverrideRefineInstruction`, `ONBOARDING_HOW_IT_THINKS_TEASER`
-  - `OUTLIER_BRIDGING_ONE_LINER` (re-exported from `landingFeatureCards.ts`)
-- [x] `PlanConfirmationPanel.tsx` — posture family badge, intent help text, expandable "How ResearchOne thinks", "I meant a different research goal" intent override control
-- [x] `MethodologyPage.tsx` — "How ResearchOne thinks" section with HOW_RESEARCHONE_THINKS_SECTIONS + posture-by-path cards, OUTLIER_BRIDGING_MARKETING intro
-- [x] `GuidePage.tsx` — "How ResearchOne thinks" guide section; plan-review body updated to mention posture + intent retarget
-- [x] `OnboardingPage.tsx` — first-run "How ResearchOne thinks" teaser with links to /methodology and /app/guide
-- [x] Marketing: `howYourReportIsMade.ts` steps updated to mention intent/posture; `landingFeatureCards.ts` Contradictions card updated with outlier bridge copy
+- [x] `PlanConfirmationPanel.tsx` — posture family badge, intent help, expandable guidance, intent override
+- [x] Methodology / Guide / Onboarding surfaces
+- [x] Marketing copy updates (later neutralized in PR #192)
 
 **Status: Complete (PR #190 merged)**
 
@@ -64,16 +59,17 @@ This plan implements the recommendations from the August 2026 platform audit. It
 
 ## Phase 3 — Visual & Branding Alignment
 
-**Goal:** Align visual identity with the selected Contradiction Ring logo and the epistemic philosophy.
+**Goal:** Align visual identity with the selected logo mark and professional public positioning.
 
 ### Deliverables
-- [x] Integrate Logo Option 3 (Contradiction Ring) in R1TopRail header
-- [x] Add favicon.svg with Contradiction Ring mark
-- [x] Update AnimatedPipelineHero — add contradiction bridge node with dual-stroke Möbius motif
+- [x] Integrate Logo Option 3 mark in R1TopRail header (public aria-label: ResearchOne logo)
+- [x] Add favicon.svg with the locked mark geometry
+- [x] Update AnimatedPipelineHero — dual-stroke bridge motif at Reasoner→Skeptic turn
 - [x] Dark-mode polish: PlanConfirmationPanel, LiveStatusBanner, dossier status badges
-- [ ] OG image + public marketing branding parity
+- [x] Public copy neutrality pass (PR #192) — professional research language on marketing/guidance surfaces
+- [ ] OG image + remaining public marketing asset parity (optional polish)
 
-**Status: In progress**
+**Status: Complete (PR #191 + #192 on main)**
 
 ---
 
@@ -95,6 +91,8 @@ This plan implements the recommendations from the August 2026 platform audit. It
 - `backend/src/services/reasoning/researchOrchestrator.ts`
 - Classifier / planning services
 
+**Status: Ready to start**
+
 ---
 
 ## Phase 5 — Agent Guidance, Docs & Long-term Maintainability
@@ -104,7 +102,7 @@ This plan implements the recommendations from the August 2026 platform audit. It
 ### Deliverables
 - Keep this file (`docs/REFINEMENT_PHASED_PLAN.md`) as the single source of truth
 - Update `AGENTS.md` / governance docs with PolicyOne posture rules and intent routing invariants
-- User-facing "How ResearchOne researches" guide that explains the multi-agent pipeline and epistemic stance by intent
+- User-facing "How ResearchOne researches" guide (professional tone; no fringe marketing)
 - Telemetry / cost notes for new paths
 - Regression tests for intent parity and posture display
 
@@ -116,18 +114,18 @@ This plan implements the recommendations from the August 2026 platform audit. It
 |-------|-----------------|--------------------------------------------|
 | 1     | Complete        | PR #188 merged                            |
 | 2     | Complete        | PR #190 merged                            |
-| 3     | In progress     | Core branding shipped; OG/marketing parity remains |
-| 4     | Planned         | Can partially overlap with later phases    |
+| 3     | Complete        | PR #191 branding + PR #192 public neutrality on main |
+| 4     | Ready to start  | Orchestration hardening                   |
 | 5     | Ongoing         | This document is the living artifact       |
 
 ---
 
 ## Logo Reference (locked)
 
-**Option 3 — The Contradiction Ring**  
-Minimalist abstract mark: rounded hexagon containing two parallel strokes that form a continuous Möbius-like loop. Encodes the core ResearchOne claim: contradictions are preserved and bridged, not collapsed into a single consensus narrative.
+**Option 3 — The Contradiction Ring** (internal design name)  
+Minimalist abstract mark: rounded hexagon containing two parallel strokes that form a continuous Möbius-like loop. Public UI should label the mark as **ResearchOne logo**; do not require users to learn internal symbolism.
 
-All future branding work should treat this as the canonical mark.
+All future branding work should treat this geometry as the canonical mark.
 
 ---
 
