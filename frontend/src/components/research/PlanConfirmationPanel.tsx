@@ -259,12 +259,17 @@ export default function PlanConfirmationPanel({
     try {
       const refineText = buildIntentOverrideRefineInstruction(option.id, option.label);
       const res = await refineRunPlanAtGate(snapshot.runId, refineText);
+      const returnedIntentId = readIntentId(res.revisedPlan);
       setLocalPayload(res.revisedPlan);
       setLocalPlanId(res.planId);
       setRounds(res.refinementRounds);
       setIntentOverrideId('');
       onGatePlanMutated?.();
-      onNotify('success', `Plan re-routed to "${option.label}".`);
+      if (returnedIntentId === option.id) {
+        onNotify('success', `Plan re-routed to "${option.label}".`);
+      } else {
+        onNotify('error', 'The plan could not be re-routed to the selected goal. Please review the updated plan and try again.');
+      }
     } catch (e) {
       onNotify('error', extractApiError(e));
     } finally {
