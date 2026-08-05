@@ -1,4 +1,8 @@
 import { Link } from 'react-router-dom';
+import {
+  HOW_RESEARCHONE_THINKS_SECTIONS,
+  ONBOARDING_HOW_IT_THINKS_TEASER,
+} from '../content/howResearchOneThinks';
 
 type GuideSection = {
   id: string;
@@ -61,7 +65,12 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
     id: 'plan-review',
     title: 'How to review the plan',
     body:
-      'Check what the report will deliver, scope, sources, and expected depth/cost before confirmation. Requirements are your explicit instructions. Assumptions are system interpretations you can edit or reject.',
+      'Check what the report will deliver, scope, sources, and expected depth/cost before confirmation. ' +
+      'Requirements are your explicit instructions. Assumptions are system interpretations you can edit or reject. ' +
+      'The plan gate also shows the detected intent, epistemic posture (neutral / challenge / steelman), ' +
+      'and a plain-language summary of how ResearchOne will approach the topic. ' +
+      'If the detected intent does not match your goal, use the "I meant a different research goal" control ' +
+      'to re-route the plan before confirming.',
   },
   {
     id: 'standard-vs-deep',
@@ -196,6 +205,25 @@ export default function GuidePage() {
           ) : null}
         </section>
       ))}
+
+      {/* How ResearchOne thinks guide section */}
+      <section className="card p-6 space-y-4">
+        <h2 className="text-base font-semibold text-white">How ResearchOne thinks</h2>
+        <p className="text-sm text-slate-300 leading-relaxed">{ONBOARDING_HOW_IT_THINKS_TEASER}</p>
+        <div className="space-y-4">
+          {HOW_RESEARCHONE_THINKS_SECTIONS.map((s) => (
+            <div key={s.id} className="space-y-1">
+              <h3 className="text-sm font-medium text-slate-200">{s.heading}</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">{s.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <Link to="/methodology" className="text-accent hover:underline">
+            Full methodology
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
