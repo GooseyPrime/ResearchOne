@@ -54,7 +54,7 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
 
               <div data-ev-id="ev_0df0dbb5af" className="relative w-8 h-8">
                 {/* Logo mark — Contradiction Ring (Option 3): rounded hexagon with dual parallel Möbius strokes */}
-                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" aria-label="ResearchOne Contradiction Ring logo" className="w-full h-full">
+                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" role="img" aria-label="ResearchOne Contradiction Ring logo" className="w-full h-full">
                   {/* Rounded hexagon outline */}
                   <path
                     d="M16 2 L27 8.5 L27 23.5 L16 30 L5 23.5 L5 8.5 Z"

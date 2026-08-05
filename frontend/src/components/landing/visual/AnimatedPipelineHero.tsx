@@ -252,11 +252,11 @@ export default function AnimatedPipelineHero({
             style={{ right: '5%', top: '25%', width: '7%', height: '50%' }}
           >
             <svg viewBox="0 0 40 80" fill="none" className="w-full h-full opacity-30">
-              {/* Upper arc — consensus cluster */}
+              {/* Upper arc — consensus cluster (left-to-right then back) */}
               <path d="M4 16 Q20 4 36 16 Q20 28 4 40" stroke="#2DD4BF" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-              {/* Lower arc — anomaly bridge — crosses the upper at midpoint */}
-              <path d="M4 40 Q20 52 36 64 Q20 52 4 40" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-              <path d="M4 64 Q20 76 36 64" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+              {/* Lower arc — anomaly bridge (crosses at midpoint, mirrors upper) */}
+              <path d="M4 40 Q20 52 36 64" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+              <path d="M36 16 Q20 52 4 64" stroke="#F59E0B" strokeWidth="1.2" strokeLinecap="round" strokeDasharray="3 3" fill="none" />
             </svg>
           </div>
 
