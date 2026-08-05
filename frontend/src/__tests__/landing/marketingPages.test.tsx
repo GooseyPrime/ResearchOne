@@ -15,7 +15,7 @@ describe('marketing pages', () => {
   it('MethodologyPage — pipeline depth', () => {
     const html = inRouter(<MethodologyPage />);
     expect(html).toContain('How ResearchOne works');
-    expect(html).toContain('multi-agent pipeline');
+    expect(html).toContain('A representative research flow');
     expect(html).toContain('CHALLENGE_REVIEW');
   });
 
