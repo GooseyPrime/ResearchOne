@@ -98,8 +98,8 @@ Return ONLY valid JSON (no markdown fences) matching this TypeScript-like shape:
     "competenceAssessment": "<whether this is in-distribution for a web-retrieval research stack; flag novelty/OOD candidly>"
   },
   "orchestrationProfile": {
-    "name": "wave5_placeholder_default",
-    "description": "<1-2 sentences — Wave 5.2 will replace with real profiles>",
+    "name": "canonical_profile",
+    "description": "<1-2 sentences describing the selected per-intent orchestration profile>",
     "agentsWillRun": ["planner","discovery","retrieval","retriever_analysis","reasoning","challenge","synthesis","verification","report_generation","persistence"],
     "agentsWillSkip": []
   },
@@ -135,4 +135,3 @@ Return ONLY valid JSON (no markdown fences):
 
 Constraint: If the refinement is only about sources, length, tone, or section ordering, keep intent.id unchanged and set intentChange.detected false.
 If the user clearly requests a different speech act (e.g. fact-check vs survey), set intentChange.detected true and update intent in revisedPlan accordingly.`;
-
