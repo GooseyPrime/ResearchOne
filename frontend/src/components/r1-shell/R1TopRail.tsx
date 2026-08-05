@@ -53,8 +53,8 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
               className="flex items-center gap-3 group r1-focus-ring rounded">
 
               <div data-ev-id="ev_0df0dbb5af" className="relative w-8 h-8">
-                {/* Logo mark — Contradiction Ring (Option 3): rounded hexagon with dual parallel Möbius strokes */}
-                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" role="img" aria-label="ResearchOne Contradiction Ring logo" className="w-full h-full">
+                {/* Logo mark — Option 3 geometry: rounded hexagon with dual parallel strokes */}
+                <svg data-ev-id="ev_53eb1ef1bb" viewBox="0 0 32 32" fill="none" role="img" aria-label="ResearchOne logo" className="w-full h-full">
                   {/* Rounded hexagon outline */}
                   <path
                     d="M16 2 L27 8.5 L27 23.5 L16 30 L5 23.5 L5 8.5 Z"
@@ -64,7 +64,7 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
                     className="text-r1-border-strong"
                     fill="none"
                   />
-                  {/* Upper parallel stroke — one side of the Möbius loop */}
+                  {/* Upper parallel stroke */}
                   <path
                     d="M10 13 C12.5 9.75 15 9.75 16 16 C17 22.25 19.5 22.25 22 19"
                     stroke="currentColor"
@@ -73,7 +73,7 @@ export function R1TopRail({ variant = 'public' }: R1TopRailProps) {
                     fill="none"
                     className="text-r1-cyan"
                   />
-                  {/* Lower parallel stroke — bridging anomaly/consensus (crosses upper at midpoint) */}
+                  {/* Lower parallel stroke (crosses upper at midpoint) */}
                   <path
                     d="M10 19 C12.5 22.25 15 22.25 16 16 C17 9.75 19.5 9.75 22 13"
                     stroke="currentColor"
