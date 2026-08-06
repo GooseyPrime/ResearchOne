@@ -2,6 +2,7 @@
  * Epistemic transparency content — Phase 2.
  * Plain-language explanations of how ResearchOne approaches research.
  * Used by PlanConfirmationPanel, MethodologyPage, GuidePage, OnboardingPage, and marketing.
+ * Canonical companion: docs/HOW_RESEARCHONE_RESEARCHES.md
  */
 
 // ---------------------------------------------------------------------------
@@ -10,10 +11,10 @@
 
 export const HOW_RESEARCHONE_THINKS_SHORT =
   'ResearchOne routes every query through an intent classifier, picks a research posture ' +
-  '(neutral, challenge, or steelman), then runs a multi-agent pipeline: plan → retrieve → reason → ' +
-  'optional challenge → synthesize → verify. Source disagreements stay visible, never silently ' +
-  'flattened. For investigation and verification paths, the system gathers supporting and opposing ' +
-  'evidence before finalizing the report.';
+  '(neutral, challenge, or steelman), then runs a multi-agent pipeline: Planning → Discovery → ' +
+  'Retrieval → Reasoning → optional Challenge → Synthesis → Verification. Source disagreements stay ' +
+  'visible, never silently flattened. For investigation and verification paths, the system gathers ' +
+  'supporting and opposing evidence before finalizing the report.';
 
 // ---------------------------------------------------------------------------
 // Expandable methodology sections
@@ -76,7 +77,7 @@ export const OUTLIER_BRIDGING_MARKETING =
   'the easiest summary.';
 
 export const OUTLIER_BRIDGING_ONE_LINER =
-  'Relevant minority findings remain in view when they matter.';
+  'When investigation is the goal, we keep relevant minority findings and alternative interpretations in view—without forcing every question into a challenge workflow.';
 
 // ---------------------------------------------------------------------------
 // Posture families
