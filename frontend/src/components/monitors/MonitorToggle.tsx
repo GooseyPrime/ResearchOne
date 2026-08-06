@@ -367,26 +367,20 @@ function LivingReportTokenCard({
   );
 }
 
-function MonitorKindCard({
-  kind,
+function ReverseCitationWatchCard({
   reportId,
   monitor,
 }: {
-  kind: MonitorKind;
   reportId: string;
   monitor?: ReportMonitorRow;
 }) {
-  if (kind === 'living_report') {
-    return <LivingReportTokenCard reportId={reportId} monitor={monitor} />;
-  }
-
   const qc = useQueryClient();
   const { addNotification } = useStore();
-  const meta = KIND_META[kind];
+  const meta = KIND_META.reverse_citation_watch;
   const Icon = meta.icon;
 
   const checkoutMut = useMutation({
-    mutationFn: () => createMonitorCheckoutSession(reportId, kind),
+    mutationFn: () => createMonitorCheckoutSession(reportId, 'reverse_citation_watch'),
     onSuccess: (session) => {
       const url = session.checkoutUrl;
       if (url) window.location.href = url;
@@ -473,6 +467,22 @@ function MonitorKindCard({
       )}
     </div>
   );
+}
+
+function MonitorKindCard({
+  kind,
+  reportId,
+  monitor,
+}: {
+  kind: MonitorKind;
+  reportId: string;
+  monitor?: ReportMonitorRow;
+}) {
+  if (kind === 'living_report') {
+    return <LivingReportTokenCard reportId={reportId} monitor={monitor} />;
+  }
+
+  return <ReverseCitationWatchCard reportId={reportId} monitor={monitor} />;
 }
 
 export default function MonitorToggle({
