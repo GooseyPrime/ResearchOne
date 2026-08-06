@@ -307,6 +307,19 @@ export async function listDossiers(filters: DossierListFilters, ctx: DossierAuth
   return { rows: mapped, total, page, pageSize };
 }
 
+function mapHistoryRows(reportRows: Record<string, unknown>[]): DossierReportHistoryEntry[] {
+  return reportRows.map((row) => ({
+    reportId: String(row.report_id),
+    versionNumber: row.version_number != null ? Number(row.version_number) : 1,
+    title: String(row.title ?? ''),
+    status: String(row.status ?? ''),
+    parentReportId: row.parent_report_id != null ? String(row.parent_report_id) : null,
+    revisionNumber: row.revision_number != null ? Number(row.revision_number) : null,
+    createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : '',
+    finalizedAt: row.finalized_at != null ? new Date(String(row.finalized_at)).toISOString() : null,
+  }));
+}
+
 export async function getDossierReportHistory(
   dossierId: string,
   ctx: DossierAuthContext,
@@ -314,6 +327,7 @@ export async function getDossierReportHistory(
   if (!isUuid(dossierId)) return null;
 
   try {
+    // Anchor must exist and be owned; no report yet is a valid empty history (queued/in-flight runs).
     const anchor = await queryOne<{ report_id: string | null; root_report_id: string | null }>(
       `SELECT d.report_id,
               COALESCE(r.root_report_id, r.id) AS root_report_id
@@ -329,48 +343,89 @@ export async function getDossierReportHistory(
     }
 
     const rootId = anchor.root_report_id ?? anchor.report_id;
-    const reportRows = await query<Record<string, unknown>>(
-      `SELECT r.id AS report_id,
-              r.version_number,
-              r.title,
-              r.status::text AS status,
-              r.parent_report_id,
-              r.created_at,
-              r.finalized_at,
-              (
-                SELECT rv.revision_number
-                FROM report_revisions rv
-                WHERE rv.revised_report_id = r.id
-                ORDER BY rv.revision_number DESC
-                LIMIT 1
-              ) AS revision_number
-       FROM reports r
-       WHERE COALESCE(r.root_report_id, r.id) = $1::uuid
-         AND EXISTS (
-           SELECT 1 FROM v_dossier vd
-           WHERE vd.report_id = r.id AND ${dossierOwnershipSql(ctx, 2, 3)}
-         )
-       ORDER BY r.version_number ASC NULLS LAST, r.created_at ASC`,
-      [rootId, ctx.userId, ctx.orgId],
-    );
 
-    const entries: DossierReportHistoryEntry[] = reportRows.map((row) => ({
-      reportId: String(row.report_id),
-      versionNumber: row.version_number != null ? Number(row.version_number) : 1,
-      title: String(row.title ?? ''),
-      status: String(row.status ?? ''),
-      parentReportId: row.parent_report_id != null ? String(row.parent_report_id) : null,
-      revisionNumber: row.revision_number != null ? Number(row.revision_number) : null,
-      createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : '',
-      finalizedAt: row.finalized_at != null ? new Date(String(row.finalized_at)).toISOString() : null,
-    }));
-
-    return { entries };
-  } catch (e) {
-    if (isViewMissingPgError(e)) {
-      logger.debug('dossier report history: v_dossier unavailable (deploy skew)', { dossierId, err: String(e) });
-      return null;
+    // Prefer full lineage (revisions). Fall back to the single linked report if
+    // report_revisions / root_report_id columns are unavailable or the lineage query fails.
+    try {
+      const reportRows = await query<Record<string, unknown>>(
+        `SELECT r.id AS report_id,
+                r.version_number,
+                r.title,
+                r.status::text AS status,
+                r.parent_report_id,
+                r.created_at,
+                r.finalized_at,
+                (
+                  SELECT rv.revision_number
+                  FROM report_revisions rv
+                  WHERE rv.revised_report_id = r.id
+                  ORDER BY rv.revision_number DESC
+                  LIMIT 1
+                ) AS revision_number
+         FROM reports r
+         WHERE COALESCE(r.root_report_id, r.id) = $1::uuid
+           AND EXISTS (
+             SELECT 1 FROM v_dossier vd
+             WHERE vd.report_id = r.id AND ${dossierOwnershipSql(ctx, 2, 3)}
+           )
+         ORDER BY r.version_number ASC NULLS LAST, r.created_at ASC`,
+        [rootId, ctx.userId, ctx.orgId],
+      );
+      return { entries: mapHistoryRows(reportRows) };
+    } catch (lineageErr) {
+      if (!isDossierDeploySkewPgError(lineageErr)) {
+        logger.warn('dossier report history: lineage query failed; using single-report fallback', {
+          dossierId,
+          err: String(lineageErr),
+        });
+      } else {
+        logger.debug('dossier report history: lineage columns unavailable (deploy skew)', {
+          dossierId,
+          err: String(lineageErr),
+        });
+      }
     }
+
+    // Single-report fallback — still ownership-checked via the anchor.
+    if (!anchor.report_id) {
+      return { entries: [] };
+    }
+    try {
+      const single = await query<Record<string, unknown>>(
+        `SELECT r.id AS report_id,
+                COALESCE(r.version_number, 1) AS version_number,
+                r.title,
+                r.status::text AS status,
+                r.parent_report_id,
+                r.created_at,
+                r.finalized_at,
+                NULL::int AS revision_number
+         FROM reports r
+         WHERE r.id = $1::uuid
+         LIMIT 1`,
+        [anchor.report_id],
+      );
+      return { entries: mapHistoryRows(single) };
+    } catch (singleErr) {
+      if (isDossierDeploySkewPgError(singleErr) || isViewMissingPgError(singleErr)) {
+        logger.debug('dossier report history: reports unavailable (deploy skew)', {
+          dossierId,
+          err: String(singleErr),
+        });
+        return { entries: [] };
+      }
+      throw singleErr;
+    }
+  } catch (e) {
+    if (isViewMissingPgError(e) || isDossierDeploySkewPgError(e)) {
+      logger.debug('dossier report history: schema unavailable (deploy skew)', {
+        dossierId,
+        err: String(e),
+      });
+      // Owned dossier with no readable history must not 500 the detail page.
+      return { entries: [] };
+    }
+    // Only escalate true tenant-scope column loss on the ownership predicate path.
     rejectUnscopedReadOnScopeError(e, 'dossierReadService.getDossierReportHistory');
   }
 }
