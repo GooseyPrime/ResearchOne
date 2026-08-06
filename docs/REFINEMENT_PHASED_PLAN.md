@@ -1,7 +1,7 @@
 # ResearchOne Refinement Phased Plan
 
 **Status:** Living document for all agents and contributors.  
-**Last updated:** 2026-08-05  
+**Last updated:** 2026-08-06  
 **Logo decision:** Option 3 — The Contradiction Ring (Möbius-style parallel strokes in a rounded hexagon). Symbolizes preservation of contradiction without forced collapse; bridges consensus and anomaly.
 
 This plan implements the recommendations from the August 2026 platform audit. It preserves the original PolicyOne / adversarial research DNA (reasoning-first, assume fringe claims may contain truth, seek supporting evidence + outlier connections, refuse silent debunking) while making the system correctly route *any* user research intent through the multi-agent pipeline.
@@ -26,18 +26,9 @@ This plan implements the recommendations from the August 2026 platform audit. It
 
 ### Deliverables
 - [x] Frontend intent taxonomy parity with backend (`intentTaxonomy.ts`)
-  - Add missing: `story_verification`, `opportunity_discovery`, `feasibility`, `implementation`
-  - Files: `frontend/src/constants/intentLabels.ts`, `frontend/src/lib/intents.ts`
 - [x] PlanConfirmationPanel shows **Epistemic posture** block
-  - Read `orchestrationProfile` (or equivalent) from `planPayload`
-  - Display human labels for `skepticMode` (`off` / `annotate` / `gate`) and `steelmanMode`
-  - Keep auto-confirm, refine, save-profile, confirm/cancel intact
 - [x] Live progress labels normalized to pipeline vocabulary
-  - Planning → Discovery → Retrieval → Reasoning → Challenge → Synthesis → Verification
-  - File: `frontend/src/utils/researchLiveStatus.ts` (+ any stage maps in ResearchDeepPage)
-- [ ] Advisory goal chips on Deep Research form
-  - Phrases that steer natural language toward common intents without hard-forcing classifier
-  - Do not bypass the plan gate
+- [ ] Advisory goal chips on Deep Research form (optional UX polish)
 
 **Status: Complete (PR #188 merged)**
 
@@ -66,10 +57,10 @@ This plan implements the recommendations from the August 2026 platform audit. It
 - [x] Add favicon.svg with the locked mark geometry
 - [x] Update AnimatedPipelineHero — dual-stroke bridge motif at Reasoner→Skeptic turn
 - [x] Dark-mode polish: PlanConfirmationPanel, LiveStatusBanner, dossier status badges
-- [x] Public copy neutrality pass (PR #192) — professional research language on marketing/guidance surfaces
-- [ ] OG image + remaining public marketing asset parity (optional polish)
+- [x] Public copy neutrality pass (PR #192)
+- [x] OG image + social preview assets (`frontend/public/og-image.svg`, meta tags in `marketingDocumentHead.ts`)
 
-**Status: Complete (PR #191 + #192 on main)**
+**Status: Complete**
 
 ---
 
@@ -94,23 +85,27 @@ This plan implements the recommendations from the August 2026 platform audit. It
 **Goal:** Make the system self-documenting for both human and AI agents.
 
 ### Deliverables
-- Keep this file (`docs/REFINEMENT_PHASED_PLAN.md`) as the single source of truth
-- Update `AGENTS.md` / governance docs with PolicyOne posture rules and intent routing invariants
-- User-facing "How ResearchOne researches" guide (professional tone; no fringe marketing)
-- Telemetry / cost notes for new paths
-- Regression tests for intent parity and posture display
+- [x] Keep this file (`docs/REFINEMENT_PHASED_PLAN.md`) as the single source of truth
+- [x] Canonical user/agent guide: `docs/HOW_RESEARCHONE_RESEARCHES.md`
+- [x] `AGENTS.md` — intent routing & epistemic posture invariants
+- [x] Align Methodology / Guide / content modules with live pipeline vocabulary
+- [x] Phase 3 OG / social preview polish
+- [ ] Telemetry / cost notes for new paths (follow-up)
+- [ ] Additional regression tests for posture display (follow-up)
+
+**Status: Complete for documentation + public accuracy; optional telemetry/tests remain**
 
 ---
 
 ## Current Status
 
-| Phase | Status          | Notes                                      |
-|-------|-----------------|--------------------------------------------|
-| 1     | Complete        | PR #188 merged                            |
-| 2     | Complete        | PR #190 merged                            |
-| 3     | Complete        | PR #191 branding + PR #192 public neutrality on main |
-| 4     | Complete        | Placeholders retired; classifier + hooks fixed on main |
-| 5     | Ongoing         | This document is the living artifact       |
+| Phase | Status   | Notes |
+|-------|----------|-------|
+| 1     | Complete | PR #188 merged |
+| 2     | Complete | PR #190 merged |
+| 3     | Complete | Branding + OG assets on main |
+| 4     | Complete | Orchestration hardening on main |
+| 5     | Complete | Docs + AGENTS invariants; optional telemetry/tests deferred |
 
 ---
 
