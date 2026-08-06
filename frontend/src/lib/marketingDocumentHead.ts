@@ -31,6 +31,12 @@ const BY_PATH: Record<string, MarketingHeadEntry> = {
       'How ResearchOne plans, reads sources, applies specialist analysis, and verifies findings based on your research objective.',
     ogTitle: 'Methodology — ResearchOne',
   },
+  '/guide': {
+    title: 'Guide — ResearchOne',
+    description:
+      'Task-focused guidance for asking better questions, reviewing research plans, and interpreting cited reports.',
+    ogTitle: 'Guide — ResearchOne',
+  },
   '/faq': {
     title: 'FAQ — ResearchOne',
     description: 'Frequently asked questions about ResearchOne, billing, security, and research modes.',
@@ -155,7 +161,7 @@ export function applyMarketingDocumentHead(pathname: string): void {
   setOg('og:url', url);
   setOg('og:title', ogTitle);
   setOg('og:description', description);
-  setOg('og:image', `${CANONICAL_ORIGIN}/og-image.png`);
+  setOg('og:image', `${CANONICAL_ORIGIN}/og-image.svg`);
   setOg('og:site_name', 'ResearchOne');
 
   const setTw = (name: string, content: string) => {
@@ -170,7 +176,7 @@ export function applyMarketingDocumentHead(pathname: string): void {
   setTw('twitter:card', 'summary_large_image');
   setTw('twitter:title', ogTitle);
   setTw('twitter:description', description);
-  setTw('twitter:image', `${CANONICAL_ORIGIN}/og-image.png`);
+  setTw('twitter:image', `${CANONICAL_ORIGIN}/og-image.svg`);
 
   const canonical = upsertMeta('link[rel="canonical"]', () => {
     const l = document.createElement('link');
