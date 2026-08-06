@@ -49,17 +49,15 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
   },
   {
     id: 'files-pages-corpus',
-    title: 'Files, web pages, and the reusable Corpus',
+    title: 'Files, web pages, and reusable material',
     bullets: [
-      'Attachments are for this run unless you explicitly ingest them into your Corpus.',
+      'Attachments are for this run unless you explicitly ingest them for reuse across future projects.',
       'Use Supplemental URLs / pages-to-read controls when a page must be fetched for the run.',
       'A single URL reads a single page unless you explicitly enable site crawl where available.',
       'JavaScript-heavy, paywalled, authenticated, or bot-blocked pages may not be readable end-to-end.',
+      'Private ingest (when available on your plan) lets you store material for later research runs.',
     ],
-    links: [
-      { to: '/app/ingest', label: 'Open Ingest' },
-      { to: '/app/corpus', label: 'Open Corpus' },
-    ],
+    links: [{ to: '/app/ingest', label: 'Open Ingest' }],
   },
   {
     id: 'plan-review',
@@ -114,20 +112,6 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
     body:
       'Living Reports monitor finalized reports for relevant updates during an active period. Reverse-Citation Watch tracks later citation activity for supported report/source sets.',
     links: [{ to: '/app/add-ons', label: 'Open Add-ons & monitoring' }],
-  },
-  {
-    id: 'data-tools',
-    title: 'Corpus, Ingest, Embedding Viz, Atlas, and Knowledge Graph',
-    bullets: [
-      'Use Ingest when material should be reusable across future projects.',
-      'Use Embedding Viz and Knowledge Graph to explore patterns in available material.',
-      'Atlas export is a third-party export path and should be treated as external data transfer.',
-    ],
-    links: [
-      { to: '/app/embedding-viz', label: 'Open Embedding Viz' },
-      { to: '/app/knowledge-graph', label: 'Open Knowledge Graph' },
-      { to: '/app/atlas', label: 'Open Atlas' },
-    ],
   },
   {
     id: 'billing',

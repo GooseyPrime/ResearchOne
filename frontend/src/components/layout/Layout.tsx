@@ -56,14 +56,19 @@ type NavItem = {
 
 const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
 
+/**
+ * Primary product nav for signed-in users.
+ * Corpus / Atlas / Embedding Viz / Knowledge Graph are platform ops tools
+ * (shared corpus exploration for InTellMe / operators) — admin only.
+ */
 const NAV_ITEMS: NavItem[] = [
   { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Standard and Deep Research' },
   { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
   { to: '/app/add-ons', label: 'Add-ons', icon: Package, desc: 'Catalog, purchase & manage add-ons', requireTier: 'pro' },
-  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources', requireTier: 'pro' },
-  { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (Nomic)', requireTier: 'pro' },
-  { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas', requireTier: 'pro' },
-  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph', requireTier: 'pro' },
+  { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources (admin)', requireAdmin: true },
+  { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (admin)', requireAdmin: true },
+  { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas (admin)', requireAdmin: true },
+  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph (admin)', requireAdmin: true },
   { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Private corpus ingest', requirePrivateCorpus: true },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
   { to: '/app/billing', label: 'Account', icon: Wallet, desc: 'Account and subscription' },
@@ -126,7 +131,9 @@ export default function Layout() {
   const { data } = useQuery({
     queryKey: ['stats'],
     queryFn: getStats,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(20_000),
+    // Platform corpus stats are operator-facing; only fetch for admins.
+    enabled: isAllowlistedAdmin,
+    refetchInterval: () => (isAllowlistedAdmin ? getAdaptiveRefetchIntervalMs(20_000) : false),
   });
 
   useEffect(() => {
@@ -275,7 +282,7 @@ export default function Layout() {
           ))}
         </nav>
 
-        {stats && (
+        {isAllowlistedAdmin && stats && (
           <div className="p-3 border-t border-indigo-900/20 space-y-2">
             <div className="section-title mb-2">Corpus</div>
             <div className="grid grid-cols-2 gap-2">

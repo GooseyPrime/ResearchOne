@@ -101,10 +101,11 @@ export function AppRoutes() {
         <Route path="monitors" element={<MonitorsPage />} />
         <Route path="monitors/living-reports" element={<LivingReportsPage />} />
         <Route path="monitors/reverse-citation-watch" element={<ReverseCitationWatchPage />} />
-        <Route path="corpus" element={<CorpusPage />} />
-        <Route path="atlas" element={<AtlasPage />} />
-        <Route path="embedding-viz" element={<EmbeddingAtlasPage />} />
-        <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
+        {/* Platform corpus ops — admin only (not general user product surfaces). */}
+        <Route path="corpus" element={<RequireAdmin><CorpusPage /></RequireAdmin>} />
+        <Route path="atlas" element={<RequireAdmin><AtlasPage /></RequireAdmin>} />
+        <Route path="embedding-viz" element={<RequireAdmin><EmbeddingAtlasPage /></RequireAdmin>} />
+        <Route path="knowledge-graph" element={<RequireAdmin><KnowledgeGraphPage /></RequireAdmin>} />
         <Route path="ingest" element={<RequirePrivateCorpus><IngestPage /></RequirePrivateCorpus>} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="guide/research-v2" element={<ResearchV2GuidePage />} />
