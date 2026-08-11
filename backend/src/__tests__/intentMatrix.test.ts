@@ -23,7 +23,6 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 import {
   INTENT_EPISTEMIC_POSTURE,
   resolveMethodologyFromIntent,
-  resolveObjectiveFromIntent,
   defaultResearchBrief,
 } from '../services/planning/researchBrief';
 import { classifyIntent } from '../services/planning/intentClassifier';
@@ -40,8 +39,6 @@ import { INTENT_TAXONOMY } from '../services/planning/intentTaxonomy';
 
 // Re-implement a thin shim of the explicit-declaration layer for unit tests.
 // The real implementation is in intentClassifier.ts but we want isolated tests.
-const ADJUDICATIVE_INTENTS: IntentId[] = ['adjudication', 'investigation', 'story_verification'];
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART A — Epistemic posture per intent
 // ─────────────────────────────────────────────────────────────────────────────
@@ -409,15 +406,44 @@ Include monetization model, affiliate-program availability, buyer intent, compet
 estimated revenue scenarios, risk, and recommendation.
 Deliver exactly 20 ranked opportunities. Recommend the top 10, top 5, and top 3 picks with a final winner.`;
 
-  it('explicit "Primary research intent: opportunity_discovery" declaration must resolve to opportunity_discovery', async () => {
+  it('explicit "Primary research intent: opportunity_discovery" declaration must resolve to opportunity_discovery while preserving extracted artifacts', async () => {
     callRoleModelMock.mockReset();
+    callRoleModelMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        primaryIntent: 'comparative',
+        requestedArtifacts: [
+          {
+            description: 'Ranked list of affiliate opportunities',
+            exactCount: 20,
+            explicitRequiredFields: ['monetization model', 'competition', 'recommendation'],
+          },
+        ],
+        requestedFormats: ['ranked_options'],
+        userConstraints: [{ description: 'Deliver exactly 20 ranked opportunities.' }],
+        confidence: 0.74,
+        reasoning: 'LLM extracted deliverables but chose the wrong lexical intent.',
+      }),
+    });
     const brief = await classifyIntent(failedRequestWithExplicitDeclaration, undefined, {
       allowFallbackByRole: {},
+      byokApiKeyOverride: 'test-openrouter-key',
     });
 
     expect(brief.primaryIntent).toBe('opportunity_discovery');
-    expect(brief.reasoning).toContain('Explicit declarations override lexical and LLM classification.');
-    expect(callRoleModelMock).not.toHaveBeenCalled();
+    expect(brief.reasoning).toContain('Explicit declarations override lexical and LLM classification while preserving extracted artifacts, formats, and constraints.');
+    expect(brief.requestedArtifacts).toEqual([
+      {
+        description: 'Ranked list of affiliate opportunities',
+        exactCount: 20,
+        explicitRequiredFields: ['monetization model', 'competition', 'recommendation'],
+        inferredRequiredFields: undefined,
+        optionalFields: undefined,
+        requiredFields: undefined,
+      },
+    ]);
+    expect(brief.requestedFormats).toEqual(['ranked_options']);
+    expect(brief.userConstraints).toEqual([{ description: 'Deliver exactly 20 ranked opportunities.' }]);
+    expect(callRoleModelMock).toHaveBeenCalledTimes(1);
   });
 
   it('opportunity_discovery posture is discovery, not adjudicative', () => {

@@ -875,6 +875,9 @@ async function runResearchJobInner(
           allowFallbackByRole,
           byokApiKeyOverride,
         });
+        if (data.requestedFormats && data.requestedFormats.length > 0) {
+          intentResult.requestedFormats = Array.from(new Set(data.requestedFormats));
+        }
 
         const planPayload = await generatePlan({
           query: researchQuery,
@@ -1126,7 +1129,7 @@ async function runResearchJobInner(
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS.retriever },
+          { role: 'system', content: getSystemPrompt('retriever', isAdjudicative) },
           {
             role: 'user',
             content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
@@ -1217,7 +1220,7 @@ async function runResearchJobInner(
         ...v2,
         runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'reasoner'),
         messages: [
-          { role: 'system', content: buildReasonerSystemPrompt() },
+          { role: 'system', content: buildReasonerSystemPrompt(isAdjudicative) },
           {
             role: 'user',
             content: reasonerUserPrompt,
@@ -1352,6 +1355,7 @@ async function runResearchJobInner(
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
+        requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
         targetWordCount,
         intentId: orchProfile.intent,
         outputTemplateId,
@@ -1657,7 +1661,7 @@ ${generatedReport.markdown}`,
           ...v2,
           runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'coherence_refiner'),
           messages: [
-            { role: 'system', content: SYSTEM_PROMPTS.coherence_refiner },
+            { role: 'system', content: getSystemPrompt('coherence_refiner', isAdjudicative) },
             {
               role: 'user',
               content: `Revise the report to satisfy these contract and verification requirements:\n${revisionInstructions.map((line) => `- ${line}`).join('\n')}\n\nREPORT:\n${generatedReport.markdown}`,

@@ -195,6 +195,7 @@ export async function generateIterativeReport(args: {
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
+  requestedFormats?: string[];
   /** User-requested total report length in words. Clamped to
    *  [REPORT_WORD_COUNT_MIN, REPORT_WORD_COUNT_MAX]. Falls back to
    *  REPORT_WORD_COUNT_DEFAULT if not provided. */
@@ -241,6 +242,10 @@ export async function generateIterativeReport(args: {
     isAdjudicative: args.isAdjudicative,
   };
   const targetWordCount = clampWordTarget(args.targetWordCount);
+  const requestedFormatsBlock =
+    Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
+      ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
+      : 'Requested presentation formats:\n- automatic / best fit';
   const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
@@ -254,6 +259,7 @@ Required sections:\n${activeSectionPlan.map((s) => `- ${s.title}`).join('\n')}
 Template narrative guidance:\n${templateNarrativeHint || 'none'}
 Required deliverables:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Intent verifier rubric:\n${templateVerifierRubric || 'none'}
+${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Evidence:\n${args.evidenceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
@@ -295,6 +301,7 @@ Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
+${requestedFormatsBlock}
 Evidence context: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
@@ -341,6 +348,8 @@ ${s.content}`)
 Challenger findings:\n${challenger.content}
 
 Draft:\n${sections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n')}
+
+${requestedFormatsBlock}
 
 LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive evidence, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.
 

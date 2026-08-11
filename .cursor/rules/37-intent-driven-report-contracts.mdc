@@ -178,15 +178,18 @@ Adaptive required-field validation uses:
 2. `RequestedArtifact.inferredRequiredFields` — what the plan inferred
 3. Minimal universal core (title + description/rationale)
 
-### R-C. Non-adjudicative roles must not use the falsification preamble
+### R-C. Preamble routing must follow adjudicativeness
 
-All LLM roles in `openrouterService.ts` except `skeptic`,
-`steelman`, `story_verifier`, and `internal_challenger` must use
-`withStandardPreamble(...)`, not `withPreamble(...)`.
+Non-adjudicative runs must use `withStandardPreamble(...)` for planner,
+retriever, reasoner, synthesizer, verifier, and report-generation roles.
+Adjudicative / PolicyOne runs must preserve the reasoning-first
+`withPreamble(...)` versions of those same prompts.
 
-`withPreamble` injects adversarial counter-modeling and falsification
-branching, which is inappropriate for market discovery, factual,
-recommendation, implementation, comparison, and how-to reports.
+`getSystemPrompt(role, isAdjudicative)` (and helpers layered on top of
+it, such as `buildReasonerSystemPrompt`) is the routing boundary. Do
+not call the adjudicative prompt set directly from generic
+non-adjudicative paths, and do not short-circuit adjudicative runs onto
+the neutral prompt set.
 
 ### R-D. Coherence Refiner is contract-bound
 

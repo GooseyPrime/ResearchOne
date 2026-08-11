@@ -45,6 +45,7 @@ describe('iterative report generator', () => {
       retrieverAnalysis: 'analysis',
       reasoningChains: 'reasoning',
       challenges: 'challenges',
+      requestedFormats: ['ranked_options'],
       onSectionProgress: progress,
     });
 
@@ -52,6 +53,9 @@ describe('iterative report generator', () => {
     expect(result.sections).toHaveLength(10);
     expect(result.markdown.length).toBeGreaterThan(0);
     expect(callRoleModelMock).toHaveBeenCalled();
+    const outlinePrompt = callRoleModelMock.mock.calls[0]?.[0]?.messages?.[1]?.content;
+    expect(outlinePrompt).toContain('Requested presentation formats:');
+    expect(outlinePrompt).toContain('- ranked_options');
   });
 
   it('throws when a known non-legacy intent is missing outputTemplateId', async () => {

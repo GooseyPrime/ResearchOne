@@ -338,32 +338,33 @@ export async function classifyIntent(
   // incidental vocabulary such as "compare" or "recommend" from overriding
   // a user's stated intent.
   const explicit = explicitDeclarationLayer(query, supplementalContext);
-  if (explicit) {
-    const def = getIntentById(explicit.intent);
-    return defaultResearchBrief(
-      explicit.intent,
-      explicit.confidence,
-      explicit.reason +
-        (def ? ` Display label: "${def.displayLabel}".` : '') +
-        ' Explicit declarations override lexical and LLM classification.'
-    );
-  }
-
-  // ── Step 1: Lexical fast path ─────────────────────────────────────────────
-  const lex = lexicalLayer(query, supplementalContext);
-  if (lex && lex.matches > 0) {
-    const def = getIntentById(lex.intent);
-    return defaultResearchBrief(
-      lex.intent,
-      lex.confidence,
-      `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
-    );
+  if (!explicit) {
+    // ── Step 1: Lexical fast path ───────────────────────────────────────────
+    const lex = lexicalLayer(query, supplementalContext);
+    if (lex && lex.matches > 0) {
+      const def = getIntentById(lex.intent);
+      return defaultResearchBrief(
+        lex.intent,
+        lex.confidence,
+        `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
+      );
+    }
   }
 
   const hasOpenRouterCredential = Boolean(
     config.openrouter.apiKey?.trim() || llmOpts.byokApiKeyOverride?.trim()
   );
   if (!hasOpenRouterCredential) {
+    if (explicit) {
+      const def = getIntentById(explicit.intent);
+      return defaultResearchBrief(
+        explicit.intent,
+        explicit.confidence,
+        explicit.reason +
+          (def ? ` Display label: "${def.displayLabel}".` : '') +
+          ' Explicit declarations override lexical and LLM classification. Artifact extraction unavailable because no OpenRouter credential was configured.'
+      );
+    }
     return defaultResearchBrief(
       'factual_report',
       0.55,
@@ -394,6 +395,26 @@ export async function classifyIntent(
     brief.primaryIntent = 'factual_report';
     brief.reasoning = `${brief.reasoning} (legacy remapped to factual_report)`;
     brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE['factual_report'];
+  }
+
+  if (explicit) {
+    const def = getIntentById(explicit.intent);
+    brief.primaryIntent = explicit.intent;
+    brief.confidence = explicit.confidence;
+    brief.reasoning =
+      explicit.reason +
+      (def ? ` Display label: "${def.displayLabel}".` : '') +
+      ' Explicit declarations override lexical and LLM classification while preserving extracted artifacts, formats, and constraints.';
+    brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE[explicit.intent];
+    if (brief.requestedMethodology !== 'policyone') {
+      brief.resolvedMethodology = resolveMethodologyFromIntent(explicit.intent);
+      brief.methodologyResolutionSource = 'triage';
+    }
+    if (brief.objectiveResolutionSource !== 'user') {
+      brief.resolvedResearchObjective = resolveObjectiveFromIntent(explicit.intent);
+      brief.objectiveResolutionSource = 'triage';
+      brief.objectiveResolutionReason = `Resolved from explicit primary intent ${explicit.intent}.`;
+    }
   }
 
   brief.requestedMethodology = brief.requestedMethodology ?? 'auto';
