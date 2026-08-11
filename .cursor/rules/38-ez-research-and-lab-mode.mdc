@@ -156,3 +156,45 @@ backend is landed and tested.
       deliverables and assumptions (not a simplified summary that could
       drift from the actual execution plan)?
 - [ ] Have existing Research Lab page tests passed unchanged?
+
+## EZ Output Preferences (Work Order 2026-08)
+
+### I-10. EZ output preferences controls
+
+EZ Research must expose an optional, collapsed **Output preferences**
+section (chevron toggle, `data-testid="ez-output-prefs-toggle"`).
+
+Inside it, reuse `ResearchOutputControls` with `compact` mode.
+
+Defaults when user has not opened preferences:
+- Report format: `automatic` (no `requestedFormats` sent)
+- Report length: `standard` (no `targetWordCount` sent, let backend infer)
+
+When user selects a format other than Automatic, send
+`requestedFormats: [selectedFormat]` to `startResearch`.
+
+When user selects a length preset or custom value, send the resolved
+`targetWordCount` to `startResearch`.
+
+If untouched the backend infers appropriate length from task complexity,
+item count, and intent. Do not default to 2 200 words for all intents.
+
+### I-11. User field responsibility
+
+EZ Research users are NOT responsible for supplying all required
+fields for an internal report template. ResearchOne infers necessary
+details (via `RequestedArtifact.inferredRequiredFields`) and exposes
+them in the plan preview before confirmation. Users may remove or
+modify inferred fields through natural-language plan refinement.
+
+### I-12. Automatic report length inference
+
+When no explicit length is chosen, the backend estimates a target
+word count from:
+- Requested item count (20 heavily detailed opportunities ≠ 2 200 words)
+- Intent (reference lookup may be 400–800 words; deep literature review 4 000+)
+- Requested artifact complexity
+
+If the requested deliverable physically cannot fit in the chosen
+length, warn at the plan gate but still respect the user's choice
+after confirmation.

@@ -489,35 +489,58 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
   return parseOpportunityRowsFromMarkdownTable(markdown);
 }
 
-function fieldCompletenessForOpportunities(opportunities: Array<{ title: string; body: string }>): number {
-  const requiredMarkers = [
-    'target customer',
-    'problem',
-    'demand',
-    'competitor',
-    'differentiation',
-    'mvp',
-    'stack',
-    'monetization',
-    'acquisition',
-    'risk',
-    'validation',
-    'narrative briefing',
-    'basic project needs',
-    'build prompt',
-    'test prompt',
-    'deployment prompt',
-    'acceptance criteria',
-    'confidence',
-    'evidence',
-  ];
+/**
+ * Adaptive field completeness for opportunity-discovery reports.
+ *
+ * Instead of checking a fixed mega-schema, we validate:
+ *  1. Minimal universal core present in every opportunity item (title + at
+ *     least one of: description, rationale, ranking signal).
+ *  2. Any fields the user explicitly requested (from RequestedArtifact.requiredFields
+ *     or explicitRequiredFields) that were confirmed in the plan.
+ *
+ * We deliberately do NOT require build prompts, test prompts, deployment
+ * prompts, MVP scope, etc. unless the user requested them.
+ */
+function adaptiveFieldCompletenessForOpportunities(
+  opportunities: Array<{ title: string; body: string }>,
+  brief: ResearchBrief
+): { complete: number; missingFields: string[] } {
+  // Minimal universal core — every opportunity must have at minimum a
+  // title (already guaranteed by extraction) and some descriptive/rationale body.
+  const UNIVERSAL_CORE_MARKERS = ['description', 'rationale', 'ranking', 'viability', 'potential', 'opportunity', 'income', 'revenue', 'market'];
+
+  // Collect explicitly requested fields from the ResearchBrief
+  const userRequestedMarkers: string[] = [];
+  for (const artifact of brief.requestedArtifacts) {
+    const explicit = (artifact as { explicitRequiredFields?: string[] }).explicitRequiredFields ?? artifact.requiredFields ?? [];
+    for (const field of explicit) {
+      const normalized = field.toLowerCase().trim();
+      if (normalized && !userRequestedMarkers.includes(normalized)) {
+        userRequestedMarkers.push(normalized);
+      }
+    }
+  }
+
+  const allMissingFields = new Set<string>();
   let complete = 0;
   for (const opportunity of opportunities) {
     const text = `${opportunity.title}\n${opportunity.body}`.toLowerCase();
-    const missing = requiredMarkers.some((marker) => !text.includes(marker));
-    if (!missing) complete += 1;
+
+    // Check universal core — at least one core marker must appear
+    const hasCoreContent = opportunity.body.trim().length > 30 &&
+      UNIVERSAL_CORE_MARKERS.some((marker) => text.includes(marker));
+
+    // Check user-requested fields
+    const missingUserFields = userRequestedMarkers.filter((marker) => !text.includes(marker));
+
+    if (hasCoreContent && missingUserFields.length === 0) {
+      complete += 1;
+    } else {
+      if (!hasCoreContent) allMissingFields.add('core_description_or_rationale');
+      for (const f of missingUserFields) allMissingFields.add(f);
+    }
   }
-  return complete;
+  return { complete, missingFields: Array.from(allMissingFields) };
 }
 
 function runDeterministicContractValidation(args: {
@@ -537,7 +560,7 @@ function runDeterministicContractValidation(args: {
     const opportunities = extractOpportunityObjectsFromMarkdown(args.markdown);
     const requestedCount =
       args.brief.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')?.exactCount ?? null;
-    const completeFields = fieldCompletenessForOpportunities(opportunities);
+    const { complete: completeFields, missingFields } = adaptiveFieldCompletenessForOpportunities(opportunities, args.brief);
     metrics.opportunitiesDelivered = opportunities.length;
     metrics.opportunitiesWithAllRequiredFields = completeFields;
     if (typeof requestedCount === 'number') {
@@ -547,10 +570,11 @@ function runDeterministicContractValidation(args: {
         revision.push(`Deliver exactly ${requestedCount} opportunity objects with consistent ranking and headings.`);
       }
     }
-    if (completeFields !== opportunities.length) {
+    if (completeFields !== opportunities.length && missingFields.length > 0) {
       missing.push('required_fields_missing_in_opportunities');
+      const fieldList = missingFields.join(', ');
       revision.push(
-        'Each opportunity must include narrative briefing, basic project needs, target customer, problem, demand evidence, competitors, differentiation, MVP scope, stack/services, monetization, acquisition, risks, validation experiment, evidence IDs, separate build/test/deployment prompts, acceptance criteria, and confidence.'
+        `Each opportunity must include: title, descriptive content, and all user-confirmed required fields. Missing: ${fieldList}.`
       );
     }
   }
@@ -1735,7 +1759,9 @@ ${generatedReport.markdown}`,
         ?.exactCount;
     const deliveredOpportunityCount = opportunityObjects.length;
     const fieldsCompleteCount =
-      orchProfile.intent === 'opportunity_discovery' ? fieldCompletenessForOpportunities(opportunityObjects) : undefined;
+      orchProfile.intent === 'opportunity_discovery' && confirmedResearchBrief
+        ? adaptiveFieldCompletenessForOpportunities(opportunityObjects, confirmedResearchBrief).complete
+        : undefined;
     const contractMissingRequirements =
       (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [];
     const constraintsPassed = confirmedResearchBrief?.userConstraints.length ?? 0;

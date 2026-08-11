@@ -123,8 +123,8 @@ describe('iterative report generator', () => {
     expect(result.sections.map((section) => section.key)).toEqual([
       'overview',
       'opportunities_list',
-      'viability_analysis',
-      'build_guidance',
+      'ranking_and_analysis',
+      'recommendations',
       'caveats',
     ]);
   });

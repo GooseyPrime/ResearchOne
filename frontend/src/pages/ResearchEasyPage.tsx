@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Settings2, Sparkles } from 'lucide-react';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import ResearchClarificationChat from '../components/research/ResearchClarificationChat';
+import ResearchOutputControls, {
+  type ReportLengthPreset,
+  resolveTargetWordCount,
+  normalizeReportFormats,
+} from '../components/research/ResearchOutputControls';
 import { useCanAccessDeepResearch } from '../hooks/useCanAccessDeepResearch';
 import { useStore } from '../store/useStore';
 import { extractApiError, startResearch } from '../utils/api';
@@ -30,6 +35,12 @@ export default function ResearchEasyPage() {
   const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
 
+  // ── Output preferences (collapsed by default — EZ mode stays simple) ─────
+  const [outputPrefsOpen, setOutputPrefsOpen] = useState(false);
+  const [reportFormats, setReportFormats] = useState<string[]>(['automatic']);
+  const [reportLengthPreset, setReportLengthPreset] = useState<ReportLengthPreset>('standard');
+  const [reportLengthCustom, setReportLengthCustom] = useState(2200);
+
   const deepLocked = !tierGateUnknown && !canAccessDeep;
   const selectedEngineVersion = depth === 'deep' ? 'v2' : undefined;
 
@@ -47,6 +58,13 @@ export default function ResearchEasyPage() {
     return lines.length > 0 ? `Clarifications:\n${lines.join('\n')}` : '';
   }, [clarifyAnswers, clarifyQuestions]);
 
+  // Resolve output preferences into API params
+  const resolvedFormats = normalizeReportFormats(reportFormats);
+  const requestedFormats = resolvedFormats.includes('automatic') ? undefined : resolvedFormats;
+  // Only send targetWordCount when the user has explicitly selected a non-default length
+  const targetWordCount =
+    reportLengthPreset === 'standard' ? undefined : resolveTargetWordCount(reportLengthPreset, reportLengthCustom);
+
   const mutation = useMutation({
     mutationFn: (opts: { includeClarifications: boolean }) => {
       const extra = opts.includeClarifications && clarityBlock ? `\n\n${clarityBlock}` : '';
@@ -57,6 +75,8 @@ export default function ResearchEasyPage() {
         supplementalFiles: files,
         supplementalUrls: urls,
         supplementalUrlCrawl: urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
+        requestedFormats,
+        targetWordCount,
       });
     },
     onSuccess: (data) => {
@@ -165,6 +185,39 @@ export default function ResearchEasyPage() {
           }}
         />
 
+        {/* Output preferences — collapsed by default so EZ stays simple */}
+        <div className="border border-surface-100 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            data-testid="ez-output-prefs-toggle"
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-300 hover:bg-surface-100/40 transition-colors"
+            onClick={() => setOutputPrefsOpen((open) => !open)}
+            disabled={mutation.isPending}
+          >
+            <span className="flex items-center gap-1.5">
+              <Settings2 size={13} />
+              Output preferences
+            </span>
+            {outputPrefsOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+          {outputPrefsOpen && (
+            <div className="px-3 pb-3 pt-1 border-t border-surface-100">
+              <ResearchOutputControls
+                objective="AUTO"
+                onObjectiveChange={() => undefined}
+                reportFormats={reportFormats}
+                onReportFormatsChange={setReportFormats}
+                reportLengthPreset={reportLengthPreset}
+                onReportLengthPresetChange={setReportLengthPreset}
+                reportLengthCustom={reportLengthCustom}
+                onReportLengthCustomChange={setReportLengthCustom}
+                disabled={mutation.isPending}
+                compact
+              />
+            </div>
+          )}
+        </div>
+
         <button
           type="button"
           className="btn-primary inline-flex items-center gap-2 text-sm"
@@ -197,3 +250,4 @@ export default function ResearchEasyPage() {
     </div>
   );
 }
+

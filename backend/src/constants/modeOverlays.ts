@@ -41,7 +41,7 @@ export const MODE_OVERLAYS: Record<ResearchMode, Partial<Record<AgentRole, strin
     synthesizer: 'Preserve contract-required structure (tables, ranked lists, procedures) and produce complete artifacts before extra narrative expansion.',
     verifier: `${VERIFIER_RETRACTED_RULE}\n\nVerify contract completeness, citation traceability, and uncertainty calibration before allowing finalization.`,
     plain_language_synthesizer: 'Write for an intelligent non-specialist. Preserve the nuance and uncertainty of the full report. Do not oversimplify contested points.',
-    outline_architect: 'Structure the report to reflect the breadth of inquiry. Each major hypothesis should have its own section.',
+    outline_architect: 'Structure each section around a specific deliverable, research question thread, or evidence theme consistent with the confirmed intent. Do not presume hypotheses exist unless the intent is investigative or adjudicative.',
   },
 
   INVESTIGATIVE_SYNTHESIS: {
