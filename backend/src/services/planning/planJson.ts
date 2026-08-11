@@ -85,6 +85,12 @@ function isEpistemicPosture(s: unknown): s is EpistemicPosture {
   return typeof s === 'string' && VALID_EPISTEMIC_POSTURES.has(s);
 }
 
+function coerceStringList(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const values = raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+  return values.length > 0 ? values : undefined;
+}
+
 function coerceArtifact(raw: unknown): RequestedArtifact | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -95,10 +101,18 @@ function coerceArtifact(raw: unknown): RequestedArtifact | null {
     const rounded = Math.round(o.exactCount);
     return rounded > 0 ? rounded : undefined;
   })();
-  const requiredFields = Array.isArray(o.requiredFields)
-    ? o.requiredFields.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-    : [];
-  return { description, exactCount, requiredFields: requiredFields.length > 0 ? requiredFields : undefined };
+  const explicitRequiredFields = coerceStringList(o.explicitRequiredFields);
+  const inferredRequiredFields = coerceStringList(o.inferredRequiredFields);
+  const optionalFields = coerceStringList(o.optionalFields);
+  const requiredFields = coerceStringList(o.requiredFields);
+  return {
+    description,
+    exactCount,
+    explicitRequiredFields,
+    inferredRequiredFields,
+    optionalFields,
+    requiredFields,
+  };
 }
 
 function coerceConstraint(raw: unknown): UserConstraint | null {

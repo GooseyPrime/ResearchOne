@@ -28,7 +28,24 @@ export interface RequestedArtifact {
   description: string;
   /** Exact count the user stated, if any (e.g. "ten opportunities" → count 10). */
   exactCount?: number;
-  /** Required subfields per list item, if the user specified them. */
+  /**
+   * Fields the user explicitly named in their request (e.g. "include monetization and competition").
+   * These are hard requirements — the plan and report must include them.
+   */
+  explicitRequiredFields?: string[];
+  /**
+   * Fields ResearchOne inferred are necessary to competently fulfill the request.
+   * Shown at the plan gate and editable before confirmation.
+   */
+  inferredRequiredFields?: string[];
+  /**
+   * Fields ResearchOne can add if data is available but are not required for a passing report.
+   */
+  optionalFields?: string[];
+  /**
+   * @deprecated Prefer explicitRequiredFields / inferredRequiredFields.
+   * Kept for backward compatibility with plans persisted before this change.
+   */
   requiredFields?: string[];
 }
 
@@ -172,11 +189,24 @@ export function formatBriefForPrompt(brief: ResearchBrief): string {
     lines.push(`REQUESTED_ARTIFACTS:`);
     for (const a of brief.requestedArtifacts) {
       const countNote = a.exactCount != null ? ` [exact count: ${a.exactCount}]` : '';
-      const fieldsNote =
-        a.requiredFields && a.requiredFields.length > 0
+      const explicitNote =
+        a.explicitRequiredFields && a.explicitRequiredFields.length > 0
+          ? ` [user-requested fields: ${a.explicitRequiredFields.join(', ')}]`
+          : '';
+      const inferredNote =
+        a.inferredRequiredFields && a.inferredRequiredFields.length > 0
+          ? ` [inferred required fields: ${a.inferredRequiredFields.join(', ')}]`
+          : '';
+      // Backward compat: fall back to requiredFields if neither explicit nor inferred
+      const legacyNote =
+        !explicitNote && !inferredNote && a.requiredFields && a.requiredFields.length > 0
           ? ` [required fields: ${a.requiredFields.join(', ')}]`
           : '';
-      lines.push(`  - ${a.description}${countNote}${fieldsNote}`);
+      const optionalNote =
+        a.optionalFields && a.optionalFields.length > 0
+          ? ` [optional enrichment: ${a.optionalFields.join(', ')}]`
+          : '';
+      lines.push(`  - ${a.description}${countNote}${explicitNote}${inferredNote}${legacyNote}${optionalNote}`);
     }
   }
   if (brief.requestedFormats && brief.requestedFormats.length > 0) {

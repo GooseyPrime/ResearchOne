@@ -237,29 +237,30 @@ FAIL if: the report asserts definitive conclusions where the evidence is explora
     id: 'intent_opportunity_discovery',
     intentId: 'opportunity_discovery',
     title: 'Opportunity discovery',
-    sections: ['overview', 'opportunities_list', 'viability_analysis', 'build_guidance', 'caveats'],
+    sections: ['overview', 'opportunities_list', 'ranking_and_analysis', 'recommendations', 'caveats'],
     sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Ranked opportunity list; each opportunity must use these exact Markdown headings within every item: #### Narrative Briefing, #### Basic Project Needs, #### Build Prompt, #### Test Prompt, #### Deployment Prompt. Keep build, test, and deployment prompts separate. No falsification section.',
+    narrativeHint:
+      'Ranked opportunity list. Use the confirmed plan as the contract: include exactly the fields the user requested or ResearchOne inferred at plan confirmation. Do not inject implementation guidance unless the user explicitly requested it.',
     verifierRubric: `PASS criteria for an Opportunity Discovery report:
-- The requested number of opportunities is present (if an exact count was stated).
-- Each opportunity has a description, viability signal, evidence citation, and the exact required subheadings.
-- Build, test, and deployment prompts must be separate sections, not combined into one prompt.
-- If build guidance was requested, each opportunity includes actionable build steps.
-- User constraints (e.g., time/budget/tool limits) are respected — opportunities violating stated constraints must be flagged or excluded.
+- The requested number of opportunities is present (if an exact count was stated, that count must be met).
+- Each opportunity contains the fields explicitly requested by the user or inferred and confirmed in the plan (e.g., ranking, monetization, competition, economics — whatever was confirmed).
+- Each opportunity includes at least: a title, a brief description, a ranking rationale, and supporting evidence or citation.
+- Fields that the user did NOT request are NOT required and must not be flagged as missing.
+- Unknown facts are labeled as unknown rather than fabricated or omitted.
+- User constraints (e.g., time/budget/tool limits) are respected.
 - The report does not critique the premise instead of delivering opportunities.
-- No falsification or contradiction-analysis sections (not applicable to this intent).
-FAIL if: requested artifact count is not met, opportunities lack viability evidence, required subheadings are missing, build/test/deployment prompts are combined, user constraints are ignored, or the report spends substantial space testing the premise rather than delivering the opportunity list.`,
+- No falsification, contradiction-analysis, or hypothesis-testing sections appear in the report.
+- If the initial corpus was incomplete, the report shows evidence that additional retrieval was attempted.
+FAIL if: the requested opportunity count is not met; the report delivers a comparative analysis or investigation instead of ranked opportunities; falsification or contradiction-analysis sections dominate; confirmed required fields are absent; or the report refuses to rank because evidence is imperfect (uncertainty should be labeled, not used to abort the deliverable).`,
     requiredDeliverables: [
-      'Exactly N ranked opportunity items (one per user-requested count)',
-      'Each opportunity: Narrative Briefing section',
-      'Each opportunity: Basic Project Needs section',
-      'Each opportunity: Build Prompt section',
-      'Each opportunity: Test Prompt section',
-      'Each opportunity: Deployment Prompt section',
-      'Each opportunity: item-level supporting citations',
-      'Separate build, test, and deployment prompts (not combined)',
-      'Caveats and uncertainty',
+      'Ranked opportunity list with the exact count requested (or maximum available if no count was stated)',
+      'Each opportunity: title, description, and ranking rationale',
+      'Each opportunity: user-requested or plan-confirmed information fields (e.g., monetization, competition, economics)',
+      'Each opportunity: cited evidence or sourced signals supporting viability',
+      'Unknown or unverified data labeled explicitly rather than omitted or fabricated',
+      'Final recommendation or top-N summary',
+      'Caveats and confidence notes',
     ],
   },
   intent_feasibility: {

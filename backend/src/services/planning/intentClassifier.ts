@@ -16,6 +16,199 @@ import {
 const LEXICAL_CONFIDENCE_STRONG = 0.92;
 /** Single specific-intent hit — still useful but plan gate should show medium. */
 const LEXICAL_CONFIDENCE_MODERATE = 0.78;
+/** Explicit user declaration — highest confidence tier. */
+const EXPLICIT_DECLARATION_CONFIDENCE = 0.98;
+
+/**
+ * Mapping from natural-language synonyms to canonical IntentId values.
+ * Used by the explicit-declaration pre-pass to normalize user-provided
+ * intent names before routing through the rest of classification.
+ */
+const INTENT_ALIAS_MAP: Record<string, IntentId> = {
+  // factual_report
+  factual_report: 'factual_report',
+  factual: 'factual_report',
+  'factual report': 'factual_report',
+  fact: 'factual_report',
+  facts: 'factual_report',
+  // survey
+  survey: 'survey',
+  landscape: 'survey',
+  overview: 'survey',
+  // adjudication
+  adjudication: 'adjudication',
+  adjudicate: 'adjudication',
+  'fact check': 'adjudication',
+  'fact checking': 'adjudication',
+  'fact-check': 'adjudication',
+  'fact-checking': 'adjudication',
+  factcheck: 'adjudication',
+  verify: 'adjudication',
+  verification: 'adjudication',
+  // investigation
+  investigation: 'investigation',
+  investigate: 'investigation',
+  investigative: 'investigation',
+  // story_verification
+  story_verification: 'story_verification',
+  'story verification': 'story_verification',
+  'story verif': 'story_verification',
+  // opportunity_discovery
+  opportunity_discovery: 'opportunity_discovery',
+  'opportunity discovery': 'opportunity_discovery',
+  opportunity: 'opportunity_discovery',
+  opportunities: 'opportunity_discovery',
+  'market opportunity': 'opportunity_discovery',
+  'market opportunities': 'opportunity_discovery',
+  discovery: 'opportunity_discovery',
+  // feasibility
+  feasibility: 'feasibility',
+  feasible: 'feasibility',
+  viability: 'feasibility',
+  viable: 'feasibility',
+  'feasibility analysis': 'feasibility',
+  'feasibility study': 'feasibility',
+  // implementation
+  implementation: 'implementation',
+  implement: 'implementation',
+  'implementation plan': 'implementation',
+  'action plan': 'implementation',
+  roadmap: 'implementation',
+  // literature_review
+  literature_review: 'literature_review',
+  'literature review': 'literature_review',
+  'lit review': 'literature_review',
+  'systematic review': 'literature_review',
+  // comparative
+  comparative: 'comparative',
+  comparison: 'comparative',
+  compare: 'comparative',
+  // how_to
+  how_to: 'how_to',
+  'how to': 'how_to',
+  howto: 'how_to',
+  'how-to': 'how_to',
+  tutorial: 'how_to',
+  guide: 'how_to',
+  'step by step': 'how_to',
+  'step-by-step': 'how_to',
+  // recommendation
+  recommendation: 'recommendation',
+  recommend: 'recommendation',
+  recommendations: 'recommendation',
+  // exploratory
+  exploratory: 'exploratory',
+  explore: 'exploratory',
+  exploration: 'exploratory',
+  // position_brief
+  position_brief: 'position_brief',
+  'position brief': 'position_brief',
+  position: 'position_brief',
+  'make the case': 'position_brief',
+  advocacy: 'position_brief',
+  // timeline
+  timeline: 'timeline',
+  chronology: 'timeline',
+  chronological: 'timeline',
+  // reference_lookup
+  reference_lookup: 'reference_lookup',
+  'reference lookup': 'reference_lookup',
+  'quick lookup': 'reference_lookup',
+  lookup: 'reference_lookup',
+  'quick answer': 'reference_lookup',
+};
+
+/**
+ * Explicit intent declaration pre-pass.
+ *
+ * Scans the query for patterns such as:
+ *   "Primary research intent: opportunity_discovery"
+ *   "Intent: feasibility"
+ *   "Use opportunity discovery"
+ *   "Treat this as a literature review"
+ *   "I want a recommendation report"
+ *
+ * This step runs BEFORE the lexical layer and BEFORE the LLM.
+ * An explicit declaration always wins over lexical trigger matching.
+ */
+function explicitDeclarationLayer(
+  query: string,
+  supplemental?: string
+): { intent: IntentId; confidence: number; reason: string } | null {
+  const text = `${query}\n${supplemental ?? ''}`;
+
+  // Pattern 1: labelled declaration (case-insensitive)
+  // "Primary research intent: X", "Intent: X", "Research intent: X", "Report type: X"
+  const labelledPattern =
+    /(?:primary\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)\s*[:=]\s*([^\n.,;]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = labelledPattern.exec(text)) !== null) {
+    const candidate = match[1].trim().toLowerCase();
+    const resolved = resolveIntentAlias(candidate);
+    if (resolved) {
+      return {
+        intent: resolved,
+        confidence: EXPLICIT_DECLARATION_CONFIDENCE,
+        reason: `Explicit intent declaration found: "${match[0].trim()}" → resolved to "${resolved}".`,
+      };
+    }
+  }
+
+  // Pattern 2: imperative declaration
+  // "Use opportunity discovery", "Treat this as a literature review", "Run as feasibility"
+  const imperativePattern =
+    /(?:use|run\s+(?:this\s+)?as|treat\s+this\s+as|run\s+as|classify\s+as|route\s+as)\s+(?:a\s+|an\s+)?([^\n.,;]+)/gi;
+  while ((match = imperativePattern.exec(text)) !== null) {
+    const candidate = match[1].trim().toLowerCase();
+    const resolved = resolveIntentAlias(candidate);
+    if (resolved) {
+      return {
+        intent: resolved,
+        confidence: EXPLICIT_DECLARATION_CONFIDENCE,
+        reason: `Imperative intent declaration: "${match[0].trim()}" → resolved to "${resolved}".`,
+      };
+    }
+  }
+
+  // Pattern 3: "I want a/an X report", "I need a/an X analysis"
+  const wantPattern = /i\s+(?:want|need|would\s+like)\s+(?:you\s+to\s+(?:produce\s+)?)?(?:a\s+|an\s+)?([^\n.,;]+?)\s+(?:report|analysis|review|guide|plan|brief)/gi;
+  while ((match = wantPattern.exec(text)) !== null) {
+    const candidate = match[1].trim().toLowerCase();
+    const resolved = resolveIntentAlias(candidate);
+    if (resolved) {
+      return {
+        intent: resolved,
+        confidence: EXPLICIT_DECLARATION_CONFIDENCE - 0.03,
+        reason: `Explicit intent request: "${match[0].trim()}" → resolved to "${resolved}".`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalize a candidate string to a known IntentId via alias map.
+ * Tries exact match, then progressively looser substring matches.
+ */
+function resolveIntentAlias(candidate: string): IntentId | null {
+  const normalized = candidate.trim().toLowerCase();
+
+  // Exact match
+  if (normalized in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[normalized];
+
+  // Try with underscores replaced by spaces
+  const deUnderscored = normalized.replace(/_/g, ' ');
+  if (deUnderscored in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[deUnderscored];
+
+  // Try trimming trailing "report", "analysis", "study", "guide"
+  const stripped = normalized.replace(/\s+(report|analysis|study|guide|plan|review|mode|type)$/, '').trim();
+  if (stripped in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[stripped];
+  const strippedDeUnd = stripped.replace(/_/g, ' ');
+  if (strippedDeUnd in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[strippedDeUnd];
+
+  return null;
+}
 
 /**
  * Intents with relatively precise trigger language. A single pattern hit is
@@ -139,20 +332,39 @@ export async function classifyIntent(
     byokApiKeyOverride?: string;
   }
 ): Promise<ResearchBrief> {
-  const lex = lexicalLayer(query, supplementalContext);
-  if (lex && lex.matches > 0) {
-    const def = getIntentById(lex.intent);
-    return defaultResearchBrief(
-      lex.intent,
-      lex.confidence,
-      `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
-    );
+  // ── Step 0: Explicit declaration pre-pass ────────────────────────────────
+  // An explicit user declaration ("Primary research intent: X", "Use X mode",
+  // etc.) ALWAYS wins over lexical and LLM classification.  This prevents
+  // incidental vocabulary such as "compare" or "recommend" from overriding
+  // a user's stated intent.
+  const explicit = explicitDeclarationLayer(query, supplementalContext);
+  if (!explicit) {
+    // ── Step 1: Lexical fast path ───────────────────────────────────────────
+    const lex = lexicalLayer(query, supplementalContext);
+    if (lex && lex.matches > 0) {
+      const def = getIntentById(lex.intent);
+      return defaultResearchBrief(
+        lex.intent,
+        lex.confidence,
+        `High-signal lexical match on intent "${def?.displayLabel ?? lex.intent}" (${lex.matches} pattern hit(s)). Artifact extraction skipped on fast path.`
+      );
+    }
   }
 
   const hasOpenRouterCredential = Boolean(
     config.openrouter.apiKey?.trim() || llmOpts.byokApiKeyOverride?.trim()
   );
   if (!hasOpenRouterCredential) {
+    if (explicit) {
+      const def = getIntentById(explicit.intent);
+      return defaultResearchBrief(
+        explicit.intent,
+        explicit.confidence,
+        explicit.reason +
+          (def ? ` Display label: "${def.displayLabel}".` : '') +
+          ' Explicit declarations override lexical and LLM classification. Artifact extraction unavailable because no OpenRouter credential was configured.'
+      );
+    }
     return defaultResearchBrief(
       'factual_report',
       0.55,
@@ -183,6 +395,26 @@ export async function classifyIntent(
     brief.primaryIntent = 'factual_report';
     brief.reasoning = `${brief.reasoning} (legacy remapped to factual_report)`;
     brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE['factual_report'];
+  }
+
+  if (explicit) {
+    const def = getIntentById(explicit.intent);
+    brief.primaryIntent = explicit.intent;
+    brief.confidence = explicit.confidence;
+    brief.reasoning =
+      explicit.reason +
+      (def ? ` Display label: "${def.displayLabel}".` : '') +
+      ' Explicit declarations override lexical and LLM classification while preserving extracted artifacts, formats, and constraints.';
+    brief.epistemicPosture = INTENT_EPISTEMIC_POSTURE[explicit.intent];
+    if (brief.requestedMethodology !== 'policyone') {
+      brief.resolvedMethodology = resolveMethodologyFromIntent(explicit.intent);
+      brief.methodologyResolutionSource = 'triage';
+    }
+    if (brief.objectiveResolutionSource !== 'user') {
+      brief.resolvedResearchObjective = resolveObjectiveFromIntent(explicit.intent);
+      brief.objectiveResolutionSource = 'triage';
+      brief.objectiveResolutionReason = `Resolved from explicit primary intent ${explicit.intent}.`;
+    }
   }
 
   brief.requestedMethodology = brief.requestedMethodology ?? 'auto';

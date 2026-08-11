@@ -149,3 +149,71 @@ the classifier and pipeline test suite. Tests must assert:
 - [ ] Did you touch the parse fallback? Confirm it does not backfill
       `hypothesis = user_query` for non-adjudicative intents.
 - [ ] Are exact-count artifacts extracted and stored in the ResearchBrief?
+
+## Additional invariants (Work Order 2026-08 correctness repair)
+
+### R-A. Explicit intent declarations override lexical triggers
+
+`intentClassifier.ts` must run an explicit-declaration pre-pass
+BEFORE the lexical layer and before the LLM call.
+
+Patterns such as `Primary research intent: opportunity_discovery`,
+`Intent: feasibility`, `Use opportunity discovery`, `Treat this as a
+literature review`, and `I want a recommendation report` MUST resolve
+immediately to the declared intent with confidence ≥ 0.95.
+
+An explicit declaration cannot be overridden by incidental vocabulary
+such as "compare" or "recommend" appearing elsewhere in the prompt.
+
+### R-B. Required fields are contract-derived, not globally hard-coded
+
+`researchOrchestrator.ts` must NOT check opportunity deliverables
+against a universal mega-schema (narrative briefing, build prompt,
+test prompt, deployment prompt, MVP scope, etc.) unless those fields
+were explicitly requested by the user or inferred and confirmed in
+the plan.
+
+Adaptive required-field validation uses:
+1. `RequestedArtifact.explicitRequiredFields` — what the user stated
+2. `RequestedArtifact.inferredRequiredFields` — what the plan inferred
+3. Minimal universal core (title + description/rationale)
+
+### R-C. Preamble routing must follow adjudicativeness
+
+Non-adjudicative runs must use `withStandardPreamble(...)` for planner,
+retriever, reasoner, synthesizer, verifier, and report-generation roles.
+Adjudicative / PolicyOne runs must preserve the reasoning-first
+`withPreamble(...)` versions of those same prompts.
+
+`getSystemPrompt(role, isAdjudicative)` (and helpers layered on top of
+it, such as `buildReasonerSystemPrompt`) is the routing boundary. Do
+not call the adjudicative prompt set directly from generic
+non-adjudicative paths, and do not short-circuit adjudicative runs onto
+the neutral prompt set.
+
+### R-D. Coherence Refiner is contract-bound
+
+The Coherence Refiner prompt must include an explicit prohibition:
+for non-adjudicative intents it MUST NOT add Falsification Criteria,
+Contradiction Analysis, Hypothesis Testing, or adversarial sections.
+Any such sections appearing in the input draft must be removed.
+
+### R-E. Contract Auditor detects report-type bleed
+
+The contract_auditor prompt must check for:
+- Primary intent mismatch (confirmed intent ≠ report structure)
+- Unauthorized falsification/adversarial sections in non-adjudicative reports
+- Ranking refusal when uncertainty should instead be labeled
+- Speech-act drift (opportunity list → investigation/critique)
+
+### R-F. EZ Mode exposes output preferences
+
+`ResearchEasyPage.tsx` must include an optional, collapsed
+`Output preferences` section (toggled by a chevron button) exposing:
+- Report format (default: Automatic)
+- Report length (default: Standard; user can override)
+- Custom word count (when Custom selected)
+
+Explicit user selections must be sent via `requestedFormats` and
+`targetWordCount` in the `startResearch` payload. They must survive
+plan confirmation and reach report generation.

@@ -38,6 +38,7 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
       : ({} as Record<string, number>);
   return {
     ...plan,
+    requestedFormats: plan.requestedFormats ?? plan.researchBrief?.requestedFormats,
     outputShape: {
       ...plan.outputShape,
       estimatedLength: {

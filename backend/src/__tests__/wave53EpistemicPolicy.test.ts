@@ -10,7 +10,7 @@ import { REASONER_CONSENSUS_CONSTRAINT } from '../services/reasoning/reasoningMo
 
 describe('wave53EpistemicPolicy', () => {
   it('buildReasonerSystemPrompt appends the consensus constraint body', () => {
-    const prompt = buildReasonerSystemPrompt();
+    const prompt = buildReasonerSystemPrompt(true);
     expect(prompt.length).toBeGreaterThan(REASONER_CONSENSUS_CONSTRAINT.length);
     expect(prompt).toContain(REASONER_CONSENSUS_CONSTRAINT);
     expect(prompt).toMatch(/consensus/i);

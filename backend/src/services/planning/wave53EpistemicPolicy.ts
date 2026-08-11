@@ -2,7 +2,7 @@
  * Wave 5.3 — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/skeptic
  * operational constraints live alongside openrouter SYSTEM_PROMPTS).
  */
-import { SYSTEM_PROMPTS } from '../openrouter/openrouterService';
+import { getSystemPrompt, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
   appendReasonerPolicyConstraint,
   REASONER_CONSENSUS_CONSTRAINT,
@@ -13,8 +13,8 @@ import { SOURCE_CLASS_IDS } from './sourceClassTypes';
 /** Canonical constraint body lives in `reasoningModelPolicy` (avoid circular imports). */
 export { REASONER_CONSENSUS_CONSTRAINT, appendReasonerPolicyConstraint };
 
-export function buildReasonerSystemPrompt(): string {
-  return appendReasonerPolicyConstraint(SYSTEM_PROMPTS.reasoner);
+export function buildReasonerSystemPrompt(isAdjudicative: boolean): string {
+  return appendReasonerPolicyConstraint(getSystemPrompt('reasoner', isAdjudicative));
 }
 
 const SKEPTIC_OVERLAYS: Record<SourceClassId, string> = {

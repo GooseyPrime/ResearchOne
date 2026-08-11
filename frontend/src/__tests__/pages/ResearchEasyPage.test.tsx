@@ -1,14 +1,16 @@
 /** @vitest-environment jsdom */
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import ResearchEasyPage from '../../pages/ResearchEasyPage';
 
-const navigateMock = vi.fn();
-const invalidateQueriesMock = vi.fn();
-const startResearchMock = vi.fn();
+const { navigateMock, invalidateQueriesMock, startResearchMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
+  startResearchMock: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -48,6 +50,10 @@ vi.mock('../../utils/researchRunRoutes', () => ({
   liveResearchUrl: () => '/app/research?runId=run-1#plan',
 }));
 
+vi.mock('../../utils/clarifyingQuestions', () => ({
+  buildClarifyingQuestions: () => [],
+}));
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -68,40 +74,120 @@ describe('ResearchEasyPage', () => {
     startResearchMock.mockResolvedValue({ runId: 'run-1', status: 'queued' });
   });
 
-  it('renders EZ controls for objective, format, length, and citation style', () => {
+  afterEach(() => cleanup());
+
+  // ── Defaults ──────────────────────────────────────────────────────────────
+
+  it('renders the EZ Research heading', () => {
     renderPage();
-    expect(screen.getByText('Research Objective')).toBeInTheDocument();
-    expect(screen.getByText('Report Format')).toBeInTheDocument();
-    expect(screen.getByText('Report Length')).toBeInTheDocument();
-    expect(screen.getByText('Citation Style')).toBeInTheDocument();
+    expect(screen.getByText('EZ Research')).toBeInTheDocument();
   });
 
-  it('sends selected formats and custom length to the API payload', async () => {
+  it('output preferences panel is collapsed by default', () => {
     renderPage();
+    // The toggle button is visible
+    expect(screen.getByTestId('ez-output-prefs-toggle')).toBeInTheDocument();
+    // But the Report Format control inside is hidden
+    expect(screen.queryByText('Report Format')).not.toBeInTheDocument();
+  });
 
-    fireEvent.change(screen.getByLabelText('Your research question or task'), {
-      target: { value: 'Help me evaluate B2B workflow automation opportunities for small clinics in the US market this year' },
+  it('output preferences toggle opens the panel', () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    expect(screen.getByText('Report Format')).toBeInTheDocument();
+    expect(screen.getByText('Report Length')).toBeInTheDocument();
+    expect(screen.queryByText('Research Objective')).not.toBeInTheDocument();
+  });
+
+  it('output preferences toggle collapses the panel again', () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    expect(screen.getByText('Report Format')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    expect(screen.queryByText('Report Format')).not.toBeInTheDocument();
+  });
+
+  // ── Submit with defaults (no format/length selection) ────────────────────
+
+  it('submits with no requestedFormats and no targetWordCount when preferences not changed', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Find me 20 affiliate niches ranked by income potential' },
     });
-    fireEvent.change(screen.getByDisplayValue('Automatic — ResearchOne selects from the request'), {
-      target: { value: 'NOVEL_APPLICATION_DISCOVERY' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Ranked options' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Narrative briefing' }));
-    fireEvent.change(screen.getByDisplayValue('Standard (~2,200 words)'), {
-      target: { value: 'custom' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3500' } });
     fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
 
     await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
-    expect(startResearchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        researchObjective: 'NOVEL_APPLICATION_DISCOVERY',
-        requestedResearchObjective: 'NOVEL_APPLICATION_DISCOVERY',
-        requestedFormats: ['ranked_options', 'narrative_briefing'],
-        targetWordCount: 3500,
-        citationStyle: 'apa',
-      })
-    );
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    // Defaults: no explicit format/length sent
+    expect(call.requestedFormats).toBeUndefined();
+    expect(call.targetWordCount).toBeUndefined();
+  });
+
+  // ── User chooses a format ─────────────────────────────────────────────────
+
+  it('sends requestedFormats when user selects a specific format', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Find me 20 affiliate niches ranked by income potential' },
+    });
+
+    // Open output preferences
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+
+    // Select Ranked options format
+    fireEvent.click(screen.getByRole('button', { name: 'Ranked options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.requestedFormats).toEqual(['ranked_options']);
+  });
+
+  // ── User chooses a length ─────────────────────────────────────────────────
+
+  it('sends targetWordCount when user selects Long length', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Find me 20 affiliate niches ranked by income potential' },
+    });
+
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    // Change to Long
+    fireEvent.change(screen.getByDisplayValue('Standard (~2,200 words)'), {
+      target: { value: 'long' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.targetWordCount).toBe(4000);
+  });
+
+  // ── User enters a custom word count ──────────────────────────────────────
+
+  it('sends custom targetWordCount when user selects Custom', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Find me 20 affiliate niches ranked by income potential' },
+    });
+
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    fireEvent.change(screen.getByDisplayValue('Standard (~2,200 words)'), {
+      target: { value: 'custom' },
+    });
+    const customInput = screen.getByRole('spinbutton');
+    fireEvent.change(customInput, { target: { value: '5000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.targetWordCount).toBe(5000);
+  });
+
+  // ── Attachment dropzone is present ───────────────────────────────────────
+
+  it('renders attachment dropzone', () => {
+    renderPage();
+    expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument();
   });
 });
