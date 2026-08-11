@@ -512,7 +512,7 @@ function adaptiveFieldCompletenessForOpportunities(
   // Collect explicitly requested fields from the ResearchBrief
   const userRequestedMarkers: string[] = [];
   for (const artifact of brief.requestedArtifacts) {
-    const explicit = (artifact as { explicitRequiredFields?: string[] }).explicitRequiredFields ?? artifact.requiredFields ?? [];
+    const explicit = artifact.explicitRequiredFields ?? artifact.requiredFields ?? [];
     for (const field of explicit) {
       const normalized = field.toLowerCase().trim();
       if (normalized && !userRequestedMarkers.includes(normalized)) {
