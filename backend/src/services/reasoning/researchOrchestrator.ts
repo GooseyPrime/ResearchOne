@@ -495,8 +495,9 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
  * Instead of checking a fixed mega-schema, we validate:
  *  1. Minimal universal core present in every opportunity item (title + at
  *     least one of: description, rationale, ranking signal).
- *  2. Any fields the user explicitly requested (from RequestedArtifact.requiredFields
- *     or explicitRequiredFields) that were confirmed in the plan.
+ *  2. Any fields the user explicitly requested or confirmed at the plan gate
+ *     (from RequestedArtifact.requiredFields, explicitRequiredFields, or
+ *     inferredRequiredFields).
  *
  * We deliberately do NOT require build prompts, test prompts, deployment
  * prompts, MVP scope, etc. unless the user requested them.
@@ -512,8 +513,12 @@ function adaptiveFieldCompletenessForOpportunities(
   // Collect explicitly requested fields from the ResearchBrief
   const userRequestedMarkers: string[] = [];
   for (const artifact of brief.requestedArtifacts) {
-    const explicit = artifact.explicitRequiredFields ?? artifact.requiredFields ?? [];
-    for (const field of explicit) {
+    const requiredFields = [
+      ...(artifact.explicitRequiredFields ?? []),
+      ...(artifact.inferredRequiredFields ?? []),
+      ...(artifact.requiredFields ?? []),
+    ];
+    for (const field of requiredFields) {
       const normalized = field.toLowerCase().trim();
       if (normalized && !userRequestedMarkers.includes(normalized)) {
         userRequestedMarkers.push(normalized);
@@ -524,11 +529,12 @@ function adaptiveFieldCompletenessForOpportunities(
   const allMissingFields = new Set<string>();
   let complete = 0;
   for (const opportunity of opportunities) {
+    const bodyText = opportunity.body.toLowerCase();
     const text = `${opportunity.title}\n${opportunity.body}`.toLowerCase();
 
     // Check universal core — at least one core marker must appear
     const hasCoreContent = opportunity.body.trim().length > 30 &&
-      UNIVERSAL_CORE_MARKERS.some((marker) => text.includes(marker));
+      UNIVERSAL_CORE_MARKERS.some((marker) => bodyText.includes(marker));
 
     // Check user-requested fields
     const missingUserFields = userRequestedMarkers.filter((marker) => !text.includes(marker));

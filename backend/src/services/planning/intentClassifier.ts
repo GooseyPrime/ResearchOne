@@ -39,7 +39,9 @@ const INTENT_ALIAS_MAP: Record<string, IntentId> = {
   adjudication: 'adjudication',
   adjudicate: 'adjudication',
   'fact check': 'adjudication',
+  'fact checking': 'adjudication',
   'fact-check': 'adjudication',
+  'fact-checking': 'adjudication',
   factcheck: 'adjudication',
   verify: 'adjudication',
   verification: 'adjudication',
@@ -204,15 +206,6 @@ function resolveIntentAlias(candidate: string): IntentId | null {
   if (stripped in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[stripped];
   const strippedDeUnd = stripped.replace(/_/g, ' ');
   if (strippedDeUnd in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[strippedDeUnd];
-
-  // Check if any alias key starts with the candidate (require ≥4 chars to avoid ambiguous short matches)
-  if (normalized.length >= 4) {
-    for (const [alias, intentId] of Object.entries(INTENT_ALIAS_MAP)) {
-      if (normalized.startsWith(alias) || alias.startsWith(normalized)) {
-        return intentId;
-      }
-    }
-  }
 
   return null;
 }

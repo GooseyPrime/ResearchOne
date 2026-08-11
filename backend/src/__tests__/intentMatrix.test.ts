@@ -11,13 +11,22 @@
  * 5. Opportunity discovery regression (20-market affiliate request)
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+const { callRoleModelMock } = vi.hoisted(() => ({
+  callRoleModelMock: vi.fn(),
+}));
+
+vi.mock('../services/openrouter/openrouterService', () => ({
+  callRoleModel: callRoleModelMock,
+}));
+
 import {
   INTENT_EPISTEMIC_POSTURE,
   resolveMethodologyFromIntent,
   resolveObjectiveFromIntent,
   defaultResearchBrief,
 } from '../services/planning/researchBrief';
+import { classifyIntent } from '../services/planning/intentClassifier';
 import { ORCHESTRATION_PROFILES } from '../services/planning/orchestrationProfiles';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 import type { IntentId } from '../services/planning/intentTaxonomy';
@@ -400,18 +409,15 @@ Include monetization model, affiliate-program availability, buyer intent, compet
 estimated revenue scenarios, risk, and recommendation.
 Deliver exactly 20 ranked opportunities. Recommend the top 10, top 5, and top 3 picks with a final winner.`;
 
-  it('explicit "Primary research intent: opportunity_discovery" declaration must resolve to opportunity_discovery', () => {
-    // Test the alias map resolution logic inline (without calling async LLM)
-    const text = failedRequestWithExplicitDeclaration.toLowerCase();
-    const labelledPattern = /(?:primary\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)\s*[:=]\s*([^\n.,;]+)/gi;
-    let match: RegExpExecArray | null;
-    let found: string | null = null;
-    while ((match = labelledPattern.exec(text)) !== null) {
-      found = match[1].trim().toLowerCase();
-      break;
-    }
-    expect(found).not.toBeNull();
-    expect(found).toContain('opportunity');
+  it('explicit "Primary research intent: opportunity_discovery" declaration must resolve to opportunity_discovery', async () => {
+    callRoleModelMock.mockReset();
+    const brief = await classifyIntent(failedRequestWithExplicitDeclaration, undefined, {
+      allowFallbackByRole: {},
+    });
+
+    expect(brief.primaryIntent).toBe('opportunity_discovery');
+    expect(brief.reasoning).toContain('Explicit declarations override lexical and LLM classification.');
+    expect(callRoleModelMock).not.toHaveBeenCalled();
   });
 
   it('opportunity_discovery posture is discovery, not adjudicative', () => {

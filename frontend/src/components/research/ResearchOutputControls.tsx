@@ -25,6 +25,7 @@ const LENGTH_OPTIONS: Array<{ value: ReportLengthPreset; label: string }> = [
 export interface ResearchOutputControlsProps {
   objective: string;
   onObjectiveChange: (v: string) => void;
+  showObjective?: boolean;
   reportFormats: string[];
   onReportFormatsChange: (v: string[]) => void;
   reportLengthPreset: ReportLengthPreset;
@@ -57,6 +58,7 @@ export function normalizeReportFormats(values: string[]): string[] {
 export default function ResearchOutputControls({
   objective,
   onObjectiveChange,
+  showObjective = true,
   reportFormats,
   onReportFormatsChange,
   reportLengthPreset,
@@ -76,24 +78,26 @@ export default function ResearchOutputControls({
 
   return (
     <div className={rowClass} data-testid="research-output-controls">
-      <div className={sectionClass}>
-        <label className="block">
-          <span className="text-xs text-slate-300">Research Objective</span>
-          <select
-            className="input mt-1 w-full"
-            value={objective}
-            onChange={(e) => onObjectiveChange(e.target.value)}
-            disabled={disabled}
-          >
-            <option value="AUTO">Automatic — ResearchOne selects from the request</option>
-            {RESEARCH_OBJECTIVE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {showObjective ? (
+        <div className={sectionClass}>
+          <label className="block">
+            <span className="text-xs text-slate-300">Research Objective</span>
+            <select
+              className="input mt-1 w-full"
+              value={objective}
+              onChange={(e) => onObjectiveChange(e.target.value)}
+              disabled={disabled}
+            >
+              <option value="AUTO">Automatic — ResearchOne selects from the request</option>
+              {RESEARCH_OBJECTIVE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       <div className={sectionClass}>
         <div className="text-xs text-slate-300">Report Format</div>

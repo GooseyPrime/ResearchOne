@@ -205,6 +205,7 @@ export default function ResearchEasyPage() {
               <ResearchOutputControls
                 objective="AUTO"
                 onObjectiveChange={() => undefined}
+                showObjective={false}
                 reportFormats={reportFormats}
                 onReportFormatsChange={setReportFormats}
                 reportLengthPreset={reportLengthPreset}
@@ -250,4 +251,3 @@ export default function ResearchEasyPage() {
     </div>
   );
 }
-

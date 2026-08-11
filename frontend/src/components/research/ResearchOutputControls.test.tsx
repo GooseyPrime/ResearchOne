@@ -68,4 +68,23 @@ describe('ResearchOutputControls', () => {
     expect(resolveTargetWordCount('custom', 700)).toBe(800);
     expect(normalizeReportFormats(['automatic', 'comparison_table'])).toEqual(['automatic']);
   });
+
+  it('can hide the research objective control', () => {
+    render(
+      <ResearchOutputControls
+        objective="AUTO"
+        onObjectiveChange={vi.fn()}
+        showObjective={false}
+        reportFormats={['automatic']}
+        onReportFormatsChange={vi.fn()}
+        reportLengthPreset="standard"
+        onReportLengthPresetChange={vi.fn()}
+        reportLengthCustom={2200}
+        onReportLengthCustomChange={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Research Objective')).not.toBeInTheDocument();
+    expect(screen.getByText('Report Format')).toBeInTheDocument();
+  });
 });

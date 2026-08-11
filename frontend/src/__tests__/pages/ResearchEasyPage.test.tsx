@@ -96,6 +96,7 @@ describe('ResearchEasyPage', () => {
     fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
     expect(screen.getByText('Report Format')).toBeInTheDocument();
     expect(screen.getByText('Report Length')).toBeInTheDocument();
+    expect(screen.queryByText('Research Objective')).not.toBeInTheDocument();
   });
 
   it('output preferences toggle collapses the panel again', () => {
@@ -190,4 +191,3 @@ describe('ResearchEasyPage', () => {
     expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument();
   });
 });
-
