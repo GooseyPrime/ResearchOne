@@ -450,7 +450,7 @@ export default function PlanConfirmationPanel({
               <span className="text-slate-500">Skeptic:</span> {posture.skepticLabel}
             </span>
             <span>
-              <span className="text-slate-500">Steelman:</span> {posture.steelmanLabel}
+              <span className="text-slate-500">Formulation enhancement:</span> {posture.steelmanLabel}
             </span>
           </div>
           <p className="text-slate-500 text-[11px] leading-snug">

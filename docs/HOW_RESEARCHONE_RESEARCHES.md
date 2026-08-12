@@ -13,7 +13,7 @@ Public UI copy in `frontend/src/content/howResearchOneThinks.ts` and
 ## What users experience
 
 1. **Ask** — Describe the research goal in EZ Research or Research Lab.
-2. **Plan gate** — Review detected **intent**, **epistemic posture** (neutral / challenge / steelman), scope, sources, and expected depth/cost. Confirm, refine, override intent, or cancel.
+2. **Plan gate** — Review detected **intent**, **epistemic posture** (neutral / challenge / formulation enhancement), scope, sources, and expected depth/cost. Confirm, refine, override intent, or cancel.
 3. **Run** — Multi-agent pipeline executes only after confirmation (unless auto-confirm is enabled for the account).
 4. **Report** — Cited dossier with sources, uncertainty, and preserved source disagreements when they matter.
 5. **Revise / monitor** — Optional revision, Living Report monitoring, or Reverse-Citation Watch.
@@ -44,7 +44,7 @@ Marketing illustrations (e.g. 10-stage schematic on the landing page) are **peda
 |---------|-----------------|---------------------------|
 | **Neutral** | Factual report, how-to, reference lookup, many surveys | Retrieve → synthesize → verify; no dedicated challenge gate |
 | **Challenge** | Adjudication, investigation, story verification, and other gate paths | Dedicated challenge step pressure-tests draft conclusions |
-| **Steelman** | Position brief (and related products) | Strongest-case construction for a stated position |
+| **Formulation enhancement** | Position brief (and related products) | Strongest-case construction for a stated position |
 
 Posture is selected from the **orchestration profile** tied to the detected (or overridden) intent—not from marketing topic lists.
 

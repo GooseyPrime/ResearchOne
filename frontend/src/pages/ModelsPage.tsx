@@ -12,7 +12,7 @@ const REASONING_ROLES: { key: string; label: string }[] = [
   { key: 'retriever', label: 'Retriever' },
   { key: 'source_class_classifier', label: 'Source class classifier' },
   { key: 'reasoner', label: 'Reasoner' },
-  { key: 'steelman', label: 'Steelman' },
+  { key: 'steelman', label: 'Formulation enhancement' },
   { key: 'skeptic', label: 'Skeptic' },
   { key: 'synthesizer', label: 'Synthesizer' },
   { key: 'verifier', label: 'Verifier' },

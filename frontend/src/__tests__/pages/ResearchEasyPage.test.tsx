@@ -54,14 +54,14 @@ vi.mock('../../utils/clarifyingQuestions', () => ({
   buildClarifyingQuestions: () => [],
 }));
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/app/research']) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   client.invalidateQueries = invalidateQueriesMock as typeof client.invalidateQueries;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <ResearchEasyPage />
       </MemoryRouter>
     </QueryClientProvider>
