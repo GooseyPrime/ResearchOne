@@ -3,9 +3,18 @@
  * If query rewriting is added, wrap LLM system prompts with withPreamble from constants/prompts.ts.
  */
 
+import { config } from '../../config';
 import { query } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';
+import {
+  evaluateCorpusGate,
+  intentNeedsIndependentExternalEvidence,
+  resolveCorpusPartition,
+  type CorpusGateDecision,
+  type CorpusSourceRecord,
+} from './corpusCompetenceGate';
+import type { IntentId } from '../planning/intentTaxonomy';
 
 export interface RetrievedChunk {
   id: string;
@@ -16,6 +25,7 @@ export interface RetrievedChunk {
   similarity: number;
   evidence_tier: string | null;
   tags: string[];
+  owner_user_id?: string | null;
 }
 
 export interface RetrievalOptions {
@@ -26,6 +36,14 @@ export interface RetrievalOptions {
   hybridSearch?: boolean;  // combine vector + full-text
   /** When set, restrict hits to these corpus source ids (revision supplemental scope). */
   sourceIds?: string[];
+  intentId?: IntentId;
+  userId?: string;
+}
+
+export interface RetrievalAuditResult {
+  citableChunks: RetrievedChunk[];
+  backgroundChunks: RetrievedChunk[];
+  corpusGate: CorpusGateDecision;
 }
 
 /**
@@ -33,16 +51,61 @@ export interface RetrievalOptions {
  * Semantic results weighted by cosine similarity; FTS results boosted by relevance rank.
  */
 export async function retrieveChunks(options: RetrievalOptions): Promise<RetrievedChunk[]> {
+  return (await retrieveChunksWithAudit(options)).citableChunks;
+}
+
+export async function retrieveChunksWithAudit(options: RetrievalOptions): Promise<RetrievalAuditResult> {
   const {
     query: queryText,
     topK = 20,
-    minSimilarity = 0.3,
+    minSimilarity = config.retrieval.minSimilarityDefault,
     filterTags,
     hybridSearch = true,
     sourceIds,
+    intentId,
+    userId,
   } = options;
 
   const results: Map<string, RetrievedChunk> = new Map();
+  const backgroundResults: Map<string, RetrievedChunk> = new Map();
+
+  const sourceStats = await loadCorpusSourceStats({ filterTags, sourceIds });
+  const thresholds = config.retrieval.corpusGate;
+  const partition = resolveCorpusPartition({
+    intentId,
+    filterTags,
+    sourceRecords: sourceStats.records,
+  });
+
+  const corpusGate = evaluateCorpusGate({
+    partition,
+    sourceRecords: sourceStats.records.filter((record) => {
+      const recordPartition = record.partitionKey?.trim().toLowerCase()
+        || resolveCorpusPartition({ sourceRecords: [record] });
+      return recordPartition === partition;
+    }),
+    thresholds,
+    minSimilarity,
+    globalTotalChunks: sourceStats.globalTotalChunks,
+  });
+
+  if (sourceStats.failClosedReason) {
+    corpusGate.status = 'sealed';
+    corpusGate.reason = sourceStats.failClosedReason;
+    return {
+      citableChunks: [],
+      backgroundChunks: [],
+      corpusGate,
+    };
+  }
+
+  if (corpusGate.status === 'sealed') {
+    return {
+      citableChunks: [],
+      backgroundChunks: [],
+      corpusGate,
+    };
+  }
 
   // ─── Semantic vector search ─────────────────────────────────────────────
   try {
@@ -60,11 +123,21 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
+          COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
           1 - (e.vector <=> $1::vector) AS similarity,
           cl.evidence_tier
         FROM embeddings e
         JOIN chunks c ON c.id = e.chunk_id
         LEFT JOIN sources s ON s.id = c.source_id
+        LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
+        LEFT JOIN LATERAL (
+          SELECT jobs.user_id
+          FROM ingestion_jobs jobs
+          WHERE jobs.source_id = s.id
+            AND jobs.user_id IS NOT NULL
+          ORDER BY jobs.created_at DESC NULLS LAST
+          LIMIT 1
+        ) ij ON TRUE
         LEFT JOIN claims cl ON cl.chunk_id = c.id
         WHERE e.vector IS NOT NULL
           AND 1 - (e.vector <=> $1::vector) >= $2
@@ -91,6 +164,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
         source_url: string;
         source_title: string;
         tags: string[];
+        owner_user_id: string | null;
         similarity: number;
         evidence_tier: string | null;
       }>(vectorSql, params);
@@ -105,6 +179,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
           similarity: row.similarity,
           evidence_tier: row.evidence_tier,
           tags: row.tags ?? [],
+          owner_user_id: row.owner_user_id,
         });
       }
     }
@@ -123,6 +198,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
+          COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
           ts_rank(
             to_tsvector('english', c.content),
             plainto_tsquery('english', $1)
@@ -130,6 +206,15 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
           cl.evidence_tier
         FROM chunks c
         LEFT JOIN sources s ON s.id = c.source_id
+        LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
+        LEFT JOIN LATERAL (
+          SELECT jobs.user_id
+          FROM ingestion_jobs jobs
+          WHERE jobs.source_id = s.id
+            AND jobs.user_id IS NOT NULL
+          ORDER BY jobs.created_at DESC NULLS LAST
+          LIMIT 1
+        ) ij ON TRUE
         LEFT JOIN claims cl ON cl.chunk_id = c.id
         WHERE to_tsvector('english', c.content) @@ plainto_tsquery('english', $1)
       `;
@@ -156,6 +241,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
         source_url: string;
         source_title: string;
         tags: string[];
+        owner_user_id: string | null;
         fts_rank: number;
         evidence_tier: string | null;
       }>(ftsSql, ftsParams);
@@ -171,6 +257,7 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
             similarity: row.fts_rank * 0.5, // normalize FTS rank
             evidence_tier: row.evidence_tier,
             tags: row.tags ?? [],
+            owner_user_id: row.owner_user_id,
           });
         } else {
           // Boost existing entry
@@ -183,10 +270,28 @@ export async function retrieveChunks(options: RetrievalOptions): Promise<Retriev
     }
   }
 
-  // Sort by combined similarity score, highest first
-  return Array.from(results.values())
+  const sorted = Array.from(results.values())
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, topK);
+
+  const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
+  const citableChunks: RetrievedChunk[] = [];
+  for (const chunk of sorted) {
+    if (requiresIndependentSources && userId && chunk.owner_user_id === userId) {
+      backgroundResults.set(chunk.id, chunk);
+      continue;
+    }
+    citableChunks.push(chunk);
+  }
+
+  corpusGate.citableChunks = citableChunks.length;
+  corpusGate.backgroundChunks = backgroundResults.size;
+
+  return {
+    citableChunks,
+    backgroundChunks: Array.from(backgroundResults.values()),
+    corpusGate,
+  };
 }
 
 /** Scoped retrieval for revision supplemental sources tagged with revision_request_id. */
@@ -242,3 +347,93 @@ function formatRetrievedChunksForPrompt(chunks: RetrievedChunk[]): string {
 }
 
 export { formatRetrievedChunksForPrompt };
+
+async function loadCorpusSourceStats(args: {
+  filterTags?: string[];
+  sourceIds?: string[];
+}): Promise<{ records: CorpusSourceRecord[]; globalTotalChunks: number; failClosedReason?: string }> {
+  try {
+    const params: unknown[] = [];
+    const sourceFilters: string[] = [];
+    if (args.filterTags && args.filterTags.length > 0) {
+      params.push(args.filterTags);
+      sourceFilters.push(`s.tags && $${params.length}::text[]`);
+    }
+    if (args.sourceIds && args.sourceIds.length > 0) {
+      params.push(args.sourceIds);
+      sourceFilters.push(`s.id = ANY($${params.length}::uuid[])`);
+    }
+    const whereClause = sourceFilters.length > 0 ? `WHERE ${sourceFilters.join(' AND ')}` : '';
+
+    const records = await query<{
+      source_id: string;
+      source_url: string | null;
+      tags: string[] | null;
+      published_at: string | null;
+      ingested_at: string | null;
+      owner_user_id: string | null;
+      partition_key: string | null;
+      chunk_count: number;
+    }>(
+      `SELECT
+         s.id AS source_id,
+         s.url AS source_url,
+         s.tags,
+         s.published_at,
+         s.ingested_at,
+         COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+         s.partition_key,
+         COUNT(DISTINCT c.id)::int AS chunk_count
+       FROM sources s
+       LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
+       LEFT JOIN LATERAL (
+         SELECT jobs.user_id
+         FROM ingestion_jobs jobs
+         WHERE jobs.source_id = s.id
+           AND jobs.user_id IS NOT NULL
+         ORDER BY jobs.created_at DESC NULLS LAST
+         LIMIT 1
+       ) ij ON TRUE
+       LEFT JOIN chunks c ON c.source_id = s.id
+       ${whereClause}
+       GROUP BY s.id, s.url, s.tags, s.published_at, s.ingested_at, rr.user_id, ij.user_id, s.metadata, s.partition_key`,
+      params,
+    );
+
+    const globalStats = await query<{ total_sources: number; total_chunks: number }>(
+      `SELECT
+         COUNT(DISTINCT s.id)::int AS total_sources,
+         COUNT(DISTINCT c.id)::int AS total_chunks
+       FROM sources s
+       LEFT JOIN chunks c ON c.source_id = s.id`
+    );
+
+    return {
+      records: records.map((record) => ({
+        sourceId: record.source_id,
+        sourceUrl: record.source_url,
+        tags: record.tags ?? [],
+        publishedAt: record.published_at,
+        ingestedAt: record.ingested_at,
+        ownerUserId: record.owner_user_id,
+        partitionKey: record.partition_key,
+        chunkCount: record.chunk_count ?? 0,
+      })),
+      globalTotalChunks: globalStats[0]?.total_chunks ?? 0,
+    };
+  } catch (err) {
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === '42703' || pgCode === '42P01') {
+      logger.warn('corpus_gate_fail_closed_deploy_skew', {
+        code: pgCode,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        records: [],
+        globalTotalChunks: 0,
+        failClosedReason: `corpus gate unavailable due to deploy skew (${pgCode})`,
+      };
+    }
+    throw err;
+  }
+}

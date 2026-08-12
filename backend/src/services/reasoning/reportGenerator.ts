@@ -75,10 +75,64 @@ export const REPORT_WORD_COUNT_PER_SECTION_FLOOR = 80;
 export const REPORT_WORD_COUNT_MIN = ADJUDICATIVE_SECTION_PLAN.length * REPORT_WORD_COUNT_PER_SECTION_FLOOR;
 export const REPORT_WORD_COUNT_MAX = 12000;
 export const REPORT_WORD_COUNT_DEFAULT = 2200;
+const GENERATED_TITLE_MAX_LENGTH = 120;
 
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
+}
+
+export function deriveGeneratedReportTitle(query: string, markdown: string, intentId?: string): string {
+  const headingMatch = markdown.match(/^\s*#\s+(.+?)\s*$/m);
+  const firstHeading = headingMatch?.[1]?.trim();
+  if (firstHeading && firstHeading.length <= GENERATED_TITLE_MAX_LENGTH && !looksLikeRawQuery(firstHeading, query)) {
+    return firstHeading;
+  }
+
+  const firstSentence = markdown
+    .replace(/^#+\s+/gm, '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !looksLikeRawQuery(line, query));
+  if (firstSentence) {
+    return trimTitle(firstSentence);
+  }
+
+  const fallbackIntentTitle = intentId
+    ? intentId.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+    : 'Research Report';
+  return trimTitle(`${fallbackIntentTitle} Report`);
+}
+
+export function stripPromptEchoFromReport(markdown: string, query: string): string {
+  const trimmed = markdown.trim();
+  const prompt = query.trim();
+  if (!prompt) return trimmed;
+
+  if (trimmed.startsWith(prompt)) {
+    return trimmed.slice(prompt.length).replace(/^\s+/, '');
+  }
+
+  const queryLabelPrefix = `Research query: ${prompt}`;
+  if (trimmed.startsWith(queryLabelPrefix)) {
+    return trimmed.slice(queryLabelPrefix.length).replace(/^\s+/, '');
+  }
+
+  return trimmed;
+}
+
+export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {
+  const cleaned = stripPromptEchoFromReport(markdown, query);
+  const title = deriveGeneratedReportTitle(query, cleaned, intentId);
+  const headingMatch = cleaned.match(/^\s*#\s+(.+?)\s*$/m);
+  if (!headingMatch) {
+    return `# ${title}\n\n${cleaned}`.trim();
+  }
+  const currentHeading = headingMatch[1]?.trim() ?? '';
+  if (!looksLikeRawQuery(currentHeading, query)) {
+    return cleaned;
+  }
+  return cleaned.replace(/^\s*#\s+(.+?)\s*$/m, `# ${title}`);
 }
 
 /** Compute per-section word budgets from the total target, distributed by the
@@ -172,6 +226,18 @@ function titleFromTemplateSection(sectionKey: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function trimTitle(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= GENERATED_TITLE_MAX_LENGTH) return normalized;
+  return normalized.slice(0, GENERATED_TITLE_MAX_LENGTH - 1).trimEnd() + '…';
+}
+
+function looksLikeRawQuery(candidate: string, query: string): boolean {
+  const normalizedCandidate = candidate.replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalizedQuery = query.replace(/\s+/g, ' ').trim().toLowerCase();
+  return normalizedCandidate.length > 0 && normalizedQuery.startsWith(normalizedCandidate);
 }
 
 function sectionPlanFromTemplate(templateId: string): RuntimeSectionPlanEntry[] {
