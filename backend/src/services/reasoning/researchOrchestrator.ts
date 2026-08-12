@@ -9,15 +9,22 @@ import {
   NormalizedModelError,
   type ModelRole,
 } from '../openrouter/openrouterService';
-import { retrieveChunks, RetrievedChunk } from '../retrieval/retrievalService';
+import { retrieveChunksWithAudit, RetrievedChunk } from '../retrieval/retrievalService';
 import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
+import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBarrier';
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
-import { generateIterativeReport, ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
+import {
+  generateIterativeReport,
+  ADJUDICATIVE_SECTION_INTENTS,
+  deriveGeneratedReportTitle,
+  ensureGeneratedTitleHeading,
+  stripPromptEchoFromReport,
+} from './reportGenerator';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -70,6 +77,11 @@ import {
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
 import { runSpecialistExecution } from './specialistExecutionService';
+import {
+  assessEvidenceSufficiency,
+  buildLowEvidenceLabeledDelivery,
+  shouldBypassRepairLoopForEvidence,
+} from './evidenceSufficiencyGate';
 import {
   isSpecialistAgentId,
   selectAgentsForBrief,
@@ -125,6 +137,16 @@ function emptyDiscoverySummary(runId: string) {
     sourcesSkipped: 0,
     sources: [] as unknown[],
     durationMs: 0,
+  };
+}
+
+function summarizeCorpusGateDecisions(decisions: Array<Record<string, unknown>>): Record<string, unknown> | null {
+  if (decisions.length === 0) return null;
+  const sealedDecision = decisions.find((decision) => decision.status === 'sealed');
+  const chosen = sealedDecision ?? decisions[0]!;
+  return {
+    ...chosen,
+    decisions,
   };
 }
 
@@ -1065,10 +1087,47 @@ async function runResearchJobInner(
 
     logger.info(`[${runId}] Discovery: ingested=${discoverySummary.sourcesIngested}, skipped=${discoverySummary.sourcesSkipped}`);
 
+    const discoveryIngestBarrier = await waitForDiscoveryIngestReadiness({
+      sources: Array.isArray(discoverySummary.sources) ? discoverySummary.sources : [],
+      timeoutMs: config.discovery.queryableWaitTimeoutMs,
+    });
+
+    if (discoveryIngestBarrier.status === 'ready') {
+      await progress('discovery', 18, `Discovery ingest ready (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked} sources queryable).`, {
+        substep: 'discovery_ingest_ready',
+        detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}`,
+        sourceCount: discoveryIngestBarrier.readyCount,
+      });
+    } else if (discoveryIngestBarrier.status === 'timeout') {
+      await progress('discovery', 18, `Discovery ingest barrier timed out; ${discoveryIngestBarrier.pendingCount} sources not yet queryable.`, {
+        substep: 'discovery_ingest_ready',
+        detail: `ready=${discoveryIngestBarrier.readyCount}; pending=${discoveryIngestBarrier.pendingCount}`,
+        sourceCount: discoveryIngestBarrier.readyCount,
+      });
+    } else {
+      await progress('discovery', 18, 'Discovery completed with zero ingested sources; retrieval will rely on already-queryable corpus material.', {
+        substep: 'discovery_ingest_ready',
+        detail: 'no_sources_ingested',
+      });
+    }
+
+    await query(
+      `UPDATE research_runs
+          SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb
+        WHERE id=$2`,
+      [
+        JSON.stringify({
+          discoveryIngestBarrier,
+        }),
+        runId,
+      ]
+    );
+
     // ────────────────────────────────────────────────────────────────
     // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
     const allChunks: RetrievedChunk[] = [];
+    const corpusGateDecisions: Array<Record<string, unknown>> = [];
     if (shouldRunPipelineStage(orchProfile, 'retrieval')) {
       await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
@@ -1076,13 +1135,20 @@ async function runResearchJobInner(
 
       for (const rq of plan.retrieval_queries.slice(0, 5)) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
-        const chunks = await retrieveChunks({
+        const retrievalResult = await retrieveChunksWithAudit({
           query: rqStr,
           topK: addonEffects.retrievalTopK,
           filterTags,
           hybridSearch: true,
+          intentId: orchProfile.intent,
+          userId: creditCtx?.userId,
+          runId,
         });
-        for (const c of chunks) {
+        corpusGateDecisions.push({
+          query: rqStr,
+          ...retrievalResult.corpusGate,
+        });
+        for (const c of retrievalResult.citableChunks) {
           if (!seenIds.has(c.id)) {
             seenIds.add(c.id);
             allChunks.push(c);
@@ -1101,8 +1167,17 @@ async function runResearchJobInner(
     const retrievalIds = allChunks.map(c => c.id);
 
     await query(
-      `UPDATE research_runs SET retrieval_ids=$1 WHERE id=$2`,
-      [retrievalIds, runId]
+      `UPDATE research_runs
+          SET retrieval_ids=$1,
+              corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+        WHERE id=$3`,
+      [
+        retrievalIds,
+        JSON.stringify({
+          corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+        }),
+        runId,
+      ]
     );
     await saveRunCheckpoint({
       runId,
@@ -1114,88 +1189,224 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
-    const evidenceContext = formatEvidenceContext(allChunks);
+    let evidenceContext = formatEvidenceContext(allChunks);
+    let retrieverResult!: ModelCallResult;
+    let latestSpecialistOutputs: Record<string, unknown> = {};
+    let forcedLowEvidenceDeliveryMarkdown: string | null = null;
+    let evidenceFailureReason: string | null = null;
 
-    let retrieverResult: ModelCallResult;
-    if (shouldRunPipelineStage(orchProfile, 'retriever_analysis')) {
-      await progress('retriever_analysis', 35, 'Analyzing retrieved evidence...', {
-        substep: 'analysis_started',
-        chunkCount: allChunks.length,
-        sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
-      });
+    const runRetrieverAnalysisStage = async (message: string) => {
+      if (shouldRunPipelineStage(orchProfile, 'retriever_analysis')) {
+        await progress('retriever_analysis', 35, message, {
+          substep: 'analysis_started',
+          chunkCount: allChunks.length,
+          sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+        });
 
-      retrieverResult = await callRoleModel({
-        role: 'retriever',
-        ...v2,
-        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
-        messages: [
-          { role: 'system', content: getSystemPrompt('retriever', isAdjudicative) },
-          {
-            role: 'user',
-            content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
+        retrieverResult = await callRoleModel({
+          role: 'retriever',
+          ...v2,
+          runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'retriever'),
+          messages: [
+            { role: 'system', content: getSystemPrompt('retriever', isAdjudicative) },
+            {
+              role: 'user',
+              content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
+            },
+          ],
+        });
+        modelLog.push(retrieverResult);
+        await saveRunCheckpoint({
+          runId,
+          stage: 'retriever_analysis',
+          checkpointKey: 'retriever_analysis',
+          snapshot: { output: retrieverResult.content },
+        });
+
+        wave53SourceClassMap = await classifyRetrievedSources({
+          chunks: allChunks,
+          researchQuery,
+          retrieverAnalysis: retrieverResult.content,
+          ...v2,
+        });
+        wave53SourceClassBreakdown = aggregateSourceClassBreakdown(wave53SourceClassMap.byChunkId);
+      } else {
+        await progress('retriever_analysis', 35, 'Retriever analysis skipped for this intent profile', {
+          substep: 'stage_skipped',
+          chunkCount: allChunks.length,
+        });
+        retrieverResult = orchestrationStubModelResult('retriever', 'Retriever analysis skipped by orchestration profile.');
+      }
+    };
+
+    const runSpecialistStage = async () => {
+      latestSpecialistOutputs = {};
+      specialistFindingsBlock = '';
+      if (canonicalExecutionPlan.specialistAgents.length > 0) {
+        await progress('reasoning', 42, 'Executing specialist analysis team...', {
+          substep: 'specialist_started',
+        });
+        const specialistExecution = await runSpecialistExecution({
+          runId,
+          query: researchQuery,
+          plan,
+          evidenceContext,
+          executionPlan: canonicalExecutionPlan,
+          researchBrief: confirmedResearchBrief,
+          engineVersion: v2.engineVersion,
+          researchObjective: v2.researchObjective,
+          allowFallbackByRole: v2.allowFallbackByRole,
+          byokApiKeyOverride,
+          onProgress: async (message) => {
+            await progress('reasoning', 45, message, { substep: 'specialist_running' });
           },
-        ],
-      });
-      modelLog.push(retrieverResult);
-      await saveRunCheckpoint({
-        runId,
-        stage: 'retriever_analysis',
-        checkpointKey: 'retriever_analysis',
-        snapshot: { output: retrieverResult.content },
+          onCheckpoint: async (key, snapshot) => {
+            await saveRunCheckpoint({
+              runId,
+              stage: 'reasoning',
+              checkpointKey: key,
+              snapshot,
+            });
+          },
+        });
+        modelLog.push(...specialistExecution.modelCalls);
+        specialistStatuses = { ...specialistExecution.statuses };
+        specialistSkipped = [...specialistExecution.skipped];
+        specialistRan = [...specialistExecution.ran];
+        degradedCoverageReasons = [...specialistExecution.degradedCoverageReasons];
+        latestSpecialistOutputs = { ...specialistExecution.outputs };
+        if (specialistExecution.findingsForPrompt.trim()) {
+          specialistFindingsBlock = `SPECIALIST_FINDINGS (analysis only; not independent evidence):\n${specialistExecution.findingsForPrompt}`;
+        }
+        await progress('reasoning', 47, 'Specialist analysis completed.', {
+          substep: 'specialist_done',
+        });
+      }
+    };
+
+    await runRetrieverAnalysisStage('Analyzing retrieved evidence...');
+    await runSpecialistStage();
+
+    const requestedArtifactCount =
+      confirmedResearchBrief?.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')
+        ?.exactCount;
+    let evidenceAssessment = assessEvidenceSufficiency({
+      intentId: orchProfile.intent as never,
+      citableChunkCount: allChunks.length,
+      specialistOutputs: latestSpecialistOutputs,
+      rediscoveryPassesRemaining: 1,
+      requestedArtifactCount,
+    });
+
+    if (evidenceAssessment.action === 'rediscover') {
+      await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
+        substep: 'rediscovery_started',
+        detail: evidenceAssessment.gaps.join(' | ').slice(0, 500),
       });
 
-      wave53SourceClassMap = await classifyRetrievedSources({
-        chunks: allChunks,
-        researchQuery,
-        retrieverAnalysis: retrieverResult.content,
-        ...v2,
+      const rediscoverySummary = await runDiscoveryOrchestrator({
+        runId,
+        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${evidenceAssessment.gaps.map((gap) => `- ${gap}`).join('\n')}`,
+        plan: plan as unknown as Record<string, unknown>,
+        filterTags,
+        engineVersion,
+        researchObjective,
+        allowFallbackByRole,
+        byokApiKeyOverride,
+        userId: creditCtx?.userId,
+        specialistAgentIds,
+        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
+        minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
+        maxCoverageRounds: 2,
       });
-      wave53SourceClassBreakdown = aggregateSourceClassBreakdown(wave53SourceClassMap.byChunkId);
-    } else {
-      await progress('retriever_analysis', 35, 'Retriever analysis skipped for this intent profile', {
-        substep: 'stage_skipped',
-        chunkCount: allChunks.length,
+      const rediscoveryBarrier = await waitForDiscoveryIngestReadiness({
+        sources: Array.isArray(rediscoverySummary.sources) ? rediscoverySummary.sources : [],
+        timeoutMs: config.discovery.queryableWaitTimeoutMs,
       });
-      retrieverResult = orchestrationStubModelResult('retriever', 'Retriever analysis skipped by orchestration profile.');
+      await query(
+        `UPDATE research_runs
+            SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb
+          WHERE id=$2`,
+        [
+          JSON.stringify({
+            rediscoverySummary,
+            rediscoveryBarrier,
+          }),
+          runId,
+        ]
+      );
+
+      const seenIds = new Set(allChunks.map((chunk) => chunk.id));
+      for (const rq of plan.retrieval_queries.slice(0, 5)) {
+        const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
+        const retrievalResult = await retrieveChunksWithAudit({
+          query: rqStr,
+          topK: addonEffects.retrievalTopK,
+          filterTags,
+          hybridSearch: true,
+          intentId: orchProfile.intent as never,
+          userId: creditCtx?.userId,
+          runId,
+        });
+        corpusGateDecisions.push({
+          query: `${rqStr} [rediscovery]`,
+          ...retrievalResult.corpusGate,
+        });
+        for (const chunk of retrievalResult.citableChunks) {
+          if (!seenIds.has(chunk.id)) {
+            seenIds.add(chunk.id);
+            allChunks.push(chunk);
+          }
+        }
+      }
+
+      // Persist updated retrieval IDs and gate decisions that now include rediscovery chunks.
+      await query(
+        `UPDATE research_runs
+            SET retrieval_ids=$1,
+                corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+          WHERE id=$3`,
+        [
+          allChunks.map((c) => c.id),
+          JSON.stringify({
+            corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+          }),
+          runId,
+        ]
+      );
+
+      evidenceContext = formatEvidenceContext(allChunks);
+      await runRetrieverAnalysisStage('Re-analyzing evidence after targeted re-discovery...');
+      await runSpecialistStage();
+      evidenceAssessment = assessEvidenceSufficiency({
+        intentId: orchProfile.intent as never,
+        citableChunkCount: allChunks.length,
+        specialistOutputs: latestSpecialistOutputs,
+        rediscoveryPassesRemaining: 0,
+        requestedArtifactCount,
+      });
     }
 
-    if (canonicalExecutionPlan.specialistAgents.length > 0) {
-      await progress('reasoning', 42, 'Executing specialist analysis team...', {
-        substep: 'specialist_started',
+    if (evidenceAssessment.action === 'low_evidence_labeled_delivery') {
+      evidenceFailureReason = evidenceAssessment.reason;
+      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
+        intentId: orchProfile.intent as never,
+        requestedArtifactCount,
+        gaps: evidenceAssessment.gaps,
       });
-      const specialistExecution = await runSpecialistExecution({
-        runId,
-        query: researchQuery,
-        plan,
-        evidenceContext,
-        executionPlan: canonicalExecutionPlan,
-        researchBrief: confirmedResearchBrief,
-        engineVersion: v2.engineVersion,
-        researchObjective: v2.researchObjective,
-        allowFallbackByRole: v2.allowFallbackByRole,
-        byokApiKeyOverride,
-        onProgress: async (message) => {
-          await progress('reasoning', 45, message, { substep: 'specialist_running' });
-        },
-        onCheckpoint: async (key, snapshot) => {
-          await saveRunCheckpoint({
-            runId,
-            stage: 'reasoning',
-            checkpointKey: key,
-            snapshot,
-          });
-        },
+      await progress('reasoning', 49, 'Evidence remained insufficient after re-discovery; switching to labeled low-evidence delivery.', {
+        substep: 'low_evidence_labeled_delivery',
       });
-      modelLog.push(...specialistExecution.modelCalls);
-      specialistStatuses = { ...specialistExecution.statuses };
-      specialistSkipped = [...specialistExecution.skipped];
-      specialistRan = [...specialistExecution.ran];
-      degradedCoverageReasons = [...specialistExecution.degradedCoverageReasons];
-      if (specialistExecution.findingsForPrompt.trim()) {
-        specialistFindingsBlock = `SPECIALIST_FINDINGS (analysis only; not independent evidence):\n${specialistExecution.findingsForPrompt}`;
-      }
-      await progress('reasoning', 47, 'Specialist analysis completed.', {
-        substep: 'specialist_done',
+    } else if (evidenceAssessment.action === 'rediscover') {
+      // Adjudicative intent exhausted all rediscovery passes; cannot synthesise without evidence.
+      evidenceFailureReason = evidenceAssessment.reason;
+      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
+        intentId: orchProfile.intent as never,
+        requestedArtifactCount,
+        gaps: evidenceAssessment.gaps,
+      });
+      await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
+        substep: 'adjudicative_evidence_exhausted',
       });
     }
 
@@ -1340,7 +1551,10 @@ async function runResearchJobInner(
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
     let generatedReport: { markdown: string };
-    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    if (forcedLowEvidenceDeliveryMarkdown) {
+      generatedReport = { markdown: ensureGeneratedTitleHeading(forcedLowEvidenceDeliveryMarkdown, researchQuery, orchProfile.intent) };
+      await progress('synthesis', 80, 'Producing labeled low-evidence delivery...', { substep: 'low_evidence_delivery' });
+    } else if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       generatedReport = await generateIterativeReport({
@@ -1374,6 +1588,7 @@ async function runResearchJobInner(
           });
         },
       });
+      generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
       const refSynth = await callRoleModel({
@@ -1396,6 +1611,7 @@ async function runResearchJobInner(
       });
       modelLog.push(refSynth);
       generatedReport = { markdown: refSynth.content.trim() };
+      generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
       await saveRunCheckpoint({
         runId,
         stage: 'synthesis',
@@ -1594,6 +1810,9 @@ ${generatedReport.markdown}`,
 
     const recomputeReportStatus = (): ReportGateStatus => {
       let nextStatus: ReportGateStatus = 'completed';
+      if (shouldBypassRepairLoopForEvidence(evidenceFailureReason)) {
+        return 'completed_degraded';
+      }
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
       const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
       if (contractFailed && verifierFailed) {
@@ -1634,7 +1853,7 @@ ${generatedReport.markdown}`,
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
 
-    if (reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
+    if (!shouldBypassRepairLoopForEvidence(evidenceFailureReason) && reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
       const MAX_REPAIR_ATTEMPTS = 2;
       for (
         let attempt = 1;
@@ -1670,6 +1889,7 @@ ${generatedReport.markdown}`,
         });
         modelLog.push(repairResult);
         generatedReport = { markdown: repairResult.content.trim() || generatedReport.markdown };
+        generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
 
         if (shouldRunPipelineStage(orchProfile, 'verification')) {
           const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent, isAdjudicative);
@@ -2513,8 +2733,11 @@ async function saveReport(args: {
     wave52Metadata,
   } = args;
 
+  const sanitizedReportMarkdown = stripPromptEchoFromReport(synthesizerContent, researchQuery);
+  const reportTitle = deriveGeneratedReportTitle(researchQuery, sanitizedReportMarkdown);
+
   // Parse sections from synthesizer output
-  const sections = parseReportSections(synthesizerContent);
+  const sections = parseReportSections(sanitizedReportMarkdown);
 
   let reportId!: string;
 
@@ -2525,7 +2748,7 @@ async function saveReport(args: {
     const safeChunks = Array.isArray(allChunks) ? allChunks : [];
     const baseParams = [
       runId,
-      researchQuery.slice(0, 200),
+      reportTitle,
       researchQuery,
       mapGateStatusToReportRowStatus(reportGateStatus),
       sections.find(s => s.type === 'executive_summary')?.content ?? '',

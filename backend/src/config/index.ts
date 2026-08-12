@@ -284,12 +284,29 @@ const config = {
     maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
     maxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '5', 10),
     ingestionWaitTimeoutMs: parseInt(process.env.DISCOVERY_INGEST_TIMEOUT_MS || '90000', 10),
+    queryableWaitTimeoutMs: parseInt(process.env.DISCOVERY_QUERYABLE_TIMEOUT_MS || '120000', 10),
     parallelApiKey: process.env.PARALLEL_API_KEY || '',
     parallelBaseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
     sciteApiKey: process.env.SCITE_API_KEY || '',
     sciteBaseUrl: (process.env.SCITE_BASE_URL || 'https://api.scite.ai/v1').replace(/\/+$/, ''),
     openAlexUserAgent: process.env.OPENALEX_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
     crossrefUserAgent: process.env.CROSSREF_USER_AGENT || 'ResearchOne/1.0 (mailto:hello@researchone.io)',
+  },
+
+  retrieval: {
+    minSimilarityDefault: (() => {
+      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
+      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
+    })(),
+    corpusGate: {
+      minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),
+      minDistinctSources: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_SOURCES || '25', 10),
+      minTotalChunks: parseInt(process.env.CORPUS_GATE_MIN_TOTAL_CHUNKS || '400', 10),
+      maxSingleDomainShare: parseFloat(process.env.CORPUS_GATE_MAX_SINGLE_DOMAIN_SHARE || '0.35'),
+      maxSelfSourceShare: parseFloat(process.env.CORPUS_GATE_MAX_SELF_SOURCE_SHARE || '0.20'),
+      maxMedianSourceAgeMonths: parseInt(process.env.CORPUS_GATE_MAX_MEDIAN_SOURCE_AGE_MONTHS || '24', 10),
+      globalBootstrapMinTotalChunks: parseInt(process.env.CORPUS_GATE_GLOBAL_BOOTSTRAP_MIN_TOTAL_CHUNKS || '800', 10),
+    },
   },
 
   exports: {

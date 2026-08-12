@@ -402,12 +402,12 @@ sessions — a new agent reads this table to know where to resume.
 
 | Phase | Status | Commit | Date | Notes |
 | --- | --- | --- | --- | --- |
-| 1 — Declaration normalization | NOT STARTED | | | |
-| 2 — Verifier rubric scoping | NOT STARTED | | | |
-| 3 — Corpus competence gate | NOT STARTED | | | |
-| 4 — Discovery ingest barrier | NOT STARTED | | | |
-| 5 — Evidence-sufficiency gate | NOT STARTED | | | |
-| 6 — Report hygiene | NOT STARTED | | | |
+| 1 — Declaration normalization | DONE | `624a7c5` | 2026-08-12 | Normalized explicit declaration tokens, captured secondary intent, and added the markdown/quote/newline regression matrix. |
+| 2 — Verifier rubric scoping | DONE | `8d28df8` | 2026-08-12 | Removed the universal epistemic footer, moved intent-specific verifier requirements into templates, added refusal FAIL coverage, and pinned the adjudication prompt snapshot. |
+| 3 — Corpus competence gate | DONE | `f300130` | 2026-08-12 | Added partition-aware corpus gating, configurable similarity floor, self-source suppression for market-style intents, auditable gate metadata, and the partition-key migration. |
+| 4 — Discovery ingest barrier | DONE | `f300130` | 2026-08-12 | Added a bounded queryable-source barrier between discovery and retrieval, plus timeout/no-ingest telemetry persisted to run metadata. |
+| 5 — Evidence-sufficiency gate | DONE | `f300130` | 2026-08-12 | Added insufficiency assessment, targeted re-discovery retry, low-evidence labeled delivery fallback, and repair-loop bypass for evidence absence. |
+| 6 — Report hygiene | DONE | `f300130` | 2026-08-12 | Added generated-title / prompt-echo cleanup helpers and wired them into synthesis/save paths so raw prompts no longer become the saved report title/body. |
 
 ---
 
