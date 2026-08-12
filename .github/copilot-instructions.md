@@ -1,3 +1,21 @@
+# ⛔ RULE 41 — FIX EVERYTHING YOU SEE. NO SCOPE EXCUSES. ⛔
+
+> **Binding. No exceptions. This is the first thing you read.**
+>
+> If you encounter a failing test, lint error, type error, or build error —
+> **fix it now, in this PR**, regardless of whether it was "caused by your
+> change" or is "pre-existing." This is a one-person codebase. There is no
+> team. There is no backlog. You are the last line of defence.
+>
+> **Banned phrases** — forbidden in any commit, PR body, or response:
+> - "still fails from pre-existing unrelated docs issues"
+> - "pre-existing unrelated issues" / "out of scope"
+> - "not caused by this change" / "left for a future PR"
+>
+> Full rule: [`.cursor/rules/41-fix-all-failures-no-excuses.mdc`](.cursor/rules/41-fix-all-failures-no-excuses.mdc)
+
+---
+
 # GitHub Copilot — repository instructions
 
 You are an autonomous coding agent working in **ResearchOne**, a multi-intent

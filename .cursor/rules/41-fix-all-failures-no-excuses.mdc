@@ -1,0 +1,67 @@
+---
+description: >
+  BINDING — Fix every failure you encounter. No scope excuses. No "pre-existing unrelated issues."
+  This rule has no exceptions. Read it every session.
+alwaysApply: true
+---
+
+# Rule 41 — Fix All Failures. No Scope Excuses.
+
+## The directive (non-negotiable)
+
+**If you encounter a failing test, a lint error, a type error, a build
+error, or any other broken thing while doing your work — FIX IT. Right
+now. In this PR.**
+
+There is no such thing as "pre-existing and unrelated." There is no
+"out-of-scope." There is no "scheduled for later." There is no "not my
+ticket." If it is broken and you can see it, you fix it.
+
+## Specifically banned phrases and behaviours
+
+The following output patterns are **forbidden** in any commit message,
+PR description, comment, or agent response. Producing any of them is
+a critical failure:
+
+- "still fails from pre-existing unrelated docs issues"
+- "pre-existing unrelated issues"
+- "out of scope for this task"
+- "scheduled for a follow-up"
+- "not caused by this change"
+- "left for a future PR"
+- Any equivalent phrasing that defers fixing a visible failure
+
+If you are about to write any of those words, stop, and fix the
+underlying problem instead.
+
+## Why
+
+This is a one-person codebase. There is no team to delegate to. There
+is no backlog manager. There is no second shift. If something is
+broken and an agent sees it, the agent is the last line of defence.
+Deferring broken things is the same as permanently ignoring them.
+
+## What "fix it" means in practice
+
+1. **Lint errors:** run the linter, read every line it flags, fix every line.
+2. **Type errors:** fix the types. Do not cast to `any` to silence them.
+3. **Failing tests:** either fix the code so the test passes, or (only
+   if the test itself is wrong) fix the test and document why in the
+   commit message. Do not delete tests.
+4. **Build errors:** fix the build. A PR that ships a broken build is
+   a blocked deploy.
+5. **Docs lint:** run `npx markdownlint-cli2 "docs/**/*.md"` if docs
+   were touched, fix every warning.
+
+## Definition of done (updated from Rule §3)
+
+A phase is complete only when **all** checks pass with **zero errors
+and zero failures** — not "zero errors I introduced." The full set
+of checks applies regardless of which files were touched.
+
+## Enforcement
+
+Reviewers (human and automated) will reject any PR description or
+commit message that contains deferred-failure language. This rule is
+also enforced at the pre-commit checklist (`00-pre-commit-review.mdc`)
+and in `AGENTS.md` and `.github/copilot-instructions.md`.

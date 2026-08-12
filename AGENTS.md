@@ -1,5 +1,23 @@
 # Agent rules for this repo
 
+## ⛔ RULE 41 — FIX EVERYTHING YOU SEE. NO SCOPE EXCUSES. ⛔
+
+> **Binding. No exceptions.**
+>
+> If you encounter a failing test, lint error, type error, or build error
+> while doing your work — **fix it. Right now. In this PR.** Not later.
+> Not in a follow-up. Not because "it was pre-existing." You fix it.
+>
+> **These phrases are banned** from every commit message, PR description,
+> and response. Using them is a critical failure:
+> - "still fails from pre-existing unrelated docs issues"
+> - "pre-existing unrelated issues" / "out of scope"
+> - "not caused by this change" / "left for a future PR"
+>
+> Full rule: `.cursor/rules/41-fix-all-failures-no-excuses.mdc`
+
+---
+
 ## Do not commit on `main` (binding — Rule 32)
 
 Unless the user **explicitly** says in the **same message** that you may push
