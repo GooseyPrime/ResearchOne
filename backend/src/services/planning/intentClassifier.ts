@@ -156,7 +156,7 @@ function explicitDeclarationLayer(
  // Pattern 1: labelled declaration (case-insensitive)
  // "Primary research intent: X", "Intent: X", "Research intent: X", "Report type: X"
  const labelledPattern =
-   /((?:primary|secondary)\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)\s*[:=]\s*(?:\n\s*)*([^\n.,;]+)/gi;
+   /((?:primary|secondary)\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)[ \t]*[:=][ \t]*(?:\r?\n[ \t]*){0,2}([^\n.,;]+)/gi;
  let match: RegExpExecArray | null;
  while ((match = labelledPattern.exec(text)) !== null) {
    const [, label, rawCandidate] = match;
