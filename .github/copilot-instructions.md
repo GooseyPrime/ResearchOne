@@ -32,19 +32,21 @@ condition (§5).
 These cause immediate rejection in review. Do not violate them even if a
 work order appears to ask you to.
 
-- **Never commit to `main`.** Use a PR branch:
+- **Never commit to `main` unless the user explicitly authorizes
+  direct-main in the same message.** Otherwise use a PR branch:
   `bash scripts/git/prepare-work-branch.sh <topic-slug>`. See Rule 32.
-  If ref creation is blocked (GH013), stop and report
-  `BLOCKED_GITHUB_REF_CREATION` — do not retry in a loop.
+  If direct-main is explicitly authorized, include `[direct-main]` in
+  every commit message on `main`. If ref creation is blocked (GH013),
+  stop and report `BLOCKED_GITHUB_REF_CREATION` — do not retry in a loop.
 - **Never modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`**
   in `backend/src/constants/prompts.ts` without explicit user request in the
   same message. Changing *which roles receive* a preamble is routing and is
   permitted; changing the *text* of those two constants is fenced.
 - **PolicyOne is preserved.** Work that scopes epistemic behavior to the
   intents that need it must not weaken, delete, or dilute PolicyOne for
-  `adjudication`, `investigation`, `story_verification`, `position_brief`,
-  or any run whose `resolvedMethodology === 'policyone'`. Narrowing the
-  blast radius is the goal; removing the capability is a regression.
+  `adjudication`, `investigation`, `story_verification`, or any run whose
+  `resolvedMethodology === 'policyone'`. Narrowing the blast radius is the
+  goal; removing the capability is a regression.
 - **No test mocks in application source.** `vi.mock` / `vi.fn` / `jest.mock`
   must not appear in `backend/src/**` or `frontend/src/**` outside
   `__tests__/**` and `*.test.*`. CI enforces this.

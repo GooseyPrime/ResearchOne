@@ -17,8 +17,8 @@ structure, and agent roster appropriate to that speech act.
 It must **not** apply claim-adjudication machinery to every request.
 
 **PolicyOne remains fully intact and fully important.** It is the correct
-methodology for adjudication, investigation, story verification, and
-position briefs, and for any run the user explicitly routes to it. This
+methodology for adjudication, investigation, story verification, and any
+run the user explicitly routes to it. This
 work order narrows *when* PolicyOne fires. It does not weaken *what*
 PolicyOne does. Any change that reduces PolicyOne's strength on its own
 intents is a regression and must be reverted.
@@ -187,7 +187,7 @@ change to the *text* of `REASONING_FIRST_PREAMBLE` or
 `RED_TEAM_V2_SYSTEM_PREFIX`.
 
 **Explicitly preserved:** PolicyOne behavior on `adjudication`,
-`investigation`, `story_verification`, `position_brief`, and any run with
+`investigation`, `story_verification`, and any run with
 `resolvedMethodology === 'policyone'`.
 
 ---
@@ -252,7 +252,8 @@ fails against unmodified source, then implement.
 4. Add the refusal-is-failure clause (RC-6) to the `verifierRubric` of
    every non-adjudicative intent: `comparative`, `feasibility`,
    `implementation`, `recommendation`, `how_to`, `exploratory`,
-   `reference_lookup`, `factual_report`, `survey`, `timeline`.
+   `reference_lookup`, `factual_report`, `literature_review`, `survey`,
+   `timeline`.
 5. `buildVerifierPromptForIntent()` currently defaults `isAdjudicative = true`.
    Change the default to `false` so an omitted argument cannot silently
    select the adjudicative preamble. Grep both call sites in
@@ -265,9 +266,12 @@ fails against unmodified source, then implement.
   occurrence of `established_fact`, `falsification`, or `contradiction
   analysis`.
 - Test asserts the built prompt for `adjudication` and `investigation`
-  **does** contain the evidence-tier and falsification requirements —
-  PolicyOne intents must be provably unchanged.
-- Snapshot test pins the adjudication verifier prompt so future edits
+  **does** contain the evidence-tier and falsification requirements after
+  the shared-footer replacement — the adjudicative rubric must be
+  preserved.
+- Test asserts `literature_review` retains its evidence-tier requirements
+  **and** fails refusal-to-deliver.
+- Snapshot test pins the adjudication verifier rubric so future edits
   cannot silently weaken it.
 
 ### Phase 3 — Corpus competence gate (fixes RC-3)
@@ -384,8 +388,9 @@ The work order is complete when all phase gates pass **and**:
       suite and asserts: intent = `opportunity_discovery`; secondary =
       `feasibility`; verifier prompt free of adjudicative vocabulary; 20
       opportunities delivered; no refusal.
-- [ ] PolicyOne snapshot tests prove adjudicative prompts are byte-identical
-      to their pre-WO-Z form.
+- [ ] PolicyOne snapshot tests prove adjudicative prompts preserve their
+      adjudicative rubric and required evidence/falsification constraints
+      after the shared-footer replacement.
 - [ ] Every out-of-scope finding is logged in §8, not silently dropped.
 
 ---
