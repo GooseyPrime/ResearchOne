@@ -65,7 +65,7 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
     body:
       'Check what the report will deliver, scope, sources, and expected depth/cost before confirmation. ' +
       'Requirements are your explicit instructions. Assumptions are system interpretations you can edit or reject. ' +
-      'The plan gate also shows the detected intent, epistemic posture (neutral / challenge / Formulation enhancement), ' +
+      'The plan gate also shows the detected intent, epistemic posture (neutral / challenge / formulation enhancement), ' +
       'and a plain-language summary of how ResearchOne will approach the topic. ' +
       'If the detected intent does not match your goal, use the "I meant a different research goal" control ' +
       'to re-route the plan before confirming.',

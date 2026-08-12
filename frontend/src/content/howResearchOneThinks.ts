@@ -11,7 +11,7 @@
 
 export const HOW_RESEARCHONE_THINKS_SHORT =
   'ResearchOne routes every query through an intent classifier, picks a research posture ' +
-  '(neutral, challenge, or Formulation enhancement), then runs a multi-agent pipeline: Planning → Discovery → ' +
+  '(neutral, challenge, or formulation enhancement), then runs a multi-agent pipeline: Planning → Discovery → ' +
   'Retrieval → Reasoning → optional Challenge → Synthesis → Verification. Source disagreements stay ' +
   'visible, never silently flattened. For investigation and verification paths, the system gathers ' +
   'supporting and opposing evidence before finalizing the report.';
@@ -234,5 +234,5 @@ export function buildIntentOverrideRefineInstruction(
 
 export const ONBOARDING_HOW_IT_THINKS_TEASER =
   'ResearchOne uses an intent-aware multi-agent pipeline: it classifies your research goal, picks a ' +
-  'research posture (neutral, challenge, or Formulation enhancement), and runs a reasoning-first pipeline that keeps ' +
+  'research posture (neutral, challenge, or formulation enhancement), and runs a reasoning-first pipeline that keeps ' +
   'source disagreements visible when they matter. You review and approve the plan before any retrieval runs.';
