@@ -11,7 +11,7 @@
 
 export const HOW_RESEARCHONE_THINKS_SHORT =
   'ResearchOne routes every query through an intent classifier, picks a research posture ' +
-  '(neutral, challenge, or steelman), then runs a multi-agent pipeline: Planning → Discovery → ' +
+  '(neutral, challenge, or Formulation enhancement), then runs a multi-agent pipeline: Planning → Discovery → ' +
   'Retrieval → Reasoning → optional Challenge → Synthesis → Verification. Source disagreements stay ' +
   'visible, never silently flattened. For investigation and verification paths, the system gathers ' +
   'supporting and opposing evidence before finalizing the report.';
@@ -109,7 +109,7 @@ export const POSTURE_FAMILIES: readonly PostureFamily[] = [
   },
   {
     id: 'steelman',
-    label: 'Steelman',
+    label: 'Formulation enhancement',
     shortDescription:
       'Position-brief posture. The pipeline constructs the strongest possible case for a stated position or builds symmetric best-case arguments for multiple options. Used for position briefs and comparative briefs.',
     badgeClass: 'text-violet-300 border-violet-700/50',
@@ -174,7 +174,7 @@ export const INTENT_HELP_TEXT: Record<string, string> = {
   exploratory:
     'Discovery and serendipity mode. Broad neutral retrieval to map unknown territory before committing to a direction.',
   position_brief:
-    'Rhetorical aid: strongest case for a stated position. Steelman posture — the pipeline builds the most compelling argument, then offers symmetric counter-case.',
+    'Rhetorical aid: strongest case for a stated position. Formulation enhancement posture — the pipeline builds the most compelling argument, then offers symmetric counter-case.',
   timeline:
     'Chronological ordering of events. Challenge posture: the pipeline cross-checks for inconsistencies and weak sourcing before synthesis.',
   reference_lookup:
@@ -234,5 +234,5 @@ export function buildIntentOverrideRefineInstruction(
 
 export const ONBOARDING_HOW_IT_THINKS_TEASER =
   'ResearchOne uses an intent-aware multi-agent pipeline: it classifies your research goal, picks a ' +
-  'research posture (neutral, challenge, or steelman), and runs a reasoning-first pipeline that keeps ' +
+  'research posture (neutral, challenge, or Formulation enhancement), and runs a reasoning-first pipeline that keeps ' +
   'source disagreements visible when they matter. You review and approve the plan before any retrieval runs.';

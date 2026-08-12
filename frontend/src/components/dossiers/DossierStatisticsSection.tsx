@@ -80,7 +80,7 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
         <Stat label="Tokens out" value={stats.tokensOutput} />
         <Stat label="Sources cited" value={stats.sourcesCitedCount} />
         <Stat label="Sources retrieved" value={stats.sourcesRetrievedCount} />
-        <Stat label="Steelman passes" value={stats.steelmanPassCount} />
+        <Stat label="Formulation enhancement passes" value={stats.steelmanPassCount} />
         <Stat label="Skeptical annotations" value={stats.skepticAnnotationsCount} />
         <Stat label="Contradictions" value={stats.contradictionsCount} />
       </ul>
