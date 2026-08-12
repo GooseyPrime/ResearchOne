@@ -297,6 +297,41 @@ The user's prompt MUST NOT be prepended to the report body — it belongs in
 run metadata and the dossier Request tab.
 
 
+### R-L. Low-evidence delivery is a synthesis modifier, not a report
+
+R-J requires that insufficient evidence still yields the deliverable. It does
+NOT license generating that deliverable deterministically.
+
+`low_evidence_labeled_delivery` MUST resolve to a directive injected into the
+synthesis prompt. The synthesizer still runs and still produces every
+requested item with real content, distinguishing established domain knowledge
+from modeled estimates from unverified specifics.
+
+It MUST NOT resolve to a prebuilt markdown string that bypasses synthesis.
+That implementation shipped twenty identical placeholder blocks with a 0 ms
+synthesis stage and passed the deliverable-count check while delivering
+nothing. See Rule 42 R42-1 and R42-2.
+
+For opportunity discovery, comparison, feasibility, recommendation, and
+how-to intents, well-established domain knowledge with stated assumptions IS
+a legitimate primary input. Requiring a citable corpus chunk before naming a
+market vertical is a category error — the evidence burden belongs on
+*specific* factual claims (named prices, named programs, named statistics),
+not on the analysis itself.
+
+### R-M. Reader-facing fallback strings are intent-gated
+
+Hardcoded fallback summaries and conclusions must be selected by
+adjudicativeness, exactly like agent prompts and verifier rubrics.
+
+`This report synthesizes evidence from N sources and N evidence chunks` and
+`does not surface explicit contradiction pairs` are adjudicative copy. They
+shipped verbatim on an opportunity-discovery report — reading, at `N = 0`,
+"synthesizes evidence from 0 sources and 0 evidence chunks."
+
+No prompt change can fix a string literal. When report vocabulary looks wrong
+and the prompts appear correct, grep the orchestrator for hardcoded copy.
+
 ## Pre-commit check (WO-Z invariants R-G … R-K)
 
 - [ ] Did you touch declaration capture or `resolveIntentAlias()`? Confirm
@@ -315,3 +350,7 @@ run metadata and the dossier Request tab.
       bounded repair loop?
 - [ ] Is the report `H1` a generated title rather than a truncated query,
       and is the raw prompt absent from the report body?
+- [ ] Does low-evidence mode return a synthesis directive rather than a
+      prebuilt report, and does synthesis still execute (non-zero duration)?
+- [ ] Are reader-facing fallback summary/conclusion strings gated on
+      `ADJUDICATIVE_SECTION_INTENTS`?

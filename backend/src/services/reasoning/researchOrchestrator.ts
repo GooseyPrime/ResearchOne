@@ -79,7 +79,7 @@ import type { PlanPayload } from '../planning/planTypes';
 import { runSpecialistExecution } from './specialistExecutionService';
 import {
   assessEvidenceSufficiency,
-  buildLowEvidenceLabeledDelivery,
+  buildLowEvidenceSynthesisDirective,
   shouldBypassRepairLoopForEvidence,
 } from './evidenceSufficiencyGate';
 import {
@@ -280,12 +280,21 @@ function buildReaderFrontMatter(args: {
     ? args.falsificationCriteria.filter((c) => typeof c === 'string')
     : [];
 
-  const fallbackSummary = `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
-  const fallbackConclusion = args.contradictionCount > 0
-    ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
-    : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
-
   const nonAdjudicativeIntent = !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId);
+
+  // Reader-facing fallbacks must match the speech act. The adjudicative wording
+  // ("synthesizes evidence from N sources and N evidence chunks", "contradiction
+  // pairs") shipped on opportunity, comparison, and how-to reports and read as
+  // claim-adjudication boilerplate — including the degenerate
+  // "evidence from 0 sources and 0 evidence chunks" (Rule 37 R-M).
+  const fallbackSummary = nonAdjudicativeIntent
+    ? 'This report presents the requested analysis, with confidence levels and assumptions stated alongside each finding.'
+    : `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
+  const fallbackConclusion = nonAdjudicativeIntent
+    ? 'Findings are stated with their supporting rationale; treat figures marked as estimates as modeled rather than measured.'
+    : args.contradictionCount > 0
+      ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
+      : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
   const metricGlosses = nonAdjudicativeIntent
     ? [
         {
@@ -1128,6 +1137,11 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     const allChunks: RetrievedChunk[] = [];
     const corpusGateDecisions: Array<Record<string, unknown>> = [];
+    // Rule 40 seals partitions on purpose while the corpus is still small.
+    // When every decision is "sealed", zero citable chunks is the DESIGNED
+    // outcome — not an evidence failure — and must not force degraded delivery.
+    const corpusGateSealedByDesign = (decisions: Array<Record<string, unknown>>): boolean =>
+      decisions.length > 0 && decisions.every((d) => d.status === 'sealed');
     if (shouldRunPipelineStage(orchProfile, 'retrieval')) {
       await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
@@ -1192,7 +1206,8 @@ async function runResearchJobInner(
     let evidenceContext = formatEvidenceContext(allChunks);
     let retrieverResult!: ModelCallResult;
     let latestSpecialistOutputs: Record<string, unknown> = {};
-    let forcedLowEvidenceDeliveryMarkdown: string | null = null;
+    let lowEvidenceDirective: string | null = null;
+    let adjudicativeEvidenceExhausted = false;
     let evidenceFailureReason: string | null = null;
 
     const runRetrieverAnalysisStage = async (message: string) => {
@@ -1296,6 +1311,8 @@ async function runResearchJobInner(
       specialistOutputs: latestSpecialistOutputs,
       rediscoveryPassesRemaining: 1,
       requestedArtifactCount,
+      discoverySourceCount: discoverySummary.sourcesIngested ?? 0,
+      corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
     if (evidenceAssessment.action === 'rediscover') {
@@ -1384,27 +1401,31 @@ async function runResearchJobInner(
         specialistOutputs: latestSpecialistOutputs,
         rediscoveryPassesRemaining: 0,
         requestedArtifactCount,
+        discoverySourceCount:
+          (discoverySummary.sourcesIngested ?? 0) + (rediscoverySummary.sourcesIngested ?? 0),
+        corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
       });
     }
 
     if (evidenceAssessment.action === 'low_evidence_labeled_delivery') {
+      // Non-adjudicative intents ALWAYS synthesise. Low evidence changes how
+      // confidence is expressed, never whether the artifact is produced.
+      // Rule 37 R-L: never substitute a deterministic stub for synthesis.
       evidenceFailureReason = evidenceAssessment.reason;
-      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
+      lowEvidenceDirective = buildLowEvidenceSynthesisDirective({
         intentId: orchProfile.intent as never,
         requestedArtifactCount,
         gaps: evidenceAssessment.gaps,
       });
-      await progress('reasoning', 49, 'Evidence remained insufficient after re-discovery; switching to labeled low-evidence delivery.', {
+      await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
         substep: 'low_evidence_labeled_delivery',
       });
     } else if (evidenceAssessment.action === 'rediscover') {
-      // Adjudicative intent exhausted all rediscovery passes; cannot synthesise without evidence.
+      // Adjudicative intent exhausted all rediscovery passes. Adjudication
+      // genuinely cannot proceed without evidence — but it must fail loudly
+      // rather than emit a placeholder report shaped like a verdict.
       evidenceFailureReason = evidenceAssessment.reason;
-      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
-        intentId: orchProfile.intent as never,
-        requestedArtifactCount,
-        gaps: evidenceAssessment.gaps,
-      });
+      adjudicativeEvidenceExhausted = true;
       await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
         substep: 'adjudicative_evidence_exhausted',
       });
@@ -1551,10 +1572,15 @@ async function runResearchJobInner(
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
     let generatedReport: { markdown: string };
-    if (forcedLowEvidenceDeliveryMarkdown) {
-      generatedReport = { markdown: ensureGeneratedTitleHeading(forcedLowEvidenceDeliveryMarkdown, researchQuery, orchProfile.intent) };
-      await progress('synthesis', 80, 'Producing labeled low-evidence delivery...', { substep: 'low_evidence_delivery' });
-    } else if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    if (adjudicativeEvidenceExhausted) {
+      // Adjudication without evidence is the one case where refusing is correct.
+      // Fail the run explicitly instead of shipping a placeholder verdict.
+      throw new Error(
+        'Adjudicative run halted: no independent evidence survived discovery and re-discovery. ' +
+        'Rerun with a broader corpus or supply supplemental sources.'
+      );
+    }
+    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       generatedReport = await generateIterativeReport({
@@ -1565,6 +1591,7 @@ async function runResearchJobInner(
         reasoningChains: reasonerResult.content,
         challenges: challengesForSynthesis,
         specialistFindings: specialistFindingsBlock,
+        lowEvidenceDirective: lowEvidenceDirective ?? undefined,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,

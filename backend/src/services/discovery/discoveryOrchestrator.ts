@@ -18,6 +18,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { buildDeterministicDiscoveryQueries } from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel } from '../openrouter/openrouterService';
@@ -292,6 +293,12 @@ async function runDiscoveryOrchestratorInner(args: {
     };
   }
 
+  // Also recover when the planner returned parseable JSON but an empty/malformed
+  // query array — the catch above only covers hard parse failures.
+  if (!Array.isArray(discoveryPlan.discovery_queries)) {
+    discoveryPlan.discovery_queries = [];
+  }
+
   // Policy enforcement: external discovery is always warranted per ResearchOne epistemic
   // policy. Override any model-produced false to guarantee retries/fallbacks are never
   // short-circuited by a model that was overly conservative.
@@ -299,9 +306,28 @@ async function runDiscoveryOrchestratorInner(args: {
 
   await persistDiscoveryEvent(runId, 'plan', 'planner', researchQuery, 0, 0, { plan: discoveryPlan });
 
+  // A failed or empty planner response must NEVER silently disable external
+  // search. With the Rule 40 corpus gate sealing partitions by default,
+  // discovery is the only evidence path — a single flaky planner call
+  // previously zeroed the entire evidence base for the run and produced a
+  // report built on nothing (Rule 42).
   if (discoveryPlan.discovery_queries.length === 0) {
-    logger.warn(`[discovery:${runId}] Discovery plan produced no queries (${discoveryPlan.rationale}) — skipping search`);
-    return buildSummary(runId, false, discoveryPlan.rationale, [], [], [], startTime);
+    const fallbackQueries = buildDeterministicDiscoveryQueries(researchQuery, plan);
+    if (fallbackQueries.length > 0) {
+      logger.warn(
+        `[discovery:${runId}] Planner produced no queries (${discoveryPlan.rationale}) — ` +
+        `falling back to ${fallbackQueries.length} deterministic queries derived from the research request`
+      );
+      discoveryPlan.discovery_queries = fallbackQueries;
+      await persistDiscoveryEvent(runId, 'plan', 'deterministic_fallback', researchQuery, 0, 0, {
+        reason: 'planner_produced_no_queries',
+        rationale: discoveryPlan.rationale,
+        queries: fallbackQueries,
+      });
+    } else {
+      logger.error(`[discovery:${runId}] No queries and no deterministic fallback could be derived — skipping search`);
+      return buildSummary(runId, false, discoveryPlan.rationale, [], [], [], startTime);
+    }
   }
 
   const capCeiling =

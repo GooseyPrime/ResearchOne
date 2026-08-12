@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assessEvidenceSufficiency,
-  buildLowEvidenceLabeledDelivery,
+  buildLowEvidenceSynthesisDirective,
   shouldBypassRepairLoopForEvidence,
 } from '../services/reasoning/evidenceSufficiencyGate';
 
@@ -50,52 +50,27 @@ describe('evidence sufficiency gate', () => {
     });
 
     expect(result.action).toBe('low_evidence_labeled_delivery');
-    const markdown = buildLowEvidenceLabeledDelivery({
+    // Low-evidence mode must yield a SYNTHESIS DIRECTIVE, not a prebuilt
+    // report. The previous implementation emitted 20 identical placeholder
+    // sections and skipped synthesis entirely (Rule 37 R-L).
+    const directive = buildLowEvidenceSynthesisDirective({
       intentId: 'opportunity_discovery',
       requestedArtifactCount: 20,
       gaps: result.gaps,
     });
-    expect(markdown).toContain('LOW-EVIDENCE DELIVERY');
-    expect((markdown.match(/^## Opportunity /gm) ?? []).length).toBe(20);
+    expect(directive).toContain('all 20 requested items');
+    expect(directive).not.toMatch(/^## Opportunity /m);
   });
 
-  it('produces a comparative artifact structure for comparative intent low-evidence delivery', () => {
-    const markdown = buildLowEvidenceLabeledDelivery({
-      intentId: 'comparative',
-      gaps: ['No competitor landscape recovered'],
-    });
-    expect(markdown).toContain('# Comparative Analysis');
-    expect(markdown).toContain('LOW-EVIDENCE DELIVERY');
-    expect(markdown).toContain('Comparison Dimensions');
-  });
-
-  it('produces a feasibility artifact structure for feasibility intent low-evidence delivery', () => {
-    const markdown = buildLowEvidenceLabeledDelivery({
-      intentId: 'feasibility',
-      gaps: ['No cost/revenue data found'],
-    });
-    expect(markdown).toContain('# Feasibility Assessment');
-    expect(markdown).toContain('INDETERMINATE');
-    expect(markdown).toContain('Go/No-go: Indeterminate');
-  });
-
-  it('produces a recommendation artifact structure for recommendation intent low-evidence delivery', () => {
-    const markdown = buildLowEvidenceLabeledDelivery({
-      intentId: 'recommendation',
-      gaps: ['No options could be ranked'],
-    });
-    expect(markdown).toContain('# Recommendation');
-    expect(markdown).toContain('Low-confidence recommendation');
-  });
-
-  it('produces a how-to artifact structure for how_to intent low-evidence delivery', () => {
-    const markdown = buildLowEvidenceLabeledDelivery({
-      intentId: 'how_to',
-      gaps: ['Steps could not be verified'],
-    });
-    expect(markdown).toContain('# How-To Guide');
-    expect(markdown).toContain('Steps');
-  });
+  it.each(['comparative', 'feasibility', 'recommendation', 'how_to', 'implementation'] as const)(
+    'returns a synthesis directive rather than a placeholder artifact for %s',
+    (intentId) => {
+      const directive = buildLowEvidenceSynthesisDirective({ intentId, gaps: ['limited corroboration'] });
+      expect(directive).not.toMatch(/^#\s/m);
+      expect(directive).toMatch(/LOW-EVIDENCE SYNTHESIS MODE/);
+      expect(directive).toMatch(/never emit placeholder text/i);
+    }
+  );
 
   it('bypasses the repair loop for insufficient-evidence failures', () => {
     expect(shouldBypassRepairLoopForEvidence('insufficient_evidence')).toBe(true);
