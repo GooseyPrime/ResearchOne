@@ -87,6 +87,7 @@ drove the rules is at
 | [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc) | Intent is the pipeline contract; hypothesis/falsification conditional on intent family; deliverable contract auditor. |
 | [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |
 | [`.cursor/rules/39-redesign-phase-checklist.mdc`](.cursor/rules/39-redesign-phase-checklist.mdc) | Every redesign-phase PR must update `docs/redesign-phase-status.md` and include the phase checklist in the PR description. |
+| [`.cursor/rules/40-corpus-competence-gate.mdc`](.cursor/rules/40-corpus-competence-gate.mdc) | Corpus is sealed by default; unlocks per topic partition on independence + density thresholds; self-referential source guard. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -102,6 +103,17 @@ drove the rules is at
 5. [`README.md`](README.md) — runtime topology.
 6. [`docs/revision-spinoff-dossier-timeline-scope.md`](docs/revision-spinoff-dossier-timeline-scope.md)
    — gated work plan for revision URL fixes, research spinoffs, dossier timeline.
+7. [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](docs/WO-Z-REPORT-TYPE-FIDELITY.md)
+   — **OPEN work order.** Report-type fidelity: intent declaration parsing,
+   verifier rubric scoping, corpus competence gate, evidence-sufficiency
+   gate. Read before touching the classifier, verifier prompts, or retrieval.
+
+## Autonomous agent entry point
+
+AI coding agents (Copilot, Cursor, Codex) bootstrap from
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md). It
+carries the active work-order table, the non-negotiable guardrails, and the
+definition of done. Keep it in sync when a work order opens or closes.
 
 ## Production application source — no test mocks (CI enforced)
 
@@ -115,6 +127,43 @@ ship on `main`.
 **Enforcement:** `scripts/ci/assert-no-test-mocks-in-app-src.sh` runs in
 `.github/workflows/ci-guards.yml` (PRs / all branches) and again in
 `deploy-backend-emma.yml` before production SSH deploy to `main`.
+
+## Recurring review themes (WO-Z — report-type fidelity, run `178fea66`)
+
+- **Normalize captured tokens before map lookup.** `resolveIntentAlias()`
+  received `**opportunity_discovery**` (markdown bold survived the capture
+  group), missed every alias-map lookup, returned `null`, and the user's
+  explicit intent declaration was silently discarded. Classification fell
+  through to lexical matching and picked `comparative`. Whenever a regex
+  capture feeds a dictionary lookup, strip markdown, quotes, backticks, and
+  trailing punctuation first — and test the decorated forms, not just the
+  bare one.
+- **A "universal" prompt footer defeats per-type contracts.**
+  `buildVerifierPromptForIntent()` injected the correct per-intent rubric
+  and then appended evidence-tier-tag requirements "for all report types",
+  which put adjudicative vocabulary into every deliverable. Scrubbing
+  vocabulary from display surfaces (PR #198) cannot work while a backend
+  prompt still mandates it at generation time. Grep for shared footers when
+  a per-type contract appears not to be taking effect.
+- **Default arguments pick the strict path.** `isAdjudicative = true` as a
+  default parameter means any missed call site silently gets the
+  adjudicative prompt set. Prefer `false` defaults for
+  behavior-broadening flags, and pass explicitly.
+- **Low similarity floors manufacture false authority.**
+  `retrieveChunks({ minSimilarity: 0.3 })` matched the operator's own
+  project notes to an unrelated market query; every citation in the failed
+  report was the user's own documentation. See Rule 40.
+- **Specialists reporting zero data must halt synthesis.** All four
+  specialists reported "Relevant Data Points Extracted: 0"; synthesis ran
+  anyway and produced a 6,000-word essay explaining why the report could
+  not be written. Two bounded repair passes then failed identically —
+  repair cannot fix data absence. Route to re-discovery.
+- **Refusal must be a FAIL criterion.** Only
+  `intent_opportunity_discovery` treated "refused to rank because evidence
+  is imperfect" as failure. The `comparative` rubric passed the refusal on
+  6 of 8 criteria.
+
+Work order: [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](docs/WO-Z-REPORT-TYPE-FIDELITY.md).
 
 ## Recurring review themes (private corpus / ResearchOne consent / supplemental site crawl)
 

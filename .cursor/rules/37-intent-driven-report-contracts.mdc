@@ -217,3 +217,101 @@ The contract_auditor prompt must check for:
 Explicit user selections must be sent via `requestedFormats` and
 `targetWordCount` in the `startResearch` payload. They must survive
 plan confirmation and reach report generation.
+
+### R-G. Declaration tokens are normalized before alias lookup
+
+R-A is defeated in practice if the captured declaration token is not
+normalized. Users write markdown, and the capture group includes it.
+
+`resolveIntentAlias()` MUST normalize before lookup by stripping:
+surrounding whitespace; markdown emphasis (`**`, `__`, `*`, `_` wrapping
+the whole token); backticks; straight and curly quotes; and trailing
+punctuation. Interior underscores MUST be preserved so
+`opportunity_discovery` survives.
+
+Verified failure (commit `5ebc1d7`, PR #198 merged):
+
+```text
+"**opportunity_discovery**"    => null   ← declaration silently dropped
+"opportunity_discovery"        => opportunity_discovery
+```
+
+The dropped declaration fell through to the lexical layer, which selected
+`comparative` because the prompt contained the word "comparison" many
+times. A single missing `.replace()` inverted a 26-minute run.
+
+Any change to declaration capture or alias resolution must be covered by a
+test matrix over: bare, `**bold**`, `*italic*`, `__underscored__`,
+`` `code` ``, `"quoted"`, `'quoted'`, trailing-period, and value-on-the-
+next-line forms. Secondary intent declarations must be captured too — not
+only the primary.
+
+### R-H. The verifier has no universal epistemic block
+
+`buildVerifierPromptForIntent()` MUST NOT append evidence-tier-tag,
+falsification, or contradiction-analysis requirements to every intent.
+Those belong in the `verifierRubric` of the intents that warrant them
+(`adjudication`, `investigation`, `story_verification`, `factual_report`,
+`literature_review`, `survey`, `timeline`) — not in a shared footer.
+
+A shared footer that mandates `(established_fact)` tags on a market
+report is what makes the synthesizer emit adjudicative vocabulary in a
+non-adjudicative deliverable. Scrubbing that vocabulary from display
+surfaces while the verifier still demands it at generation time does not
+work.
+
+The only permitted universal minimum is speech-act neutral: no fabricated
+specifics; unknown values labeled unknown; nontrivial external facts carry
+a source reference; stated user constraints respected; **and the requested
+deliverable is actually produced**.
+
+`isAdjudicative` must not default to `true` on prompt-building helpers.
+An omitted argument must not silently select the adjudicative prompt set.
+
+### R-I. Refusal to deliver is a verifier FAIL
+
+For every non-adjudicative intent, the rubric MUST treat "refused to
+produce the deliverable because evidence was imperfect" as FAIL.
+Uncertainty is labeled, not used to abort.
+
+`intent_opportunity_discovery` already carries this clause. Every other
+non-adjudicative intent needs it. In the reference incident the
+`comparative` rubric passed a refusal essay on 6 of 8 criteria.
+
+### R-J. Evidence insufficiency routes to discovery, never to repair
+
+When specialists report zero or near-zero usable data, the pipeline MUST
+NOT proceed to synthesis, and MUST NOT enter the bounded repair loop.
+Repair without new information cannot fix data absence — it rewrites prose
+and fails identically. Route back to discovery with queries reformulated
+from the specific gaps the specialists named.
+
+When discovery rounds are exhausted and the intent is non-adjudicative,
+deliver the requested artifact under an explicit low-evidence labeled mode.
+An essay explaining why the deliverable is impossible is not a deliverable.
+
+### R-K. Report title and body hygiene
+
+The report `H1` MUST be a generated title, never a truncated raw query.
+The user's prompt MUST NOT be prepended to the report body — it belongs in
+run metadata and the dossier Request tab.
+
+
+## Pre-commit check (WO-Z invariants R-G … R-K)
+
+- [ ] Did you touch declaration capture or `resolveIntentAlias()`? Confirm
+      the markdown/quote/punctuation normalization test matrix passes, and
+      that each case fails without your fix (Rule 16).
+- [ ] Did you touch `buildVerifierPromptForIntent()`? Confirm there is no
+      universal epistemic footer, and that `isAdjudicative` does not
+      default to `true`.
+- [ ] Do the built verifier prompts for non-adjudicative intents contain no
+      `established_fact` / `falsification` / `contradiction analysis`
+      language — verified by test?
+- [ ] Do adjudicative intents still contain them — verified by snapshot so
+      PolicyOne cannot be silently weakened?
+- [ ] Does every non-adjudicative rubric treat refusal-to-deliver as FAIL?
+- [ ] Does evidence insufficiency route to re-discovery rather than the
+      bounded repair loop?
+- [ ] Is the report `H1` a generated title rather than a truncated query,
+      and is the raw prompt absent from the report body?

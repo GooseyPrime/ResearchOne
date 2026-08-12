@@ -1,0 +1,147 @@
+---
+description: Corpus competence gate — the shared corpus is sealed by default and unlocks per topic partition only after it clears independence and density thresholds. Read before touching retrievalService, discoveryOrchestrator, or any code that cites corpus chunks as evidence.
+alwaysApply: true
+---
+
+# Rule 40 — Corpus competence gate
+
+## Why this rule exists
+
+Run `178fea66-6114-4f53-aeba-16dd825a6f52` produced a market-opportunity
+report in which **every single citation was the operator's own uploaded
+project documentation**. Notes about the user's microservice architecture
+were cited as evidence about affiliate commission structures.
+
+The corpus was not wrong. It was **incompetent on the topic** — and nothing
+in the pipeline could tell the difference. `retrieveChunks()` ran with
+`minSimilarity = 0.3`, matched loosely-related internal documents, and the
+specialists correctly reported zero usable data while the pipeline cited
+those documents anyway.
+
+A small corpus is not a small version of a large corpus. It is a corpus that
+is confidently wrong about most topics. Until a topic partition is
+substantively populated by **independent** sources, retrieving from it
+produces false authority, not evidence.
+
+## The rule
+
+**The shared corpus is sealed by default.** It unlocks per topic partition,
+and only after that partition clears explicit thresholds.
+
+### R40-1. Partitions
+
+The corpus is divided into **partitions** — a topic or region scope, not one
+global pool. Partition resolution must be deterministic and auditable.
+Resolve in this priority order:
+
+1. Explicit source tags (`sources.tags`) mapped to a partition key.
+2. Intent/domain taxonomy of the run.
+3. Embedding-cluster assignment.
+4. Fallback partition `unclassified` — which is **permanently sealed** and
+   never serves citable evidence.
+
+A partition key must be a stable string (e.g. `market.affiliate`,
+`biomed.oncology`, `region.eu.regulatory`). Record it in run metadata.
+
+### R40-2. Unlock thresholds
+
+A partition is `unsealed` only when **all** thresholds pass. Defaults live in
+config and are tunable without a deploy; do not hard-code them at call sites.
+
+| Threshold | Default | Rationale |
+| --- | --- | --- |
+| Distinct registrable domains | ≥ 8 | Independence. Ten documents from one site is one source. |
+| Distinct sources | ≥ 25 | Density. |
+| Total chunks | ≥ 400 | Retrieval has something to rank. |
+| Share from any single domain | ≤ 35% | No single-publisher capture. |
+| Share from first-party/self sources | ≤ 20% | Cannot be mostly the user's own notes. |
+| Median source age | ≤ 24 months | Staleness guard. Tighten per partition where recency matters. |
+
+Additionally, a **global bootstrap floor** applies: while total corpus size
+is below the configured bootstrap minimum, **all** partitions are sealed
+regardless of individual counts. This is the "until we build a big enough
+corpus" gate — it prevents an early partition from looking competent because
+the whole corpus is tiny.
+
+### R40-3. Sealed behavior — background, not evidence
+
+When a partition is `sealed`, retrieval against it must:
+
+- Return **zero citable chunks**. Sealed chunks may be passed to reasoning
+  as clearly-labeled **non-citable background** only, or omitted entirely.
+- Never appear in the citation map, reference list, or evidence ledger.
+- Never satisfy a verifier criterion that requires a source reference.
+- Cause live discovery to become the primary evidence path for the run.
+
+A sealed partition must never be the reason a run fails to produce its
+deliverable. Sealed means "go get real sources," not "abort."
+
+### R40-4. Self-referential source guard
+
+Sources owned by the requesting user — private uploads, and sources whose
+`discovered_by_run_id` belongs to that user's own prior runs — must not be
+presented as **independent external evidence** for claims about markets,
+competitors, pricing, regulation, or third-party behavior.
+
+They remain fully valid for: describing the user's own stated context,
+constraints, and infrastructure; and for any intent where the user's own
+material *is* the subject.
+
+This is a distinct check from R40-2. A partition can be unsealed and a
+specific source still fail the independence test for a specific claim class.
+
+### R40-5. Similarity floor
+
+`minSimilarity` must not default below **0.55**. `0.3` admits loosely
+associated text and was a direct contributor to the reference incident. The
+effective value must be recorded in run metadata.
+
+### R40-6. Auditability
+
+Every run records a `corpusGate` block in metadata:
+
+```json
+{
+  "partition": "market.affiliate",
+  "status": "sealed",
+  "reason": "distinct_domains 2 < 8; self_source_share 0.91 > 0.20",
+  "thresholds": { "...": "effective values used" },
+  "minSimilarity": 0.55,
+  "citableChunks": 0,
+  "backgroundChunks": 14
+}
+```
+
+If a report cites corpus material, it must be possible to prove from run
+metadata that the partition was unsealed at the time. No silent citation.
+
+### R40-7. Unlock is data-driven, never manual per-run
+
+Partitions unlock because ingestion made them competent — not because a run
+needed evidence. There must be no per-run override that unseals a partition
+to satisfy a deliverable. Admin tooling may adjust **thresholds** globally;
+it may not unseal a partition for one run.
+
+## Interaction with other rules
+
+- **Rule 37 (intent contracts):** a sealed partition never justifies refusing
+  the deliverable. Non-adjudicative intents deliver with labeled uncertainty.
+- **Rule 20 (research policy):** uncertainty labeling and contradiction
+  preservation remain binding. Sealing changes *what may be cited*, never
+  whether uncertainty is disclosed.
+- **Rule 13 (deploy skew):** gate code must tolerate its migration not being
+  applied yet — treat missing gate tables as **sealed** (fail closed), not
+  unsealed.
+
+## Pre-commit check
+
+- [ ] Did you touch `retrievalService.ts`? Confirm the gate runs before
+      chunks are returned as citable, not after.
+- [ ] Is `minSimilarity` ≥ 0.55 by default, and recorded in run metadata?
+- [ ] Does a sealed partition return zero citable chunks — verified by test?
+- [ ] Is the `unclassified` fallback partition permanently sealed?
+- [ ] Does deploy skew (missing gate table) fail **closed** to sealed?
+- [ ] Are thresholds read from config rather than hard-coded at call sites?
+- [ ] Is there a test reconstructing the reference incident's corpus shape
+      that asserts the partition evaluates sealed?
+- [ ] Does the run record an auditable `corpusGate` block?
