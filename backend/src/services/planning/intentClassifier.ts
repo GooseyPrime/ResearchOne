@@ -134,29 +134,50 @@ const INTENT_ALIAS_MAP: Record<string, IntentId> = {
 function explicitDeclarationLayer(
   query: string,
   supplemental?: string
-): { intent: IntentId; confidence: number; reason: string } | null {
+): { intent: IntentId; secondaryIntent?: IntentId; confidence: number; reason: string } | null {
   const text = `${query}\n${supplemental ?? ''}`;
+ let primaryIntent: IntentId | null = null;
+ let secondaryIntent: IntentId | null = null;
+ const reasons: string[] = [];
 
-  // Pattern 1: labelled declaration (case-insensitive)
-  // "Primary research intent: X", "Intent: X", "Research intent: X", "Report type: X"
-  const labelledPattern =
-    /(?:primary\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)\s*[:=]\s*([^\n.,;]+)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = labelledPattern.exec(text)) !== null) {
-    const candidate = match[1].trim().toLowerCase();
-    const resolved = resolveIntentAlias(candidate);
-    if (resolved) {
-      return {
-        intent: resolved,
-        confidence: EXPLICIT_DECLARATION_CONFIDENCE,
-        reason: `Explicit intent declaration found: "${match[0].trim()}" → resolved to "${resolved}".`,
-      };
-    }
-  }
+ const recordLabelledIntent = (label: string, candidate: string, matchText: string): boolean => {
+   const resolved = resolveIntentAlias(candidate);
+   if (!resolved) return false;
+   if (/secondary/i.test(label)) {
+     secondaryIntent = resolved;
+     reasons.push(`Explicit secondary intent declaration found: "${matchText.trim()}" → resolved to "${resolved}".`);
+     return true;
+   }
+   primaryIntent = resolved;
+   reasons.push(`Explicit intent declaration found: "${matchText.trim()}" → resolved to "${resolved}".`);
+   return true;
+ };
 
-  // Pattern 2: imperative declaration
-  // "Use opportunity discovery", "Treat this as a literature review", "Run as feasibility"
-  const imperativePattern =
+ // Pattern 1: labelled declaration (case-insensitive)
+ // "Primary research intent: X", "Intent: X", "Research intent: X", "Report type: X"
+ const labelledPattern =
+   /((?:primary|secondary)\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)\s*[:=]\s*(?:\n\s*)*([^\n.,;]+)/gi;
+ let match: RegExpExecArray | null;
+ while ((match = labelledPattern.exec(text)) !== null) {
+   const [, label, rawCandidate] = match;
+   if (recordLabelledIntent(label, rawCandidate, match[0])) {
+     if (primaryIntent && secondaryIntent) {
+       break;
+     }
+   }
+ }
+ if (primaryIntent) {
+   return {
+     intent: primaryIntent,
+     secondaryIntent: secondaryIntent ?? undefined,
+     confidence: EXPLICIT_DECLARATION_CONFIDENCE,
+     reason: reasons.join(' '),
+   };
+ }
+
+ // Pattern 2: imperative declaration
+ // "Use opportunity discovery", "Treat this as a literature review", "Run as feasibility"
+ const imperativePattern =
     /(?:use|run\s+(?:this\s+)?as|treat\s+this\s+as|run\s+as|classify\s+as|route\s+as)\s+(?:a\s+|an\s+)?([^\n.,;]+)/gi;
   while ((match = imperativePattern.exec(text)) !== null) {
     const candidate = match[1].trim().toLowerCase();
@@ -192,7 +213,7 @@ function explicitDeclarationLayer(
  * Tries exact match, then progressively looser substring matches.
  */
 function resolveIntentAlias(candidate: string): IntentId | null {
-  const normalized = candidate.trim().toLowerCase();
+  const normalized = normalizeDeclarationToken(candidate);
 
   // Exact match
   if (normalized in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[normalized];
@@ -208,6 +229,33 @@ function resolveIntentAlias(candidate: string): IntentId | null {
   if (strippedDeUnd in INTENT_ALIAS_MAP) return INTENT_ALIAS_MAP[strippedDeUnd];
 
   return null;
+}
+
+function normalizeDeclarationToken(candidate: string): string {
+  let normalized = candidate.trim().toLowerCase();
+  const emphasisWrappers = [
+    /^\*\*(.+)\*\*$/,
+    /^__(.+)__$/,
+    /^\*(.+)\*$/,
+    /^_(.+)_$/,
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const wrapper of emphasisWrappers) {
+      const match = normalized.match(wrapper);
+      if (match) {
+        normalized = match[1].trim();
+        changed = true;
+      }
+    }
+  }
+
+  normalized = normalized.replace(/^`+|`+$/g, '').trim();
+  normalized = normalized.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+  normalized = normalized.replace(/[.,;:]+$/g, '').trim();
+  return normalized;
 }
 
 /**
@@ -357,13 +405,15 @@ export async function classifyIntent(
   if (!hasOpenRouterCredential) {
     if (explicit) {
       const def = getIntentById(explicit.intent);
-      return defaultResearchBrief(
+      const brief = defaultResearchBrief(
         explicit.intent,
         explicit.confidence,
         explicit.reason +
           (def ? ` Display label: "${def.displayLabel}".` : '') +
           ' Explicit declarations override lexical and LLM classification. Artifact extraction unavailable because no OpenRouter credential was configured.'
       );
+      brief.secondaryIntent = explicit.secondaryIntent;
+      return brief;
     }
     return defaultResearchBrief(
       'factual_report',
@@ -400,6 +450,7 @@ export async function classifyIntent(
   if (explicit) {
     const def = getIntentById(explicit.intent);
     brief.primaryIntent = explicit.intent;
+    brief.secondaryIntent = explicit.secondaryIntent ?? brief.secondaryIntent;
     brief.confidence = explicit.confidence;
     brief.reasoning =
       explicit.reason +
