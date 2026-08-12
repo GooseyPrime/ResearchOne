@@ -14,10 +14,11 @@ export function assessEvidenceSufficiency(args: {
   rediscoveryPassesRemaining: number;
   requestedArtifactCount?: number;
 }): EvidenceSufficiencyResult {
-  const usableSignalCount = countUsableSignals(args.specialistOutputs) + Math.max(0, args.citableChunkCount);
+  const specialistSignalCount = countUsableSignals(args.specialistOutputs);
+  const usableSignalCount = specialistSignalCount + Math.max(0, args.citableChunkCount);
   const gaps = collectEvidenceGaps(args.specialistOutputs, args.citableChunkCount);
 
-  if (usableSignalCount > 0 && args.citableChunkCount > 0) {
+  if (specialistSignalCount > 0 && args.citableChunkCount > 0) {
     return {
       action: 'sufficient',
       reason: 'sufficient',
@@ -54,6 +55,9 @@ export function buildLowEvidenceLabeledDelivery(args: {
   requestedArtifactCount?: number;
   gaps: string[];
 }): string {
+  const gapBullets = args.gaps.map((gap) => `- ${gap}`).join('\n');
+  const warningBlock = '> LOW-EVIDENCE DELIVERY — requested artifact produced with explicit uncertainty labels.\n> Independent evidence was insufficient; assertions below are unverified and should not be relied upon without further research.';
+
   if (args.intentId === 'opportunity_discovery') {
     const count = Math.max(1, args.requestedArtifactCount ?? 10);
     const rows = Array.from({ length: count }, (_, index) => (
@@ -67,20 +71,126 @@ export function buildLowEvidenceLabeledDelivery(args: {
     return [
       '# Opportunity Discovery Report',
       '',
-      '> LOW-EVIDENCE DELIVERY — requested artifact produced with explicit uncertainty labels.',
+      warningBlock,
       '',
       ...rows,
     ].join('\n\n');
   }
 
+  if (args.intentId === 'comparative') {
+    return [
+      '# Comparative Analysis',
+      '',
+      warningBlock,
+      '',
+      '## Comparison Dimensions',
+      '',
+      '| Dimension | Option A | Option B | Notes |',
+      '|-----------|----------|----------|-------|',
+      '| — | Evidence insufficient | Evidence insufficient | Verify independently |',
+      '',
+      '## Evidence Gaps',
+      '',
+      gapBullets,
+      '',
+      '## Provisional Assessment',
+      '',
+      'Insufficient independent evidence was retrieved to support a confident comparison. The dimensions table above is a placeholder; populate with sourced data before use.',
+    ].join('\n');
+  }
+
+  if (args.intentId === 'feasibility') {
+    return [
+      '# Feasibility Assessment',
+      '',
+      warningBlock,
+      '',
+      '## Summary',
+      '',
+      '**Viability Rating: INDETERMINATE** — evidence was insufficient to assess technical, financial, or market feasibility with confidence.',
+      '',
+      '## Key Dimensions',
+      '',
+      '- **Technical feasibility:** Unverified — no independent sources confirmed.',
+      '- **Financial feasibility:** Unverified — cost and revenue estimates unavailable.',
+      '- **Market feasibility:** Unverified — demand and competitive landscape not confirmed.',
+      '',
+      '## Risks',
+      '',
+      '- Evidence gaps listed below represent primary research risks.',
+      '',
+      '## Evidence Gaps',
+      '',
+      gapBullets,
+      '',
+      '## Recommendation',
+      '',
+      '**Go/No-go: Indeterminate.** Conduct targeted evidence gathering to fill the gaps above before proceeding.',
+    ].join('\n');
+  }
+
+  if (args.intentId === 'recommendation') {
+    return [
+      '# Recommendation',
+      '',
+      warningBlock,
+      '',
+      '## Constraints Considered',
+      '',
+      '- Evidence base was insufficient to fully evaluate constraints.',
+      '',
+      '## Options Evaluated',
+      '',
+      '- No independently-sourced options could be ranked with confidence.',
+      '',
+      '## Recommendation',
+      '',
+      '**Low-confidence recommendation:** Evidence was insufficient to support a definitive recommendation. Address the evidence gaps below before acting.',
+      '',
+      '## Trade-offs',
+      '',
+      '- Trade-off analysis requires additional verified evidence.',
+      '',
+      '## Evidence Gaps',
+      '',
+      gapBullets,
+    ].join('\n');
+  }
+
+  if (args.intentId === 'implementation' || args.intentId === 'how_to') {
+    return [
+      `# ${args.intentId === 'how_to' ? 'How-To Guide' : 'Implementation Plan'}`,
+      '',
+      warningBlock,
+      '',
+      '## Prerequisites',
+      '',
+      '- Prerequisites could not be verified from available evidence.',
+      '',
+      '## Steps',
+      '',
+      '1. **[Step 1 — Unverified]** Conduct independent research to fill evidence gaps before following this guide.',
+      '2. **[Step 2 — Placeholder]** Verify prerequisites against authoritative sources.',
+      '3. **[Step 3 — Placeholder]** Validate each step with domain-specific evidence.',
+      '',
+      '## Evidence Gaps',
+      '',
+      gapBullets,
+      '',
+      '## Outcomes',
+      '',
+      'Expected outcomes could not be confirmed from available evidence. Treat this guide as a starting scaffold only.',
+    ].join('\n');
+  }
+
   return [
     '# Research Report',
     '',
-    '> LOW-EVIDENCE DELIVERY — requested artifact produced with explicit uncertainty labels.',
+    warningBlock,
     '',
     'Independent evidence was insufficient in this pass.',
     '',
-    ...args.gaps.map((gap) => `- ${gap}`),
+    gapBullets,
   ].join('\n');
 }
 

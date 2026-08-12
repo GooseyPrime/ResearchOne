@@ -11,6 +11,7 @@ import {
   evaluateCorpusGate,
   intentNeedsIndependentExternalEvidence,
   resolveCorpusPartition,
+  UNCLASSIFIED_PARTITION,
   type CorpusGateDecision,
   type CorpusSourceRecord,
 } from './corpusCompetenceGate';
@@ -38,6 +39,8 @@ export interface RetrievalOptions {
   sourceIds?: string[];
   intentId?: IntentId;
   userId?: string;
+  /** Current research run id — sources discovered for this run are always citable. */
+  runId?: string;
 }
 
 export interface RetrievalAuditResult {
@@ -64,6 +67,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     sourceIds,
     intentId,
     userId,
+    runId,
   } = options;
 
   const results: Map<string, RetrievedChunk> = new Map();
@@ -81,7 +85,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     partition,
     sourceRecords: sourceStats.records.filter((record) => {
       const recordPartition = record.partitionKey?.trim().toLowerCase()
-        || resolveCorpusPartition({ sourceRecords: [record] });
+        || resolveCorpusPartition({ intentId, sourceRecords: [record] });
       return recordPartition === partition;
     }),
     thresholds,
@@ -124,6 +128,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.title AS source_title,
           s.tags,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          s.discovered_by_run_id,
           1 - (e.vector <=> $1::vector) AS similarity,
           cl.evidence_tier
         FROM embeddings e
@@ -142,6 +147,11 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           AND 1 - (e.vector <=> $1::vector) >= $2
       `;
       const params: unknown[] = [vectorStr, minSimilarity];
+
+      if (partition !== UNCLASSIFIED_PARTITION) {
+        params.push(partition);
+        vectorSql += ` AND (s.partition_key = $${params.length} OR (s.partition_key IS NULL AND NOT EXISTS (SELECT 1 FROM unnest(s.tags) t(tag) WHERE lower(tag) LIKE 'partition:%' AND lower(tag) != 'partition:' || $${params.length})))`;
+      }
 
       if (filterTags && filterTags.length > 0) {
         params.push(filterTags);
@@ -164,6 +174,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         source_title: string;
         tags: string[];
         owner_user_id: string | null;
+        discovered_by_run_id: string | null;
         similarity: number;
         evidence_tier: string | null;
       }>(vectorSql, params);
@@ -178,7 +189,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           similarity: row.similarity,
           evidence_tier: row.evidence_tier,
           tags: row.tags ?? [],
-          owner_user_id: row.owner_user_id,
+          owner_user_id: row.discovered_by_run_id === runId ? null : row.owner_user_id,
         });
       }
     }
@@ -198,6 +209,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.title AS source_title,
           s.tags,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          s.discovered_by_run_id,
           ts_rank(
             to_tsvector('english', c.content),
             plainto_tsquery('english', $1)
@@ -218,6 +230,11 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
       `;
 
       const ftsParams: unknown[] = [queryText];
+
+      if (partition !== UNCLASSIFIED_PARTITION) {
+        ftsParams.push(partition);
+        ftsSql += ` AND (s.partition_key = $${ftsParams.length} OR (s.partition_key IS NULL AND NOT EXISTS (SELECT 1 FROM unnest(s.tags) t(tag) WHERE lower(tag) LIKE 'partition:%' AND lower(tag) != 'partition:' || $${ftsParams.length})))`;
+      }
 
       if (filterTags && filterTags.length > 0) {
         ftsParams.push(filterTags);
@@ -240,11 +257,13 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         source_title: string;
         tags: string[];
         owner_user_id: string | null;
+        discovered_by_run_id: string | null;
         fts_rank: number;
         evidence_tier: string | null;
       }>(ftsSql, ftsParams);
 
       for (const row of ftsResults) {
+        const ownerUserId = row.discovered_by_run_id === runId ? null : row.owner_user_id;
         if (!results.has(row.id)) {
           results.set(row.id, {
             id: row.id,
@@ -255,12 +274,13 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
             similarity: row.fts_rank * 0.5, // normalize FTS rank
             evidence_tier: row.evidence_tier,
             tags: row.tags ?? [],
-            owner_user_id: row.owner_user_id,
+            owner_user_id: ownerUserId,
           });
         } else {
-          // Boost existing entry
+          // Boost existing entry; also correct owner if we now know it's a current-run source
           const existing = results.get(row.id)!;
           existing.similarity = Math.min(1, existing.similarity + row.fts_rank * 0.2);
+          if (ownerUserId === null) existing.owner_user_id = null;
         }
       }
     } catch (err) {

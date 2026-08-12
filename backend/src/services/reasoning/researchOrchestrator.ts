@@ -1142,6 +1142,7 @@ async function runResearchJobInner(
           hybridSearch: true,
           intentId: orchProfile.intent,
           userId: creditCtx?.userId,
+          runId,
         });
         corpusGateDecisions.push({
           query: rqStr,
@@ -1345,6 +1346,7 @@ async function runResearchJobInner(
           hybridSearch: true,
           intentId: orchProfile.intent as never,
           userId: creditCtx?.userId,
+          runId,
         });
         corpusGateDecisions.push({
           query: `${rqStr} [rediscovery]`,
@@ -1357,6 +1359,21 @@ async function runResearchJobInner(
           }
         }
       }
+
+      // Persist updated retrieval IDs and gate decisions that now include rediscovery chunks.
+      await query(
+        `UPDATE research_runs
+            SET retrieval_ids=$1,
+                corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+          WHERE id=$3`,
+        [
+          allChunks.map((c) => c.id),
+          JSON.stringify({
+            corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+          }),
+          runId,
+        ]
+      );
 
       evidenceContext = formatEvidenceContext(allChunks);
       await runRetrieverAnalysisStage('Re-analyzing evidence after targeted re-discovery...');
@@ -1379,6 +1396,17 @@ async function runResearchJobInner(
       });
       await progress('reasoning', 49, 'Evidence remained insufficient after re-discovery; switching to labeled low-evidence delivery.', {
         substep: 'low_evidence_labeled_delivery',
+      });
+    } else if (evidenceAssessment.action === 'rediscover') {
+      // Adjudicative intent exhausted all rediscovery passes; cannot synthesise without evidence.
+      evidenceFailureReason = evidenceAssessment.reason;
+      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
+        intentId: orchProfile.intent as never,
+        requestedArtifactCount,
+        gaps: evidenceAssessment.gaps,
+      });
+      await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
+        substep: 'adjudicative_evidence_exhausted',
       });
     }
 
