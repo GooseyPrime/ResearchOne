@@ -276,10 +276,10 @@ describe('opportunity_discovery template: adaptive contract (no mega-schema)', (
     expect(rubric).not.toContain('deployment prompt');
   });
 
-  it('verifierRubric explicitly states falsification sections FAIL', () => {
+  it('verifierRubric explicitly fails claim-audit drift and refusal-to-rank', () => {
     const rubric = tpl!.verifierRubric.toLowerCase();
-    expect(rubric).toContain('falsification');
-    // Must say it's not allowed (FAIL) not required
+    expect(rubric).toContain('claim-audit');
+    expect(rubric).toContain('refuses to rank');
     expect(rubric).toContain('fail');
   });
 

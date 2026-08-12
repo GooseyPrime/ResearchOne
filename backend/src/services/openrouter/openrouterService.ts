@@ -1470,7 +1470,7 @@ export function getSystemPrompt(role: ModelRole, isAdjudicative: boolean): strin
  * Falls back to the universal `SYSTEM_PROMPTS.verifier` for unknown or legacy
  * intents so old runs are not affected.
  */
-export function buildVerifierPromptForIntent(intentId: string | undefined | null, isAdjudicative = true): string {
+export function buildVerifierPromptForIntent(intentId: string | undefined | null, isAdjudicative = false): string {
   // 'legacy' intents and missing intentId use the universal verifier prompt.
   if (!intentId || intentId === 'legacy') return getSystemPrompt('verifier', isAdjudicative);
   const template = getIntentOutputTemplate(`intent_${intentId}`);
@@ -1485,10 +1485,11 @@ Your role is to verify that the final report meets the standards appropriate for
 
 ${template.verifierRubric}
 
-Additionally for all report types:
-- Every major claim must have an evidence tier tag: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
-- No unsupported facts. If the corpus was silent on a point, the report must say so.
-- Citations must exist for all nontrivial factual assertions.
+Universal minimum for all report types:
+- No fabricated specifics. Unknown values are labeled unknown.
+- Nontrivial external facts carry a source reference.
+- Stated user constraints are respected.
+- The requested deliverable is produced. Uncertainty must be labeled, never used to refuse delivery.
 
 Output strict JSON in the following shape and nothing else:
 {
