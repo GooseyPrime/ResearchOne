@@ -34,6 +34,17 @@ vi.mock('../../components/research/ResearchClarificationChat', () => ({
   default: () => <div data-testid="clarification-chat" />,
 }));
 
+vi.mock('../../components/research/RunAddonToggles', () => ({
+  default: ({ selected, onToggle }: { selected: string[]; onToggle: (k: string) => void }) => (
+    <div data-testid="run-addon-toggles">
+      <button type="button" data-testid="addon-toggle-adversarial" onClick={() => onToggle('adversarial_twin')}>
+        Toggle adversarial
+      </button>
+      <span data-testid="addon-selected-count">{selected.length}</span>
+    </div>
+  ),
+}));
+
 vi.mock('../../utils/api', async () => {
   const actual = await vi.importActual<typeof import('../../utils/api')>('../../utils/api');
   return {
@@ -189,5 +200,41 @@ describe('ResearchEasyPage', () => {
   it('renders attachment dropzone', () => {
     renderPage();
     expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument();
+  });
+
+  // ── Run enhancements (add-ons) ───────────────────────────────────────────
+
+  it('renders run addon toggles', () => {
+    renderPage();
+    expect(screen.getByTestId('run-addon-toggles')).toBeInTheDocument();
+  });
+
+  it('passes selected addons to startResearch on submit', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Research something with adversarial review' },
+    });
+
+    // Toggle on the adversarial addon
+    fireEvent.click(screen.getByTestId('addon-toggle-adversarial'));
+    expect(screen.getByTestId('addon-selected-count')).toHaveTextContent('1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.addons).toEqual(['adversarial_twin']);
+  });
+
+  it('omits addons from startResearch when none selected', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Research without any addons' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.addons).toBeUndefined();
   });
 });

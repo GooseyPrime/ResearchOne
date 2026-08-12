@@ -115,7 +115,7 @@ describe('marketing hardening — structural copy present', () => {
     expect(html).toContain('CAPABILITY_MATRIX');
     expect(html).toContain('Research infrastructure');
     expect(html).toContain('CORPUS_INTEGRATIONS');
-    expect(html).toContain('Research that defends itself.');
+    expect(html).toContain('the whole landscape');
     expect(html).toContain('id="main-content"');
   });
 

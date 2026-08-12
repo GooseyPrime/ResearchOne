@@ -1,5 +1,3 @@
-import { Link } from 'react-router-dom';
-
 type QuoteCard = {
   quote: string;
   attribution: string;
@@ -82,13 +80,6 @@ export default function WhatCompetitorsActuallySay() {
           </figure>
         ))}
       </div>
-      <p className="mt-10 text-sm text-r1-text-muted">
-        See also{' '}
-        <Link to="/guide" className="text-r1-accent hover:underline">
-          Guide — source-corroboration tiers
-        </Link>
-        .
-      </p>
     </section>
   );
 }

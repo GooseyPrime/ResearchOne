@@ -9,12 +9,15 @@ import ResearchOutputControls, {
   resolveTargetWordCount,
   normalizeReportFormats,
 } from '../components/research/ResearchOutputControls';
+import RunAddonToggles from '../components/research/RunAddonToggles';
 import { useCanAccessDeepResearch } from '../hooks/useCanAccessDeepResearch';
+import { useResearchRunAddons } from '../hooks/useResearchRunAddons';
 import { useStore } from '../store/useStore';
 import { extractApiError, startResearch } from '../utils/api';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 import { buildClarifyingQuestions } from '../utils/clarifyingQuestions';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '../utils/researchRunAddons';
 
 type EasyDepth = 'standard' | 'deep';
 
@@ -43,6 +46,9 @@ export default function ResearchEasyPage() {
 
   const deepLocked = !tierGateUnknown && !canAccessDeep;
   const selectedEngineVersion = depth === 'deep' ? 'v2' : undefined;
+
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   useEffect(() => {
     if (deepLocked && depth === 'deep') setDepth('standard');
@@ -77,6 +83,7 @@ export default function ResearchEasyPage() {
         supplementalUrlCrawl: urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
         requestedFormats,
         targetWordCount,
+        addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       });
     },
     onSuccess: (data) => {
@@ -94,6 +101,7 @@ export default function ResearchEasyPage() {
 
   const openClarificationOrSubmit = () => {
     if (!query.trim() || mutation.isPending) return;
+    syncAddonsToUrl();
     const generated = buildClarifyingQuestions(query, {});
     if (generated.length === 0) {
       void mutation.mutate({ includeClarifications: false });
@@ -218,6 +226,12 @@ export default function ResearchEasyPage() {
             </div>
           )}
         </div>
+
+        <RunAddonToggles
+          selected={selectedAddons}
+          onToggle={toggleAddon}
+          disabled={mutation.isPending}
+        />
 
         <button
           type="button"
