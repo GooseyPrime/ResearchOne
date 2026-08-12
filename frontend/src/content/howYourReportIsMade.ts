@@ -3,7 +3,7 @@
 export const HOW_YOUR_REPORT_IS_MADE_HEADING = 'How your report is made';
 
 export const HOW_YOUR_REPORT_IS_MADE_STEPS = [
-  'We turn your question into a research plan and show it to you to approve before anything runs—including the detected intent and the skeptic/formulation enhancement settings.',
+  'We turn your question into a research plan and show it to you to approve before anything runs—including the detected intent and the skeptic / formulation enhancement settings.',
   'We find and rank relevant sources, then read them.',
   'We draft findings with a citation for every claim.',
   'When the intent warrants it, a skeptic step challenges the draft to catch weak or unsupported claims; investigation paths also gather supporting and opposing evidence for comparison.',

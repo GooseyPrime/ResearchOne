@@ -202,21 +202,19 @@ export default function ResearchEasyPage() {
           </button>
           {outputPrefsOpen && (
             <div className="px-3 pb-3 pt-1 border-t border-surface-100">
-              <div className="space-y-3">
-                <ResearchOutputControls
-                  objective="AUTO"
-                  onObjectiveChange={() => undefined}
-                  showObjective={false}
-                  reportFormats={reportFormats}
-                  onReportFormatsChange={setReportFormats}
-                  reportLengthPreset={reportLengthPreset}
-                  onReportLengthPresetChange={setReportLengthPreset}
-                  reportLengthCustom={reportLengthCustom}
-                  onReportLengthCustomChange={setReportLengthCustom}
-                  disabled={mutation.isPending}
-                  compact
-                />
-              </div>
+              <ResearchOutputControls
+                objective="AUTO"
+                onObjectiveChange={() => undefined}
+                showObjective={false}
+                reportFormats={reportFormats}
+                onReportFormatsChange={setReportFormats}
+                reportLengthPreset={reportLengthPreset}
+                onReportLengthPresetChange={setReportLengthPreset}
+                reportLengthCustom={reportLengthCustom}
+                onReportLengthCustomChange={setReportLengthCustom}
+                disabled={mutation.isPending}
+                compact
+              />
             </div>
           )}
         </div>
