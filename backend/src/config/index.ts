@@ -294,7 +294,10 @@ const config = {
   },
 
   retrieval: {
-    minSimilarityDefault: Math.max(0.55, parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55')),
+    minSimilarityDefault: (() => {
+      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
+      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
+    })(),
     corpusGate: {
       minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),
       minDistinctSources: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_SOURCES || '25', 10),

@@ -61,7 +61,7 @@ export function resolveCorpusPartition(args: {
   if (filterTagPartition) return filterTagPartition;
 
   for (const record of args.sourceRecords ?? []) {
-    if (record.partitionKey?.trim()) return record.partitionKey.trim();
+    if (record.partitionKey?.trim()) return record.partitionKey.trim().toLowerCase();
     const tagPartition = extractPartitionFromTags(record.tags);
     if (tagPartition) return tagPartition;
   }

@@ -123,13 +123,12 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
-          COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
           1 - (e.vector <=> $1::vector) AS similarity,
           cl.evidence_tier
         FROM embeddings e
         JOIN chunks c ON c.id = e.chunk_id
         LEFT JOIN sources s ON s.id = c.source_id
-        LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
         LEFT JOIN LATERAL (
           SELECT jobs.user_id
           FROM ingestion_jobs jobs
@@ -198,7 +197,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
-          COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
           ts_rank(
             to_tsvector('english', c.content),
             plainto_tsquery('english', $1)
@@ -206,7 +205,6 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           cl.evidence_tier
         FROM chunks c
         LEFT JOIN sources s ON s.id = c.source_id
-        LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
         LEFT JOIN LATERAL (
           SELECT jobs.user_id
           FROM ingestion_jobs jobs
@@ -381,11 +379,10 @@ async function loadCorpusSourceStats(args: {
          s.tags,
          s.published_at,
          s.ingested_at,
-         COALESCE(rr.user_id, ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+         COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
          s.partition_key,
          COUNT(DISTINCT c.id)::int AS chunk_count
        FROM sources s
-       LEFT JOIN research_runs rr ON rr.id = s.discovered_by_run_id
        LEFT JOIN LATERAL (
          SELECT jobs.user_id
          FROM ingestion_jobs jobs
@@ -396,7 +393,7 @@ async function loadCorpusSourceStats(args: {
        ) ij ON TRUE
        LEFT JOIN chunks c ON c.source_id = s.id
        ${whereClause}
-       GROUP BY s.id, s.url, s.tags, s.published_at, s.ingested_at, rr.user_id, ij.user_id, s.metadata, s.partition_key`,
+       GROUP BY s.id, s.url, s.tags, s.published_at, s.ingested_at, ij.user_id, s.metadata, s.partition_key`,
       params,
     );
 
