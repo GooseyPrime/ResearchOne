@@ -37,6 +37,7 @@ Tracks implementation progress against the plan in
 - [x] Clarification chat and `buildClarifyingQuestions` utility
 - [x] Plain-language plan preview
 - [x] Auto-routing: depth, posture, agents, sources, output format
+- [x] Run enhancements available from EZ Research through the optional advanced surface
 - [x] Current UI preserved as Research Lab
 - [x] ARIA toggle group, `RequestedArtifact` shared type, locale sort
 - [x] `humanizeIdentifier` util extracted; `initialMode` surface reset

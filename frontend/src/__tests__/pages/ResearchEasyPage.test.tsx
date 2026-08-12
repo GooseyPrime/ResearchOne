@@ -34,6 +34,23 @@ vi.mock('../../components/research/ResearchClarificationChat', () => ({
   default: () => <div data-testid="clarification-chat" />,
 }));
 
+vi.mock('../../components/research/RunAddonToggles', () => ({
+  default: ({
+    selected,
+    onToggle,
+  }: {
+    selected: string[];
+    onToggle: (runAddonKey: string) => void;
+  }) => (
+    <div data-testid="run-addon-toggles">
+      <button type="button" onClick={() => onToggle('parallel_search')}>
+        Toggle Parallel Search
+      </button>
+      <div data-testid="run-addon-selection">{selected.join(',')}</div>
+    </div>
+  ),
+}));
+
 vi.mock('../../utils/api', async () => {
   const actual = await vi.importActual<typeof import('../../utils/api')>('../../utils/api');
   return {
@@ -54,14 +71,14 @@ vi.mock('../../utils/clarifyingQuestions', () => ({
   buildClarifyingQuestions: () => [],
 }));
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/app/research']) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   client.invalidateQueries = invalidateQueriesMock as typeof client.invalidateQueries;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <ResearchEasyPage />
       </MemoryRouter>
     </QueryClientProvider>
@@ -96,6 +113,7 @@ describe('ResearchEasyPage', () => {
     fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
     expect(screen.getByText('Report Format')).toBeInTheDocument();
     expect(screen.getByText('Report Length')).toBeInTheDocument();
+    expect(screen.getByTestId('run-addon-toggles')).toBeInTheDocument();
     expect(screen.queryByText('Research Objective')).not.toBeInTheDocument();
   });
 
@@ -182,6 +200,26 @@ describe('ResearchEasyPage', () => {
     await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
     const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
     expect(call.targetWordCount).toBe(5000);
+  });
+
+  it('hydrates selected run enhancements from the add-ons query param', () => {
+    renderPage(['/app/research?addons=parallel_search']);
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    expect(screen.getByTestId('run-addon-selection')).toHaveTextContent('parallel_search');
+  });
+
+  it('submits selected run enhancements from EZ mode', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need to know/), {
+      target: { value: 'Compare AI coding assistants for regulated teams' },
+    });
+    fireEvent.click(screen.getByTestId('ez-output-prefs-toggle'));
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle Parallel Search' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.addons).toEqual(['parallel_search']);
   });
 
   // ── Attachment dropzone is present ───────────────────────────────────────

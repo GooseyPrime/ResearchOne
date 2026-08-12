@@ -4,16 +4,19 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Loader2, Settings2, Sparkles } from 'lucide-react';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import ResearchClarificationChat from '../components/research/ResearchClarificationChat';
+import RunAddonToggles from '../components/research/RunAddonToggles';
 import ResearchOutputControls, {
   type ReportLengthPreset,
   resolveTargetWordCount,
   normalizeReportFormats,
 } from '../components/research/ResearchOutputControls';
 import { useCanAccessDeepResearch } from '../hooks/useCanAccessDeepResearch';
+import { useResearchRunAddons } from '../hooks/useResearchRunAddons';
 import { useStore } from '../store/useStore';
 import { extractApiError, startResearch } from '../utils/api';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { liveResearchUrl } from '../utils/researchRunRoutes';
+import { RESEARCH_RUN_ADDON_CATALOG_KEYS } from '../utils/researchRunAddons';
 import { buildClarifyingQuestions } from '../utils/clarifyingQuestions';
 
 type EasyDepth = 'standard' | 'deep';
@@ -23,6 +26,8 @@ export default function ResearchEasyPage() {
   const qc = useQueryClient();
   const addNotification = useStore((s) => s.addNotification);
   const { canAccessDeep, tierGateUnknown } = useCanAccessDeepResearch();
+  const { selectedAddons, selectedAddonsForSubmit, toggleAddon, syncAddonsToUrl } =
+    useResearchRunAddons(RESEARCH_RUN_ADDON_CATALOG_KEYS);
 
   const [query, setQuery] = useState('');
   const [depth, setDepth] = useState<EasyDepth>('standard');
@@ -77,6 +82,7 @@ export default function ResearchEasyPage() {
         supplementalUrlCrawl: urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
         requestedFormats,
         targetWordCount,
+        addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       });
     },
     onSuccess: (data) => {
@@ -94,6 +100,7 @@ export default function ResearchEasyPage() {
 
   const openClarificationOrSubmit = () => {
     if (!query.trim() || mutation.isPending) return;
+    syncAddonsToUrl();
     const generated = buildClarifyingQuestions(query, {});
     if (generated.length === 0) {
       void mutation.mutate({ includeClarifications: false });
@@ -202,19 +209,26 @@ export default function ResearchEasyPage() {
           </button>
           {outputPrefsOpen && (
             <div className="px-3 pb-3 pt-1 border-t border-surface-100">
-              <ResearchOutputControls
-                objective="AUTO"
-                onObjectiveChange={() => undefined}
-                showObjective={false}
-                reportFormats={reportFormats}
-                onReportFormatsChange={setReportFormats}
-                reportLengthPreset={reportLengthPreset}
-                onReportLengthPresetChange={setReportLengthPreset}
-                reportLengthCustom={reportLengthCustom}
-                onReportLengthCustomChange={setReportLengthCustom}
-                disabled={mutation.isPending}
-                compact
-              />
+              <div className="space-y-3">
+                <ResearchOutputControls
+                  objective="AUTO"
+                  onObjectiveChange={() => undefined}
+                  showObjective={false}
+                  reportFormats={reportFormats}
+                  onReportFormatsChange={setReportFormats}
+                  reportLengthPreset={reportLengthPreset}
+                  onReportLengthPresetChange={setReportLengthPreset}
+                  reportLengthCustom={reportLengthCustom}
+                  onReportLengthCustomChange={setReportLengthCustom}
+                  disabled={mutation.isPending}
+                  compact
+                />
+                <RunAddonToggles
+                  selected={selectedAddons}
+                  onToggle={toggleAddon}
+                  disabled={mutation.isPending}
+                />
+              </div>
             </div>
           )}
         </div>
