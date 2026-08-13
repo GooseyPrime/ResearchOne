@@ -156,7 +156,13 @@ function explicitDeclarationLayer(
  // Pattern 1: labelled declaration (case-insensitive)
  // "Primary research intent: X", "Intent: X", "Research intent: X", "Report type: X"
  const labelledPattern =
-   /((?:primary|secondary)\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)[ \t]*[:=][ \t]*(?:\r?\n[ \t]*){0,2}([^\n.,;]+)/gi;
+   // A short connector may sit between the label and the colon — real prompts
+   // write "If the system supports a secondary research intent, use:" with the
+   // value on a following line. Without this the secondary declaration was
+   // silently dropped (WO-AA Phase 8 fixture). The connector list is
+   // deliberately narrow so prose like "the intent, use cases, and scope"
+   // cannot produce a false match.
+   /((?:primary|secondary)\s+research\s+intent|research\s+intent|report\s+type|intent|report\s+kind)[ \t]*(?:,[ \t]*(?:use|set(?:\s+to)?|select|choose)\b[ \t]*)?[ \t]*[:=][ \t]*(?:\r?\n[ \t]*){0,2}([^\n.,;]+)/gi;
  let match: RegExpExecArray | null;
  while ((match = labelledPattern.exec(text)) !== null) {
    const [, label, rawCandidate] = match;
@@ -424,19 +430,53 @@ export async function classifyIntent(
 
   const userBlock = `QUERY:\n${query}\n\nSUPPLEMENTAL:\n${supplementalContext ?? '(none)'}\n`;
 
-  const res = await callRoleModel({
-    role: 'planner',
-    engineVersion: llmOpts.engineVersion,
-    researchObjective: llmOpts.researchObjective,
-    allowFallbackByRole: llmOpts.allowFallbackByRole,
-    callPurpose: 'phase_b_research_brief_classification',
-    runtimeOverrides: { primary: config.models.planning },
-    byokApiKeyOverride: llmOpts.byokApiKeyOverride,
-    messages: [
-      { role: 'system', content: RESEARCH_BRIEF_CLASSIFIER_PROMPT },
-      { role: 'user', content: userBlock },
-    ],
-  });
+  // The LLM pass enriches the brief (artifacts, counts, constraints). When the
+  // user already declared their intent we know it deterministically, so a
+  // provider outage must degrade to the declared intent rather than fail the
+  // run — Rule 42 R42-3: a model-derived value that controls the pipeline
+  // needs a deterministic fallback.
+  let res: Awaited<ReturnType<typeof callRoleModel>>;
+  try {
+    res = await callRoleModel({
+      role: 'planner',
+      engineVersion: llmOpts.engineVersion,
+      researchObjective: llmOpts.researchObjective,
+      allowFallbackByRole: llmOpts.allowFallbackByRole,
+      callPurpose: 'phase_b_research_brief_classification',
+      runtimeOverrides: { primary: config.models.planning },
+      byokApiKeyOverride: llmOpts.byokApiKeyOverride,
+      messages: [
+        { role: 'system', content: RESEARCH_BRIEF_CLASSIFIER_PROMPT },
+        { role: 'user', content: userBlock },
+      ],
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    if (explicit) {
+      const def = getIntentById(explicit.intent);
+      const fallbackBrief = defaultResearchBrief(
+        explicit.intent,
+        explicit.confidence,
+        `${explicit.reason}${def ? ` Display label: "${def.displayLabel}".` : ''} ` +
+          `Artifact extraction unavailable (classifier call failed: ${detail}); ` +
+          'the explicit declaration still determines the intent.'
+      );
+      // The declared secondary intent is part of the user's contract:
+      // buildCanonicalExecutionPlan() selects specialists from it, so dropping
+      // it here would silently omit e.g. the feasibility stage (Codex P2, #203).
+      fallbackBrief.secondaryIntent = explicit.secondaryIntent;
+      return fallbackBrief;
+    }
+    const lex = lexicalLayer(query, supplementalContext);
+    if (lex) {
+      return defaultResearchBrief(
+        lex.intent,
+        Math.min(lex.confidence, 0.8),
+        `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
+      );
+    }
+    throw err;
+  }
 
   const brief = parseResearchBriefJson(res.content, 'factual_report');
 

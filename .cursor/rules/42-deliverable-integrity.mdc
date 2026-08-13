@@ -170,6 +170,16 @@ conditions the directive exists for.
 When adding a synthesis modifier, grep for every branch that assigns
 `generatedReport` and thread it through all of them.
 
+**This rule has now been violated twice** — once for the low-evidence directive
+(PR #202) and again for the claim-class evidence burden (PR #203), both times
+missing the `reference_lookup` light path. Reading the rule is not enough; run
+the grep. Known writers today: `generateIterativeReport()` and the
+`synthesis_light` branch in `researchOrchestrator.ts`.
+
+A modifier the verifier enforces but the writer never receives is worse than
+no modifier: the report fails or enters repair for missing an instruction it
+was never given.
+
 ### R42-10. Prompt directives must not contradict themselves
 
 A directive that bans the literal string `"unverified"` as placeholder text

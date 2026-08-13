@@ -12,6 +12,32 @@
  * with no model call, so discovery can never be silently zeroed.
  */
 
+/** Budget for the discovery-planner prompt (WO-AA Phase 5 / finding F-4). */
+export const MAX_PLANNER_QUERY_CHARS = 10_000;
+export const MAX_PLANNER_PLAN_CHARS = 6_000;
+
+/** Truncate with an explicit marker so the model knows content was elided. */
+export function capForPlannerPrompt(value: string, max: number): string {
+  const text = value ?? '';
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n...[truncated: ${text.length} chars total]`;
+}
+
+/** Replace verbatim copies of the query inside serialized plan JSON. */
+export function redactQueryEcho(serialized: string, query: string): string {
+  const needle = (query ?? '').trim();
+  if (needle.length < 400) return serialized;
+
+  let out = serialized.split(needle).join('[see Research Query above]');
+  // The plan is JSON-serialized before this runs, so the embedded copy carries
+  // escaped newlines and quotes. Matching only the raw form made this a no-op.
+  const escaped = JSON.stringify(needle).slice(1, -1);
+  if (escaped !== needle) {
+    out = out.split(escaped).join('[see Research Query above]');
+  }
+  return out;
+}
+
 /** Words that carry no retrieval signal. */
 const STOPWORDS = new Set([
   'the', 'and', 'for', 'that', 'this', 'with', 'from', 'into', 'onto', 'your', 'you',

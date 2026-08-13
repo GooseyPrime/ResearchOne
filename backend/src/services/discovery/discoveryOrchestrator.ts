@@ -18,7 +18,13 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
-import { buildDeterministicDiscoveryQueries } from './deterministicDiscoveryQueries';
+import {
+  buildDeterministicDiscoveryQueries,
+  capForPlannerPrompt,
+  redactQueryEcho,
+  MAX_PLANNER_QUERY_CHARS,
+  MAX_PLANNER_PLAN_CHARS,
+} from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
 import { callRoleModel } from '../openrouter/openrouterService';
@@ -276,7 +282,18 @@ async function runDiscoveryOrchestratorInner(args: {
         { role: 'system', content: withPreamble(DISCOVERY_PLANNER_PROMPT) },
         {
           role: 'user',
-          content: `Research Query: ${researchQuery}\n\nCurrent Research Plan:\n${JSON.stringify(plan, null, 2)}\n\nPlan external discovery queries for this research. Output JSON only.`,
+          // WO-AA F-4: this call is load-bearing — if it fails, discovery
+          // produces nothing and (with the Rule 40 corpus gate) the run has no
+          // evidence at all. Structured prompts run to hundreds of lines and
+          // the plan re-embeds the query, so an uncapped payload was a likely
+          // cause of the planner failure in run 6c59b711. Budget both parts.
+          content:
+            `Research Query: ${capForPlannerPrompt(researchQuery, MAX_PLANNER_QUERY_CHARS)}\n\n` +
+            `Current Research Plan:\n${capForPlannerPrompt(
+              redactQueryEcho(JSON.stringify(plan, null, 2), researchQuery),
+              MAX_PLANNER_PLAN_CHARS
+            )}\n\n` +
+            `Plan external discovery queries for this research. Output JSON only.`,
         },
       ],
       maxTokens: 2048,

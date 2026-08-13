@@ -38,7 +38,9 @@ Read it fully before acting.
 | ID | Status | Document | One-line scope |
 | --- | --- | --- | --- |
 | WO-Z | CLOSED | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity. Shipped in PR #200. Phase 5 was implemented incorrectly — superseded by WO-AA. |
-| **WO-AA** | **OPEN** | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity: prompt echo and token bloat, objective resolution, evidence burden by claim class, E2E regression fixture. Phases 1–4 already done. |
+| WO-AA | CLOSED | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity. All 8 phases complete (PRs #202, #203). |
+
+**No work order is currently `OPEN`.** Follow the user's request directly.
 
 **If a work order is `OPEN`, and the user's prompt does not name a different
 task, execute it autonomously through every remaining phase without stopping

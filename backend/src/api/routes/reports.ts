@@ -109,17 +109,62 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
   return fallback;
 }
 
+/** Max characters of the research request echoed into an exported report. */
+const REQUEST_LABEL_MAX_CHARS = 200;
+
+/**
+ * Collapse a research request to a single short line suitable for a report
+ * header. Structured prompts routinely run to hundreds of lines; the first
+ * meaningful heading or sentence identifies the request without reproducing it.
+ */
+export function summarizeResearchRequest(query: string): string {
+  const text = (query ?? '').trim();
+  if (!text) return '';
+
+  const clean = (value: string): string =>
+    value.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim();
+
+  // Only a heading that opens the document is a title. Structured prompts often
+  // start with prose and later contain section headings like "## Intent" or
+  // "## Scope" — picking those produced a one-word, useless label
+  // (Copilot review, #203). Require the heading to appear near the start and to
+  // be descriptive enough to stand alone.
+  const TITLE_SEARCH_WINDOW = 400;
+  const MIN_TITLE_CHARS = 12;
+  const headingMatch = text.slice(0, TITLE_SEARCH_WINDOW).match(/^#{1,3}\s+(.+?)\s*$/m);
+  const heading = headingMatch?.[1] ? clean(headingMatch[1]) : '';
+
+  const firstSentence = clean(
+    text
+      .replace(/^#{1,6}\s+.*$/gm, '')
+      .split(/(?<=[.?!])\s+/)
+      .find((sentence) => clean(sentence).length >= MIN_TITLE_CHARS) ?? ''
+  );
+
+  const flattened = heading.length >= MIN_TITLE_CHARS ? heading : firstSentence || heading;
+  if (!flattened) return '';
+
+  return flattened.length > REQUEST_LABEL_MAX_CHARS
+    ? `${flattened.slice(0, REQUEST_LABEL_MAX_CHARS - 1).trimEnd()}…`
+    : flattened;
+}
+
 function reportToMarkdown(args: {
   title: string;
   query: string;
   sections: Array<{ title: string; content: string }>;
 }): string {
-  const lines: string[] = [
-    `# ${args.title}`,
-    '',
-    `**Research query:** ${args.query}`,
-    '',
-  ];
+  // Rule 37 R-K: the raw prompt must not be prepended to the report body.
+  // `stripPromptEchoFromReport` removes it at generation time; re-embedding the
+  // full query here put ~700 lines of instructions back at the top of every
+  // exported report. Keep a capped one-line request label so a standalone
+  // export is still self-describing; the full prompt lives in run metadata and
+  // the dossier Request tab.
+  const lines: string[] = [`# ${args.title}`, ''];
+  const requestLabel = summarizeResearchRequest(args.query);
+  if (requestLabel) {
+    lines.push(`**Research request:** ${requestLabel}`, '');
+  }
   for (const s of args.sections) {
     lines.push(`## ${s.title}`, '', s.content, '', '');
   }

@@ -20,6 +20,16 @@ export interface ResearchJobData {
   modelOverrides?: PerRunModelOverrides;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
+  /**
+   * True when the caller explicitly supplied `researchObjective` on the request.
+   *
+   * The v2 route defaults the field to `GENERAL_EPISTEMIC_RESEARCH` so pricing
+   * and persistence always have a value, but that happens before intent
+   * classification runs. Without this flag the worker cannot tell a deliberate
+   * "general epistemic research" choice from the route's placeholder, and every
+   * run recorded the generic objective regardless of intent (WO-AA Phase 6).
+   */
+  researchObjectiveExplicit?: boolean;
   /** Optional total report length in words. Clamped server-side to a safe
    *  range; routed into the synthesizer's per-section budget directives. */
   targetWordCount?: number;

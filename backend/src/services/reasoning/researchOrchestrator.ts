@@ -25,6 +25,7 @@ import {
   ensureGeneratedTitleHeading,
   stripPromptEchoFromReport,
 } from './reportGenerator';
+import { CLAIM_CLASS_EVIDENCE_BURDEN } from '../formatting/templates/intentOutputTemplates';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -717,10 +718,62 @@ async function runResearchJobInner(
     filterTags,
     modelOverrides: incomingModelOverrides,
     engineVersion,
-    researchObjective,
+    researchObjective: requestedResearchObjective,
     targetWordCount,
     citationStyle,
   } = data;
+
+  // WO-AA Phase 6 — the v2 route must supply a concrete objective for pricing
+  // before intent classification has run, so it writes the generic
+  // GENERAL_EPISTEMIC_RESEARCH placeholder. Once the plan is confirmed the
+  // brief carries the intent-derived objective; prefer it unless the caller
+  // explicitly chose one. Without this every opportunity_discovery run was
+  // recorded (and model-routed) as GENERAL_EPISTEMIC_RESEARCH.
+  const briefResolvedObjective = data.confirmedPlanPayload?.researchBrief?.resolvedResearchObjective;
+  // Deploy skew (Rule 13): a run parked for plan confirmation by the previous
+  // release carries an explicitly chosen objective but no
+  // `researchObjectiveExplicit` field. Treating `undefined` as false would
+  // overwrite that choice on resume, changing both attribution and V2 model
+  // routing. Only an explicit `false` — written by the current route — allows
+  // the intent-derived objective to take over (Codex P2, #203).
+  const objectiveMayBeReplaced =
+    data.researchObjectiveExplicit === false ||
+    (data.researchObjectiveExplicit === undefined && !requestedResearchObjective);
+  const researchObjective: ResearchObjective | undefined =
+    objectiveMayBeReplaced && briefResolvedObjective
+      ? (briefResolvedObjective as ResearchObjective)
+      : requestedResearchObjective;
+  const objectiveWasResolvedFromIntent =
+    Boolean(researchObjective) && researchObjective !== requestedResearchObjective;
+  if (objectiveWasResolvedFromIntent) {
+    logger.info(
+      `[${data.runId}] Research objective resolved from intent: ` +
+      `${requestedResearchObjective ?? 'none'} -> ${researchObjective}`
+    );
+    // Persist so the run summary and trace show the objective actually used,
+    // not the pricing placeholder the route wrote. Deploy-skew recovery is
+    // gated on the specific Postgres codes for "table missing" (42P01) and
+    // "column missing" (42703); every other error — connectivity, permissions,
+    // constraint violations — must still surface rather than leaving the run
+    // in a partially-broken state (Copilot review, #203; Rule 13).
+    try {
+      await query(`UPDATE research_runs SET research_objective=$1 WHERE id=$2`, [
+        researchObjective,
+        data.runId,
+      ]);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === '42P01' || code === '42703') {
+        logger.warn(
+          `[${data.runId}] research_objective column/table unavailable (${code}); ` +
+          'skipping objective persistence for this deploy.'
+        );
+      } else {
+        throw err;
+      }
+    }
+  }
+
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
   const v2Base = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
@@ -750,6 +803,7 @@ async function runResearchJobInner(
     modelOverrides: runModelOverrides,
     engineVersion,
     researchObjective,
+    researchObjectiveExplicit: data.researchObjectiveExplicit,
     targetWordCount,
     requestedFormats: data.requestedFormats,
     citationStyle,
@@ -1653,6 +1707,12 @@ async function runResearchJobInner(
               // re-discovery came back empty it must receive the same
               // uncertainty, non-fabrication, and modeled-claim rules as the
               // iterative drafter (Codex P2 review, PR #202).
+              //
+              // Its verifier now enforces the claim-class burden, so the writer
+              // must be told the same rule or it emits unmarked named prices,
+              // products, and dates and then needlessly fails or repairs
+              // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
+              `${isAdjudicative ? '' : `${CLAIM_CLASS_EVIDENCE_BURDEN}\n\n`}` +
               `${lowEvidenceDirective ? `${lowEvidenceDirective}\n\n` : ''}` +
               `Evidence:\n${evidenceContext.slice(0, 60000)}`,
           },

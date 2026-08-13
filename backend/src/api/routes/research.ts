@@ -272,7 +272,14 @@ async function handleStartResearchRun(
         res.status(400).json({ error: 'invalid researchObjective' });
         return;
       }
+      // Whether the caller actually chose an objective, captured BEFORE the v2
+      // placeholder below overwrites the distinction. The worker uses this to
+      // decide if the intent-derived objective may take over (WO-AA Phase 6).
+      const researchObjectiveExplicit = Boolean(researchObjective);
       if (eng === 'v2' && !researchObjective) {
+        // Pricing and persistence need a concrete value here; intent
+        // classification has not run yet. Marked non-explicit above so the
+        // orchestrator can replace it once the brief resolves.
         researchObjective = 'GENERAL_EPISTEMIC_RESEARCH';
       }
 
@@ -455,6 +462,7 @@ async function handleStartResearchRun(
           modelOverrides: normalizedOverrides,
           engineVersion: eng === 'v2' ? 'v2' : undefined,
           researchObjective: researchObjective ?? undefined,
+          researchObjectiveExplicit,
           targetWordCount,
           requestedFormats,
           requestedResearchObjective,
