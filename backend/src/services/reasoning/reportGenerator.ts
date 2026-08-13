@@ -7,6 +7,7 @@ import {
 } from '../formatting/templates/intentOutputTemplates';
 import {
   deriveContractWordTarget,
+  deriveItemLabel,
   expandSectionPlanForContract,
   findRepeatedArtifact,
   type ContractArtifact,
@@ -384,6 +385,9 @@ export async function generateIterativeReport(args: {
   const outlineExpansion = expandSectionPlanForContract({
     basePlan: activeSectionPlan,
     artifacts: args.contractArtifacts,
+    intentId: args.intentId,
+    explicitWordTarget: args.targetWordCount,
+    perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
   });
   activeSectionPlan = outlineExpansion.plan;
 
@@ -410,6 +414,24 @@ export async function generateIterativeReport(args: {
   });
   const targetWordCount = clampWordTarget(contractTarget ?? args.targetWordCount);
   const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
+
+  // Required field NAMES must reach the drafter. Fields can be inferred by the
+  // planner or edited at plan confirmation, so they may not appear anywhere in
+  // the original query — the drafter would then omit them and fail
+  // `adaptiveFieldCompletenessForOpportunities`, re-entering the very repair
+  // loop this work order removes (Codex review, PR #205).
+  const confirmedFields = Array.from(
+    new Set([
+      ...(repeatedArtifact?.explicitRequiredFields ?? []),
+      ...(repeatedArtifact?.inferredRequiredFields ?? []),
+    ].map((field) => field.trim()).filter(Boolean))
+  );
+  const confirmedFieldsBlock =
+    confirmedFields.length > 0
+      ? `Confirmed required fields for EVERY ${deriveItemLabel(repeatedArtifact, args.intentId).toLowerCase()} in this report:\n${confirmedFields
+          .map((field) => `- ${field}`)
+          .join('\n')}\nEvery one of these must appear for every item. Do not rename or omit them.`
+      : '';
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -473,6 +495,7 @@ ${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${
               : ''
           }
 ${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
+${confirmedFieldsBlock}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}

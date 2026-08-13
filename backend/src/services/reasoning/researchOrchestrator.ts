@@ -484,6 +484,15 @@ function parseOpportunityTitleLine(line: string): string | null {
  * misread a complete 20-row portfolio table as 8 delivered opportunities,
  * failing the contract on a table that was substantively correct.
  */
+/**
+ * Headings that count as one delivered item.
+ *
+ * Must stay in sync with `deriveItemLabel()` in `contractOutline.ts`, which
+ * generates these headings from the artifact description.
+ */
+export const ITEM_SECTION_HEADING =
+  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application)s?\s*#?\s*\d+/i;
+
 function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
   const tables = extractMarkdownTables(markdown);
   if (tables.length === 0) return [];
@@ -497,8 +506,14 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
     // Dropping them made the auditor ignore such tables and undercount
     // delivered items — the exact failure this fix exists to prevent
     // (Copilot review, PR #205).
+    // Must stay at least as permissive as the pre-WO-AC predicate
+    // (`opportunity|title|idea|rank|problem|customer|confidence`). Narrowing it
+    // made title-only schemas such as
+    // `Name | Description | Rationale | Confidence` fall through, yielding zero
+    // extracted items and a spurious exact-count failure on a table that was
+    // present (Codex review, PR #205).
     const looksOpportunityTable = headers.some((header) =>
-      /opportunity|vertical|niche|market|title|name|idea|rank/.test(header)
+      /opportunity|vertical|niche|market|title|name|idea|rank|problem|customer|confidence/.test(header)
     );
     if (!looksOpportunityTable) continue;
 
@@ -539,7 +554,11 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
         out.push({ title: current.title, body: current.body.join('\n').trim() });
       }
       const title = listTitle ?? header?.[1]?.trim() ?? '';
-      if (/^opportunity\s*#?\s*\d+/i.test(title)) {
+      // Accept the headings R1 outline expansion actually produces. Labels are
+      // derived from the artifact description ("Opportunity 3", "Vertical 3",
+      // "Option 3", "Item 3"), so matching only "Opportunity <n>" counted a
+      // fully delivered report as ZERO items (Codex review, PR #205).
+      if (ITEM_SECTION_HEADING.test(title)) {
         current = { title, body: [] };
       } else {
         current = null;

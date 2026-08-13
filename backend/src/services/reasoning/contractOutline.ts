@@ -22,13 +22,54 @@ export interface SectionPlanEntry {
   weight: number;
 }
 
-/** Artifact shape we care about, kept structural to avoid importing the brief. */
+/**
+ * Artifact shape we care about, kept structural to avoid importing the brief.
+ *
+ * NOTE: production `RequestedArtifact` has `description` and NO `type`. Any
+ * label derivation must work from `description` — deriving from `type` produced
+ * headings like "## Item 1" on every real run (Codex review, PR #205).
+ */
 export interface ContractArtifact {
-  type?: string;
   description?: string;
+  /** Not present on production briefs; accepted only for forward-compat. */
+  type?: string;
   exactCount?: number;
   explicitRequiredFields?: readonly string[];
   inferredRequiredFields?: readonly string[];
+}
+
+/** Noise words to strip when turning a description into a section label. */
+const LABEL_NOISE =
+  /\b(ranked|ordered|list|listing|set|collection|of|the|a|an|exactly|top|best|detailed|complete|full|report|table|portfolio|items?)\b/gi;
+
+/**
+ * Derive a singular, human label for one requested item from its description.
+ *
+ * "ranked list of market opportunities" -> "Opportunity"
+ * "20 comparison-site verticals"        -> "Vertical"
+ *
+ * Falls back to the intent-derived noun, then to "Item".
+ */
+export function deriveItemLabel(artifact: ContractArtifact | null, intentId?: string): string {
+  const source = (artifact?.description ?? artifact?.type ?? '').trim();
+  const cleaned = source.replace(LABEL_NOISE, ' ').replace(/[^a-zA-Z\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = cleaned.split(' ').filter(Boolean);
+  let noun = words.length > 0 ? words[words.length - 1]! : '';
+
+  if (!noun && intentId) {
+    // opportunity_discovery -> "opportunity"; comparative -> "option"
+    if (intentId === 'comparative') noun = 'option';
+    else noun = intentId.split('_')[0] ?? '';
+  }
+  if (!noun) return 'Item';
+
+  // Singularise simple plurals so headings read "Opportunity 3", not
+  // "Opportunities 3".
+  if (/ies$/i.test(noun)) noun = `${noun.slice(0, -3)}y`;
+  else if (/sses$/i.test(noun)) noun = noun.slice(0, -2);
+  else if (/s$/i.test(noun) && !/ss$/i.test(noun)) noun = noun.slice(0, -1);
+
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
 /**
@@ -103,6 +144,16 @@ export interface ExpandOutlineResult {
 export function expandSectionPlanForContract(args: {
   basePlan: readonly SectionPlanEntry[];
   artifacts?: readonly ContractArtifact[];
+  intentId?: string;
+  /**
+   * The user's explicit word target, if any. Expansion must not silently
+   * override it: N sections each pinned to the per-section floor can exceed a
+   * short explicit budget, producing contradictory whole-report vs
+   * section-length instructions (Codex review, PR #205).
+   */
+  explicitWordTarget?: number;
+  /** Per-section word floor used by the budget distributor. */
+  perSectionFloor?: number;
 }): ExpandOutlineResult {
   const base = args.basePlan.map((entry) => ({ ...entry }));
   const artifact = findRepeatedArtifact(args.artifacts);
@@ -130,10 +181,21 @@ export function expandSectionPlanForContract(args: {
   }
 
   const listEntry = base[listIndex]!;
-  const sectionCount = Math.min(count, MAX_EXPANDED_SECTIONS);
+
+  // Respect an explicit word target: N sections each pinned to the per-section
+  // floor cannot fit inside a short budget. Cap the section count so the
+  // expanded plan still fits what the user asked for.
+  const floor = args.perSectionFloor ?? 80;
+  const otherSections = base.length - 1;
+  let budgetCap = MAX_EXPANDED_SECTIONS;
+  if (typeof args.explicitWordTarget === 'number' && args.explicitWordTarget > 0) {
+    const affordable = Math.floor(args.explicitWordTarget / floor) - otherSections;
+    budgetCap = Math.max(1, Math.min(MAX_EXPANDED_SECTIONS, affordable));
+  }
+
+  const sectionCount = Math.max(1, Math.min(count, budgetCap));
   const itemsPerSection = Math.ceil(count / sectionCount);
-  const label = (artifact.type || 'Item').replace(/_/g, ' ').trim() || 'Item';
-  const titleWord = label.charAt(0).toUpperCase() + label.slice(1);
+  const titleWord = deriveItemLabel(artifact, args.intentId);
 
   const expandedEntries: SectionPlanEntry[] = [];
   for (let section = 0; section < sectionCount; section += 1) {
@@ -159,8 +221,8 @@ export function expandSectionPlanForContract(args: {
     itemsPerSection,
     reason:
       itemsPerSection === 1
-        ? `Expanded "${listEntry.title}" into ${expandedEntries.length} sections, one per requested ${label}.`
-        : `Expanded "${listEntry.title}" into ${expandedEntries.length} sections covering ${count} ${label}s (${itemsPerSection} per section, capped at ${MAX_EXPANDED_SECTIONS}).`,
+        ? `Expanded "${listEntry.title}" into ${expandedEntries.length} sections, one per requested ${titleWord.toLowerCase()}.`
+        : `Expanded "${listEntry.title}" into ${expandedEntries.length} sections covering ${count} ${titleWord.toLowerCase()}s (${itemsPerSection} per section, cap ${budgetCap}).`,
   };
 }
 

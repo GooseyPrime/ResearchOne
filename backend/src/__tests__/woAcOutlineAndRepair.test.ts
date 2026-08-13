@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 
 import {
   deriveContractWordTarget,
+  deriveItemLabel,
   expandSectionPlanForContract,
   findRepeatedArtifact,
   MAX_EXPANDED_SECTIONS,
 } from '../services/reasoning/contractOutline';
+import { ITEM_SECTION_HEADING } from '../services/reasoning/researchOrchestrator';
 import {
   contractRequestsTable,
   sectionExpectsTable,
@@ -33,10 +35,12 @@ const OPPORTUNITY_PLAN = [
   { title: 'Caveats', key: 'caveats', weight: 0.5 },
 ];
 
+// Mirrors the PRODUCTION `RequestedArtifact` shape: `description`, no `type`.
+// The original fixture invented `type`, which hid a bug where every real brief
+// fell back to "Item" headings (Codex review, PR #205).
 const TWENTY_OPPORTUNITIES = [
   {
-    type: 'opportunity',
-    description: 'ranked market verticals',
+    description: 'ranked list of market opportunities',
     exactCount: 20,
     explicitRequiredFields: ['narrative briefing', 'basic project needs', 'build prompt', 'test prompt', 'deployment prompt'],
   },
@@ -53,8 +57,10 @@ describe('R1 — contract-driven outline expansion', () => {
     expect(result.itemsPerSection).toBe(1);
     // 5 base sections - 1 list section + 20 item sections = 24
     expect(result.plan).toHaveLength(24);
+    // Label comes from `description`, not an invented `type` field.
     expect(result.plan.some((s) => s.title === 'Opportunity 1')).toBe(true);
     expect(result.plan.some((s) => s.title === 'Opportunity 20')).toBe(true);
+    expect(result.plan.some((s) => s.title.startsWith('Item '))).toBe(false);
     expect(result.plan.some((s) => s.key === 'opportunities_list')).toBe(false);
   });
 
@@ -150,6 +156,60 @@ describe('R2 — word budget scales with the contract', () => {
       baselineWords: 3000,
     });
     expect(target!).toBeGreaterThanOrEqual(3000);
+  });
+});
+
+describe('PR #205 review — label derivation and budget bounds', () => {
+  it('derives a singular label from the production description field', () => {
+    expect(deriveItemLabel({ description: 'ranked list of market opportunities' })).toBe('Opportunity');
+    expect(deriveItemLabel({ description: '20 comparison-site verticals' })).toBe('Vertical');
+    expect(deriveItemLabel({ description: 'set of options' })).toBe('Option');
+  });
+
+  it('falls back to the intent, then to Item, never to an invented type', () => {
+    expect(deriveItemLabel({ description: '' }, 'opportunity_discovery')).toBe('Opportunity');
+    expect(deriveItemLabel({ description: '' }, 'comparative')).toBe('Option');
+    expect(deriveItemLabel(null)).toBe('Item');
+  });
+
+  it('every generated heading is recognised by the delivered-item counter', () => {
+    const { plan } = expandSectionPlanForContract({
+      basePlan: OPPORTUNITY_PLAN,
+      artifacts: TWENTY_OPPORTUNITIES,
+    });
+    const itemSections = plan.filter((s) => /\d/.test(s.title));
+    expect(itemSections).toHaveLength(20);
+    for (const section of itemSections) {
+      expect(ITEM_SECTION_HEADING.test(section.title)).toBe(true);
+    }
+  });
+
+  it('recognises every label variant the expander can emit', () => {
+    for (const heading of ['Opportunity 1', 'Vertical 12', 'Option 3', 'Item 7', 'Niche 20']) {
+      expect(ITEM_SECTION_HEADING.test(heading)).toBe(true);
+    }
+    expect(ITEM_SECTION_HEADING.test('Executive Summary')).toBe(false);
+  });
+
+  it('does not blow an explicit short word target', () => {
+    // 800 words / 80-word floor = 10 sections total, minus 4 non-item sections.
+    const result = expandSectionPlanForContract({
+      basePlan: OPPORTUNITY_PLAN,
+      artifacts: TWENTY_OPPORTUNITIES,
+      explicitWordTarget: 800,
+      perSectionFloor: 80,
+    });
+    expect(result.plan.length * 80).toBeLessThanOrEqual(800);
+    expect(result.itemsPerSection).toBeGreaterThan(1);
+  });
+
+  it('leaves expansion unbounded when no explicit target was given', () => {
+    const result = expandSectionPlanForContract({
+      basePlan: OPPORTUNITY_PLAN,
+      artifacts: TWENTY_OPPORTUNITIES,
+      perSectionFloor: 80,
+    });
+    expect(result.itemsPerSection).toBe(1);
   });
 });
 
