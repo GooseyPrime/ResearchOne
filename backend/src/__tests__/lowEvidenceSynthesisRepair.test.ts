@@ -96,8 +96,24 @@ describe('low-evidence mode is a synthesis modifier, never a report', () => {
       gaps: [],
     });
     expect(directive).toContain('all 20 requested items');
-    expect(directive).toMatch(/never emit placeholder text/i);
+    expect(directive).toMatch(/must never be\s+a placeholder/i);
     expect(directive).toMatch(/do not refuse/i);
+  });
+
+  it('does not ban the "(unverified estimate)" marker it later requires', () => {
+    // Copilot review, PR #202: the placeholder rule previously listed
+    // "unverified" as forbidden text while a later bullet mandated the
+    // "(unverified estimate)" marker — an internal contradiction that could
+    // make the drafter avoid the intended marker.
+    const directive = buildLowEvidenceSynthesisDirective({ gaps: [] });
+    expect(directive).toContain('(unverified estimate)');
+
+    const placeholderRule = directive
+      .split('\n')
+      .filter((line) => /placeholder/i.test(line))
+      .join(' ');
+    expect(placeholderRule).not.toMatch(/"unverified"/);
+    expect(directive).toMatch(/annotates real content rather than replacing it/i);
   });
 
   it('forbids fabricating citations while still requiring substantive content', () => {

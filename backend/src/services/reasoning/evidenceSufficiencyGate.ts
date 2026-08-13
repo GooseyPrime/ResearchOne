@@ -109,8 +109,11 @@ export function buildLowEvidenceSynthesisDirective(args: {
     'transparent reasoning. Substantive, specific, decision-useful content is required.',
     '',
     'Rules for this mode:',
-    '- Produce every requested field with real content. Never emit placeholder text',
-    '  such as "evidence insufficient", "unverified", or "TBD" as the value of a field.',
+    '- Produce every requested field with real content. A field\'s value must never be',
+    '  a placeholder standing in for content — e.g. "evidence insufficient", "unknown",',
+    '  "TBD", "N/A", or "[placeholder]" as the whole value.',
+    '  (This does not restrict the "(unverified estimate)" marker described below,',
+    '  which annotates real content rather than replacing it.)',
     '- Distinguish clearly between: (a) well-established domain knowledge,',
     '  (b) modeled estimates with stated assumptions, and (c) specific factual claims',
     '  that could not be independently verified this run.',
@@ -130,7 +133,21 @@ export function buildLowEvidenceSynthesisDirective(args: {
   ].join('\n');
 }
 
-export function shouldBypassRepairLoopForEvidence(reason?: string | null): boolean {
+/**
+ * True when the run's evidence base was thin enough that the finished report
+ * should be labelled `completed_degraded`.
+ *
+ * This does NOT skip the repair loop. It used to — under the old design the
+ * low-evidence path emitted a deterministic stub, so repair was pointless.
+ * Now that low-evidence runs produce a real model-generated report, a missing
+ * item or required field is repairable by re-drafting, and skipping repair
+ * shipped incomplete deliverables under a passing-looking status
+ * (Codex P1 review, PR #202).
+ *
+ * Deliverable-contract and verifier failures are therefore evaluated first;
+ * this downgrade applies only when neither gate failed.
+ */
+export function evidenceShortfallDegradesStatus(reason?: string | null): boolean {
   return reason === 'insufficient_evidence';
 }
 

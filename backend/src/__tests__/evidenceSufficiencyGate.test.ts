@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessEvidenceSufficiency,
   buildLowEvidenceSynthesisDirective,
-  shouldBypassRepairLoopForEvidence,
+  evidenceShortfallDegradesStatus,
 } from '../services/reasoning/evidenceSufficiencyGate';
 
 describe('evidence sufficiency gate', () => {
@@ -68,12 +68,13 @@ describe('evidence sufficiency gate', () => {
       const directive = buildLowEvidenceSynthesisDirective({ intentId, gaps: ['limited corroboration'] });
       expect(directive).not.toMatch(/^#\s/m);
       expect(directive).toMatch(/LOW-EVIDENCE SYNTHESIS MODE/);
-      expect(directive).toMatch(/never emit placeholder text/i);
+      expect(directive).toMatch(/must never be\s+a placeholder/i);
     }
   );
 
-  it('bypasses the repair loop for insufficient-evidence failures', () => {
-    expect(shouldBypassRepairLoopForEvidence('insufficient_evidence')).toBe(true);
-    expect(shouldBypassRepairLoopForEvidence('verification_failed')).toBe(false);
+  it('marks insufficient-evidence runs degraded without suppressing other gates', () => {
+    expect(evidenceShortfallDegradesStatus('insufficient_evidence')).toBe(true);
+    expect(evidenceShortfallDegradesStatus('verification_failed')).toBe(false);
+    expect(evidenceShortfallDegradesStatus(null)).toBe(false);
   });
 });

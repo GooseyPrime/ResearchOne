@@ -80,7 +80,7 @@ import { runSpecialistExecution } from './specialistExecutionService';
 import {
   assessEvidenceSufficiency,
   buildLowEvidenceSynthesisDirective,
-  shouldBypassRepairLoopForEvidence,
+  evidenceShortfallDegradesStatus,
 } from './evidenceSufficiencyGate';
 import {
   isSpecialistAgentId,
@@ -1077,6 +1077,12 @@ async function runResearchJobInner(
             substep: `discovery_round_${round}_complete`,
           });
         },
+        onDeterministicFallback: async ({ reason, queries }) => {
+          await progress('discovery', 13, `Discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+            substep: 'discovery_deterministic_fallback',
+            detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
+          });
+        },
       });
     } else {
       await progress('discovery', 12, 'Discovery skipped for this intent profile', { substep: 'stage_skipped' });
@@ -1311,7 +1317,12 @@ async function runResearchJobInner(
       specialistOutputs: latestSpecialistOutputs,
       rediscoveryPassesRemaining: 1,
       requestedArtifactCount,
-      discoverySourceCount: discoverySummary.sourcesIngested ?? 0,
+      // Only sources that actually became queryable count as evidence.
+      // `sourcesIngested` counts jobs immediately after `ingestionQueue.add()`,
+      // so it includes jobs that later fail or are still pending — using it
+      // here could mark a run sufficient on the strength of URLs that were
+      // merely queued (Codex P1 review, PR #202).
+      discoverySourceCount: discoveryIngestBarrier.readyCount,
       corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
@@ -1335,6 +1346,12 @@ async function runResearchJobInner(
         maxIngestCapOverride: addonEffects.maxIngestCapOverride,
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds: 2,
+        onDeterministicFallback: async ({ reason, queries }) => {
+          await progress('reasoning', 48, `Re-discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+            substep: 'discovery_deterministic_fallback',
+            detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
+          });
+        },
       });
       const rediscoveryBarrier = await waitForDiscoveryIngestReadiness({
         sources: Array.isArray(rediscoverySummary.sources) ? rediscoverySummary.sources : [],
@@ -1401,8 +1418,8 @@ async function runResearchJobInner(
         specialistOutputs: latestSpecialistOutputs,
         rediscoveryPassesRemaining: 0,
         requestedArtifactCount,
-        discoverySourceCount:
-          (discoverySummary.sourcesIngested ?? 0) + (rediscoverySummary.sourcesIngested ?? 0),
+        // Barrier-ready counts only — see the note on the first assessment.
+        discoverySourceCount: discoveryIngestBarrier.readyCount + rediscoveryBarrier.readyCount,
         corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
       });
     }
@@ -1632,6 +1649,11 @@ async function runResearchJobInner(
               `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
               `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
               `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
+              // The minimal path is still a synthesis path: when retrieval and
+              // re-discovery came back empty it must receive the same
+              // uncertainty, non-fabrication, and modeled-claim rules as the
+              // iterative drafter (Codex P2 review, PR #202).
+              `${lowEvidenceDirective ? `${lowEvidenceDirective}\n\n` : ''}` +
               `Evidence:\n${evidenceContext.slice(0, 60000)}`,
           },
         ],
@@ -1837,17 +1859,23 @@ ${generatedReport.markdown}`,
 
     const recomputeReportStatus = (): ReportGateStatus => {
       let nextStatus: ReportGateStatus = 'completed';
-      if (shouldBypassRepairLoopForEvidence(evidenceFailureReason)) {
-        return 'completed_degraded';
-      }
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
       const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
+      // Deliverable-contract and verifier failures are evaluated BEFORE the
+      // evidence-shortfall downgrade. Low-evidence runs now produce a real
+      // model-generated report, so a missing item or missing required field is
+      // repairable by re-drafting. Short-circuiting to `completed_degraded` on
+      // evidence grounds used to hide those failures and skip repair entirely,
+      // shipping an incomplete deliverable with a green-ish status
+      // (Codex P1 review, PR #202).
       if (contractFailed && verifierFailed) {
         nextStatus = 'contract_failed';
       } else if (contractFailed) {
         nextStatus = 'contract_failed';
       } else if (verifierFailed) {
         nextStatus = 'verification_failed';
+      } else if (evidenceShortfallDegradesStatus(evidenceFailureReason)) {
+        nextStatus = 'completed_degraded';
       } else if (sourceCoverageShortfall) {
         nextStatus = 'completed_degraded';
         contractAuditResult = {
@@ -1880,7 +1908,11 @@ ${generatedReport.markdown}`,
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
 
-    if (!shouldBypassRepairLoopForEvidence(evidenceFailureReason) && reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
+    // The repair loop is no longer skipped on evidence grounds. Repair cannot
+    // manufacture evidence, but it CAN fix a drafter that omitted requested
+    // items or required fields — which is the only way `reportStatus` can be
+    // `contract_failed` / `verification_failed` here (Codex P1 review, PR #202).
+    if (reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
       const MAX_REPAIR_ATTEMPTS = 2;
       for (
         let attempt = 1;

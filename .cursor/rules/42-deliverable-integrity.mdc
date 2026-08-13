@@ -127,6 +127,59 @@ Any gate that consumes `citableChunkCount` must also receive whether the
 corpus was intentionally sealed, and must not treat the designed state as an
 error.
 
+### R42-7. Count readiness, not enqueue
+
+A counter incremented at `queue.add()` measures *intent to ingest*, not
+available evidence. `sourcesIngested` includes jobs that later fail or are
+still pending, so using it as an evidence signal can mark a run sufficient on
+the strength of URLs that were merely queued.
+
+When a downstream gate asks "how much evidence do we have?", answer with the
+readiness-barrier count (`waitForDiscoveryIngestReadiness().readyCount`), never
+the enqueue count.
+
+### R42-8. A degraded label must not mask a repairable failure
+
+Status downgrades that short-circuit gate evaluation hide failures that repair
+could fix. `completed_degraded` for thin evidence was returned *before*
+checking the contract auditor and verifier, so a drafter that omitted half the
+requested items shipped anyway.
+
+Order gate evaluation so genuine deliverable failures are detected first:
+
+1. contract auditor
+2. verifier
+3. evidence-shortfall downgrade
+4. source-coverage downgrade
+
+Bypass repair only for failures repair genuinely cannot fix. Repair cannot
+manufacture evidence — but it can absolutely re-draft a missing section, so a
+contract failure must never be skipped on evidence grounds.
+
+Name helpers after what they do. A function called
+`shouldBypassRepairLoopForEvidence` that no longer bypasses the repair loop is
+the next bug.
+
+### R42-9. Degraded directives apply to every synthesis path
+
+A pipeline usually has more than one way to produce the report — the iterative
+drafter and one or more minimal/light paths. A directive threaded into only
+one of them leaves the others generating unlabelled content under exactly the
+conditions the directive exists for.
+
+When adding a synthesis modifier, grep for every branch that assigns
+`generatedReport` and thread it through all of them.
+
+### R42-10. Prompt directives must not contradict themselves
+
+A directive that bans the literal string `"unverified"` as placeholder text
+while also requiring an `"(unverified estimate)"` marker gives the model
+irreconcilable instructions; it will drop one of them unpredictably.
+
+Read generated prompt text end to end as if you were the model. Forbid
+*patterns of use* ("as the whole value of a field"), not bare substrings that
+legitimate output also contains.
+
 ## Pre-commit check
 
 - [ ] Does any new code build a user-facing deliverable from a string
@@ -141,3 +194,9 @@ error.
       intentionally sealed?
 - [ ] Would a human reading this output call it a real deliverable, not just
       a passing metric?
+- [ ] Do evidence counters use readiness counts rather than enqueue counts?
+- [ ] Are contract and verifier gates evaluated before any status downgrade?
+- [ ] Is every synthesis branch that assigns `generatedReport` receiving the
+      degraded-mode directive?
+- [ ] Read every generated prompt end to end — does any instruction contradict
+      another?

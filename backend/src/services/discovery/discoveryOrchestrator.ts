@@ -205,6 +205,8 @@ export async function runDiscoveryOrchestrator(args: {
    *  orchestrator can emit a live trace event ("Discovery round 2 complete
    *  +N candidates"). */
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
+  /** Fired when the LLM planner yielded no usable queries and deterministic recovery took over (Rule 42 R42-3). */
+  onDeterministicFallback?: (payload: { reason: string; queries: string[] }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const parent = runScope.current();
   return runScope.run(
@@ -233,6 +235,8 @@ async function runDiscoveryOrchestratorInner(args: {
   minUsableSources?: number;
   maxCoverageRounds?: number;
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
+  /** Fired when the LLM planner yielded no usable queries and deterministic recovery took over (Rule 42 R42-3). */
+  onDeterministicFallback?: (payload: { reason: string; queries: string[] }) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const {
     runId,
@@ -248,6 +252,7 @@ async function runDiscoveryOrchestratorInner(args: {
     minUsableSources,
     maxCoverageRounds,
     onRoundComplete,
+    onDeterministicFallback,
   } = args;
   const startTime = Date.now();
 
@@ -324,6 +329,16 @@ async function runDiscoveryOrchestratorInner(args: {
         rationale: discoveryPlan.rationale,
         queries: fallbackQueries,
       });
+      // Rule 42 R42-3 requires model-control fallbacks to log, persist AND
+      // emit progress. Without this the run trace shows only the generic
+      // planning message, so degraded deterministic recovery is
+      // indistinguishable from normal model-planned discovery.
+      try {
+        await onDeterministicFallback?.({
+          reason: 'planner_produced_no_queries',
+          queries: fallbackQueries,
+        });
+      } catch { /* non-fatal */ }
     } else {
       logger.error(`[discovery:${runId}] No queries and no deterministic fallback could be derived — skipping search`);
       return buildSummary(runId, false, discoveryPlan.rationale, [], [], [], startTime);
