@@ -181,6 +181,15 @@ export interface ResearchRun {
   report_id?: string | null;
   /** Spinoff lineage when this run was forked from a prior report. */
   spinoff_from_report_id?: string | null;
+  /**
+   * Classified report-type intent from the confirmed plan (WO-AC R6).
+   * Populated by GET /api/research/:id via LEFT JOIN research_plans.
+   * Distinct from `research_objective` which is the model-ensemble routing
+   * profile — intent is the report type (e.g. `opportunity_discovery`).
+   */
+  primary_intent?: string | null;
+  /** Secondary intent when the classifier detected a dual-intent request. */
+  secondary_intent?: string | null;
 }
 
 export interface SpinoffPrefill {

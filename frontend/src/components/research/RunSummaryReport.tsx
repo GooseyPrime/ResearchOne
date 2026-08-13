@@ -90,10 +90,26 @@ function deriveRunDurationMs(run: ResearchRun | null, events: ResearchProgressEv
   return 0;
 }
 
-function readPlanIntent(planPayload: Record<string, unknown> | null | undefined): {
+function readPlanIntent(
+  planPayload: Record<string, unknown> | null | undefined,
+  runPrimaryIntent?: string | null,
+  runSecondaryIntent?: string | null,
+): {
   primaryIntent: string;
   secondaryIntent: string;
 } {
+  // WO-AC R6: prefer the direct intent fields exposed by GET /api/research/:id
+  // (sourced from research_plans.intent / plan_payload.researchBrief).  The
+  // plan-payload path is a fallback for live-polling contexts where the run
+  // row may be returned before the confirmed plan is joined.
+  if (runPrimaryIntent && runPrimaryIntent.trim()) {
+    return {
+      primaryIntent: runPrimaryIntent.trim(),
+      secondaryIntent: typeof runSecondaryIntent === 'string' && runSecondaryIntent.trim()
+        ? runSecondaryIntent.trim()
+        : '',
+    };
+  }
   if (!planPayload || typeof planPayload !== 'object') {
     return { primaryIntent: '', secondaryIntent: '' };
   }
@@ -158,7 +174,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
   // reads like a report type, made a correct run look like it had silently
   // reinterpreted the request. Surface both, intent first.
   const planPayload = (plan ?? run?.plan ?? null) as Record<string, unknown> | null;
-  const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload);
+  const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload, run?.primary_intent, run?.secondary_intent);
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
   // Build the full plain-text report string for clipboard copy.

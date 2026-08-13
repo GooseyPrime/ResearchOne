@@ -598,10 +598,22 @@ router.get('/:id', async (req, res, next) => {
     const userId = req.auth?.userId ?? null;
     const orgId = req.auth?.orgId ?? null;
 
-    let rows: unknown[];
+    type RunRow = Record<string, unknown> & {
+      primary_intent: string | null;
+      secondary_intent: string | null;
+    };
+    let rows: RunRow[];
     try {
-      rows = await query(
-        `SELECT * FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
+      // LEFT JOIN the confirmed plan so the run summary can display the
+      // classified intent alongside the model-ensemble objective (WO-AC R6).
+      rows = await query<RunRow>(
+        `SELECT rr.*,
+                rp.intent AS primary_intent,
+                rp.plan_payload->'researchBrief'->>'secondaryIntent' AS secondary_intent
+           FROM research_runs rr
+           LEFT JOIN research_plans rp
+             ON rp.run_id = rr.id AND rp.status = 'confirmed'
+          WHERE rr.id=$1 AND ${buildOwnershipSql('rr.', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
     } catch (scopeErr) {

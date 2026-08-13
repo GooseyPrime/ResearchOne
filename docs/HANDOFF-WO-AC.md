@@ -88,7 +88,7 @@ prop rather than having `RunSummaryReport` reach for a field that isn't there.
 - [ ] `Intent` renders on live, completed, **and** failed run-summary surfaces.
 - [ ] Secondary intent shown when present: `opportunity_discovery (secondary: feasibility)`.
 - [ ] `Model profile` still renders separately, below `Intent`.
-- [ ] A test asserts `Intent` appears for a run whose plan declares
+- [x] A test asserts `Intent` appears for a run whose plan declares
       `opportunity_discovery` — and **fails** if the field is unavailable
       (Rule 16: verify by stashing the source change).
 - [ ] No new frontend eslint warnings. Current baseline is exactly 11.

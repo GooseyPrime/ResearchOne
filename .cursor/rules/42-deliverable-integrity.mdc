@@ -190,6 +190,27 @@ Read generated prompt text end to end as if you were the model. Forbid
 *patterns of use* ("as the whole value of a field"), not bare substrings that
 legitimate output also contains.
 
+### R42-11. Fixtures are built from the real interface, not an approximation of it
+
+A test fixture that invents a field, or omits a required one, tests a type
+that does not exist in production. When the fixture diverges from the
+production interface the test can be green while the behaviour is broken on
+every real run.
+
+**Two PR #205 defects — items labelled `Item N` instead of `Opportunity N`,
+and a fully delivered report counting as zero — were invisible because the
+fixture declared a `type` field that the production interface does not have
+(`RequestedArtifact` has only `description`).**
+
+Enforcement:
+
+- Import the production interface and let the compiler enforce the shape.
+- If importing is impractical (e.g. backend types in a frontend test),
+  assert at least one fixture against a real instance, or add a comment
+  naming the source-of-truth interface and the last-verified date.
+- Never cast `as <Interface>` on a literal that adds extra fields; use
+  `satisfies` or typed construction so excess-property checking fires.
+
 ## Pre-commit check
 
 - [ ] Does any new code build a user-facing deliverable from a string
@@ -210,3 +231,5 @@ legitimate output also contains.
       degraded-mode directive?
 - [ ] Read every generated prompt end to end — does any instruction contradict
       another?
+- [ ] Does every new test fixture match the production interface it stands in
+      for? (R42-11: import the interface, or name it with a last-verified date.)
