@@ -32,7 +32,12 @@ import {
   retrievalProgressLabel,
   truncateForTrace,
 } from './traceDisplay';
-import { checkTableContract, resolveTableExpectation } from './tableContract';
+import {
+  checkTableContract,
+  extractMarkdownTables,
+  resolveTableExpectation,
+} from './tableContract';
+import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -469,48 +474,61 @@ function parseOpportunityTitleLine(line: string): string | null {
   return null;
 }
 
+/**
+ * Count requested items delivered as rows of a markdown table (WO-AC R4).
+ *
+ * Uses the shared `extractMarkdownTables` parser so this agrees with the
+ * table-contract auditor: it masks fenced code blocks, honours escaped pipes,
+ * and — critically — does NOT drop empty cells. The previous implementation
+ * filtered falsy cells, which shifted every column after a blank one and
+ * misread a complete 20-row portfolio table as 8 delivered opportunities,
+ * failing the contract on a table that was substantively correct.
+ */
+/**
+ * Headings that count as one delivered item.
+ *
+ * Must stay in sync with `deriveItemLabel()` in `contractOutline.ts`, which
+ * generates these headings from the artifact description.
+ */
+export const ITEM_SECTION_HEADING =
+  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application)s?\s*#?\s*\d+/i;
+
 function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
-  const lines = markdown
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line.includes('|'));
-  if (lines.length < 3) return [];
+  const tables = extractMarkdownTables(markdown);
+  if (tables.length === 0) return [];
 
-  const separatorRegex = /^\|?\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)*\s*\|?$/;
-  for (let i = 0; i < lines.length - 2; i += 1) {
-    const headerLine = lines[i];
-    const separatorLine = lines[i + 1];
-    if (!separatorRegex.test(separatorLine)) continue;
-
-    const headers = headerLine
-      .split('|')
-      .map((cell) => cell.trim())
-      .filter(Boolean)
-      .map((header) => header.toLowerCase());
+  for (const table of tables) {
+    const headers = table.headers.map((header) => header.toLowerCase());
     if (headers.length === 0) continue;
 
+    // `title` / `name` / `idea` must stay in this set: a valid opportunity
+    // table may use a plain "Title" column with no rank/vertical/market header.
+    // Dropping them made the auditor ignore such tables and undercount
+    // delivered items — the exact failure this fix exists to prevent
+    // (Copilot review, PR #205).
+    // Must stay at least as permissive as the pre-WO-AC predicate
+    // (`opportunity|title|idea|rank|problem|customer|confidence`). Narrowing it
+    // made title-only schemas such as
+    // `Name | Description | Rationale | Confidence` fall through, yielding zero
+    // extracted items and a spurious exact-count failure on a table that was
+    // present (Codex review, PR #205).
     const looksOpportunityTable = headers.some((header) =>
-      /opportunity|title|idea|rank|problem|customer|confidence/.test(header)
+      /opportunity|vertical|niche|market|title|name|idea|rank|problem|customer|confidence/.test(header)
     );
     if (!looksOpportunityTable) continue;
 
-    const titleIndex = headers.findIndex((header) => /opportunity|title|idea|name/.test(header));
+    const titleIndex = headers.findIndex((header) =>
+      /opportunity|vertical|niche|market|title|idea|name/.test(header)
+    );
     const rankIndex = headers.findIndex((header) => /rank|#|order/.test(header));
-    const out: Array<{ title: string; body: string }> = [];
 
-    for (let rowIndex = i + 2; rowIndex < lines.length; rowIndex += 1) {
-      const rowLine = lines[rowIndex];
-      if (separatorRegex.test(rowLine)) continue;
-      const values = rowLine
-        .split('|')
-        .map((cell) => cell.trim())
-        .filter(Boolean);
-      if (values.length === 0 || values.length < Math.min(headers.length, 2)) continue;
-      const rankToken = rankIndex >= 0 ? values[rankIndex] : '';
-      const titleToken = titleIndex >= 0 ? values[titleIndex] : values[Math.min(1, values.length - 1)];
-      const isOpportunityRow =
-        /^#?\d+$/.test(rankToken) || /^opportunity\s*#?\d+/i.test(titleToken) || Boolean(titleToken);
-      if (!isOpportunityRow) continue;
+    const out: Array<{ title: string; body: string }> = [];
+    for (const values of table.rows) {
+      // Positional access stays valid because empty cells are preserved.
+      const rankToken = rankIndex >= 0 ? (values[rankIndex] ?? '') : '';
+      const titleToken =
+        titleIndex >= 0 ? (values[titleIndex] ?? '') : (values[Math.min(1, values.length - 1)] ?? '');
+      if (!titleToken && !/^#?\d+$/.test(rankToken)) continue;
       const title = /^opportunity/i.test(titleToken)
         ? titleToken
         : `${/^#?\d+$/.test(rankToken) ? `Opportunity ${rankToken}` : 'Opportunity'}: ${titleToken}`;
@@ -520,13 +538,10 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
         .trim();
       out.push({ title: title.trim(), body });
     }
-
     if (out.length > 0) return out;
   }
-
   return [];
 }
-
 function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title: string; body: string }> {
   const lines = markdown.split('\n');
   const out: Array<{ title: string; body: string }> = [];
@@ -539,7 +554,11 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
         out.push({ title: current.title, body: current.body.join('\n').trim() });
       }
       const title = listTitle ?? header?.[1]?.trim() ?? '';
-      if (/^opportunity\s*#?\s*\d+/i.test(title)) {
+      // Accept the headings R1 outline expansion actually produces. Labels are
+      // derived from the artifact description ("Opportunity 3", "Vertical 3",
+      // "Option 3", "Item 3"), so matching only "Opportunity <n>" counted a
+      // fully delivered report as ZERO items (Codex review, PR #205).
+      if (ITEM_SECTION_HEADING.test(title)) {
         current = { title, body: [] };
       } else {
         current = null;
@@ -1736,6 +1755,9 @@ async function runResearchJobInner(
         challenges: challengesForSynthesis,
         specialistFindings: specialistFindingsBlock,
         lowEvidenceDirective: lowEvidenceDirective ?? undefined,
+        // WO-AC R1/R2 — the outline and word budget are derived from the
+        // confirmed contract, not from the intent's static section plan.
+        contractArtifacts: confirmedResearchBrief?.requestedArtifacts,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
@@ -2079,20 +2101,40 @@ ${generatedReport.markdown}`,
         if (revisionInstructions.length === 0) {
           break;
         }
+        // WO-AC R3 — targeted repair.
+        //
+        // The refiner used to be handed the ENTIRE report and asked to rewrite
+        // it. On run e5aac059 one such pass ran 6m51s emitting 10,265 tokens to
+        // add missing sections, and still failed; verification consumed 39% of
+        // a 36-minute run. Regenerating a report that is already mostly correct
+        // also risks losing sections that already passed.
+        //
+        // Instead: append only the missing material, and send the refiner just
+        // enough context to write it.
+        const repairPlan = planTargetedRepair({
+          markdown: generatedReport.markdown,
+          revisionInstructions,
+          missingRequirements:
+            (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [],
+        });
+        await progress('verification', 93, repairPlan.progressMessage, {
+          substep: 'repair_scope',
+          detail: repairPlan.detail,
+        });
+
         const repairResult = await callRoleModel({
           role: 'coherence_refiner',
           ...v2,
           runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'coherence_refiner'),
           messages: [
             { role: 'system', content: getSystemPrompt('coherence_refiner', isAdjudicative) },
-            {
-              role: 'user',
-              content: `Revise the report to satisfy these contract and verification requirements:\n${revisionInstructions.map((line) => `- ${line}`).join('\n')}\n\nREPORT:\n${generatedReport.markdown}`,
-            },
+            { role: 'user', content: repairPlan.userPrompt },
           ],
         });
         modelLog.push(repairResult);
-        generatedReport = { markdown: repairResult.content.trim() || generatedReport.markdown };
+        generatedReport = {
+          markdown: applyTargetedRepair(generatedReport.markdown, repairResult.content, repairPlan),
+        };
         generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
 
         if (shouldRunPipelineStage(orchProfile, 'verification')) {

@@ -5,12 +5,71 @@ import {
   getIntentOutputTemplate,
   INTENT_OUTPUT_TEMPLATES,
 } from '../formatting/templates/intentOutputTemplates';
+import {
+  deriveContractWordTarget,
+  deriveItemLabel,
+  expandSectionPlanForContract,
+  findRepeatedArtifact,
+  type ContractArtifact,
+} from './contractOutline';
 
 export interface ReportSectionDraft {
   title: string;
   key: string;
   content: string;
 }
+
+/**
+ * Table formatting rules for the section drafter (WO-AC R5).
+ *
+ * Run `e5aac059` emitted a 20-row portfolio table in which row 2 was truncated
+ * mid-row and then repeated after a blank line. That split one table into two
+ * fragments: the reader saw broken output and the deterministic counter read 8
+ * rows instead of 20, failing the contract on a table that was substantively
+ * complete.
+ */
+const TABLE_SECTION_PATTERN = /table|matrix|portfolio|compar|grid|scorecard|dimensions|summary of/i;
+
+/**
+ * Whether a given section is plausibly going to emit a table.
+ *
+ * With R1 outline expansion a run can make ~40 drafter calls; injecting table
+ * rules into all of them wastes prompt tokens and constrains prose sections
+ * that will never contain a table (Copilot review, PR #205). Rules are included
+ * when the section itself looks tabular, or when the run's contract asks for a
+ * tabular artifact — the latter matters because a section titled
+ * "Opportunities 1–5" may legitimately carry the portfolio table.
+ */
+export function sectionExpectsTable(args: {
+  title: string;
+  key: string;
+  contractWantsTable: boolean;
+}): boolean {
+  if (TABLE_SECTION_PATTERN.test(args.title) || TABLE_SECTION_PATTERN.test(args.key)) return true;
+  return args.contractWantsTable;
+}
+
+/** True when any requested artifact or format implies a tabular deliverable. */
+export function contractRequestsTable(
+  artifacts: readonly ContractArtifact[] | undefined,
+  requestedFormats: readonly string[] | undefined
+): boolean {
+  const artifactHit = (artifacts ?? []).some((artifact) =>
+    TABLE_SECTION_PATTERN.test(`${artifact.type ?? ''} ${artifact.description ?? ''}`)
+  );
+  if (artifactHit) return true;
+  return (requestedFormats ?? []).some((format) => TABLE_SECTION_PATTERN.test(format));
+}
+
+export const TABLE_FORMATTING_RULES = `
+Markdown table rules (MANDATORY when you emit a table):
+- One row per line. A row must NEVER be split across lines or interrupted by a
+  blank line — a blank line ends the table and everything after it is lost.
+- Never repeat a row.
+- Every row must have exactly the same number of cells as the header row.
+- Escape any literal pipe inside a cell as \\| so it is not read as a column break.
+- Keep cell text short; put long prose in the narrative, not in a cell.
+- Do not wrap the table in a code fence: fenced tables render as code, not tables.`;
 
 interface RuntimeSectionPlanEntry {
   title: string;
@@ -269,6 +328,14 @@ export async function generateIterativeReport(args: {
    * synthesis to be skipped or replaced with a template (Rule 37 R-L).
    */
   lowEvidenceDirective?: string;
+  /**
+   * Requested artifacts from the confirmed brief (WO-AC R1/R2).
+   *
+   * Drives outline expansion and the word budget: a request for N items with
+   * required subsections gets N drafting slots and a budget sized to the
+   * contract, instead of being compressed into the intent's static plan.
+   */
+  contractArtifacts?: readonly ContractArtifact[];
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
@@ -311,6 +378,19 @@ export async function generateIterativeReport(args: {
         : ADJUDICATIVE_SECTION_PLAN;
   }
 
+  // WO-AC R1 — expand the intent's static plan to fit the request's contract.
+  // Five fixed sections cannot hold 20 items x 5 subsections plus a blueprint;
+  // the drafter writes what fits and stops. Expanding gives each item its own
+  // drafting slot (and makes it independently repairable — R3).
+  const outlineExpansion = expandSectionPlanForContract({
+    basePlan: activeSectionPlan,
+    artifacts: args.contractArtifacts,
+    intentId: args.intentId,
+    explicitWordTarget: args.targetWordCount,
+    perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
+  });
+  activeSectionPlan = outlineExpansion.plan;
+
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
@@ -318,7 +398,40 @@ export async function generateIterativeReport(args: {
     byokApiKeyOverride: args.byokApiKeyOverride,
     isAdjudicative: args.isAdjudicative,
   };
-  const targetWordCount = clampWordTarget(args.targetWordCount);
+
+  // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable
+  // must not share a default budget with a four-section explainer. An explicit
+  // user target always wins.
+  const repeatedArtifact = findRepeatedArtifact(args.contractArtifacts);
+  const requiredFieldsPerItem =
+    (repeatedArtifact?.explicitRequiredFields?.length ?? 0) +
+    (repeatedArtifact?.inferredRequiredFields?.length ?? 0);
+  const contractTarget = deriveContractWordTarget({
+    explicitTarget: args.targetWordCount,
+    itemCount: outlineExpansion.itemCount,
+    requiredFieldsPerItem,
+    baselineWords: clampWordTarget(undefined),
+  });
+  const targetWordCount = clampWordTarget(contractTarget ?? args.targetWordCount);
+  const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
+
+  // Required field NAMES must reach the drafter. Fields can be inferred by the
+  // planner or edited at plan confirmation, so they may not appear anywhere in
+  // the original query — the drafter would then omit them and fail
+  // `adaptiveFieldCompletenessForOpportunities`, re-entering the very repair
+  // loop this work order removes (Codex review, PR #205).
+  const confirmedFields = Array.from(
+    new Set([
+      ...(repeatedArtifact?.explicitRequiredFields ?? []),
+      ...(repeatedArtifact?.inferredRequiredFields ?? []),
+    ].map((field) => field.trim()).filter(Boolean))
+  );
+  const confirmedFieldsBlock =
+    confirmedFields.length > 0
+      ? `Confirmed required fields for EVERY ${deriveItemLabel(repeatedArtifact, args.intentId).toLowerCase()} in this report:\n${confirmedFields
+          .map((field) => `- ${field}`)
+          .join('\n')}\nEvery one of these must appear for every item. Do not rename or omit them.`
+      : '';
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -376,7 +489,13 @@ Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
-${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
+${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${
+            sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
+              ? TABLE_FORMATTING_RULES
+              : ''
+          }
+${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
+${confirmedFieldsBlock}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}

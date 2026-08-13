@@ -23,6 +23,7 @@ export interface RunSummaryData {
 interface Props {
   summary: RunSummaryData | null;
   run: ResearchRun | null;
+  plan?: Record<string, unknown> | null;
   traceEvents: ResearchProgressEvent[];
   failure: { stage: string; message: string; error?: string; retryable?: boolean; terminal?: boolean; failureMeta?: Record<string, unknown> } | null;
 }
@@ -89,7 +90,39 @@ function deriveRunDurationMs(run: ResearchRun | null, events: ResearchProgressEv
   return 0;
 }
 
-export default function RunSummaryReport({ summary, run, traceEvents, failure }: Props) {
+function readPlanIntent(planPayload: Record<string, unknown> | null | undefined): {
+  primaryIntent: string;
+  secondaryIntent: string;
+} {
+  if (!planPayload || typeof planPayload !== 'object') {
+    return { primaryIntent: '', secondaryIntent: '' };
+  }
+  const brief =
+    planPayload.researchBrief && typeof planPayload.researchBrief === 'object'
+      ? (planPayload.researchBrief as Record<string, unknown>)
+      : null;
+  const primaryFromBrief =
+    typeof brief?.primaryIntent === 'string' && brief.primaryIntent.trim()
+      ? brief.primaryIntent.trim()
+      : '';
+  const secondaryFromBrief =
+    typeof brief?.secondaryIntent === 'string' && brief.secondaryIntent.trim()
+      ? brief.secondaryIntent.trim()
+      : '';
+  const intentNode = planPayload.intent;
+  const primaryFromIntent =
+    typeof intentNode === 'string' && intentNode.trim()
+      ? intentNode.trim()
+      : intentNode && typeof intentNode === 'object' && typeof (intentNode as { id?: unknown }).id === 'string'
+        ? String((intentNode as { id: string }).id).trim()
+        : '';
+  return {
+    primaryIntent: primaryFromBrief || primaryFromIntent,
+    secondaryIntent: secondaryFromBrief,
+  };
+}
+
+export default function RunSummaryReport({ summary, run, plan, traceEvents, failure }: Props) {
   const [copied, setCopied] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -118,6 +151,14 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
   const runId = summary?.runId ?? run?.id ?? 'unknown';
   const query = run?.title ?? '';
   const objective = (run as unknown as Record<string, string> | null)?.research_objective ?? '';
+  // WO-AC R6 — intent and objective are DIFFERENT axes and were easy to
+  // confuse. `Objective` is the model-ensemble routing profile (e.g.
+  // NOVEL_APPLICATION_DISCOVERY); the report type is the INTENT (e.g.
+  // opportunity_discovery). Showing only the objective, under a label that
+  // reads like a report type, made a correct run look like it had silently
+  // reinterpreted the request. Surface both, intent first.
+  const planPayload = (plan ?? run?.plan ?? null) as Record<string, unknown> | null;
+  const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload);
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
   // Build the full plain-text report string for clipboard copy.
@@ -128,7 +169,12 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
     lines.push(hr);
     lines.push(`Run ID       : ${runId}`);
     if (query) lines.push(`Query        : ${query}`);
-    if (objective) lines.push(`Objective    : ${objective}`);
+    if (primaryIntent) {
+      lines.push(
+        `Intent       : ${primaryIntent}${secondaryIntent ? ` (secondary: ${secondaryIntent})` : ''}`
+      );
+    }
+    if (objective) lines.push(`Model profile: ${objective}`);
     if (createdAt) lines.push(`Started      : ${createdAt}`);
     lines.push(`Status       : ${status.toUpperCase()}`);
     lines.push(`Duration     : ${fmtMs(totalDurationMs)}`);
@@ -191,7 +237,7 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
     lines.push(hr);
     lines.push(`Generated at : ${new Date().toISOString()}`);
     return lines.join('\n');
-  }, [runId, query, objective, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
+  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
 
   const handleCopy = useCallback(async () => {
     const text = buildPlainText();

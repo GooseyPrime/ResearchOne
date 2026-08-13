@@ -895,7 +895,13 @@ export default function ResearchStandardPage() {
         )}
 
         {(runSummary || (trackedRun && ['completed', 'cancelled', 'failed', 'aborted'].includes(trackedRun.status))) && (
-          <RunSummaryReport summary={runSummary} run={trackedRun ?? null} traceEvents={traceEvents} failure={failure} />
+          <RunSummaryReport
+            summary={runSummary}
+            run={trackedRun ?? null}
+            plan={(polledRun?.plan as Record<string, unknown> | null | undefined) ?? null}
+            traceEvents={traceEvents}
+            failure={failure}
+          />
         )}
       </div>
 
