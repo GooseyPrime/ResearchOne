@@ -121,13 +121,27 @@ export function summarizeResearchRequest(query: string): string {
   const text = (query ?? '').trim();
   if (!text) return '';
 
-  const heading = text.match(/^#{1,3}\s+(.+?)\s*$/m)?.[1];
-  const candidate = heading ?? text.split(/(?<=[.?!])\s+/)[0] ?? text;
+  const clean = (value: string): string =>
+    value.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim();
 
-  const flattened = candidate
-    .replace(/[*_`#]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // Only a heading that opens the document is a title. Structured prompts often
+  // start with prose and later contain section headings like "## Intent" or
+  // "## Scope" — picking those produced a one-word, useless label
+  // (Copilot review, #203). Require the heading to appear near the start and to
+  // be descriptive enough to stand alone.
+  const TITLE_SEARCH_WINDOW = 400;
+  const MIN_TITLE_CHARS = 12;
+  const headingMatch = text.slice(0, TITLE_SEARCH_WINDOW).match(/^#{1,3}\s+(.+?)\s*$/m);
+  const heading = headingMatch?.[1] ? clean(headingMatch[1]) : '';
+
+  const firstSentence = clean(
+    text
+      .replace(/^#{1,6}\s+.*$/gm, '')
+      .split(/(?<=[.?!])\s+/)
+      .find((sentence) => clean(sentence).length >= MIN_TITLE_CHARS) ?? ''
+  );
+
+  const flattened = heading.length >= MIN_TITLE_CHARS ? heading : firstSentence || heading;
   if (!flattened) return '';
 
   return flattened.length > REQUEST_LABEL_MAX_CHARS

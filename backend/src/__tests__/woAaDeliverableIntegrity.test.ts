@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { classifyIntent } from '../services/planning/intentClassifier';
 import { buildVerifierPromptForIntent } from '../services/openrouter/openrouterService';
@@ -178,5 +180,51 @@ describe('WO-AA fixture — report hygiene (Phase 5 / Rule 37 R-K)', () => {
     const echoed = `${REFERENCE_PROMPT}\n\n# Opportunity Discovery Report\n\nBody.`;
     const cleaned = stripPromptEchoFromReport(echoed, REFERENCE_PROMPT);
     expect(cleaned.startsWith('# Opportunity Discovery Report')).toBe(true);
+  });
+
+  it('does not label a request with a later section heading', () => {
+    // Copilot review, #203: a prompt starting with prose and containing
+    // "## Intent" further down produced the label "Intent".
+    const prompt = [
+      'I need a ranked shortlist of managed Postgres providers for a small SaaS team.',
+      '',
+      '## Intent',
+      '',
+      'comparative',
+    ].join('\n');
+    const label = summarizeResearchRequest(prompt);
+    expect(label).not.toBe('Intent');
+    expect(label).toContain('managed Postgres providers');
+  });
+
+  it('still prefers a genuine title heading at the top of the prompt', () => {
+    expect(summarizeResearchRequest(REFERENCE_PROMPT)).toContain('Research Objective');
+  });
+});
+
+describe('WO-AA fixture — review hardening (PR #203)', () => {
+  it('keeps the declared secondary intent when the classifier call fails', async () => {
+    // No OpenRouter credential is configured in tests, and the call 401s; the
+    // explicit-declaration fallback must still carry the secondary intent
+    // because buildCanonicalExecutionPlan selects specialists from it.
+    const brief = await classifyIntent(REFERENCE_PROMPT, undefined, {
+      allowFallbackByRole: {},
+    });
+    expect(brief.primaryIntent).toBe('opportunity_discovery');
+    expect(brief.secondaryIntent).toBe('feasibility');
+  });
+
+  it('applies the claim-class burden to every non-adjudicative synthesis path', () => {
+    // Rule 42 R42-9. The iterative drafter and the reference_lookup light path
+    // both assign `generatedReport`; both must carry the burden. The light path
+    // sits deep inside runResearchJobInner, so guard it at the source level.
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'),
+      'utf8'
+    );
+    const lightPathStart = source.indexOf('reference lookup');
+    expect(lightPathStart).toBeGreaterThan(-1);
+    const lightPath = source.slice(lightPathStart, lightPathStart + 2000);
+    expect(lightPath).toContain('CLAIM_CLASS_EVIDENCE_BURDEN');
   });
 });
