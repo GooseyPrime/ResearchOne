@@ -604,15 +604,21 @@ router.get('/:id', async (req, res, next) => {
     };
     let rows: RunRow[];
     try {
-      // LEFT JOIN the confirmed plan so the run summary can display the
-      // classified intent alongside the model-ensemble objective (WO-AC R6).
+      // LATERAL subquery constrains to at most one confirmed plan per run
+      // (prevents duplicate rows if a run ever has multiple confirmed plans
+      // after re-confirmation or migration replay — Rule 27 / PR #128 pattern).
       rows = await query<RunRow>(
         `SELECT rr.*,
                 rp.intent AS primary_intent,
                 rp.plan_payload->'researchBrief'->>'secondaryIntent' AS secondary_intent
            FROM research_runs rr
-           LEFT JOIN research_plans rp
-             ON rp.run_id = rr.id AND rp.status = 'confirmed'
+           LEFT JOIN LATERAL (
+             SELECT intent, plan_payload
+               FROM research_plans
+              WHERE run_id = rr.id AND status = 'confirmed'
+              ORDER BY confirmed_at DESC NULLS LAST
+              LIMIT 1
+           ) rp ON true
           WHERE rr.id=$1 AND ${buildOwnershipSql('rr.', 2, 3)}`,
         [req.params.id, userId, orgId]
       );
