@@ -26,6 +26,13 @@ import {
   stripPromptEchoFromReport,
 } from './reportGenerator';
 import { CLAIM_CLASS_EVIDENCE_BURDEN } from '../formatting/templates/intentOutputTemplates';
+import {
+  TRACE_DETAIL_MAX_CHARS,
+  TRACE_MESSAGE_MAX_CHARS,
+  retrievalProgressLabel,
+  truncateForTrace,
+} from './traceDisplay';
+import { checkTableContract, resolveTableExpectation } from './tableContract';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -228,7 +235,12 @@ const RETRIEVAL_PROGRESS_CAP = 34;
 interface ReaderFrontMatter {
   overall_summary: string;
   conclusions_nutshell: string;
-  metric_glosses: Array<{ label: string; narrative: string }>;
+  /**
+   * Reader-facing metric cards. The frontend renders exactly these — it no
+   * longer hardcodes adjudicative cards like "Falsification target" onto every
+   * report (WO-AB). `value` is the headline figure; `narrative` explains it.
+   */
+  metric_glosses: Array<{ label: string; value?: string; narrative: string }>;
 }
 
 function runtimeOverrideForRole(
@@ -300,6 +312,10 @@ function buildReaderFrontMatter(args: {
     ? [
         {
           label: 'Deliverable coverage',
+          value:
+            typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
+              ? `${args.deliveredOpportunityCount}/${args.requestedOpportunityCount}`
+              : 'Not tracked',
           narrative:
             typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
               ? `Delivered ${args.deliveredOpportunityCount}/${args.requestedOpportunityCount} requested opportunities.`
@@ -307,6 +323,8 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Field completeness',
+          value:
+            typeof args.fieldsCompleteCount === 'number' ? String(args.fieldsCompleteCount) : 'Not tracked',
           narrative:
             typeof args.fieldsCompleteCount === 'number'
               ? `${args.fieldsCompleteCount} artifacts passed required-field completeness checks.`
@@ -314,20 +332,32 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Constraint status',
+          value:
+            typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
+              ? `${args.constraintsPassed} met / ${args.constraintsFailed} open`
+              : 'Not tracked',
           narrative:
             typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
               ? `${args.constraintsPassed} user constraints were provided; ${args.constraintsFailed} unresolved contract requirements remained at finalize time.`
               : 'Constraint pass/fail tracking unavailable.',
         },
         {
-          label: 'Evidence coverage',
+          label: 'Source coverage',
+          value:
+            typeof args.independentDomainCount === 'number'
+              ? `${args.usableSourceCount ?? args.sourceCount} sources / ${args.independentDomainCount} domains`
+              : `${args.sourceCount} sources`,
           narrative:
-            typeof args.usableSourceCount === 'number' && typeof args.independentDomainCount === 'number'
-              ? `${args.usableSourceCount} usable sources across ${args.independentDomainCount} independent domains; ${args.chunkCount} evidence chunks reviewed.`
-              : `${args.sourceCount} sources and ${args.chunkCount} chunks were reviewed; broader coverage can still change confidence.`,
+            (args.usableSourceCount ?? args.sourceCount) === 0
+              ? 'No independent sources cleared the corpus gate for this run, so findings rest on domain reasoning. Treat specific figures as modeled.'
+              : `${args.usableSourceCount ?? args.sourceCount} usable sources across ${args.independentDomainCount ?? '—'} independent domains. Broader coverage can still shift confidence.`,
         },
         {
           label: 'Validation experiments',
+          value:
+            typeof args.validationExperimentCount === 'number'
+              ? String(args.validationExperimentCount)
+              : 'Not tracked',
           narrative:
             typeof args.validationExperimentCount === 'number'
               ? `${args.validationExperimentCount} validation experiments were provided in the generated artifact.`
@@ -335,12 +365,14 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Contract status',
+          value: args.contractStatus ?? 'Unavailable',
           narrative: args.contractStatus ?? 'Contract status unavailable.',
         },
       ]
     : [
         {
           label: 'Contradictions',
+          value: String(args.contradictionCount),
           narrative:
             args.contradictionCount > 0
               ? `${args.contradictionCount} claim conflicts were detected. Each conflict shows two evidence-backed statements that cannot both be true as currently framed.`
@@ -348,6 +380,7 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Counterevidence / Falsification',
+          value: falsificationCriteria.length > 0 ? 'Defined' : 'Pending',
           narrative:
             falsificationCriteria.length > 0
               ? `This report's conclusions would be falsified by: ${falsificationCriteria.slice(0, 2).join('; ')}.`
@@ -355,6 +388,7 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Evidence coverage',
+          value: `${args.chunkCount} chunks / ${args.sourceCount} sources`,
           narrative: `${args.sourceCount} sources and ${args.chunkCount} chunks were reviewed; broader coverage can still change the confidence profile of conclusions.`,
         },
       ];
@@ -882,22 +916,44 @@ async function runResearchJobInner(
     phaseStartTimes[stage] = now;
     currentStage = stage;
     currentPercent = percent;
-    currentMessage = message;
+
+    // DISPLAY-ONLY TRUNCATION (WO-AB).
+    //
+    // Progress events feed the live trace UI, the log line, and the
+    // `progress_message` display column. **No agent prompt or retrieval path
+    // reads them** — `onProgress` is the socket emitter, nothing else consumes
+    // this payload. Truncating here therefore cannot reduce the information any
+    // LLM receives; agents continue to work from the full query, plan, and
+    // evidence context.
+    //
+    // Without this, a call site that interpolated a retrieval query dumped the
+    // user's entire ~700-line prompt into the trace, five times in a row.
+    // Guarding centrally means no future call site can flood the view.
+    const displayMessage = truncateForTrace(message, TRACE_MESSAGE_MAX_CHARS);
+    currentMessage = displayMessage;
+    const displayExtra = extra
+      ? {
+          ...extra,
+          ...(typeof extra.detail === 'string'
+            ? { detail: truncateForTrace(extra.detail, TRACE_DETAIL_MAX_CHARS) }
+            : {}),
+        }
+      : undefined;
     const payload = {
       stage,
       percent,
-      message,
+      message: displayMessage,
       runId,
       timestamp: new Date().toISOString(),
-      ...extra,
+      ...displayExtra,
       profileDisplayName: orchProfile.displayName,
     };
     onProgress(payload);
-    logger.info(`[${runId}] ${stage}: ${message}`);
+    logger.info(`[${runId}] ${stage}: ${displayMessage}`);
     try {
       await query(
         `UPDATE research_runs SET progress_stage=$1, progress_percent=$2, progress_message=$3, progress_updated_at=NOW() WHERE id=$4`,
-        [stage, Math.round(percent), message.slice(0, 2000), runId]
+        [stage, Math.round(percent), displayMessage, runId]
       );
       await appendRunProgressEvent(runId, payload);
     } catch (e) {
@@ -1207,8 +1263,13 @@ async function runResearchJobInner(
 
       const seenIds = new Set<string>();
 
-      for (const rq of plan.retrieval_queries.slice(0, 5)) {
+      const retrievalQueries = plan.retrieval_queries.slice(0, 5);
+      let retrievalIndex = 0;
+      for (const rq of retrievalQueries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
+        retrievalIndex += 1;
+        // NOTE: `rqStr` is passed to retrieval IN FULL below. Only the trace
+        // label is shortened (WO-AB).
         const retrievalResult = await retrieveChunksWithAudit({
           query: rqStr,
           topK: addonEffects.retrievalTopK,
@@ -1228,10 +1289,22 @@ async function runResearchJobInner(
             allChunks.push(c);
           }
         }
-        await progress('retrieval', Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length), `Retrieval query complete: ${rqStr}`, {
-          substep: 'query_done',
-          chunkCount: allChunks.length,
-        });
+        await progress(
+          'retrieval',
+          Math.min(RETRIEVAL_PROGRESS_CAP, RETRIEVAL_PROGRESS_BASE + allChunks.length),
+          retrievalProgressLabel({
+            index: retrievalIndex,
+            total: retrievalQueries.length,
+            chunkCount: allChunks.length,
+          }),
+          {
+            substep: 'query_done',
+            chunkCount: allChunks.length,
+            // Bounded by the display guard in `progress()`; retrieval itself
+            // already ran against the full query text.
+            detail: rqStr,
+          }
+        );
       }
     } else {
       await progress('retrieval', 20, 'Retrieval skipped for this intent profile', { substep: 'stage_skipped' });
@@ -1817,14 +1890,26 @@ ${generatedReport.markdown}`,
         markdown,
         brief: researchBrief,
       });
+
+      // WO-AB: table-contract check. Deterministic, no extra model call.
+      // A required table that renders as a wall of pipes, drops columns, or
+      // carries the wrong row count is a contract failure the auditor should
+      // catch — not something the reader discovers.
+      const tableExpectation = resolveTableExpectation(researchBrief, requestedArtifactCount);
+      const tableIssues = checkTableContract(markdown, tableExpectation);
+      const tableMessages = tableIssues.map((issue) => issue.message);
+
       contractAuditResult = {
-        pass: deterministic.pass,
-        missing_requirements: deterministic.missing,
+        pass: deterministic.pass && tableIssues.length === 0,
+        missing_requirements: [...deterministic.missing, ...tableMessages],
         unsupported_claims: [],
         intent_drift: null,
-        revision_instructions: deterministic.revision,
-        status: deterministic.pass ? 'pass' : 'fail',
-        deterministic_metrics: deterministic.metrics,
+        revision_instructions: [...deterministic.revision, ...tableMessages],
+        status: deterministic.pass && tableIssues.length === 0 ? 'pass' : 'fail',
+        deterministic_metrics: {
+          ...deterministic.metrics,
+          tableIssues: tableIssues.length,
+        },
       };
       try {
         await progress('verification', 93, 'Auditing deliverable contract...');

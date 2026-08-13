@@ -2,6 +2,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { DataGrid } from '../components/reports/ReportMarkdown';
+import { parseTableNode } from '../components/reports/reportTables';
 import {
   getReport,
   getReportRevision,
@@ -89,7 +91,7 @@ function buildReportMarkdown(report: {
 function getReaderFrontMatter(metadata?: Record<string, unknown>): {
   overall_summary?: string;
   conclusions_nutshell?: string;
-  metric_glosses?: Array<{ label?: string; narrative?: string }>;
+  metric_glosses?: Array<{ label?: string; value?: string; narrative?: string }>;
 } {
   if (!metadata) return {};
   const m = metadata as Record<string, unknown>;
@@ -98,14 +100,14 @@ function getReaderFrontMatter(metadata?: Record<string, unknown>): {
   return {
     overall_summary: typeof r.overall_summary === 'string' ? r.overall_summary : undefined,
     conclusions_nutshell: typeof r.conclusions_nutshell === 'string' ? r.conclusions_nutshell : undefined,
-    metric_glosses: Array.isArray(r.metric_glosses) ? (r.metric_glosses as Array<{ label?: string; narrative?: string }>) : undefined,
+    metric_glosses: Array.isArray(r.metric_glosses) ? (r.metric_glosses as Array<{ label?: string; value?: string; narrative?: string }>) : undefined,
   };
 }
 
-function metricNarrative(metricGlosses: Array<{ label?: string; narrative?: string }> | undefined, fallback: string, key: string): string {
-  const hit = metricGlosses?.find((g) => (g.label || '').toLowerCase().includes(key.toLowerCase()));
-  return hit?.narrative || fallback;
-}
+// WO-AB removed `metricNarrative()`: it looked a gloss up by keyword and fell
+// back to hardcoded adjudicative copy ("Counterevidence must directly disprove
+// …") whenever the lookup missed. Glosses are now rendered directly, so an
+// intent that supplies no falsification metric simply shows no such card.
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -531,27 +533,30 @@ export default function ReportDetailPage() {
             </div>
           )}
 
+          {/*
+            WO-AB: render the metric glosses the BACKEND supplied for this
+            intent, rather than four hardcoded cards.
+
+            Previously this always rendered "Claim conflicts" and "Falsification
+            target" — adjudicative concepts — on every report. An
+            opportunity-discovery run therefore displayed "Counterevidence must
+            directly disprove the report's core mechanism" next to a ranked
+            market list, and fell back to that copy whenever the backend's
+            (correct, non-adjudicative) gloss labels did not match.
+          */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MetaStat
-              label="Evidence coverage"
-              value={`${report.chunk_count} chunks from ${report.source_count} sources`}
-              narrative={metricNarrative(metricGlosses, 'Total corpus slices reviewed for this report. More sources can still shift confidence.', 'evidence')}
-            />
-            <MetaStat
-              label="Claim conflicts"
-              value={report.contradiction_count}
-              color="text-amber-400"
-              narrative={metricNarrative(metricGlosses, 'Conflicts indicate claims that cannot both hold as currently framed; review contradiction analysis for the exact pairs.', 'contradiction')}
-            />
-            <MetaStat
-              label="Falsification target"
-              value={report.falsification_criteria ? 'Defined' : 'Pending'}
-              narrative={metricNarrative(metricGlosses, 'Counterevidence must directly disprove the report\'s core mechanism or assumptions listed in falsification criteria.', 'falsification')}
-            />
+            {(metricGlosses ?? []).map((gloss, i) => (
+              <MetaStat
+                key={`${gloss.label ?? 'metric'}-${i}`}
+                label={gloss.label ?? 'Metric'}
+                value={gloss.value && gloss.value.trim() !== '' ? gloss.value : '—'}
+                narrative={gloss.narrative}
+              />
+            ))}
             <MetaStat
               label="Report status"
               value={report.status}
-              narrative="Finalized means this revision passed the verifier and has persisted claims, contradictions, and citations."
+              narrative="Finalized means this revision passed all gates and has persisted its claims, sources, and citations."
             />
           </div>
         </div>
@@ -939,11 +944,18 @@ function ReportContent({ content }: { content: string }) {
           );
         },
         hr: () => <hr className="border-surface-100/30 my-4" />,
-        table: ({ children }) => (
+        // WO-AB: render markdown tables as a sortable, exportable data grid.
+        // A ranked portfolio table has ~18 columns; a plain <table> is unusable
+        // and cannot be moved into a spreadsheet.
+        table: ({ children }) => {
+          const parsed = parseTableNode(children);
+          if (parsed) return <DataGrid table={parsed} caption="report-table" />;
+          return (
           <div className="overflow-x-auto my-3">
             <table className="text-xs text-slate-300 border-collapse w-full">{children}</table>
           </div>
-        ),
+          );
+        },
         th: ({ children }) => (
           <th className="border border-surface-100/30 px-2 py-1 text-left font-semibold text-slate-200 bg-surface-200">{children}</th>
         ),

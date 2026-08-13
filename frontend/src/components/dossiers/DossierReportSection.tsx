@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import ReportMarkdown from '../reports/ReportMarkdown';
 import type { DossierPlan, Report } from '../../utils/api';
 import { getIntentOutputTemplate } from '../../lib/intentOutputTemplates';
 import SkepticAnnotationsAside from './SkepticAnnotationsAside';
@@ -111,7 +111,7 @@ export default function DossierReportSection({
               <article key={sec.id} className="rounded-lg border border-slate-800/60 bg-slate-900/20 p-3">
                 <h4 className="text-slate-100 font-medium text-sm mb-2">{sec.title}</h4>
                 <div className="prose prose-invert prose-sm max-w-none text-slate-300">
-                  <ReactMarkdown>{sec.content || ''}</ReactMarkdown>
+                  <ReportMarkdown tableCaption={sec.title}>{sec.content || ''}</ReportMarkdown>
                 </div>
               </article>
             ))
@@ -120,7 +120,7 @@ export default function DossierReportSection({
             <section className="rounded-lg border border-dashed border-slate-700/80 p-3">
               <h4 className="text-slate-200 text-sm font-medium mb-2">Plain-language summary</h4>
               <div className="prose prose-invert prose-sm max-w-none text-slate-300">
-                <ReactMarkdown>{plainMd}</ReactMarkdown>
+                <ReportMarkdown>{plainMd}</ReportMarkdown>
               </div>
             </section>
           ) : null}
