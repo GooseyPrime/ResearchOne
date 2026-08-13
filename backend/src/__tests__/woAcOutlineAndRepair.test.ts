@@ -7,6 +7,10 @@ import {
   MAX_EXPANDED_SECTIONS,
 } from '../services/reasoning/contractOutline';
 import {
+  contractRequestsTable,
+  sectionExpectsTable,
+} from '../services/reasoning/reportGenerator';
+import {
   applyTargetedRepair,
   extractMissingSectionTitles,
   planTargetedRepair,
@@ -146,6 +150,34 @@ describe('R2 — word budget scales with the contract', () => {
       baselineWords: 3000,
     });
     expect(target!).toBeGreaterThanOrEqual(3000);
+  });
+});
+
+describe('R5 — table rules are scoped to sections that need them (PR #205 review)', () => {
+  it('includes rules for obviously tabular sections', () => {
+    for (const title of ['Master Portfolio Table', 'Dimensions Matrix', 'Comparison of Options']) {
+      expect(sectionExpectsTable({ title, key: 'x', contractWantsTable: false })).toBe(true);
+    }
+  });
+
+  it('omits rules for prose sections when the contract wants no table', () => {
+    for (const title of ['Executive Summary', 'Caveats', 'Narrative Briefing']) {
+      expect(sectionExpectsTable({ title, key: 'caveats', contractWantsTable: false })).toBe(false);
+    }
+  });
+
+  it('includes rules on every section when the contract asks for a table', () => {
+    // With outline expansion a section named "Opportunity 7" may legitimately
+    // carry the portfolio table, so a table-bearing contract opts all in.
+    expect(
+      sectionExpectsTable({ title: 'Opportunity 7', key: 'opp_7', contractWantsTable: true })
+    ).toBe(true);
+  });
+
+  it('detects a table request from artifacts or formats', () => {
+    expect(contractRequestsTable([{ type: 'table', description: 'master portfolio' }], [])).toBe(true);
+    expect(contractRequestsTable([], ['comparison table'])).toBe(true);
+    expect(contractRequestsTable([{ type: 'summary' }], ['prose'])).toBe(false);
   });
 });
 

@@ -27,6 +27,39 @@ export interface ReportSectionDraft {
  * rows instead of 20, failing the contract on a table that was substantively
  * complete.
  */
+const TABLE_SECTION_PATTERN = /table|matrix|portfolio|compar|grid|scorecard|dimensions|summary of/i;
+
+/**
+ * Whether a given section is plausibly going to emit a table.
+ *
+ * With R1 outline expansion a run can make ~40 drafter calls; injecting table
+ * rules into all of them wastes prompt tokens and constrains prose sections
+ * that will never contain a table (Copilot review, PR #205). Rules are included
+ * when the section itself looks tabular, or when the run's contract asks for a
+ * tabular artifact — the latter matters because a section titled
+ * "Opportunities 1–5" may legitimately carry the portfolio table.
+ */
+export function sectionExpectsTable(args: {
+  title: string;
+  key: string;
+  contractWantsTable: boolean;
+}): boolean {
+  if (TABLE_SECTION_PATTERN.test(args.title) || TABLE_SECTION_PATTERN.test(args.key)) return true;
+  return args.contractWantsTable;
+}
+
+/** True when any requested artifact or format implies a tabular deliverable. */
+export function contractRequestsTable(
+  artifacts: readonly ContractArtifact[] | undefined,
+  requestedFormats: readonly string[] | undefined
+): boolean {
+  const artifactHit = (artifacts ?? []).some((artifact) =>
+    TABLE_SECTION_PATTERN.test(`${artifact.type ?? ''} ${artifact.description ?? ''}`)
+  );
+  if (artifactHit) return true;
+  return (requestedFormats ?? []).some((format) => TABLE_SECTION_PATTERN.test(format));
+}
+
 export const TABLE_FORMATTING_RULES = `
 Markdown table rules (MANDATORY when you emit a table):
 - One row per line. A row must NEVER be split across lines or interrupted by a
@@ -376,6 +409,7 @@ export async function generateIterativeReport(args: {
     baselineWords: clampWordTarget(undefined),
   });
   const targetWordCount = clampWordTarget(contractTarget ?? args.targetWordCount);
+  const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -433,7 +467,11 @@ Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
-${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${TABLE_FORMATTING_RULES}
+${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${
+            sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
+              ? TABLE_FORMATTING_RULES
+              : ''
+          }
 ${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}

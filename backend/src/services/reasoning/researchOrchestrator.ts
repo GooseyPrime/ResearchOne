@@ -492,8 +492,13 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
     const headers = table.headers.map((header) => header.toLowerCase());
     if (headers.length === 0) continue;
 
+    // `title` / `name` / `idea` must stay in this set: a valid opportunity
+    // table may use a plain "Title" column with no rank/vertical/market header.
+    // Dropping them made the auditor ignore such tables and undercount
+    // delivered items — the exact failure this fix exists to prevent
+    // (Copilot review, PR #205).
     const looksOpportunityTable = headers.some((header) =>
-      /opportunity|vertical|niche|market|idea|rank/.test(header)
+      /opportunity|vertical|niche|market|title|name|idea|rank/.test(header)
     );
     if (!looksOpportunityTable) continue;
 
