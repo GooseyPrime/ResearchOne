@@ -1,3 +1,8 @@
+---
+name: code-review-delivery
+description: Ensure Copilot, Codex, Cursor, and other PR review fixes are actually published to the remote PR branch, verified, and merged instead of being lost in a local sandbox.
+---
+
 # Code review delivery protocol
 
 Use this whenever an agent reviews or addresses a pull request.
