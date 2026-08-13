@@ -1,6 +1,10 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
-import { getIntentOutputTemplate, INTENT_OUTPUT_TEMPLATES } from '../formatting/templates/intentOutputTemplates';
+import {
+  CLAIM_CLASS_EVIDENCE_BURDEN,
+  getIntentOutputTemplate,
+  INTENT_OUTPUT_TEMPLATES,
+} from '../formatting/templates/intentOutputTemplates';
 
 export interface ReportSectionDraft {
   title: string;
@@ -372,7 +376,7 @@ Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
-${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
+${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}

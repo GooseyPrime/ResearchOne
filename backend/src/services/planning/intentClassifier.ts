@@ -424,19 +424,48 @@ export async function classifyIntent(
 
   const userBlock = `QUERY:\n${query}\n\nSUPPLEMENTAL:\n${supplementalContext ?? '(none)'}\n`;
 
-  const res = await callRoleModel({
-    role: 'planner',
-    engineVersion: llmOpts.engineVersion,
-    researchObjective: llmOpts.researchObjective,
-    allowFallbackByRole: llmOpts.allowFallbackByRole,
-    callPurpose: 'phase_b_research_brief_classification',
-    runtimeOverrides: { primary: config.models.planning },
-    byokApiKeyOverride: llmOpts.byokApiKeyOverride,
-    messages: [
-      { role: 'system', content: RESEARCH_BRIEF_CLASSIFIER_PROMPT },
-      { role: 'user', content: userBlock },
-    ],
-  });
+  // The LLM pass enriches the brief (artifacts, counts, constraints). When the
+  // user already declared their intent we know it deterministically, so a
+  // provider outage must degrade to the declared intent rather than fail the
+  // run — Rule 42 R42-3: a model-derived value that controls the pipeline
+  // needs a deterministic fallback.
+  let res: Awaited<ReturnType<typeof callRoleModel>>;
+  try {
+    res = await callRoleModel({
+      role: 'planner',
+      engineVersion: llmOpts.engineVersion,
+      researchObjective: llmOpts.researchObjective,
+      allowFallbackByRole: llmOpts.allowFallbackByRole,
+      callPurpose: 'phase_b_research_brief_classification',
+      runtimeOverrides: { primary: config.models.planning },
+      byokApiKeyOverride: llmOpts.byokApiKeyOverride,
+      messages: [
+        { role: 'system', content: RESEARCH_BRIEF_CLASSIFIER_PROMPT },
+        { role: 'user', content: userBlock },
+      ],
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    if (explicit) {
+      const def = getIntentById(explicit.intent);
+      return defaultResearchBrief(
+        explicit.intent,
+        explicit.confidence,
+        `${explicit.reason}${def ? ` Display label: "${def.displayLabel}".` : ''} ` +
+          `Artifact extraction unavailable (classifier call failed: ${detail}); ` +
+          'the explicit declaration still determines the intent.'
+      );
+    }
+    const lex = lexicalLayer(query, supplementalContext);
+    if (lex) {
+      return defaultResearchBrief(
+        lex.intent,
+        Math.min(lex.confidence, 0.8),
+        `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
+      );
+    }
+    throw err;
+  }
 
   const brief = parseResearchBriefJson(res.content, 'factual_report');
 

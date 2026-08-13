@@ -7,7 +7,10 @@ import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
 import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
-import { getIntentOutputTemplate } from '../formatting/templates/intentOutputTemplates';
+import {
+  CLAIM_CLASS_EVIDENCE_BURDEN,
+  getIntentOutputTemplate,
+} from '../formatting/templates/intentOutputTemplates';
 import {
   RED_TEAM_V2_SYSTEM_PREFIX,
   isHfRepoModel,
@@ -1484,11 +1487,10 @@ export function buildVerifierPromptForIntent(intentId: string | undefined | null
 Your role is to verify that the final report meets the standards appropriate for its intent.
 
 ${template.verifierRubric}
-
+${isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}
 Universal minimum for all report types:
 - No fabricated specifics. Unknown values are labeled unknown.
-- Nontrivial external facts carry a source reference.
-- Stated user constraints are respected.
+${isAdjudicative ? '- Nontrivial external facts carry a source reference.\n' : ''}- Stated user constraints are respected.
 - The requested deliverable is produced. Uncertainty must be labeled, never used to refuse delivery.
 
 Output strict JSON in the following shape and nothing else:

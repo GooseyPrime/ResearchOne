@@ -30,6 +30,34 @@ export interface IntentOutputTemplate {
   requiredDeliverables: readonly string[];
 }
 
+/**
+ * WO-AA Phase 7 — evidence burden by claim class.
+ *
+ * The failure this prevents: requiring a citable corpus chunk before the model
+ * may name a market vertical or reason about its economics. That is a category
+ * error — it treats analysis as if it were a factual assertion, and it is what
+ * drove runs to refuse rather than deliver.
+ *
+ * Two tiers:
+ *   - Analysis and well-established domain knowledge: no citation required.
+ *   - Specific factual claims (named prices, named programs/vendors, statistics,
+ *     dates, regulatory specifics): a source, or an explicit unverified marker.
+ *
+ * Appended to non-adjudicative rubrics only. Adjudicative intents keep their
+ * stricter, unmodified requirements (PolicyOne).
+ */
+export const CLAIM_CLASS_EVIDENCE_BURDEN = `Evidence burden by claim class:
+- Analysis, reasoning, structural comparisons, and well-established domain
+  knowledge do NOT require a citation. Do not fail the report for lacking a
+  source behind a judgement, a ranking rationale, or a category description.
+- Specific factual claims DO require support: named prices or commission rates,
+  named vendors/programs/products presented as currently available, statistics,
+  market sizes, dates, and regulatory specifics. Each needs either a cited
+  source or an explicit marker such as "(unverified estimate)".
+- Modeled numbers must state their assumptions and be recalculable.
+- FAIL only for: specific factual claims presented as verified with neither a
+  source nor an unverified marker, or fabricated sources, figures, or URLs.`;
+
 export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
   intent_factual_report: {
     id: 'intent_factual_report',

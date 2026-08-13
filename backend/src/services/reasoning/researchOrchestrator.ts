@@ -717,10 +717,42 @@ async function runResearchJobInner(
     filterTags,
     modelOverrides: incomingModelOverrides,
     engineVersion,
-    researchObjective,
+    researchObjective: requestedResearchObjective,
     targetWordCount,
     citationStyle,
   } = data;
+
+  // WO-AA Phase 6 — the v2 route must supply a concrete objective for pricing
+  // before intent classification has run, so it writes the generic
+  // GENERAL_EPISTEMIC_RESEARCH placeholder. Once the plan is confirmed the
+  // brief carries the intent-derived objective; prefer it unless the caller
+  // explicitly chose one. Without this every opportunity_discovery run was
+  // recorded (and model-routed) as GENERAL_EPISTEMIC_RESEARCH.
+  const briefResolvedObjective = data.confirmedPlanPayload?.researchBrief?.resolvedResearchObjective;
+  const researchObjective: ResearchObjective | undefined =
+    !data.researchObjectiveExplicit && briefResolvedObjective
+      ? (briefResolvedObjective as ResearchObjective)
+      : requestedResearchObjective;
+  const objectiveWasResolvedFromIntent =
+    Boolean(researchObjective) && researchObjective !== requestedResearchObjective;
+  if (objectiveWasResolvedFromIntent) {
+    logger.info(
+      `[${data.runId}] Research objective resolved from intent: ` +
+      `${requestedResearchObjective ?? 'none'} -> ${researchObjective}`
+    );
+    // Persist so the run summary and trace show the objective actually used,
+    // not the pricing placeholder the route wrote. Tolerate deploy skew
+    // (Rule 13) — a missing column must not fail the run.
+    try {
+      await query(`UPDATE research_runs SET research_objective=$1 WHERE id=$2`, [
+        researchObjective,
+        data.runId,
+      ]);
+    } catch (err) {
+      logger.warn(`[${data.runId}] Could not persist resolved research objective:`, err);
+    }
+  }
+
   const runModelOverrides = normalizeRunOverrides(incomingModelOverrides);
   const allowFallbackByRole = allowFallbackByRoleFromOverrides(runModelOverrides);
   const v2Base = v2CallOpts(engineVersion, researchObjective, allowFallbackByRole);
@@ -750,6 +782,7 @@ async function runResearchJobInner(
     modelOverrides: runModelOverrides,
     engineVersion,
     researchObjective,
+    researchObjectiveExplicit: data.researchObjectiveExplicit,
     targetWordCount,
     requestedFormats: data.requestedFormats,
     citationStyle,

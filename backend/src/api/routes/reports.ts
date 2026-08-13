@@ -109,17 +109,48 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
   return fallback;
 }
 
+/** Max characters of the research request echoed into an exported report. */
+const REQUEST_LABEL_MAX_CHARS = 200;
+
+/**
+ * Collapse a research request to a single short line suitable for a report
+ * header. Structured prompts routinely run to hundreds of lines; the first
+ * meaningful heading or sentence identifies the request without reproducing it.
+ */
+export function summarizeResearchRequest(query: string): string {
+  const text = (query ?? '').trim();
+  if (!text) return '';
+
+  const heading = text.match(/^#{1,3}\s+(.+?)\s*$/m)?.[1];
+  const candidate = heading ?? text.split(/(?<=[.?!])\s+/)[0] ?? text;
+
+  const flattened = candidate
+    .replace(/[*_`#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!flattened) return '';
+
+  return flattened.length > REQUEST_LABEL_MAX_CHARS
+    ? `${flattened.slice(0, REQUEST_LABEL_MAX_CHARS - 1).trimEnd()}…`
+    : flattened;
+}
+
 function reportToMarkdown(args: {
   title: string;
   query: string;
   sections: Array<{ title: string; content: string }>;
 }): string {
-  const lines: string[] = [
-    `# ${args.title}`,
-    '',
-    `**Research query:** ${args.query}`,
-    '',
-  ];
+  // Rule 37 R-K: the raw prompt must not be prepended to the report body.
+  // `stripPromptEchoFromReport` removes it at generation time; re-embedding the
+  // full query here put ~700 lines of instructions back at the top of every
+  // exported report. Keep a capped one-line request label so a standalone
+  // export is still self-describing; the full prompt lives in run metadata and
+  // the dossier Request tab.
+  const lines: string[] = [`# ${args.title}`, ''];
+  const requestLabel = summarizeResearchRequest(args.query);
+  if (requestLabel) {
+    lines.push(`**Research request:** ${requestLabel}`, '');
+  }
   for (const s of args.sections) {
     lines.push(`## ${s.title}`, '', s.content, '', '');
   }

@@ -1,6 +1,6 @@
 # WO-AA — Deliverable integrity and evidence-path repair
 
-**Status:** OPEN
+**Status:** COMPLETE
 **Opened:** 2026-08-12
 **Supersedes:** WO-Z Phase 5 (implemented incorrectly — see §2)
 **Governing rules:** 42 (deliverable integrity), 37 (intent contracts),
@@ -156,10 +156,10 @@ with stubbed providers and asserts:
 | 2 — Synthesis modifier | DONE | | 2026-08-12 | Stub generator deleted |
 | 3 — Discovery fallback | DONE | | 2026-08-12 | Discovery can no longer be silently zeroed |
 | 4 — Boilerplate gating | DONE | | 2026-08-12 | Reader-facing strings intent-gated |
-| 5 — Prompt echo / token bloat | NOT STARTED | | | |
-| 6 — Objective resolution | NOT STARTED | | | |
-| 7 — Evidence burden by claim class | NOT STARTED | | | |
-| 8 — E2E regression fixture | NOT STARTED | | | |
+| 5 — Prompt echo / token bloat | DONE | | 2026-08-13 | Export re-embedded the prompt; specialists received it 3x |
+| 6 — Objective resolution | DONE | | 2026-08-13 | Route placeholder now yields to intent-derived objective |
+| 7 — Evidence burden by claim class | DONE | | 2026-08-13 | CLAIM_CLASS_EVIDENCE_BURDEN, non-adjudicative only |
+| 8 — E2E regression fixture | DONE | | 2026-08-13 | woAaDeliverableIntegrity.test.ts, 14 tests |
 
 ---
 

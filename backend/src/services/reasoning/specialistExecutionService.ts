@@ -13,9 +13,81 @@ import type {
   SpecialistAgentId,
 } from './agentCapabilityRegistry';
 import { normalizeDeterministicMetricChecks } from './deterministicQuant';
+import { logger } from '../../utils/logger';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
 const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
+
+/**
+ * Prompt budgets for specialist calls (WO-AA Phase 5).
+ *
+ * Run 6c59b711 sent ~95,000 prompt tokens to EVERY specialist and burned
+ * 1,282,705 tokens producing nothing. The cause was triple duplication: the
+ * raw ~700-line research request was sent as `QUERY`, embedded again inside
+ * the serialized `PLAN` (its `retrieval_queries` contained the whole prompt),
+ * and a third time inside `RESEARCH_BRIEF` — all uncapped.
+ *
+ * Specialists are narrow extractors. They need the task and its constraints,
+ * not the full authoring spec for the final deliverable (which the synthesizer
+ * receives separately).
+ */
+const MAX_QUERY_CHARS = 12_000;
+const MAX_PLAN_CHARS = 8_000;
+const MAX_BRIEF_CHARS = 6_000;
+/** Log a warning above this total user-content size so regressions surface in telemetry, not the bill. */
+export const SPECIALIST_PROMPT_WARN_CHARS = 120_000;
+
+function truncate(value: string, max: number, label: string): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}\n...[${label} truncated: ${value.length} chars total]`;
+}
+
+/**
+ * Replace verbatim copies of the research request inside serialized JSON with a
+ * back-reference. Plans and briefs routinely embed the full query, which is the
+ * single largest source of prompt duplication.
+ */
+export function redactDuplicatedQuery(serialized: string, query: string): string {
+  const needle = (query ?? '').trim();
+  // Only worth doing for substantial queries; short ones are cheap and
+  // replacing them risks mangling unrelated text.
+  if (needle.length < 400) return serialized;
+
+  let out = serialized.split(needle).join('[see QUERY above]');
+  // Plans and briefs are JSON-serialized, so the embedded copy has escaped
+  // newlines/quotes and never matches the raw text. Missing this made the
+  // whole redaction a no-op in production, where it matters most.
+  const escaped = JSON.stringify(needle).slice(1, -1);
+  if (escaped !== needle) {
+    out = out.split(escaped).join('[see QUERY above]');
+  }
+  return out;
+}
+
+/** Build the shared context block sent to every specialist, with budgets applied. */
+export function buildSpecialistContext(input: {
+  query: string;
+  plan: unknown;
+  researchBrief?: unknown;
+  evidenceContext: string;
+}): string {
+  const query = (input.query ?? '').trim();
+  const evidenceTruncated = input.evidenceContext.length > MAX_EVIDENCE_CONTEXT_CHARS;
+
+  const planJson = redactDuplicatedQuery(JSON.stringify(input.plan ?? {}), query);
+  const briefJson = input.researchBrief
+    ? redactDuplicatedQuery(JSON.stringify(input.researchBrief), query)
+    : '';
+
+  return [
+    `QUERY: ${truncate(query, MAX_QUERY_CHARS, 'query')}`,
+    `PLAN: ${truncate(planJson, MAX_PLAN_CHARS, 'plan')}`,
+    briefJson ? `RESEARCH_BRIEF: ${truncate(briefJson, MAX_BRIEF_CHARS, 'brief')}` : '',
+    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
 
 type SpecialistOutputMap = {
   market_scout: MarketScoutOutput;
@@ -136,13 +208,19 @@ export async function runSpecialistExecution(input: {
     degradedCoverageReasons: [],
   };
 
-  const evidenceTruncated = input.evidenceContext.length > MAX_EVIDENCE_CONTEXT_CHARS;
-  const context = [
-    `QUERY: ${input.query}`,
-    `PLAN: ${JSON.stringify(input.plan)}`,
-    input.researchBrief ? `RESEARCH_BRIEF: ${JSON.stringify(input.researchBrief)}` : '',
-    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
-  ].filter(Boolean).join('\n\n');
+  const context = buildSpecialistContext({
+    query: input.query,
+    plan: input.plan,
+    researchBrief: input.researchBrief,
+    evidenceContext: input.evidenceContext,
+  });
+  if (context.length > SPECIALIST_PROMPT_WARN_CHARS) {
+    logger.warn(
+      `[${input.runId}] Specialist context is ${context.length} chars ` +
+      `(> ${SPECIALIST_PROMPT_WARN_CHARS}); this is sent to every specialist. ` +
+      `Check for duplicated query/plan/brief content before it reaches the bill.`
+    );
+  }
   const claimed = new Set<SpecialistAgentId>();
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
