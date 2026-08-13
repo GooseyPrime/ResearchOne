@@ -173,6 +173,64 @@ describe('table contract — deterministic checks', () => {
     expect(checkTableContract(`${unrelated}\n\n${goodTable}`, expectation)).toEqual([]);
   });
 
+  it('ignores tables inside fenced code blocks', () => {
+    // Copilot + Codex, PR #204: a table *example* in a code fence renders as
+    // code, not a table. Accepting it would let a report satisfy a table
+    // requirement it never delivered — a check bypassable by fencing is worse
+    // than no check.
+    const fenced = [
+      'Here is the format to use:',
+      '',
+      '```markdown',
+      '| Rank | Vertical |',
+      '| --- | --- |',
+      '| 1 | Example |',
+      '```',
+      '',
+      'That is all.',
+    ].join('\n');
+    expect(extractMarkdownTables(fenced)).toHaveLength(0);
+
+    const expectation = resolveTableExpectation({
+      requestedArtifacts: [{ type: 'table', description: 'portfolio table' }],
+      userConstraints: [],
+    });
+    expect(checkTableContract(fenced, expectation).map((i) => i.code)).toContain('table_missing');
+  });
+
+  it('still finds a real table that follows a fenced example', () => {
+    const mixed = ['```', '| a | b |', '| - | - |', '```', '', goodTable].join('\n');
+    const tables = extractMarkdownTables(mixed);
+    expect(tables).toHaveLength(1);
+    expect(tables[0]?.rows).toHaveLength(2);
+  });
+
+  it('treats an escaped pipe as content, not a column boundary', () => {
+    // Codex, PR #204: `A \| B` is one GFM cell. Splitting on it produced a
+    // spurious extra cell, marked the table malformed, and burned repair passes.
+    const escaped = [
+      '| Metric | Notes |',
+      '| --- | --- |',
+      '| Throughput | high \\| low depending on tier |',
+    ].join('\n');
+    const tables = extractMarkdownTables(escaped);
+    expect(tables[0]?.rows[0]).toHaveLength(2);
+    expect(tables[0]?.rows[0]?.[1]).toBe('high | low depending on tier');
+
+    const expectation = resolveTableExpectation({
+      requestedArtifacts: [{ type: 'table', description: 'metrics table', exactCount: 1 }],
+      userConstraints: [],
+    });
+    expect(checkTableContract(escaped, expectation)).toEqual([]);
+  });
+
+  it('accepts a single-hyphen delimiter row, matching remark-gfm', () => {
+    // The GFM spec allows one hyphen per delimiter cell. Being stricter than
+    // the renderer would report "table missing" for a table the reader sees.
+    const minimal = ['| A | B |', '|-|-|', '| 1 | 2 |'].join('\n');
+    expect(extractMarkdownTables(minimal)).toHaveLength(1);
+  });
+
   it('recognises a table requested only through user constraints', () => {
     const expectation = resolveTableExpectation({
       requestedArtifacts: [],

@@ -28,13 +28,77 @@ export interface TableContractIssue {
   message: string;
 }
 
-const DELIMITER_ROW = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+/**
+ * GFM delimiter row.
+ *
+ * The GFM spec requires only that delimiter cells contain hyphens with optional
+ * leading/trailing colons — one hyphen is legal. We match the renderer rather
+ * than a stricter convention on purpose: being stricter than `remark-gfm`
+ * would make us report "required table missing" for a table the reader can
+ * plainly see, which is the exact failure class this module exists to prevent.
+ */
+const DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 
+/** Split a GFM row on unescaped pipes only. `A \| B` is ONE cell, not two. */
 function splitRow(line: string): string[] {
   let trimmed = line.trim();
   if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
   if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
-  return trimmed.split('|').map((cell) => cell.trim());
+
+  const cells: string[] = [];
+  let current = '';
+  for (let i = 0; i < trimmed.length; i += 1) {
+    const ch = trimmed[i];
+    if (ch === '\\' && trimmed[i + 1] === '|') {
+      // Keep the literal pipe; it is content, not a column boundary.
+      current += '|';
+      i += 1;
+      continue;
+    }
+    if (ch === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+/**
+ * Blank out fenced code blocks before scanning for tables.
+ *
+ * A pipe table inside ``` renders as code, not a table. Without this, a report
+ * containing a table *example* would satisfy a table requirement it never
+ * actually delivered — a deterministic check that can be bypassed by fencing is
+ * worse than no check (Rule 42 R42-1).
+ *
+ * Lines are replaced rather than removed so line offsets stay accurate.
+ */
+function maskFencedCodeBlocks(markdown: string): string {
+  const lines = (markdown ?? '').split(/\r?\n/);
+  let inFence = false;
+  let fenceMarker = '';
+  return lines
+    .map((line) => {
+      const fence = line.match(/^\s*(`{3,}|~{3,})/);
+      if (fence) {
+        const marker = fence[1] ?? '';
+        if (!inFence) {
+          inFence = true;
+          fenceMarker = marker[0] ?? '`';
+          return '';
+        }
+        if (marker[0] === fenceMarker) {
+          inFence = false;
+          fenceMarker = '';
+        }
+        return '';
+      }
+      return inFence ? '' : line;
+    })
+    .join('\n');
 }
 
 /**
@@ -45,7 +109,7 @@ function splitRow(line: string): string[] {
  * report them as malformed rather than silently dropping data.
  */
 export function extractMarkdownTables(markdown: string): MarkdownTable[] {
-  const lines = (markdown ?? '').split(/\r?\n/);
+  const lines = maskFencedCodeBlocks(markdown).split(/\r?\n/);
   const tables: MarkdownTable[] = [];
   let offset = 0;
   const lineOffsets = lines.map((line) => {

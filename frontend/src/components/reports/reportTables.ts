@@ -25,9 +25,24 @@ export function nodeText(node: unknown): string {
   return '';
 }
 
+/**
+ * Neutralise spreadsheet formula injection.
+ *
+ * Report cells carry model-generated and retrieved content. A cell beginning
+ * `=`, `+`, `-`, `@`, or a leading tab/CR is executed as a formula by Excel and
+ * Google Sheets on open or paste — quoting does NOT prevent this. Prefixing
+ * with an apostrophe forces the cell to be treated as text.
+ *
+ * Applied to BOTH export paths; a mitigation on only one is not a mitigation.
+ */
+function neutralizeFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function csvEscape(value: string): string {
-  const escaped = value.replace(/"/g, '""');
-  return /[",\n]/.test(value) ? `"${escaped}"` : escaped;
+  const safe = neutralizeFormula(value);
+  const escaped = safe.replace(/"/g, '""');
+  return /[",\n]/.test(safe) ? `"${escaped}"` : escaped;
 }
 
 export function toCsv(table: ParsedTable): string {
@@ -36,7 +51,7 @@ export function toCsv(table: ParsedTable): string {
 
 export function toTsv(table: ParsedTable): string {
   // Tab-separated content pastes into Sheets/Excel with columns preserved.
-  const clean = (v: string) => v.replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+  const clean = (v: string) => neutralizeFormula(v).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
   return [table.headers, ...table.rows].map((row) => row.map(clean).join('\t')).join('\n');
 }
 
@@ -75,20 +90,22 @@ export function parseTableNode(children: unknown): ParsedTable | null {
       return;
     }
     if (tag === 'tr') {
+      // Every direct element child of a <tr> is a cell.
+      //
+      // Matching only `type === 'th' | 'td'` broke on ReportDetailPage, which
+      // overrides `th`/`td` with function components — `type` is then a
+      // function, no cell was ever recognised, parsing returned null, and the
+      // data grid silently fell back to a plain table. Structural detection is
+      // renderer-agnostic.
       const cells: string[] = [];
       const collect = (n: unknown): void => {
+        if (n == null || n === false) return;
         if (Array.isArray(n)) {
           n.forEach(collect);
           return;
         }
-        if (n && typeof n === 'object') {
-          const child = n as { type?: unknown; props?: { children?: unknown } };
-          const childTag = typeof child.type === 'string' ? child.type : '';
-          if (childTag === 'th' || childTag === 'td') {
-            cells.push(nodeText(child.props?.children).trim());
-            return;
-          }
-          collect(child.props?.children);
+        if (typeof n === 'object') {
+          cells.push(nodeText(n).trim());
         }
       };
       collect(el.props?.children);

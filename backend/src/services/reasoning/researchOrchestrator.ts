@@ -312,6 +312,10 @@ function buildReaderFrontMatter(args: {
     ? [
         {
           label: 'Deliverable coverage',
+          value:
+            typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
+              ? `${args.deliveredOpportunityCount}/${args.requestedOpportunityCount}`
+              : 'Not tracked',
           narrative:
             typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
               ? `Delivered ${args.deliveredOpportunityCount}/${args.requestedOpportunityCount} requested opportunities.`
@@ -319,6 +323,8 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Field completeness',
+          value:
+            typeof args.fieldsCompleteCount === 'number' ? String(args.fieldsCompleteCount) : 'Not tracked',
           narrative:
             typeof args.fieldsCompleteCount === 'number'
               ? `${args.fieldsCompleteCount} artifacts passed required-field completeness checks.`
@@ -326,6 +332,10 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Constraint status',
+          value:
+            typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
+              ? `${args.constraintsPassed} met / ${args.constraintsFailed} open`
+              : 'Not tracked',
           narrative:
             typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
               ? `${args.constraintsPassed} user constraints were provided; ${args.constraintsFailed} unresolved contract requirements remained at finalize time.`
@@ -344,6 +354,10 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Validation experiments',
+          value:
+            typeof args.validationExperimentCount === 'number'
+              ? String(args.validationExperimentCount)
+              : 'Not tracked',
           narrative:
             typeof args.validationExperimentCount === 'number'
               ? `${args.validationExperimentCount} validation experiments were provided in the generated artifact.`
@@ -351,12 +365,14 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Contract status',
+          value: args.contractStatus ?? 'Unavailable',
           narrative: args.contractStatus ?? 'Contract status unavailable.',
         },
       ]
     : [
         {
           label: 'Contradictions',
+          value: String(args.contradictionCount),
           narrative:
             args.contradictionCount > 0
               ? `${args.contradictionCount} claim conflicts were detected. Each conflict shows two evidence-backed statements that cannot both be true as currently framed.`
@@ -364,6 +380,7 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Counterevidence / Falsification',
+          value: falsificationCriteria.length > 0 ? 'Defined' : 'Pending',
           narrative:
             falsificationCriteria.length > 0
               ? `This report's conclusions would be falsified by: ${falsificationCriteria.slice(0, 2).join('; ')}.`
@@ -371,6 +388,7 @@ function buildReaderFrontMatter(args: {
         },
         {
           label: 'Evidence coverage',
+          value: `${args.chunkCount} chunks / ${args.sourceCount} sources`,
           narrative: `${args.sourceCount} sources and ${args.chunkCount} chunks were reviewed; broader coverage can still change the confidence profile of conclusions.`,
         },
       ];
