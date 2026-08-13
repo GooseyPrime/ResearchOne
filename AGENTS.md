@@ -106,6 +106,7 @@ drove the rules is at
 | [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |
 | [`.cursor/rules/39-redesign-phase-checklist.mdc`](.cursor/rules/39-redesign-phase-checklist.mdc) | Every redesign-phase PR must update `docs/redesign-phase-status.md` and include the phase checklist in the PR description. |
 | [`.cursor/rules/40-corpus-competence-gate.mdc`](.cursor/rules/40-corpus-competence-gate.mdc) | Corpus is sealed by default; unlocks per topic partition on independence + density thresholds; self-referential source guard. |
+| [`.cursor/rules/42-deliverable-integrity.mdc`](.cursor/rules/42-deliverable-integrity.mdc) | Gates are never satisfied by stubs; degraded modes modify synthesis instead of replacing it; LLM-derived control values need deterministic fallbacks. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
 
 ## Repo-specific reading list (in priority order)
@@ -145,6 +146,41 @@ ship on `main`.
 **Enforcement:** `scripts/ci/assert-no-test-mocks-in-app-src.sh` runs in
 `.github/workflows/ci-guards.yml` (PRs / all branches) and again in
 `deploy-backend-emma.yml` before production SSH deploy to `main`.
+
+## Recurring review themes (WO-AA — deliverable integrity, run `6c59b711`)
+
+- **A green metric is not a delivered artifact.** The run reported
+  `opportunitiesDelivered: 20 / opportunitiesRequested: 20` while shipping
+  twenty byte-identical placeholder blocks. When adding a completeness check,
+  ask what the cheapest way to satisfy it is — and make that way impossible.
+- **Degraded modes must modify synthesis, not replace it.** The low-evidence
+  path was a string template with no model call that was assigned straight to
+  the report, so the synthesis stage ran **0 ms**. Any branch that assigns
+  prebuilt markdown to the deliverable is a defect (Rule 42 R42-2).
+- **Two safety features can deadlock each other.** Rule 40 seals the corpus by
+  design; `assessEvidenceSufficiency` required `citableChunkCount > 0`.
+  Together they made *every* run permanently "insufficient". When adding a
+  gate that consumes a value another gate deliberately zeroes, pass the
+  designed-state flag through.
+- **A failed LLM call must never silently disable a pipeline stage.** The
+  discovery planner threw, the catch set `discovery_queries: []`, and the
+  orchestrator early-returned — zero web searches for the entire run. Any
+  model-derived value that controls stage execution needs a deterministic
+  fallback that logs, persists, and emits progress (Rule 42 R42-3).
+- **Grep for hardcoded copy before rewriting prompts.** "This report
+  synthesizes evidence from 0 sources and 0 evidence chunks" was a string
+  literal in `researchOrchestrator.ts`, not agent output. No prompt change
+  could ever have fixed it.
+- **Internal identifiers leak.** `market_scout: zero relevant opportunities
+  extracted` and `No citable corpus evidence cleared the competence gate`
+  both reached a customer-facing report. Diagnostics belong in run metadata.
+- **Write work-order phases so the wrong implementation is not permitted.**
+  WO-Z Phase 5 said "proceed to synthesis under a low-evidence mode"; it was
+  implemented as a template that bypassed synthesis. State explicitly whether
+  an artifact is model-generated or code-generated, and name the anti-pattern
+  in the exit gate.
+
+Work order: [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](docs/WO-AA-DELIVERABLE-INTEGRITY.md).
 
 ## Recurring review themes (WO-Z — report-type fidelity, run `178fea66`)
 
@@ -606,6 +642,16 @@ The `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` should match `CLERK_PUBLISHABLE
 
 - The `EXPORTS_DIR` path (`/opt/researchone/exports`) must exist and be
   writable; otherwise the health check reports `status: "down"`.
+- **`NODE_ENV=production` in the developer's shell breaks local setup.** npm
+  silently omits devDependencies (no `typescript`, no `vitest`), and 45 test
+  files fail with `Missing required env file for production: backend/.env`.
+  Run installs and tests with `NODE_ENV=development` / `NODE_ENV=test`.
+  Symptom: `npm install` reports "up to date" while `node_modules/typescript`
+  does not exist.
+- **Dependency lifecycle scripts can fail on Windows** with
+  `ERR_INVALID_ARG_TYPE: The "file" argument must be of type string`
+  (`msgpackr-extract` install, `@clerk/shared` postinstall). `npm install
+  --ignore-scripts` is sufficient for typecheck/lint/test.
 - Backend lint has pre-existing warnings/errors (unused vars in test files);
   these are not from agent changes.
 - Frontend lint uses `--max-warnings 0` so even one pre-existing warning

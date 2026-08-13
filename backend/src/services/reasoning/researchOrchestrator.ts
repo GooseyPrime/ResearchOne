@@ -79,8 +79,8 @@ import type { PlanPayload } from '../planning/planTypes';
 import { runSpecialistExecution } from './specialistExecutionService';
 import {
   assessEvidenceSufficiency,
-  buildLowEvidenceLabeledDelivery,
-  shouldBypassRepairLoopForEvidence,
+  buildLowEvidenceSynthesisDirective,
+  evidenceShortfallDegradesStatus,
 } from './evidenceSufficiencyGate';
 import {
   isSpecialistAgentId,
@@ -280,12 +280,21 @@ function buildReaderFrontMatter(args: {
     ? args.falsificationCriteria.filter((c) => typeof c === 'string')
     : [];
 
-  const fallbackSummary = `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
-  const fallbackConclusion = args.contradictionCount > 0
-    ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
-    : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
-
   const nonAdjudicativeIntent = !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId);
+
+  // Reader-facing fallbacks must match the speech act. The adjudicative wording
+  // ("synthesizes evidence from N sources and N evidence chunks", "contradiction
+  // pairs") shipped on opportunity, comparison, and how-to reports and read as
+  // claim-adjudication boilerplate — including the degenerate
+  // "evidence from 0 sources and 0 evidence chunks" (Rule 37 R-M).
+  const fallbackSummary = nonAdjudicativeIntent
+    ? 'This report presents the requested analysis, with confidence levels and assumptions stated alongside each finding.'
+    : `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
+  const fallbackConclusion = nonAdjudicativeIntent
+    ? 'Findings are stated with their supporting rationale; treat figures marked as estimates as modeled rather than measured.'
+    : args.contradictionCount > 0
+      ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
+      : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
   const metricGlosses = nonAdjudicativeIntent
     ? [
         {
@@ -1068,6 +1077,12 @@ async function runResearchJobInner(
             substep: `discovery_round_${round}_complete`,
           });
         },
+        onDeterministicFallback: async ({ reason, queries }) => {
+          await progress('discovery', 13, `Discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+            substep: 'discovery_deterministic_fallback',
+            detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
+          });
+        },
       });
     } else {
       await progress('discovery', 12, 'Discovery skipped for this intent profile', { substep: 'stage_skipped' });
@@ -1128,6 +1143,11 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     const allChunks: RetrievedChunk[] = [];
     const corpusGateDecisions: Array<Record<string, unknown>> = [];
+    // Rule 40 seals partitions on purpose while the corpus is still small.
+    // When every decision is "sealed", zero citable chunks is the DESIGNED
+    // outcome — not an evidence failure — and must not force degraded delivery.
+    const corpusGateSealedByDesign = (decisions: Array<Record<string, unknown>>): boolean =>
+      decisions.length > 0 && decisions.every((d) => d.status === 'sealed');
     if (shouldRunPipelineStage(orchProfile, 'retrieval')) {
       await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
 
@@ -1192,7 +1212,8 @@ async function runResearchJobInner(
     let evidenceContext = formatEvidenceContext(allChunks);
     let retrieverResult!: ModelCallResult;
     let latestSpecialistOutputs: Record<string, unknown> = {};
-    let forcedLowEvidenceDeliveryMarkdown: string | null = null;
+    let lowEvidenceDirective: string | null = null;
+    let adjudicativeEvidenceExhausted = false;
     let evidenceFailureReason: string | null = null;
 
     const runRetrieverAnalysisStage = async (message: string) => {
@@ -1296,6 +1317,13 @@ async function runResearchJobInner(
       specialistOutputs: latestSpecialistOutputs,
       rediscoveryPassesRemaining: 1,
       requestedArtifactCount,
+      // Only sources that actually became queryable count as evidence.
+      // `sourcesIngested` counts jobs immediately after `ingestionQueue.add()`,
+      // so it includes jobs that later fail or are still pending — using it
+      // here could mark a run sufficient on the strength of URLs that were
+      // merely queued (Codex P1 review, PR #202).
+      discoverySourceCount: discoveryIngestBarrier.readyCount,
+      corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
     if (evidenceAssessment.action === 'rediscover') {
@@ -1318,6 +1346,12 @@ async function runResearchJobInner(
         maxIngestCapOverride: addonEffects.maxIngestCapOverride,
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds: 2,
+        onDeterministicFallback: async ({ reason, queries }) => {
+          await progress('reasoning', 48, `Re-discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+            substep: 'discovery_deterministic_fallback',
+            detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
+          });
+        },
       });
       const rediscoveryBarrier = await waitForDiscoveryIngestReadiness({
         sources: Array.isArray(rediscoverySummary.sources) ? rediscoverySummary.sources : [],
@@ -1384,27 +1418,31 @@ async function runResearchJobInner(
         specialistOutputs: latestSpecialistOutputs,
         rediscoveryPassesRemaining: 0,
         requestedArtifactCount,
+        // Barrier-ready counts only — see the note on the first assessment.
+        discoverySourceCount: discoveryIngestBarrier.readyCount + rediscoveryBarrier.readyCount,
+        corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
       });
     }
 
     if (evidenceAssessment.action === 'low_evidence_labeled_delivery') {
+      // Non-adjudicative intents ALWAYS synthesise. Low evidence changes how
+      // confidence is expressed, never whether the artifact is produced.
+      // Rule 37 R-L: never substitute a deterministic stub for synthesis.
       evidenceFailureReason = evidenceAssessment.reason;
-      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
+      lowEvidenceDirective = buildLowEvidenceSynthesisDirective({
         intentId: orchProfile.intent as never,
         requestedArtifactCount,
         gaps: evidenceAssessment.gaps,
       });
-      await progress('reasoning', 49, 'Evidence remained insufficient after re-discovery; switching to labeled low-evidence delivery.', {
+      await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
         substep: 'low_evidence_labeled_delivery',
       });
     } else if (evidenceAssessment.action === 'rediscover') {
-      // Adjudicative intent exhausted all rediscovery passes; cannot synthesise without evidence.
+      // Adjudicative intent exhausted all rediscovery passes. Adjudication
+      // genuinely cannot proceed without evidence — but it must fail loudly
+      // rather than emit a placeholder report shaped like a verdict.
       evidenceFailureReason = evidenceAssessment.reason;
-      forcedLowEvidenceDeliveryMarkdown = buildLowEvidenceLabeledDelivery({
-        intentId: orchProfile.intent as never,
-        requestedArtifactCount,
-        gaps: evidenceAssessment.gaps,
-      });
+      adjudicativeEvidenceExhausted = true;
       await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
         substep: 'adjudicative_evidence_exhausted',
       });
@@ -1551,10 +1589,15 @@ async function runResearchJobInner(
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
     let generatedReport: { markdown: string };
-    if (forcedLowEvidenceDeliveryMarkdown) {
-      generatedReport = { markdown: ensureGeneratedTitleHeading(forcedLowEvidenceDeliveryMarkdown, researchQuery, orchProfile.intent) };
-      await progress('synthesis', 80, 'Producing labeled low-evidence delivery...', { substep: 'low_evidence_delivery' });
-    } else if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    if (adjudicativeEvidenceExhausted) {
+      // Adjudication without evidence is the one case where refusing is correct.
+      // Fail the run explicitly instead of shipping a placeholder verdict.
+      throw new Error(
+        'Adjudicative run halted: no independent evidence survived discovery and re-discovery. ' +
+        'Rerun with a broader corpus or supply supplemental sources.'
+      );
+    }
+    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       generatedReport = await generateIterativeReport({
@@ -1565,6 +1608,7 @@ async function runResearchJobInner(
         reasoningChains: reasonerResult.content,
         challenges: challengesForSynthesis,
         specialistFindings: specialistFindingsBlock,
+        lowEvidenceDirective: lowEvidenceDirective ?? undefined,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
@@ -1605,6 +1649,11 @@ async function runResearchJobInner(
               `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
               `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
               `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
+              // The minimal path is still a synthesis path: when retrieval and
+              // re-discovery came back empty it must receive the same
+              // uncertainty, non-fabrication, and modeled-claim rules as the
+              // iterative drafter (Codex P2 review, PR #202).
+              `${lowEvidenceDirective ? `${lowEvidenceDirective}\n\n` : ''}` +
               `Evidence:\n${evidenceContext.slice(0, 60000)}`,
           },
         ],
@@ -1810,17 +1859,23 @@ ${generatedReport.markdown}`,
 
     const recomputeReportStatus = (): ReportGateStatus => {
       let nextStatus: ReportGateStatus = 'completed';
-      if (shouldBypassRepairLoopForEvidence(evidenceFailureReason)) {
-        return 'completed_degraded';
-      }
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
       const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
+      // Deliverable-contract and verifier failures are evaluated BEFORE the
+      // evidence-shortfall downgrade. Low-evidence runs now produce a real
+      // model-generated report, so a missing item or missing required field is
+      // repairable by re-drafting. Short-circuiting to `completed_degraded` on
+      // evidence grounds used to hide those failures and skip repair entirely,
+      // shipping an incomplete deliverable with a green-ish status
+      // (Codex P1 review, PR #202).
       if (contractFailed && verifierFailed) {
         nextStatus = 'contract_failed';
       } else if (contractFailed) {
         nextStatus = 'contract_failed';
       } else if (verifierFailed) {
         nextStatus = 'verification_failed';
+      } else if (evidenceShortfallDegradesStatus(evidenceFailureReason)) {
+        nextStatus = 'completed_degraded';
       } else if (sourceCoverageShortfall) {
         nextStatus = 'completed_degraded';
         contractAuditResult = {
@@ -1853,7 +1908,11 @@ ${generatedReport.markdown}`,
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
 
-    if (!shouldBypassRepairLoopForEvidence(evidenceFailureReason) && reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
+    // The repair loop is no longer skipped on evidence grounds. Repair cannot
+    // manufacture evidence, but it CAN fix a drafter that omitted requested
+    // items or required fields — which is the only way `reportStatus` can be
+    // `contract_failed` / `verification_failed` here (Codex P1 review, PR #202).
+    if (reportStatus !== 'completed' && reportStatus !== 'completed_degraded') {
       const MAX_REPAIR_ATTEMPTS = 2;
       for (
         let attempt = 1;

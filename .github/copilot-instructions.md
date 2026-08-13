@@ -1,4 +1,10 @@
-# ⛔ RULE 41 — FIX EVERYTHING YOU SEE. NO SCOPE EXCUSES. ⛔
+# GitHub Copilot — repository instructions
+
+You are an autonomous coding agent working in **ResearchOne**, a multi-intent
+deep-research platform. This file is loaded automatically on every request.
+Read it fully before acting.
+
+## ⛔ RULE 41 — FIX EVERYTHING YOU SEE. NO SCOPE EXCUSES. ⛔
 
 > **Binding. No exceptions. This is the first thing you read.**
 >
@@ -8,19 +14,12 @@
 > team. There is no backlog. You are the last line of defence.
 >
 > **Banned phrases** — forbidden in any commit, PR body, or response:
+>
 > - "still fails from pre-existing unrelated docs issues"
 > - "pre-existing unrelated issues" / "out of scope"
 > - "not caused by this change" / "left for a future PR"
 >
-> Full rule: [`.cursor/rules/41-fix-all-failures-no-excuses.mdc`](.cursor/rules/41-fix-all-failures-no-excuses.mdc)
-
----
-
-# GitHub Copilot — repository instructions
-
-You are an autonomous coding agent working in **ResearchOne**, a multi-intent
-deep-research platform. This file is loaded automatically on every request.
-Read it fully before acting.
+> Full rule: [`.cursor/rules/41-fix-all-failures-no-excuses.mdc`](../.cursor/rules/41-fix-all-failures-no-excuses.mdc)
 
 ## 0. Bootstrap (do this first, every session)
 
@@ -38,12 +37,18 @@ Read it fully before acting.
 
 | ID | Status | Document | One-line scope |
 | --- | --- | --- | --- |
-| **WO-Z** | **OPEN** | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity: intent declaration parsing, verifier rubric scoping, corpus competence gate, evidence-sufficiency gate. |
+| WO-Z | CLOSED | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity. Shipped in PR #200. Phase 5 was implemented incorrectly — superseded by WO-AA. |
+| **WO-AA** | **OPEN** | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity: prompt echo and token bloat, objective resolution, evidence burden by claim class, E2E regression fixture. Phases 1–4 already done. |
 
-**If WO-Z is `OPEN`, and the user's prompt does not name a different task,
-execute WO-Z autonomously from Phase 1 through Phase 6 without stopping to
-ask for confirmation between phases.** Stop only at a declared BLOCKED
-condition (§5).
+**If a work order is `OPEN`, and the user's prompt does not name a different
+task, execute it autonomously through every remaining phase without stopping
+to ask for confirmation between phases.** Start at the first phase whose
+Progress Log row is not `DONE`. Stop only at a declared BLOCKED condition (§5).
+
+**Before implementing any phase, read [`.cursor/rules/42-deliverable-integrity.mdc`](../.cursor/rules/42-deliverable-integrity.mdc).**
+It exists because a previous phase satisfied its exit gate with generated
+filler: twenty identical placeholder blocks that passed a deliverable-count
+check while delivering nothing. A green metric is not a completed phase.
 
 ## 2. Non-negotiable guardrails
 
@@ -72,6 +77,15 @@ work order appears to ask you to.
   before and after your change is worse than no test. Verify by stashing the
   source change and re-running.
 - **Grep every caller when you change a primitive** (Rule 17).
+- **Never satisfy a deliverable check with generated filler** (Rule 42). If a
+  count or field-presence gate passes while a human would call the output
+  empty, the generator is broken — not the gate.
+- **Degraded modes modify the synthesis prompt; they never replace the
+  synthesizer** (Rule 42 R42-2). A completed non-adjudicative run whose
+  synthesis stage took 0 ms is a bug.
+- **Any LLM-derived value that controls whether a stage runs needs a
+  deterministic fallback** that logs, persists, and emits progress (Rule 42
+  R42-3). "Completed with zero sources" must never be a quiet success.
 - **Out-of-scope findings are addressed or scheduled, never dismissed**
   (Rule 22). Record them in the work order's Findings Log.
 

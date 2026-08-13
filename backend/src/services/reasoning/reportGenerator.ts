@@ -258,6 +258,13 @@ export async function generateIterativeReport(args: {
   reasoningChains: string;
   challenges: string;
   specialistFindings?: string;
+  /**
+   * Set when the evidence-sufficiency gate found little independent
+   * corroboration. This is a SYNTHESIS MODIFIER — the full deliverable is
+   * still produced, with explicit uncertainty labelling. It must never cause
+   * synthesis to be skipped or replaced with a template (Rule 37 R-L).
+   */
+  lowEvidenceDirective?: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
@@ -365,6 +372,7 @@ Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
+${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}

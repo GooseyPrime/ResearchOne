@@ -1,0 +1,202 @@
+---
+description: Deliverable integrity — a gate may never be satisfied by a stub, evidence pipelines may never be silently zeroed, and reader-facing strings may never be hardcoded adjudicative boilerplate. Read before touching evidenceSufficiencyGate, discoveryOrchestrator, reportGenerator, or any reader-facing fallback text.
+alwaysApply: true
+---
+
+# Rule 42 — Deliverable integrity
+
+## Why this rule exists
+
+Run `6c59b711-53f1-44f5-b45f-ac39f9eb9a28` shipped an "Opportunity Discovery
+Report" containing **twenty identical placeholder blocks**:
+
+```text
+## Opportunity 7
+- Status: LOW-EVIDENCE DELIVERY
+- Confidence: Low
+- What is known: External evidence was insufficient in this pass.
+- What remains unknown: market_scout: zero relevant opportunities extracted
+- Next evidence to seek: Independent sources on demand, competition, pricing...
+```
+
+Every deterministic metric passed: `opportunitiesDelivered: 20`,
+`opportunitiesRequested: 20`. The count gate was green. The report was worthless.
+
+Three independent defects combined:
+
+1. The low-evidence path was implemented as a **string template with no model
+   call**, and it *replaced* synthesis rather than modifying it. The synthesis
+   stage ran for **0 ms**.
+2. `assessEvidenceSufficiency` required `citableChunkCount > 0`, but Rule 40
+   seals the corpus by design — so the condition was permanently false and
+   **every run** was routed into stub delivery.
+3. The discovery planner call failed, the catch handler set
+   `discovery_queries: []`, and the orchestrator returned early. **Zero web
+   searches executed.** The run had no evidence at all.
+
+## Rules
+
+### R42-1. A gate is never satisfied by a stub
+
+Deterministic completeness checks (item counts, required-field presence,
+section presence) exist to catch *under-delivery*. They must never be
+satisfiable by generated filler.
+
+Any code path that emits repeated, near-identical, content-free blocks in
+order to reach a required count is a defect regardless of what the metrics
+say. If a count check passes while a human would call the output empty, fix
+the generator — never the check.
+
+**Banned implementation pattern:** building the user-facing deliverable from
+a hardcoded string template when the pipeline's job is to produce researched
+content. Placeholder values such as `Evidence insufficient`, `Unverified`,
+`TBD`, or `[Step 1 — Placeholder]` must never appear as the *value* of a
+requested field.
+
+### R42-2. Degraded modes modify synthesis; they never replace it
+
+Low evidence, sealed corpora, failed retrieval, and provider outages change
+**how confidence is expressed**. They never change **whether the model
+writes the deliverable**.
+
+Implement degraded modes as a directive injected into the synthesis prompt.
+Do not add branches that assign a prebuilt markdown string to the report and
+skip the synthesizer.
+
+Concretely: if the synthesis stage duration is `0 ms` on a completed run and
+the intent is non-adjudicative, that is a bug.
+
+**The one exception:** adjudicative intents (`adjudication`, `investigation`,
+`story_verification`, `position_brief`) genuinely cannot render a verdict
+without evidence. Those must **fail loudly** — throw, mark the run failed —
+never emit a placeholder shaped like a verdict.
+
+### R42-3. Model-derived control values need deterministic fallbacks
+
+When an LLM call produces a value that *controls whether a pipeline stage
+runs at all*, a failed or empty response must fall back to a deterministic
+derivation. It must never silently disable the stage.
+
+This applies to discovery queries, retrieval queries, section outlines, and
+agent selection. The discovery planner is the reference failure: one bad JSON
+parse disabled all external search for the run, and because Rule 40 seals the
+corpus by design, discovery was the *only* evidence path.
+
+Every such fallback must:
+
+- derive a usable value from data already in hand (the query, the confirmed
+  plan, the brief);
+- log at `warn` or `error` with the reason;
+- persist an auditable event recording that the fallback fired;
+- emit a progress event so the degradation is visible in the run trace.
+
+"Completed with zero X" must never be a quiet success path.
+
+### R42-4. Reader-facing strings match the speech act
+
+Hardcoded fallback copy is not exempt from Rule 37. Strings such as:
+
+- `This report synthesizes evidence from N sources and N evidence chunks…`
+- `The current evidence set does not surface explicit contradiction pairs…`
+
+are claim-adjudication vocabulary. Shipped on an opportunity, comparison, or
+how-to report they are wrong, and at `N = 0` they are actively embarrassing:
+*"synthesizes evidence from 0 sources and 0 evidence chunks."*
+
+Gate every reader-facing fallback on `ADJUDICATIVE_SECTION_INTENTS`. No agent
+prompt work can fix a string literal — grep for them directly.
+
+### R42-5. Internal identifiers never reach the reader
+
+Agent ids, stage names, gate statuses, and internal enum values must not
+appear in report bodies. `market_scout: zero relevant opportunities
+extracted` and `No citable corpus evidence cleared the competence gate` both
+shipped to a customer.
+
+Diagnostic detail belongs in run metadata and the trace. Reader-facing gap
+text must be written for the reader.
+
+### R42-6. A designed state is not a failure state
+
+Rule 40 sealing a partition is the system working correctly. Code downstream
+must distinguish "no evidence because the corpus is deliberately sealed" from
+"no evidence because retrieval failed." Conflating them turned a working
+safety feature into a total product outage.
+
+Any gate that consumes `citableChunkCount` must also receive whether the
+corpus was intentionally sealed, and must not treat the designed state as an
+error.
+
+### R42-7. Count readiness, not enqueue
+
+A counter incremented at `queue.add()` measures *intent to ingest*, not
+available evidence. `sourcesIngested` includes jobs that later fail or are
+still pending, so using it as an evidence signal can mark a run sufficient on
+the strength of URLs that were merely queued.
+
+When a downstream gate asks "how much evidence do we have?", answer with the
+readiness-barrier count (`waitForDiscoveryIngestReadiness().readyCount`), never
+the enqueue count.
+
+### R42-8. A degraded label must not mask a repairable failure
+
+Status downgrades that short-circuit gate evaluation hide failures that repair
+could fix. `completed_degraded` for thin evidence was returned *before*
+checking the contract auditor and verifier, so a drafter that omitted half the
+requested items shipped anyway.
+
+Order gate evaluation so genuine deliverable failures are detected first:
+
+1. contract auditor
+2. verifier
+3. evidence-shortfall downgrade
+4. source-coverage downgrade
+
+Bypass repair only for failures repair genuinely cannot fix. Repair cannot
+manufacture evidence — but it can absolutely re-draft a missing section, so a
+contract failure must never be skipped on evidence grounds.
+
+Name helpers after what they do. A function called
+`shouldBypassRepairLoopForEvidence` that no longer bypasses the repair loop is
+the next bug.
+
+### R42-9. Degraded directives apply to every synthesis path
+
+A pipeline usually has more than one way to produce the report — the iterative
+drafter and one or more minimal/light paths. A directive threaded into only
+one of them leaves the others generating unlabelled content under exactly the
+conditions the directive exists for.
+
+When adding a synthesis modifier, grep for every branch that assigns
+`generatedReport` and thread it through all of them.
+
+### R42-10. Prompt directives must not contradict themselves
+
+A directive that bans the literal string `"unverified"` as placeholder text
+while also requiring an `"(unverified estimate)"` marker gives the model
+irreconcilable instructions; it will drop one of them unpredictably.
+
+Read generated prompt text end to end as if you were the model. Forbid
+*patterns of use* ("as the whole value of a field"), not bare substrings that
+legitimate output also contains.
+
+## Pre-commit check
+
+- [ ] Does any new code build a user-facing deliverable from a string
+      template instead of a model call?
+- [ ] Can any degraded path cause the synthesis stage to be skipped for a
+      non-adjudicative intent?
+- [ ] Does every LLM-derived control value have a deterministic fallback that
+      logs, persists, and emits progress?
+- [ ] Are all reader-facing fallback strings gated on adjudicativeness?
+- [ ] Do any internal agent ids or gate statuses appear in report text?
+- [ ] Does every consumer of `citableChunkCount` know whether the corpus was
+      intentionally sealed?
+- [ ] Would a human reading this output call it a real deliverable, not just
+      a passing metric?
+- [ ] Do evidence counters use readiness counts rather than enqueue counts?
+- [ ] Are contract and verifier gates evaluated before any status downgrade?
+- [ ] Is every synthesis branch that assigns `generatedReport` receiving the
+      degraded-mode directive?
+- [ ] Read every generated prompt end to end — does any instruction contradict
+      another?
