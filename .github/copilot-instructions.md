@@ -39,8 +39,11 @@ Read it fully before acting.
 | --- | --- | --- | --- |
 | WO-Z | CLOSED | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity. Shipped in PR #200. Phase 5 was implemented incorrectly — superseded by WO-AA. |
 | WO-AA | CLOSED | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity. All 8 phases complete (PRs #202, #203). |
+| **HANDOFF** | **OPEN** | [`docs/HANDOFF-WO-AC.md`](../docs/HANDOFF-WO-AC.md) | Finish WO-AC and land PR #205: make the run-summary Intent field actually resolve, clear the final Codex finding, merge. |
 
-**No work order is currently `OPEN`.** Follow the user's request directly.
+**`docs/HANDOFF-WO-AC.md` is OPEN — it is your task list.** Branch
+`cursor/wo-ac-outline-and-repair` is green and pushed; start from Task 1, do not
+re-do R1–R5.
 
 **If a work order is `OPEN`, and the user's prompt does not name a different
 task, execute it autonomously through every remaining phase without stopping
