@@ -118,6 +118,20 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
   const runId = summary?.runId ?? run?.id ?? 'unknown';
   const query = run?.title ?? '';
   const objective = (run as unknown as Record<string, string> | null)?.research_objective ?? '';
+  // WO-AC R6 — intent and objective are DIFFERENT axes and were easy to
+  // confuse. `Objective` is the model-ensemble routing profile (e.g.
+  // NOVEL_APPLICATION_DISCOVERY); the report type is the INTENT (e.g.
+  // opportunity_discovery). Showing only the objective, under a label that
+  // reads like a report type, made a correct run look like it had silently
+  // reinterpreted the request. Surface both, intent first.
+  const runRecord = run as unknown as Record<string, unknown> | null;
+  const planPayload = runRecord?.confirmed_plan_payload as
+    | { researchBrief?: { primaryIntent?: string; secondaryIntent?: string } }
+    | undefined;
+  const primaryIntent =
+    planPayload?.researchBrief?.primaryIntent ??
+    ((runRecord?.intent as string | undefined) || '');
+  const secondaryIntent = planPayload?.researchBrief?.secondaryIntent ?? '';
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
   // Build the full plain-text report string for clipboard copy.
@@ -128,7 +142,12 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
     lines.push(hr);
     lines.push(`Run ID       : ${runId}`);
     if (query) lines.push(`Query        : ${query}`);
-    if (objective) lines.push(`Objective    : ${objective}`);
+    if (primaryIntent) {
+      lines.push(
+        `Intent       : ${primaryIntent}${secondaryIntent ? ` (secondary: ${secondaryIntent})` : ''}`
+      );
+    }
+    if (objective) lines.push(`Model profile: ${objective}`);
     if (createdAt) lines.push(`Started      : ${createdAt}`);
     lines.push(`Status       : ${status.toUpperCase()}`);
     lines.push(`Duration     : ${fmtMs(totalDurationMs)}`);
@@ -191,7 +210,7 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
     lines.push(hr);
     lines.push(`Generated at : ${new Date().toISOString()}`);
     return lines.join('\n');
-  }, [runId, query, objective, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
+  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
 
   const handleCopy = useCallback(async () => {
     const text = buildPlainText();
