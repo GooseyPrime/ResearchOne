@@ -23,6 +23,7 @@ export interface RunSummaryData {
 interface Props {
   summary: RunSummaryData | null;
   run: ResearchRun | null;
+  plan?: Record<string, unknown> | null;
   traceEvents: ResearchProgressEvent[];
   failure: { stage: string; message: string; error?: string; retryable?: boolean; terminal?: boolean; failureMeta?: Record<string, unknown> } | null;
 }
@@ -89,7 +90,39 @@ function deriveRunDurationMs(run: ResearchRun | null, events: ResearchProgressEv
   return 0;
 }
 
-export default function RunSummaryReport({ summary, run, traceEvents, failure }: Props) {
+function readPlanIntent(planPayload: Record<string, unknown> | null | undefined): {
+  primaryIntent: string;
+  secondaryIntent: string;
+} {
+  if (!planPayload || typeof planPayload !== 'object') {
+    return { primaryIntent: '', secondaryIntent: '' };
+  }
+  const brief =
+    planPayload.researchBrief && typeof planPayload.researchBrief === 'object'
+      ? (planPayload.researchBrief as Record<string, unknown>)
+      : null;
+  const primaryFromBrief =
+    typeof brief?.primaryIntent === 'string' && brief.primaryIntent.trim()
+      ? brief.primaryIntent.trim()
+      : '';
+  const secondaryFromBrief =
+    typeof brief?.secondaryIntent === 'string' && brief.secondaryIntent.trim()
+      ? brief.secondaryIntent.trim()
+      : '';
+  const intentNode = planPayload.intent;
+  const primaryFromIntent =
+    typeof intentNode === 'string' && intentNode.trim()
+      ? intentNode.trim()
+      : intentNode && typeof intentNode === 'object' && typeof (intentNode as { id?: unknown }).id === 'string'
+        ? String((intentNode as { id: string }).id).trim()
+        : '';
+  return {
+    primaryIntent: primaryFromBrief || primaryFromIntent,
+    secondaryIntent: secondaryFromBrief,
+  };
+}
+
+export default function RunSummaryReport({ summary, run, plan, traceEvents, failure }: Props) {
   const [copied, setCopied] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -124,14 +157,8 @@ export default function RunSummaryReport({ summary, run, traceEvents, failure }:
   // opportunity_discovery). Showing only the objective, under a label that
   // reads like a report type, made a correct run look like it had silently
   // reinterpreted the request. Surface both, intent first.
-  const runRecord = run as unknown as Record<string, unknown> | null;
-  const planPayload = runRecord?.confirmed_plan_payload as
-    | { researchBrief?: { primaryIntent?: string; secondaryIntent?: string } }
-    | undefined;
-  const primaryIntent =
-    planPayload?.researchBrief?.primaryIntent ??
-    ((runRecord?.intent as string | undefined) || '');
-  const secondaryIntent = planPayload?.researchBrief?.secondaryIntent ?? '';
+  const planPayload = (plan ?? run?.plan ?? null) as Record<string, unknown> | null;
+  const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload);
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
   // Build the full plain-text report string for clipboard copy.

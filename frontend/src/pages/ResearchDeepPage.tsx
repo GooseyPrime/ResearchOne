@@ -1245,6 +1245,7 @@ export default function ResearchDeepPage() {
           <RunSummaryReport
             summary={runSummary}
             run={trackedRun ?? null}
+            plan={(polledRun?.plan as Record<string, unknown> | null | undefined) ?? null}
             traceEvents={traceEvents}
             failure={failure}
           />

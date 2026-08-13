@@ -644,6 +644,7 @@ export default function ReportDetailPage() {
           <RunGenerationTracePanel
             runSummary={runSummary}
             run={sourceRun}
+            plan={(runArtifacts?.plan as Record<string, unknown> | null | undefined) ?? (sourceRun.plan ?? null)}
             traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
           />
         </div>
@@ -979,10 +980,12 @@ function ReportContent({ content }: { content: string }) {
 function RunGenerationTracePanel({
   runSummary,
   run,
+  plan,
   traceEvents,
 }: {
   runSummary: RunSummaryData | null;
   run: ResearchRun;
+  plan?: Record<string, unknown> | null;
   traceEvents: ResearchProgressEvent[];
 }) {
   const [open, setOpen] = useState(false);
@@ -1010,6 +1013,7 @@ function RunGenerationTracePanel({
           <RunSummaryReport
             summary={runSummary}
             run={run}
+            plan={plan}
             traceEvents={traceEvents ?? []}
             failure={null}
           />

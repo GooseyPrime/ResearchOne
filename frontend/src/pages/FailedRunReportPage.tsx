@@ -326,6 +326,7 @@ export default function FailedRunReportPage() {
       <RunSummaryReport
         summary={runSummary}
         run={run}
+        plan={(artifacts?.plan as Record<string, unknown> | null | undefined) ?? (run?.plan ?? null)}
         traceEvents={progressEvents}
         failure={{
           stage: run.failed_stage ?? 'unknown',
