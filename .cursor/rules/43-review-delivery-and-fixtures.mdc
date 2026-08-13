@@ -1,0 +1,28 @@
+---
+description: Review fixes must be delivered to the remote PR before they count, and regression fixtures must match production interfaces.
+alwaysApply: true
+---
+
+# Rule 43 — review delivery and production-shaped fixtures
+
+## R43-1. A local reviewer fix is not delivered
+
+Before an agent says a Copilot/Codex review finding is fixed, it must verify the fix is present on the remote PR head. A commit that exists only in a sandbox is not a resolution.
+
+If publishing is unavailable, post `BLOCKED_GITHUB_DELIVERY` to the existing PR with a usable patch, the affected review threads, and test results. A write-capable agent must apply the patch to that PR branch.
+
+Before merge, inspect all review submissions including suppressed/outdated comments, reconcile every actionable finding, resolve threads only after the remote fix exists, run final checks, and verify the merge actually reaches `main`.
+
+## R43-2. Fixtures match production interfaces
+
+Fixtures must be built from the real production interface rather than an approximation. Do not invent optional fields or omit required ones merely to make a test convenient. Import the production type where practical and let the compiler enforce the shape.
+
+PR #205 exposed the failure: a fixture invented `RequestedArtifact.type` although production artifacts use `description`. That hid defects where real runs produced `Item N` headings and could be counted as zero delivered items despite green tests.
+
+## Pre-commit / pre-merge check
+
+- [ ] Does every new fixture match the production interface it represents?
+- [ ] Are all actionable Copilot/Codex findings reconciled against the current PR head?
+- [ ] Is every claimed fix present on the remote PR branch rather than only in a local checkout?
+- [ ] If an agent could not publish, did it provide `BLOCKED_GITHUB_DELIVERY` plus a usable patch?
+- [ ] After merge, was `main` verified to contain the integration result?
