@@ -67,7 +67,9 @@ describe('evidence sufficiency gate', () => {
     (intentId) => {
       const directive = buildLowEvidenceSynthesisDirective({ intentId, gaps: ['limited corroboration'] });
       expect(directive).not.toMatch(/^#\s/m);
-      expect(directive).toMatch(/LOW-EVIDENCE SYNTHESIS MODE/);
+      // Renamed from "LOW-EVIDENCE" so the directive itself stops feeding
+      // adjudicative vocabulary to non-adjudicative drafters.
+      expect(directive).toMatch(/LIMITED-SOURCING SYNTHESIS MODE/);
       expect(directive).toMatch(/must never be\s+a placeholder/i);
     }
   );

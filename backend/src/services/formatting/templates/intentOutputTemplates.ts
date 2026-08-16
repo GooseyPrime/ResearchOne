@@ -46,7 +46,7 @@ export interface IntentOutputTemplate {
  * Appended to non-adjudicative rubrics only. Adjudicative intents keep their
  * stricter, unmodified requirements (PolicyOne).
  */
-export const CLAIM_CLASS_EVIDENCE_BURDEN = `Evidence burden by claim class:
+export const CLAIM_CLASS_EVIDENCE_BURDEN = `Sourcing requirements by claim class:
 - Analysis, reasoning, structural comparisons, and well-established domain
   knowledge do NOT require a citation. Do not fail the report for lacking a
   source behind a judgement, a ranking rationale, or a category description.
@@ -56,7 +56,12 @@ export const CLAIM_CLASS_EVIDENCE_BURDEN = `Evidence burden by claim class:
   source or an explicit marker such as "(unverified estimate)".
 - Modeled numbers must state their assumptions and be recalculable.
 - FAIL only for: specific factual claims presented as verified with neither a
-  source nor an unverified marker, or fabricated sources, figures, or URLs.`;
+  source nor an unverified marker, or fabricated sources, figures, or URLs.
+
+Vocabulary: this report is an analysis built on sources and reasoning. Do not
+describe it as "evidence-based" or "evidence-driven", and do not frame it as
+adjudicating, verifying, or falsifying a claim — that is a different kind of
+report. Say "sources", "signals", or "findings".`;
 
 export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
   intent_factual_report: {
@@ -95,7 +100,7 @@ FAIL if: claims are asserted without evidence, uncertainty is papered over, the 
 - Evidence tier tags are present on major claims.
 - Open questions are acknowledged rather than suppressed.
 - Citations support claims in all layers.
-FAIL if: all claims are treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because the evidence is imperfect.`,
+FAIL if: all claims are treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
     requiredDeliverables: [
       'Established-knowledge layer with cited evidence',
       'Contested or debated claims layer',
@@ -168,7 +173,7 @@ FAIL if: contested zones are glossed over, evidence is asymmetrically weighted w
 - Limitations of the evidence base are acknowledged.
 - Citations are present for all referenced works.
 - No unsupported inferences added beyond what the literature supports.
-FAIL if: sources are listed without synthesis, search scope is unstated, the review introduces claims not found in the surveyed literature, or the report refuses to synthesize the literature because the evidence is imperfect.`,
+FAIL if: sources are listed without synthesis, search scope is unstated, the review introduces claims not found in the surveyed literature, or the report refuses to synthesize the literature because sourcing is thin.`,
     requiredDeliverables: [
       'Stated scope and search methodology',
       'Synthesized findings across sources',
@@ -191,7 +196,7 @@ FAIL if: sources are listed without synthesis, search scope is unstated, the rev
 - Source references support per-option assessments.
 - Trade-offs are named rather than suppressed.
 - If a recommendation is included, it references the stated dimensions.
-FAIL if: options receive unequal treatment without justification, comparison dimensions are unstated, trade-offs are glossed over, or the report refuses to complete the comparison because the evidence is imperfect.`,
+FAIL if: options receive unequal treatment without justification, comparison dimensions are unstated, trade-offs are glossed over, or the report refuses to complete the comparison because sourcing is thin.`,
     requiredDeliverables: [
       'Explicit comparison dimensions',
       'Per-option analysis across all dimensions',
@@ -213,7 +218,7 @@ FAIL if: options receive unequal treatment without justification, comparison dim
 - Expected outcomes are described.
 - Common failure modes or troubleshooting notes are included where applicable.
 - Each step is backed by source references or clearly identified established practice.
-FAIL if: steps are out of order, prerequisites are missing, steps are vague and non-actionable, or the report refuses to provide the procedure because the evidence is imperfect.`,
+FAIL if: steps are out of order, prerequisites are missing, steps are vague and non-actionable, or the report refuses to provide the procedure because sourcing is thin.`,
     requiredDeliverables: [
       'Prerequisites',
       'Ordered, numbered, actionable steps',
@@ -234,8 +239,8 @@ FAIL if: steps are out of order, prerequisites are missing, steps are vague and 
 - Options were considered (even if not all are elaborated in full).
 - The final recommendation is explicit and reasoned.
 - Trade-offs of the chosen option are named.
-- The recommendation is consistent with the supporting sources; no conclusion is more confident than the evidence.
-FAIL if: recommendation is asserted without reasoning, constraints are unstated, trade-offs are suppressed, or the report refuses to recommend because the evidence is imperfect.`,
+- The recommendation is consistent with the supporting sources; no conclusion is more confident than its basis.
+FAIL if: recommendation is asserted without reasoning, constraints are unstated, trade-offs are suppressed, or the report refuses to recommend because sourcing is thin.`,
     requiredDeliverables: [
       'Stated constraints and decision criteria',
       'Options considered',
@@ -256,10 +261,10 @@ FAIL if: recommendation is asserted without reasoning, constraints are unstated,
 - Editorial framing is honest about uncertainty.
 - Claims are anchored to source references or clearly labeled as tentative.
 - The report does not overstate conclusions — it explicitly marks open questions.
-FAIL if: the report asserts definitive conclusions where the evidence is exploratory, uncertainty is hidden, or the report refuses to surface findings because the evidence is imperfect.`,
+FAIL if: the report asserts definitive conclusions where the findings are exploratory, uncertainty is hidden, or the report refuses to surface findings because sourcing is thin.`,
     requiredDeliverables: [
       'Editorial framing of the exploration',
-      'Curated highlights with evidence tags',
+      'Curated highlights with confidence tags',
       'Why-it-matters context',
       'Open questions or follow-up directions',
     ],
@@ -282,13 +287,13 @@ FAIL if: the report asserts definitive conclusions where the evidence is explora
 - User constraints (e.g., time/budget/tool limits) are respected.
 - The report does not critique the premise instead of delivering opportunities.
 - The report stays in ranked-opportunity mode rather than drifting into claim-audit or adversarial analysis structure.
-- If the initial corpus was incomplete, the report shows evidence that additional retrieval was attempted.
-FAIL if: the requested opportunity count is not met; the report delivers a comparative analysis or investigation instead of ranked opportunities; claim-audit or adversarial sections dominate; confirmed required fields are absent; or the report refuses to rank because evidence is imperfect (uncertainty should be labeled, not used to abort the deliverable).`,
+- If the initial corpus was incomplete, the report shows that additional retrieval was attempted.
+FAIL if: the requested opportunity count is not met; the report delivers a comparative analysis or investigation instead of ranked opportunities; claim-audit or adversarial sections dominate; confirmed required fields are absent; or the report refuses to rank because sourcing is thin (uncertainty should be labeled, not used to abort the deliverable).`,
     requiredDeliverables: [
       'Ranked opportunity list with the exact count requested (or maximum available if no count was stated)',
       'Each opportunity: title, description, and ranking rationale',
       'Each opportunity: user-requested or plan-confirmed information fields (e.g., monetization, competition, economics)',
-      'Each opportunity: cited evidence or sourced signals supporting viability',
+      'Each opportunity: cited sources or documented signals supporting viability',
       'Unknown or unverified data labeled explicitly rather than omitted or fabricated',
       'Final recommendation or top-N summary',
       'Caveats and confidence notes',
@@ -308,7 +313,7 @@ FAIL if: the requested opportunity count is not met; the report delivers a compa
 - A risk register or key risks section is present.
 - An explicit go/no-go or qualified recommendation is rendered.
 - Source references or clearly labeled assumptions support each dimension assessment.
-FAIL if: a dimension is omitted without explanation, the recommendation is absent, viability claims lack support, or the report refuses to assess feasibility because the evidence is imperfect.`,
+FAIL if: a dimension is omitted without explanation, the recommendation is absent, viability claims lack support, or the report refuses to assess feasibility because sourcing is thin.`,
     requiredDeliverables: [
       'Viability dimensions assessment',
       'Enabling factors',
@@ -330,7 +335,7 @@ FAIL if: a dimension is omitted without explanation, the recommendation is absen
 - Each step is specific enough to act on.
 - Acceptance criteria or success indicators are defined.
 - User constraints (timeline, tools, budget) are respected in the plan.
-FAIL if: phases are vague, prerequisites are missing, steps are non-actionable, user constraints are violated, or the report refuses to provide an implementation plan because the evidence is imperfect.`,
+FAIL if: phases are vague, prerequisites are missing, steps are non-actionable, user constraints are violated, or the report refuses to provide an implementation plan because sourcing is thin.`,
     requiredDeliverables: [
       'Overview and goal',
       'Prerequisites',
@@ -400,7 +405,7 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
 - Contested or disputed dates are flagged.
 - Each event carries a source reference and major historical claims carry an evidence tier tag.
 - Sources are cited for each event.
-FAIL if: events are out of order, date precision is overstated, contested dates are presented as certain, or the report refuses to provide the timeline because the evidence is imperfect.`,
+FAIL if: events are out of order, date precision is overstated, contested dates are presented as certain, or the report refuses to provide the timeline because sourcing is thin.`,
     requiredDeliverables: [
       'Chronologically ordered events',
       'Date-precision notes',
@@ -420,7 +425,7 @@ FAIL if: events are out of order, date precision is overstated, contested dates 
 - A direct answer is provided.
 - Sources are cited.
 - Confidence is stated.
-FAIL if: the direct answer is absent, sources are missing, the answer is padded with unnecessary analysis, or the report refuses to answer because the evidence is imperfect.`,
+FAIL if: the direct answer is absent, sources are missing, the answer is padded with unnecessary analysis, or the report refuses to answer because sourcing is thin.`,
     requiredDeliverables: [
       'Direct answer',
       'Supporting sources',

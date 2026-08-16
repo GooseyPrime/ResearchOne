@@ -38,6 +38,7 @@ import {
   resolveTableExpectation,
 } from './tableContract';
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
+import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -1424,6 +1425,39 @@ async function runResearchJobInner(
           researchObjective: v2.researchObjective,
           allowFallbackByRole: v2.allowFallbackByRole,
           byokApiKeyOverride,
+          // Chunk ids already in the shared context, so scoped retrieval does
+          // not pay for the same text twice.
+          sharedContextChunkIds: new Set(allChunks.map((chunk) => chunk.id)),
+          // Scoped retrieval stays owned by the orchestrator: it runs through
+          // `retrieveChunksWithAudit`, so the corpus competence gate (Rule 40)
+          // and the run audit trail apply exactly as they do for shared
+          // retrieval. The specialist service never touches the retrieval layer.
+          retrieveScoped: async ({ agent, queries }) => {
+            const collected: RetrievedChunk[] = [];
+            const seen = new Set<string>();
+            for (const scopedQuery of queries) {
+              const scopedResult = await retrieveChunksWithAudit({
+                query: scopedQuery,
+                topK: SCOPED_RETRIEVAL_TOP_K,
+                filterTags,
+                hybridSearch: true,
+                intentId: orchProfile.intent as never,
+                userId: creditCtx?.userId,
+                runId,
+              });
+              corpusGateDecisions.push({
+                query: `${scopedQuery} [scoped:${agent}]`,
+                ...scopedResult.corpusGate,
+              });
+              for (const chunk of scopedResult.citableChunks) {
+                if (!seen.has(chunk.id)) {
+                  seen.add(chunk.id);
+                  collected.push(chunk);
+                }
+              }
+            }
+            return collected;
+          },
           onProgress: async (message) => {
             await progress('reasoning', 45, message, { substep: 'specialist_running' });
           },

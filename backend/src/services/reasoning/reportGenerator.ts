@@ -499,7 +499,7 @@ ${confirmedFieldsBlock}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
-Evidence context: ${args.evidenceContext}
+Source material: ${args.evidenceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 Return section body text only.`,
