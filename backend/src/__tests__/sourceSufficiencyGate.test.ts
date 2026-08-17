@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  assessEvidenceSufficiency,
-  buildLowEvidenceSynthesisDirective,
-  evidenceShortfallDegradesStatus,
-} from '../services/reasoning/evidenceSufficiencyGate';
+  assessSourceSufficiency,
+  buildLimitedSourcingDirective,
+  sourceShortfallDegradesStatus,
+} from '../services/reasoning/sourceSufficiencyGate';
 
 describe('evidence sufficiency gate', () => {
   it('routes zero-usable-data specialist output to re-discovery when another pass remains', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: {
@@ -26,7 +26,7 @@ describe('evidence sufficiency gate', () => {
   it('requires specialist signals independently — chunks alone do not declare evidence sufficient', () => {
     // Specialists report zero usable data points; citable chunks are present but specialist signals are zero.
     // This must not be declared sufficient (it recreates the reference failure mode).
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 5,
       specialistOutputs: {
@@ -41,7 +41,7 @@ describe('evidence sufficiency gate', () => {
   });
 
   it('builds a labeled low-evidence deliverable with the requested artifact count when rediscovery is exhausted', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: {},
@@ -53,7 +53,7 @@ describe('evidence sufficiency gate', () => {
     // Low-evidence mode must yield a SYNTHESIS DIRECTIVE, not a prebuilt
     // report. The previous implementation emitted 20 identical placeholder
     // sections and skipped synthesis entirely (Rule 37 R-L).
-    const directive = buildLowEvidenceSynthesisDirective({
+    const directive = buildLimitedSourcingDirective({
       intentId: 'opportunity_discovery',
       requestedArtifactCount: 20,
       gaps: result.gaps,
@@ -65,7 +65,7 @@ describe('evidence sufficiency gate', () => {
   it.each(['comparative', 'feasibility', 'recommendation', 'how_to', 'implementation'] as const)(
     'returns a synthesis directive rather than a placeholder artifact for %s',
     (intentId) => {
-      const directive = buildLowEvidenceSynthesisDirective({ intentId, gaps: ['limited corroboration'] });
+      const directive = buildLimitedSourcingDirective({ intentId, gaps: ['limited corroboration'] });
       expect(directive).not.toMatch(/^#\s/m);
       // Renamed from "LOW-EVIDENCE" so the directive itself stops feeding
       // adjudicative vocabulary to non-adjudicative drafters.
@@ -75,8 +75,8 @@ describe('evidence sufficiency gate', () => {
   );
 
   it('marks insufficient-evidence runs degraded without suppressing other gates', () => {
-    expect(evidenceShortfallDegradesStatus('insufficient_evidence')).toBe(true);
-    expect(evidenceShortfallDegradesStatus('verification_failed')).toBe(false);
-    expect(evidenceShortfallDegradesStatus(null)).toBe(false);
+    expect(sourceShortfallDegradesStatus('insufficient_evidence')).toBe(true);
+    expect(sourceShortfallDegradesStatus('verification_failed')).toBe(false);
+    expect(sourceShortfallDegradesStatus(null)).toBe(false);
   });
 });

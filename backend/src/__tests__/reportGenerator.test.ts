@@ -41,7 +41,7 @@ describe('iterative report generator', () => {
     const result = await generateIterativeReport({
       query: 'Test query',
       plan: {},
-      evidenceContext: 'evidence',
+      sourceContext: 'evidence',
       retrieverAnalysis: 'analysis',
       reasoningChains: 'reasoning',
       challenges: 'challenges',
@@ -65,7 +65,7 @@ describe('iterative report generator', () => {
       generateIterativeReport({
         query: 'Test query',
         plan: {},
-        evidenceContext: 'evidence',
+        sourceContext: 'evidence',
         retrieverAnalysis: 'analysis',
         reasoningChains: 'reasoning',
         challenges: 'challenges',
@@ -81,7 +81,7 @@ describe('iterative report generator', () => {
       generateIterativeReport({
         query: 'Test query',
         plan: {},
-        evidenceContext: 'evidence',
+        sourceContext: 'evidence',
         retrieverAnalysis: 'analysis',
         reasoningChains: 'reasoning',
         challenges: 'challenges',
@@ -116,7 +116,7 @@ describe('iterative report generator', () => {
     const result = await generateIterativeReport({
       query: 'opportunity query',
       plan: {},
-      evidenceContext: 'evidence',
+      sourceContext: 'evidence',
       retrieverAnalysis: 'analysis',
       reasoningChains: 'reasoning',
       challenges: 'challenges',

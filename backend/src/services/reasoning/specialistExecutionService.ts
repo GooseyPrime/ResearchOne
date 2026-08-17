@@ -23,7 +23,7 @@ import {
 } from './specialistRetrievalScopes';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
-export const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
+export const MAX_SOURCE_CONTEXT_CHARS = 50_000;
 
 /**
  * Prompt budgets for specialist calls (WO-AA Phase 5).
@@ -76,10 +76,10 @@ export function buildSpecialistContext(input: {
   query: string;
   plan: unknown;
   researchBrief?: unknown;
-  evidenceContext: string;
+  sourceContext: string;
 }): string {
   const query = (input.query ?? '').trim();
-  const evidenceTruncated = input.evidenceContext.length > MAX_EVIDENCE_CONTEXT_CHARS;
+  const sourceTruncated = input.sourceContext.length > MAX_SOURCE_CONTEXT_CHARS;
 
   const planJson = redactDuplicatedQuery(JSON.stringify(input.plan ?? {}), query);
   const briefJson = input.researchBrief
@@ -90,7 +90,7 @@ export function buildSpecialistContext(input: {
     `QUERY: ${truncate(query, MAX_QUERY_CHARS, 'query')}`,
     `PLAN: ${truncate(planJson, MAX_PLAN_CHARS, 'plan')}`,
     briefJson ? `RESEARCH_BRIEF: ${truncate(briefJson, MAX_BRIEF_CHARS, 'brief')}` : '',
-    `SOURCE_MATERIAL: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
+    `SOURCE_MATERIAL: ${input.sourceContext.slice(0, MAX_SOURCE_CONTEXT_CHARS)}${sourceTruncated ? '\n...[truncated]' : ''}`,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -193,7 +193,7 @@ export async function runSpecialistExecution(input: {
   runId: string;
   query: string;
   plan: unknown;
-  evidenceContext: string;
+  sourceContext: string;
   executionPlan: CanonicalExecutionPlan;
   researchBrief?: ResearchBrief;
   engineVersion?: string;
@@ -235,7 +235,7 @@ export async function runSpecialistExecution(input: {
     query: input.query,
     plan: input.plan,
     researchBrief: input.researchBrief,
-    evidenceContext: input.evidenceContext,
+    sourceContext: input.sourceContext,
   });
   if (context.length > SPECIALIST_PROMPT_WARN_CHARS) {
     logger.warn(

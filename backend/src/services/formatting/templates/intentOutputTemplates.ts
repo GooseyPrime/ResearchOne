@@ -46,7 +46,7 @@ export interface IntentOutputTemplate {
  * Appended to non-adjudicative rubrics only. Adjudicative intents keep their
  * stricter, unmodified requirements (PolicyOne).
  */
-export const CLAIM_CLASS_EVIDENCE_BURDEN = `Sourcing requirements by claim class:
+export const CLAIM_CLASS_SOURCING_BURDEN = `Sourcing requirements by claim class:
 - Analysis, reasoning, structural comparisons, and well-established domain
   knowledge do NOT require a citation. Do not fail the report for lacking a
   source behind a judgement, a ranking rationale, or a category description.

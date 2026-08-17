@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { classifyIntent } from '../services/planning/intentClassifier';
 import { buildVerifierPromptForIntent } from '../services/openrouter/openrouterService';
 import {
-  CLAIM_CLASS_EVIDENCE_BURDEN,
+  CLAIM_CLASS_SOURCING_BURDEN,
   INTENT_OUTPUT_TEMPLATES,
 } from '../services/formatting/templates/intentOutputTemplates';
 import {
@@ -82,11 +82,11 @@ describe('WO-AA fixture — verification rubric matches the speech act', () => {
 
   it('applies the claim-class evidence burden to non-adjudicative intents only', () => {
     expect(buildVerifierPromptForIntent('opportunity_discovery', false)).toContain(
-      CLAIM_CLASS_EVIDENCE_BURDEN
+      CLAIM_CLASS_SOURCING_BURDEN
     );
     // PolicyOne intents keep their stricter, unmodified requirements.
     expect(buildVerifierPromptForIntent('adjudication', true)).not.toContain(
-      CLAIM_CLASS_EVIDENCE_BURDEN
+      CLAIM_CLASS_SOURCING_BURDEN
     );
   });
 
@@ -97,9 +97,9 @@ describe('WO-AA fixture — verification rubric matches the speech act', () => {
   });
 
   it('does not fail analysis for missing citations, only specific factual claims', () => {
-    expect(CLAIM_CLASS_EVIDENCE_BURDEN).toMatch(/do NOT require a citation/i);
-    expect(CLAIM_CLASS_EVIDENCE_BURDEN).toMatch(/named prices|commission rates/i);
-    expect(CLAIM_CLASS_EVIDENCE_BURDEN).toMatch(/unverified estimate/i);
+    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/do NOT require a citation/i);
+    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/named prices|commission rates/i);
+    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/unverified estimate/i);
   });
 });
 
@@ -116,7 +116,7 @@ describe('WO-AA fixture — prompt budgeting (Phase 5)', () => {
       query: bigQuery,
       plan,
       researchBrief: brief,
-      evidenceContext: '',
+      sourceContext: '',
     });
 
     const occurrences = context.split(REFERENCE_PROMPT.slice(0, 120)).length - 1;
@@ -129,7 +129,7 @@ describe('WO-AA fixture — prompt budgeting (Phase 5)', () => {
       query: bigQuery,
       plan: { retrieval_queries: [bigQuery] },
       researchBrief: { rawQuery: bigQuery },
-      evidenceContext: 'x'.repeat(200_000),
+      sourceContext: 'x'.repeat(200_000),
     });
     // Query + plan + brief budgets plus the evidence cap.
     expect(context.length).toBeLessThan(100_000);
@@ -140,7 +140,7 @@ describe('WO-AA fixture — prompt budgeting (Phase 5)', () => {
     const context = buildSpecialistContext({
       query: short,
       plan: { retrieval_queries: [short] },
-      evidenceContext: '',
+      sourceContext: '',
     });
     expect(context).toContain(short);
     expect(context).not.toContain('[see QUERY above]');
@@ -225,6 +225,6 @@ describe('WO-AA fixture — review hardening (PR #203)', () => {
     const lightPathStart = source.indexOf('reference lookup');
     expect(lightPathStart).toBeGreaterThan(-1);
     const lightPath = source.slice(lightPathStart, lightPathStart + 2000);
-    expect(lightPath).toContain('CLAIM_CLASS_EVIDENCE_BURDEN');
+    expect(lightPath).toContain('CLAIM_CLASS_SOURCING_BURDEN');
   });
 });
