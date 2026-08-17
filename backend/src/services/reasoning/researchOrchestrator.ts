@@ -1331,7 +1331,9 @@ async function runResearchJobInner(
     }
 
     logger.info(`[${runId}] Retrieved ${allChunks.length} unique chunks`);
-    const retrievalIds = allChunks.map(c => c.id);
+    // Reassigned after specialist execution when scoped retrieval merges new
+    // chunks into `allChunks`, so run provenance covers them.
+    let retrievalIds = allChunks.map(c => c.id);
 
     await query(
       `UPDATE research_runs
@@ -1509,11 +1511,37 @@ async function runResearchJobInner(
     // on all paths (not only rediscovery). The initial retrieval update above
     // runs before specialists, so scoped query results would otherwise be absent
     // from the stored audit block (P2).
+    //
+    // Scoped hits are also merged into `allChunks` during specialist execution.
+    // Completing Codex's provenance finding requires two further steps, because
+    // merging alone is not enough:
+    //
+    //   1. `evidenceContext` was built from `allChunks` BEFORE specialists ran,
+    //      so synthesis would never see a scoped source. Facts could reach the
+    //      report through specialist findings while the source that produced
+    //      them was invisible to the writer.
+    //   2. `retrieval_ids` was persisted before specialists too, so a scoped
+    //      source would be uncitable and absent from run provenance unless the
+    //      rediscovery branch happened to run.
+    const scopedChunkCount = allChunks.length - retrievalIds.length;
+    if (scopedChunkCount > 0) {
+      evidenceContext = formatEvidenceContext(allChunks);
+      retrievalIds = allChunks.map((chunk) => chunk.id);
+      await progress(
+        'reasoning',
+        47,
+        `Merged ${scopedChunkCount} scoped source chunk(s) into run provenance.`,
+        { substep: 'scoped_chunks_merged', chunkCount: allChunks.length }
+      );
+    }
+
     await query(
       `UPDATE research_runs
-          SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb
-        WHERE id=$2`,
+          SET retrieval_ids=$1,
+              corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+        WHERE id=$3`,
       [
+        retrievalIds,
         JSON.stringify({
           corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
         }),
