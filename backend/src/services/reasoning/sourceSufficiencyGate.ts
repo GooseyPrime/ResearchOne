@@ -7,7 +7,7 @@ export interface EvidenceSufficiencyResult {
   usableSignalCount: number;
 }
 
-export function assessEvidenceSufficiency(args: {
+export function assessSourceSufficiency(args: {
   intentId?: IntentId;
   citableChunkCount: number;
   specialistOutputs: Record<string, unknown>;
@@ -86,7 +86,7 @@ export function assessEvidenceSufficiency(args: {
  * That satisfies a deliverable-count check while delivering nothing. See
  * Rule 37 R-L.
  */
-export function buildLowEvidenceSynthesisDirective(args: {
+export function buildLimitedSourcingDirective(args: {
   intentId?: IntentId;
   requestedArtifactCount?: number;
   gaps: string[];
@@ -149,7 +149,7 @@ export function buildLowEvidenceSynthesisDirective(args: {
  * Deliverable-contract and verifier failures are therefore evaluated first;
  * this downgrade applies only when neither gate failed.
  */
-export function evidenceShortfallDegradesStatus(reason?: string | null): boolean {
+export function sourceShortfallDegradesStatus(reason?: string | null): boolean {
   return reason === 'insufficient_evidence';
 }
 

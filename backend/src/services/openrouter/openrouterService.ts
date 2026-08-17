@@ -8,7 +8,7 @@ import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
 import { mergePresetWithRuntimeOverride, resolveReasoningModels } from '../../config/researchEnsemblePresets';
 import {
-  CLAIM_CLASS_EVIDENCE_BURDEN,
+  CLAIM_CLASS_SOURCING_BURDEN,
   getIntentOutputTemplate,
 } from '../formatting/templates/intentOutputTemplates';
 import {
@@ -1487,7 +1487,7 @@ export function buildVerifierPromptForIntent(intentId: string | undefined | null
 Your role is to verify that the final report meets the standards appropriate for its intent.
 
 ${template.verifierRubric}
-${isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}
+${isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}
 Universal minimum for all report types:
 - No fabricated specifics. Unknown values are labeled unknown.
 ${isAdjudicative ? '- Nontrivial external facts carry a source reference.\n' : ''}- Stated user constraints are respected.

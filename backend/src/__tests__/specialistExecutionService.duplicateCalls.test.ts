@@ -37,7 +37,7 @@ describe('specialistExecutionService duplicate execution guard', () => {
       runId: 'run-1',
       query: 'query',
       plan: {},
-      evidenceContext: 'evidence',
+      sourceContext: 'evidence',
       executionPlan: {
         version: 1,
         intent: 'opportunity_discovery',

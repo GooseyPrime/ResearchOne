@@ -25,7 +25,7 @@ import {
   ensureGeneratedTitleHeading,
   stripPromptEchoFromReport,
 } from './reportGenerator';
-import { CLAIM_CLASS_EVIDENCE_BURDEN } from '../formatting/templates/intentOutputTemplates';
+import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
 import {
   TRACE_DETAIL_MAX_CHARS,
   TRACE_MESSAGE_MAX_CHARS,
@@ -90,12 +90,12 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
-import { runSpecialistExecution, MAX_EVIDENCE_CONTEXT_CHARS } from './specialistExecutionService';
+import { runSpecialistExecution, MAX_SOURCE_CONTEXT_CHARS } from './specialistExecutionService';
 import {
-  assessEvidenceSufficiency,
-  buildLowEvidenceSynthesisDirective,
-  evidenceShortfallDegradesStatus,
-} from './evidenceSufficiencyGate';
+  assessSourceSufficiency,
+  buildLimitedSourcingDirective,
+  sourceShortfallDegradesStatus,
+} from './sourceSufficiencyGate';
 import {
   isSpecialistAgentId,
   selectAgentsForBrief,
@@ -1358,12 +1358,12 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
     // ────────────────────────────────────────────────────────────────
-    let evidenceContext = formatEvidenceContext(allChunks);
+    let sourceContext = formatSourceContext(allChunks);
     let retrieverResult!: ModelCallResult;
     let latestSpecialistOutputs: Record<string, unknown> = {};
-    let lowEvidenceDirective: string | null = null;
+    let limitedSourcingDirective: string | null = null;
     let adjudicativeEvidenceExhausted = false;
-    let evidenceFailureReason: string | null = null;
+    let sourceFailureReason: string | null = null;
 
     const runRetrieverAnalysisStage = async (message: string) => {
       if (shouldRunPipelineStage(orchProfile, 'retriever_analysis')) {
@@ -1381,7 +1381,7 @@ async function runResearchJobInner(
             { role: 'system', content: getSystemPrompt('retriever', isAdjudicative) },
             {
               role: 'user',
-              content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${evidenceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
+              content: `Research Query: ${researchQuery}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nRetrieved Evidence:\n${sourceContext}\n\nAnalyze this evidence. Identify high-value chunks, outliers, contradictions, and bridge passages.`,
             },
           ],
         });
@@ -1420,7 +1420,7 @@ async function runResearchJobInner(
           runId,
           query: researchQuery,
           plan,
-          evidenceContext,
+          sourceContext,
           executionPlan: canonicalExecutionPlan,
           researchBrief: confirmedResearchBrief,
           engineVersion: v2.engineVersion,
@@ -1430,7 +1430,7 @@ async function runResearchJobInner(
           // Chunk ids that actually survived the shared-context cap so scoped
           // retrieval does not re-deduplicate chunks that were truncated away.
           sharedContextChunkIds: (() => {
-            const cappedContext = evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS);
+            const cappedContext = sourceContext.slice(0, MAX_SOURCE_CONTEXT_CHARS);
             const ids = new Set<string>();
             const idPattern = /\[CHUNK \d+\] ID: ([^\n]+)/g;
             let m;
@@ -1516,7 +1516,7 @@ async function runResearchJobInner(
     // Completing Codex's provenance finding requires two further steps, because
     // merging alone is not enough:
     //
-    //   1. `evidenceContext` was built from `allChunks` BEFORE specialists ran,
+    //   1. `sourceContext` was built from `allChunks` BEFORE specialists ran,
     //      so synthesis would never see a scoped source. Facts could reach the
     //      report through specialist findings while the source that produced
     //      them was invisible to the writer.
@@ -1525,7 +1525,7 @@ async function runResearchJobInner(
     //      rediscovery branch happened to run.
     const scopedChunkCount = allChunks.length - retrievalIds.length;
     if (scopedChunkCount > 0) {
-      evidenceContext = formatEvidenceContext(allChunks);
+      sourceContext = formatSourceContext(allChunks);
       retrievalIds = allChunks.map((chunk) => chunk.id);
       await progress(
         'reasoning',
@@ -1552,7 +1552,7 @@ async function runResearchJobInner(
     const requestedArtifactCount =
       confirmedResearchBrief?.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')
         ?.exactCount;
-    let evidenceAssessment = assessEvidenceSufficiency({
+    let sourceAssessment = assessSourceSufficiency({
       intentId: orchProfile.intent as never,
       citableChunkCount: allChunks.length,
       specialistOutputs: latestSpecialistOutputs,
@@ -1567,15 +1567,15 @@ async function runResearchJobInner(
       corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
-    if (evidenceAssessment.action === 'rediscover') {
+    if (sourceAssessment.action === 'rediscover') {
       await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
         substep: 'rediscovery_started',
-        detail: evidenceAssessment.gaps.join(' | ').slice(0, 500),
+        detail: sourceAssessment.gaps.join(' | ').slice(0, 500),
       });
 
       const rediscoverySummary = await runDiscoveryOrchestrator({
         runId,
-        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${evidenceAssessment.gaps.map((gap) => `- ${gap}`).join('\n')}`,
+        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${sourceAssessment.gaps.map((gap) => `- ${gap}`).join('\n')}`,
         plan: plan as unknown as Record<string, unknown>,
         filterTags,
         engineVersion,
@@ -1650,10 +1650,10 @@ async function runResearchJobInner(
         ]
       );
 
-      evidenceContext = formatEvidenceContext(allChunks);
+      sourceContext = formatSourceContext(allChunks);
       await runRetrieverAnalysisStage('Re-analyzing evidence after targeted re-discovery...');
       await runSpecialistStage();
-      evidenceAssessment = assessEvidenceSufficiency({
+      sourceAssessment = assessSourceSufficiency({
         intentId: orchProfile.intent as never,
         citableChunkCount: allChunks.length,
         specialistOutputs: latestSpecialistOutputs,
@@ -1665,24 +1665,24 @@ async function runResearchJobInner(
       });
     }
 
-    if (evidenceAssessment.action === 'low_evidence_labeled_delivery') {
+    if (sourceAssessment.action === 'low_evidence_labeled_delivery') {
       // Non-adjudicative intents ALWAYS synthesise. Low evidence changes how
       // confidence is expressed, never whether the artifact is produced.
       // Rule 37 R-L: never substitute a deterministic stub for synthesis.
-      evidenceFailureReason = evidenceAssessment.reason;
-      lowEvidenceDirective = buildLowEvidenceSynthesisDirective({
+      sourceFailureReason = sourceAssessment.reason;
+      limitedSourcingDirective = buildLimitedSourcingDirective({
         intentId: orchProfile.intent as never,
         requestedArtifactCount,
-        gaps: evidenceAssessment.gaps,
+        gaps: sourceAssessment.gaps,
       });
       await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
         substep: 'low_evidence_labeled_delivery',
       });
-    } else if (evidenceAssessment.action === 'rediscover') {
+    } else if (sourceAssessment.action === 'rediscover') {
       // Adjudicative intent exhausted all rediscovery passes. Adjudication
       // genuinely cannot proceed without evidence — but it must fail loudly
       // rather than emit a placeholder report shaped like a verdict.
-      evidenceFailureReason = evidenceAssessment.reason;
+      sourceFailureReason = sourceAssessment.reason;
       adjudicativeEvidenceExhausted = true;
       await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
         substep: 'adjudicative_evidence_exhausted',
@@ -1700,7 +1700,7 @@ async function runResearchJobInner(
         `Research Query: ${researchQuery}`,
         `Plan:\n${JSON.stringify(plan, null, 2)}`,
         `Evidence Analysis:\n${retrieverResult.content}`,
-        `Evidence Chunks:\n${evidenceContext}`,
+        `Evidence Chunks:\n${sourceContext}`,
         specialistPromptBlock,
         'INSTRUCTION:\nBuild detailed reasoning chains. Tag every claim with evidence tier.',
       ].filter(Boolean).join('\n\n');
@@ -1844,12 +1844,12 @@ async function runResearchJobInner(
       generatedReport = await generateIterativeReport({
         query: researchQuery,
         plan,
-        evidenceContext,
+        sourceContext,
         retrieverAnalysis: retrieverResult.content,
         reasoningChains: reasonerResult.content,
         challenges: challengesForSynthesis,
         specialistFindings: specialistFindingsBlock,
-        lowEvidenceDirective: lowEvidenceDirective ?? undefined,
+        limitedSourcingDirective: limitedSourcingDirective ?? undefined,
         // WO-AC R1/R2 — the outline and word budget are derived from the
         // confirmed contract, not from the intent's static section plan.
         contractArtifacts: confirmedResearchBrief?.requestedArtifacts,
@@ -1902,9 +1902,9 @@ async function runResearchJobInner(
               // must be told the same rule or it emits unmarked named prices,
               // products, and dates and then needlessly fails or repairs
               // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
-              `${isAdjudicative ? '' : `${CLAIM_CLASS_EVIDENCE_BURDEN}\n\n`}` +
-              `${lowEvidenceDirective ? `${lowEvidenceDirective}\n\n` : ''}` +
-              `Evidence:\n${evidenceContext.slice(0, 60000)}`,
+              `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
+              `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
+              `Evidence:\n${sourceContext.slice(0, 60000)}`,
           },
         ],
       });
@@ -2136,7 +2136,7 @@ ${generatedReport.markdown}`,
         nextStatus = 'contract_failed';
       } else if (verifierFailed) {
         nextStatus = 'verification_failed';
-      } else if (evidenceShortfallDegradesStatus(evidenceFailureReason)) {
+      } else if (sourceShortfallDegradesStatus(sourceFailureReason)) {
         nextStatus = 'completed_degraded';
       } else if (sourceCoverageShortfall) {
         nextStatus = 'completed_degraded';
@@ -3025,7 +3025,7 @@ function extractAxiosProviderMessage(err: AxiosError): string {
   return err.message;
 }
 
-function formatEvidenceContext(chunks: RetrievedChunk[]): string {
+function formatSourceContext(chunks: RetrievedChunk[]): string {
   return chunks
     .map((c, i) => [
       `[CHUNK ${i + 1}] ID: ${c.id}`,

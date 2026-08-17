@@ -4,7 +4,7 @@ import type { SpecialistAgentId } from './agentCapabilityRegistry';
  * Per-specialist retrieval scopes.
  *
  * Today every specialist receives the SAME undifferentiated source blob —
- * `evidenceContext`, capped at 50k characters and identical for all of them.
+ * `sourceContext`, capped at 50k characters and identical for all of them.
  * `competitor_mapper` and `demand_signal_analyst` read the same text and are
  * asked entirely different questions of it, which is a likely reason
  * specialists keep returning zero extractions.

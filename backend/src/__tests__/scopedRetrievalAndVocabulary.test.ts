@@ -8,10 +8,10 @@ import {
   MAX_SCOPED_CONTEXT_CHARS,
 } from '../services/reasoning/specialistRetrievalScopes';
 import {
-  CLAIM_CLASS_EVIDENCE_BURDEN,
+  CLAIM_CLASS_SOURCING_BURDEN,
   INTENT_OUTPUT_TEMPLATES,
 } from '../services/formatting/templates/intentOutputTemplates';
-import { buildLowEvidenceSynthesisDirective } from '../services/reasoning/evidenceSufficiencyGate';
+import { buildLimitedSourcingDirective } from '../services/reasoning/sourceSufficiencyGate';
 
 const RESEARCH_QUERY = `# Research Objective: Identify and Rank the 20 Best Affiliate Comparison-Site Opportunities
 
@@ -115,15 +115,15 @@ describe('vocabulary — adjudicative language stays out of non-adjudicative rep
   });
 
   it('the claim-class block tells the model not to call the report evidence-based', () => {
-    expect(CLAIM_CLASS_EVIDENCE_BURDEN).toMatch(/Sourcing requirements by claim class/);
+    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/Sourcing requirements by claim class/);
     // The directive wraps across lines, so normalise whitespace before matching.
-    const flat = CLAIM_CLASS_EVIDENCE_BURDEN.replace(/\s+/g, ' ');
+    const flat = CLAIM_CLASS_SOURCING_BURDEN.replace(/\s+/g, ' ');
     expect(flat).toMatch(/do not\s+describe it as "evidence-based"/i);
     expect(flat).toMatch(/say "sources", "signals", or "findings"/i);
   });
 
   it('the limited-sourcing directive avoids adjudicative framing', () => {
-    const directive = buildLowEvidenceSynthesisDirective({ gaps: [] });
+    const directive = buildLimitedSourcingDirective({ gaps: [] });
     expect(directive).toMatch(/LIMITED-SOURCING SYNTHESIS MODE/);
     expect(directive).not.toMatch(/LOW-EVIDENCE/);
     expect(directive).toMatch(/do NOT describe this report as "evidence-based"/i);

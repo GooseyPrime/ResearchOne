@@ -1,7 +1,7 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
-  CLAIM_CLASS_EVIDENCE_BURDEN,
+  CLAIM_CLASS_SOURCING_BURDEN,
   getIntentOutputTemplate,
   INTENT_OUTPUT_TEMPLATES,
 } from '../formatting/templates/intentOutputTemplates';
@@ -316,7 +316,7 @@ function sectionPlanFromTemplate(templateId: string): RuntimeSectionPlanEntry[] 
 export async function generateIterativeReport(args: {
   query: string;
   plan: unknown;
-  evidenceContext: string;
+  sourceContext: string;
   retrieverAnalysis: string;
   reasoningChains: string;
   challenges: string;
@@ -327,7 +327,7 @@ export async function generateIterativeReport(args: {
    * still produced, with explicit uncertainty labelling. It must never cause
    * synthesis to be skipped or replaced with a template (Rule 37 R-L).
    */
-  lowEvidenceDirective?: string;
+  limitedSourcingDirective?: string;
   /**
    * Requested artifacts from the confirmed brief (WO-AC R1/R2).
    *
@@ -451,7 +451,7 @@ Required deliverables:\n${templateRequiredDeliverables.length > 0 ? templateRequ
 Intent verifier rubric:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
-Evidence:\n${args.evidenceContext.slice(0, 8000)}
+Evidence:\n${args.sourceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
 Return strict JSON only.`,
       },
@@ -489,17 +489,17 @@ Reasoning output: ${args.reasoningChains}
 Skeptic output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
-${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_EVIDENCE_BURDEN}\n`}${
+${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}${
             sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
               ? TABLE_FORMATTING_RULES
               : ''
           }
-${args.lowEvidenceDirective ? `\n${args.lowEvidenceDirective}\n` : ''}
+${args.limitedSourcingDirective ? `\n${args.limitedSourcingDirective}\n` : ''}
 ${confirmedFieldsBlock}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
-Source material: ${args.evidenceContext}
+Source material: ${args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 Return section body text only.`,

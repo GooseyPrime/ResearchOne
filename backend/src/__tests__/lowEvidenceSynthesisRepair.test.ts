@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  assessEvidenceSufficiency,
-  buildLowEvidenceSynthesisDirective,
-} from '../services/reasoning/evidenceSufficiencyGate';
+  assessSourceSufficiency,
+  buildLimitedSourcingDirective,
+} from '../services/reasoning/sourceSufficiencyGate';
 import { buildDeterministicDiscoveryQueries } from '../services/discovery/deterministicDiscoveryQueries';
 
 /**
@@ -13,7 +13,7 @@ import { buildDeterministicDiscoveryQueries } from '../services/discovery/determ
 
 describe('evidence sufficiency — a sealed corpus is not an evidence failure', () => {
   it('does NOT require citable corpus chunks when specialists produced signals', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: {
@@ -28,7 +28,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   });
 
   it('treats live discovery sources as usable evidence even with an empty corpus', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: {},
@@ -40,7 +40,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   });
 
   it('still re-discovers when every evidence stream is genuinely empty', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: { market_scout: { opportunities: [] } },
@@ -51,7 +51,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   });
 
   it('falls to labeled delivery (not refusal) once rediscovery is exhausted', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: { market_scout: { opportunities: [] } },
@@ -62,7 +62,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   });
 
   it('does not leak internal agent ids or corpus-gate jargon into reader-facing gaps', () => {
-    const result = assessEvidenceSufficiency({
+    const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
       specialistOutputs: { market_scout: { opportunities: [] }, competitor_mapper: { competitors: [] } },
@@ -78,7 +78,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
 
 describe('low-evidence mode is a synthesis modifier, never a report', () => {
   it('returns a prompt directive, not markdown headings', () => {
-    const directive = buildLowEvidenceSynthesisDirective({
+    const directive = buildLimitedSourcingDirective({
       intentId: 'opportunity_discovery',
       requestedArtifactCount: 20,
       gaps: ['Competitive landscape was not independently mapped this run.'],
@@ -90,7 +90,7 @@ describe('low-evidence mode is a synthesis modifier, never a report', () => {
   });
 
   it('instructs the model to produce every requested item in full', () => {
-    const directive = buildLowEvidenceSynthesisDirective({
+    const directive = buildLimitedSourcingDirective({
       intentId: 'opportunity_discovery',
       requestedArtifactCount: 20,
       gaps: [],
@@ -105,7 +105,7 @@ describe('low-evidence mode is a synthesis modifier, never a report', () => {
     // "unverified" as forbidden text while a later bullet mandated the
     // "(unverified estimate)" marker — an internal contradiction that could
     // make the drafter avoid the intended marker.
-    const directive = buildLowEvidenceSynthesisDirective({ gaps: [] });
+    const directive = buildLimitedSourcingDirective({ gaps: [] });
     expect(directive).toContain('(unverified estimate)');
 
     const placeholderRule = directive
@@ -117,7 +117,7 @@ describe('low-evidence mode is a synthesis modifier, never a report', () => {
   });
 
   it('forbids fabricating citations while still requiring substantive content', () => {
-    const directive = buildLowEvidenceSynthesisDirective({ gaps: [] });
+    const directive = buildLimitedSourcingDirective({ gaps: [] });
     expect(directive).toMatch(/do not fabricate/i);
     expect(directive).toMatch(/complete requested deliverable/i);
   });
