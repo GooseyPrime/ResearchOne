@@ -100,7 +100,7 @@ export function buildLowEvidenceSynthesisDirective(args: {
       : 'You MUST still produce the complete requested deliverable.';
 
   return [
-    'LOW-EVIDENCE SYNTHESIS MODE (MANDATORY):',
+    'LIMITED-SOURCING SYNTHESIS MODE (MANDATORY):',
     'Independent retrieval returned little or no corroborating material this run.',
     'This does NOT reduce the deliverable. It changes only how confidence is expressed.',
     '',
@@ -110,7 +110,7 @@ export function buildLowEvidenceSynthesisDirective(args: {
     '',
     'Rules for this mode:',
     '- Produce every requested field with real content. A field\'s value must never be',
-    '  a placeholder standing in for content — e.g. "evidence insufficient", "unknown",',
+    '  a placeholder standing in for content — e.g. "insufficient sourcing", "unknown",',
     '  "TBD", "N/A", or "[placeholder]" as the whole value.',
     '  (This does not restrict the "(unverified estimate)" marker described below,',
     '  which annotates real content rather than replacing it.)',
@@ -124,7 +124,9 @@ export function buildLowEvidenceSynthesisDirective(args: {
     '  recalculate it.',
     '- Do NOT fabricate precise figures, citations, URLs, or source titles.',
     '- Do NOT write meta-commentary about the research process, the corpus, or why',
-    '  evidence was unavailable. Deliver the artifact.',
+    '  sources were unavailable. Deliver the artifact.',
+    '- Do NOT describe this report as "evidence-based", "evidence-driven", or frame it',
+    '  as adjudicating a claim. It is an analysis built on sources and reasoning.',
     '- Do NOT refuse, abort, or substitute an explanation of why the artifact cannot',
     '  be produced. Refusal is a verification failure.',
     '',

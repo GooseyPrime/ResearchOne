@@ -38,6 +38,7 @@ import {
   resolveTableExpectation,
 } from './tableContract';
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
+import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -89,7 +90,7 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
-import { runSpecialistExecution } from './specialistExecutionService';
+import { runSpecialistExecution, MAX_EVIDENCE_CONTEXT_CHARS } from './specialistExecutionService';
 import {
   assessEvidenceSufficiency,
   buildLowEvidenceSynthesisDirective,
@@ -1330,7 +1331,9 @@ async function runResearchJobInner(
     }
 
     logger.info(`[${runId}] Retrieved ${allChunks.length} unique chunks`);
-    const retrievalIds = allChunks.map(c => c.id);
+    // Reassigned after specialist execution when scoped retrieval merges new
+    // chunks into `allChunks`, so run provenance covers them.
+    let retrievalIds = allChunks.map(c => c.id);
 
     await query(
       `UPDATE research_runs
@@ -1424,6 +1427,56 @@ async function runResearchJobInner(
           researchObjective: v2.researchObjective,
           allowFallbackByRole: v2.allowFallbackByRole,
           byokApiKeyOverride,
+          // Chunk ids that actually survived the shared-context cap so scoped
+          // retrieval does not re-deduplicate chunks that were truncated away.
+          sharedContextChunkIds: (() => {
+            const cappedContext = evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS);
+            const ids = new Set<string>();
+            const idPattern = /\[CHUNK \d+\] ID: ([^\n]+)/g;
+            let m;
+            while ((m = idPattern.exec(cappedContext)) !== null) {
+              ids.add(m[1].trim());
+            }
+            return ids;
+          })(),
+          // Scoped retrieval stays owned by the orchestrator: it runs through
+          // `retrieveChunksWithAudit`, so the corpus competence gate (Rule 40)
+          // and the run audit trail apply exactly as they do for shared
+          // retrieval. The specialist service never touches the retrieval layer.
+          retrieveScoped: async ({ agent, queries }) => {
+            const collected: RetrievedChunk[] = [];
+            const seen = new Set<string>();
+            for (const scopedQuery of queries) {
+              const scopedResult = await retrieveChunksWithAudit({
+                query: scopedQuery,
+                topK: SCOPED_RETRIEVAL_TOP_K,
+                filterTags,
+                hybridSearch: true,
+                intentId: orchProfile.intent,
+                userId: creditCtx?.userId,
+                runId,
+              });
+              corpusGateDecisions.push({
+                query: `${scopedQuery} [scoped:${agent}]`,
+                ...scopedResult.corpusGate,
+              });
+              for (const chunk of scopedResult.citableChunks) {
+                if (!seen.has(chunk.id)) {
+                  seen.add(chunk.id);
+                  collected.push(chunk);
+                }
+              }
+            }
+            // Merge novel scoped hits into the run-level chunk collection so they
+            // can be cited and persisted alongside shared-retrieval chunks (P1).
+            const existingChunkIds = new Set(allChunks.map((c) => c.id));
+            for (const chunk of collected) {
+              if (!existingChunkIds.has(chunk.id)) {
+                allChunks.push(chunk);
+              }
+            }
+            return collected;
+          },
           onProgress: async (message) => {
             await progress('reasoning', 45, message, { substep: 'specialist_running' });
           },
@@ -1453,6 +1506,48 @@ async function runResearchJobInner(
 
     await runRetrieverAnalysisStage('Analyzing retrieved evidence...');
     await runSpecialistStage();
+
+    // Persist scoped corpus-gate decisions collected during specialist execution
+    // on all paths (not only rediscovery). The initial retrieval update above
+    // runs before specialists, so scoped query results would otherwise be absent
+    // from the stored audit block (P2).
+    //
+    // Scoped hits are also merged into `allChunks` during specialist execution.
+    // Completing Codex's provenance finding requires two further steps, because
+    // merging alone is not enough:
+    //
+    //   1. `evidenceContext` was built from `allChunks` BEFORE specialists ran,
+    //      so synthesis would never see a scoped source. Facts could reach the
+    //      report through specialist findings while the source that produced
+    //      them was invisible to the writer.
+    //   2. `retrieval_ids` was persisted before specialists too, so a scoped
+    //      source would be uncitable and absent from run provenance unless the
+    //      rediscovery branch happened to run.
+    const scopedChunkCount = allChunks.length - retrievalIds.length;
+    if (scopedChunkCount > 0) {
+      evidenceContext = formatEvidenceContext(allChunks);
+      retrievalIds = allChunks.map((chunk) => chunk.id);
+      await progress(
+        'reasoning',
+        47,
+        `Merged ${scopedChunkCount} scoped source chunk(s) into run provenance.`,
+        { substep: 'scoped_chunks_merged', chunkCount: allChunks.length }
+      );
+    }
+
+    await query(
+      `UPDATE research_runs
+          SET retrieval_ids=$1,
+              corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+        WHERE id=$3`,
+      [
+        retrievalIds,
+        JSON.stringify({
+          corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+        }),
+        runId,
+      ]
+    );
 
     const requestedArtifactCount =
       confirmedResearchBrief?.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')

@@ -14,9 +14,16 @@ import type {
 } from './agentCapabilityRegistry';
 import { normalizeDeterministicMetricChecks } from './deterministicQuant';
 import { logger } from '../../utils/logger';
+import {
+  buildScopedQueries,
+  deriveRetrievalTopic,
+  formatScopedContext,
+  hasScopedRetrieval,
+  type ScopedChunk,
+} from './specialistRetrievalScopes';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
-const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
+export const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
 
 /**
  * Prompt budgets for specialist calls (WO-AA Phase 5).
@@ -83,7 +90,7 @@ export function buildSpecialistContext(input: {
     `QUERY: ${truncate(query, MAX_QUERY_CHARS, 'query')}`,
     `PLAN: ${truncate(planJson, MAX_PLAN_CHARS, 'plan')}`,
     briefJson ? `RESEARCH_BRIEF: ${truncate(briefJson, MAX_BRIEF_CHARS, 'brief')}` : '',
-    `EVIDENCE_CONTEXT: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
+    `SOURCE_MATERIAL: ${input.evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS)}${evidenceTruncated ? '\n...[truncated]' : ''}`,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -195,6 +202,22 @@ export async function runSpecialistExecution(input: {
   byokApiKeyOverride?: string;
   onProgress?: (message: string) => Promise<void> | void;
   onCheckpoint?: (key: string, snapshot: Record<string, unknown>) => Promise<void> | void;
+  /**
+   * Retrieve source material scoped to one specialist's function.
+   *
+   * Injected by the orchestrator so this service does not reach into the
+   * retrieval layer directly — the corpus competence gate (Rule 40) and the
+   * run-level audit trail stay owned by `researchOrchestrator`.
+   *
+   * Returning an empty array is always safe: the specialist still receives the
+   * shared context, so scoped retrieval can only add signal.
+   */
+  retrieveScoped?: (args: {
+    agent: SpecialistAgentId;
+    queries: string[];
+  }) => Promise<ScopedChunk[]>;
+  /** Chunk ids already present in the shared context, to avoid paying twice. */
+  sharedContextChunkIds?: ReadonlySet<string>;
 }): Promise<SpecialistExecutionBundle & { findingsForPrompt: string }> {
   const planned = [...input.executionPlan.specialistAgents];
   const bundle: SpecialistExecutionBundle = {
@@ -221,6 +244,9 @@ export async function runSpecialistExecution(input: {
       `Check for duplicated query/plan/brief content before it reaches the bill.`
     );
   }
+  // Compact topic for scoped queries. The full request would defeat the
+  // WO-AA prompt budgets and produce useless embeddings.
+  const retrievalTopic = deriveRetrievalTopic(input.query);
   const claimed = new Set<SpecialistAgentId>();
 
   const executeOne = async (agent: SpecialistAgentId): Promise<void> => {
@@ -252,6 +278,32 @@ export async function runSpecialistExecution(input: {
         depPayload[dep] = bundle.outputs[dep] as unknown;
       }
     }
+    // Scoped retrieval: give this specialist source material selected for its
+    // own function, on top of the shared context. Failure is non-fatal — the
+    // specialist still has everything it had before.
+    let scopedBlock = '';
+    if (input.retrieveScoped && hasScopedRetrieval(agent)) {
+      try {
+        const queries = buildScopedQueries(agent, retrievalTopic);
+        if (queries.length > 0) {
+          const chunks = await input.retrieveScoped({ agent, queries });
+          const sharedIds = input.sharedContextChunkIds ?? new Set<string>();
+          scopedBlock = formatScopedContext(agent, chunks, sharedIds);
+          if (scopedBlock) {
+            const freshCount = chunks.filter((c) => !sharedIds.has(c.id)).length;
+            await input.onProgress?.(
+              `Scoped sources for ${agent}: ${freshCount} chunk(s) appended (${chunks.length} retrieved)`
+            );
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          `[${input.runId}] Scoped retrieval failed for ${agent}; continuing with shared context only:`,
+          err
+        );
+      }
+    }
+
     try {
       const result = await withTimeout(
         callRoleModel({
@@ -264,7 +316,7 @@ export async function runSpecialistExecution(input: {
             { role: 'system', content: SYSTEM_PROMPTS[agent as keyof typeof SYSTEM_PROMPTS] },
             {
               role: 'user',
-              content: `${context}\n\nDEPENDENCY_OUTPUTS:\n${JSON.stringify(depPayload)}`,
+              content: `${context}${scopedBlock ? `\n\n${scopedBlock}` : ''}\n\nDEPENDENCY_OUTPUTS:\n${JSON.stringify(depPayload)}`,
             },
           ],
         }),
