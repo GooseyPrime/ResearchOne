@@ -144,10 +144,12 @@ export function sectionsNamedInFindings(
       named.push(section.heading);
       continue;
     }
-    // Numbered item headings are commonly referenced by ordinal alone
-    // ("item 7", "opportunity 7") rather than by their full title.
+    // Numbered headings are commonly referenced by ordinal alone rather than by
+    // full title. The noun before the number is deliberately open (`\w+`) — a
+    // fixed list would have to name every report type's item vocabulary and
+    // would silently stop localising the moment a new one appeared.
     const ordinal = heading.match(/^(\d{1,3})\s*[.)\]:-]/)?.[1];
-    if (ordinal && new RegExp(`\\b(?:item|section|opportunity|option|vertical|#)\\s*${ordinal}\\b`).test(haystack)) {
+    if (ordinal && new RegExp(`(?:\\b\\w+\\s*|#\\s*)${ordinal}\\b`).test(haystack)) {
       seen.add(heading);
       named.push(section.heading);
     }

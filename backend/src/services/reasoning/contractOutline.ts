@@ -15,19 +15,33 @@
  * when the brief asks for a repeated, structured deliverable — which also makes
  * each item independently draftable and independently repairable (R3).
  */
+import { getIntentOutputTemplate } from '../formatting/templates/intentOutputTemplates';
 
 export interface SectionPlanEntry {
   title: string;
   key: string;
   weight: number;
+  /**
+   * First item number this section covers, when it is one of the per-item
+   * sections created by expansion. Absent on framing sections.
+   *
+   * Carrying the ordinal as DATA is what lets code compose the heading. The
+   * previous design encoded it in the title string and then tried to parse it
+   * back out of whatever the model wrote, which is where the delivered-item
+   * count was lost (run `c50162a9`).
+   */
+  itemOrdinal?: number;
+  /** Last item number, when one section covers a range (cap forced grouping). */
+  itemLastOrdinal?: number;
 }
 
 /**
  * Artifact shape we care about, kept structural to avoid importing the brief.
  *
- * NOTE: production `RequestedArtifact` has `description` and NO `type`. Any
- * label derivation must work from `description` — deriving from `type` produced
- * headings like "## Item 1" on every real run (Codex review, PR #205).
+ * NOTE: production `RequestedArtifact` has `description` and NO `type`. Nothing
+ * user-visible may be derived from `type` — doing so produced "## Item 1" on
+ * every real run (Codex review, PR #205). Section labels no longer come from
+ * this shape at all; they come from the report type.
  */
 export interface ContractArtifact {
   description?: string;
@@ -38,89 +52,26 @@ export interface ContractArtifact {
   inferredRequiredFields?: readonly string[];
 }
 
-/** Noise words to strip when turning a description into a section label. */
-const LABEL_NOISE =
-  /\b(ranked|ordered|list|listing|set|collection|of|the|a|an|exactly|top|best|detailed|complete|full|report|table|portfolio|items?|with|by|for|per|from|into|across|and|or|each|their|its)\b/gi;
-
 /**
- * Word endings that mark an activity rather than the enumerated thing.
- * `-ing` catches gerunds ("modeling", "sizing", "forecasting"); `-ed` catches
- * participles ("sized", "validated", "estimated").
+ * Fallback label for one repeated item, owned by the REPORT TYPE.
  *
- * The `{3,}` applies to the STEM, so short nouns that merely end this way stay
- * eligible: "ring", "king", "bed", "seed", "feed". A three-letter-plus stem
- * before `-ing`/`-ed` is overwhelmingly a verb form.
+ * This used to guess the label out of the brief's prose — strip noise words,
+ * take the last noun-ish token, singularise. That is unfixable in principle:
+ * natural language has no reliable "the thing being enumerated" position, and
+ * every miss produced a new special case. Run `c50162a9` planned
+ * "Modeling 1..20" for a list of market opportunities because the request
+ * happened to end in a gerund; patching that with a gerund rule then surfaced
+ * an adjective ("Financial"), and so on.
  *
- * `-ly` is deliberately NOT included: it would strip "supply", "family", and
- * "anomaly", and a description is far more likely to end in one of those than
- * in an adverb.
+ * The report type is a known, closed set that the pipeline already routes on
+ * (Rule 37). It carries the label. `intentOutputTemplates` is the single place
+ * a new report type declares its vocabulary.
+ *
+ * This is only a FALLBACK: the drafter supplies each item's concrete name, so
+ * a finished heading reads "7. Home Fitness Equipment", not "7. Opportunity".
  */
-const NON_NOUN_SUFFIX = /^.{3,}(?:ing|ed)$/i;
-
-/**
- * Endings that look plural but are not: "analysis", "status", "business",
- * "process". Singularising these produces nonsense like "Analysi".
- */
-const FALSE_PLURAL_SUFFIX = /(?:ss|is|us)$/i;
-
-/** True when a word reads as a plural noun. */
-function isPluralNoun(word: string): boolean {
-  return /s$/i.test(word) && !FALSE_PLURAL_SUFFIX.test(word) && !NON_NOUN_SUFFIX.test(word);
-}
-
-/**
- * Derive a singular, human label for one requested item from its description.
- *
- * "ranked list of market opportunities" -> "Opportunity"
- * "20 comparison-site verticals"        -> "Vertical"
- *
- * Falls back to the intent-derived noun, then to "Item".
- */
-export function deriveItemLabel(artifact: ContractArtifact | null, intentId?: string): string {
-  const source = (artifact?.description ?? artifact?.type ?? '').trim();
-  const cleaned = source.replace(LABEL_NOISE, ' ').replace(/[^a-zA-Z\s-]/g, ' ').replace(/\s+/g, ' ').trim();
-  const words = cleaned.split(' ').filter(Boolean);
-  // Scan right-to-left for the first word that reads as a noun. Taking the last
-  // word unconditionally picked the gerund out of "...with revenue modeling",
-  // producing the heading "Modeling 1" for a list of market opportunities
-  // (run `c50162a9`). Gerunds and adjectival participles are activities, not
-  // the thing being enumerated.
-  // Prefer a plural: the enumerated thing is almost always written plural
-  // ("market opportunities", "comparison-site verticals"), while the modifiers
-  // around it are singular adjectives and gerunds. Without this, "opportunities
-  // with financial modeling" yields the adjective "Financial".
-  let noun = '';
-  for (let i = words.length - 1; i >= 0; i -= 1) {
-    const candidate = words[i]!;
-    if (NON_NOUN_SUFFIX.test(candidate)) continue;
-    if (isPluralNoun(candidate)) {
-      noun = candidate;
-      break;
-    }
-  }
-  if (!noun) {
-    for (let i = words.length - 1; i >= 0; i -= 1) {
-      const candidate = words[i]!;
-      if (NON_NOUN_SUFFIX.test(candidate)) continue;
-      noun = candidate;
-      break;
-    }
-  }
-
-  if (!noun && intentId) {
-    // opportunity_discovery -> "opportunity"; comparative -> "option"
-    if (intentId === 'comparative') noun = 'option';
-    else noun = intentId.split('_')[0] ?? '';
-  }
-  if (!noun) return 'Item';
-
-  // Singularise simple plurals so headings read "Opportunity 3", not
-  // "Opportunities 3".
-  if (/ies$/i.test(noun)) noun = `${noun.slice(0, -3)}y`;
-  else if (/sses$/i.test(noun)) noun = noun.slice(0, -2);
-  else if (isPluralNoun(noun)) noun = noun.slice(0, -1);
-
-  return noun.charAt(0).toUpperCase() + noun.slice(1);
+export function deriveItemLabel(_artifact: ContractArtifact | null, intentId?: string): string {
+  return getIntentOutputTemplate(`intent_${intentId ?? 'legacy'}`).itemLabel;
 }
 
 /**
@@ -264,12 +215,9 @@ export function expandSectionPlanForContract(args: {
     const first = section * itemsPerSection + 1;
     const last = Math.min(count, first + itemsPerSection - 1);
     if (first > count) break;
-    // Number-first ("1. Opportunity") rather than number-last ("Opportunity 1").
-    // The coherence refiner retitles item sections to name the item concretely;
-    // a leading ordinal is the one part it is told to preserve, and it is what
-    // the auditor's numbered-heading rule keys on. Number-last headings lose
-    // their ordinal on rewrite and the delivered items become uncountable
-    // (run `c50162a9`: "Modeling 1" -> "Developer Tools", scored 0/20).
+    // Provisional title only. The final heading is composed after drafting,
+    // from this ordinal plus the concrete item name the drafter supplies, so a
+    // heading is never parsed back out of model prose.
     const title = first === last ? `${first}. ${titleWord}` : `${first}–${last}. ${titleWord}s`;
     expandedEntries.push({
       title,
@@ -277,6 +225,8 @@ export function expandSectionPlanForContract(args: {
       // Each item carries the original list weight, so the total budget grows
       // with the contract instead of being divided into uselessly small slices.
       weight: listEntry.weight,
+      itemOrdinal: first,
+      ...(first === last ? {} : { itemLastOrdinal: last }),
     });
   }
 

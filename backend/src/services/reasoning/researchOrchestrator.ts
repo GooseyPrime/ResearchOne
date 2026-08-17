@@ -486,51 +486,45 @@ function parseOpportunityTitleLine(line: string): string | null {
  * failing the contract on a table that was substantively correct.
  */
 /**
- * Headings that count as one delivered item.
+ * Structural fallback for reports whose item headings this pipeline did not
+ * compose — legacy runs, resumed checkpoints, and the reference-lookup path.
  *
- * Must stay in sync with `deriveItemLabel()` in `contractOutline.ts`, which
- * generates these headings from the artifact description.
- */
-export const ITEM_SECTION_HEADING =
-  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application|modeling)s?\s*#?\s*\d+/i;
-
-/**
- * Numbered heading the drafter actually emits, e.g. `1. Developer Tools`.
- *
- * Run c50162a9 delivered all 20 deep-dives — the verifier confirmed each had
- * Narrative Briefing, Basic Project Needs, and the three prompts — yet the
- * auditor reported `opportunitiesWithAllRequiredFields: 0`. The planned section
- * titles were `Modeling 1..20`, the drafter wrote `## 1. Developer Tools`, and
- * neither form matched the label pattern above. Extraction fell through to
- * table rows, which carry no narrative fields, so complete work was scored as
- * zero.
- *
- * Section titles are a drafting hint, not a contract the model is obliged to
- * echo. Detection must accept how reports are really written.
+ * Deliberately content-free. This used to be backed by a hand-curated list of
+ * item nouns (`opportunity|vertical|niche|...|modeling`), which is a losing
+ * game: `modeling` was in that list only because one run happened to emit
+ * "Modeling 1", and every new phrasing a model invented needed another word.
+ * Current runs never reach this — `plannedItemTitles` is composed by the
+ * pipeline and matched exactly.
  */
 export const NUMBERED_ITEM_HEADING = /^\s*(\d{1,3})\s*[.)\]:-]\s+\S/;
 
 /**
- * Framing sections that are never a delivered item, even when numbered.
+ * Conventional report framing sections, which are never a delivered item.
  *
- * Some drafters number every top-level heading, so `## 1. Executive Summary`
- * and `## 8. Final Recommendation` both satisfy `NUMBERED_ITEM_HEADING`.
- * Counting those as items inflates the delivered count and makes the exact-count
- * check pass on a report that is short of real items — a false pass, which is
- * worse than the false failure this rule exists to prevent.
+ * Only needed on the fallback path above, because some drafters number every
+ * top-level heading and `## 1. Executive Summary` would otherwise satisfy
+ * `NUMBERED_ITEM_HEADING`. Counting framing as items inflates the delivered
+ * count into a FALSE PASS, which is worse than the false failure.
+ *
+ * These are general report conventions, not vocabulary borrowed from any
+ * particular request. Nothing request-specific belongs here.
  */
 export const FRAMING_SECTION_HEADING =
-  /^(?:\d{1,3}\s*[.)\]:-]\s*)?(?:executive\s+summary|introduction|overview|scope|background|methodology|method|approach|context|key\s+findings?|summary|conclusions?|cross[\s-]?\w+\s+analysis|comparative\s+analysis|final\s+(?:winner|recommendation|verdict|selection)|recommendations?|next\s+steps?|limitations?|appendix|sources?|references?|glossary|assumptions?)\b/i;
+  /^(?:\d{1,3}\s*[.)\]:-]\s*)?(?:executive\s+summary|introduction|overview|scope|background|methodology|method|approach|context|key\s+findings?|summary|conclusions?|comparative\s+analysis|recommendations?|next\s+steps?|limitations?|appendix|sources?|references?|glossary|assumptions?)\b/i;
 
-/** True when a heading denotes one delivered item. */
+/**
+ * True when a heading denotes one delivered item.
+ *
+ * `plannedTitles` is authoritative: those headings were composed by this
+ * pipeline from the plan's ordinal, the report type's label, and the drafter's
+ * declared item name, so the match is exact. The regexes below are a fallback
+ * for reports this pipeline did not assemble.
+ */
 export function isItemSectionHeading(title: string, plannedTitles?: ReadonlySet<string>): boolean {
   const text = (title ?? '').replace(/[*_`#]/g, '').trim();
   if (!text) return false;
-  if (plannedTitles?.has(text.toLowerCase())) return true;
-  // Checked after the planned-title set so an explicitly planned item section
-  // still counts even if its label collides with a framing word.
+  if (plannedTitles && plannedTitles.size > 0) return plannedTitles.has(text.toLowerCase());
   if (FRAMING_SECTION_HEADING.test(text)) return false;
-  if (ITEM_SECTION_HEADING.test(text)) return true;
   return NUMBERED_ITEM_HEADING.test(text);
 }
 

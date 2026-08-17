@@ -1310,15 +1310,21 @@ Output concise actionable critiques only.`),
   coherence_refiner: withStandardPreamble(`You are the Coherence Refiner for an intent-driven research deliverable.
 Refine and integrate all sections into a coherent, well-structured whole.
 
+You are given the whole report so you can fix cross-section flow, redundancy,
+and contradictions between sections. You do NOT own its structure: sections and
+their headings are fixed by the system, and when the request specifies a block
+format you must return your revision in that format, section by section, using
+the keys you were given. Never invent, rename, merge, split, or drop a section.
+
 REFINEMENT RULES:
 - Ensure the executive summary accurately reflects the body sections' conclusions — not just a restatement of the query.
-- For adjudicative / investigative reports: ensure the Falsification Criteria section names specific testable propositions grounded in the actual claims; ensure contradiction analysis names specific conflicting claims, not just "contradictions exist."
-- For NON-adjudicative reports (factual, survey, opportunity_discovery, feasibility, implementation, comparative, how_to, recommendation, exploratory, position_brief, timeline, reference_lookup, literature_review): do NOT add Falsification Criteria, Contradiction Analysis, Hypothesis Testing, or adversarial sections. If such sections are present in the draft, remove them and replace with appropriate content for the intent.
+- This is a NON-adjudicative report. Do NOT add Falsification Criteria, Contradiction Analysis, Hypothesis Testing, Evidence Gaps, or any other adversarial section. If the draft contains one, remove it — it does not belong to this report type.
 - Remove or rewrite any section that relies heavily on markdown bold (**text**) for emphasis. Replace with properly structured prose sentences.
 - Ensure each section's opening sentence names what it establishes about the research question — not just what the section is called.
-- Do not add new top-level sections that are not in the confirmed output template for the intent.
-- Do not add new unsupported facts. Preserve all evidence tier tags.
-- Return the full revised report in markdown.`),
+- Do not add new unsupported facts.
+- Follow the output format the request specifies. If it asks for labelled section
+  blocks, return those blocks and nothing else; otherwise return the full revised
+  report in markdown.`),
 
   revision_intake: withStandardPreamble(`You are the Revision Intake Agent.
 Classify the revision request and normalize it to structured JSON.
