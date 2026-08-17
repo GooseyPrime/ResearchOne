@@ -6,6 +6,7 @@ import {
   INTENT_OUTPUT_TEMPLATES,
 } from '../formatting/templates/intentOutputTemplates';
 import {
+  appendContractRequiredSections,
   deriveContractWordTarget,
   deriveItemLabel,
   expandSectionPlanForContract,
@@ -71,6 +72,48 @@ Markdown table rules (MANDATORY when you emit a table):
 - Keep cell text short; put long prose in the narrative, not in a cell.
 - Do not wrap the table in a code fence: fenced tables render as code, not tables.`;
 
+/**
+ * Give the drafter the exact header row instead of a column count.
+ *
+ * Run `c50162a9` requested 18 per-item fields. The drafter was told "every row
+ * must have exactly the same number of cells as the header row" — but it chose
+ * the header itself, and 19 of 20 rows then disagreed with it. A rule about
+ * consistency cannot be followed when the thing to be consistent with is not
+ * supplied. Handing over the literal header and delimiter rows makes the
+ * requirement mechanical.
+ *
+ * Returns an empty string when the contract names no per-item fields; there is
+ * nothing to pin down and inventing a schema would be worse than silence.
+ */
+export function buildTableHeaderDirective(args: {
+  fields: readonly string[];
+  itemLabel: string;
+  rowCount?: number;
+}): string {
+  const fields = args.fields.map((field) => field.trim()).filter(Boolean);
+  if (fields.length === 0) return '';
+
+  const titleCase = (field: string) =>
+    field.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const columns = ['#', args.itemLabel, ...fields.map(titleCase)];
+  const header = `| ${columns.join(' | ')} |`;
+  const delimiter = `| ${columns.map(() => '---').join(' | ')} |`;
+  const rowRule =
+    typeof args.rowCount === 'number' && args.rowCount > 0
+      ? `Emit exactly ${args.rowCount} data rows, numbered 1..${args.rowCount}, one per ${args.itemLabel.toLowerCase()}.`
+      : `Emit one data row per ${args.itemLabel.toLowerCase()}.`;
+
+  return `
+REQUIRED TABLE HEADER (copy verbatim, do not add, drop, reorder, or rename columns):
+${header}
+${delimiter}
+
+${rowRule}
+Every data row must contain exactly ${columns.length} cells. Leave a cell empty
+rather than omitting it — an omitted cell shifts every column after it and the
+row is read as belonging to a different schema.`;
+}
+
 interface RuntimeSectionPlanEntry {
   title: string;
   key: string;
@@ -97,7 +140,12 @@ const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: num
 export const DESCRIPTIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
-  { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
+  // Title, not key. "Evidence Ledger" is adjudication vocabulary, and a heading
+  // the drafter is handed is a frame the drafter writes in — it seeded
+  // "evidence" language through reports that were never adjudicating anything.
+  // The key stays `evidence_ledger` because reportRevisionService anchors
+  // insertion order on it.
+  { title: 'Key Findings and Sources', key: 'evidence_ledger', weight: 1.4 },
   { title: 'Reasoning and Analysis', key: 'reasoning_analysis', weight: 1.6 },
   { title: 'Synthesis and Conclusions', key: 'synthesis_conclusions', weight: 1.5 },
   { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
@@ -167,18 +215,82 @@ export function deriveGeneratedReportTitle(query: string, markdown: string, inte
   return trimTitle(`${fallbackIntentTitle} Report`);
 }
 
+/**
+ * Labels a model puts in front of an echoed prompt.
+ *
+ * The plain `Research query:` form was already handled, but the exported `.md`
+ * from run `c50162a9` still opened with `**Research query:**` — emphasised, and
+ * sitting under the report's `# ` title rather than at position zero. Both
+ * variants have to be covered or the reader gets ~700 lines of instructions
+ * before the report (Rule 37 R-K).
+ */
+const PROMPT_ECHO_LABEL =
+  // Emphasis may close before OR after the colon: both `**Research query**:`
+  // and `**Research query:**` occur in the wild, and the second is the form
+  // that survived the first fix.
+  /^[*_`~]{0,3}\s*(?:research\s+(?:query|request|prompt)|user\s+(?:query|request|prompt)|original\s+(?:query|request|prompt)|query|request|prompt)\s*[*_`~]{0,3}\s*[:：]\s*[*_`~]{0,3}\s*/i;
+
+/**
+ * Index in `text` just past a whitespace-insensitive occurrence of `prompt` at
+ * its start, or -1.
+ *
+ * Whitespace-insensitive because a model that echoes a prompt commonly re-wraps
+ * it: same words, different line breaks. Byte equality misses that.
+ */
+function consumePromptPrefix(text: string, prompt: string): number {
+  let ti = 0;
+  let pi = 0;
+  const isSpace = (char: string) => /\s/.test(char);
+
+  while (pi < prompt.length) {
+    if (isSpace(prompt[pi]!)) {
+      while (pi < prompt.length && isSpace(prompt[pi]!)) pi += 1;
+      if (ti >= text.length || !isSpace(text[ti]!)) return -1;
+      while (ti < text.length && isSpace(text[ti]!)) ti += 1;
+      continue;
+    }
+    if (ti >= text.length || text[ti] !== prompt[pi]) return -1;
+    ti += 1;
+    pi += 1;
+  }
+  return ti;
+}
+
+/** Strip one leading prompt echo, with or without a label, from a fragment. */
+function stripEchoFromFragment(fragment: string, prompt: string): string {
+  const text = fragment.replace(/^\s+/, '');
+
+  const direct = consumePromptPrefix(text, prompt);
+  if (direct > 0) return text.slice(direct).replace(/^\s+/, '');
+
+  const label = text.match(PROMPT_ECHO_LABEL);
+  if (label) {
+    const afterLabel = text.slice(label[0].length);
+    const labelled = consumePromptPrefix(afterLabel, prompt);
+    // Only strip when the prompt genuinely follows the label. A section that
+    // legitimately begins "Request: ..." must survive.
+    if (labelled > 0) return afterLabel.slice(labelled).replace(/^\s+/, '');
+  }
+
+  return text;
+}
+
 export function stripPromptEchoFromReport(markdown: string, query: string): string {
   const trimmed = markdown.trim();
   const prompt = query.trim();
   if (!prompt) return trimmed;
 
-  if (trimmed.startsWith(prompt)) {
-    return trimmed.slice(prompt.length).replace(/^\s+/, '');
-  }
+  const stripped = stripEchoFromFragment(trimmed, prompt);
+  if (stripped !== trimmed) return stripped;
 
-  const queryLabelPrefix = `Research query: ${prompt}`;
-  if (trimmed.startsWith(queryLabelPrefix)) {
-    return trimmed.slice(queryLabelPrefix.length).replace(/^\s+/, '');
+  // The echo may sit under the report title rather than above it.
+  const titleMatch = trimmed.match(/^(#\s+[^\n]*\n)([\s\S]*)$/);
+  if (titleMatch) {
+    const body = titleMatch[2] ?? '';
+    const strippedBody = stripEchoFromFragment(body, prompt);
+    if (strippedBody !== body.replace(/^\s+/, '')) {
+      return `${titleMatch[1]!.trimEnd()}\n\n${strippedBody}`.trim();
+    }
   }
 
   return trimmed;
@@ -398,6 +510,17 @@ export async function generateIterativeReport(args: {
   activeSectionPlan = outlineExpansion.plan;
   const expandedItemTitles: ReadonlySet<string> = new Set(outlineExpansion.expandedTitles);
 
+  // Named deliverables the intent plan has no slot for ("Cross-Opportunity
+  // Analysis", "Final Winner") get their own drafting slot. Without this the
+  // drafter is never asked for them, the auditor reports them missing, and
+  // repair spends a pass bolting them on (run `c50162a9`).
+  const contractSections = appendContractRequiredSections({
+    plan: activeSectionPlan,
+    artifacts: args.contractArtifacts,
+    repeatedArtifact: findRepeatedArtifact(args.contractArtifacts),
+  });
+  activeSectionPlan = contractSections.plan;
+
   const v2 = {
     engineVersion: args.engineVersion,
     researchObjective: args.researchObjective,
@@ -439,6 +562,14 @@ export async function generateIterativeReport(args: {
           .map((field) => `- ${field}`)
           .join('\n')}\nEvery one of these must appear for every item. Do not rename or omit them.`
       : '';
+  // The exact header row, so "same number of cells as the header" is a rule the
+  // drafter can actually follow (run `c50162a9`: 19 of 20 rows disagreed with a
+  // header the drafter had invented itself).
+  const tableHeaderDirective = buildTableHeaderDirective({
+    fields: confirmedFields,
+    itemLabel: deriveItemLabel(repeatedArtifact, args.intentId),
+    rowCount: repeatedArtifact?.exactCount,
+  });
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -498,7 +629,7 @@ Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
 ${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}${
             sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
-              ? TABLE_FORMATTING_RULES
+              ? `${TABLE_FORMATTING_RULES}\n${tableHeaderDirective}`
               : ''
           }
 ${args.limitedSourcingDirective ? `\n${args.limitedSourcingDirective}\n` : ''}

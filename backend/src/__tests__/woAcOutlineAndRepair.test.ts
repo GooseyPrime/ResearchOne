@@ -12,9 +12,12 @@ import {
   isItemSectionHeading,
 } from '../services/reasoning/researchOrchestrator';
 import {
+  buildTableHeaderDirective,
   contractRequestsTable,
+  DESCRIPTIVE_SECTION_PLAN,
   sectionExpectsTable,
 } from '../services/reasoning/reportGenerator';
+import { appendContractRequiredSections } from '../services/reasoning/contractOutline';
 import {
   applyTargetedRepair,
   extractMissingSectionTitles,
@@ -290,6 +293,87 @@ describe('R5 — table rules are scoped to sections that need them (PR #205 revi
     expect(contractRequestsTable([{ type: 'table', description: 'master portfolio' }], [])).toBe(true);
     expect(contractRequestsTable([], ['comparison table'])).toBe(true);
     expect(contractRequestsTable([{ type: 'summary' }], ['prose'])).toBe(false);
+  });
+});
+
+describe('run c50162a9 — contract-required sections and table headers', () => {
+  const PLAN = [
+    { title: 'Overview', key: 'overview', weight: 1 },
+    { title: 'Ranking and Analysis', key: 'ranking_and_analysis', weight: 1 },
+    { title: 'Caveats', key: 'caveats', weight: 1 },
+  ];
+
+  it('adds a drafting slot for each named deliverable the plan lacks', () => {
+    const { plan, added } = appendContractRequiredSections({
+      plan: PLAN,
+      artifacts: [
+        { description: 'ranked list of market opportunities', exactCount: 20 },
+        { description: 'Cross-Opportunity Analysis' },
+        { description: 'Final Winner selection' },
+      ],
+    });
+    expect(added).toEqual(['Cross-Opportunity Analysis', 'Final Winner selection']);
+    // Inserted before the trailing caveats section, not after it.
+    expect(plan[plan.length - 1]?.key).toBe('caveats');
+    expect(plan.map((s) => s.title)).toEqual([
+      'Overview',
+      'Ranking and Analysis',
+      'Cross-Opportunity Analysis',
+      'Final Winner selection',
+      'Caveats',
+    ]);
+  });
+
+  it('does not duplicate a deliverable an existing section already covers', () => {
+    const { added } = appendContractRequiredSections({
+      plan: PLAN,
+      artifacts: [{ description: 'a detailed ranking and analysis' }],
+    });
+    expect(added).toEqual([]);
+  });
+
+  it('still adds a deliverable that only partly overlaps an existing section', () => {
+    // "Ranking and Analysis" does not cover a per-option ranking rationale.
+    const { added } = appendContractRequiredSections({
+      plan: PLAN,
+      artifacts: [{ description: 'ranking rationale for each option' }],
+    });
+    expect(added).toEqual(['Ranking rationale for each option']);
+  });
+
+  it('skips the counted artifact, which already has its own item sections', () => {
+    const repeated = { description: 'market opportunities', exactCount: 20 };
+    const { added } = appendContractRequiredSections({
+      plan: PLAN,
+      artifacts: [repeated],
+      repeatedArtifact: repeated,
+    });
+    expect(added).toEqual([]);
+  });
+
+  it('hands the drafter a literal header row, not a column count', () => {
+    const directive = buildTableHeaderDirective({
+      fields: ['monthly_revenue', 'competition level'],
+      itemLabel: 'Opportunity',
+      rowCount: 20,
+    });
+    expect(directive).toContain('| # | Opportunity | Monthly Revenue | Competition Level |');
+    expect(directive).toContain('| --- | --- | --- | --- |');
+    expect(directive).toContain('exactly 20 data rows');
+    expect(directive).toContain('exactly 4 cells');
+  });
+
+  it('emits nothing when the contract names no per-item fields', () => {
+    expect(buildTableHeaderDirective({ fields: [], itemLabel: 'Opportunity' })).toBe('');
+  });
+
+  it('keeps adjudication vocabulary out of the descriptive section plan', () => {
+    const titles = DESCRIPTIVE_SECTION_PLAN.map((s) => s.title.toLowerCase());
+    expect(titles.some((t) => t.includes('evidence'))).toBe(false);
+    expect(titles.some((t) => t.includes('falsification'))).toBe(false);
+    expect(titles.some((t) => t.includes('contradiction'))).toBe(false);
+    // The key is load-bearing for revision insertion order and must not move.
+    expect(DESCRIPTIVE_SECTION_PLAN.some((s) => s.key === 'evidence_ledger')).toBe(true);
   });
 });
 

@@ -296,6 +296,109 @@ export function expandSectionPlanForContract(args: {
 }
 
 /**
+ * Section plans are per-INTENT and generic ("Ranking and Analysis",
+ * "Recommendations", "Caveats"). A brief that also asks for a Cross-Opportunity
+ * Analysis and a Final Winner names deliverables no static plan contains, so
+ * the drafter is never given a slot to write them, the auditor then reports
+ * them missing, and repair has to bolt them on afterwards.
+ *
+ * Run `c50162a9` failed on exactly this: 20/20 items delivered, two named
+ * trailing deliverables absent, two repair passes spent chasing them.
+ *
+ * Beyond this many appended sections the brief is better served by the
+ * intent plan than by one section per phrase.
+ */
+export const MAX_CONTRACT_SECTIONS = 8;
+
+/** Words too generic to prove that an existing section already covers an artifact. */
+const COVERAGE_STOPWORDS = new Set([
+  'a', 'an', 'the', 'of', 'for', 'and', 'or', 'with', 'to', 'in', 'on', 'by', 'per', 'each',
+  'provide', 'create', 'generate', 'deliver', 'include', 'list', 'section', 'report', 'analysis',
+  'detailed', 'complete', 'full', 'summary', 'overview', 'final', 'all', 'that', 'which',
+]);
+
+function significantWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !COVERAGE_STOPWORDS.has(word));
+}
+
+/** Turn an artifact description into a section heading. */
+export function deriveContractSectionTitle(description: string): string | null {
+  const cleaned = (description ?? '')
+    .replace(/^(?:provide|create|generate|deliver|include|produce|outline|write)\s+/i, '')
+    .replace(/^(?:a|an|the)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.:;,]+$/, '')
+    .trim();
+  if (cleaned.length < 4 || cleaned.length > 80) return null;
+  // A phrase with a verb in the middle is an instruction, not a heading.
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Add a drafting slot for every named deliverable the intent plan does not
+ * already cover.
+ *
+ * Inserted before the plan's trailing caveats/limitations section so the report
+ * still ends on its framing, and skipped entirely when an existing section
+ * already covers the same ground.
+ */
+export function appendContractRequiredSections(args: {
+  plan: readonly SectionPlanEntry[];
+  artifacts?: readonly ContractArtifact[];
+  /** The repeated artifact, which already has its own expanded sections. */
+  repeatedArtifact?: ContractArtifact | null;
+  /** Section keys that must stay last (caveats, limitations, sources). */
+  trailingKeys?: ReadonlySet<string>;
+}): { plan: SectionPlanEntry[]; added: string[] } {
+  const plan = args.plan.map((entry) => ({ ...entry }));
+  const added: string[] = [];
+  if (!args.artifacts || args.artifacts.length === 0) return { plan, added };
+
+  const trailingKeys = args.trailingKeys ?? new Set(['caveats', 'limitations', 'sources', 'appendix']);
+  const existingKeys = new Set(plan.map((entry) => entry.key));
+  const existingTitleWords = plan.map((entry) => new Set(significantWords(entry.title)));
+  const averageWeight =
+    plan.length > 0 ? plan.reduce((sum, entry) => sum + entry.weight, 0) / plan.length : 1;
+
+  const pending: SectionPlanEntry[] = [];
+  for (const artifact of args.artifacts) {
+    if (artifact === args.repeatedArtifact) continue;
+    // Counted artifacts are the repeated deliverable; they get item sections.
+    if (typeof artifact.exactCount === 'number' && artifact.exactCount >= MIN_COUNT_FOR_EXPANSION) continue;
+    const title = deriveContractSectionTitle(artifact.description ?? '');
+    if (!title) continue;
+
+    const words = significantWords(title);
+    if (words.length === 0) continue;
+    // Covered when every meaningful word of the deliverable already appears in
+    // some section title — that section is where the drafter will write it.
+    const covered = existingTitleWords.some((titleWords) => words.every((word) => titleWords.has(word)));
+    if (covered) continue;
+
+    const key = `contract_${slugify(title)}`;
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+    pending.push({ title, key, weight: averageWeight });
+    added.push(title);
+    if (pending.length >= MAX_CONTRACT_SECTIONS) break;
+  }
+
+  if (pending.length === 0) return { plan, added };
+
+  let insertAt = plan.length;
+  for (let i = plan.length - 1; i >= 0; i -= 1) {
+    if (trailingKeys.has(plan[i]!.key)) insertAt = i;
+    else break;
+  }
+  plan.splice(insertAt, 0, ...pending);
+  return { plan, added };
+}
+
+/**
  * Derive a word target from the contract instead of a fixed default (R2).
  *
  * A 107-block deliverable cannot share a default budget with a four-section
