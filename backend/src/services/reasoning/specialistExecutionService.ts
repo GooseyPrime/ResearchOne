@@ -23,7 +23,7 @@ import {
 } from './specialistRetrievalScopes';
 
 const SPECIALIST_TIMEOUT_MS = 90_000;
-const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
+export const MAX_EVIDENCE_CONTEXT_CHARS = 50_000;
 
 /**
  * Prompt budgets for specialist calls (WO-AA Phase 5).
@@ -287,14 +287,12 @@ export async function runSpecialistExecution(input: {
         const queries = buildScopedQueries(agent, retrievalTopic);
         if (queries.length > 0) {
           const chunks = await input.retrieveScoped({ agent, queries });
-          scopedBlock = formatScopedContext(
-            agent,
-            chunks,
-            input.sharedContextChunkIds ?? new Set<string>()
-          );
+          const sharedIds = input.sharedContextChunkIds ?? new Set<string>();
+          scopedBlock = formatScopedContext(agent, chunks, sharedIds);
           if (scopedBlock) {
+            const freshCount = chunks.filter((c) => !sharedIds.has(c.id)).length;
             await input.onProgress?.(
-              `Scoped sources for ${agent}: ${chunks.length} chunk(s) retrieved`
+              `Scoped sources for ${agent}: ${freshCount} chunk(s) appended (${chunks.length} retrieved)`
             );
           }
         }

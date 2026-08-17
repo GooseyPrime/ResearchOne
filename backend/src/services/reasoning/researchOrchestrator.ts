@@ -90,7 +90,7 @@ import {
 } from '../planning/wave53EpistemicPolicy';
 import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
 import type { PlanPayload } from '../planning/planTypes';
-import { runSpecialistExecution } from './specialistExecutionService';
+import { runSpecialistExecution, MAX_EVIDENCE_CONTEXT_CHARS } from './specialistExecutionService';
 import {
   assessEvidenceSufficiency,
   buildLowEvidenceSynthesisDirective,
@@ -1425,9 +1425,18 @@ async function runResearchJobInner(
           researchObjective: v2.researchObjective,
           allowFallbackByRole: v2.allowFallbackByRole,
           byokApiKeyOverride,
-          // Chunk ids already in the shared context, so scoped retrieval does
-          // not pay for the same text twice.
-          sharedContextChunkIds: new Set(allChunks.map((chunk) => chunk.id)),
+          // Chunk ids that actually survived the shared-context cap so scoped
+          // retrieval does not re-deduplicate chunks that were truncated away.
+          sharedContextChunkIds: (() => {
+            const cappedContext = evidenceContext.slice(0, MAX_EVIDENCE_CONTEXT_CHARS);
+            const ids = new Set<string>();
+            const idPattern = /\[CHUNK \d+\] ID: ([^\n]+)/g;
+            let m;
+            while ((m = idPattern.exec(cappedContext)) !== null) {
+              ids.add(m[1].trim());
+            }
+            return ids;
+          })(),
           // Scoped retrieval stays owned by the orchestrator: it runs through
           // `retrieveChunksWithAudit`, so the corpus competence gate (Rule 40)
           // and the run audit trail apply exactly as they do for shared
@@ -1441,7 +1450,7 @@ async function runResearchJobInner(
                 topK: SCOPED_RETRIEVAL_TOP_K,
                 filterTags,
                 hybridSearch: true,
-                intentId: orchProfile.intent as never,
+                intentId: orchProfile.intent,
                 userId: creditCtx?.userId,
                 runId,
               });
@@ -1454,6 +1463,14 @@ async function runResearchJobInner(
                   seen.add(chunk.id);
                   collected.push(chunk);
                 }
+              }
+            }
+            // Merge novel scoped hits into the run-level chunk collection so they
+            // can be cited and persisted alongside shared-retrieval chunks (P1).
+            const existingChunkIds = new Set(allChunks.map((c) => c.id));
+            for (const chunk of collected) {
+              if (!existingChunkIds.has(chunk.id)) {
+                allChunks.push(chunk);
               }
             }
             return collected;
@@ -1487,6 +1504,22 @@ async function runResearchJobInner(
 
     await runRetrieverAnalysisStage('Analyzing retrieved evidence...');
     await runSpecialistStage();
+
+    // Persist scoped corpus-gate decisions collected during specialist execution
+    // on all paths (not only rediscovery). The initial retrieval update above
+    // runs before specialists, so scoped query results would otherwise be absent
+    // from the stored audit block (P2).
+    await query(
+      `UPDATE research_runs
+          SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb
+        WHERE id=$2`,
+      [
+        JSON.stringify({
+          corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+        }),
+        runId,
+      ]
+    );
 
     const requestedArtifactCount =
       confirmedResearchBrief?.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')
