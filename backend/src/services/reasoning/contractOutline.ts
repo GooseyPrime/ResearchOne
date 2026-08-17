@@ -40,7 +40,33 @@ export interface ContractArtifact {
 
 /** Noise words to strip when turning a description into a section label. */
 const LABEL_NOISE =
-  /\b(ranked|ordered|list|listing|set|collection|of|the|a|an|exactly|top|best|detailed|complete|full|report|table|portfolio|items?)\b/gi;
+  /\b(ranked|ordered|list|listing|set|collection|of|the|a|an|exactly|top|best|detailed|complete|full|report|table|portfolio|items?|with|by|for|per|from|into|across|and|or|each|their|its)\b/gi;
+
+/**
+ * Word endings that mark an activity rather than the enumerated thing.
+ * `-ing` catches gerunds ("modeling", "sizing", "forecasting"); `-ed` catches
+ * participles ("sized", "validated", "estimated").
+ *
+ * The `{3,}` applies to the STEM, so short nouns that merely end this way stay
+ * eligible: "ring", "king", "bed", "seed", "feed". A three-letter-plus stem
+ * before `-ing`/`-ed` is overwhelmingly a verb form.
+ *
+ * `-ly` is deliberately NOT included: it would strip "supply", "family", and
+ * "anomaly", and a description is far more likely to end in one of those than
+ * in an adverb.
+ */
+const NON_NOUN_SUFFIX = /^.{3,}(?:ing|ed)$/i;
+
+/**
+ * Endings that look plural but are not: "analysis", "status", "business",
+ * "process". Singularising these produces nonsense like "Analysi".
+ */
+const FALSE_PLURAL_SUFFIX = /(?:ss|is|us)$/i;
+
+/** True when a word reads as a plural noun. */
+function isPluralNoun(word: string): boolean {
+  return /s$/i.test(word) && !FALSE_PLURAL_SUFFIX.test(word) && !NON_NOUN_SUFFIX.test(word);
+}
 
 /**
  * Derive a singular, human label for one requested item from its description.
@@ -54,7 +80,32 @@ export function deriveItemLabel(artifact: ContractArtifact | null, intentId?: st
   const source = (artifact?.description ?? artifact?.type ?? '').trim();
   const cleaned = source.replace(LABEL_NOISE, ' ').replace(/[^a-zA-Z\s-]/g, ' ').replace(/\s+/g, ' ').trim();
   const words = cleaned.split(' ').filter(Boolean);
-  let noun = words.length > 0 ? words[words.length - 1]! : '';
+  // Scan right-to-left for the first word that reads as a noun. Taking the last
+  // word unconditionally picked the gerund out of "...with revenue modeling",
+  // producing the heading "Modeling 1" for a list of market opportunities
+  // (run `c50162a9`). Gerunds and adjectival participles are activities, not
+  // the thing being enumerated.
+  // Prefer a plural: the enumerated thing is almost always written plural
+  // ("market opportunities", "comparison-site verticals"), while the modifiers
+  // around it are singular adjectives and gerunds. Without this, "opportunities
+  // with financial modeling" yields the adjective "Financial".
+  let noun = '';
+  for (let i = words.length - 1; i >= 0; i -= 1) {
+    const candidate = words[i]!;
+    if (NON_NOUN_SUFFIX.test(candidate)) continue;
+    if (isPluralNoun(candidate)) {
+      noun = candidate;
+      break;
+    }
+  }
+  if (!noun) {
+    for (let i = words.length - 1; i >= 0; i -= 1) {
+      const candidate = words[i]!;
+      if (NON_NOUN_SUFFIX.test(candidate)) continue;
+      noun = candidate;
+      break;
+    }
+  }
 
   if (!noun && intentId) {
     // opportunity_discovery -> "opportunity"; comparative -> "option"
@@ -67,7 +118,7 @@ export function deriveItemLabel(artifact: ContractArtifact | null, intentId?: st
   // "Opportunities 3".
   if (/ies$/i.test(noun)) noun = `${noun.slice(0, -3)}y`;
   else if (/sses$/i.test(noun)) noun = noun.slice(0, -2);
-  else if (/s$/i.test(noun) && !/ss$/i.test(noun)) noun = noun.slice(0, -1);
+  else if (isPluralNoun(noun)) noun = noun.slice(0, -1);
 
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
@@ -131,6 +182,15 @@ export interface ExpandOutlineResult {
   itemCount: number;
   /** Items drafted per expanded section (1 unless the cap forced grouping). */
   itemsPerSection: number;
+  /**
+   * Titles of the sections this expansion created, lowercased.
+   *
+   * The contract auditor uses these to recognise a delivered item by the title
+   * that was actually planned. Without them it falls back to a label regex the
+   * drafter never agreed to follow, and scores a fully delivered report as zero
+   * (run `c50162a9`: planned "Modeling 1..20", drafted "## 1. Developer Tools").
+   */
+  expandedTitles: readonly string[];
   reason: string;
 }
 
@@ -164,6 +224,7 @@ export function expandSectionPlanForContract(args: {
       expanded: false,
       itemCount: 0,
       itemsPerSection: 0,
+      expandedTitles: [],
       reason: 'No repeated artifact with an exact count; using the intent section plan unchanged.',
     };
   }
@@ -176,6 +237,7 @@ export function expandSectionPlanForContract(args: {
       expanded: false,
       itemCount: count,
       itemsPerSection: 0,
+      expandedTitles: [],
       reason: `Intent plan has no list section to expand; ${count} items must be produced within the existing sections.`,
     };
   }
@@ -202,7 +264,13 @@ export function expandSectionPlanForContract(args: {
     const first = section * itemsPerSection + 1;
     const last = Math.min(count, first + itemsPerSection - 1);
     if (first > count) break;
-    const title = first === last ? `${titleWord} ${first}` : `${titleWord}s ${first}–${last}`;
+    // Number-first ("1. Opportunity") rather than number-last ("Opportunity 1").
+    // The coherence refiner retitles item sections to name the item concretely;
+    // a leading ordinal is the one part it is told to preserve, and it is what
+    // the auditor's numbered-heading rule keys on. Number-last headings lose
+    // their ordinal on rewrite and the delivered items become uncountable
+    // (run `c50162a9`: "Modeling 1" -> "Developer Tools", scored 0/20).
+    const title = first === last ? `${first}. ${titleWord}` : `${first}–${last}. ${titleWord}s`;
     expandedEntries.push({
       title,
       key: `${slugify(listEntry.key)}_${first}${first === last ? '' : `_${last}`}`,
@@ -219,6 +287,7 @@ export function expandSectionPlanForContract(args: {
     expanded: true,
     itemCount: count,
     itemsPerSection,
+    expandedTitles: expandedEntries.map((entry) => entry.title.toLowerCase()),
     reason:
       itemsPerSection === 1
         ? `Expanded "${listEntry.title}" into ${expandedEntries.length} sections, one per requested ${titleWord.toLowerCase()}.`

@@ -7,7 +7,10 @@ import {
   findRepeatedArtifact,
   MAX_EXPANDED_SECTIONS,
 } from '../services/reasoning/contractOutline';
-import { ITEM_SECTION_HEADING } from '../services/reasoning/researchOrchestrator';
+import {
+  ITEM_SECTION_HEADING,
+  isItemSectionHeading,
+} from '../services/reasoning/researchOrchestrator';
 import {
   contractRequestsTable,
   sectionExpectsTable,
@@ -57,11 +60,15 @@ describe('R1 — contract-driven outline expansion', () => {
     expect(result.itemsPerSection).toBe(1);
     // 5 base sections - 1 list section + 20 item sections = 24
     expect(result.plan).toHaveLength(24);
-    // Label comes from `description`, not an invented `type` field.
-    expect(result.plan.some((s) => s.title === 'Opportunity 1')).toBe(true);
-    expect(result.plan.some((s) => s.title === 'Opportunity 20')).toBe(true);
-    expect(result.plan.some((s) => s.title.startsWith('Item '))).toBe(false);
+    // Label comes from `description`, not an invented `type` field, and the
+    // ordinal leads so it survives the coherence refiner's retitling.
+    expect(result.plan.some((s) => s.title === '1. Opportunity')).toBe(true);
+    expect(result.plan.some((s) => s.title === '20. Opportunity')).toBe(true);
+    expect(result.plan.some((s) => s.title.endsWith(' Item'))).toBe(false);
     expect(result.plan.some((s) => s.key === 'opportunities_list')).toBe(false);
+    // The result must advertise its own item titles; the auditor keys on these.
+    expect(result.expandedTitles).toHaveLength(20);
+    expect(result.expandedTitles).toContain('1. opportunity');
   });
 
   it('preserves surrounding sections and their order', () => {
@@ -180,8 +187,53 @@ describe('PR #205 review — label derivation and budget bounds', () => {
     const itemSections = plan.filter((s) => /\d/.test(s.title));
     expect(itemSections).toHaveLength(20);
     for (const section of itemSections) {
-      expect(ITEM_SECTION_HEADING.test(section.title)).toBe(true);
+      // Assert against the predicate the auditor actually calls, not one of the
+      // regexes behind it — the point of the check is that planned headings are
+      // countable, by whichever rule matches.
+      expect(isItemSectionHeading(section.title)).toBe(true);
     }
+  });
+
+  it('does not derive a gerund label from an activity phrase', () => {
+    // Run c50162a9 planned "Modeling 1..20" for a list of market opportunities
+    // because the description ended in a gerund.
+    expect(deriveItemLabel({ description: 'opportunities ranked by revenue modeling' })).toBe('Opportunity');
+    expect(deriveItemLabel({ description: 'markets sized by forecasting' })).toBe('Market');
+    expect(deriveItemLabel({ description: 'opportunities with financial modeling' })).toBe('Opportunity');
+    // Short-stemmed words that merely end this way stay eligible as nouns.
+    expect(deriveItemLabel({ description: 'set of rings' })).toBe('Ring');
+    expect(deriveItemLabel({ description: 'collection of seeds' })).toBe('Seed');
+    // -ly is not treated as a verb ending, so real nouns survive.
+    expect(deriveItemLabel({ description: 'list of supply' })).toBe('Supply');
+  });
+
+  it('does not mangle words that only look plural', () => {
+    expect(deriveItemLabel({ description: 'set of competitive analysis' })).toBe('Analysis');
+    expect(deriveItemLabel({ description: 'list of each business' })).toBe('Business');
+  });
+
+  it('never counts a numbered framing section as a delivered item', () => {
+    for (const heading of [
+      '1. Executive Summary',
+      '8. Cross-Opportunity Analysis',
+      '9. Final Winner',
+      '10. Recommendations',
+      'Limitations',
+    ]) {
+      expect(isItemSectionHeading(heading)).toBe(false);
+    }
+  });
+
+  it('counts the numbered headings a refiner actually writes', () => {
+    for (const heading of ['1. Developer Tools', '7. Home Fitness Equipment', '20. Pet Supplies']) {
+      expect(isItemSectionHeading(heading)).toBe(true);
+    }
+  });
+
+  it('honours planned titles even when they look like framing sections', () => {
+    const planned = new Set(['3. summary']);
+    expect(isItemSectionHeading('3. Summary', planned)).toBe(true);
+    expect(isItemSectionHeading('3. Summary')).toBe(false);
   });
 
   it('recognises every label variant the expander can emit', () => {
@@ -291,11 +343,69 @@ describe('R3 — targeted repair', () => {
     expect(plan.missingSections).not.toContain('Executive Summary');
   });
 
-  it('falls back to a whole-report pass when existing content is wrong', () => {
+  it('writes absent sections first, even alongside a content finding', () => {
+    // Run c50162a9: the verifier names an `unsupported_claims` criterion on
+    // nearly every run, which used to escalate a two-missing-section defect
+    // into two whole-report rewrites totalling 11m44s.
     const plan = planTargetedRepair({
       markdown: REPORT,
-      revisionInstructions: ['Remove unsupported claims about commission rates.'],
+      revisionInstructions: [
+        'Remove unsupported claims about commission rates.',
+        'Provide the Final Winner market selection.',
+      ],
       missingRequirements: ['Final Winner market selection'],
+    });
+    expect(plan.mode).toBe('append_missing');
+    expect(plan.missingSections).toContain('Final Winner market selection');
+    // The append prompt must not carry the rewrite instruction, or the model is
+    // told to remove claims from content it has been forbidden to reproduce.
+    expect(plan.userPrompt).not.toMatch(/Remove unsupported claims/);
+  });
+
+  it('rewrites only the sections a content finding names', () => {
+    const plan = planTargetedRepair({
+      markdown: REPORT,
+      revisionInstructions: ['Master Portfolio Table contains unsupported commission rates.'],
+      missingRequirements: [],
+    });
+    expect(plan.mode).toBe('rewrite_sections');
+    expect(plan.targetedSections).toEqual(['Master Portfolio Table']);
+    expect(plan.userPrompt).toContain('## Master Portfolio Table');
+    expect(plan.userPrompt).not.toContain('## Executive Summary');
+  });
+
+  it('splices a scoped rewrite back without touching other sections', () => {
+    const plan = planTargetedRepair({
+      markdown: REPORT,
+      revisionInstructions: ['Master Portfolio Table contains unsupported commission rates.'],
+      missingRequirements: [],
+    });
+    const merged = applyTargetedRepair(
+      REPORT,
+      '## Master Portfolio Table\n| Rank | Vertical |\n| --- | --- |\n| 1 | SaaS (unverified estimate) |',
+      plan
+    );
+    expect(merged).toContain('## Executive Summary\nSummary body.');
+    expect(merged).toContain('(unverified estimate)');
+    expect(merged).toContain('# Portfolio');
+    // Exactly one Master Portfolio Table — replaced, not appended.
+    expect(merged.match(/## Master Portfolio Table/g)).toHaveLength(1);
+  });
+
+  it('keeps the original when a scoped rewrite returns unspliceable output', () => {
+    const plan = planTargetedRepair({
+      markdown: REPORT,
+      revisionInstructions: ['Master Portfolio Table contains unsupported commission rates.'],
+      missingRequirements: [],
+    });
+    expect(applyTargetedRepair(REPORT, 'Here is my revision, no headings.', plan)).toBe(REPORT);
+  });
+
+  it('falls back to a whole-report pass when a finding names no section', () => {
+    const plan = planTargetedRepair({
+      markdown: REPORT,
+      revisionInstructions: ['The report contains unsupported claims throughout.'],
+      missingRequirements: [],
     });
     expect(plan.mode).toBe('rewrite_whole');
   });

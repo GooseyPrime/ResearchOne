@@ -492,7 +492,47 @@ function parseOpportunityTitleLine(line: string): string | null {
  * generates these headings from the artifact description.
  */
 export const ITEM_SECTION_HEADING =
-  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application)s?\s*#?\s*\d+/i;
+  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application|modeling)s?\s*#?\s*\d+/i;
+
+/**
+ * Numbered heading the drafter actually emits, e.g. `1. Developer Tools`.
+ *
+ * Run c50162a9 delivered all 20 deep-dives — the verifier confirmed each had
+ * Narrative Briefing, Basic Project Needs, and the three prompts — yet the
+ * auditor reported `opportunitiesWithAllRequiredFields: 0`. The planned section
+ * titles were `Modeling 1..20`, the drafter wrote `## 1. Developer Tools`, and
+ * neither form matched the label pattern above. Extraction fell through to
+ * table rows, which carry no narrative fields, so complete work was scored as
+ * zero.
+ *
+ * Section titles are a drafting hint, not a contract the model is obliged to
+ * echo. Detection must accept how reports are really written.
+ */
+export const NUMBERED_ITEM_HEADING = /^\s*(\d{1,3})\s*[.)\]:-]\s+\S/;
+
+/**
+ * Framing sections that are never a delivered item, even when numbered.
+ *
+ * Some drafters number every top-level heading, so `## 1. Executive Summary`
+ * and `## 8. Final Recommendation` both satisfy `NUMBERED_ITEM_HEADING`.
+ * Counting those as items inflates the delivered count and makes the exact-count
+ * check pass on a report that is short of real items — a false pass, which is
+ * worse than the false failure this rule exists to prevent.
+ */
+export const FRAMING_SECTION_HEADING =
+  /^(?:\d{1,3}\s*[.)\]:-]\s*)?(?:executive\s+summary|introduction|overview|scope|background|methodology|method|approach|context|key\s+findings?|summary|conclusions?|cross[\s-]?\w+\s+analysis|comparative\s+analysis|final\s+(?:winner|recommendation|verdict|selection)|recommendations?|next\s+steps?|limitations?|appendix|sources?|references?|glossary|assumptions?)\b/i;
+
+/** True when a heading denotes one delivered item. */
+export function isItemSectionHeading(title: string, plannedTitles?: ReadonlySet<string>): boolean {
+  const text = (title ?? '').replace(/[*_`#]/g, '').trim();
+  if (!text) return false;
+  if (plannedTitles?.has(text.toLowerCase())) return true;
+  // Checked after the planned-title set so an explicitly planned item section
+  // still counts even if its label collides with a framing word.
+  if (FRAMING_SECTION_HEADING.test(text)) return false;
+  if (ITEM_SECTION_HEADING.test(text)) return true;
+  return NUMBERED_ITEM_HEADING.test(text);
+}
 
 function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
   const tables = extractMarkdownTables(markdown);
@@ -543,7 +583,10 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
   }
   return [];
 }
-function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title: string; body: string }> {
+function extractOpportunityObjectsFromMarkdown(
+  markdown: string,
+  plannedItemTitles?: ReadonlySet<string>
+): Array<{ title: string; body: string }> {
   const lines = markdown.split('\n');
   const out: Array<{ title: string; body: string }> = [];
   let current: { title: string; body: string[] } | null = null;
@@ -559,7 +602,7 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
       // derived from the artifact description ("Opportunity 3", "Vertical 3",
       // "Option 3", "Item 3"), so matching only "Opportunity <n>" counted a
       // fully delivered report as ZERO items (Codex review, PR #205).
-      if (ITEM_SECTION_HEADING.test(title)) {
+      if (isItemSectionHeading(title, plannedItemTitles)) {
         current = { title, body: [] };
       } else {
         current = null;
@@ -639,6 +682,8 @@ function runDeterministicContractValidation(args: {
   intentId: string;
   markdown: string;
   brief: ResearchBrief;
+  /** Item-section titles the outline actually planned, lowercased. */
+  plannedItemTitles?: ReadonlySet<string>;
 }): {
   pass: boolean;
   missing: string[];
@@ -649,7 +694,7 @@ function runDeterministicContractValidation(args: {
   const revision: string[] = [];
   const metrics: Record<string, number> = {};
   if (args.intentId === 'opportunity_discovery') {
-    const opportunities = extractOpportunityObjectsFromMarkdown(args.markdown);
+    const opportunities = extractOpportunityObjectsFromMarkdown(args.markdown, args.plannedItemTitles);
     const requestedCount =
       args.brief.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')?.exactCount ?? null;
     const { complete: completeFields, missingFields } = adaptiveFieldCompletenessForOpportunities(opportunities, args.brief);
@@ -1829,6 +1874,10 @@ async function runResearchJobInner(
     const outputTemplateId =
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
+    // Item-section titles R1 expansion planned, so the contract auditor can
+    // recognise delivered items by what was actually planned rather than by a
+    // label pattern the drafter never agreed to follow (run c50162a9).
+    let plannedItemTitles: ReadonlySet<string> = new Set<string>();
     let generatedReport: { markdown: string };
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -1841,7 +1890,7 @@ async function runResearchJobInner(
     if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
-      generatedReport = await generateIterativeReport({
+      const iterativeReport = await generateIterativeReport({
         query: researchQuery,
         plan,
         sourceContext,
@@ -1876,6 +1925,8 @@ async function runResearchJobInner(
           });
         },
       });
+      generatedReport = iterativeReport;
+      plannedItemTitles = iterativeReport.plannedItemTitles;
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
@@ -1889,7 +1940,12 @@ async function runResearchJobInner(
             role: 'user',
             content:
               `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
-              `# Executive Summary\n(direct answer)\n# Evidence\n(short bullets tied to chunk IDs where possible)\n` +
+              `# Executive Summary\n(direct answer)\n` +
+              // "Evidence" is adjudication vocabulary. A reference lookup is not
+              // adjudicating a disputed claim, and a heading the writer sees
+              // becomes a heading the writer reasons in — which is how epistemic
+              // framing leaks into reports that never asked for it (Rule 37).
+              `# ${isAdjudicative ? 'Evidence' : 'Supporting Detail'}\n(short bullets tied to chunk IDs where possible)\n` +
               `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
               `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
               `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
@@ -1904,7 +1960,7 @@ async function runResearchJobInner(
               // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
               `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
               `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
-              `Evidence:\n${sourceContext.slice(0, 60000)}`,
+              `Source material:\n${sourceContext.slice(0, 60000)}`,
           },
         ],
       });
@@ -2006,6 +2062,7 @@ ${generatedReport.markdown}`,
         intentId: orchProfile.intent,
         markdown,
         brief: researchBrief,
+        plannedItemTitles,
       });
 
       // WO-AB: table-contract check. Deterministic, no extra model call.

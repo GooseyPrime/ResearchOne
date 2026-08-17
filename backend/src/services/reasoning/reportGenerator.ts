@@ -353,7 +353,13 @@ export async function generateIterativeReport(args: {
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
   skipChallenger?: boolean;
   isAdjudicative?: boolean;
-}): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
+}): Promise<{
+  markdown: string;
+  sections: ReportSectionDraft[];
+  outline: string[];
+  targetWordCount: number;
+  plannedItemTitles: ReadonlySet<string>;
+}> {
   let activeSectionPlan: RuntimeSectionPlanEntry[];
   let templateNarrativeHint = '';
   let templateVerifierRubric = '';
@@ -390,6 +396,7 @@ export async function generateIterativeReport(args: {
     perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
   });
   activeSectionPlan = outlineExpansion.plan;
+  const expandedItemTitles: ReadonlySet<string> = new Set(outlineExpansion.expandedTitles);
 
   const v2 = {
     engineVersion: args.engineVersion,
@@ -451,7 +458,7 @@ Required deliverables:\n${templateRequiredDeliverables.length > 0 ? templateRequ
 Intent verifier rubric:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
-Evidence:\n${args.sourceContext.slice(0, 8000)}
+Source material:\n${args.sourceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
 Return strict JSON only.`,
       },
@@ -542,13 +549,27 @@ ${s.content}`)
       {
         role: 'user',
         content: `Refine report text while preserving epistemic integrity.
+
+SECTION STRUCTURE IS FIXED (MANDATORY). Keep exactly ${activeSectionPlan.length} "## " sections,
+in the order given, none added, removed, merged, or split. Rewrite body text only.
+${
+  expandedItemTitles.size > 0
+    ? `The ${expandedItemTitles.size} per-item sections may be retitled to name the item concretely, but each such\n` +
+      `heading MUST begin with that item's number followed by a period — "## 7. Home Fitness Equipment",\n` +
+      `never "## Home Fitness Equipment". Numbering runs 1..${expandedItemTitles.size} with no gaps or repeats.\n` +
+      `All other headings must be reproduced character-for-character.`
+    : `Reproduce every heading character-for-character.`
+}
+Headings are the contract this report is audited against: an unnumbered or renamed
+item heading makes delivered work unrecognisable and fails an otherwise complete report.
+
 Challenger findings:\n${challenger.content}
 
 Draft:\n${sections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n')}
 
 ${requestedFormatsBlock}
 
-LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive evidence, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.
+LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.
 
 Return the full revised markdown report.`,
       },
@@ -560,5 +581,10 @@ Return the full revised markdown report.`,
     sections,
     outline: resolvedOutline,
     targetWordCount,
+    // Titles of the sections R1 expansion created for the requested items,
+    // lowercased. The contract auditor uses these so it can recognise delivered
+    // items by the titles that were actually planned, instead of guessing from
+    // a label pattern the drafter never agreed to follow.
+    plannedItemTitles: expandedItemTitles,
   };
 }
