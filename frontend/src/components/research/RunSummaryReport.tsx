@@ -8,6 +8,12 @@ import type { ResearchRun, ResearchProgressEvent } from '../../utils/api';
 export interface RunSummaryData {
   runId: string;
   status: string;
+  /**
+   * Which quality gate produced this outcome. Present on runs that reached the
+   * gates; `status` alone cannot distinguish an incomplete deliverable from an
+   * unverifiable one from a crash.
+   */
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
@@ -258,22 +264,42 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     }
   }, [buildPlainText]);
 
+  // The gate outcome is what the reader needs. `status` collapses every gated
+  // failure into `failed`, and this summary used to be handed a hardcoded
+  // 'completed' regardless — so a run stored as failed rendered a green
+  // COMPLETED. Prefer the gate status; fall back to the run status.
+  const gateStatus = summary?.gateStatus ?? null;
+  const displayStatus =
+    gateStatus && gateStatus !== 'completed' ? gateStatus : status;
+
+  // Only a clean pass is green. A degraded or gate-failed run is amber or red —
+  // never the colour a user reads as "this is done and correct".
+  const isClean = displayStatus === 'completed';
+  const isHardFailure =
+    displayStatus === 'aborted' ||
+    displayStatus === 'failed' ||
+    displayStatus === 'contract_failed' ||
+    displayStatus === 'verification_failed';
+
   const StatusIcon =
-    status === 'completed' ? CheckCircle2
-    : status === 'aborted' ? XCircle
-    : status === 'cancelled' ? Ban
+    isClean ? CheckCircle2
+    : displayStatus === 'aborted' ? XCircle
+    : displayStatus === 'cancelled' ? Ban
+    : isHardFailure ? XCircle
     : AlertCircle;
 
   const statusColor =
-    status === 'completed' ? 'text-green-400'
-    : status === 'aborted' ? 'text-red-400'
-    : status === 'cancelled' ? 'text-slate-400'
+    isClean ? 'text-green-400'
+    : displayStatus === 'cancelled' ? 'text-slate-400'
+    : isHardFailure ? 'text-red-400'
     : 'text-amber-400';
 
   const borderColor =
-    status === 'completed' ? 'border-green-800/30'
-    : status === 'aborted' ? 'border-red-800/30'
+    isClean ? 'border-green-800/30'
+    : isHardFailure ? 'border-red-800/30'
     : 'border-amber-700/30';
+
+  const statusLabel = displayStatus.replace(/_/g, ' ').toUpperCase();
 
   return (
     <div className={clsx('rounded-lg border bg-surface-200/60 overflow-hidden', borderColor)} ref={reportRef}>
@@ -282,7 +308,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
         <div className="flex items-center gap-2">
           <StatusIcon size={15} className={statusColor} />
           <span className="text-sm font-semibold text-white">Run summary</span>
-          <span className={clsx('text-xs font-medium ml-1', statusColor)}>{status.toUpperCase()}</span>
+          <span className={clsx('text-xs font-medium ml-1', statusColor)}>{statusLabel}</span>
         </div>
         <button
           type="button"

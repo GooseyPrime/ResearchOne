@@ -2714,10 +2714,23 @@ ${generatedReport.markdown}`,
     if (currentStage && phaseStartTimes[currentStage] != null) {
       phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (finalNow - phaseStartTimes[currentStage]);
     }
+    // The summary status must be the status the run was actually written with.
+    // It used to be hardcoded 'completed' on this path, so a run stored as
+    // `failed` with gate status `contract_failed` still pushed a green
+    // "COMPLETED" summary to the live view. The database and the screen
+    // disagreed, and the screen was the one the user believed.
     const summary: RunSummaryPayload = buildRunSummary({
-      runId, status: 'completed',
+      runId,
+      status: runTerminalStatus,
+      gateStatus: reportStatus,
       startedAt: runStartedAt, finishedAt: finalNow,
       phaseDurations, modelLog,
+      ...(runTerminalStatus === 'completed'
+        ? {}
+        : {
+            failedStage: 'verification',
+            errorMessage: describeGateFailure(reportStatus),
+          }),
     });
 
     return { runId, reportId, summary };
@@ -2941,6 +2954,26 @@ ${generatedReport.markdown}`,
   }
 }
 
+/**
+ * Plain-language reason a gated run did not complete.
+ *
+ * The live summary previously showed a green COMPLETED with no message at all
+ * for these outcomes. Saying "failed" without saying what failed is only
+ * marginally better, so each gate gets a sentence a user can act on.
+ */
+function describeGateFailure(status: ReportGateStatus): string {
+  switch (status) {
+    case 'contract_failed':
+      return 'The report did not deliver everything the request asked for. It has been kept for review rather than finalised.';
+    case 'verification_failed':
+      return 'The report did not pass verification. It has been kept for review rather than finalised.';
+    case 'completed_degraded':
+      return 'The report was produced from fewer sources than this request requires, so it is marked degraded rather than finalised.';
+    default:
+      return 'The report did not pass its quality gates.';
+  }
+}
+
 function buildRunSummary(args: {
   runId: string;
   status: string;
@@ -2951,6 +2984,14 @@ function buildRunSummary(args: {
   failedStage?: string | null;
   errorMessage?: string | null;
   failureMeta?: Record<string, unknown> | null;
+  /**
+   * Which quality gate produced this outcome, when one did.
+   *
+   * `status` alone collapses every non-success into `failed`, which cannot tell
+   * a reader whether the deliverable was incomplete, unverifiable, or the run
+   * crashed. The UI needs the distinction to say something useful.
+   */
+  gateStatus?: ReportGateStatus | null;
 }): RunSummaryPayload {
   const totalPromptTokens = args.modelLog.reduce((s, r) => s + (r.promptTokens ?? 0), 0);
   const totalCompletionTokens = args.modelLog.reduce((s, r) => s + (r.completionTokens ?? 0), 0);
@@ -2961,6 +3002,7 @@ function buildRunSummary(args: {
   return {
     runId: args.runId,
     status: args.status,
+    gateStatus: args.gateStatus ?? null,
     totalDurationMs: args.finishedAt - args.startedAt,
     phaseDurations: { ...args.phaseDurations },
     totalPromptTokens,

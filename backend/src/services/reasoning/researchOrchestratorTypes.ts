@@ -81,6 +81,14 @@ export interface ResearchProgress {
 export interface RunSummaryPayload {
   runId: string;
   status: string;
+  /**
+   * The quality gate that produced this outcome, when one did.
+   *
+   * `status` collapses every non-success to `failed`, which cannot distinguish
+   * an incomplete deliverable from an unverifiable one from a crash. Present
+   * only on runs that reached the gates.
+   */
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
