@@ -23,6 +23,7 @@ import {
   listAdminCorpusSources,
   listAdminReports,
 } from '../../services/admin/adminOpsReadService';
+import { parseRunReference } from '../../services/research/runReference';
 
 const router = Router();
 
@@ -377,6 +378,55 @@ router.get('/users/:id', async (req, res, next) => {
     );
     if (rows.length === 0) { res.status(404).json({ error: 'User not found' }); return; }
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ─── Admin Dashboard: Run Reference Lookup ────────────────────────
+// Support-facing: a user quotes "R1-20260818-0042-7K3M9-4" and this resolves it
+// to the run. Deliberately covers FAILED runs — those are the ones people write
+// in about — so it queries research_runs, not reports.
+//
+// adminQuery bypasses RLS: an admin must be able to look up any tenant's run.
+router.get('/runs/lookup', async (req, res, next) => {
+  try {
+    const parsed = parseRunReference(req.query.ref as string | undefined);
+    if (!parsed.ok) {
+      // Distinguish "you mistyped it" from "no such run": a failed check
+      // character is actionable feedback, a missing row is not.
+      const message =
+        parsed.reason === 'empty'
+          ? 'ref query parameter required'
+          : parsed.reason === 'check_failed'
+            ? 'Reference failed its check character — it was likely mistyped or truncated.'
+            : 'Reference is not in the expected format (R1-YYYYMMDD-HHMM-XXXXX-C).';
+      res.status(400).json({ error: message, reason: parsed.reason });
+      return;
+    }
+
+    logger.info('admin-run-lookup', {
+      method: req.adminAuth?.method,
+      ref: parsed.ref,
+    });
+
+    const rows = await adminQuery<Record<string, unknown>>(
+      `SELECT r.id, r.run_ref, r.title, r.status, r.created_at, r.updated_at,
+              r.user_id, r.org_id, r.engine_version, r.research_objective,
+              r.failure_reason, r.spinoff_from_run_id,
+              u.email AS user_email,
+              rep.id AS report_id, rep.status AS report_status
+         FROM research_runs r
+         LEFT JOIN users u ON u.id = r.user_id
+         LEFT JOIN reports rep ON rep.run_id = r.id
+        WHERE r.run_ref = $1
+        LIMIT 1`,
+      [parsed.ref]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'No run found for that reference', ref: parsed.ref });
+      return;
+    }
+    res.json({ ref: parsed.ref, run: rows[0] });
   } catch (err) { next(err); }
 });
 
