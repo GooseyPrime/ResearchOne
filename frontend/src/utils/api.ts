@@ -144,6 +144,13 @@ export interface ResearchSupplementalAttachment {
 
 export interface ResearchRun {
   id: string;
+  /**
+   * Human-readable reference (`R1-YYYYMMDD-HHMM-XXXXX-C`) assigned to every run
+   * including failures. This is the value a user quotes to support, so it must
+   * be visible to them. Absent on deployments where migration 055 has not
+   * applied yet.
+   */
+  run_ref?: string | null;
   title: string;
   query: string;
   supplemental?: string;

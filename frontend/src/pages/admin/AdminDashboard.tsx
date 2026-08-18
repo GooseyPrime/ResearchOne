@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { path: 'reports', label: 'Reports' },
   { path: 'corpus', label: 'Corpus' },
   { path: 'users', label: 'User Lookup' },
+  { path: 'runs', label: 'Run Lookup' },
   { path: 'telemetry', label: 'Run Telemetry' },
   { path: 'cost', label: 'Cost Analytics' },
   { path: 'audit', label: 'Audit Log' },

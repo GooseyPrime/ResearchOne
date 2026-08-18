@@ -283,6 +283,19 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
           <StatusIcon size={15} className={statusColor} />
           <span className="text-sm font-semibold text-white">Run summary</span>
           <span className={clsx('text-xs font-medium ml-1', statusColor)}>{status.toUpperCase()}</span>
+          {run?.run_ref && (
+            // The reference a user quotes to support. Shown on every finished
+            // run, including failures — those are the ones people write in
+            // about, and without this the lookup workflow has no entry point.
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard?.writeText(run.run_ref!)}
+              title="Copy run reference"
+              className="ml-2 rounded border border-white/10 bg-surface-100/40 px-1.5 py-0.5 font-mono text-[11px] text-slate-300 hover:text-white hover:border-white/25"
+            >
+              {run.run_ref}
+            </button>
+          )}
         </div>
         <button
           type="button"
