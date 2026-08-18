@@ -1329,9 +1329,27 @@ async function runResearchJobInner(
     const discoveryIngestBarrier = await waitForDiscoveryIngestReadiness({
       sources: Array.isArray(discoverySummary.sources) ? discoverySummary.sources : [],
       timeoutMs: config.discovery.queryableWaitTimeoutMs,
+      // A silent multi-minute wait at the barrier is indistinguishable from a
+      // hang. This is also where the timing data to tune the barrier comes from.
+      onProgress: async (state) => {
+        await progress('discovery', 16, `Waiting for discovery ingest: ${state.readyCount}/${state.totalTracked} queryable`, {
+          substep: 'discovery_ingest_waiting',
+          detail: `pending=${state.pendingCount}; failed=${state.failedCount}; waited=${state.waitedMs}ms`,
+          sourceCount: state.readyCount,
+        });
+      },
     });
 
-    if (discoveryIngestBarrier.status === 'ready') {
+    if (discoveryIngestBarrier.status === 'sufficient') {
+      // Not a degradation: enough sources were queryable to proceed while a
+      // minority kept ingesting in the background. Reported distinctly from
+      // `timeout` so a healthy early release is not read as a failure.
+      await progress('discovery', 18, `Discovery ingest sufficient (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked} queryable); continuing while ${discoveryIngestBarrier.pendingCount} finish`, {
+        substep: 'discovery_ingest_ready',
+        detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}; pending=${discoveryIngestBarrier.pendingCount}; failed=${discoveryIngestBarrier.failedCount}; waited=${discoveryIngestBarrier.waitedMs}ms`,
+        sourceCount: discoveryIngestBarrier.readyCount,
+      });
+    } else if (discoveryIngestBarrier.status === 'ready') {
       await progress('discovery', 18, `Discovery ingest ready (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked} sources queryable).`, {
         substep: 'discovery_ingest_ready',
         detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}`,
