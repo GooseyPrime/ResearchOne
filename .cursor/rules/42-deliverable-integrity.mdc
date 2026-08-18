@@ -190,6 +190,35 @@ Read generated prompt text end to end as if you were the model. Forbid
 *patterns of use* ("as the whole value of a field"), not bare substrings that
 legitimate output also contains.
 
+### R42-11. Fixtures are built from the production interface
+
+A test fixture must be typed by the interface production actually uses. If a
+fixture declares a field that no production type defines, the test is measuring
+a shape that cannot occur.
+
+`ContractArtifact` fixtures carried a `type` field. Production
+`RequestedArtifact` has `description` and **no** `type`. `deriveItemLabel` read
+`type` first, so every fixture produced a clean label — and every real brief
+produced `Item 1`, `Item 2`, `Item 3`. Item extraction matched none of them, so
+a report that delivered all twenty requested items was scored as delivering
+**zero**. The suite was green throughout.
+
+This is worse than an untested path. An untested path is a known gap; a fixture
+that contradicts production is a *false assurance* that reads as coverage.
+
+Rules:
+
+- Import the production type into the fixture and annotate it. Do not
+  hand-write a structurally similar shape, and do not widen the production type
+  to accommodate a fixture.
+- When a helper reads a field, the fixture must exercise the field production
+  supplies — not a more convenient one.
+- Optional fields kept only for forward compatibility must never be the field a
+  behaviour keys on. If a code path reads `a ?? b`, a fixture that always
+  supplies `a` never tests the path real data takes.
+- When a bug reaches a run despite green tests, check the fixture before
+  checking the logic. That is where this class of defect lives.
+
 ## Pre-commit check
 
 - [ ] Does any new code build a user-facing deliverable from a string
@@ -210,3 +239,5 @@ legitimate output also contains.
       degraded-mode directive?
 - [ ] Read every generated prompt end to end — does any instruction contradict
       another?
+- [ ] Is every fixture typed by the production interface, and does it exercise
+      the field production actually supplies?

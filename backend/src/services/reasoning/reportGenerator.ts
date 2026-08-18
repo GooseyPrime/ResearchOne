@@ -212,7 +212,8 @@ export function contractRequestsTable(
   requestedFormats: readonly string[] | undefined
 ): boolean {
   const artifactHit = (artifacts ?? []).some((artifact) =>
-    TABLE_SECTION_PATTERN.test(`${artifact.type ?? ''} ${artifact.description ?? ''}`)
+    // `description` only: production briefs carry no `type` (Rule 42 R42-11).
+    TABLE_SECTION_PATTERN.test(artifact.description ?? '')
   );
   if (artifactHit) return true;
   return (requestedFormats ?? []).some((format) => TABLE_SECTION_PATTERN.test(format));
