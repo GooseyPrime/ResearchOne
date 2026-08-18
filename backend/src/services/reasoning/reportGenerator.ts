@@ -167,6 +167,45 @@ export function sectionExpectsTable(args: {
   return args.contractWantsTable;
 }
 
+/**
+ * The ONE section that carries the contract's exact table.
+ *
+ * `sectionExpectsTable` returns true for every section once the contract asks
+ * for a table anywhere, which is right for generic formatting hygiene but wrong
+ * for the exact schema: handing "emit exactly 20 rows with these 18 columns" to
+ * all ~24 drafters tells Executive Summary, every individual item, and Caveats
+ * to each reproduce the whole portfolio table (Codex review, PR #209).
+ *
+ * Preference order:
+ *   1. A non-item section whose title or key reads as tabular — including the
+ *      slot `appendContractRequiredSections` created for a named table.
+ *   2. The first non-item section after the item sections, i.e. where a summary
+ *      table naturally belongs once the items have been enumerated.
+ *   3. Nothing. Emitting the directive nowhere is recoverable — the table
+ *      auditor flags the gap and repair adds it — whereas emitting it
+ *      everywhere corrupts the deliverable.
+ */
+export function resolveTableSectionKey(
+  plan: readonly { title: string; key: string; itemOrdinal?: number }[],
+  contractWantsTable: boolean
+): string | null {
+  if (!contractWantsTable) return null;
+  const nonItem = plan.filter((entry) => typeof entry.itemOrdinal !== 'number');
+  if (nonItem.length === 0) return null;
+
+  const tabular = nonItem.find(
+    (entry) => TABLE_SECTION_PATTERN.test(entry.title) || TABLE_SECTION_PATTERN.test(entry.key)
+  );
+  if (tabular) return tabular.key;
+
+  const lastItemIndex = plan.reduce(
+    (last, entry, index) => (typeof entry.itemOrdinal === 'number' ? index : last),
+    -1
+  );
+  if (lastItemIndex === -1) return null;
+  return plan.slice(lastItemIndex + 1).find((entry) => typeof entry.itemOrdinal !== 'number')?.key ?? null;
+}
+
 /** True when any requested artifact or format implies a tabular deliverable. */
 export function contractRequestsTable(
   artifacts: readonly ContractArtifact[] | undefined,
@@ -620,6 +659,22 @@ export async function generateIterativeReport(args: {
   // Five fixed sections cannot hold 20 items x 5 subsections plus a blueprint;
   // the drafter writes what fits and stops. Expanding gives each item its own
   // drafting slot (and makes it independently repairable — R3).
+  // Named deliverables the intent plan has no slot for ("Cross-Opportunity
+  // Analysis", "Final Winner") get their own drafting slot. Without this the
+  // drafter is never asked for them, the auditor reports them missing, and
+  // repair spends a pass bolting them on (run `c50162a9`).
+  //
+  // Added BEFORE expansion so the expansion's word-budget cap counts them.
+  // Appending afterwards let an 800-word plan capped at 10 sections grow to 12+,
+  // each then pinned to the per-section floor, so the plan's own minimum
+  // exceeded the target the prompt was still quoting (Codex review, PR #209).
+  const contractSections = appendContractRequiredSections({
+    plan: activeSectionPlan,
+    artifacts: args.contractArtifacts,
+    repeatedArtifact: findRepeatedArtifact(args.contractArtifacts),
+  });
+  activeSectionPlan = contractSections.plan;
+
   const outlineExpansion = expandSectionPlanForContract({
     basePlan: activeSectionPlan,
     artifacts: args.contractArtifacts,
@@ -629,17 +684,6 @@ export async function generateIterativeReport(args: {
   });
   activeSectionPlan = outlineExpansion.plan;
   const expandedItemTitles: ReadonlySet<string> = new Set(outlineExpansion.expandedTitles);
-
-  // Named deliverables the intent plan has no slot for ("Cross-Opportunity
-  // Analysis", "Final Winner") get their own drafting slot. Without this the
-  // drafter is never asked for them, the auditor reports them missing, and
-  // repair spends a pass bolting them on (run `c50162a9`).
-  const contractSections = appendContractRequiredSections({
-    plan: activeSectionPlan,
-    artifacts: args.contractArtifacts,
-    repeatedArtifact: findRepeatedArtifact(args.contractArtifacts),
-  });
-  activeSectionPlan = contractSections.plan;
 
   const v2 = {
     engineVersion: args.engineVersion,
@@ -692,6 +736,9 @@ export async function generateIterativeReport(args: {
     itemLabel,
     rowCount: repeatedArtifact?.exactCount,
   });
+  // Exactly one section carries the exact schema and row count. Every section
+  // still gets the generic table hygiene rules, which are safe to repeat.
+  const tableSectionKey = resolveTableSectionKey(activeSectionPlan, contractWantsTable);
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -768,7 +815,9 @@ Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
 ${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}${
             sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
-              ? `${TABLE_FORMATTING_RULES}\n${tableHeaderDirective}`
+              ? `${TABLE_FORMATTING_RULES}${
+                  section.key === tableSectionKey ? `\n${tableHeaderDirective}` : ''
+                }`
               : ''
           }
 ${args.limitedSourcingDirective ? `\n${args.limitedSourcingDirective}\n` : ''}

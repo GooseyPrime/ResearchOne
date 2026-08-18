@@ -468,10 +468,19 @@ function parseOpportunityTitleLine(line: string): string | null {
     .replace(/^\*\*/, '')
     .replace(/\*\*$/, '')
     .trim();
-  const numbered = normalized.match(/^#?\s*(\d+)[\.\):]\s+(.+)$/);
-  if (numbered) return `Opportunity ${numbered[1]}: ${numbered[2].trim()}`;
-  const named = normalized.match(/^opportunity\s*#?\s*(\d+)\s*[:\-–]\s*(.+)$/i);
-  if (named) return `Opportunity ${named[1]}: ${named[2].trim()}`;
+  // Canonical form is "<ordinal>. <name>".
+  //
+  // This used to rewrite every match to "Opportunity <n>: <name>", which was
+  // wrong twice. It hardcoded one report type's noun into a path all report
+  // types use, and it discarded the leading ordinal — the only structural
+  // signal the legacy fallback has to tell a real enumerated item from a stray
+  // numbered section (Codex review, PR #209).
+  const numbered = normalized.match(/^#?\s*(\d+)[.):]\s+(.+)$/);
+  if (numbered) return `${numbered[1]}. ${numbered[2]!.trim()}`;
+  // "Opportunity 3: X", "Option 3 - X", "Phase 3 – X". The noun is open so this
+  // keeps working for report types that do not exist yet.
+  const named = normalized.match(/^[a-z]+\s*#?\s*(\d+)\s*[:\-–]\s*(.+)$/i);
+  if (named) return `${named[1]}. ${named[2]!.trim()}`;
   return null;
 }
 
@@ -564,9 +573,13 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
       const titleToken =
         titleIndex >= 0 ? (values[titleIndex] ?? '') : (values[Math.min(1, values.length - 1)] ?? '');
       if (!titleToken && !/^#?\d+$/.test(rankToken)) continue;
-      const title = /^opportunity/i.test(titleToken)
+      // Canonical "<ordinal>. <name>", matching the heading path. The report
+      // type's noun is not spliced in here: this function serves every report
+      // type, and only the ordinal and the name are actually known.
+      const rankDigits = rankToken.replace(/^#/, '');
+      const title = /^\d/.test(titleToken)
         ? titleToken
-        : `${/^#?\d+$/.test(rankToken) ? `Opportunity ${rankToken}` : 'Opportunity'}: ${titleToken}`;
+        : `${/^\d+$/.test(rankDigits) ? `${rankDigits}. ` : ''}${titleToken}`;
       const body = headers
         .map((header, idx) => `${header}: ${values[idx] ?? ''}`)
         .join('\n')
@@ -577,7 +590,7 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
   }
   return [];
 }
-function extractOpportunityObjectsFromMarkdown(
+export function extractOpportunityObjectsFromMarkdown(
   markdown: string,
   plannedItemTitles?: ReadonlySet<string>
 ): Array<{ title: string; body: string }> {
@@ -608,8 +621,49 @@ function extractOpportunityObjectsFromMarkdown(
   if (current) {
     out.push({ title: current.title, body: current.body.join('\n').trim() });
   }
-  if (out.length > 0) return out;
+  const trusted =
+    plannedItemTitles && plannedItemTitles.size > 0 ? out : withContiguousOrdinals(out);
+  if (trusted.length > 0) return trusted;
   return parseOpportunityRowsFromMarkdownTable(markdown);
+}
+
+/**
+ * On the fallback path, accept numbered headings only when their ordinals form
+ * a complete 1..N run.
+ *
+ * Without planned titles, any numbered heading outside the framing denylist
+ * counts as a delivered item. A report that omitted one requested item but
+ * carried a numbered structural section — `## 4. Risk Assessment`,
+ * `## 4. Market Size` — would have that section counted in its place and could
+ * satisfy the exact-count check: a FALSE PASS on an incomplete deliverable
+ * (Codex review, PR #209).
+ *
+ * A genuine enumerated list numbers itself 1..N with no gaps or repeats.
+ * A stray numbered section does not. Requiring the sequence is a positive
+ * signal that costs nothing and needs no vocabulary list.
+ *
+ * Reports this pipeline assembled never reach here — their headings are matched
+ * against the titles it composed.
+ */
+function withContiguousOrdinals(
+  sections: Array<{ title: string; body: string }>
+): Array<{ title: string; body: string }> {
+  if (sections.length === 0) return sections;
+  const ordinals = sections.map((section) => {
+    const text = section.title.replace(/[*_`#]/g, '').trim();
+    const match = text.match(NUMBERED_ITEM_HEADING);
+    return match ? Number(match[1]) : null;
+  });
+  // Headings carrying no ordinal at all came from a non-numbered form; leave
+  // those to the caller unchanged rather than second-guessing them.
+  if (ordinals.every((ordinal) => ordinal === null)) return sections;
+  if (ordinals.some((ordinal) => ordinal === null)) return [];
+  const seen = new Set(ordinals as number[]);
+  if (seen.size !== ordinals.length) return [];
+  for (let expected = 1; expected <= ordinals.length; expected += 1) {
+    if (!seen.has(expected)) return [];
+  }
+  return sections;
 }
 
 /**

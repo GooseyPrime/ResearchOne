@@ -284,7 +284,8 @@ export function deriveContractSectionTitle(description: string): string | null {
     .replace(/[.:;,]+$/, '')
     .trim();
   if (cleaned.length < 4 || cleaned.length > 80) return null;
-  // A phrase with a verb in the middle is an instruction, not a heading.
+  // Keep the artifact's own phrasing as the heading after light normalisation;
+  // only a leading imperative and article are stripped above.
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 

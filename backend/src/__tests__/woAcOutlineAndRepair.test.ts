@@ -7,10 +7,14 @@ import {
   findRepeatedArtifact,
   MAX_EXPANDED_SECTIONS,
 } from '../services/reasoning/contractOutline';
-import { isItemSectionHeading } from '../services/reasoning/researchOrchestrator';
+import {
+  extractOpportunityObjectsFromMarkdown,
+  isItemSectionHeading,
+} from '../services/reasoning/researchOrchestrator';
 import {
   buildTableHeaderDirective,
   composeItemHeading,
+  resolveTableSectionKey,
   contractRequestsTable,
   DESCRIPTIVE_SECTION_PLAN,
   extractItemName,
@@ -277,6 +281,34 @@ describe('PR #205 review — label derivation and budget bounds', () => {
     }
   });
 
+  it('will not count a stray numbered section as a missing item (false pass)', () => {
+    // Codex P1: with no planned titles, a report that omitted item 4 but carried
+    // "## 4. Risk Assessment" would have that counted in its place and could
+    // satisfy the exact-count check. A real enumerated list runs 1..N with no
+    // gaps or repeats; a stray numbered section breaks the sequence.
+    const complete = [
+      '## 1. Alpha',
+      'Body with rationale and description.',
+      '## 2. Beta',
+      'Body with rationale and description.',
+      '## 3. Gamma',
+      'Body with rationale and description.',
+    ].join('\n');
+    expect(extractOpportunityObjectsFromMarkdown(complete)).toHaveLength(3);
+
+    // Same count, but the ordinals repeat — item 3 was never written and a
+    // second "4" stands in for it.
+    const gapped = [
+      '## 1. Alpha',
+      'Body with rationale and description.',
+      '## 2. Beta',
+      'Body with rationale and description.',
+      '## 4. Risk Assessment',
+      'Body with rationale and description.',
+    ].join('\n');
+    expect(extractOpportunityObjectsFromMarkdown(gapped)).toHaveLength(0);
+  });
+
   it('does not blow an explicit short word target', () => {
     // 800 words / 80-word floor = 10 sections total, minus 4 non-item sections.
     const result = expandSectionPlanForContract({
@@ -324,6 +356,62 @@ describe('R5 — table rules are scoped to sections that need them (PR #205 revi
     expect(contractRequestsTable([{ type: 'table', description: 'master portfolio' }], [])).toBe(true);
     expect(contractRequestsTable([], ['comparison table'])).toBe(true);
     expect(contractRequestsTable([{ type: 'summary' }], ['prose'])).toBe(false);
+  });
+});
+
+describe('PR #209 review — Codex and Copilot findings', () => {
+  const EXPANDED_PLAN = [
+    { title: 'Overview', key: 'overview', weight: 1 },
+    { title: '1. Opportunity', key: 'items_1', weight: 1, itemOrdinal: 1 },
+    { title: '2. Opportunity', key: 'items_2', weight: 1, itemOrdinal: 2 },
+    { title: 'Master Portfolio Table', key: 'contract_master_portfolio_table', weight: 1 },
+    { title: 'Caveats', key: 'caveats', weight: 1 },
+  ];
+
+  it('gives the exact table schema to exactly one section', () => {
+    // Codex P1: sectionExpectsTable is true for EVERY section once the contract
+    // wants a table, so the exact header + row count reached all ~24 drafters
+    // and each would emit the whole 20-row portfolio table.
+    expect(resolveTableSectionKey(EXPANDED_PLAN, true)).toBe('contract_master_portfolio_table');
+    // Never an item section — those describe one item, not the whole portfolio.
+    expect(resolveTableSectionKey(EXPANDED_PLAN, true)).not.toMatch(/^items_/);
+    // No table requested: no section carries the directive.
+    expect(resolveTableSectionKey(EXPANDED_PLAN, false)).toBeNull();
+  });
+
+  it('falls back to the first section after the items when none reads as tabular', () => {
+    const plan = [
+      { title: 'Overview', key: 'overview', weight: 1 },
+      { title: '1. Opportunity', key: 'items_1', weight: 1, itemOrdinal: 1 },
+      { title: 'Ranking and Analysis', key: 'ranking', weight: 1 },
+      { title: 'Caveats', key: 'caveats', weight: 1 },
+    ];
+    expect(resolveTableSectionKey(plan, true)).toBe('ranking');
+  });
+
+  it('reserves word budget for contract sections before capping expansion', () => {
+    // Codex P2: contract sections used to be appended AFTER the cap, so the
+    // plan's own floor-pinned minimum could exceed the stated target.
+    const base = [
+      { title: 'Overview', key: 'overview', weight: 1 },
+      { title: 'Opportunities', key: 'opportunities_list', weight: 1 },
+      { title: 'Caveats', key: 'caveats', weight: 1 },
+    ];
+    const withContract = appendContractRequiredSections({
+      plan: base,
+      artifacts: [
+        { description: 'ranked list of market opportunities', exactCount: 20 },
+        { description: 'Cross-Opportunity Analysis' },
+        { description: 'Final Winner selection' },
+      ],
+    });
+    const expanded = expandSectionPlanForContract({
+      basePlan: withContract.plan,
+      artifacts: [{ description: 'ranked list of market opportunities', exactCount: 20 }],
+      explicitWordTarget: 800,
+      perSectionFloor: 80,
+    });
+    expect(expanded.plan.length * 80).toBeLessThanOrEqual(800);
   });
 });
 
@@ -556,6 +644,40 @@ describe('R3 — targeted repair', () => {
     expect(merged).toContain('# Portfolio');
     // Exactly one Master Portfolio Table — replaced, not appended.
     expect(merged.match(/## Master Portfolio Table/g)).toHaveLength(1);
+  });
+
+  it('refuses to overwrite a section the repair did not target', () => {
+    // Codex P2: every returned block was accepted, so an unrequested section
+    // could clobber work that had already passed.
+    const plan = planTargetedRepair({
+      markdown: REPORT,
+      revisionInstructions: ['Master Portfolio Table contains unsupported commission rates.'],
+      missingRequirements: [],
+    });
+    const merged = applyTargetedRepair(
+      REPORT,
+      '## Master Portfolio Table\nFixed table.\n\n## Executive Summary\nHIJACKED.',
+      plan
+    );
+    expect(merged).toContain('Fixed table.');
+    expect(merged).toContain('Summary body.');
+    expect(merged).not.toContain('HIJACKED');
+  });
+
+  it('leaves untouched sections byte-identical when splicing', () => {
+    // Copilot: the previous implementation rebuilt every block and re-joined,
+    // normalising whitespace across the whole report for a one-section change.
+    const spaced = '# Portfolio\n\n\n## Executive Summary\nSummary body.\n\n\n## Master Portfolio Table\nOld table.\n';
+    const plan = planTargetedRepair({
+      markdown: spaced,
+      revisionInstructions: ['Master Portfolio Table contains unsupported commission rates.'],
+      missingRequirements: [],
+    });
+    const merged = applyTargetedRepair(spaced, '## Master Portfolio Table\nNew table.', plan);
+    // The untouched region, including its unusual triple newlines, survives.
+    expect(merged).toContain('# Portfolio\n\n\n## Executive Summary\nSummary body.\n\n\n');
+    expect(merged).toContain('New table.');
+    expect(merged).not.toContain('Old table.');
   });
 
   it('keeps the original when a scoped rewrite returns unspliceable output', () => {

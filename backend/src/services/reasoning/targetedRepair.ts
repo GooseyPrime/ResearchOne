@@ -145,11 +145,15 @@ export function sectionsNamedInFindings(
       continue;
     }
     // Numbered headings are commonly referenced by ordinal alone rather than by
-    // full title. The noun before the number is deliberately open (`\w+`) — a
-    // fixed list would have to name every report type's item vocabulary and
-    // would silently stop localising the moment a new one appeared.
+    // full title. The noun before the number is deliberately open — a fixed list
+    // would have to name every report type's item vocabulary and would silently
+    // stop localising the moment a new report type appeared.
+    //
+    // `[a-z]+` not `\w+`: digits before the ordinal are not a noun, and `\w+`
+    // matched "2024 7" as a reference to item 7. The `#` branch carries no word
+    // boundary because `#` is not a word character, so `\b#` can never match.
     const ordinal = heading.match(/^(\d{1,3})\s*[.)\]:-]/)?.[1];
-    if (ordinal && new RegExp(`(?:\\b\\w+\\s*|#\\s*)${ordinal}\\b`).test(haystack)) {
+    if (ordinal && new RegExp(`(?:\\b[a-z]+\\s*|#\\s*)${ordinal}\\b`, 'i').test(haystack)) {
       seen.add(heading);
       named.push(section.heading);
     }
@@ -355,24 +359,46 @@ export function applyTargetedRepair(
   if (plan.mode === 'rewrite_whole') return addition;
 
   if (plan.mode === 'rewrite_sections') {
+    // Only the sections this repair asked for may be replaced. Accepting every
+    // block the model returned let an unrequested section overwrite work that
+    // had already passed (Codex review, PR #209).
+    const allowed = new Set(plan.targetedSections.map((heading) => heading.toLowerCase()));
     const replacements = new Map<string, string>();
     for (const block of splitTopLevelSections(addition)) {
-      replacements.set(block.heading.toLowerCase(), block.text);
+      const key = block.heading.toLowerCase();
+      if (!allowed.has(key)) continue;
+      if (!block.text.trim()) continue;
+      replacements.set(key, block.text);
     }
-    // The model returned nothing we can splice (no headings, or all renamed).
-    // Keeping the original beats appending an orphaned fragment.
+    // Nothing usable came back. Keeping the original beats appending an
+    // orphaned fragment.
     if (replacements.size === 0) return originalMarkdown;
 
     const originalBlocks = splitTopLevelSections(originalMarkdown);
     if (originalBlocks.length === 0) return originalMarkdown;
 
+    // Splice by line range so untouched sections are preserved byte for byte,
+    // including their original blank-line spacing. Rebuilding every block and
+    // re-joining normalised whitespace across the whole report even when a
+    // single section changed (Copilot review, PR #209).
     const lines = originalMarkdown.split('\n');
-    const preamble = lines.slice(0, originalBlocks[0]!.startLine).join('\n').trimEnd();
-    const rebuilt = originalBlocks.map((block) => {
+    const out: string[] = lines.slice(0, originalBlocks[0]!.startLine);
+    for (const block of originalBlocks) {
       const replacement = replacements.get(block.heading.toLowerCase());
-      return replacement ?? block.text;
-    });
-    return [preamble, ...rebuilt].filter((part) => part.length > 0).join('\n\n');
+      if (replacement === undefined) {
+        out.push(...lines.slice(block.startLine, block.endLine + 1));
+        continue;
+      }
+      out.push(...replacement.split('\n'));
+      // Preserve whatever trailing blank lines separated this block from the
+      // next, so spacing around a replaced section matches the original.
+      let trailing = block.endLine;
+      while (trailing > block.startLine && (lines[trailing] ?? '').trim() === '') {
+        trailing -= 1;
+      }
+      out.push(...lines.slice(trailing + 1, block.endLine + 1));
+    }
+    return out.join('\n');
   }
 
   return `${originalMarkdown.trimEnd()}\n\n${addition}\n`;
