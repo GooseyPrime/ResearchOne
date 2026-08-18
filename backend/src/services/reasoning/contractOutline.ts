@@ -38,15 +38,16 @@ export interface SectionPlanEntry {
 /**
  * Artifact shape we care about, kept structural to avoid importing the brief.
  *
- * NOTE: production `RequestedArtifact` has `description` and NO `type`. Nothing
- * user-visible may be derived from `type` — doing so produced "## Item 1" on
- * every real run (Codex review, PR #205). Section labels no longer come from
- * this shape at all; they come from the report type.
+ * Mirrors production `RequestedArtifact`, which has `description` and NO `type`.
+ * A `type` field lived here as "forward compatibility" and was read first by the
+ * label derivation, so every FIXTURE produced a clean label while every real
+ * brief produced "Item 1", "Item 2" — and a report delivering all twenty
+ * requested items scored zero, with a green test suite throughout (Rule 42
+ * R42-11). The field is gone rather than deprecated: an optional field that
+ * cannot be populated in production is an invitation to test the wrong shape.
  */
 export interface ContractArtifact {
   description?: string;
-  /** Not present on production briefs; accepted only for forward-compat. */
-  type?: string;
   exactCount?: number;
   explicitRequiredFields?: readonly string[];
   inferredRequiredFields?: readonly string[];

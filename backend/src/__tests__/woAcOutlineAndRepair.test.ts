@@ -104,7 +104,7 @@ describe('R1 — contract-driven outline expansion', () => {
   it('groups items rather than exploding the plan past the cap', () => {
     const result = expandSectionPlanForContract({
       basePlan: OPPORTUNITY_PLAN,
-      artifacts: [{ type: 'opportunity', exactCount: 120 }],
+      artifacts: [{ description: 'market opportunities', exactCount: 120 }],
     });
     const itemSections = result.plan.filter((s) => s.key.startsWith('opportunities_list'));
     expect(itemSections.length).toBeLessThanOrEqual(MAX_EXPANDED_SECTIONS);
@@ -116,7 +116,7 @@ describe('R1 — contract-driven outline expansion', () => {
   it('leaves the plan alone when no repeated artifact was requested', () => {
     const result = expandSectionPlanForContract({
       basePlan: OPPORTUNITY_PLAN,
-      artifacts: [{ type: 'summary', description: 'a short narrative' }],
+      artifacts: [{ description: 'a short narrative summary' }],
     });
     expect(result.expanded).toBe(false);
     expect(result.plan).toHaveLength(OPPORTUNITY_PLAN.length);
@@ -125,17 +125,17 @@ describe('R1 — contract-driven outline expansion', () => {
   it('does not expand for trivially small counts', () => {
     const result = expandSectionPlanForContract({
       basePlan: OPPORTUNITY_PLAN,
-      artifacts: [{ type: 'option', exactCount: 2 }],
+      artifacts: [{ description: 'comparison options', exactCount: 2 }],
     });
     expect(result.expanded).toBe(false);
   });
 
   it('picks the artifact carrying the most required fields', () => {
     const artifact = findRepeatedArtifact([
-      { type: 'note', exactCount: 5 },
-      { type: 'opportunity', exactCount: 20, explicitRequiredFields: ['a', 'b', 'c'] },
+      { description: 'supporting notes', exactCount: 5 },
+      { description: 'market opportunities', exactCount: 20, explicitRequiredFields: ['a', 'b', 'c'] },
     ]);
-    expect(artifact?.type).toBe('opportunity');
+    expect(artifact?.description).toBe('market opportunities');
   });
 });
 
@@ -353,9 +353,12 @@ describe('R5 — table rules are scoped to sections that need them (PR #205 revi
   });
 
   it('detects a table request from artifacts or formats', () => {
-    expect(contractRequestsTable([{ type: 'table', description: 'master portfolio' }], [])).toBe(true);
+    // Fixtures carry only what a production brief carries: `description`.
+    // These used to set a `type` field that no real `RequestedArtifact` has,
+    // which is the fixture defect Rule 42 R42-11 now forbids.
+    expect(contractRequestsTable([{ description: 'master portfolio table' }], [])).toBe(true);
     expect(contractRequestsTable([], ['comparison table'])).toBe(true);
-    expect(contractRequestsTable([{ type: 'summary' }], ['prose'])).toBe(false);
+    expect(contractRequestsTable([{ description: 'executive summary' }], ['prose'])).toBe(false);
   });
 });
 
