@@ -115,7 +115,11 @@ describe('marketing hardening — structural copy present', () => {
     expect(html).toContain('CAPABILITY_MATRIX');
     expect(html).toContain('Research infrastructure');
     expect(html).toContain('CORPUS_INTEGRATIONS');
-    expect(html).toContain('Research that defends itself.');
+    // Was 'Research that defends itself.' — adversarial framing, changed to
+    // intent-driven framing during the report-type fidelity work (WO-Z). The
+    // anchor is the CTA heading, not the specific wording; this assertion
+    // exists to catch the section disappearing, not to freeze the copy.
+    expect(html).toContain('Research that adapts to your question.');
     expect(html).toContain('id="main-content"');
   });
 

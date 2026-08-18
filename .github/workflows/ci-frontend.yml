@@ -1,0 +1,54 @@
+# CI: typecheck and test the ResearchOne frontend.
+#
+# This workflow did not exist. `ci-backend.yml` covers `backend/**` only, so the
+# frontend vitest suite had never run in CI — 53 test files were being written,
+# maintained, and silently never executed on any push or pull request. A stale
+# assertion against marketing copy that changed during WO-Z sat red locally with
+# nothing to report it.
+#
+# Mirrors ci-backend.yml deliberately: same triggers, same Node version, same
+# shape, so the two are obviously siblings rather than divergent one-offs.
+
+name: CI – frontend typecheck & test
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
+
+jobs:
+  typecheck-and-test:
+    name: Frontend typecheck + unit tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Typecheck rather than a full `npm run build`: the build script also
+      # prerenders marketing pages, which is deployment work, not verification.
+      - name: TypeScript typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
