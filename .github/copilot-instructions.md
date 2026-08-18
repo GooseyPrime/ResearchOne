@@ -39,11 +39,34 @@ Read it fully before acting.
 | --- | --- | --- | --- |
 | WO-Z | CLOSED | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity. Shipped in PR #200. Phase 5 was implemented incorrectly — superseded by WO-AA. |
 | WO-AA | CLOSED | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity. All 8 phases complete (PRs #202, #203). |
-| **HANDOFF** | **OPEN** | [`docs/HANDOFF-WO-AC.md`](../docs/HANDOFF-WO-AC.md) | Finish WO-AC and land PR #205: make the run-summary Intent field actually resolve, clear the final Codex finding, merge. |
+| WO-AC | CLOSED | [`docs/HANDOFF-WO-AC.md`](../docs/HANDOFF-WO-AC.md) | Contract-driven outline, budget, and targeted repair. Shipped across PRs #205, #207, #208, #209. |
 
-**`docs/HANDOFF-WO-AC.md` is OPEN — it is your task list.** Branch
-`cursor/wo-ac-outline-and-repair` is green and pushed; start from Task 1, do not
-re-do R1–R5.
+No work order is currently OPEN. The remaining backlog, in priority order:
+
+1. **Parallel item-section drafting** — in progress on
+   `cursor/parallel-section-drafting`.
+2. **Run-level tracking identifier + admin lookup** — human-readable ID assigned
+   to every run *including failures*, on `research_runs` (not `reports`), with an
+   admin console lookup.
+3. **Tier-governed concurrency** — queue-only for now; paid tiers deferred.
+4. **Report/run status disagreement** — a green badge can appear on a
+   `contract_failed` run.
+5. **Discovery ingest barrier tuning.**
+6. **Remove the unused `@langchain/*` packages.**
+7. **Rule 42 R42-11** — fixtures must be built from the production interface. A
+   fixture that invented `RequestedArtifact.type` hid a bug where every real
+   brief produced "Item N" headings and a fully delivered report scored ZERO.
+
+Structural invariants established by #209 that later work must not regress:
+
+- **Headings are composed by code, never authored by a model.** The plan carries
+  `itemOrdinal` as data; the drafter supplies only the item's name on an
+  `ITEM NAME:` marker line. The contract auditor matches planned titles exactly.
+- **The coherence refiner does not own structure.** It sees the whole report for
+  cross-section coherence but returns delimited blocks keyed by section key.
+- **No request-specific vocabulary in app logic.** Item labels come from the
+  report type (`intentOutputTemplates.itemLabel`), never from parsing the brief's
+  prose. Corpus partition defaults name a kind of work, never a subject.
 
 **If a work order is `OPEN`, and the user's prompt does not name a different
 task, execute it autonomously through every remaining phase without stopping
