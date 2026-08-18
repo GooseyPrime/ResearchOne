@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
 import {
   BarChart, Bar,
   PieChart, Pie, Cell,
@@ -436,9 +437,7 @@ export default function CostAnalytics() {
                   <td>
                     <span
                       className={`text-[10px] ${
-                        r.runStatus === 'completed' ? 'text-emerald-400'
-                          : r.runStatus === 'failed' ? 'text-red-400'
-                          : 'text-slate-400'
+                        RUN_TONE_CLASSES[resolveRunDisplayState({ status: r.runStatus }).tone].text
                       }`}
                     >
                       {r.runStatus ?? '—'}

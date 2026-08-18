@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
+import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
 
 export default function RunTelemetry() {
   const [days, setDays] = useState(30);
@@ -68,7 +69,10 @@ export default function RunTelemetry() {
               {telemetryQuery.data.daily.map((row, i) => (
                 <tr key={i} className="border-b border-white/5">
                   <td className="py-1 text-xs">{String(row.day)}</td>
-                  <td className={`text-xs ${row.status === 'completed' ? 'text-emerald-400' : row.status === 'failed' ? 'text-red-400' : 'text-slate-400'}`}>
+                  {/* Tone from the shared rules: a status this table has not
+                      been taught must warn, not fall through to neutral grey
+                      and read as unremarkable. */}
+                  <td className={`text-xs ${RUN_TONE_CLASSES[resolveRunDisplayState({ status: String(row.status) }).tone].text}`}>
                     {String(row.status)}
                   </td>
                   <td>{String(row.count)}</td>

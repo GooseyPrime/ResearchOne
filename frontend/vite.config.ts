@@ -7,6 +7,17 @@ import path from 'path';
 const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
 
 export default defineConfig(({ mode }) => {
+  // Vitest only defaults NODE_ENV to 'test' when it is UNSET. A machine with
+  // NODE_ENV=production exported globally therefore runs the suite against
+  // React's production build, where `act()` throws — every React component test
+  // fails with "act(...) is not supported in production builds of React" while
+  // pure-function tests still pass.
+  //
+  // That failure mode is badly misleading: 66 tests across 13 files went red
+  // and looked like repository breakage. Pin it here so the suite reports on
+  // the code rather than on the developer's shell.
+  if (mode === 'test') process.env.NODE_ENV = 'test';
+
   const fileEnv = loadEnv(mode, process.cwd(), '');
   const useProdDefaults = mode === 'production';
   const apiBase =
