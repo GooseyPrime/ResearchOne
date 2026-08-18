@@ -558,6 +558,16 @@ export default function ReportDetailPage() {
               value={report.status}
               narrative="Finalized means this revision passed all gates and has persisted its claims, sources, and citations."
             />
+            {sourceRun?.run_ref && (
+              // The reference support asks for. Shown here as well as on the run
+              // summary because a user arriving at a finished report has usually
+              // left the run view behind.
+              <MetaStat
+                label="Run reference"
+                value={sourceRun.run_ref}
+                narrative="Quote this reference to support. It identifies this run uniquely, including if it failed."
+              />
+            )}
           </div>
         </div>
       </div>
