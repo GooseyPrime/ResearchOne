@@ -277,6 +277,102 @@ row is read as belonging to a different schema.`;
  */
 type RuntimeSectionPlanEntry = SectionPlanEntry;
 
+/**
+ * How many item sections may be drafted at once.
+ *
+ * Synthesis was 13m54s of a 44-minute run, drafted strictly one section at a
+ * time. Item sections are independent by construction — each has its own key,
+ * its own drafter call, and its own repair path — so the serialisation bought
+ * nothing.
+ *
+ * Kept modest and overridable: every slot is a concurrent model call, and the
+ * ceiling that matters is the provider's rate limit, not this process.
+ */
+export const SECTION_DRAFT_CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.SECTION_DRAFT_CONCURRENCY ?? '', 10) || 4
+);
+
+/** Floor on how much of each item reaches the sections that summarise them. */
+const MIN_ITEM_DIGEST_CHARS = 240;
+
+export interface PartitionedSectionPlan {
+  /** Framing written before the items, e.g. an overview. */
+  leading: RuntimeSectionPlanEntry[];
+  /** The independent per-item sections, safe to draft concurrently. */
+  items: RuntimeSectionPlanEntry[];
+  /** Framing that summarises, ranks, or concludes over the items. */
+  trailing: RuntimeSectionPlanEntry[];
+}
+
+/**
+ * Split a plan into the parts that must be ordered and the part that need not be.
+ *
+ * Expansion always replaces the list section in place, so item sections are
+ * contiguous. If that ever stops holding — a future plan interleaving framing
+ * between items — the run falls back to fully sequential drafting rather than
+ * silently reordering the report.
+ */
+export function partitionSectionPlan(
+  plan: readonly RuntimeSectionPlanEntry[]
+): PartitionedSectionPlan {
+  const isItem = (entry: RuntimeSectionPlanEntry) => typeof entry.itemOrdinal === 'number';
+  const first = plan.findIndex(isItem);
+  if (first === -1) return { leading: [...plan], items: [], trailing: [] };
+
+  let last = first;
+  for (let i = plan.length - 1; i >= first; i -= 1) {
+    if (isItem(plan[i]!)) {
+      last = i;
+      break;
+    }
+  }
+
+  const span = plan.slice(first, last + 1);
+  if (!span.every(isItem)) {
+    // Non-item content sits between items; ordering may be meaningful.
+    return { leading: [...plan], items: [], trailing: [] };
+  }
+
+  return {
+    leading: plan.slice(0, first),
+    items: [...span],
+    trailing: plan.slice(last + 1),
+  };
+}
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight, preserving input order
+ * in the result.
+ *
+ * On failure every in-flight call is allowed to settle before the first error
+ * is rethrown. Rejecting immediately would leave sibling model calls running
+ * with nothing to receive them — billed, unobservable, and still writing to the
+ * run's telemetry after the run has failed.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]!, index);
+    }
+  });
+
+  const settled = await Promise.allSettled(workers);
+  const failed = settled.find((outcome) => outcome.status === 'rejected');
+  if (failed) throw (failed as PromiseRejectedResult).reason;
+  return results;
+}
+
 const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
@@ -791,12 +887,21 @@ It becomes the section heading, so name the thing itself — not a restatement o
 Write the section body starting on the following line.`;
   };
 
-  for (let i = 0; i < activeSectionPlan.length; i++) {
-    const section = activeSectionPlan[i];
-    await args.onSectionProgress?.({ title: section.title, index: i + 1, total: activeSectionPlan.length });
-
+  /**
+   * Draft one section against a fixed context snapshot.
+   *
+   * `contextSummary` is passed in rather than read from a mutable outer
+   * variable: item sections run concurrently, so there is no single "previous
+   * sections" state they could share, and reading a value that other workers
+   * are mutating would make output depend on completion order.
+   */
+  const draftSection = async (
+    section: RuntimeSectionPlanEntry,
+    contextSummary: string
+  ): Promise<ReportSectionDraft> => {
     const sectionTarget = sectionBudgets.get(section.key) ?? Math.round(targetWordCount / activeSectionPlan.length);
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
+    const rollingSummary = contextSummary;
 
     const sectionResult = await callRoleModel({
       role: 'section_drafter',
@@ -847,15 +952,65 @@ Return section body text only. Do NOT write a markdown heading for this section 
             lastOrdinal: section.itemLastOrdinal,
           })
         : section.title;
-    if (typeof section.itemOrdinal === 'number') {
-      resolvedItemTitles.push(finalTitle.toLowerCase());
+
+    return { title: finalTitle, key: section.key, content: sectionText };
+  };
+
+  let drafted = 0;
+  const announce = async (title: string): Promise<void> => {
+    // Emitted on COMPLETION, not before drafting: with a concurrency pool the
+    // sections finish out of order, so "about to draft #3" would be a lie and
+    // the counter would move backwards in the trace.
+    drafted += 1;
+    await args.onSectionProgress?.({ title, index: drafted, total: activeSectionPlan.length });
+  };
+
+  const appendToSummary = (summary: string, draft: ReportSectionDraft, perSectionChars: number): string =>
+    `${summary}\n\n[${draft.title}]\n${draft.content.slice(0, perSectionChars)}`.slice(-MAX_ROLLING_SUMMARY_CHARS);
+
+  const draftSequentially = async (plan: readonly RuntimeSectionPlanEntry[]): Promise<void> => {
+    for (const section of plan) {
+      const draft = await draftSection(section, rollingSummary);
+      sections.push(draft);
+      if (typeof section.itemOrdinal === 'number') resolvedItemTitles.push(draft.title.toLowerCase());
+      rollingSummary = appendToSummary(rollingSummary, draft, MAX_SECTION_SUMMARY_CHARS);
+      await announce(draft.title);
+    }
+  };
+
+  const { leading, items, trailing } = partitionSectionPlan(activeSectionPlan);
+
+  await draftSequentially(leading);
+
+  if (items.length > 0) {
+    // Every item section sees the same context — the framing written before
+    // them — because none of them depends on another. This is what makes them
+    // safe to run concurrently; framing sections, which summarise and rank the
+    // items, stay sequential and run after.
+    const itemContext = rollingSummary;
+    const itemDrafts = await mapWithConcurrency(items, SECTION_DRAFT_CONCURRENCY, async (section) => {
+      const draft = await draftSection(section, itemContext);
+      await announce(draft.title);
+      return draft;
+    });
+
+    for (const draft of itemDrafts) {
+      sections.push(draft);
+      resolvedItemTitles.push(draft.title.toLowerCase());
     }
 
-    sections.push({ title: finalTitle, key: section.key, content: sectionText });
-    rollingSummary = `${rollingSummary}\n\n[${finalTitle}]\n${sectionText.slice(0, MAX_SECTION_SUMMARY_CHARS)}`.slice(
-      -MAX_ROLLING_SUMMARY_CHARS
+    // Give the trailing sections a slice of every item rather than the tail of
+    // a few. A ranking section that only saw items 17-20 cannot rank 20 items.
+    const perItemChars = Math.max(
+      MIN_ITEM_DIGEST_CHARS,
+      Math.floor(MAX_ROLLING_SUMMARY_CHARS / (itemDrafts.length + 1))
     );
+    for (const draft of itemDrafts) {
+      rollingSummary = appendToSummary(rollingSummary, draft, perItemChars);
+    }
   }
+
+  await draftSequentially(trailing);
 
   const challenger = args.skipChallenger
     ? { content: '', model: 'skipped-by-profile', role: 'internal_challenger', promptTokens: 0, completionTokens: 0, durationMs: 0, usedFallback: false, primaryModel: 'skipped-by-profile' }
