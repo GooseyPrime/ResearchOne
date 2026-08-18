@@ -99,17 +99,46 @@ describe('runRefCheckChar', () => {
     }
   });
 
-  it('changes when any single character changes', () => {
-    const base = 'R1202608180042ABCDE';
-    const check = runRefCheckChar(base);
-    let differing = 0;
-    for (let i = 2; i < base.length; i += 1) {
-      const swapped = RUN_REF_ALPHABET[(RUN_REF_ALPHABET.indexOf(base[i]!) + 1) % 32]!;
-      const mutated = `${base.slice(0, i)}${swapped}${base.slice(i + 1)}`;
-      if (runRefCheckChar(mutated) !== check) differing += 1;
+  it('detects EVERY single-character substitution, exhaustively', () => {
+    // Codex found the counterexample that motivated moving to Luhn mod N: with
+    // the old position-weighted sum, changing the eighth character of
+    // R1202608180042ABCDE from 8 to 4 shifted the total by exactly 32 and left
+    // the check character unchanged. This now walks every position against
+    // every other alphabet character rather than sampling a +1 shift.
+    for (const base of ['R1202608180042ABCDE', 'R1202601010000ZZZZZ', 'R1199912312359Q7T2V']) {
+      const check = runRefCheckChar(base);
+      for (let i = 2; i < base.length; i += 1) {
+        const original = base[i]!;
+        for (const replacement of RUN_REF_ALPHABET) {
+          if (replacement === original) continue;
+          const mutated = `${base.slice(0, i)}${replacement}${base.slice(i + 1)}`;
+          expect(
+            runRefCheckChar(mutated),
+            `${base}: position ${i} ${original}->${replacement} was not detected`
+          ).not.toBe(check);
+        }
+      }
     }
-    // Position weighting means every single-character change shifts the sum.
-    expect(differing).toBe(base.length - 2);
+  });
+
+  it('rejects the specific mistype Codex identified', () => {
+    const base = 'R1202608180042ABCDE';
+    // Eighth character 8 -> 4.
+    const mutated = `${base.slice(0, 9)}4${base.slice(10)}`;
+    expect(mutated).not.toBe(base);
+    expect(runRefCheckChar(mutated)).not.toBe(runRefCheckChar(base));
+  });
+
+  it('detects adjacent transpositions', () => {
+    const base = 'R1202608180042ABCDE';
+    let missed = 0;
+    for (let i = 2; i < base.length - 1; i += 1) {
+      if (base[i] === base[i + 1]) continue;
+      const swapped = `${base.slice(0, i)}${base[i + 1]}${base[i]}${base.slice(i + 2)}`;
+      if (runRefCheckChar(swapped) === runRefCheckChar(base)) missed += 1;
+    }
+    // Luhn mod N misses only pairs differing by exactly N/2; none here.
+    expect(missed).toBe(0);
   });
 
   it('distinguishes transposed neighbours', () => {

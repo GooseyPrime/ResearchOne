@@ -45,17 +45,36 @@ const CONFUSABLE: Record<string, string> = {
 
 /**
  * Check character over the reference payload (everything before it, dashes
- * removed). Position-weighted so a transposition changes the result.
+ * removed), using the Luhn mod N algorithm over the 32-character alphabet.
  *
- * Must stay identical to `run_ref_check_char` in migration 055.
+ * The first implementation was a position-weighted sum mod 32, which does NOT
+ * detect every single-character substitution: changing a character by delta d
+ * at position p shifts the total by d×p, so any d×p ≡ 0 (mod 32) is invisible.
+ * In `R1202608180042ABCDE`, changing the eighth character from `8` to `4`
+ * shifts the sum by exactly 32 and the check character is unchanged — support
+ * then gets a misleading 404 instead of `check_failed` (Codex review, PR #211).
+ *
+ * Luhn mod N detects all single-character substitutions and all adjacent
+ * transpositions except those differing by exactly N/2. It is also a published
+ * algorithm rather than something invented here, which matters because it is
+ * implemented twice: `run_ref_check_char` in migration 055 must stay identical,
+ * and `runReference.parity.integration.test.ts` holds the two together.
  */
 export function runRefCheckChar(payload: string): string {
-  let total = 0;
-  for (let position = 0; position < payload.length; position += 1) {
-    const index = RUN_REF_ALPHABET.indexOf(payload[position]!);
-    if (index >= 0) total += index * (position + 1);
+  const n = RUN_REF_ALPHABET.length;
+  let factor = 2;
+  let sum = 0;
+
+  for (let i = payload.length - 1; i >= 0; i -= 1) {
+    const codePoint = RUN_REF_ALPHABET.indexOf(payload[i]!);
+    if (codePoint < 0) continue;
+    let addend = factor * codePoint;
+    factor = factor === 2 ? 1 : 2;
+    addend = Math.floor(addend / n) + (addend % n);
+    sum += addend;
   }
-  return RUN_REF_ALPHABET[total % 32]!;
+
+  return RUN_REF_ALPHABET[(n - (sum % n)) % n]!;
 }
 
 export interface RunReferenceParse {

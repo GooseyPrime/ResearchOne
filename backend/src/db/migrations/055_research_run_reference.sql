@@ -23,6 +23,16 @@
 --
 -- Idempotent and safe to replay.
 
+-- Luhn mod N over the 32-character alphabet.
+--
+-- The first version was a position-weighted sum mod 32, which does NOT detect
+-- every single-character substitution: a change of delta d at position p shifts
+-- the total by d*p, so any d*p divisible by 32 is invisible. Luhn mod N detects
+-- all single-character substitutions and all adjacent transpositions except
+-- those differing by exactly N/2.
+--
+-- MUST stay identical to `runRefCheckChar` in services/research/runReference.ts.
+-- `runReference.parity.integration.test.ts` fails if the two ever diverge.
 CREATE OR REPLACE FUNCTION run_ref_check_char(payload TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -30,18 +40,22 @@ IMMUTABLE
 AS $$
 DECLARE
   alphabet CONSTANT TEXT := '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  n CONSTANT INT := 32;
+  factor INT := 2;
   total INT := 0;
-  idx INT;
-  position INT;
+  addend INT;
+  code_point INT;
+  pos INT;
 BEGIN
-  -- Position-weighted sum so a transposition changes the result.
-  FOR position IN 1..length(payload) LOOP
-    idx := strpos(alphabet, substr(payload, position, 1));
-    IF idx > 0 THEN
-      total := total + (idx - 1) * position;
-    END IF;
+  FOR pos IN REVERSE length(payload)..1 LOOP
+    code_point := strpos(alphabet, substr(payload, pos, 1)) - 1;
+    CONTINUE WHEN code_point < 0;
+    addend := factor * code_point;
+    factor := CASE WHEN factor = 2 THEN 1 ELSE 2 END;
+    addend := (addend / n) + (addend % n);
+    total := total + addend;
   END LOOP;
-  RETURN substr(alphabet, (total % 32) + 1, 1);
+  RETURN substr(alphabet, ((n - (total % n)) % n) + 1, 1);
 END;
 $$;
 
@@ -88,9 +102,20 @@ BEGIN
                  run_ref_check_char(payload);
 
     -- A deterministic seed has exactly one possible output, so retrying would
-    -- spin forever. Uniqueness there is enforced by the index alone.
-    EXIT WHEN seed IS NOT NULL OR attempt >= 8;
+    -- spin forever. Uniqueness there rests on the row id being unique, and is
+    -- enforced by the index.
+    EXIT WHEN seed IS NOT NULL;
+
+    -- Check for a collision BEFORE giving up. The previous ordering exited on
+    -- the attempt limit first, so the final candidate was returned without ever
+    -- being checked (Copilot review, PR #211).
     EXIT WHEN NOT EXISTS (SELECT 1 FROM research_runs WHERE run_ref = candidate);
+
+    IF attempt >= 8 THEN
+      RAISE EXCEPTION
+        'generate_run_ref: could not find a free reference after % attempts', attempt
+        USING HINT = 'This indicates an unexpected collision rate; check the random component.';
+    END IF;
   END LOOP;
 
   RETURN candidate;

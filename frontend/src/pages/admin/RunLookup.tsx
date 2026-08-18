@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import api from '../../utils/api';
+import api, { extractApiError } from '../../utils/api';
 
 /**
  * Look up a research run by the reference a user quotes.
@@ -16,13 +16,14 @@ interface RunLookupResult {
   title: string | null;
   status: string;
   created_at: string;
-  updated_at: string | null;
+  completed_at: string | null;
   user_id: string | null;
   user_email: string | null;
   org_id: string | null;
   engine_version: string | null;
   research_objective: string | null;
-  failure_reason: string | null;
+  error_message: string | null;
+  failed_stage: string | null;
   spinoff_from_run_id: string | null;
   report_id: string | null;
   report_status: string | null;
@@ -54,12 +55,15 @@ function Field({ label, value, mono }: { label: string; value: string | null; mo
 export default function RunLookup() {
   const [ref, setRef] = useState('');
 
-  const lookup = useMutation<RunLookupResult, { response?: { data?: LookupError } }, string>({
+  const lookup = useMutation<RunLookupResult, unknown, string>({
     mutationFn: async (value: string) =>
       (await api.get<{ run: RunLookupResult }>(`/admin/runs/lookup?ref=${encodeURIComponent(value)}`)).data.run,
   });
 
-  const errorBody = lookup.error?.response?.data;
+  // A network, CORS or timeout failure carries no structured body, so reading
+  // `response.data` alone left the panel silent (Copilot review, PR #211).
+  const errorBody = (lookup.error as { response?: { data?: LookupError } } | undefined)?.response?.data;
+  const errorMessage = lookup.error ? errorBody?.error ?? extractApiError(lookup.error) : null;
   const run = lookup.data;
 
   return (
@@ -93,10 +97,10 @@ export default function RunLookup() {
         runs that failed.
       </p>
 
-      {errorBody && (
+      {errorMessage && (
         <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          {errorBody.error}
-          {errorBody.reason === 'check_failed' && (
+          {errorMessage}
+          {errorBody?.reason === 'check_failed' && (
             <span className="block text-xs text-amber-300/80 mt-1">
               The reference is self-checking, so this is a transcription error rather
               than a missing run. Ask for it to be pasted rather than retyped.
@@ -129,10 +133,12 @@ export default function RunLookup() {
             <Field label="Report" value={run.report_id} mono />
           </div>
 
-          {run.failure_reason && (
+          {run.error_message && (
             <div className="rounded border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              <span className="text-rose-300/80 text-xs block mb-1">Failure reason</span>
-              {run.failure_reason}
+              <span className="text-rose-300/80 text-xs block mb-1">
+                Failure{run.failed_stage ? ` at ${run.failed_stage}` : ''}
+              </span>
+              {run.error_message}
             </div>
           )}
 

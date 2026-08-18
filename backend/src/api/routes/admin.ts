@@ -389,7 +389,11 @@ router.get('/users/:id', async (req, res, next) => {
 // adminQuery bypasses RLS: an admin must be able to look up any tenant's run.
 router.get('/runs/lookup', async (req, res, next) => {
   try {
-    const parsed = parseRunReference(req.query.ref as string | undefined);
+    // Express gives `string | string[] | ParsedQs` here. Passing an array to
+    // `parseRunReference` threw on `.trim()` and turned a bad request into a
+    // 500 (Copilot review, PR #211).
+    const rawRef = req.query.ref;
+    const parsed = parseRunReference(typeof rawRef === 'string' ? rawRef : undefined);
     if (!parsed.ok) {
       // Distinguish "you mistyped it" from "no such run": a failed check
       // character is actionable feedback, a missing row is not.
@@ -408,19 +412,44 @@ router.get('/runs/lookup', async (req, res, next) => {
       ref: parsed.ref,
     });
 
-    const rows = await adminQuery<Record<string, unknown>>(
-      `SELECT r.id, r.run_ref, r.title, r.status, r.created_at, r.updated_at,
-              r.user_id, r.org_id, r.engine_version, r.research_objective,
-              r.failure_reason, r.spinoff_from_run_id,
-              u.email AS user_email,
-              rep.id AS report_id, rep.status AS report_status
-         FROM research_runs r
-         LEFT JOIN users u ON u.id = r.user_id
-         LEFT JOIN reports rep ON rep.run_id = r.id
-        WHERE r.run_ref = $1
-        LIMIT 1`,
-      [parsed.ref]
-    );
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await adminQuery<Record<string, unknown>>(
+        // `error_message` and `failure_meta` are the columns that actually
+        // exist; there is no `failure_reason` on research_runs, so the first
+        // version of this query failed with 42703 on EVERY valid lookup
+        // (Codex P1 review, PR #211).
+        //
+        // The report is joined through the run's own `report_id` rather than
+        // `reports.run_id`: revisions insert several rows sharing a run_id, so
+        // that join returned an arbitrary revision to support.
+        `SELECT r.id, r.run_ref, r.title, r.status, r.created_at, r.completed_at,
+                r.user_id, r.org_id, r.engine_version, r.research_objective,
+                r.error_message, r.failure_meta, r.failed_stage,
+                r.spinoff_from_run_id,
+                u.email AS user_email,
+                rep.id AS report_id, rep.status AS report_status
+           FROM research_runs r
+           LEFT JOIN users u ON u.id = r.user_id
+           LEFT JOIN reports rep ON rep.id = r.report_id
+          WHERE r.run_ref = $1
+          LIMIT 1`,
+        [parsed.ref]
+      );
+    } catch (err) {
+      // Deploy skew: the application can be live before migration 055 applies.
+      // A controlled "not yet available" beats a 500 during the rollout window.
+      if ((err as { code?: string })?.code === '42703') {
+        logger.warn('admin-run-lookup-column-missing', { ref: parsed.ref });
+        res.status(503).json({
+          error:
+            'Run references are not available yet on this deployment. Migration 055 has not been applied.',
+          reason: 'migration_pending',
+        });
+        return;
+      }
+      throw err;
+    }
 
     if (rows.length === 0) {
       res.status(404).json({ error: 'No run found for that reference', ref: parsed.ref });
