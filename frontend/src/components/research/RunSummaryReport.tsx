@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Copy, CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react';
 import clsx from 'clsx';
 import type { ResearchRun, ResearchProgressEvent } from '../../utils/api';
+import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
 
 // Shape emitted by the backend run:summary Socket.IO event and the
 // orchestrator's final summary payload.
@@ -175,9 +176,8 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
   // Derived HERE, above `buildPlainText`, so the header and the copyable report
   // cannot disagree. They previously did: the header showed CONTRACT FAILED
   // while the copied text said FAILED (Copilot review, PR #212).
-  const gateStatus = summary?.gateStatus ?? null;
-  const displayStatus = gateStatus && gateStatus !== 'completed' ? gateStatus : status;
-  const statusLabel = displayStatus.replace(/_/g, ' ').toUpperCase();
+  const display = resolveRunDisplayState({ status, gateStatus: summary?.gateStatus });
+  const statusLabel = display.label;
 
   // Build the full plain-text report string for clipboard copy.
   const buildPlainText = useCallback((): string => {
@@ -277,32 +277,16 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     }
   }, [buildPlainText]);
 
-  // Only a clean pass is green. A degraded or gate-failed run is amber or red —
-  // never the colour a user reads as "this is done and correct".
-  const isClean = displayStatus === 'completed';
-  const isHardFailure =
-    displayStatus === 'aborted' ||
-    displayStatus === 'failed' ||
-    displayStatus === 'contract_failed' ||
-    displayStatus === 'verification_failed';
-
+  // Tone comes from the shared rules so every surface agrees on which outcomes
+  // are trustworthy. Only a clean pass is green.
   const StatusIcon =
-    isClean ? CheckCircle2
-    : displayStatus === 'aborted' ? XCircle
-    : displayStatus === 'cancelled' ? Ban
-    : isHardFailure ? XCircle
+    display.tone === 'success' ? CheckCircle2
+    : display.tone === 'neutral' ? Ban
+    : display.tone === 'failure' ? XCircle
     : AlertCircle;
 
-  const statusColor =
-    isClean ? 'text-green-400'
-    : displayStatus === 'cancelled' ? 'text-slate-400'
-    : isHardFailure ? 'text-red-400'
-    : 'text-amber-400';
-
-  const borderColor =
-    isClean ? 'border-green-800/30'
-    : isHardFailure ? 'border-red-800/30'
-    : 'border-amber-700/30';
+  const statusColor = RUN_TONE_CLASSES[display.tone].text;
+  const borderColor = RUN_TONE_CLASSES[display.tone].border;
 
   return (
     <div className={clsx('rounded-lg border bg-surface-200/60 overflow-hidden', borderColor)} ref={reportRef}>

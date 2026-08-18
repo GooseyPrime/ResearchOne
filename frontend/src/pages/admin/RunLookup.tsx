@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api, { extractApiError } from '../../utils/api';
+import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
 
 /**
  * Look up a research run by the reference a user quotes.
@@ -34,14 +35,8 @@ interface LookupError {
   reason?: 'empty' | 'malformed' | 'check_failed';
 }
 
-const STATUS_TONE: Record<string, string> = {
-  completed: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
-  completed_degraded: 'text-amber-300 border-amber-500/40 bg-amber-500/10',
-  failed: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
-  contract_failed: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
-  verification_failed: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
-  cancelled: 'text-slate-300 border-slate-500/40 bg-slate-500/10',
-};
+// Tone comes from the shared rules rather than a local table, so this panel
+// cannot drift from what the run summary shows for the same status.
 
 function Field({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
   return (
@@ -113,13 +108,16 @@ export default function RunLookup() {
         <div className="space-y-4 rounded-lg border border-white/10 bg-slate-900/50 p-4">
           <div className="flex items-center justify-between gap-3">
             <span className="font-mono text-sm text-white">{run.run_ref}</span>
-            <span
-              className={`rounded border px-2 py-0.5 text-xs ${
-                STATUS_TONE[run.status] ?? 'text-slate-300 border-slate-500/40 bg-slate-500/10'
-              }`}
-            >
-              {run.status}
-            </span>
+            {(() => {
+              const display = resolveRunDisplayState({ status: run.status });
+              return (
+                <span
+                  className={`rounded border px-2 py-0.5 text-xs ${RUN_TONE_CLASSES[display.tone].chip}`}
+                >
+                  {display.label}
+                </span>
+              );
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
