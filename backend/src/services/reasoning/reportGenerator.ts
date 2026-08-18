@@ -6,17 +6,135 @@ import {
   INTENT_OUTPUT_TEMPLATES,
 } from '../formatting/templates/intentOutputTemplates';
 import {
+  appendContractRequiredSections,
   deriveContractWordTarget,
   deriveItemLabel,
   expandSectionPlanForContract,
   findRepeatedArtifact,
   type ContractArtifact,
+  type SectionPlanEntry,
 } from './contractOutline';
 
 export interface ReportSectionDraft {
   title: string;
   key: string;
   content: string;
+}
+
+/**
+ * Marker the drafter uses to name a concrete item on an item section.
+ *
+ * Headings are composed by CODE, never authored by a model. The drafter's only
+ * influence on a heading is this one line, which it may omit — the ordinal and
+ * the report type's label are enough to produce a valid heading without it.
+ *
+ * Why a line marker rather than JSON: section bodies contain markdown tables,
+ * pipes, and code fences. Wrapping those in JSON adds an escaping failure mode
+ * on every section for no benefit, and a malformed envelope would cost the
+ * whole section rather than just its name.
+ */
+const ITEM_NAME_MARKER = /^[ \t]*(?:[*_`]{0,2})ITEM[ _-]?NAME(?:[*_`]{0,2})[ \t]*[:：][ \t]*(.+?)[ \t]*$/im;
+
+/** Longest item name we will put in a heading. */
+const MAX_ITEM_NAME_CHARS = 70;
+
+/**
+ * Pull the drafter's item name off a section body, returning the name and the
+ * body with the marker line removed.
+ *
+ * The marker is an instruction to the pipeline, not report content, so it must
+ * never survive into the deliverable.
+ */
+export function extractItemName(body: string): { itemName: string | null; content: string } {
+  const text = body ?? '';
+  const match = text.match(ITEM_NAME_MARKER);
+  if (!match) return { itemName: null, content: text };
+
+  const raw = (match[1] ?? '')
+    .replace(/[*_`#]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.:;,]+$/, '')
+    .trim();
+
+  const content = text.replace(match[0], '').replace(/^\s*\n/, '').trimStart();
+  if (!raw || raw.length > MAX_ITEM_NAME_CHARS) return { itemName: null, content };
+  return { itemName: raw, content };
+}
+
+/**
+ * Compose an item section heading from data the pipeline owns.
+ *
+ * `ordinal` comes from the plan, `label` from the report type, `itemName` from
+ * the drafter. No part of this is parsed back out of model prose, which is what
+ * makes the contract auditor's match exact instead of heuristic.
+ */
+export function composeItemHeading(args: {
+  ordinal: number;
+  label: string;
+  itemName?: string | null;
+  lastOrdinal?: number;
+}): string {
+  const range =
+    typeof args.lastOrdinal === 'number' && args.lastOrdinal > args.ordinal
+      ? `${args.ordinal}–${args.lastOrdinal}`
+      : `${args.ordinal}`;
+  const name = args.itemName?.trim();
+  if (name) return `${range}. ${name}`;
+  const label = args.lastOrdinal && args.lastOrdinal > args.ordinal ? `${args.label}s` : args.label;
+  return `${range}. ${label}`;
+}
+
+/**
+ * Delimiters used to hand sections to the coherence refiner and route its
+ * output back.
+ *
+ * The refiner still sees the WHOLE report — cross-section coherence needs the
+ * big picture, and per-section refinement is too granular to fix flow between
+ * sections. What changes is that it no longer AUTHORS the structure: it fills
+ * in labelled slots, and the code reassembles.
+ *
+ * Delimiters rather than JSON because section bodies contain markdown tables,
+ * pipes, and fenced code. JSON-encoding those adds an escaping failure mode to
+ * every run, and one bad escape would cost the entire report; a malformed
+ * delimiter costs one section, which falls back to its drafted text.
+ */
+const SECTION_BLOCK_CLOSE = '<<<END SECTION>>>';
+const SECTION_BLOCK_OPEN_EXAMPLE = '<<<SECTION key="the-exact-key-given-below">>>';
+const SECTION_BLOCK_PATTERN =
+  /<<<\s*SECTION\s+key\s*=\s*"([^"]+)"\s*>>>\s*\n?([\s\S]*?)(?:<<<\s*END\s+SECTION\s*>>>|$)/gi;
+
+/** Render drafted sections as labelled blocks for the refiner. */
+export function formatSectionsForRefiner(
+  sections: readonly ReportSectionDraft[]
+): string[] {
+  return sections.map(
+    (section) =>
+      `<<<SECTION key="${section.key}">>>\n${section.content}\n${SECTION_BLOCK_CLOSE}`
+  );
+}
+
+/**
+ * Parse the refiner's labelled blocks back into a key -> body map.
+ *
+ * Blocks with an unknown key, or with an empty body, are omitted so the caller
+ * falls back to the drafted text rather than blanking a section.
+ */
+export function parseRefinedSections(response: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const text = response ?? '';
+  SECTION_BLOCK_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SECTION_BLOCK_PATTERN.exec(text)) !== null) {
+    const key = (match[1] ?? '').trim();
+    const body = (match[2] ?? '').trim();
+    if (!key || !body) continue;
+    // A refiner that emits a heading anyway would otherwise leave it stranded
+    // mid-section, since the real heading is prepended by the assembler.
+    const withoutHeading = body.replace(/^##\s+[^\n]*\n+/, '').trim();
+    if (!withoutHeading) continue;
+    out.set(key, withoutHeading);
+  }
+  return out;
 }
 
 /**
@@ -49,6 +167,45 @@ export function sectionExpectsTable(args: {
   return args.contractWantsTable;
 }
 
+/**
+ * The ONE section that carries the contract's exact table.
+ *
+ * `sectionExpectsTable` returns true for every section once the contract asks
+ * for a table anywhere, which is right for generic formatting hygiene but wrong
+ * for the exact schema: handing "emit exactly 20 rows with these 18 columns" to
+ * all ~24 drafters tells Executive Summary, every individual item, and Caveats
+ * to each reproduce the whole portfolio table (Codex review, PR #209).
+ *
+ * Preference order:
+ *   1. A non-item section whose title or key reads as tabular — including the
+ *      slot `appendContractRequiredSections` created for a named table.
+ *   2. The first non-item section after the item sections, i.e. where a summary
+ *      table naturally belongs once the items have been enumerated.
+ *   3. Nothing. Emitting the directive nowhere is recoverable — the table
+ *      auditor flags the gap and repair adds it — whereas emitting it
+ *      everywhere corrupts the deliverable.
+ */
+export function resolveTableSectionKey(
+  plan: readonly { title: string; key: string; itemOrdinal?: number }[],
+  contractWantsTable: boolean
+): string | null {
+  if (!contractWantsTable) return null;
+  const nonItem = plan.filter((entry) => typeof entry.itemOrdinal !== 'number');
+  if (nonItem.length === 0) return null;
+
+  const tabular = nonItem.find(
+    (entry) => TABLE_SECTION_PATTERN.test(entry.title) || TABLE_SECTION_PATTERN.test(entry.key)
+  );
+  if (tabular) return tabular.key;
+
+  const lastItemIndex = plan.reduce(
+    (last, entry, index) => (typeof entry.itemOrdinal === 'number' ? index : last),
+    -1
+  );
+  if (lastItemIndex === -1) return null;
+  return plan.slice(lastItemIndex + 1).find((entry) => typeof entry.itemOrdinal !== 'number')?.key ?? null;
+}
+
 /** True when any requested artifact or format implies a tabular deliverable. */
 export function contractRequestsTable(
   artifacts: readonly ContractArtifact[] | undefined,
@@ -71,11 +228,54 @@ Markdown table rules (MANDATORY when you emit a table):
 - Keep cell text short; put long prose in the narrative, not in a cell.
 - Do not wrap the table in a code fence: fenced tables render as code, not tables.`;
 
-interface RuntimeSectionPlanEntry {
-  title: string;
-  key: string;
-  weight: number;
+/**
+ * Give the drafter the exact header row instead of a column count.
+ *
+ * Run `c50162a9` requested 18 per-item fields. The drafter was told "every row
+ * must have exactly the same number of cells as the header row" — but it chose
+ * the header itself, and 19 of 20 rows then disagreed with it. A rule about
+ * consistency cannot be followed when the thing to be consistent with is not
+ * supplied. Handing over the literal header and delimiter rows makes the
+ * requirement mechanical.
+ *
+ * Returns an empty string when the contract names no per-item fields; there is
+ * nothing to pin down and inventing a schema would be worse than silence.
+ */
+export function buildTableHeaderDirective(args: {
+  fields: readonly string[];
+  itemLabel: string;
+  rowCount?: number;
+}): string {
+  const fields = args.fields.map((field) => field.trim()).filter(Boolean);
+  if (fields.length === 0) return '';
+
+  const titleCase = (field: string) =>
+    field.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const columns = ['#', args.itemLabel, ...fields.map(titleCase)];
+  const header = `| ${columns.join(' | ')} |`;
+  const delimiter = `| ${columns.map(() => '---').join(' | ')} |`;
+  const rowRule =
+    typeof args.rowCount === 'number' && args.rowCount > 0
+      ? `Emit exactly ${args.rowCount} data rows, numbered 1..${args.rowCount}, one per ${args.itemLabel.toLowerCase()}.`
+      : `Emit one data row per ${args.itemLabel.toLowerCase()}.`;
+
+  return `
+REQUIRED TABLE HEADER (copy verbatim, do not add, drop, reorder, or rename columns):
+${header}
+${delimiter}
+
+${rowRule}
+Every data row must contain exactly ${columns.length} cells. Leave a cell empty
+rather than omitting it — an omitted cell shifts every column after it and the
+row is read as belonging to a different schema.`;
 }
+
+/**
+ * The runtime plan is the same shape the contract expander produces, including
+ * the item ordinals it attaches. Redeclaring it locally let the two drift, and
+ * the ordinals the assembler needs were invisible to it.
+ */
+type RuntimeSectionPlanEntry = SectionPlanEntry;
 
 const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
@@ -97,7 +297,12 @@ const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: num
 export const DESCRIPTIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
   { title: 'Executive Summary', key: 'executive_summary', weight: 0.6 },
   { title: 'Research Question and Scope', key: 'research_question_scope', weight: 0.5 },
-  { title: 'Evidence Ledger', key: 'evidence_ledger', weight: 1.4 },
+  // Title, not key. "Evidence Ledger" is adjudication vocabulary, and a heading
+  // the drafter is handed is a frame the drafter writes in — it seeded
+  // "evidence" language through reports that were never adjudicating anything.
+  // The key stays `evidence_ledger` because reportRevisionService anchors
+  // insertion order on it.
+  { title: 'Key Findings and Sources', key: 'evidence_ledger', weight: 1.4 },
   { title: 'Reasoning and Analysis', key: 'reasoning_analysis', weight: 1.6 },
   { title: 'Synthesis and Conclusions', key: 'synthesis_conclusions', weight: 1.5 },
   { title: 'Recommended Next Queries', key: 'recommended_next_queries', weight: 0.5 },
@@ -167,18 +372,82 @@ export function deriveGeneratedReportTitle(query: string, markdown: string, inte
   return trimTitle(`${fallbackIntentTitle} Report`);
 }
 
+/**
+ * Labels a model puts in front of an echoed prompt.
+ *
+ * The plain `Research query:` form was already handled, but the exported `.md`
+ * from run `c50162a9` still opened with `**Research query:**` — emphasised, and
+ * sitting under the report's `# ` title rather than at position zero. Both
+ * variants have to be covered or the reader gets ~700 lines of instructions
+ * before the report (Rule 37 R-K).
+ */
+const PROMPT_ECHO_LABEL =
+  // Emphasis may close before OR after the colon: both `**Research query**:`
+  // and `**Research query:**` occur in the wild, and the second is the form
+  // that survived the first fix.
+  /^[*_`~]{0,3}\s*(?:research\s+(?:query|request|prompt)|user\s+(?:query|request|prompt)|original\s+(?:query|request|prompt)|query|request|prompt)\s*[*_`~]{0,3}\s*[:：]\s*[*_`~]{0,3}\s*/i;
+
+/**
+ * Index in `text` just past a whitespace-insensitive occurrence of `prompt` at
+ * its start, or -1.
+ *
+ * Whitespace-insensitive because a model that echoes a prompt commonly re-wraps
+ * it: same words, different line breaks. Byte equality misses that.
+ */
+function consumePromptPrefix(text: string, prompt: string): number {
+  let ti = 0;
+  let pi = 0;
+  const isSpace = (char: string) => /\s/.test(char);
+
+  while (pi < prompt.length) {
+    if (isSpace(prompt[pi]!)) {
+      while (pi < prompt.length && isSpace(prompt[pi]!)) pi += 1;
+      if (ti >= text.length || !isSpace(text[ti]!)) return -1;
+      while (ti < text.length && isSpace(text[ti]!)) ti += 1;
+      continue;
+    }
+    if (ti >= text.length || text[ti] !== prompt[pi]) return -1;
+    ti += 1;
+    pi += 1;
+  }
+  return ti;
+}
+
+/** Strip one leading prompt echo, with or without a label, from a fragment. */
+function stripEchoFromFragment(fragment: string, prompt: string): string {
+  const text = fragment.replace(/^\s+/, '');
+
+  const direct = consumePromptPrefix(text, prompt);
+  if (direct > 0) return text.slice(direct).replace(/^\s+/, '');
+
+  const label = text.match(PROMPT_ECHO_LABEL);
+  if (label) {
+    const afterLabel = text.slice(label[0].length);
+    const labelled = consumePromptPrefix(afterLabel, prompt);
+    // Only strip when the prompt genuinely follows the label. A section that
+    // legitimately begins "Request: ..." must survive.
+    if (labelled > 0) return afterLabel.slice(labelled).replace(/^\s+/, '');
+  }
+
+  return text;
+}
+
 export function stripPromptEchoFromReport(markdown: string, query: string): string {
   const trimmed = markdown.trim();
   const prompt = query.trim();
   if (!prompt) return trimmed;
 
-  if (trimmed.startsWith(prompt)) {
-    return trimmed.slice(prompt.length).replace(/^\s+/, '');
-  }
+  const stripped = stripEchoFromFragment(trimmed, prompt);
+  if (stripped !== trimmed) return stripped;
 
-  const queryLabelPrefix = `Research query: ${prompt}`;
-  if (trimmed.startsWith(queryLabelPrefix)) {
-    return trimmed.slice(queryLabelPrefix.length).replace(/^\s+/, '');
+  // The echo may sit under the report title rather than above it.
+  const titleMatch = trimmed.match(/^(#\s+[^\n]*\n)([\s\S]*)$/);
+  if (titleMatch) {
+    const body = titleMatch[2] ?? '';
+    const strippedBody = stripEchoFromFragment(body, prompt);
+    if (strippedBody !== body.replace(/^\s+/, '')) {
+      return `${titleMatch[1]!.trimEnd()}\n\n${strippedBody}`.trim();
+    }
   }
 
   return trimmed;
@@ -353,7 +622,15 @@ export async function generateIterativeReport(args: {
   onSectionProgress?: (payload: { title: string; index: number; total: number }) => void | Promise<void>;
   skipChallenger?: boolean;
   isAdjudicative?: boolean;
-}): Promise<{ markdown: string; sections: ReportSectionDraft[]; outline: string[]; targetWordCount: number }> {
+}): Promise<{
+  markdown: string;
+  sections: ReportSectionDraft[];
+  outline: string[];
+  targetWordCount: number;
+  plannedItemTitles: ReadonlySet<string>;
+  /** How many sections the refiner returned usably; the rest kept their draft. */
+  refinedSectionCount: number;
+}> {
   let activeSectionPlan: RuntimeSectionPlanEntry[];
   let templateNarrativeHint = '';
   let templateVerifierRubric = '';
@@ -382,6 +659,22 @@ export async function generateIterativeReport(args: {
   // Five fixed sections cannot hold 20 items x 5 subsections plus a blueprint;
   // the drafter writes what fits and stops. Expanding gives each item its own
   // drafting slot (and makes it independently repairable — R3).
+  // Named deliverables the intent plan has no slot for ("Cross-Opportunity
+  // Analysis", "Final Winner") get their own drafting slot. Without this the
+  // drafter is never asked for them, the auditor reports them missing, and
+  // repair spends a pass bolting them on (run `c50162a9`).
+  //
+  // Added BEFORE expansion so the expansion's word-budget cap counts them.
+  // Appending afterwards let an 800-word plan capped at 10 sections grow to 12+,
+  // each then pinned to the per-section floor, so the plan's own minimum
+  // exceeded the target the prompt was still quoting (Codex review, PR #209).
+  const contractSections = appendContractRequiredSections({
+    plan: activeSectionPlan,
+    artifacts: args.contractArtifacts,
+    repeatedArtifact: findRepeatedArtifact(args.contractArtifacts),
+  });
+  activeSectionPlan = contractSections.plan;
+
   const outlineExpansion = expandSectionPlanForContract({
     basePlan: activeSectionPlan,
     artifacts: args.contractArtifacts,
@@ -390,6 +683,7 @@ export async function generateIterativeReport(args: {
     perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
   });
   activeSectionPlan = outlineExpansion.plan;
+  const expandedItemTitles: ReadonlySet<string> = new Set(outlineExpansion.expandedTitles);
 
   const v2 = {
     engineVersion: args.engineVersion,
@@ -426,12 +720,25 @@ export async function generateIterativeReport(args: {
       ...(repeatedArtifact?.inferredRequiredFields ?? []),
     ].map((field) => field.trim()).filter(Boolean))
   );
+  // Owned by the report type, not guessed from the brief's prose.
+  const itemLabel = deriveItemLabel(repeatedArtifact, args.intentId);
   const confirmedFieldsBlock =
     confirmedFields.length > 0
-      ? `Confirmed required fields for EVERY ${deriveItemLabel(repeatedArtifact, args.intentId).toLowerCase()} in this report:\n${confirmedFields
+      ? `Confirmed required fields for EVERY ${itemLabel.toLowerCase()} in this report:\n${confirmedFields
           .map((field) => `- ${field}`)
           .join('\n')}\nEvery one of these must appear for every item. Do not rename or omit them.`
       : '';
+  // The exact header row, so "same number of cells as the header" is a rule the
+  // drafter can actually follow (run `c50162a9`: 19 of 20 rows disagreed with a
+  // header the drafter had invented itself).
+  const tableHeaderDirective = buildTableHeaderDirective({
+    fields: confirmedFields,
+    itemLabel,
+    rowCount: repeatedArtifact?.exactCount,
+  });
+  // Exactly one section carries the exact schema and row count. Every section
+  // still gets the generic table hygiene rules, which are safe to repeat.
+  const tableSectionKey = resolveTableSectionKey(activeSectionPlan, contractWantsTable);
   const requestedFormatsBlock =
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
@@ -451,7 +758,7 @@ Required deliverables:\n${templateRequiredDeliverables.length > 0 ? templateRequ
 Intent verifier rubric:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
-Evidence:\n${args.sourceContext.slice(0, 8000)}
+Source material:\n${args.sourceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
 Return strict JSON only.`,
       },
@@ -466,6 +773,23 @@ Return strict JSON only.`,
 
   const sections: ReportSectionDraft[] = [];
   let rollingSummary = '';
+  // Item headings as finally composed, which is what the contract auditor
+  // matches against. Built during drafting, not guessed from the output.
+  const resolvedItemTitles: string[] = [];
+
+  /** Ask for a concrete item name — only on sections that represent an item. */
+  const itemNameDirectiveFor = (entry: { itemOrdinal?: number; itemLastOrdinal?: number }): string => {
+    if (typeof entry.itemOrdinal !== 'number') return '';
+    if (typeof entry.itemLastOrdinal === 'number' && entry.itemLastOrdinal > entry.itemOrdinal) {
+      // Grouped sections cover a range, so there is no single name to give.
+      return '';
+    }
+    return `First line of your output must be exactly:
+ITEM NAME: <a short, concrete name for this ${itemLabel.toLowerCase()}, at most ${MAX_ITEM_NAME_CHARS} characters>
+This line is consumed by the system and removed before the reader sees the report.
+It becomes the section heading, so name the thing itself — not a restatement of the request.
+Write the section body starting on the following line.`;
+  };
 
   for (let i = 0; i < activeSectionPlan.length; i++) {
     const section = activeSectionPlan[i];
@@ -491,7 +815,9 @@ Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
 ${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}${
             sectionExpectsTable({ title: section.title, key: section.key, contractWantsTable })
-              ? TABLE_FORMATTING_RULES
+              ? `${TABLE_FORMATTING_RULES}${
+                  section.key === tableSectionKey ? `\n${tableHeaderDirective}` : ''
+                }`
               : ''
           }
 ${args.limitedSourcingDirective ? `\n${args.limitedSourcingDirective}\n` : ''}
@@ -499,17 +825,34 @@ ${confirmedFieldsBlock}
 Required deliverables for this intent:\n${templateRequiredDeliverables.length > 0 ? templateRequiredDeliverables.map((d) => `- ${d}`).join('\n') : '- none'}
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
+${itemNameDirectiveFor(section)}
 Source material: ${args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
-Return section body text only.`,
+Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
       ],
     });
 
-    const sectionText = sectionResult.content.trim();
-    sections.push({ title: section.title, key: section.key, content: sectionText });
-    rollingSummary = `${rollingSummary}\n\n[${section.title}]\n${sectionText.slice(0, MAX_SECTION_SUMMARY_CHARS)}`.slice(
+    // Headings are composed here, from the plan's ordinal, the report type's
+    // label, and the drafter's declared item name. The model never authors one,
+    // so the contract auditor matches exactly rather than pattern-matching prose.
+    const { itemName, content: sectionText } = extractItemName(sectionResult.content.trim());
+    const finalTitle =
+      typeof section.itemOrdinal === 'number'
+        ? composeItemHeading({
+            ordinal: section.itemOrdinal,
+            label: itemLabel,
+            itemName,
+            lastOrdinal: section.itemLastOrdinal,
+          })
+        : section.title;
+    if (typeof section.itemOrdinal === 'number') {
+      resolvedItemTitles.push(finalTitle.toLowerCase());
+    }
+
+    sections.push({ title: finalTitle, key: section.key, content: sectionText });
+    rollingSummary = `${rollingSummary}\n\n[${finalTitle}]\n${sectionText.slice(0, MAX_SECTION_SUMMARY_CHARS)}`.slice(
       -MAX_ROLLING_SUMMARY_CHARS
     );
   }
@@ -542,23 +885,52 @@ ${s.content}`)
       {
         role: 'user',
         content: `Refine report text while preserving epistemic integrity.
+
+You see the WHOLE report so you can fix cross-section flow, redundancy, and
+contradictions between sections. You return it as the same labelled blocks.
+
+OUTPUT FORMAT (MANDATORY). For each section below, emit exactly:
+
+${SECTION_BLOCK_OPEN_EXAMPLE}
+<revised body text for that section>
+${SECTION_BLOCK_CLOSE}
+
+Rules:
+- Emit one block per section, all ${sections.length} of them, in the given order.
+- Copy each "key" value exactly. It is how your text is routed back into the report.
+- Do NOT write "## " headings. Headings are added by the system; any you write
+  will appear as stray text in the middle of a section.
+- Body text only inside each block. No commentary about the revision.
+
 Challenger findings:\n${challenger.content}
 
-Draft:\n${sections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n')}
+DRAFT SECTIONS:\n${formatSectionsForRefiner(sections).join('\n\n')}
 
 ${requestedFormatsBlock}
 
-LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive evidence, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.
-
-Return the full revised markdown report.`,
+LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.`,
       },
     ],
   });
 
+  // Reassemble from the drafted sections, substituting refined bodies where the
+  // refiner returned a usable block. A section the refiner dropped, renamed, or
+  // emptied keeps its drafted text — a coherence pass must never be able to
+  // delete delivered work, and partial refinement beats discarding the report.
+  const refinedBodies = parseRefinedSections(refinement.content);
+  const finalSections: ReportSectionDraft[] = sections.map((section) => {
+    const refined = refinedBodies.get(section.key);
+    return refined ? { ...section, content: refined } : section;
+  });
+
   return {
-    markdown: refinement.content.trim() || sections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n'),
-    sections,
+    markdown: finalSections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n'),
+    sections: finalSections,
     outline: resolvedOutline,
     targetWordCount,
+    // Item headings as actually composed by this pipeline. The auditor matches
+    // these exactly; nothing is inferred from the model's prose.
+    plannedItemTitles: new Set(resolvedItemTitles),
+    refinedSectionCount: refinedBodies.size,
   };
 }

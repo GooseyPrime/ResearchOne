@@ -28,6 +28,21 @@ export interface IntentOutputTemplate {
    * intent.  Used by the Deliverable Contract Auditor as the canonical contract.
    */
   requiredDeliverables: readonly string[];
+  /**
+   * Singular noun for ONE repeated item in this report type, e.g. an
+   * opportunity_discovery report enumerates "Opportunity 1..N" and a comparative
+   * report enumerates "Option 1..N".
+   *
+   * This is a FALLBACK label only. When the drafter supplies the item's concrete
+   * name the heading reads "7. Home Fitness Equipment"; `itemLabel` is what the
+   * heading falls back to when it does not.
+   *
+   * Owned by the report type on purpose. The previous implementation guessed the
+   * label from the brief's prose by taking the last noun-ish word, which produced
+   * "Modeling 1..20" for a list of market opportunities because the request
+   * happened to end in a gerund. Report type is knowable; prose is not.
+   */
+  itemLabel: string;
 }
 
 /**
@@ -67,6 +82,7 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
   intent_factual_report: {
     id: 'intent_factual_report',
     intentId: 'factual_report',
+    itemLabel: 'Finding',
     title: 'Factual report',
     sections: ['who_what_when', 'mechanism', 'sources', 'limits'],
     sidebarSkepticAnnotations: false,
@@ -89,6 +105,7 @@ FAIL if: claims are asserted without evidence, uncertainty is papered over, the 
   intent_survey: {
     id: 'intent_survey',
     intentId: 'survey',
+    itemLabel: 'Finding',
     title: 'Survey',
     sections: ['established', 'contested', 'hypothesized', 'lore', 'open_questions'],
     sidebarSkepticAnnotations: true,
@@ -111,6 +128,7 @@ FAIL if: all claims are treated as equally certain, contested zones are not flag
   intent_adjudication: {
     id: 'intent_adjudication',
     intentId: 'adjudication',
+    itemLabel: 'Claim',
     title: 'Adjudication',
     sections: ['claim', 'case_for', 'case_against', 'verdict', 'weaknesses'],
     sidebarSkepticAnnotations: false,
@@ -136,6 +154,7 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
   intent_investigation: {
     id: 'intent_investigation',
     intentId: 'investigation',
+    itemLabel: 'Finding',
     title: 'Investigation',
     sections: ['framing', 'primary_evidence', 'contested_zones', 'unresolved'],
     sidebarSkepticAnnotations: false,
@@ -160,6 +179,7 @@ FAIL if: contested zones are glossed over, evidence is asymmetrically weighted w
   intent_literature_review: {
     id: 'intent_literature_review',
     intentId: 'literature_review',
+    itemLabel: 'Study',
     title: 'Literature review',
     sections: ['abstract', 'methods', 'findings', 'discussion', 'limitations', 'references'],
     sidebarSkepticAnnotations: true,
@@ -185,6 +205,7 @@ FAIL if: sources are listed without synthesis, search scope is unstated, the rev
   intent_comparative: {
     id: 'intent_comparative',
     intentId: 'comparative',
+    itemLabel: 'Option',
     title: 'Comparative',
     sections: ['dimensions_table', 'per_option', 'recommendation_optional'],
     sidebarSkepticAnnotations: false,
@@ -207,6 +228,7 @@ FAIL if: options receive unequal treatment without justification, comparison dim
   intent_how_to: {
     id: 'intent_how_to',
     intentId: 'how_to',
+    itemLabel: 'Step',
     title: 'How-to',
     sections: ['prerequisites', 'steps', 'outcomes', 'troubleshooting'],
     sidebarSkepticAnnotations: false,
@@ -229,6 +251,7 @@ FAIL if: steps are out of order, prerequisites are missing, steps are vague and 
   intent_recommendation: {
     id: 'intent_recommendation',
     intentId: 'recommendation',
+    itemLabel: 'Recommendation',
     title: 'Recommendation',
     sections: ['constraints', 'options', 'recommendation', 'tradeoffs'],
     sidebarSkepticAnnotations: false,
@@ -251,6 +274,7 @@ FAIL if: recommendation is asserted without reasoning, constraints are unstated,
   intent_exploratory: {
     id: 'intent_exploratory',
     intentId: 'exploratory',
+    itemLabel: 'Direction',
     title: 'Exploratory',
     sections: ['editorial_intro', 'highlights', 'why_it_matters'],
     sidebarSkepticAnnotations: false,
@@ -272,6 +296,7 @@ FAIL if: the report asserts definitive conclusions where the findings are explor
   intent_opportunity_discovery: {
     id: 'intent_opportunity_discovery',
     intentId: 'opportunity_discovery',
+    itemLabel: 'Opportunity',
     title: 'Opportunity discovery',
     sections: ['overview', 'opportunities_list', 'ranking_and_analysis', 'recommendations', 'caveats'],
     sidebarSkepticAnnotations: false,
@@ -302,6 +327,7 @@ FAIL if: the requested opportunity count is not met; the report delivers a compa
   intent_feasibility: {
     id: 'intent_feasibility',
     intentId: 'feasibility',
+    itemLabel: 'Factor',
     title: 'Feasibility analysis',
     sections: ['summary', 'dimensions', 'risks', 'viability_rating', 'recommendation'],
     sidebarSkepticAnnotations: false,
@@ -324,6 +350,7 @@ FAIL if: a dimension is omitted without explanation, the recommendation is absen
   intent_implementation: {
     id: 'intent_implementation',
     intentId: 'implementation',
+    itemLabel: 'Phase',
     title: 'Implementation plan',
     sections: ['overview', 'prerequisites', 'plan_phases', 'detailed_steps', 'acceptance_criteria'],
     sidebarSkepticAnnotations: false,
@@ -347,6 +374,7 @@ FAIL if: phases are vague, prerequisites are missing, steps are non-actionable, 
   intent_story_verification: {
     id: 'intent_story_verification',
     intentId: 'story_verification',
+    itemLabel: 'Claim',
     title: 'Story verification',
     sections: ['claim_summary', 'confirmed', 'unconfirmed', 'false_or_misleading', 'confidence', 'sources'],
     sidebarSkepticAnnotations: false,
@@ -371,6 +399,7 @@ FAIL if: claims are not individually addressed, confidence is asserted without e
   intent_position_brief: {
     id: 'intent_position_brief',
     intentId: 'position_brief',
+    itemLabel: 'Argument',
     title: 'Position brief',
     sections: ['disclosure', 'thesis', 'support', 'counters', 'rebuttals'],
     sidebarSkepticAnnotations: false,
@@ -394,6 +423,7 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
   intent_timeline: {
     id: 'intent_timeline',
     intentId: 'timeline',
+    itemLabel: 'Event',
     title: 'Timeline',
     sections: ['chronology', 'precision_notes', 'contested_dates'],
     sidebarSkepticAnnotations: false,
@@ -416,6 +446,7 @@ FAIL if: events are out of order, date precision is overstated, contested dates 
   intent_reference_lookup: {
     id: 'intent_reference_lookup',
     intentId: 'reference_lookup',
+    itemLabel: 'Entry',
     title: 'Reference lookup',
     sections: ['direct_answer', 'sources', 'confidence'],
     sidebarSkepticAnnotations: false,
@@ -435,6 +466,7 @@ FAIL if: the direct answer is absent, sources are missing, the answer is padded 
   intent_legacy: {
     id: 'intent_legacy',
     intentId: 'legacy',
+    itemLabel: 'Item',
     title: 'Standard dossier',
     sections: ['executive_summary', 'evidence', 'analysis', 'conclusion'],
     sidebarSkepticAnnotations: false,

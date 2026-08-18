@@ -15,19 +15,33 @@
  * when the brief asks for a repeated, structured deliverable — which also makes
  * each item independently draftable and independently repairable (R3).
  */
+import { getIntentOutputTemplate } from '../formatting/templates/intentOutputTemplates';
 
 export interface SectionPlanEntry {
   title: string;
   key: string;
   weight: number;
+  /**
+   * First item number this section covers, when it is one of the per-item
+   * sections created by expansion. Absent on framing sections.
+   *
+   * Carrying the ordinal as DATA is what lets code compose the heading. The
+   * previous design encoded it in the title string and then tried to parse it
+   * back out of whatever the model wrote, which is where the delivered-item
+   * count was lost (run `c50162a9`).
+   */
+  itemOrdinal?: number;
+  /** Last item number, when one section covers a range (cap forced grouping). */
+  itemLastOrdinal?: number;
 }
 
 /**
  * Artifact shape we care about, kept structural to avoid importing the brief.
  *
- * NOTE: production `RequestedArtifact` has `description` and NO `type`. Any
- * label derivation must work from `description` — deriving from `type` produced
- * headings like "## Item 1" on every real run (Codex review, PR #205).
+ * NOTE: production `RequestedArtifact` has `description` and NO `type`. Nothing
+ * user-visible may be derived from `type` — doing so produced "## Item 1" on
+ * every real run (Codex review, PR #205). Section labels no longer come from
+ * this shape at all; they come from the report type.
  */
 export interface ContractArtifact {
   description?: string;
@@ -38,38 +52,26 @@ export interface ContractArtifact {
   inferredRequiredFields?: readonly string[];
 }
 
-/** Noise words to strip when turning a description into a section label. */
-const LABEL_NOISE =
-  /\b(ranked|ordered|list|listing|set|collection|of|the|a|an|exactly|top|best|detailed|complete|full|report|table|portfolio|items?)\b/gi;
-
 /**
- * Derive a singular, human label for one requested item from its description.
+ * Fallback label for one repeated item, owned by the REPORT TYPE.
  *
- * "ranked list of market opportunities" -> "Opportunity"
- * "20 comparison-site verticals"        -> "Vertical"
+ * This used to guess the label out of the brief's prose — strip noise words,
+ * take the last noun-ish token, singularise. That is unfixable in principle:
+ * natural language has no reliable "the thing being enumerated" position, and
+ * every miss produced a new special case. Run `c50162a9` planned
+ * "Modeling 1..20" for a list of market opportunities because the request
+ * happened to end in a gerund; patching that with a gerund rule then surfaced
+ * an adjective ("Financial"), and so on.
  *
- * Falls back to the intent-derived noun, then to "Item".
+ * The report type is a known, closed set that the pipeline already routes on
+ * (Rule 37). It carries the label. `intentOutputTemplates` is the single place
+ * a new report type declares its vocabulary.
+ *
+ * This is only a FALLBACK: the drafter supplies each item's concrete name, so
+ * a finished heading reads "7. Home Fitness Equipment", not "7. Opportunity".
  */
-export function deriveItemLabel(artifact: ContractArtifact | null, intentId?: string): string {
-  const source = (artifact?.description ?? artifact?.type ?? '').trim();
-  const cleaned = source.replace(LABEL_NOISE, ' ').replace(/[^a-zA-Z\s-]/g, ' ').replace(/\s+/g, ' ').trim();
-  const words = cleaned.split(' ').filter(Boolean);
-  let noun = words.length > 0 ? words[words.length - 1]! : '';
-
-  if (!noun && intentId) {
-    // opportunity_discovery -> "opportunity"; comparative -> "option"
-    if (intentId === 'comparative') noun = 'option';
-    else noun = intentId.split('_')[0] ?? '';
-  }
-  if (!noun) return 'Item';
-
-  // Singularise simple plurals so headings read "Opportunity 3", not
-  // "Opportunities 3".
-  if (/ies$/i.test(noun)) noun = `${noun.slice(0, -3)}y`;
-  else if (/sses$/i.test(noun)) noun = noun.slice(0, -2);
-  else if (/s$/i.test(noun) && !/ss$/i.test(noun)) noun = noun.slice(0, -1);
-
-  return noun.charAt(0).toUpperCase() + noun.slice(1);
+export function deriveItemLabel(_artifact: ContractArtifact | null, intentId?: string): string {
+  return getIntentOutputTemplate(`intent_${intentId ?? 'legacy'}`).itemLabel;
 }
 
 /**
@@ -131,6 +133,15 @@ export interface ExpandOutlineResult {
   itemCount: number;
   /** Items drafted per expanded section (1 unless the cap forced grouping). */
   itemsPerSection: number;
+  /**
+   * Titles of the sections this expansion created, lowercased.
+   *
+   * The contract auditor uses these to recognise a delivered item by the title
+   * that was actually planned. Without them it falls back to a label regex the
+   * drafter never agreed to follow, and scores a fully delivered report as zero
+   * (run `c50162a9`: planned "Modeling 1..20", drafted "## 1. Developer Tools").
+   */
+  expandedTitles: readonly string[];
   reason: string;
 }
 
@@ -164,6 +175,7 @@ export function expandSectionPlanForContract(args: {
       expanded: false,
       itemCount: 0,
       itemsPerSection: 0,
+      expandedTitles: [],
       reason: 'No repeated artifact with an exact count; using the intent section plan unchanged.',
     };
   }
@@ -176,6 +188,7 @@ export function expandSectionPlanForContract(args: {
       expanded: false,
       itemCount: count,
       itemsPerSection: 0,
+      expandedTitles: [],
       reason: `Intent plan has no list section to expand; ${count} items must be produced within the existing sections.`,
     };
   }
@@ -202,13 +215,18 @@ export function expandSectionPlanForContract(args: {
     const first = section * itemsPerSection + 1;
     const last = Math.min(count, first + itemsPerSection - 1);
     if (first > count) break;
-    const title = first === last ? `${titleWord} ${first}` : `${titleWord}s ${first}–${last}`;
+    // Provisional title only. The final heading is composed after drafting,
+    // from this ordinal plus the concrete item name the drafter supplies, so a
+    // heading is never parsed back out of model prose.
+    const title = first === last ? `${first}. ${titleWord}` : `${first}–${last}. ${titleWord}s`;
     expandedEntries.push({
       title,
       key: `${slugify(listEntry.key)}_${first}${first === last ? '' : `_${last}`}`,
       // Each item carries the original list weight, so the total budget grows
       // with the contract instead of being divided into uselessly small slices.
       weight: listEntry.weight,
+      itemOrdinal: first,
+      ...(first === last ? {} : { itemLastOrdinal: last }),
     });
   }
 
@@ -219,11 +237,116 @@ export function expandSectionPlanForContract(args: {
     expanded: true,
     itemCount: count,
     itemsPerSection,
+    expandedTitles: expandedEntries.map((entry) => entry.title.toLowerCase()),
     reason:
       itemsPerSection === 1
         ? `Expanded "${listEntry.title}" into ${expandedEntries.length} sections, one per requested ${titleWord.toLowerCase()}.`
         : `Expanded "${listEntry.title}" into ${expandedEntries.length} sections covering ${count} ${titleWord.toLowerCase()}s (${itemsPerSection} per section, cap ${budgetCap}).`,
   };
+}
+
+/**
+ * Section plans are per-INTENT and generic ("Ranking and Analysis",
+ * "Recommendations", "Caveats"). A brief that also asks for a Cross-Opportunity
+ * Analysis and a Final Winner names deliverables no static plan contains, so
+ * the drafter is never given a slot to write them, the auditor then reports
+ * them missing, and repair has to bolt them on afterwards.
+ *
+ * Run `c50162a9` failed on exactly this: 20/20 items delivered, two named
+ * trailing deliverables absent, two repair passes spent chasing them.
+ *
+ * Beyond this many appended sections the brief is better served by the
+ * intent plan than by one section per phrase.
+ */
+export const MAX_CONTRACT_SECTIONS = 8;
+
+/** Words too generic to prove that an existing section already covers an artifact. */
+const COVERAGE_STOPWORDS = new Set([
+  'a', 'an', 'the', 'of', 'for', 'and', 'or', 'with', 'to', 'in', 'on', 'by', 'per', 'each',
+  'provide', 'create', 'generate', 'deliver', 'include', 'list', 'section', 'report', 'analysis',
+  'detailed', 'complete', 'full', 'summary', 'overview', 'final', 'all', 'that', 'which',
+]);
+
+function significantWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !COVERAGE_STOPWORDS.has(word));
+}
+
+/** Turn an artifact description into a section heading. */
+export function deriveContractSectionTitle(description: string): string | null {
+  const cleaned = (description ?? '')
+    .replace(/^(?:provide|create|generate|deliver|include|produce|outline|write)\s+/i, '')
+    .replace(/^(?:a|an|the)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.:;,]+$/, '')
+    .trim();
+  if (cleaned.length < 4 || cleaned.length > 80) return null;
+  // Keep the artifact's own phrasing as the heading after light normalisation;
+  // only a leading imperative and article are stripped above.
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Add a drafting slot for every named deliverable the intent plan does not
+ * already cover.
+ *
+ * Inserted before the plan's trailing caveats/limitations section so the report
+ * still ends on its framing, and skipped entirely when an existing section
+ * already covers the same ground.
+ */
+export function appendContractRequiredSections(args: {
+  plan: readonly SectionPlanEntry[];
+  artifacts?: readonly ContractArtifact[];
+  /** The repeated artifact, which already has its own expanded sections. */
+  repeatedArtifact?: ContractArtifact | null;
+  /** Section keys that must stay last (caveats, limitations, sources). */
+  trailingKeys?: ReadonlySet<string>;
+}): { plan: SectionPlanEntry[]; added: string[] } {
+  const plan = args.plan.map((entry) => ({ ...entry }));
+  const added: string[] = [];
+  if (!args.artifacts || args.artifacts.length === 0) return { plan, added };
+
+  const trailingKeys = args.trailingKeys ?? new Set(['caveats', 'limitations', 'sources', 'appendix']);
+  const existingKeys = new Set(plan.map((entry) => entry.key));
+  const existingTitleWords = plan.map((entry) => new Set(significantWords(entry.title)));
+  const averageWeight =
+    plan.length > 0 ? plan.reduce((sum, entry) => sum + entry.weight, 0) / plan.length : 1;
+
+  const pending: SectionPlanEntry[] = [];
+  for (const artifact of args.artifacts) {
+    if (artifact === args.repeatedArtifact) continue;
+    // Counted artifacts are the repeated deliverable; they get item sections.
+    if (typeof artifact.exactCount === 'number' && artifact.exactCount >= MIN_COUNT_FOR_EXPANSION) continue;
+    const title = deriveContractSectionTitle(artifact.description ?? '');
+    if (!title) continue;
+
+    const words = significantWords(title);
+    if (words.length === 0) continue;
+    // Covered when every meaningful word of the deliverable already appears in
+    // some section title — that section is where the drafter will write it.
+    const covered = existingTitleWords.some((titleWords) => words.every((word) => titleWords.has(word)));
+    if (covered) continue;
+
+    const key = `contract_${slugify(title)}`;
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+    pending.push({ title, key, weight: averageWeight });
+    added.push(title);
+    if (pending.length >= MAX_CONTRACT_SECTIONS) break;
+  }
+
+  if (pending.length === 0) return { plan, added };
+
+  let insertAt = plan.length;
+  for (let i = plan.length - 1; i >= 0; i -= 1) {
+    if (trailingKeys.has(plan[i]!.key)) insertAt = i;
+    else break;
+  }
+  plan.splice(insertAt, 0, ...pending);
+  return { plan, added };
 }
 
 /**

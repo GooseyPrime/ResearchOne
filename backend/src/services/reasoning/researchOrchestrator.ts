@@ -468,10 +468,19 @@ function parseOpportunityTitleLine(line: string): string | null {
     .replace(/^\*\*/, '')
     .replace(/\*\*$/, '')
     .trim();
-  const numbered = normalized.match(/^#?\s*(\d+)[\.\):]\s+(.+)$/);
-  if (numbered) return `Opportunity ${numbered[1]}: ${numbered[2].trim()}`;
-  const named = normalized.match(/^opportunity\s*#?\s*(\d+)\s*[:\-–]\s*(.+)$/i);
-  if (named) return `Opportunity ${named[1]}: ${named[2].trim()}`;
+  // Canonical form is "<ordinal>. <name>".
+  //
+  // This used to rewrite every match to "Opportunity <n>: <name>", which was
+  // wrong twice. It hardcoded one report type's noun into a path all report
+  // types use, and it discarded the leading ordinal — the only structural
+  // signal the legacy fallback has to tell a real enumerated item from a stray
+  // numbered section (Codex review, PR #209).
+  const numbered = normalized.match(/^#?\s*(\d+)[.):]\s+(.+)$/);
+  if (numbered) return `${numbered[1]}. ${numbered[2]!.trim()}`;
+  // "Opportunity 3: X", "Option 3 - X", "Phase 3 – X". The noun is open so this
+  // keeps working for report types that do not exist yet.
+  const named = normalized.match(/^[a-z]+\s*#?\s*(\d+)\s*[:\-–]\s*(.+)$/i);
+  if (named) return `${named[1]}. ${named[2]!.trim()}`;
   return null;
 }
 
@@ -486,13 +495,47 @@ function parseOpportunityTitleLine(line: string): string | null {
  * failing the contract on a table that was substantively correct.
  */
 /**
- * Headings that count as one delivered item.
+ * Structural fallback for reports whose item headings this pipeline did not
+ * compose — legacy runs, resumed checkpoints, and the reference-lookup path.
  *
- * Must stay in sync with `deriveItemLabel()` in `contractOutline.ts`, which
- * generates these headings from the artifact description.
+ * Deliberately content-free. This used to be backed by a hand-curated list of
+ * item nouns (`opportunity|vertical|niche|...|modeling`), which is a losing
+ * game: `modeling` was in that list only because one run happened to emit
+ * "Modeling 1", and every new phrasing a model invented needed another word.
+ * Current runs never reach this — `plannedItemTitles` is composed by the
+ * pipeline and matched exactly.
  */
-export const ITEM_SECTION_HEADING =
-  /^(?:opportunity|vertical|option|item|market|niche|candidate|idea|use case|application)s?\s*#?\s*\d+/i;
+export const NUMBERED_ITEM_HEADING = /^\s*(\d{1,3})\s*[.)\]:-]\s+\S/;
+
+/**
+ * Conventional report framing sections, which are never a delivered item.
+ *
+ * Only needed on the fallback path above, because some drafters number every
+ * top-level heading and `## 1. Executive Summary` would otherwise satisfy
+ * `NUMBERED_ITEM_HEADING`. Counting framing as items inflates the delivered
+ * count into a FALSE PASS, which is worse than the false failure.
+ *
+ * These are general report conventions, not vocabulary borrowed from any
+ * particular request. Nothing request-specific belongs here.
+ */
+export const FRAMING_SECTION_HEADING =
+  /^(?:\d{1,3}\s*[.)\]:-]\s*)?(?:executive\s+summary|introduction|overview|scope|background|methodology|method|approach|context|key\s+findings?|summary|conclusions?|comparative\s+analysis|recommendations?|next\s+steps?|limitations?|appendix|sources?|references?|glossary|assumptions?)\b/i;
+
+/**
+ * True when a heading denotes one delivered item.
+ *
+ * `plannedTitles` is authoritative: those headings were composed by this
+ * pipeline from the plan's ordinal, the report type's label, and the drafter's
+ * declared item name, so the match is exact. The regexes below are a fallback
+ * for reports this pipeline did not assemble.
+ */
+export function isItemSectionHeading(title: string, plannedTitles?: ReadonlySet<string>): boolean {
+  const text = (title ?? '').replace(/[*_`#]/g, '').trim();
+  if (!text) return false;
+  if (plannedTitles && plannedTitles.size > 0) return plannedTitles.has(text.toLowerCase());
+  if (FRAMING_SECTION_HEADING.test(text)) return false;
+  return NUMBERED_ITEM_HEADING.test(text);
+}
 
 function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title: string; body: string }> {
   const tables = extractMarkdownTables(markdown);
@@ -530,9 +573,13 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
       const titleToken =
         titleIndex >= 0 ? (values[titleIndex] ?? '') : (values[Math.min(1, values.length - 1)] ?? '');
       if (!titleToken && !/^#?\d+$/.test(rankToken)) continue;
-      const title = /^opportunity/i.test(titleToken)
+      // Canonical "<ordinal>. <name>", matching the heading path. The report
+      // type's noun is not spliced in here: this function serves every report
+      // type, and only the ordinal and the name are actually known.
+      const rankDigits = rankToken.replace(/^#/, '');
+      const title = /^\d/.test(titleToken)
         ? titleToken
-        : `${/^#?\d+$/.test(rankToken) ? `Opportunity ${rankToken}` : 'Opportunity'}: ${titleToken}`;
+        : `${/^\d+$/.test(rankDigits) ? `${rankDigits}. ` : ''}${titleToken}`;
       const body = headers
         .map((header, idx) => `${header}: ${values[idx] ?? ''}`)
         .join('\n')
@@ -543,7 +590,10 @@ function parseOpportunityRowsFromMarkdownTable(markdown: string): Array<{ title:
   }
   return [];
 }
-function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title: string; body: string }> {
+export function extractOpportunityObjectsFromMarkdown(
+  markdown: string,
+  plannedItemTitles?: ReadonlySet<string>
+): Array<{ title: string; body: string }> {
   const lines = markdown.split('\n');
   const out: Array<{ title: string; body: string }> = [];
   let current: { title: string; body: string[] } | null = null;
@@ -559,7 +609,7 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
       // derived from the artifact description ("Opportunity 3", "Vertical 3",
       // "Option 3", "Item 3"), so matching only "Opportunity <n>" counted a
       // fully delivered report as ZERO items (Codex review, PR #205).
-      if (ITEM_SECTION_HEADING.test(title)) {
+      if (isItemSectionHeading(title, plannedItemTitles)) {
         current = { title, body: [] };
       } else {
         current = null;
@@ -571,8 +621,49 @@ function extractOpportunityObjectsFromMarkdown(markdown: string): Array<{ title:
   if (current) {
     out.push({ title: current.title, body: current.body.join('\n').trim() });
   }
-  if (out.length > 0) return out;
+  const trusted =
+    plannedItemTitles && plannedItemTitles.size > 0 ? out : withContiguousOrdinals(out);
+  if (trusted.length > 0) return trusted;
   return parseOpportunityRowsFromMarkdownTable(markdown);
+}
+
+/**
+ * On the fallback path, accept numbered headings only when their ordinals form
+ * a complete 1..N run.
+ *
+ * Without planned titles, any numbered heading outside the framing denylist
+ * counts as a delivered item. A report that omitted one requested item but
+ * carried a numbered structural section — `## 4. Risk Assessment`,
+ * `## 4. Market Size` — would have that section counted in its place and could
+ * satisfy the exact-count check: a FALSE PASS on an incomplete deliverable
+ * (Codex review, PR #209).
+ *
+ * A genuine enumerated list numbers itself 1..N with no gaps or repeats.
+ * A stray numbered section does not. Requiring the sequence is a positive
+ * signal that costs nothing and needs no vocabulary list.
+ *
+ * Reports this pipeline assembled never reach here — their headings are matched
+ * against the titles it composed.
+ */
+function withContiguousOrdinals(
+  sections: Array<{ title: string; body: string }>
+): Array<{ title: string; body: string }> {
+  if (sections.length === 0) return sections;
+  const ordinals = sections.map((section) => {
+    const text = section.title.replace(/[*_`#]/g, '').trim();
+    const match = text.match(NUMBERED_ITEM_HEADING);
+    return match ? Number(match[1]) : null;
+  });
+  // Headings carrying no ordinal at all came from a non-numbered form; leave
+  // those to the caller unchanged rather than second-guessing them.
+  if (ordinals.every((ordinal) => ordinal === null)) return sections;
+  if (ordinals.some((ordinal) => ordinal === null)) return [];
+  const seen = new Set(ordinals as number[]);
+  if (seen.size !== ordinals.length) return [];
+  for (let expected = 1; expected <= ordinals.length; expected += 1) {
+    if (!seen.has(expected)) return [];
+  }
+  return sections;
 }
 
 /**
@@ -639,6 +730,8 @@ function runDeterministicContractValidation(args: {
   intentId: string;
   markdown: string;
   brief: ResearchBrief;
+  /** Item-section titles the outline actually planned, lowercased. */
+  plannedItemTitles?: ReadonlySet<string>;
 }): {
   pass: boolean;
   missing: string[];
@@ -649,7 +742,7 @@ function runDeterministicContractValidation(args: {
   const revision: string[] = [];
   const metrics: Record<string, number> = {};
   if (args.intentId === 'opportunity_discovery') {
-    const opportunities = extractOpportunityObjectsFromMarkdown(args.markdown);
+    const opportunities = extractOpportunityObjectsFromMarkdown(args.markdown, args.plannedItemTitles);
     const requestedCount =
       args.brief.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')?.exactCount ?? null;
     const { complete: completeFields, missingFields } = adaptiveFieldCompletenessForOpportunities(opportunities, args.brief);
@@ -1829,6 +1922,10 @@ async function runResearchJobInner(
     const outputTemplateId =
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
+    // Item-section titles R1 expansion planned, so the contract auditor can
+    // recognise delivered items by what was actually planned rather than by a
+    // label pattern the drafter never agreed to follow (run c50162a9).
+    let plannedItemTitles: ReadonlySet<string> = new Set<string>();
     let generatedReport: { markdown: string };
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -1841,7 +1938,7 @@ async function runResearchJobInner(
     if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
-      generatedReport = await generateIterativeReport({
+      const iterativeReport = await generateIterativeReport({
         query: researchQuery,
         plan,
         sourceContext,
@@ -1876,6 +1973,8 @@ async function runResearchJobInner(
           });
         },
       });
+      generatedReport = iterativeReport;
+      plannedItemTitles = iterativeReport.plannedItemTitles;
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
@@ -1889,7 +1988,12 @@ async function runResearchJobInner(
             role: 'user',
             content:
               `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
-              `# Executive Summary\n(direct answer)\n# Evidence\n(short bullets tied to chunk IDs where possible)\n` +
+              `# Executive Summary\n(direct answer)\n` +
+              // "Evidence" is adjudication vocabulary. A reference lookup is not
+              // adjudicating a disputed claim, and a heading the writer sees
+              // becomes a heading the writer reasons in — which is how epistemic
+              // framing leaks into reports that never asked for it (Rule 37).
+              `# ${isAdjudicative ? 'Evidence' : 'Supporting Detail'}\n(short bullets tied to chunk IDs where possible)\n` +
               `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
               `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
               `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
@@ -1904,7 +2008,7 @@ async function runResearchJobInner(
               // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
               `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
               `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
-              `Evidence:\n${sourceContext.slice(0, 60000)}`,
+              `Source material:\n${sourceContext.slice(0, 60000)}`,
           },
         ],
       });
@@ -2006,6 +2110,7 @@ ${generatedReport.markdown}`,
         intentId: orchProfile.intent,
         markdown,
         brief: researchBrief,
+        plannedItemTitles,
       });
 
       // WO-AB: table-contract check. Deterministic, no extra model call.

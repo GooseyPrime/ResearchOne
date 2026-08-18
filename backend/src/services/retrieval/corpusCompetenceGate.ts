@@ -33,12 +33,28 @@ export interface CorpusGateDecision {
 
 export const UNCLASSIFIED_PARTITION = 'unclassified';
 
+/**
+ * Last-resort corpus partition when neither the request's filter tags nor any
+ * retrieved source declares one.
+ *
+ * These names describe the KIND of work, never a subject. The discovery family
+ * was previously called `market.affiliate` — a topic borrowed from the request
+ * that happened to be under development. That is wrong twice over: an
+ * opportunity_discovery report about medical devices would have been filed under
+ * affiliate marketing, and because Rule 40 unlocks per partition, satisfying the
+ * thresholds for one subject would have unsealed every unrelated subject sharing
+ * the partition.
+ *
+ * Subject-level partitioning belongs in the tags, which take precedence over
+ * this map. Grouping is unchanged from the previous map so unlock behaviour is
+ * unaffected; only the name is now subject-neutral.
+ */
 const INTENT_PARTITION_MAP: Partial<Record<IntentId, string>> = {
-  opportunity_discovery: 'market.affiliate',
-  comparative: 'market.affiliate',
-  feasibility: 'market.affiliate',
-  recommendation: 'market.affiliate',
-  exploratory: 'market.affiliate',
+  opportunity_discovery: 'discovery.general',
+  comparative: 'discovery.general',
+  feasibility: 'discovery.general',
+  recommendation: 'discovery.general',
+  exploratory: 'discovery.general',
   implementation: 'implementation.general',
   how_to: 'implementation.general',
   factual_report: 'reference.general',

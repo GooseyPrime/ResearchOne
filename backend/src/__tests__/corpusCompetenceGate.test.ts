@@ -20,6 +20,56 @@ vi.mock('../services/openrouter/openrouterService', async () => {
 });
 
 import { retrieveChunksWithAudit } from '../services/retrieval/retrievalService';
+import { resolveCorpusPartition } from '../services/retrieval/corpusCompetenceGate';
+
+describe('corpus partition defaults are subject-neutral', () => {
+  // The intent map is a LAST RESORT. It must describe the kind of work, never a
+  // subject: five report types were once pinned to `market.affiliate`, borrowed
+  // from whichever request happened to be under development. Because Rule 40
+  // unlocks per partition, that would have let one subject's sources unseal
+  // every unrelated subject filed alongside it.
+  const INTENTS = [
+    'opportunity_discovery',
+    'comparative',
+    'feasibility',
+    'recommendation',
+    'exploratory',
+    'implementation',
+    'how_to',
+    'factual_report',
+    'literature_review',
+    'survey',
+    'timeline',
+    'reference_lookup',
+    'adjudication',
+    'investigation',
+    'story_verification',
+    'position_brief',
+  ] as const;
+
+  it('never defaults any report type to a subject-specific partition', () => {
+    for (const intentId of INTENTS) {
+      const partition = resolveCorpusPartition({ intentId: intentId as never });
+      expect(partition).toMatch(/^[a-z_]+\.general$/);
+    }
+  });
+
+  it('lets tags and source records carry the subject instead', () => {
+    // Explicit tags win over the intent default — this is where subject belongs.
+    expect(
+      resolveCorpusPartition({
+        intentId: 'opportunity_discovery' as never,
+        filterTags: ['partition:market.affiliate'],
+      })
+    ).toBe('market.affiliate');
+    expect(
+      resolveCorpusPartition({
+        intentId: 'opportunity_discovery' as never,
+        sourceRecords: [{ partitionKey: 'medical.devices' } as never],
+      })
+    ).toBe('medical.devices');
+  });
+});
 
 function makeSourceStat(index: number, domain: string, chunkCount = 20) {
   return {
