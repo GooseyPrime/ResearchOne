@@ -33,6 +33,7 @@ import AdminOverview from './pages/admin/AdminOverview';
 import AdminReportsBrowser from './pages/admin/AdminReportsBrowser';
 import AdminCorpusBrowser from './pages/admin/AdminCorpusBrowser';
 import UserLookup from './pages/admin/UserLookup';
+import RunLookup from './pages/admin/RunLookup';
 import RunTelemetry from './pages/admin/RunTelemetry';
 import AuditLogViewer from './pages/admin/AuditLogViewer';
 import CostAnalytics from './pages/admin/CostAnalytics';
@@ -116,6 +117,7 @@ export function AppRoutes() {
           <Route path="reports" element={<AdminReportsBrowser />} />
           <Route path="corpus" element={<AdminCorpusBrowser />} />
           <Route path="users" element={<UserLookup />} />
+          <Route path="runs" element={<RunLookup />} />
           <Route path="telemetry" element={<RunTelemetry />} />
           <Route path="cost" element={<CostAnalytics />} />
           <Route path="audit" element={<AuditLogViewer />} />

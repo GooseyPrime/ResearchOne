@@ -117,7 +117,15 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
             io.emit('runs:updated', {});
             return result;
           }
-          emit(`job:${runId}`, 'research:completed', result);
+          // A gate failure produces a report row but is NOT a completion. Sent
+          // as `research:completed`, the UI showed a success notification and
+          // navigated to a report that had not passed its contract, before the
+          // corrected summary arrived (Codex P1 review, PR #212).
+          emit(
+            `job:${runId}`,
+            result.completedCleanly ? 'research:completed' : 'research:quality_gate_failed',
+            result
+          );
           if (result.summary) {
             emit(`job:${runId}`, 'run:summary', result.summary);
           }
@@ -180,7 +188,12 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
           io.emit('runs:updated', {});
           return result;
         }
-        emit(`job:${job.data.runId}`, 'research:completed', result);
+        // Same branch as the primary worker: a gate failure is not a completion.
+        emit(
+          `job:${job.data.runId}`,
+          result.completedCleanly ? 'research:completed' : 'research:quality_gate_failed',
+          result
+        );
         if (result.summary) {
           emit(`job:${job.data.runId}`, 'run:summary', result.summary);
         }

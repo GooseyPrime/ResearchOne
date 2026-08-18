@@ -167,6 +167,18 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
   const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload);
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
+  // The gate outcome is what the reader needs. `status` collapses every gated
+  // failure into `failed`, and this summary used to be handed a hardcoded
+  // 'completed' regardless — so a run stored as failed rendered a green
+  // COMPLETED. Prefer the gate status; fall back to the run status.
+  //
+  // Derived HERE, above `buildPlainText`, so the header and the copyable report
+  // cannot disagree. They previously did: the header showed CONTRACT FAILED
+  // while the copied text said FAILED (Copilot review, PR #212).
+  const gateStatus = summary?.gateStatus ?? null;
+  const displayStatus = gateStatus && gateStatus !== 'completed' ? gateStatus : status;
+  const statusLabel = displayStatus.replace(/_/g, ' ').toUpperCase();
+
   // Build the full plain-text report string for clipboard copy.
   const buildPlainText = useCallback((): string => {
     const lines: string[] = [];
@@ -182,7 +194,8 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     }
     if (objective) lines.push(`Model profile: ${objective}`);
     if (createdAt) lines.push(`Started      : ${createdAt}`);
-    lines.push(`Status       : ${status.toUpperCase()}`);
+    lines.push(`Status       : ${statusLabel}`);
+    if (run?.run_ref) lines.push(`Reference    : ${run.run_ref}`);
     lines.push(`Duration     : ${fmtMs(totalDurationMs)}`);
     lines.push(`Tokens       : ${fmtNum(tokens.prompt)} prompt  +  ${fmtNum(tokens.completion)} completion  =  ${fmtNum(tokens.prompt + tokens.completion)} total`);
     if (retryCount > 0) lines.push(`Retries      : ${retryCount}`);
@@ -243,7 +256,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     lines.push(hr);
     lines.push(`Generated at : ${new Date().toISOString()}`);
     return lines.join('\n');
-  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
+  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, statusLabel, run?.run_ref, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
 
   const handleCopy = useCallback(async () => {
     const text = buildPlainText();
@@ -263,14 +276,6 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
       }
     }
   }, [buildPlainText]);
-
-  // The gate outcome is what the reader needs. `status` collapses every gated
-  // failure into `failed`, and this summary used to be handed a hardcoded
-  // 'completed' regardless — so a run stored as failed rendered a green
-  // COMPLETED. Prefer the gate status; fall back to the run status.
-  const gateStatus = summary?.gateStatus ?? null;
-  const displayStatus =
-    gateStatus && gateStatus !== 'completed' ? gateStatus : status;
 
   // Only a clean pass is green. A degraded or gate-failed run is amber or red —
   // never the colour a user reads as "this is done and correct".
@@ -299,8 +304,6 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     : isHardFailure ? 'border-red-800/30'
     : 'border-amber-700/30';
 
-  const statusLabel = displayStatus.replace(/_/g, ' ').toUpperCase();
-
   return (
     <div className={clsx('rounded-lg border bg-surface-200/60 overflow-hidden', borderColor)} ref={reportRef}>
       {/* Header row */}
@@ -309,6 +312,19 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
           <StatusIcon size={15} className={statusColor} />
           <span className="text-sm font-semibold text-white">Run summary</span>
           <span className={clsx('text-xs font-medium ml-1', statusColor)}>{statusLabel}</span>
+          {run?.run_ref && (
+            // The reference a user quotes to support. Shown on every finished
+            // run, including failures — those are the ones people write in
+            // about, and without this the lookup workflow has no entry point.
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard?.writeText(run.run_ref!)}
+              title="Copy run reference"
+              className="ml-2 rounded border border-white/10 bg-surface-100/40 px-1.5 py-0.5 font-mono text-[11px] text-slate-300 hover:text-white hover:border-white/25"
+            >
+              {run.run_ref}
+            </button>
+          )}
         </div>
         <button
           type="button"

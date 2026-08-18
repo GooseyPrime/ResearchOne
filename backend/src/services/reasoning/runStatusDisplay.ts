@@ -65,3 +65,51 @@ export function isCleanRunOutcome(args: {
 }): boolean {
   return resolveRunDisplayState(args).tone === 'success';
 }
+
+/** Plain-language reason a gated run did not complete. */
+export function describeGateFailure(status: ReportGateStatus): string {
+  switch (status) {
+    case 'contract_failed':
+      return 'The report did not deliver everything the request asked for. It has been kept for review rather than finalised.';
+    case 'verification_failed':
+      return 'The report did not pass verification. It has been kept for review rather than finalised.';
+    case 'completed_degraded':
+      return 'The report was produced from fewer sources than this request requires, so it is marked degraded rather than finalised.';
+    default:
+      return 'The report did not pass its quality gates.';
+  }
+}
+
+export interface RunTerminalOutcome {
+  /** Value written to `research_runs.status`. */
+  runStatus: 'completed' | 'failed';
+  /** Gate that produced it, carried through to the summary and the job result. */
+  gateStatus: ReportGateStatus;
+  /** False when a gate failed; the report exists but is under review. */
+  completedCleanly: boolean;
+  failedStage: string | null;
+  errorMessage: string | null;
+}
+
+/**
+ * Single source of truth for what a finished run's terminal state is.
+ *
+ * This exists because the regression test for the original bug did not actually
+ * exercise the code that had the bug: it fed an already-correct state to a
+ * helper production did not call, so reverting the orchestrator's hardcoded
+ * `status: 'completed'` left every test green (Codex P2 review, PR #212).
+ *
+ * The orchestrator now derives its run row, its summary, and its job result
+ * from this one function, so a test of this function is a test of all three.
+ */
+export function resolveRunTerminalOutcome(gateStatus: ReportGateStatus): RunTerminalOutcome {
+  const runStatus = gateStatus === 'completed' ? 'completed' : 'failed';
+  const completedCleanly = gateStatus === 'completed';
+  return {
+    runStatus,
+    gateStatus,
+    completedCleanly,
+    failedStage: completedCleanly ? null : 'verification',
+    errorMessage: completedCleanly ? null : describeGateFailure(gateStatus),
+  };
+}

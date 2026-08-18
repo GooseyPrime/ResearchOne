@@ -8,6 +8,7 @@ import {
 import {
   isCleanRunOutcome,
   resolveRunDisplayState,
+  resolveRunTerminalOutcome,
 } from '../services/reasoning/runStatusDisplay';
 
 /**
@@ -49,6 +50,63 @@ describe('run status consistency across surfaces', () => {
     expect(surfaced.status).toBe('contract_failed');
     expect(surfaced.tone).toBe('failure');
     expect(surfaced.status).not.toBe('completed');
+  });
+});
+
+/**
+ * The orchestrator derives its run row, its run summary, AND its job result
+ * from `resolveRunTerminalOutcome`. Testing it is therefore testing all three.
+ *
+ * The previous version of this suite fed an already-correct state to a helper
+ * production never called, so reverting the orchestrator's hardcoded
+ * `status: 'completed'` left every test green (Codex P2 review, PR #212).
+ */
+describe('resolveRunTerminalOutcome — the producer the orchestrator uses', () => {
+  it('never reports a gated failure as a clean completion', () => {
+    for (const gate of ALL_GATES.filter((g) => g !== 'completed')) {
+      const outcome = resolveRunTerminalOutcome(gate);
+      expect(outcome.runStatus, gate).toBe('failed');
+      expect(outcome.completedCleanly, gate).toBe(false);
+      expect(outcome.gateStatus, gate).toBe(gate);
+      // A failure the user can read, not a silent one.
+      expect(outcome.errorMessage, gate).toBeTruthy();
+      expect(outcome.failedStage, gate).toBe('verification');
+    }
+  });
+
+  it('reports a clean pass as completed, with nothing to explain', () => {
+    const outcome = resolveRunTerminalOutcome('completed');
+    expect(outcome).toEqual({
+      runStatus: 'completed',
+      gateStatus: 'completed',
+      completedCleanly: true,
+      failedStage: null,
+      errorMessage: null,
+    });
+  });
+
+  it('keeps the run row, the summary, and the job result in agreement', () => {
+    for (const gate of ALL_GATES) {
+      const outcome = resolveRunTerminalOutcome(gate);
+      // Run row, via the mapper the orchestrator used before.
+      expect(outcome.runStatus, gate).toBe(mapGateStatusToRunStatus(gate));
+      // Surfaced summary state.
+      expect(
+        isCleanRunOutcome({ status: outcome.runStatus, gateStatus: outcome.gateStatus }),
+        gate
+      ).toBe(outcome.completedCleanly);
+      // Report row.
+      expect(mapGateStatusToReportRowStatus(gate) === 'finalized', gate).toBe(
+        outcome.completedCleanly
+      );
+    }
+  });
+
+  it('gives each gate its own explanation rather than one generic message', () => {
+    const messages = ALL_GATES.filter((g) => g !== 'completed').map(
+      (g) => resolveRunTerminalOutcome(g).errorMessage
+    );
+    expect(new Set(messages).size).toBe(messages.length);
   });
 });
 

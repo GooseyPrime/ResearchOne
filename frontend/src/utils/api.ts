@@ -126,7 +126,18 @@ export interface ResearchProgressEvent {
   tokenUsage?: { prompt: number; completion: number };
   sourceCount?: number;
   chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
+  // `run_quality_gate_failed` is emitted by the backend for a run that produced
+  // a report but did not pass its gates. It is deliberately distinct from
+  // `run_completed`: treating the two as the same is what showed a success
+  // notification on a contract-failed run (PR #212).
+  eventType?:
+    | 'progress'
+    | 'run_started'
+    | 'run_failed'
+    | 'run_completed'
+    | 'run_quality_gate_failed'
+    | 'run_resumed'
+    | 'run_aborted';
   failure?: {
     errorMessage?: string;
     retryable?: boolean;
@@ -144,6 +155,13 @@ export interface ResearchSupplementalAttachment {
 
 export interface ResearchRun {
   id: string;
+  /**
+   * Human-readable reference (`R1-YYYYMMDD-HHMM-XXXXX-C`) assigned to every run
+   * including failures. This is the value a user quotes to support, so it must
+   * be visible to them. Absent on deployments where migration 055 has not
+   * applied yet.
+   */
+  run_ref?: string | null;
   title: string;
   query: string;
   supplemental?: string;

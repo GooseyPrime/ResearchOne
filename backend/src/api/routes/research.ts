@@ -566,9 +566,13 @@ router.get('/', async (req, res, next) => {
     const userId = req.auth?.userId ?? null;
     const orgId = req.auth?.orgId ?? null;
 
+    // `run_ref` is what a user quotes to support, so it has to reach the client.
+    // Selected separately because the application can be live before migration
+    // 055 applies; on 42703 we retry without it rather than failing the list.
     const baseCols = `id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at, report_id`;
+    const colsWithRef = `${baseCols}, run_ref`;
 
     let rows: unknown[];
     try {
@@ -580,8 +584,14 @@ router.get('/', async (req, res, next) => {
         params.push(status);
         where += ` AND status=$${params.length}`;
       }
-      const sql = `SELECT ${baseCols} FROM research_runs${where} ORDER BY created_at DESC LIMIT 50`;
-      rows = await query(sql, params);
+      const suffix = `FROM research_runs${where} ORDER BY created_at DESC LIMIT 50`;
+      try {
+        rows = await query(`SELECT ${colsWithRef} ${suffix}`, params);
+      } catch (refErr) {
+        if ((refErr as { code?: string })?.code !== '42703') throw refErr;
+        // Migration 055 not applied yet — the list is still useful without it.
+        rows = await query(`SELECT ${baseCols} ${suffix}`, params);
+      }
     } catch (scopeErr) {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');
     }
