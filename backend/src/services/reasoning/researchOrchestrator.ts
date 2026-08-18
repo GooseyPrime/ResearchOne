@@ -39,6 +39,7 @@ import {
 } from './tableContract';
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
+import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config } from '../../config';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
@@ -2571,8 +2572,13 @@ ${generatedReport.markdown}`,
       });
     }
 
-    // Update run with model log, report_id, and completion
-    const runTerminalStatus = mapGateStatusToRunStatus(reportStatus);
+    // Update run with model log, report_id, and completion.
+    //
+    // The run row, the run summary, and the job result are all derived from
+    // this one call. Previously each computed its own answer and the summary's
+    // was hardcoded 'completed', so the three disagreed (Codex review, #212).
+    const terminalOutcome = resolveRunTerminalOutcome(reportStatus);
+    const runTerminalStatus = terminalOutcome.runStatus;
     const runFailureMeta =
       runTerminalStatus === 'completed'
         ? {}
@@ -2714,13 +2720,32 @@ ${generatedReport.markdown}`,
     if (currentStage && phaseStartTimes[currentStage] != null) {
       phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (finalNow - phaseStartTimes[currentStage]);
     }
+    // The summary status must be the status the run was actually written with.
+    // It used to be hardcoded 'completed' on this path, so a run stored as
+    // `failed` with gate status `contract_failed` still pushed a green
+    // "COMPLETED" summary to the live view. The database and the screen
+    // disagreed, and the screen was the one the user believed.
     const summary: RunSummaryPayload = buildRunSummary({
-      runId, status: 'completed',
+      runId,
+      status: terminalOutcome.runStatus,
+      gateStatus: terminalOutcome.gateStatus,
       startedAt: runStartedAt, finishedAt: finalNow,
       phaseDurations, modelLog,
+      failedStage: terminalOutcome.failedStage,
+      errorMessage: terminalOutcome.errorMessage,
     });
 
-    return { runId, reportId, summary };
+    // `completedCleanly` is what keeps a gate failure out of the completion
+    // event path. Without it the worker emitted `research:completed`, and the
+    // UI showed a success notification and navigated to a report that had not
+    // passed its contract — before the corrected summary even arrived.
+    return {
+      runId,
+      reportId,
+      completedCleanly: terminalOutcome.completedCleanly,
+      gateStatus: terminalOutcome.gateStatus,
+      summary,
+    };
   } catch (err) {
     if (err instanceof ResearchCancelledError) {
       await query(
@@ -2951,6 +2976,14 @@ function buildRunSummary(args: {
   failedStage?: string | null;
   errorMessage?: string | null;
   failureMeta?: Record<string, unknown> | null;
+  /**
+   * Which quality gate produced this outcome, when one did.
+   *
+   * `status` alone collapses every non-success into `failed`, which cannot tell
+   * a reader whether the deliverable was incomplete, unverifiable, or the run
+   * crashed. The UI needs the distinction to say something useful.
+   */
+  gateStatus?: ReportGateStatus | null;
 }): RunSummaryPayload {
   const totalPromptTokens = args.modelLog.reduce((s, r) => s + (r.promptTokens ?? 0), 0);
   const totalCompletionTokens = args.modelLog.reduce((s, r) => s + (r.completionTokens ?? 0), 0);
@@ -2961,6 +2994,7 @@ function buildRunSummary(args: {
   return {
     runId: args.runId,
     status: args.status,
+    gateStatus: args.gateStatus ?? null,
     totalDurationMs: args.finishedAt - args.startedAt,
     phaseDurations: { ...args.phaseDurations },
     totalPromptTokens,

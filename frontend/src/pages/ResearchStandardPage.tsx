@@ -440,6 +440,37 @@ export default function ResearchStandardPage() {
       }
     });
 
+    // A run whose quality gates failed still writes a report, but it is not a
+    // completion. It used to arrive as `research:completed`, so the user got a
+    // success toast and was navigated to a report that had not passed its
+    // contract. Stay on the page and leave the run summary visible instead.
+    socket.on(
+      'research:quality_gate_failed',
+      (result: { runId: string; reportId: string; gateStatus?: string | null }) => {
+        qc.invalidateQueries({ queryKey: ['research-runs'] });
+        void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
+        if (result.runId !== trackingRunId) return;
+        const gateEvt: ResearchProgressEvent = {
+          runId: result.runId,
+          stage: 'done',
+          percent: 100,
+          message: 'Finished — did not pass quality gates.',
+          timestamp: new Date().toISOString(),
+          eventType: 'run_quality_gate_failed',
+        };
+        setProgress(gateEvt);
+        setActiveRun(gateEvt);
+        setTrackingRunId(null);
+        qc.invalidateQueries({ queryKey: ['reports'] });
+        addNotification(
+          'error',
+          result.gateStatus === 'contract_failed'
+            ? 'The report did not deliver everything requested. It is saved for review — see the run summary.'
+            : 'The report did not pass its quality gates. It is saved for review — see the run summary.'
+        );
+      }
+    );
+
     socket.on('run:summary', (summary: RunSummaryData) => {
       if (summary.runId === lastKnownRunIdRef.current) {
         runSummaryReceivedRef.current = true;
@@ -533,6 +564,7 @@ export default function ResearchStandardPage() {
     return () => {
       socket.off('research:progress');
       socket.off('research:completed');
+      socket.off('research:quality_gate_failed');
       socket.off('run:summary');
       socket.off('research:failed');
       socket.off('research:aborted');

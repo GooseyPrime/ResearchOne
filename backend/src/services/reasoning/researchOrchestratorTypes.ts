@@ -81,6 +81,14 @@ export interface ResearchProgress {
 export interface RunSummaryPayload {
   runId: string;
   status: string;
+  /**
+   * The quality gate that produced this outcome, when one did.
+   *
+   * `status` collapses every non-success to `failed`, which cannot distinguish
+   * an incomplete deliverable from an unverifiable one from a crash. Present
+   * only on runs that reached the gates.
+   */
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
@@ -95,10 +103,23 @@ export interface RunSummaryPayload {
 
 export type ProgressCallback = (update: ResearchProgress) => void;
 
-/** Successful pipeline completion (report created). */
+/**
+ * Pipeline reached the end and produced a report row.
+ *
+ * "Reached the end" is not "succeeded": a run whose quality gates failed still
+ * writes a report for review. Consumers MUST branch on `completedCleanly`
+ * rather than treating this result as success — the worker previously emitted
+ * `research:completed` for gate failures too, so the UI showed a success
+ * notification and navigated to a report that had not passed its contract
+ * (Codex P1 review, PR #212).
+ */
 export interface ResearchJobCompletedResult {
   runId: string;
   reportId: string;
+  /** False when a quality gate failed; the report exists but is under review. */
+  completedCleanly: boolean;
+  /** The gate outcome, so a consumer can say WHICH gate failed. */
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
   summary?: RunSummaryPayload;
 }
 

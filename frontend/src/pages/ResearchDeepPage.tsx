@@ -516,6 +516,38 @@ export default function ResearchDeepPage() {
       }
     });
 
+    // A gate failure writes a report but is not a completion. Previously this
+    // arrived as `research:completed`, so the user was congratulated and
+    // navigated to a report that had not passed its contract.
+    socket.on(
+      'research:quality_gate_failed',
+      (result: { runId: string; reportId: string; gateStatus?: string | null }) => {
+        qc.invalidateQueries({ queryKey: ['research-runs'] });
+        void qc.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
+        if (result.runId !== trackingRunId) return;
+        const gateEvt: ResearchProgressEvent = {
+          runId: result.runId,
+          stage: 'done',
+          percent: 100,
+          message: 'Finished — did not pass quality gates.',
+          timestamp: new Date().toISOString(),
+          eventType: 'run_quality_gate_failed',
+        };
+        setProgress(gateEvt);
+        setActiveRun(gateEvt);
+        setPlanGateLocal(null);
+        setPlanGateBusy(false);
+        setTrackingRunId(null);
+        qc.invalidateQueries({ queryKey: ['reports'] });
+        addNotification(
+          'error',
+          result.gateStatus === 'contract_failed'
+            ? 'The report did not deliver everything requested. It is saved for review — see the run summary.'
+            : 'The report did not pass its quality gates. It is saved for review — see the run summary.'
+        );
+      }
+    );
+
     socket.on('research:failed', (failed: ResearchFailureEvent) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       if (failed.runId === trackingRunId) {
@@ -617,6 +649,7 @@ export default function ResearchDeepPage() {
     return () => {
       socket.off('research:progress');
       socket.off('research:completed');
+      socket.off('research:quality_gate_failed');
       socket.off('research:failed');
       socket.off('research:aborted');
       socket.off('research:cancelled');

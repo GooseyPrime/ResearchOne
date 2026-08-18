@@ -8,6 +8,12 @@ import type { ResearchRun, ResearchProgressEvent } from '../../utils/api';
 export interface RunSummaryData {
   runId: string;
   status: string;
+  /**
+   * Which quality gate produced this outcome. Present on runs that reached the
+   * gates; `status` alone cannot distinguish an incomplete deliverable from an
+   * unverifiable one from a crash.
+   */
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
@@ -161,6 +167,18 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
   const { primaryIntent, secondaryIntent } = readPlanIntent(planPayload);
   const createdAt = run?.created_at ? new Date(run.created_at).toISOString() : '';
 
+  // The gate outcome is what the reader needs. `status` collapses every gated
+  // failure into `failed`, and this summary used to be handed a hardcoded
+  // 'completed' regardless — so a run stored as failed rendered a green
+  // COMPLETED. Prefer the gate status; fall back to the run status.
+  //
+  // Derived HERE, above `buildPlainText`, so the header and the copyable report
+  // cannot disagree. They previously did: the header showed CONTRACT FAILED
+  // while the copied text said FAILED (Copilot review, PR #212).
+  const gateStatus = summary?.gateStatus ?? null;
+  const displayStatus = gateStatus && gateStatus !== 'completed' ? gateStatus : status;
+  const statusLabel = displayStatus.replace(/_/g, ' ').toUpperCase();
+
   // Build the full plain-text report string for clipboard copy.
   const buildPlainText = useCallback((): string => {
     const lines: string[] = [];
@@ -176,7 +194,8 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     }
     if (objective) lines.push(`Model profile: ${objective}`);
     if (createdAt) lines.push(`Started      : ${createdAt}`);
-    lines.push(`Status       : ${status.toUpperCase()}`);
+    lines.push(`Status       : ${statusLabel}`);
+    if (run?.run_ref) lines.push(`Reference    : ${run.run_ref}`);
     lines.push(`Duration     : ${fmtMs(totalDurationMs)}`);
     lines.push(`Tokens       : ${fmtNum(tokens.prompt)} prompt  +  ${fmtNum(tokens.completion)} completion  =  ${fmtNum(tokens.prompt + tokens.completion)} total`);
     if (retryCount > 0) lines.push(`Retries      : ${retryCount}`);
@@ -237,7 +256,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     lines.push(hr);
     lines.push(`Generated at : ${new Date().toISOString()}`);
     return lines.join('\n');
-  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, status, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
+  }, [runId, query, objective, primaryIntent, secondaryIntent, createdAt, statusLabel, run?.run_ref, totalDurationMs, tokens, retryCount, phaseDurations, modelUsage, failedStage, errorMessage, fmeta, hints, traceEvents]);
 
   const handleCopy = useCallback(async () => {
     const text = buildPlainText();
@@ -258,21 +277,31 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     }
   }, [buildPlainText]);
 
+  // Only a clean pass is green. A degraded or gate-failed run is amber or red —
+  // never the colour a user reads as "this is done and correct".
+  const isClean = displayStatus === 'completed';
+  const isHardFailure =
+    displayStatus === 'aborted' ||
+    displayStatus === 'failed' ||
+    displayStatus === 'contract_failed' ||
+    displayStatus === 'verification_failed';
+
   const StatusIcon =
-    status === 'completed' ? CheckCircle2
-    : status === 'aborted' ? XCircle
-    : status === 'cancelled' ? Ban
+    isClean ? CheckCircle2
+    : displayStatus === 'aborted' ? XCircle
+    : displayStatus === 'cancelled' ? Ban
+    : isHardFailure ? XCircle
     : AlertCircle;
 
   const statusColor =
-    status === 'completed' ? 'text-green-400'
-    : status === 'aborted' ? 'text-red-400'
-    : status === 'cancelled' ? 'text-slate-400'
+    isClean ? 'text-green-400'
+    : displayStatus === 'cancelled' ? 'text-slate-400'
+    : isHardFailure ? 'text-red-400'
     : 'text-amber-400';
 
   const borderColor =
-    status === 'completed' ? 'border-green-800/30'
-    : status === 'aborted' ? 'border-red-800/30'
+    isClean ? 'border-green-800/30'
+    : isHardFailure ? 'border-red-800/30'
     : 'border-amber-700/30';
 
   return (
@@ -282,7 +311,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
         <div className="flex items-center gap-2">
           <StatusIcon size={15} className={statusColor} />
           <span className="text-sm font-semibold text-white">Run summary</span>
-          <span className={clsx('text-xs font-medium ml-1', statusColor)}>{status.toUpperCase()}</span>
+          <span className={clsx('text-xs font-medium ml-1', statusColor)}>{statusLabel}</span>
           {run?.run_ref && (
             // The reference a user quotes to support. Shown on every finished
             // run, including failures — those are the ones people write in
