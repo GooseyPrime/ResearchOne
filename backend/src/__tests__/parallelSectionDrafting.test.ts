@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  buildItemDigest,
   mapWithConcurrency,
   partitionSectionPlan,
   SECTION_DRAFT_CONCURRENCY,
@@ -100,6 +101,47 @@ describe('mapWithConcurrency', () => {
     expect(peak).toBeGreaterThan(1);
   });
 
+  it('stops claiming new work after the first failure', async () => {
+    // Codex/Copilot P1: a rejection used to end only the rejecting worker while
+    // its siblings kept pulling indices, so a failure on section 2 of 20 still
+    // billed most of the remaining model calls before the error surfaced.
+    const started: number[] = [];
+    const error = new Error('drafter failed');
+
+    await expect(
+      mapWithConcurrency(Array.from({ length: 40 }, (_, i) => i), 4, async (index) => {
+        started.push(index);
+        await tick();
+        if (index === 1) throw error;
+        return index;
+      })
+    ).rejects.toBe(error);
+
+    // At most the initial batch plus whatever was already claimed — nowhere
+    // near all 40.
+    expect(started.length).toBeLessThanOrEqual(12);
+    expect(started.length).toBeLessThan(40);
+  });
+
+  it('reports the earliest failing index, not the first worker to reject', async () => {
+    const early = new Error('section 0');
+    const late = new Error('section 5');
+
+    await expect(
+      mapWithConcurrency([0, 1, 2, 3, 4, 5], 6, async (index) => {
+        // Index 5 rejects first in time; index 0 is the meaningful failure.
+        if (index === 5) throw late;
+        if (index === 0) {
+          await tick();
+          await tick();
+          throw early;
+        }
+        await tick();
+        return index;
+      })
+    ).rejects.toBe(early);
+  });
+
   it('lets in-flight work settle before rethrowing, leaving nothing orphaned', async () => {
     let settled = 0;
     let running = 0;
@@ -142,6 +184,61 @@ describe('mapWithConcurrency', () => {
       return null;
     });
     expect(peak).toBe(1);
+  });
+});
+
+describe('buildItemDigest', () => {
+  const items = (n: number, bodyLen = 4000) =>
+    Array.from({ length: n }, (_, i) => ({
+      title: `${i + 1}. Item ${i + 1}`,
+      content: 'x'.repeat(bodyLen),
+    }));
+
+  it('includes every item even when 40 drafts exceed the budget', () => {
+    // Codex P1: 40 items at the 240-char floor need 9,600 chars against a 6,000
+    // budget, and the old tail-slice kept only the last handful.
+    const digest = buildItemDigest(items(40), 4500);
+    for (let i = 1; i <= 40; i += 1) {
+      expect(digest, `item ${i} missing`).toContain(`[${i}. Item ${i}]`);
+    }
+    expect(digest.length).toBeLessThanOrEqual(4500);
+  });
+
+  it('includes every item at a typical 20-item contract', () => {
+    const digest = buildItemDigest(items(20), 4500);
+    for (let i = 1; i <= 20; i += 1) {
+      expect(digest).toContain(`[${i}. Item ${i}]`);
+    }
+    expect(digest.length).toBeLessThanOrEqual(4500);
+  });
+
+  it('carries body text when the budget allows it', () => {
+    const digest = buildItemDigest(items(3), 4500);
+    expect(digest).toContain('xxxx');
+    expect(digest.length).toBeLessThanOrEqual(4500);
+  });
+
+  it('degrades to titles rather than dropping items', () => {
+    // Tight budget: presence of all items beats detail on a few.
+    const digest = buildItemDigest(items(30), 900);
+    for (let i = 1; i <= 30; i += 1) {
+      expect(digest).toContain(`${i}. Item ${i}`.slice(0, 6));
+    }
+    expect(digest.length).toBeLessThanOrEqual(900);
+  });
+
+  it('never exceeds its budget across a range of sizes', () => {
+    for (const n of [1, 2, 5, 13, 20, 40]) {
+      for (const budget of [300, 1200, 4500]) {
+        expect(buildItemDigest(items(n), budget).length, `n=${n} budget=${budget}`)
+          .toBeLessThanOrEqual(budget);
+      }
+    }
+  });
+
+  it('returns empty for no items or no budget', () => {
+    expect(buildItemDigest([], 4500)).toBe('');
+    expect(buildItemDigest(items(3), 0)).toBe('');
   });
 });
 

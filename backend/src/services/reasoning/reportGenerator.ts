@@ -293,8 +293,17 @@ export const SECTION_DRAFT_CONCURRENCY = Math.max(
   Number.parseInt(process.env.SECTION_DRAFT_CONCURRENCY ?? '', 10) || 4
 );
 
-/** Floor on how much of each item reaches the sections that summarise them. */
+/** Below this, an item's body is too short to be useful; send its title alone. */
 const MIN_ITEM_DIGEST_CHARS = 240;
+
+/**
+ * Share of the rolling summary reserved for the framing written before the
+ * items, so the item digest has a budget it can actually plan against.
+ *
+ * Declared as a function of the summary cap at the call site rather than a
+ * module constant, because `MAX_ROLLING_SUMMARY_CHARS` is defined further down.
+ */
+const framingContextChars = (max: number) => Math.floor(max * 0.25);
 
 export interface PartitionedSectionPlan {
   /** Framing written before the items, e.g. an overview. */
@@ -357,20 +366,76 @@ export async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
+  // Collected rather than kept in a single mutable slot: the reported failure is
+  // the lowest INDEX, not the first worker to reject. With a pool those differ,
+  // and the earliest section is the meaningful one to surface.
+  const failures: Array<{ index: number; error: unknown }> = [];
 
   const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
     for (;;) {
+      // Stop CLAIMING work once the run is doomed. Previously a rejection only
+      // ended the rejecting worker while its siblings kept pulling indices, so
+      // a failure on section 2 of 20 still billed most of the remaining model
+      // calls before the error surfaced (Codex + Copilot review, PR #210).
+      if (failures.length > 0) return;
       const index = next;
       next += 1;
       if (index >= items.length) return;
-      results[index] = await fn(items[index]!, index);
+      try {
+        results[index] = await fn(items[index]!, index);
+      } catch (error) {
+        failures.push({ index, error });
+        return;
+      }
     }
   });
 
-  const settled = await Promise.allSettled(workers);
-  const failed = settled.find((outcome) => outcome.status === 'rejected');
-  if (failed) throw (failed as PromiseRejectedResult).reason;
+  // Workers absorb their own rejections, so this resolves once every call that
+  // had already started has settled — which is the documented behaviour.
+  await Promise.all(workers);
+  if (failures.length > 0) {
+    const earliest = failures.reduce((a, b) => (b.index < a.index ? b : a));
+    throw earliest.error;
+  }
   return results;
+}
+
+/**
+ * Render a bounded digest that contains EVERY item.
+ *
+ * The previous approach appended each item to the rolling summary and let the
+ * summary's tail-slice enforce the cap. That silently dropped the head: 40
+ * drafts at the 240-character floor need 9,600 characters against a 6,000
+ * budget, so a ranking section received only the last handful of items and was
+ * asked to rank all of them (Codex review, PR #210).
+ *
+ * Budget is divided across items up front. When there is not enough room for
+ * meaningful bodies, every item still contributes its title — an incomplete
+ * list is a worse failure than a shallow one, because the drafter cannot tell
+ * that anything is missing.
+ */
+export function buildItemDigest(
+  items: readonly { title: string; content: string }[],
+  maxChars: number
+): string {
+  if (items.length === 0 || maxChars <= 0) return '';
+
+  const SEPARATOR = '\n\n';
+  const separatorCost = SEPARATOR.length * Math.max(0, items.length - 1);
+  const perItem = Math.floor((maxChars - separatorCost) / items.length);
+
+  const parts = items.map((item) => {
+    const label = `[${item.title}]`;
+    if (perItem <= label.length + 1) {
+      // Title-only, truncated if even that does not fit. Presence beats detail.
+      return label.slice(0, Math.max(1, perItem));
+    }
+    const room = perItem - label.length - 1;
+    if (room < MIN_ITEM_DIGEST_CHARS) return label;
+    return `${label}\n${item.content.slice(0, room).trimEnd()}`;
+  });
+
+  return parts.join(SEPARATOR);
 }
 
 const ADJUDICATIVE_SECTION_PLAN: Array<{ title: string; key: string; weight: number }> = [
@@ -957,12 +1022,26 @@ Return section body text only. Do NOT write a markdown heading for this section 
   };
 
   let drafted = 0;
-  const announce = async (title: string): Promise<void> => {
+  // Progress callbacks are SERIALISED, not merely counted. The production
+  // callback emits a socket event and updates one `research_runs` row; run
+  // concurrently, a slower section 1 write could land after section 2 and move
+  // persisted progress backwards (Codex + Copilot review, PR #210).
+  let progressChain: Promise<unknown> = Promise.resolve();
+  const announce = (title: string): Promise<void> => {
     // Emitted on COMPLETION, not before drafting: with a concurrency pool the
-    // sections finish out of order, so "about to draft #3" would be a lie and
-    // the counter would move backwards in the trace.
+    // sections finish out of order, so "about to draft #3" would be a lie.
     drafted += 1;
-    await args.onSectionProgress?.({ title, index: drafted, total: activeSectionPlan.length });
+    const index = drafted;
+    const emit = () => args.onSectionProgress?.({ title, index, total: activeSectionPlan.length });
+    // Run after the previous emission regardless of whether it succeeded — one
+    // failed progress write must not stall every later section — but surface
+    // THIS emission's failure to its caller, so cancellation still propagates.
+    const emission = progressChain.then(emit, emit);
+    progressChain = emission.then(
+      () => undefined,
+      () => undefined
+    );
+    return emission.then(() => undefined);
   };
 
   const appendToSummary = (summary: string, draft: ReportSectionDraft, perSectionChars: number): string =>
@@ -999,15 +1078,14 @@ Return section body text only. Do NOT write a markdown heading for this section 
       resolvedItemTitles.push(draft.title.toLowerCase());
     }
 
-    // Give the trailing sections a slice of every item rather than the tail of
-    // a few. A ranking section that only saw items 17-20 cannot rank 20 items.
-    const perItemChars = Math.max(
-      MIN_ITEM_DIGEST_CHARS,
-      Math.floor(MAX_ROLLING_SUMMARY_CHARS / (itemDrafts.length + 1))
-    );
-    for (const draft of itemDrafts) {
-      rollingSummary = appendToSummary(rollingSummary, draft, perItemChars);
-    }
+    // Give the trailing sections EVERY item. Appending item by item and letting
+    // the summary's tail-slice enforce the cap silently dropped the head, so a
+    // ranking section saw only the last few of twenty items it was asked to
+    // rank. The digest is budgeted up front instead.
+    const framingReserve = framingContextChars(MAX_ROLLING_SUMMARY_CHARS);
+    const framingContext = rollingSummary.slice(-framingReserve);
+    const digest = buildItemDigest(itemDrafts, MAX_ROLLING_SUMMARY_CHARS - framingReserve);
+    rollingSummary = framingContext ? `${framingContext}\n\n${digest}` : digest;
   }
 
   await draftSequentially(trailing);
