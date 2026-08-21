@@ -1,10 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { DataGrid } from '../components/reports/ReportMarkdown';
-import { parseTableNode } from '../components/reports/reportTables';
-import {
+import ReportMarkdown from '../components/reports/ReportMarkdown';
+import api, {
   getReport,
   getReportRevision,
   getReportRevisions,
@@ -149,6 +146,13 @@ export default function ReportDetailPage() {
     queryKey: ['report', id],
     queryFn: () => getReport(id!),
     enabled: !!id,
+  });
+  const { data: authMe } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: async () => {
+      const response = await api.get<{ userId: string; isAdmin: boolean }>('/auth/me');
+      return response.data;
+    },
   });
 
   const { data: sourceRun } = useQuery({
@@ -370,18 +374,6 @@ export default function ReportDetailPage() {
         <ArrowLeft size={14} />
         Back to dossiers
       </button>
-
-      <ReportActionBar
-        reportId={report.id}
-        runCitationStyle={sourceRun?.citation_style ?? null}
-        onPrint={handlePrint}
-        onShare={handleShare}
-        onDownload={handleDownload}
-        onFeatured={() => featuredMutation.mutate()}
-        featuredPending={featuredMutation.isPending}
-        showPlainLink={plainMd.length > 0}
-        onOpenPlain={() => setPlainOpen(true)}
-      />
 
       <div className="card-glow p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
@@ -736,6 +728,7 @@ export default function ReportDetailPage() {
         onDownload={handleDownload}
         onFeatured={() => featuredMutation.mutate()}
         featuredPending={featuredMutation.isPending}
+        canFeature={authMe?.isAdmin === true}
         showPlainLink={plainMd.length > 0}
         onOpenPlain={() => setPlainOpen(true)}
       />
@@ -827,6 +820,7 @@ function ReportActionBar({
   onDownload,
   onFeatured,
   featuredPending,
+  canFeature,
   showPlainLink,
   onOpenPlain,
   className,
@@ -838,6 +832,7 @@ function ReportActionBar({
   onDownload: () => void;
   onFeatured: () => void;
   featuredPending: boolean;
+  canFeature: boolean;
   showPlainLink: boolean;
   onOpenPlain: () => void;
   className?: string;
@@ -865,15 +860,17 @@ function ReportActionBar({
           <Sparkles size={16} />
         </button>
       )}
-      <button
-        type="button"
-        className="btn-ghost p-2 h-9 w-9 disabled:opacity-50"
-        title="Publish as Featured Report (thenewontology.life)"
-        onClick={onFeatured}
-        disabled={featuredPending}
-      >
-        <Globe size={16} />
-      </button>
+      {canFeature && (
+        <button
+          type="button"
+          className="btn-ghost p-2 h-9 w-9 disabled:opacity-50"
+          title="Publish as Featured Report"
+          onClick={onFeatured}
+          disabled={featuredPending}
+        >
+          <Globe size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -900,83 +897,9 @@ function MetaStat({
 
 function ReportContent({ content }: { content: string }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        h1: ({ children }) => (
-          <h1 className="text-xl font-bold text-white mt-4 mb-2 leading-snug">{children}</h1>
-        ),
-        h2: ({ children }) => (
-          <h2 className="text-lg font-semibold text-slate-100 mt-4 mb-2 leading-snug">{children}</h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="text-base font-semibold text-slate-200 mt-3 mb-1.5">{children}</h3>
-        ),
-        h4: ({ children }) => (
-          <h4 className="text-sm font-semibold text-slate-300 mt-2 mb-1">{children}</h4>
-        ),
-        p: ({ children }) => (
-          <p className="text-slate-300 text-sm leading-relaxed mb-3">{children}</p>
-        ),
-        ul: ({ children }) => (
-          <ul className="space-y-1 mb-3">{children}</ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="space-y-1 mb-3 ml-5 list-decimal text-slate-300 text-sm">{children}</ol>
-        ),
-        li: ({ children, ...props }) => {
-          const isOrdered = (props as { ordered?: boolean }).ordered;
-          return isOrdered ? (
-            <li className="text-slate-300 text-sm leading-relaxed pl-1">{children}</li>
-          ) : (
-            <li className="flex items-start gap-2 text-slate-300 text-sm">
-              <span className="text-accent mt-0.5 flex-shrink-0 select-none text-xs">▸</span>
-              <span className="flex-1">{children}</span>
-            </li>
-          );
-        },
-        strong: ({ children }) => (
-          <strong className="font-semibold text-slate-100">{children}</strong>
-        ),
-        em: ({ children }) => (
-          <em className="italic text-slate-300">{children}</em>
-        ),
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-accent/40 pl-3 my-3 text-slate-400 text-sm italic">{children}</blockquote>
-        ),
-        code: ({ children, className }) => {
-          const isBlock = className?.includes('language-');
-          return isBlock ? (
-            <pre className="bg-surface-200 rounded p-3 my-3 overflow-x-auto text-xs font-mono text-slate-300">
-              <code>{children}</code>
-            </pre>
-          ) : (
-            <code className="bg-surface-200 rounded px-1 py-0.5 text-xs font-mono text-accent">{children}</code>
-          );
-        },
-        hr: () => <hr className="border-surface-100/30 my-4" />,
-        // WO-AB: render markdown tables as a sortable, exportable data grid.
-        // A ranked portfolio table has ~18 columns; a plain <table> is unusable
-        // and cannot be moved into a spreadsheet.
-        table: ({ children }) => {
-          const parsed = parseTableNode(children);
-          if (parsed) return <DataGrid table={parsed} caption="report-table" />;
-          return (
-          <div className="overflow-x-auto my-3">
-            <table className="text-xs text-slate-300 border-collapse w-full">{children}</table>
-          </div>
-          );
-        },
-        th: ({ children }) => (
-          <th className="border border-surface-100/30 px-2 py-1 text-left font-semibold text-slate-200 bg-surface-200">{children}</th>
-        ),
-        td: ({ children }) => (
-          <td className="border border-surface-100/20 px-2 py-1">{children}</td>
-        ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="prose prose-invert prose-sm max-w-none">
+      <ReportMarkdown>{content}</ReportMarkdown>
+    </div>
   );
 }
 

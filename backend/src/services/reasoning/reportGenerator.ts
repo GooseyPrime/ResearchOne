@@ -845,7 +845,6 @@ export async function generateIterativeReport(args: {
     perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
   });
   activeSectionPlan = outlineExpansion.plan;
-  const expandedItemTitles: ReadonlySet<string> = new Set(outlineExpansion.expandedTitles);
 
   const v2 = {
     engineVersion: args.engineVersion,

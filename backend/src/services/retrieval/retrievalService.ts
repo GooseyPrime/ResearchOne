@@ -27,6 +27,7 @@ export interface RetrievedChunk {
   evidence_tier: string | null;
   tags: string[];
   owner_user_id?: string | null;
+  source_origin?: 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url' | null;
 }
 
 export interface RetrievalOptions {
@@ -49,6 +50,26 @@ export interface RetrievalAuditResult {
   corpusGate: CorpusGateDecision;
 }
 
+function deriveSourceOrigin(
+  metadataSourceOrigin: string | null,
+  importedVia: string | null
+): 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url' | null {
+  const normalizedMetadata = (metadataSourceOrigin ?? '').trim().toLowerCase();
+  if (
+    normalizedMetadata === 'external_discovery'
+    || normalizedMetadata === 'user_upload'
+    || normalizedMetadata === 'researchone_generated'
+    || normalizedMetadata === 'user_supplied_url'
+  ) {
+    return normalizedMetadata as 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url';
+  }
+  const normalizedImportedVia = (importedVia ?? '').trim().toLowerCase();
+  if (normalizedImportedVia === 'manual_upload') return 'user_upload';
+  if (normalizedImportedVia === 'manual_url') return 'user_supplied_url';
+  if (normalizedImportedVia === 'corpus_sync') return 'researchone_generated';
+  return null;
+}
+
 /**
  * Hybrid retrieval: combines semantic (vector) search with BM25-style full-text search.
  * Semantic results weighted by cosine similarity; FTS results boosted by relevance rank.
@@ -66,7 +87,6 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     hybridSearch = true,
     sourceIds,
     intentId,
-    userId,
     runId,
   } = options;
 
@@ -127,7 +147,9 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
+          s.imported_via,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          NULLIF(s.metadata->>'source_origin', '') AS metadata_source_origin,
           s.discovered_by_run_id,
           1 - (e.vector <=> $1::vector) AS similarity,
           cl.evidence_tier
@@ -174,6 +196,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         source_title: string;
         tags: string[];
         owner_user_id: string | null;
+        imported_via: string | null;
+        metadata_source_origin: string | null;
         discovered_by_run_id: string | null;
         similarity: number;
         evidence_tier: string | null;
@@ -190,6 +214,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           evidence_tier: row.evidence_tier,
           tags: row.tags ?? [],
           owner_user_id: row.discovered_by_run_id === runId ? null : row.owner_user_id,
+          source_origin: deriveSourceOrigin(row.metadata_source_origin, row.imported_via),
         });
       }
     }
@@ -208,7 +233,9 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           s.url AS source_url,
           s.title AS source_title,
           s.tags,
+          s.imported_via,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
+          NULLIF(s.metadata->>'source_origin', '') AS metadata_source_origin,
           s.discovered_by_run_id,
           ts_rank(
             to_tsvector('english', c.content),
@@ -257,6 +284,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         source_title: string;
         tags: string[];
         owner_user_id: string | null;
+        imported_via: string | null;
+        metadata_source_origin: string | null;
         discovered_by_run_id: string | null;
         fts_rank: number;
         evidence_tier: string | null;
@@ -275,6 +304,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
             evidence_tier: row.evidence_tier,
             tags: row.tags ?? [],
             owner_user_id: ownerUserId,
+            source_origin: deriveSourceOrigin(row.metadata_source_origin, row.imported_via),
           });
         } else {
           // Boost existing entry; also correct owner if we now know it's a current-run source
@@ -295,7 +325,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];
   for (const chunk of sorted) {
-    if (requiresIndependentSources && userId && chunk.owner_user_id === userId) {
+    if (requiresIndependentSources && chunk.source_origin === 'researchone_generated') {
       backgroundResults.set(chunk.id, chunk);
       continue;
     }
@@ -390,6 +420,8 @@ async function loadCorpusSourceStats(args: {
       published_at: string | null;
       ingested_at: string | null;
       owner_user_id: string | null;
+      imported_via: string | null;
+      metadata_source_origin: string | null;
       partition_key: string | null;
       chunk_count: number;
     }>(
@@ -399,6 +431,8 @@ async function loadCorpusSourceStats(args: {
          s.tags,
          s.published_at,
          s.ingested_at,
+         s.imported_via,
+         NULLIF(s.metadata->>'source_origin', '') AS metadata_source_origin,
          COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
          s.partition_key,
          COUNT(DISTINCT c.id)::int AS chunk_count
@@ -433,6 +467,7 @@ async function loadCorpusSourceStats(args: {
         publishedAt: record.published_at,
         ingestedAt: record.ingested_at,
         ownerUserId: record.owner_user_id,
+        sourceOrigin: deriveSourceOrigin(record.metadata_source_origin, record.imported_via),
         partitionKey: record.partition_key,
         chunkCount: record.chunk_count ?? 0,
       })),
@@ -451,6 +486,7 @@ async function loadCorpusSourceStats(args: {
         failClosedReason: `corpus gate unavailable due to deploy skew (${pgCode})`,
       };
     }
+
     throw err;
   }
 }

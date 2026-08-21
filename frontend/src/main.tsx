@@ -23,6 +23,9 @@ const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
 if (import.meta.env.PROD && !String(clerkPublishableKey).trim()) {
   throw new Error('VITE_CLERK_PUBLISHABLE_KEY is required for production builds.');
 }
+if (import.meta.env.PROD && String(clerkPublishableKey).trim().startsWith('pk_test_')) {
+  throw new Error('Production builds must not use a Clerk test publishable key (pk_test_*).');
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

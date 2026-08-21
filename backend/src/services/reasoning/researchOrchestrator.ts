@@ -157,11 +157,84 @@ function emptyDiscoverySummary(runId: string) {
 
 function summarizeCorpusGateDecisions(decisions: Array<Record<string, unknown>>): Record<string, unknown> | null {
   if (decisions.length === 0) return null;
-  const sealedDecision = decisions.find((decision) => decision.status === 'sealed');
-  const chosen = sealedDecision ?? decisions[0]!;
+  const compact: Array<Record<string, unknown>> = decisions.map((decision) => {
+    const q = typeof decision.query === 'string' ? decision.query.trim() : '';
+    const queryLabel = q.length > 120 ? `${q.slice(0, 117)}… (${q.length} chars)` : q;
+    return {
+      ...decision,
+      ...(q ? { queryLabel } : {}),
+      query: q ? undefined : decision.query,
+    };
+  });
+  const sealedDecision = compact.find((decision) => decision['status'] === 'sealed');
+  const chosen = sealedDecision ?? compact[0]!;
   return {
     ...chosen,
-    decisions,
+    decisions: compact,
+  };
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
+  return i;
+}
+
+function buildDeterministicRetrievalQueries(args: {
+  subQuestions: string[];
+  fallbackQuery: string;
+  maxChars: number;
+}): string[] {
+  const seeded = args.subQuestions
+    .map((q) => q.trim())
+    .filter(Boolean)
+    .map((q) => q.slice(0, args.maxChars));
+  if (seeded.length > 0) return Array.from(new Set(seeded));
+  return [args.fallbackQuery.trim().slice(0, args.maxChars)].filter(Boolean);
+}
+
+function enforceRetrievalQueryBudget(args: {
+  retrievalQueries: string[];
+  subQuestions: string[];
+  fallbackQuery: string;
+  maxChars: number;
+  maxSharedPrefixChars: number;
+}): { queries: string[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const trimmed = args.retrievalQueries.map((q) => q.trim()).filter(Boolean);
+  const capped = trimmed.map((q) => (q.length > args.maxChars ? q.slice(0, args.maxChars) : q));
+  if (trimmed.some((q, idx) => q.length !== capped[idx]!.length)) {
+    warnings.push(`planner retrieval query exceeded ${args.maxChars} chars; truncated`);
+  }
+  const deduped = Array.from(new Set(capped));
+  let sharedPrefixTooLarge = false;
+  for (let i = 0; i < deduped.length && !sharedPrefixTooLarge; i += 1) {
+    for (let j = i + 1; j < deduped.length; j += 1) {
+      if (commonPrefixLength(deduped[i]!, deduped[j]!) > args.maxSharedPrefixChars) {
+        sharedPrefixTooLarge = true;
+        break;
+      }
+    }
+  }
+  if (sharedPrefixTooLarge) {
+    warnings.push(`planner retrieval queries shared >${args.maxSharedPrefixChars} leading chars; replaced with deterministic sub-question queries`);
+    return {
+      queries: buildDeterministicRetrievalQueries({
+        subQuestions: args.subQuestions,
+        fallbackQuery: args.fallbackQuery,
+        maxChars: args.maxChars,
+      }),
+      warnings,
+    };
+  }
+  return {
+    queries: deduped.length > 0 ? deduped : buildDeterministicRetrievalQueries({
+      subQuestions: args.subQuestions,
+      fallbackQuery: args.fallbackQuery,
+      maxChars: args.maxChars,
+    }),
+    warnings,
   };
 }
 
@@ -426,7 +499,15 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   for (const query of artifactQueries) baseQueries.add(`${args.query} ${query}`);
   for (const query of constraintQueries) baseQueries.add(`${args.query} ${query}`);
 
-  const retrievalQueries = normalizeRetrievalQueries(Array.from(baseQueries), args.query).slice(0, 12);
+  const plannedQueries = normalizeRetrievalQueries(Array.from(baseQueries), args.query).slice(0, 12);
+  const retrievalGuard = enforceRetrievalQueryBudget({
+    retrievalQueries: plannedQueries,
+    subQuestions: plannedQueries,
+    fallbackQuery: args.query,
+    maxChars: 512,
+    maxSharedPrefixChars: 320,
+  });
+  const retrievalQueries = retrievalGuard.queries;
   const subQuestions = retrievalQueries.map((query, index) => `Q${index + 1}: ${query}`);
   const investigationAngles = [
     `Primary intent: ${args.brief?.primaryIntent ?? 'unknown'}`,
@@ -1016,9 +1097,6 @@ async function runResearchJobInner(
   ) => {
     await assertNotCancelled(runId);
     // Phase timing: close out the previous phase and open the incoming one.
-    // We always reset phaseStartTimes[stage]=now on every call so that
-    // resume/retry re-entries start a fresh window instead of double-counting
-    // the gap spent in other stages (Copilot review finding).
     const now = Date.now();
     if (currentStage && currentStage !== stage) {
       const phaseStart = phaseStartTimes[currentStage];
@@ -1027,7 +1105,9 @@ async function runResearchJobInner(
         delete phaseStartTimes[currentStage];
       }
     }
-    phaseStartTimes[stage] = now;
+    if (phaseStartTimes[stage] == null) {
+      phaseStartTimes[stage] = now;
+    }
     currentStage = stage;
     currentPercent = percent;
 
@@ -1395,7 +1475,20 @@ async function runResearchJobInner(
 
       const seenIds = new Set<string>();
 
-      const retrievalQueries = plan.retrieval_queries.slice(0, 5);
+      const retrievalGuard = enforceRetrievalQueryBudget({
+        retrievalQueries: plan.retrieval_queries.slice(0, 5),
+        subQuestions: plan.sub_questions,
+        fallbackQuery: researchQuery,
+        maxChars: 512,
+        maxSharedPrefixChars: 320,
+      });
+      const retrievalQueries = retrievalGuard.queries;
+      if (retrievalGuard.warnings.length > 0) {
+        await progress('retrieval', 21, 'Normalized retrieval query set for diversity and length limits.', {
+          substep: 'retrieval_query_budget_adjusted',
+          detail: retrievalGuard.warnings.join(' | ').slice(0, 500),
+        });
+      }
       let retrievalIndex = 0;
       for (const rq of retrievalQueries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
@@ -1466,6 +1559,22 @@ async function runResearchJobInner(
       checkpointKey: 'retrieval_ids',
       snapshot: { retrievalIds, chunkCount: allChunks.length },
     });
+    if (allChunks.length === 0) {
+      await progress('retrieval', 24, 'No citable evidence was found after retrieval; stopping run.', {
+        substep: 'retrieval_no_evidence',
+      });
+      throw Object.assign(new Error('No citable evidence found. Run halted before synthesis.'), {
+        retryable: false,
+        failureMeta: {
+          classification: 'no_evidence',
+          gate_status: 'no_evidence',
+          orchestratorHints: [
+            'Retrieval returned zero citable chunks after corpus gate filtering.',
+            'Run stopped before retriever analysis and synthesis to avoid fabricated deliverables.',
+          ],
+        },
+      });
+    }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
@@ -1724,7 +1833,14 @@ async function runResearchJobInner(
       );
 
       const seenIds = new Set(allChunks.map((chunk) => chunk.id));
-      for (const rq of plan.retrieval_queries.slice(0, 5)) {
+      const rediscoveryQueryGuard = enforceRetrievalQueryBudget({
+        retrievalQueries: plan.retrieval_queries.slice(0, 5),
+        subQuestions: plan.sub_questions,
+        fallbackQuery: researchQuery,
+        maxChars: 512,
+        maxSharedPrefixChars: 320,
+      });
+      for (const rq of rediscoveryQueryGuard.queries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
         const retrievalResult = await retrieveChunksWithAudit({
           query: rqStr,
@@ -2707,25 +2823,8 @@ ${generatedReport.markdown}`,
 
     if (runTerminalStatus === 'completed') {
       await progress('done', 100, 'Research complete');
-      await appendRunProgressEvent(runId, {
-        runId,
-        stage: 'done',
-        percent: 100,
-        message: 'Research complete',
-        timestamp: new Date().toISOString(),
-        eventType: 'run_completed',
-      });
     } else {
       await progress('done', 100, `Research run finished with status: ${reportStatus}`);
-      await appendRunProgressEvent(runId, {
-        runId,
-        stage: 'done',
-        percent: 100,
-        message: `Research run finished with gate status: ${reportStatus}`,
-        timestamp: new Date().toISOString(),
-        eventType: 'run_quality_gate_failed',
-        gateStatus: reportStatus,
-      });
     }
 
     await query(
@@ -2813,6 +2912,13 @@ ${generatedReport.markdown}`,
       retryBudget,
     });
     const failureMetaWithResume = transition.failureMeta;
+    const gateStatusFromFailureMeta =
+      typeof (failureDetails.failureMeta as Record<string, unknown>).gate_status === 'string'
+        ? ((failureDetails.failureMeta as Record<string, unknown>).gate_status as ReportGateStatus)
+        : null;
+    if (gateStatusFromFailureMeta) {
+      (failureMetaWithResume as unknown as { gate_status?: ReportGateStatus }).gate_status = gateStatusFromFailureMeta;
+    }
     const finalStatus = transition.nextStatus;
 
     try {
@@ -2911,6 +3017,7 @@ ${generatedReport.markdown}`,
           : currentMessage,
       timestamp: new Date().toISOString(),
       eventType: finalStatus === 'aborted' ? 'run_aborted' : 'run_failed',
+      gateStatus: gateStatusFromFailureMeta ?? undefined,
       failure: {
         errorMessage: failureDetails.errorMessage,
         retryable: failureMetaWithResume.retryable,
@@ -2931,6 +3038,7 @@ ${generatedReport.markdown}`,
       failedStage: currentStage,
       errorMessage: failureDetails.errorMessage,
       failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
+      gateStatus: gateStatusFromFailureMeta,
     });
 
     // Propagate the *state-machine-finalized* metadata to the BullMQ worker.

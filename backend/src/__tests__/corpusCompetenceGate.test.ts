@@ -133,7 +133,7 @@ describe('retrieveChunksWithAudit corpus competence gate', () => {
     expect(result.citableChunks).toEqual([]);
     expect(result.corpusGate.status).toBe('sealed');
     expect(result.corpusGate.minSimilarity).toBeGreaterThanOrEqual(0.55);
-    expect(result.corpusGate.reason).toContain('self_source_share');
+    expect(result.corpusGate.reason).toContain('single_domain_share');
     expect(generateEmbeddingsMock).not.toHaveBeenCalled();
   });
 
@@ -228,6 +228,6 @@ describe('retrieveChunksWithAudit corpus competence gate', () => {
     expect(result.corpusGate.status).toBe('sealed');
     expect(result.corpusGate.partition).toBe('market.affiliate');
     expect(result.corpusGate.reason).toContain('distinct_domains');
-    expect(result.corpusGate.reason).toContain('self_source_share');
+    expect(result.corpusGate.reason).toContain('single_domain_share');
   });
 });

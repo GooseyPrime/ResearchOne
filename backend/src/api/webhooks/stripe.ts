@@ -314,7 +314,19 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    // Stripe signatures are computed over the exact raw request bytes.
+    // If this route receives parsed JSON, verification cannot be trusted.
+    if (!Buffer.isBuffer(req.body)) {
+      logger.error('stripe_webhook_raw_body_missing', {
+        bodyType: typeof req.body,
+      });
+      res.status(500).json({
+        error: 'Stripe webhook misconfigured',
+        detail: 'Expected raw Buffer body. Ensure express.raw() middleware is mounted before JSON parsing.',
+      });
+      return;
+    }
+    const rawBody = req.body;
 
     interface StripeEvent {
       id: string;

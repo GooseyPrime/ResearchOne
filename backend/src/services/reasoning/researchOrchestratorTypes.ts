@@ -88,7 +88,7 @@ export interface RunSummaryPayload {
    * an incomplete deliverable from an unverifiable one from a crash. Present
    * only on runs that reached the gates.
    */
-  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
@@ -119,7 +119,7 @@ export interface ResearchJobCompletedResult {
   /** False when a quality gate failed; the report exists but is under review. */
   completedCleanly: boolean;
   /** The gate outcome, so a consumer can say WHICH gate failed. */
-  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence' | null;
   summary?: RunSummaryPayload;
 }
 

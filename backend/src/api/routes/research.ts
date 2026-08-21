@@ -569,7 +569,7 @@ router.get('/', async (req, res, next) => {
     // `run_ref` is what a user quotes to support, so it has to reach the client.
     // Selected separately because the application can be live before migration
     // 055 applies; on 42703 we retry without it rather than failing the list.
-    const baseCols = `id, title, query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
+    const baseCols = `id, title, LEFT(query, 512) AS query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at, report_id`;
     const colsWithRef = `${baseCols}, run_ref`;
