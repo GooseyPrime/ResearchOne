@@ -1599,19 +1599,24 @@ async function runResearchJobInner(
       snapshot: { retrievalIds, chunkCount: allChunks.length },
     });
     if (allChunks.length === 0) {
-      await progress('retrieval', 24, 'No citable evidence was found after retrieval; stopping run.', {
+      // Announce it; do NOT halt here.
+      //
+      // An earlier version of this threw unconditionally. That was wrong, and
+      // Codex caught it on both #217 and #218: Rule 40 seals a partition BY
+      // DESIGN while the corpus is small, so zero citable chunks is a normal
+      // state, not a failure. Halting here bypassed `assessSourceSufficiency`
+      // — which already decides this correctly — and turned the designed
+      // bootstrap state into a terminal failure for every descriptive and
+      // discovery-oriented intent.
+      //
+      // The real defect behind the zero-citation reports was not that the run
+      // continued. It was that the sufficiency gate counted discovery sources
+      // that yielded no retrievable chunks as 'sufficient', so synthesis ran
+      // believing it had evidence. That is fixed in `sourceSufficiencyGate`.
+      // Adjudicative intents still hard-fail, further down, once rediscovery
+      // is exhausted.
+      await progress('retrieval', 24, 'No citable evidence retrieved yet; attempting rediscovery.', {
         substep: 'retrieval_no_evidence',
-      });
-      throw Object.assign(new Error('No citable evidence found. Run halted before synthesis.'), {
-        retryable: false,
-        failureMeta: {
-          classification: 'no_evidence',
-          gate_status: 'no_evidence',
-          orchestratorHints: [
-            'Retrieval returned zero citable chunks after corpus gate filtering.',
-            'Run stopped before retriever analysis and synthesis to avoid fabricated deliverables.',
-          ],
-        },
       });
     }
 
@@ -2862,10 +2867,20 @@ ${generatedReport.markdown}`,
       }
     }
 
+    // The terminal event must carry its `eventType`. The explicit
+    // `appendRunProgressEvent` calls that used to write it were removed to stop
+    // the `done` event being persisted twice, but `progress()` defaults to no
+    // eventType — so `progress_events` lost the marker that distinguishes a
+    // clean completion from a quality-gate completion, which the trace UI and
+    // `ResearchProgressEvent` still key on (Copilot, PR #218). Emitting it via
+    // `progress()` keeps the single-write property AND the marker.
     if (runTerminalStatus === 'completed') {
-      await progress('done', 100, 'Research complete');
+      await progress('done', 100, 'Research complete', { eventType: 'run_completed' });
     } else {
-      await progress('done', 100, `Research run finished with status: ${reportStatus}`);
+      await progress('done', 100, `Research run finished with status: ${reportStatus}`, {
+        eventType: 'run_quality_gate_failed',
+        failureMeta: { gate_status: terminalOutcome.gateStatus ?? null },
+      });
     }
 
     await query(

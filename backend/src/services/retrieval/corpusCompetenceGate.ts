@@ -1,4 +1,5 @@
 import type { IntentId } from '../planning/intentTaxonomy';
+import { countsAgainstIndependence } from './sourceIndependence';
 
 export interface CorpusGateThresholds {
   minDistinctDomains: number;
@@ -130,7 +131,12 @@ export function evaluateCorpusGate(args: {
     if (domain) {
       domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
     }
-    if (record.sourceOrigin === 'researchone_generated') {
+    // Everything that is not externally discovered counts against the
+    // partition's independence ceiling: the system's own output, the
+    // requester's uploads, and the requester's supplied URLs alike. Counting
+    // only `researchone_generated` let a partition made entirely of private
+    // uploads report selfSourceShare 0 and unseal (Codex, PR #217).
+    if (countsAgainstIndependence(record)) {
       selfSourceCount += 1;
     }
   }

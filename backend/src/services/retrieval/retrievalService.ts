@@ -4,6 +4,7 @@
  */
 
 import { config } from '../../config';
+import { isCitableAsIndependent } from './sourceIndependence';
 import { query } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';
@@ -98,6 +99,10 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     hybridSearch = true,
     sourceIds,
     intentId,
+    // Restored: the independence filter needs to know who is asking, so that a
+    // source of UNKNOWN origin owned by the requester is not handed back to
+    // them as independent corroboration.
+    userId,
     runId,
   } = options;
 
@@ -336,7 +341,11 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];
   for (const chunk of sorted) {
-    if (requiresIndependentSources && chunk.source_origin === 'researchone_generated') {
+    // Independence is decided in one place, shared with the corpus gate.
+    // Excluding only `researchone_generated` here let a requester's own
+    // uploads and supplied URLs be cited back to them as independent external
+    // evidence in a market, competitor or pricing report (Codex, PR #218).
+    if (requiresIndependentSources && !isCitableAsIndependent(chunk, userId)) {
       backgroundResults.set(chunk.id, chunk);
       continue;
     }

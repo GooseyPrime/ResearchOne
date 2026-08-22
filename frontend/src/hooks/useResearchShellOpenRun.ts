@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import type { ResearchRun } from '../utils/api';
+import { getResearchRun, type ResearchRun } from '../utils/api';
 import { isLiveAttachedResearchRun } from '../utils/researchOpenRun';
 import { runNeedsShellModeSwitch, type ResearchShellMode } from '../utils/researchShellRunHandoff';
 
@@ -37,8 +37,28 @@ export function useResearchShellOpenRun({
         return;
       }
       detachTracking();
+
+      // Hydrate the editable form from the FULL run, not from the list row.
+      // `GET /api/research` returns `LEFT(query, 512) AS query` to keep the
+      // list payload small, so hydrating from it silently dropped everything
+      // past 512 characters of the user's objective — and they would then
+      // resubmit the clipped version without ever seeing what was lost
+      // (Codex, PR #218). One extra request, only on an explicit reopen.
       applyRequestFormFromRun(run);
       addNotification('info', 'Loaded this run’s research request — edit and submit when ready.');
+      void getResearchRun(run.id)
+        .then((full) => {
+          if (full) applyRequestFormFromRun(full as ResearchRun);
+        })
+        .catch(() => {
+          // The list row is already in the form; a failed detail fetch leaves
+          // the user with a truncated objective rather than nothing, so warn
+          // instead of silently accepting it.
+          addNotification(
+            'error',
+            'Could not load the full request for this run — the objective shown may be shortened.'
+          );
+        });
     },
     [syncEngineForRun, attachRun, detachTracking, applyRequestFormFromRun, addNotification]
   );

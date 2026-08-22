@@ -35,12 +35,29 @@ export function assessSourceSufficiency(args: {
   // Rule 40 seals the corpus by design while it is still small, so
   // `citableChunkCount` is legitimately 0 on most runs. Requiring corpus chunks
   // here made every run permanently "insufficient" and forced the whole product
-  // into degraded delivery. Either extracted specialist signals OR live
-  // discovery sources are sufficient on their own.
+  // into degraded delivery. Extracted specialist signals OR retrieved chunks
+  // are each sufficient on their own.
   //
-  // Corpus chunks alone, with zero extracted signals, still earn one
-  // re-discovery pass: chunks that yield nothing may simply be off-topic.
-  if (specialistSignalCount > 0 || discoverySourceCount > 0) {
+  // `discoverySourceCount` deliberately does NOT short-circuit to 'sufficient'
+  // on its own. Sources INGESTED are not evidence RETRIEVED: a discovery pass
+  // that fetched twelve papers, none of which produced a retrievable chunk,
+  // has given synthesis nothing to cite. Runs 0eee6032 and 243995b4 took
+  // exactly that branch — discovery reported sources, retrieval returned zero
+  // chunks, this gate said 'sufficient', and synthesis spent twenty minutes
+  // producing a report with no citations that was then reported as complete.
+  //
+  // Discovery sources still matter: they are why the outcome below is one more
+  // rediscovery pass and then a LABELED delivery, rather than a refusal. They
+  // remain in `usableSignalCount` for reporting.
+  //
+  // Chunks alone are still not sufficient either. Specialists reporting zero
+  // usable data points against a corpus that DID return chunks is the original
+  // reference failure mode: retrieval found text, nothing could be extracted
+  // from it, and the run proceeded as though it had evidence. That case earns
+  // a rediscovery pass, because chunks that yield nothing may simply be
+  // off-topic.
+  const discoveryProducedEvidence = discoverySourceCount > 0 && args.citableChunkCount > 0;
+  if (specialistSignalCount > 0 || discoveryProducedEvidence) {
     return {
       action: 'sufficient',
       reason: 'sufficient',
