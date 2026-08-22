@@ -21,18 +21,22 @@ const queryClient = new QueryClient({
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
 
-// The hard failure for a missing or development-instance Clerk key lives in
-// `vite.config.ts`, at BUILD time, and only for a real production deploy.
+// Enforcement lives in `vite.config.ts`, at BUILD time. A MISSING key fails
+// every production-mode build; a `pk_test_*` key is accepted, because
+// ResearchOne deliberately runs a Clerk development instance while on Clerk's
+// free plan, and becomes a failure once REQUIRE_LIVE_CLERK_KEY=1.
 //
 // It used to throw here instead. Module scope runs before `createRoot`, so the
 // throw did not fail the build — it rendered nothing at all, on every route,
 // including the marketing pages that never touch Clerk. It surfaced as a build
 // failure only because the prerender step notices an empty `#root`, which broke
-// every preview deploy (where a test key is the correct choice) and would have
-// white-screened production had prerendering ever been removed.
+// every preview deploy and would have white-screened production had
+// prerendering ever been removed.
 //
-// What is left here is diagnosis, not enforcement: loud in the console, fatal
-// to nothing.
+// What is left here is diagnosis, not enforcement: visible in the console,
+// fatal to nothing. The missing-key branch should be unreachable in a built
+// bundle — it is kept as a last line of defence for a hand-assembled deploy
+// that skipped the build check.
 if (import.meta.env.PROD && !String(clerkPublishableKey).trim()) {
   console.error(
     '[ResearchOne] VITE_CLERK_PUBLISHABLE_KEY is unset in this production build. ' +
