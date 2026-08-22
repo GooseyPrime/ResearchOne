@@ -53,7 +53,7 @@ import { BILLING_SUBSCRIPTION_QUERY_KEY, effectiveEntitlementTier, useBillingSub
 import { PLAN_PREFERENCES_QUERY_KEY, usePlanPreferencesQuery } from '../hooks/usePlanPreferences';
 import { formatFailureReason } from '../utils/researchFailureFormat';
 import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus';
-import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import { mergeTraceEvents } from '../utils/traceEventWindow';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { supplementalUrlCrawlPayload } from '../utils/supplementalUrlCrawl';
@@ -432,7 +432,10 @@ export default function ResearchDeepPage() {
         });
         setActiveRun(latest);
       }
-      setTraceEvents(sortEventsChronological(sorted.slice(-500)));
+      // Merge, do not replace: the socket may already have delivered events
+      // newer than this poll snapshot, and a replace would drop them only for
+      // the next poll to bring them back.
+      setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, sorted, 500)));
     } else if (polledRun.progress_message != null || polledRun.progress_percent != null) {
       const polledEvt: ResearchProgressEvent = {
         runId: trackingRunId,
@@ -443,7 +446,7 @@ export default function ResearchDeepPage() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, polledEvt, 500)));
+      setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, [polledEvt], 500)));
     }
 
     if (polledRun.status === 'failed' || polledRun.status === 'aborted') {
@@ -489,7 +492,8 @@ export default function ResearchDeepPage() {
       if (rid === trackingRunId) {
         setProgress(update);
         setActiveRun(update);
-        setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, update, 500)));
+        // Dedup against what the poll has already written for this same event.
+        setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, [update], 500)));
       }
     });
 

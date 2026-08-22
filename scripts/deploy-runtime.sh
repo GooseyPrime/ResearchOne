@@ -70,6 +70,16 @@ echo "[deploy] backend: npm ci"
   npm ci
 )
 
+if ! command -v pandoc >/dev/null 2>&1 || ! command -v xelatex >/dev/null 2>&1; then
+  echo "[deploy] install export engine dependencies (pandoc + xelatex)"
+  sudo apt-get update
+  sudo apt-get install -y pandoc texlive-xetex
+fi
+if ! command -v pandoc >/dev/null 2>&1 || ! command -v xelatex >/dev/null 2>&1; then
+  echo "[deploy] ERROR: export engine dependencies missing after install attempt" >&2
+  exit 1
+fi
+
 echo "[deploy] backend: npm run build"
 (
   cd "${DEPLOY_ROOT}/backend"

@@ -27,7 +27,16 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
     expect(result.action).toBe('sufficient');
   });
 
-  it('treats live discovery sources as usable evidence even with an empty corpus', () => {
+  // This case previously asserted 'sufficient', and that assertion described
+  // the defect rather than the requirement. Runs 0eee6032 and 243995b4 landed
+  // here: discovery reported sources, retrieval returned zero chunks, the gate
+  // said 'sufficient', and synthesis produced a report with no citations that
+  // was reported as complete. Sources INGESTED are not evidence RETRIEVED.
+  //
+  // The requirement it was protecting — a sealed corpus must not force refusal
+  // — is unchanged and covered below: this run rediscovers, then delivers with
+  // a low-evidence label. It never refuses.
+  it('does not call discovery sources sufficient when none of them retrieved', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
       citableChunkCount: 0,
@@ -36,7 +45,43 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
       discoverySourceCount: 12,
       corpusIntentionallySealed: true,
     });
+    expect(result.action).toBe('rediscover');
+  });
+
+  it('delivers with a label, never refuses, when discovery retrieved nothing twice', () => {
+    const result = assessSourceSufficiency({
+      intentId: 'opportunity_discovery',
+      citableChunkCount: 0,
+      specialistOutputs: {},
+      rediscoveryPassesRemaining: 0,
+      discoverySourceCount: 12,
+      corpusIntentionallySealed: true,
+    });
+    expect(result.action).toBe('low_evidence_labeled_delivery');
+  });
+
+  it('is sufficient as soon as discovery sources actually yield chunks', () => {
+    const result = assessSourceSufficiency({
+      intentId: 'opportunity_discovery',
+      citableChunkCount: 8,
+      specialistOutputs: {},
+      rediscoveryPassesRemaining: 1,
+      discoverySourceCount: 12,
+      corpusIntentionallySealed: true,
+    });
     expect(result.action).toBe('sufficient');
+  });
+
+  it('still hard-fails an adjudicative intent with no evidence after rediscovery', () => {
+    const result = assessSourceSufficiency({
+      intentId: 'adjudication',
+      citableChunkCount: 0,
+      specialistOutputs: {},
+      rediscoveryPassesRemaining: 0,
+      discoverySourceCount: 12,
+      corpusIntentionallySealed: true,
+    });
+    expect(result.action).toBe('rediscover');
   });
 
   it('still re-discovers when every evidence stream is genuinely empty', () => {

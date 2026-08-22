@@ -44,7 +44,8 @@ export function resolveRunDisplayState(args: {
     status === 'aborted' ||
     status === 'failed' ||
     status === 'contract_failed' ||
-    status === 'verification_failed'
+    status === 'verification_failed' ||
+    status === 'no_evidence'
   ) {
     return { status, tone: 'failure' };
   }
@@ -75,6 +76,8 @@ export function describeGateFailure(status: ReportGateStatus): string {
       return 'The report did not pass verification. It has been kept for review rather than finalised.';
     case 'completed_degraded':
       return 'The report was produced from fewer sources than this request requires, so it is marked degraded rather than finalised.';
+    case 'no_evidence':
+      return 'No citable evidence cleared the corpus gate for this run. The run stopped before synthesis.';
     default:
       return 'The report did not pass its quality gates.';
   }

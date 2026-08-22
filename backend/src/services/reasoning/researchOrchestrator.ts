@@ -64,6 +64,7 @@ import {
   parkRunAwaitingPlanConfirmation,
 } from '../planning/planWriteService';
 import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrchestratorNormalize';
+import { closePhase, openPhase } from './phaseTiming';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
 import {
@@ -157,11 +158,117 @@ function emptyDiscoverySummary(runId: string) {
 
 function summarizeCorpusGateDecisions(decisions: Array<Record<string, unknown>>): Record<string, unknown> | null {
   if (decisions.length === 0) return null;
-  const sealedDecision = decisions.find((decision) => decision.status === 'sealed');
-  const chosen = sealedDecision ?? decisions[0]!;
+  const compact: Array<Record<string, unknown>> = decisions.map((decision) => {
+    const q = typeof decision.query === 'string' ? decision.query.trim() : '';
+    const queryLabel = q.length > 120 ? `${q.slice(0, 117)}… (${q.length} chars)` : q;
+    return {
+      ...decision,
+      ...(q ? { queryLabel } : {}),
+      query: q ? undefined : decision.query,
+    };
+  });
+  const sealedDecision = compact.find((decision) => decision['status'] === 'sealed');
+  const chosen = sealedDecision ?? compact[0]!;
   return {
     ...chosen,
-    decisions,
+    decisions: compact,
+  };
+}
+
+const RETRIEVAL_QUERY_MAX_CHARS = 512;
+const RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS = 320;
+const TOPIC_SEED_MAX_CHARS = 200;
+
+/**
+ * A long research objective is a specification, not a search query.
+ *
+ * Embedding a multi-thousand-character objective produces a centroid that is
+ * close to nothing in particular, and the hybrid search's keyword arm receives
+ * the whole document as one "keyword". That is how a 16 KB retrieval query
+ * returns zero chunks from a corpus of ~98,000 embedded chunks.
+ *
+ * Reduce the objective to the shortest text that still names the subject: the
+ * first substantive line, with markdown scaffolding and any leading
+ * "Research Objective:"-style label removed. Callers combine this seed with a
+ * requested artifact or constraint to produce short, DISTINCT queries — never
+ * by prefixing the entire objective, which makes every query identical for the
+ * first several thousand characters.
+ */
+function deriveTopicSeed(query: string, maxChars: number = TOPIC_SEED_MAX_CHARS): string {
+  const lines = String(query ?? '')
+    .split('\n')
+    .map((line) => line.replace(/[#*_`>]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const labelled = /^(?:research objective|objective|goal|task|title)\s*[:\-\u2013]\s*(.+)$/i;
+  for (const line of lines) {
+    const match = labelled.exec(line);
+    const candidate = (match?.[1] ?? line).trim();
+    if (candidate.length >= 12) return candidate.slice(0, maxChars).trim();
+  }
+  return String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
+  return i;
+}
+
+function buildDeterministicRetrievalQueries(args: {
+  subQuestions: string[];
+  fallbackQuery: string;
+  maxChars: number;
+}): string[] {
+  const seeded = args.subQuestions
+    .map((q) => q.replace(/^Q\d+\s*:\s*/i, '').trim())
+    .filter(Boolean)
+    .map((q) => q.slice(0, args.maxChars));
+  if (seeded.length > 0) return Array.from(new Set(seeded));
+  return [args.fallbackQuery.trim().slice(0, args.maxChars)].filter(Boolean);
+}
+
+function enforceRetrievalQueryBudget(args: {
+  retrievalQueries: string[];
+  subQuestions: string[];
+  fallbackQuery: string;
+  maxChars: number;
+  maxSharedPrefixChars: number;
+}): { queries: string[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const trimmed = args.retrievalQueries.map((q) => q.trim()).filter(Boolean);
+  const capped = trimmed.map((q) => (q.length > args.maxChars ? q.slice(0, args.maxChars) : q));
+  if (trimmed.some((q, idx) => q.length !== capped[idx]!.length)) {
+    warnings.push(`planner retrieval query exceeded ${args.maxChars} chars; truncated`);
+  }
+  const deduped = Array.from(new Set(capped));
+  let sharedPrefixTooLarge = false;
+  for (let i = 0; i < deduped.length && !sharedPrefixTooLarge; i += 1) {
+    for (let j = i + 1; j < deduped.length; j += 1) {
+      if (commonPrefixLength(deduped[i]!, deduped[j]!) > args.maxSharedPrefixChars) {
+        sharedPrefixTooLarge = true;
+        break;
+      }
+    }
+  }
+  if (sharedPrefixTooLarge) {
+    warnings.push(`planner retrieval queries shared >${args.maxSharedPrefixChars} leading chars; replaced with deterministic sub-question queries`);
+    return {
+      queries: buildDeterministicRetrievalQueries({
+        subQuestions: args.subQuestions,
+        fallbackQuery: args.fallbackQuery,
+        maxChars: args.maxChars,
+      }),
+      warnings,
+    };
+  }
+  return {
+    queries: deduped.length > 0 ? deduped : buildDeterministicRetrievalQueries({
+      subQuestions: args.subQuestions,
+      fallbackQuery: args.fallbackQuery,
+      maxChars: args.maxChars,
+    }),
+    warnings,
   };
 }
 
@@ -415,18 +522,37 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   supplemental?: string;
   isAdjudicative: boolean;
 }): ResearchPlan {
-  const baseQueries = new Set<string>([args.query]);
+  // The objective itself is never a retrieval query — see deriveTopicSeed.
+  const topicSeed = deriveTopicSeed(args.query);
+  const baseQueries = new Set<string>([topicSeed]);
   const artifactQueries = (args.brief?.requestedArtifacts ?? [])
     .map((artifact) => artifact.description?.trim())
     .filter((value): value is string => Boolean(value));
   const constraintQueries = (args.brief?.userConstraints ?? [])
     .map((constraint) => constraint.description?.trim())
     .filter((value): value is string => Boolean(value));
-  if (args.supplemental?.trim()) baseQueries.add(args.supplemental.trim());
-  for (const query of artifactQueries) baseQueries.add(`${args.query} ${query}`);
-  for (const query of constraintQueries) baseQueries.add(`${args.query} ${query}`);
+  if (args.supplemental?.trim()) {
+    baseQueries.add(args.supplemental.trim().slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
+  for (const query of artifactQueries) {
+    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
+  for (const query of constraintQueries) {
+    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
 
-  const retrievalQueries = normalizeRetrievalQueries(Array.from(baseQueries), args.query).slice(0, 12);
+  const plannedQueries = normalizeRetrievalQueries(Array.from(baseQueries), topicSeed).slice(0, 12);
+  const retrievalGuard = enforceRetrievalQueryBudget({
+    retrievalQueries: plannedQueries,
+    // Diversity fallback must draw on the requested artifacts and constraints,
+    // not on the planned queries it is replacing — seeding it with its own
+    // input is what made the previous guard a no-op.
+    subQuestions: [...artifactQueries, ...constraintQueries],
+    fallbackQuery: topicSeed,
+    maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
+  });
+  const retrievalQueries = retrievalGuard.queries;
   const subQuestions = retrievalQueries.map((query, index) => `Q${index + 1}: ${query}`);
   const investigationAngles = [
     `Primary intent: ${args.brief?.primaryIntent ?? 'unknown'}`,
@@ -436,7 +562,7 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   ];
 
   return {
-    sub_questions: subQuestions.length > 0 ? subQuestions : [args.query],
+    sub_questions: subQuestions.length > 0 ? subQuestions : [topicSeed],
     retrieval_queries: retrievalQueries.length > 0 ? retrievalQueries : [args.query],
     ...(args.isAdjudicative && {
       hypothesis: args.query,
@@ -1016,18 +1142,11 @@ async function runResearchJobInner(
   ) => {
     await assertNotCancelled(runId);
     // Phase timing: close out the previous phase and open the incoming one.
-    // We always reset phaseStartTimes[stage]=now on every call so that
-    // resume/retry re-entries start a fresh window instead of double-counting
-    // the gap spent in other stages (Copilot review finding).
     const now = Date.now();
-    if (currentStage && currentStage !== stage) {
-      const phaseStart = phaseStartTimes[currentStage];
-      if (phaseStart != null) {
-        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (now - phaseStart);
-        delete phaseStartTimes[currentStage];
-      }
+    if (currentStage !== stage) {
+      closePhase(phaseDurations, phaseStartTimes, currentStage, now);
     }
-    phaseStartTimes[stage] = now;
+    openPhase(phaseStartTimes, stage, now);
     currentStage = stage;
     currentPercent = percent;
 
@@ -1244,10 +1363,10 @@ async function runResearchJobInner(
     // Coerce every required field into the expected shape with safe fallbacks
     // so downstream readers (saveReport, buildReaderFrontMatter, prompts)
     // never see undefined.
-    plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, researchQuery);
+    plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, deriveTopicSeed(researchQuery));
     plan.sub_questions = Array.isArray(plan.sub_questions) && plan.sub_questions.length > 0
       ? plan.sub_questions.map((q) => String(q))
-      : [researchQuery];
+      : [deriveTopicSeed(researchQuery)];
     // hypothesis and falsification_criteria are only required for adjudicative
     // intents — descriptive/discovery intents omit them intentionally.
     if (isAdjudicative) {
@@ -1395,7 +1514,20 @@ async function runResearchJobInner(
 
       const seenIds = new Set<string>();
 
-      const retrievalQueries = plan.retrieval_queries.slice(0, 5);
+      const retrievalGuard = enforceRetrievalQueryBudget({
+        retrievalQueries: plan.retrieval_queries.slice(0, 5),
+        subQuestions: plan.sub_questions,
+        fallbackQuery: deriveTopicSeed(researchQuery),
+        maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
+      });
+      const retrievalQueries = retrievalGuard.queries;
+      if (retrievalGuard.warnings.length > 0) {
+        await progress('retrieval', 21, 'Normalized retrieval query set for diversity and length limits.', {
+          substep: 'retrieval_query_budget_adjusted',
+          detail: retrievalGuard.warnings.join(' | ').slice(0, 500),
+        });
+      }
       let retrievalIndex = 0;
       for (const rq of retrievalQueries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
@@ -1466,6 +1598,27 @@ async function runResearchJobInner(
       checkpointKey: 'retrieval_ids',
       snapshot: { retrievalIds, chunkCount: allChunks.length },
     });
+    if (allChunks.length === 0) {
+      // Announce it; do NOT halt here.
+      //
+      // An earlier version of this threw unconditionally. That was wrong, and
+      // Codex caught it on both #217 and #218: Rule 40 seals a partition BY
+      // DESIGN while the corpus is small, so zero citable chunks is a normal
+      // state, not a failure. Halting here bypassed `assessSourceSufficiency`
+      // — which already decides this correctly — and turned the designed
+      // bootstrap state into a terminal failure for every descriptive and
+      // discovery-oriented intent.
+      //
+      // The real defect behind the zero-citation reports was not that the run
+      // continued. It was that the sufficiency gate counted discovery sources
+      // that yielded no retrievable chunks as 'sufficient', so synthesis ran
+      // believing it had evidence. That is fixed in `sourceSufficiencyGate`.
+      // Adjudicative intents still hard-fail, further down, once rediscovery
+      // is exhausted.
+      await progress('retrieval', 24, 'No citable evidence retrieved yet; attempting rediscovery.', {
+        substep: 'retrieval_no_evidence',
+      });
+    }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 4: RETRIEVER ANALYSIS — evaluate evidence quality
@@ -1724,7 +1877,14 @@ async function runResearchJobInner(
       );
 
       const seenIds = new Set(allChunks.map((chunk) => chunk.id));
-      for (const rq of plan.retrieval_queries.slice(0, 5)) {
+      const rediscoveryQueryGuard = enforceRetrievalQueryBudget({
+        retrievalQueries: plan.retrieval_queries.slice(0, 5),
+        subQuestions: plan.sub_questions,
+        fallbackQuery: deriveTopicSeed(researchQuery),
+        maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
+      });
+      for (const rq of rediscoveryQueryGuard.queries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
         const retrievalResult = await retrieveChunksWithAudit({
           query: rqStr,
@@ -1994,6 +2154,11 @@ async function runResearchJobInner(
       });
       generatedReport = iterativeReport;
       plannedItemTitles = iterativeReport.plannedItemTitles;
+      // Synthesis is the largest phase of a run. Without this, `model_log` —
+      // and therefore the Run Summary's MODEL USAGE table and token totals —
+      // omitted `outline_architect`, every `section_drafter` call, the
+      // challenger and the synthesis-time `coherence_refiner` entirely.
+      modelLog.push(...iterativeReport.modelCalls);
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
@@ -2619,10 +2784,7 @@ ${generatedReport.markdown}`,
     patchAgentExecutionsReportIdForRun(runId, reportId);
 
     const preStatsNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] =
-        (phaseDurations[currentStage] ?? 0) + (preStatsNow - phaseStartTimes[currentStage]!);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, preStatsNow);
 
     const stageDurationPayload: Record<string, number | string | null> = {
       _profileDisplayName: orchProfile.displayName,
@@ -2705,26 +2867,19 @@ ${generatedReport.markdown}`,
       }
     }
 
+    // The terminal event must carry its `eventType`. The explicit
+    // `appendRunProgressEvent` calls that used to write it were removed to stop
+    // the `done` event being persisted twice, but `progress()` defaults to no
+    // eventType — so `progress_events` lost the marker that distinguishes a
+    // clean completion from a quality-gate completion, which the trace UI and
+    // `ResearchProgressEvent` still key on (Copilot, PR #218). Emitting it via
+    // `progress()` keeps the single-write property AND the marker.
     if (runTerminalStatus === 'completed') {
-      await progress('done', 100, 'Research complete');
-      await appendRunProgressEvent(runId, {
-        runId,
-        stage: 'done',
-        percent: 100,
-        message: 'Research complete',
-        timestamp: new Date().toISOString(),
-        eventType: 'run_completed',
-      });
+      await progress('done', 100, 'Research complete', { eventType: 'run_completed' });
     } else {
-      await progress('done', 100, `Research run finished with status: ${reportStatus}`);
-      await appendRunProgressEvent(runId, {
-        runId,
-        stage: 'done',
-        percent: 100,
-        message: `Research run finished with gate status: ${reportStatus}`,
-        timestamp: new Date().toISOString(),
+      await progress('done', 100, `Research run finished with status: ${reportStatus}`, {
         eventType: 'run_quality_gate_failed',
-        gateStatus: reportStatus,
+        failureMeta: { gate_status: terminalOutcome.gateStatus ?? null },
       });
     }
 
@@ -2735,9 +2890,7 @@ ${generatedReport.markdown}`,
 
     // Finalise the last active phase duration before building the summary.
     const finalNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (finalNow - phaseStartTimes[currentStage]);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, finalNow);
     // The summary status must be the status the run was actually written with.
     // It used to be hardcoded 'completed' on this path, so a run stored as
     // `failed` with gate status `contract_failed` still pushed a green
@@ -2772,9 +2925,7 @@ ${generatedReport.markdown}`,
       );
       await clearRunCancelled(runId);
       const cancelledNow = Date.now();
-      if (currentStage && phaseStartTimes[currentStage] != null) {
-        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (cancelledNow - phaseStartTimes[currentStage]);
-      }
+      closePhase(phaseDurations, phaseStartTimes, currentStage, cancelledNow);
       const cancelledSummary: RunSummaryPayload = buildRunSummary({
         runId, status: 'cancelled',
         startedAt: runStartedAt, finishedAt: cancelledNow,
@@ -2813,6 +2964,13 @@ ${generatedReport.markdown}`,
       retryBudget,
     });
     const failureMetaWithResume = transition.failureMeta;
+    const gateStatusFromFailureMeta =
+      typeof (failureDetails.failureMeta as Record<string, unknown>).gate_status === 'string'
+        ? ((failureDetails.failureMeta as Record<string, unknown>).gate_status as ReportGateStatus)
+        : null;
+    if (gateStatusFromFailureMeta) {
+      (failureMetaWithResume as unknown as { gate_status?: ReportGateStatus }).gate_status = gateStatusFromFailureMeta;
+    }
     const finalStatus = transition.nextStatus;
 
     try {
@@ -2911,6 +3069,7 @@ ${generatedReport.markdown}`,
           : currentMessage,
       timestamp: new Date().toISOString(),
       eventType: finalStatus === 'aborted' ? 'run_aborted' : 'run_failed',
+      gateStatus: gateStatusFromFailureMeta ?? undefined,
       failure: {
         errorMessage: failureDetails.errorMessage,
         retryable: failureMetaWithResume.retryable,
@@ -2921,9 +3080,7 @@ ${generatedReport.markdown}`,
 
     // Finalise phase timing before building the failure summary.
     const failedNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (failedNow - phaseStartTimes[currentStage]);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, failedNow);
     const failureSummary: RunSummaryPayload = buildRunSummary({
       runId, status: finalStatus,
       startedAt: runStartedAt, finishedAt: failedNow,
@@ -2931,6 +3088,7 @@ ${generatedReport.markdown}`,
       failedStage: currentStage,
       errorMessage: failureDetails.errorMessage,
       failureMeta: failureMetaWithResume as unknown as Record<string, unknown>,
+      gateStatus: gateStatusFromFailureMeta,
     });
 
     // Propagate the *state-machine-finalized* metadata to the BullMQ worker.

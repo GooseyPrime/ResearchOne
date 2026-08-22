@@ -984,6 +984,84 @@ description.
 
 ---
 
+## §15 — [P1] `outline_architect` and `section_drafter` are active but invisible to the run summary
+
+**File:** `backend/src/services/reasoning/reportGenerator.ts` (the return of
+`generateIterativeReport`, ~line 1160); `researchOrchestrator.ts` line 963 and
+its ~18 `modelLog.push(...)` call sites.
+
+### The question, answered
+
+Both roles **are active**. They ran, they drafted 24 sections, and they are not
+merged into another role, not removed, and not gated off by the planner or the
+intent profile — `shouldRunPipelineStage(orchProfile, 'synthesis')` was true for
+this run.
+
+The gap is a **return-value gap in telemetry plumbing**, and it is narrow:
+
+1. `modelLog` is a plain local array declared at `researchOrchestrator.ts:963`.
+   It is populated *only* where the orchestrator explicitly calls
+   `modelLog.push(...)`. It is written to `research_runs.model_log`, which is
+   what the Run Summary's MODEL USAGE table renders.
+2. `generateIterativeReport` makes four internal `callRoleModel` calls —
+   `outline_architect` (`reportGenerator.ts:909`), `section_drafter` in a loop
+   (`:972`), `internal_challenger` (`:1096`), `coherence_refiner` (`:1114`) —
+   and returns:
+
+   ```ts
+   return { markdown, sections, outline, targetWordCount, plannedItemTitles, refinedSectionCount };
+   ```
+
+   **No `ModelCallResult` is returned.** All four roles' telemetry is discarded
+   at the function boundary.
+3. The orchestrator therefore has nothing to push. The `else` branch — the
+   minimal-synthesis path — *does* push (`modelLog.push(refSynth)` at :2034),
+   which is why light runs look complete and full runs do not.
+
+### Why `coherence_refiner` appears anyway, three times
+
+Those rows are **not** the synthesis-time refiner. They are the repair-loop
+invocations at `researchOrchestrator.ts:2353`, which the orchestrator calls
+directly and pushes itself. That is exactly why they interleave with `verifier`
+and `contract_auditor` three times in the failed run's summary.
+
+### What is NOT wrong
+
+Cost telemetry is fine. `emitCallTelemetry` is called inside `callRoleModel`
+itself (`openrouterService.ts:602` and `:643`), so every role — including these
+two — is recorded, and `rolePhaseFor` (`costSidecar.ts:104`) already maps
+`outline_architect`, `section_drafter` and `coherence_refiner` to the
+`Synthesis` phase. The cost sidecar knows about this work. Only `model_log`,
+and therefore the user-facing summary, does not.
+
+### Why it matters more than a missing table row
+
+Synthesis was the **largest phase of the run** — 14m 39s and 24 section drafts —
+and it is entirely absent from the summary's `304,344 prompt + 28,931 completion
+= 333,275 total`. The number shown to the user materially understates the run.
+For a product with a credit ledger and per-run add-on surcharges (§14), a
+user-facing cost figure that omits the biggest cost centre is a billing-trust
+problem, not a cosmetic one.
+
+### Required change
+
+1. Return the model calls from `generateIterativeReport`:
+   `modelCalls: ModelCallResult[]` accumulating the outline call, every section
+   call, the challenger call (or its `skipped-by-profile` stub), and the refiner
+   call — the same shape `specialistExecution.modelCalls` already uses.
+2. In the orchestrator, `modelLog.push(...iterativeReport.modelCalls)` alongside
+   `plannedItemTitles`, mirroring line 1604.
+3. Reconcile: assert in a test that the sum of `model_log` prompt+completion
+   tokens equals the sum of the run's `agent_executions` rows. They currently
+   diverge by the whole synthesis phase, and nothing catches it.
+4. Separately, decide about `internal_challenger`. It is skipped for every
+   non-adjudicative intent (`skipChallenger: !isAdjudicative`). Whichever way you
+   go, it should appear in the summary as an explicit *skipped* row rather than
+   being absent — a role that silently vanishes is indistinguishable from a role
+   that failed. See §11.
+
+---
+
 ## Write order
 
 Land in this order; each phase is independently shippable.
@@ -1006,7 +1084,8 @@ revision-instructions-as-headings, generic headings
 subscription-lapse tests · webhook endpoint config audit
 
 **Phase 6 — truth in the UI (P1)**
-§6 trace dedup · §7 phase timings · §8 discovery relevance
+§6 trace dedup · §7 phase timings · §8 discovery relevance · §15 synthesis-role
+telemetry
 
 **Phase 7 — presentation and hygiene (P2)**
 §9B rendering and print · §10 header · §11 stage reconciliation · §12 Clerk

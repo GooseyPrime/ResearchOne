@@ -119,4 +119,27 @@ describe('stripe webhook signature verification', () => {
     }));
     vi.resetModules();
   });
+
+  it('returns 500 when raw body middleware is missing', async () => {
+    const router = (await import('../../api/webhooks/stripe')).default as unknown as { stack: StripeWebhookRouterLayer[] };
+    const layer = router.stack.find((l) => l.route)?.route?.stack[0].handle;
+    expect(layer).toBeTypeOf('function');
+
+    const req = {
+      headers: { 'stripe-signature': 'sig_present' },
+      body: { id: 'evt_123' },
+    } as unknown as Request;
+    const res = { status: vi.fn(), json: vi.fn() } as unknown as Response;
+    vi.mocked(res.status).mockReturnValue(res as Response);
+
+    await layer!(req, res, vi.fn() as NextFunction);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Stripe webhook misconfigured',
+      detail: 'Expected raw Buffer body. Ensure express.raw() middleware is mounted before JSON parsing.',
+    });
+    expect(constructEvent).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+  });
 });

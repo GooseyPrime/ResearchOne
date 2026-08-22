@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReportMarkdown from '../reports/ReportMarkdown';
 
 function annotationText(item: unknown): string {
   if (typeof item === 'string') return item;
@@ -36,7 +36,15 @@ type Props = {
   className?: string;
 };
 
-/** Collapsible skeptical cross-checks (annotate-mode); Wave 4 vocabulary — not "evidence" for retrieved text. */
+/**
+ * Collapsible skeptical cross-checks (annotate-mode); Wave 4 vocabulary — not
+ * "evidence" for retrieved text.
+ *
+ * Renders through `ReportMarkdown`, not a bare `ReactMarkdown`. This component
+ * used to instantiate its own without `remark-gfm`, so an annotation
+ * containing a table arrived as a literal wall of `|` characters — the exact
+ * defect `ReportMarkdown` was extracted to eliminate (WO-AD §9B, done-item 7).
+ */
 export default function SkepticAnnotationsAside({ annotations, className }: Props) {
   const panelId = useId();
   const [open, setOpen] = useState(true);
@@ -66,7 +74,7 @@ export default function SkepticAnnotationsAside({ annotations, className }: Prop
             <div key={i} className="rounded-md border border-slate-800/60 bg-slate-900/30 p-2">
               <h3 className="text-xs font-semibold text-accent mb-1">{annotationTitle(item, i)}</h3>
               <div className="prose prose-invert prose-sm max-w-none text-slate-300">
-                <ReactMarkdown>{annotationText(item)}</ReactMarkdown>
+                <ReportMarkdown>{annotationText(item)}</ReportMarkdown>
               </div>
             </div>
           ))}

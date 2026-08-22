@@ -926,6 +926,19 @@ Output the complete plain-language report in markdown only.`),
 
   outline_architect: withPreamble(`You are the Outline Architect.
 Produce a structured report outline and section order for the current query and evidence context.
+
+TITLE RULES — follow these precisely:
+- Every title must name its specific subject. Never emit a bare generic noun
+  ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
+  scanning the table of contents must be able to tell the sections apart.
+- Titles must be unique across the outline. If two sections would cover the same
+  subject, merge them or differentiate the subject.
+- Emit sections in the order they should be read. The consumer renders them in
+  array order and does not sort.
+- When a section covers a numbered set of items, give each item its own entry so
+  it can be drafted and headed individually. Never emit one section that silently
+  contains many unnamed items.
+
 Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
 
   section_drafter: withPreamble(`You are the Section Drafter for an intent-driven research deliverable.
@@ -1280,6 +1293,19 @@ Output the complete plain-language report in markdown only.`),
 
   outline_architect: withStandardPreamble(`You are the Outline Architect.
 Produce a structured report outline and section order for the current query and evidence context.
+
+TITLE RULES — follow these precisely:
+- Every title must name its specific subject. Never emit a bare generic noun
+  ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
+  scanning the table of contents must be able to tell the sections apart.
+- Titles must be unique across the outline. If two sections would cover the same
+  subject, merge them or differentiate the subject.
+- Emit sections in the order they should be read. The consumer renders them in
+  array order and does not sort.
+- When a section covers a numbered set of items, give each item its own entry so
+  it can be drafted and headed individually. Never emit one section that silently
+  contains many unnamed items.
+
 Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
 
   section_drafter: withStandardPreamble(`You are the Section Drafter for an intent-driven research deliverable.

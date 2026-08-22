@@ -1,4 +1,4 @@
-export type ReportGateStatus = 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed';
+export type ReportGateStatus = 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence';
 
 export function mapGateStatusToRunStatus(status: ReportGateStatus): 'completed' | 'failed' {
   return status === 'completed' ? 'completed' : 'failed';

@@ -76,6 +76,10 @@ const defaultLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/auth'),
+  message: {
+    error: 'rate_limited',
+    detail: 'Too many requests. Please slow down and retry shortly.',
+  },
 });
 const landingPersonaEventLimiter = rateLimit({
   windowMs: 60 * 1000,

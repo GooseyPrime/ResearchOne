@@ -67,7 +67,20 @@ export interface ResearchProgress {
   tokenUsage?: { prompt: number; completion: number };
   sourceCount?: number;
   chunkCount?: number;
-  eventType?: 'progress' | 'run_started' | 'run_failed' | 'run_completed' | 'run_resumed' | 'run_aborted';
+  /**
+   * `run_quality_gate_failed` is deliberately distinct from `run_failed` and
+   * from `run_completed`: the run produced a report but it did not pass its
+   * contract. The frontend has carried this member since #212; the backend
+   * union omitted it, so the terminal marker it keys on could not be emitted.
+   */
+  eventType?:
+    | 'progress'
+    | 'run_started'
+    | 'run_failed'
+    | 'run_completed'
+    | 'run_quality_gate_failed'
+    | 'run_resumed'
+    | 'run_aborted';
   retryable?: boolean;
   failureMeta?: Record<string, unknown>;
   /** Wave 5.1 plan gate — echoed on progress / sockets when a draft plan is ready. */
@@ -88,7 +101,7 @@ export interface RunSummaryPayload {
    * an incomplete deliverable from an unverifiable one from a crash. Present
    * only on runs that reached the gates.
    */
-  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;
@@ -119,7 +132,7 @@ export interface ResearchJobCompletedResult {
   /** False when a quality gate failed; the report exists but is under review. */
   completedCleanly: boolean;
   /** The gate outcome, so a consumer can say WHICH gate failed. */
-  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence' | null;
   summary?: RunSummaryPayload;
 }
 

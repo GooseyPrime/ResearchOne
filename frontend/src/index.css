@@ -66,6 +66,25 @@
     @apply bg-surface-300 border border-indigo-900/20 rounded-xl;
   }
 
+  @media print {
+    body {
+      background: #fff !important;
+      color: #111 !important;
+    }
+
+    .prose,
+    .prose * {
+      color: #111 !important;
+    }
+
+    .card,
+    .card-glow {
+      background: #fff !important;
+      box-shadow: none !important;
+      border-color: #d1d5db !important;
+    }
+  }
+
   .card-glow {
     @apply card shadow-lg shadow-indigo-950/50;
   }

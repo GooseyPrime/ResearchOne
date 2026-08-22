@@ -233,7 +233,13 @@ router.use(requireAuth);
 router.get('/exports/engine-status', async (_req, res, next) => {
   try {
     const avail = await pandocAvailable();
-    res.json({ available: avail.available, version: avail.version });
+    res.json({
+      available: avail.available,
+      version: avail.version,
+      detail: avail.available
+        ? 'Pandoc export engine is available.'
+        : 'Pandoc export engine is unavailable. Install pandoc and texlive-xetex on the backend host.',
+    });
   } catch (err) {
     next(err);
   }

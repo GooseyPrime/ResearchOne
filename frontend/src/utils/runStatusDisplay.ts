@@ -17,7 +17,8 @@ export type RunGateStatus =
   | 'completed'
   | 'completed_degraded'
   | 'contract_failed'
-  | 'verification_failed';
+  | 'verification_failed'
+  | 'no_evidence';
 
 export type RunDisplayTone = 'success' | 'warning' | 'failure' | 'neutral';
 
@@ -76,7 +77,8 @@ export function resolveRunDisplayState(args: {
     status === 'aborted' ||
     status === 'failed' ||
     status === 'contract_failed' ||
-    status === 'verification_failed'
+    status === 'verification_failed' ||
+    status === 'no_evidence'
   ) {
     return { status, label, tone: 'failure' };
   }

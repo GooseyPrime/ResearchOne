@@ -1,4 +1,5 @@
 import type { IntentId } from '../planning/intentTaxonomy';
+import { countsAgainstIndependence } from './sourceIndependence';
 
 export interface CorpusGateThresholds {
   minDistinctDomains: number;
@@ -17,6 +18,7 @@ export interface CorpusSourceRecord {
   publishedAt: string | Date | null;
   ingestedAt: string | Date | null;
   ownerUserId: string | null;
+  sourceOrigin: 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url' | null;
   partitionKey: string | null;
   chunkCount: number;
 }
@@ -25,6 +27,7 @@ export interface CorpusGateDecision {
   partition: string;
   status: 'sealed' | 'unsealed';
   reason: string;
+  sealCategory: 'bootstrap' | 'composition' | 'unclassified' | null;
   thresholds: CorpusGateThresholds;
   minSimilarity: number;
   citableChunks: number;
@@ -110,6 +113,7 @@ export function evaluateCorpusGate(args: {
       partition,
       status: 'sealed',
       reason: 'partition unclassified is permanently sealed',
+      sealCategory: 'unclassified',
       thresholds,
       minSimilarity,
       citableChunks: 0,
@@ -127,7 +131,12 @@ export function evaluateCorpusGate(args: {
     if (domain) {
       domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
     }
-    if (record.ownerUserId) {
+    // Everything that is not externally discovered counts against the
+    // partition's independence ceiling: the system's own output, the
+    // requester's uploads, and the requester's supplied URLs alike. Counting
+    // only `researchone_generated` let a partition made entirely of private
+    // uploads report selfSourceShare 0 and unseal (Codex, PR #217).
+    if (countsAgainstIndependence(record)) {
       selfSourceCount += 1;
     }
   }
@@ -138,33 +147,42 @@ export function evaluateCorpusGate(args: {
   const selfSourceShare = distinctSourceCount > 0 ? selfSourceCount / distinctSourceCount : 1;
   const medianSourceAgeMonths = computeMedianSourceAgeMonths(sourceRecords, args.now ?? new Date());
 
-  const reasons: string[] = [];
+  const bootstrapReasons: string[] = [];
+  const compositionReasons: string[] = [];
   if (globalTotalChunks < thresholds.globalBootstrapMinTotalChunks) {
-    reasons.push(`global_total_chunks ${globalTotalChunks} < ${thresholds.globalBootstrapMinTotalChunks}`);
+    bootstrapReasons.push(`global_total_chunks ${globalTotalChunks} < ${thresholds.globalBootstrapMinTotalChunks}`);
   }
   if (distinctDomainCount < thresholds.minDistinctDomains) {
-    reasons.push(`distinct_domains ${distinctDomainCount} < ${thresholds.minDistinctDomains}`);
+    bootstrapReasons.push(`distinct_domains ${distinctDomainCount} < ${thresholds.minDistinctDomains}`);
   }
   if (distinctSourceCount < thresholds.minDistinctSources) {
-    reasons.push(`distinct_sources ${distinctSourceCount} < ${thresholds.minDistinctSources}`);
+    bootstrapReasons.push(`distinct_sources ${distinctSourceCount} < ${thresholds.minDistinctSources}`);
   }
   if (totalChunks < thresholds.minTotalChunks) {
-    reasons.push(`total_chunks ${totalChunks} < ${thresholds.minTotalChunks}`);
+    bootstrapReasons.push(`total_chunks ${totalChunks} < ${thresholds.minTotalChunks}`);
   }
   if (maxSingleDomainShare > thresholds.maxSingleDomainShare) {
-    reasons.push(`single_domain_share ${maxSingleDomainShare.toFixed(2)} > ${thresholds.maxSingleDomainShare.toFixed(2)}`);
+    compositionReasons.push(`single_domain_share ${maxSingleDomainShare.toFixed(2)} > ${thresholds.maxSingleDomainShare.toFixed(2)}`);
   }
   if (selfSourceShare > thresholds.maxSelfSourceShare) {
-    reasons.push(`self_source_share ${selfSourceShare.toFixed(2)} > ${thresholds.maxSelfSourceShare.toFixed(2)}`);
+    compositionReasons.push(`self_source_share ${selfSourceShare.toFixed(2)} > ${thresholds.maxSelfSourceShare.toFixed(2)}`);
   }
   if (medianSourceAgeMonths > thresholds.maxMedianSourceAgeMonths) {
-    reasons.push(`median_source_age_months ${medianSourceAgeMonths.toFixed(1)} > ${thresholds.maxMedianSourceAgeMonths}`);
+    compositionReasons.push(`median_source_age_months ${medianSourceAgeMonths.toFixed(1)} > ${thresholds.maxMedianSourceAgeMonths}`);
   }
+  const reasons = [...bootstrapReasons, ...compositionReasons];
+  const sealCategory =
+    reasons.length === 0
+      ? null
+      : bootstrapReasons.length > 0
+        ? 'bootstrap'
+        : 'composition';
 
   return {
     partition,
     status: reasons.length > 0 ? 'sealed' : 'unsealed',
     reason: reasons.length > 0 ? reasons.join('; ') : 'thresholds satisfied',
+    sealCategory,
     thresholds,
     minSimilarity,
     citableChunks: 0,

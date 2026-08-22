@@ -6,6 +6,44 @@ import path from 'path';
 /** Same-origin API host for split UI + API deploys (see `frontend/.env.example`). */
 const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
 
+/**
+ * A Clerk publishable key is `pk_live_*` for a production instance and
+ * `pk_test_*` for a development one. A development instance issues short-lived
+ * sessions, accepts any email, and is rate-limited — shipping one to
+ * researchone.io means real users on a throwaway auth backend (WO-AD §12).
+ *
+ * This is checked HERE, at build time, rather than at module scope in
+ * `main.tsx`. A runtime `throw` before `createRoot` does not fail a build — it
+ * white-screens every visitor, including on marketing routes that never touch
+ * Clerk. Failing the build instead means Vercel keeps the previous good
+ * deployment live and nobody sees a blank page.
+ *
+ * It fires only for a real production deploy. Preview and branch builds SHOULD
+ * use a test key, and failing them was a self-inflicted outage of the preview
+ * environment.
+ */
+function assertProductionClerkKey(env: Record<string, string>): void {
+  const isProductionDeploy =
+    process.env.VERCEL_ENV === 'production' || process.env.REQUIRE_LIVE_CLERK_KEY === '1';
+  if (!isProductionDeploy) return;
+
+  const key = (env.VITE_CLERK_PUBLISHABLE_KEY ?? '').trim();
+  if (!key) {
+    throw new Error(
+      'VITE_CLERK_PUBLISHABLE_KEY is unset for a production deploy. Set it in the ' +
+        'Vercel project (Production scope) to the pk_live_* key of the production Clerk instance.'
+    );
+  }
+  if (key.startsWith('pk_test_')) {
+    throw new Error(
+      'VITE_CLERK_PUBLISHABLE_KEY is a pk_test_* key, which belongs to a Clerk DEVELOPMENT ' +
+        'instance: sessions expire quickly, any email is accepted, and it is rate-limited. ' +
+        'Create a production Clerk instance and set its pk_live_* key in the Vercel project ' +
+        '(Production scope). Preview deploys may keep the test key.'
+    );
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Vitest only defaults NODE_ENV to 'test' when it is UNSET. A machine with
   // NODE_ENV=production exported globally therefore runs the suite against
@@ -19,6 +57,7 @@ export default defineConfig(({ mode }) => {
   if (mode === 'test') process.env.NODE_ENV = 'test';
 
   const fileEnv = loadEnv(mode, process.cwd(), '');
+  if (mode !== 'test') assertProductionClerkKey(fileEnv);
   const useProdDefaults = mode === 'production';
   const apiBase =
     fileEnv.VITE_API_BASE_URL?.trim() ||

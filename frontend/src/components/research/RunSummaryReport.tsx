@@ -14,7 +14,7 @@ export interface RunSummaryData {
    * gates; `status` alone cannot distinguish an incomplete deliverable from an
    * unverifiable one from a crash.
    */
-  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | null;
+  gateStatus?: 'completed' | 'completed_degraded' | 'contract_failed' | 'verification_failed' | 'no_evidence' | null;
   totalDurationMs: number;
   phaseDurations: Record<string, number>;
   totalPromptTokens: number;

@@ -38,7 +38,7 @@ import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus'
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { isLiveAttachedResearchRun, researchRequestFromRun } from '../utils/researchOpenRun';
 import { useResearchPageShell } from './ResearchPageContext';
-import { appendKeepingNewestAtBottom } from '../utils/traceEventWindow';
+import { mergeTraceEvents } from '../utils/traceEventWindow';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import SiteCrawlControls from '../components/research/SiteCrawlControls';
@@ -362,7 +362,10 @@ export default function ResearchStandardPage() {
         });
         setActiveRun(latest);
       }
-      setTraceEvents(sortEventsChronological(sorted.slice(-150)));
+      // Merge, do not replace: the socket may already have delivered events
+      // newer than this poll snapshot, and a replace would drop them only for
+      // the next poll to bring them back — which is how the trace flickered.
+      setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, sorted, 150)));
     } else if (polledRun.progress_message != null || polledRun.progress_percent != null) {
       const polledEvt: ResearchProgressEvent = {
         runId: trackingRunId,
@@ -373,7 +376,7 @@ export default function ResearchStandardPage() {
       };
       setProgress(polledEvt);
       setActiveRun(polledEvt);
-      setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, polledEvt, 150)));
+      setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, [polledEvt], 150)));
     }
 
     if (polledRun.status === 'failed' || polledRun.status === 'aborted') {
@@ -415,7 +418,8 @@ export default function ResearchStandardPage() {
       if (rid === trackingRunId) {
         setProgress(update);
         setActiveRun(update);
-        setTraceEvents((prev) => sortEventsChronological(appendKeepingNewestAtBottom(prev, update, 150)));
+        // Dedup against what the poll has already written for this same event.
+        setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, [update], 150)));
       }
     });
 

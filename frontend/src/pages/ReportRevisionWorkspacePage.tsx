@@ -11,7 +11,7 @@ import {
 } from '@/utils/api';
 import LiveRevisionTraceLog from '@/components/research/LiveRevisionTraceLog';
 import RevisionAttachmentAuditPanel from '@/components/reports/RevisionAttachmentAuditPanel';
-import { appendKeepingNewestAtBottom } from '@/utils/traceEventWindow';
+import { mergeTraceEvents } from '@/utils/traceEventWindow';
 import { getSocket, subscribeToRevisionJob } from '@/utils/socket';
 import {
   isReportRevisionRequestState,
@@ -136,7 +136,7 @@ export default function ReportRevisionWorkspacePage() {
       const p = raw as RevisionProgressPayload;
       if (p.reportId && p.reportId !== baseReportId) return;
       const evt = toTraceEvent(p);
-      setTraceEvents((prev) => appendKeepingNewestAtBottom(prev, evt, 150));
+      setTraceEvents((prev) => mergeTraceEvents(prev, [evt], 150));
       setLatestProgress({
         stage: evt.stage,
         percent: evt.percent ?? 0,
