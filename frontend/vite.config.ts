@@ -14,11 +14,17 @@ const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
  * build with no key at all sailed through and shipped
  * `<ClerkProvider publishableKey="">` — an app where every sign-in fails.
  *
- *   Key MISSING      — fails every production-MODE build (`vite build`),
- *                      whatever the deploy target. There is no environment in
- *                      which shipping a bundle with no auth backend is
- *                      intended. The dev server is exempt; it is not a
- *                      deployable artifact.
+ *   Key MISSING      — fails every BUILD, whatever the deploy target or mode.
+ *                      There is no environment in which shipping a bundle with
+ *                      no auth backend is intended. Only `vite dev` is exempt,
+ *                      because it is not a deployable artifact.
+ *
+ *                      Gated on `command`, not `mode`: Vite's ConfigEnv defines
+ *                      `command` as 'serve' | 'build', while `mode` is
+ *                      independently selectable with `--mode`. Testing `mode`
+ *                      let `vite build --mode development` emit a deployable
+ *                      bundle with an empty key, and wrongly rejected
+ *                      `vite dev --mode production` (Codex, #220).
  *
  *   Key is pk_test_* — a Clerk DEVELOPMENT instance. ResearchOne deliberately
  *                      runs one in production: a production instance is a paid
@@ -35,9 +41,9 @@ const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
  * route, including marketing pages that never touch Clerk. Failing here means
  * Vercel keeps the last good deployment live instead.
  */
-function assertClerkKey(env: Record<string, string>, mode: string): void {
-  // `vite dev` is not a deployable artifact; only built output is checked.
-  if (mode !== 'production') return;
+function assertClerkKey(env: Record<string, string>, command: 'serve' | 'build'): void {
+  // `vite dev` is not a deployable artifact; every built one is checked.
+  if (command !== 'build') return;
 
   const key = (env.VITE_CLERK_PUBLISHABLE_KEY ?? '').trim();
   if (!key) {
@@ -69,7 +75,7 @@ function assertClerkKey(env: Record<string, string>, mode: string): void {
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // Vitest only defaults NODE_ENV to 'test' when it is UNSET. A machine with
   // NODE_ENV=production exported globally therefore runs the suite against
   // React's production build, where `act()` throws — every React component test
@@ -82,7 +88,7 @@ export default defineConfig(({ mode }) => {
   if (mode === 'test') process.env.NODE_ENV = 'test';
 
   const fileEnv = loadEnv(mode, process.cwd(), '');
-  assertClerkKey(fileEnv, mode);
+  assertClerkKey(fileEnv, command);
   const useProdDefaults = mode === 'production';
   const apiBase =
     fileEnv.VITE_API_BASE_URL?.trim() ||
