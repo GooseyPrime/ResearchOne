@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   RETRIEVAL_QUERY_MAX_CHARS,
+  commonPrefixLength,
   TOPIC_SEED_MAX_CHARS,
   composeRetrievalQuery,
   deriveTopicSeed,
   enforceRetrievalQueryBudget,
   normalizeQueryText,
   queriesAreTooSimilar,
+  tokenOverlapRatio,
 } from '../services/reasoning/retrievalQueryPlan';
 
 /**
@@ -98,7 +100,7 @@ describe('enforceRetrievalQueryBudget', () => {
   const seed = deriveTopicSeed(LIVE_OBJECTIVE);
   const liveQueries = [seed, ...LIVE_CLAUSES.map((c) => composeRetrievalQuery(c, seed))];
 
-  it('passes the queries the fixed construction now produces', () => {
+  it('keeps the fixed construction as a set of mutually distinct queries', () => {
     const result = enforceRetrievalQueryBudget({
       retrievalQueries: liveQueries,
       subQuestions: LIVE_CLAUSES,
@@ -106,8 +108,16 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
 
-    expect(result.warnings).toEqual([]);
-    expect(result.queries).toHaveLength(liveQueries.length);
+    // Not an assertion on count: a clause too terse to stand alone still gets
+    // the topic anchor, which can make it redundant against the bare seed —
+    // and dropping that one is the guard doing its job. What must hold is that
+    // every query that survives asks something different from the others.
+    expect(result.queries.length).toBeGreaterThanOrEqual(4);
+    for (let i = 0; i < result.queries.length; i += 1) {
+      for (let j = i + 1; j < result.queries.length; j += 1) {
+        expect(queriesAreTooSimilar(result.queries[i]!, result.queries[j]!)).toBe(false);
+      }
+    }
   });
 
   it('rejects the shape that shipped, which the old fixed threshold could not', () => {
@@ -123,8 +133,9 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
 
-    expect(result.warnings.join(' ')).toMatch(/overlapped by more than/);
-    expect(result.queries).toEqual(LIVE_CLAUSES);
+    // Every query but the first duplicates it, so only the first survives.
+    expect(result.warnings.join(' ')).toMatch(/dropped \d+ planner retrieval quer/);
+    expect(result.queries).toEqual([normalizeQueryText(shipped[0]!)]);
   });
 
   it('truncates an over-long query and says so', () => {
@@ -197,7 +208,8 @@ describe('whitespace cannot smuggle a duplicate past the guard', () => {
     });
 
     // Normalized, these share the whole of the shorter one — caught, not passed.
-    expect(result.warnings.join(' ')).toMatch(/overlapped by more than/);
+    expect(result.warnings.join(' ')).toMatch(/dropped \d+ planner retrieval quer/);
+    expect(result.queries).toEqual([base]);
   });
 });
 
@@ -233,5 +245,84 @@ describe('deriveTopicSeed: abbreviations are not sentence ends', () => {
     expect(deriveTopicSeed('Rank six RAG evaluation methods. Then compare them.')).toBe(
       'Rank six RAG evaluation methods'
     );
+  });
+});
+
+describe('redundancy in the suffix is caught too', () => {
+  // Codex, #221: anchoring the topic at the END of every query fixed the
+  // shared-preamble defect and moved the shared text where a prefix-only test
+  // could not see it.
+  const anchor =
+    'Identify exactly 6 distinct methods used to evaluate retrieval-augmented generation (RAG) systems';
+
+  it('flags two queries whose bulk is an identical trailing anchor', () => {
+    const a = `Table A — ${anchor}`;
+    const b = `Table B — ${anchor}`;
+    expect(commonPrefixLength(a, b)).toBeLessThan(12); // prefix test alone sees nothing
+    expect(queriesAreTooSimilar(a, b)).toBe(true);
+  });
+
+  it('leaves genuinely different queries alone', () => {
+    expect(
+      queriesAreTooSimilar(
+        'Ranking of the six methods by effectiveness at detecting unsupported claims',
+        'Known failure modes of context precision as a retrieval metric'
+      )
+    ).toBe(false);
+  });
+
+  it('scores token overlap symmetrically and within range', () => {
+    const a = 'alpha beta gamma delta';
+    const b = 'gamma delta epsilon zeta';
+    expect(tokenOverlapRatio(a, b)).toBeCloseTo(tokenOverlapRatio(b, a));
+    expect(tokenOverlapRatio(a, a)).toBe(1);
+    expect(tokenOverlapRatio('', 'anything here')).toBe(0);
+  });
+});
+
+describe('composeRetrievalQuery stops creating the shared suffix', () => {
+  const seed = deriveTopicSeed(LIVE_OBJECTIVE);
+
+  it('lets a self-sufficient clause stand alone', () => {
+    const clause =
+      'Ranking of the six methods ordered by effectiveness at detecting unsupported generated claims';
+    expect(composeRetrievalQuery(clause, seed)).toBe(clause);
+  });
+
+  it('still anchors a clause too terse to stand alone', () => {
+    const q = composeRetrievalQuery('failure modes', seed);
+    expect(q.startsWith('failure modes')).toBe(true);
+    expect(q).toContain(seed);
+  });
+});
+
+describe('one duplicate does not discard the whole planner set', () => {
+  // Codex, #221: a single overlapping pair used to take unrelated retrieval
+  // angles down with it.
+  it('keeps the distinct queries and drops only the duplicate', () => {
+    const a = 'Six distinct RAG evaluation methods, each presented with a comparison table';
+    const nearDuplicateOfA = `${a} please`;
+    const distinct = 'RAGAS benchmark reliability across clinical corpora';
+
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [a, nearDuplicateOfA, distinct],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: 'RAG evaluation',
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toEqual([a, distinct]);
+    expect(result.warnings.join(' ')).toMatch(/dropped 1 planner retrieval query/);
+  });
+
+  it('falls back only when nothing survives', () => {
+    const a = 'Six distinct RAG evaluation methods, each presented with a comparison table';
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [a, `${a} please`, `${a} indeed`],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: 'RAG evaluation',
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+    expect(result.queries).toEqual([a]);
   });
 });

@@ -1436,6 +1436,14 @@ async function runResearchJobInner(
       });
       const retrievalQueries = retrievalGuard.queries;
       if (retrievalGuard.warnings.length > 0) {
+        // `progress()` persists at info, which cannot distinguish a normal run
+        // from a degraded planner fallback in the server logs (Rule: degraded
+        // paths log at warn or above). Emit the diagnostic separately.
+        logger.warn('retrieval query budget adjusted', {
+          runId,
+          reasons: retrievalGuard.warnings,
+          queryCount: retrievalGuard.queries.length,
+        });
         await progress('retrieval', 21, 'Normalized retrieval query set for diversity and length limits.', {
           substep: 'retrieval_query_budget_adjusted',
           detail: retrievalGuard.warnings.join(' | ').slice(0, 500),
@@ -1796,6 +1804,13 @@ async function runResearchJobInner(
         fallbackQuery: deriveTopicSeed(researchQuery),
         maxChars: RETRIEVAL_QUERY_MAX_CHARS,
       });
+      if (rediscoveryQueryGuard.warnings.length > 0) {
+        logger.warn('rediscovery retrieval query budget adjusted', {
+          runId,
+          reasons: rediscoveryQueryGuard.warnings,
+          queryCount: rediscoveryQueryGuard.queries.length,
+        });
+      }
       for (const rq of rediscoveryQueryGuard.queries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
         const retrievalResult = await retrieveChunksWithAudit({

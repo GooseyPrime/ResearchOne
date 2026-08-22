@@ -60,6 +60,22 @@ export const TOPIC_SEED_MAX_CHARS = 120;
 export const RETRIEVAL_QUERY_MAX_SHARED_PREFIX_RATIO = 0.5;
 
 /**
+ * …and too similar when they share more than this proportion of their tokens,
+ * wherever those tokens sit.
+ *
+ * A prefix test alone is only half the check. Anchoring the topic at the END
+ * of every query fixed the shared-preamble defect and moved the shared text
+ * somewhere the prefix test cannot see: two queries opening with different
+ * clauses passed while most of their embedded content was the identical topic
+ * suffix (Codex, #221). Overlap is a property of the whole string, so it is
+ * now measured over the whole string.
+ */
+export const RETRIEVAL_QUERY_MAX_TOKEN_OVERLAP = 0.6;
+
+/** Below this a query is too terse to stand alone and keeps its topic anchor. */
+export const SELF_SUFFICIENT_CLAUSE_MIN_CHARS = 48;
+
+/**
  * Below this, a shared prefix is coincidence rather than construction. Two
  * short queries both starting "How" should not trip the guard.
  */
@@ -86,13 +102,45 @@ export function commonPrefixLength(a: string, b: string): number {
   return i;
 }
 
-/** Whether two queries overlap enough to retrieve substantially the same chunks. */
+function significantTokens(text: string): Set<string> {
+  return new Set(
+    normalizeQueryText(text)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length > 2)
+  );
+}
+
+/** Jaccard overlap of the two queries' significant tokens. */
+export function tokenOverlapRatio(a: string, b: string): number {
+  const ta = significantTokens(a);
+  const tb = significantTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared += 1;
+  return shared / (ta.size + tb.size - shared);
+}
+
+/**
+ * Whether two queries overlap enough to retrieve substantially the same chunks.
+ *
+ * Two independent tests, because redundancy can sit anywhere in the string: a
+ * shared leading preamble, or a shared trailing anchor. Either alone is enough
+ * to make two embeddings land in the same place.
+ */
 export function queriesAreTooSimilar(a: string, b: string): boolean {
   const shared = commonPrefixLength(a, b);
-  if (shared < RETRIEVAL_QUERY_MIN_SHARED_PREFIX_CHARS) return false;
   const shorter = Math.min(a.length, b.length);
   if (shorter === 0) return false;
-  return shared / shorter > RETRIEVAL_QUERY_MAX_SHARED_PREFIX_RATIO;
+
+  if (
+    shared >= RETRIEVAL_QUERY_MIN_SHARED_PREFIX_CHARS
+    && shared / shorter > RETRIEVAL_QUERY_MAX_SHARED_PREFIX_RATIO
+  ) {
+    return true;
+  }
+
+  return tokenOverlapRatio(a, b) > RETRIEVAL_QUERY_MAX_TOKEN_OVERLAP;
 }
 
 /**
@@ -197,12 +245,17 @@ export function composeRetrievalQuery(
   topicSeed: string,
   maxChars: number = RETRIEVAL_QUERY_MAX_CHARS
 ): string {
-  const c = (clause ?? '').replace(/\s+/g, ' ').trim();
-  const t = (topicSeed ?? '').replace(/\s+/g, ' ').trim();
+  const c = normalizeQueryText(clause);
+  const t = normalizeQueryText(topicSeed);
   if (!c) return t.slice(0, maxChars);
   if (!t) return c.slice(0, maxChars);
   // Skip the anchor when the clause already carries the topic's words.
   if (c.toLowerCase().includes(t.toLowerCase())) return c.slice(0, maxChars);
+  // A clause with enough of its own content stands alone. Appending the same
+  // anchor to every query is what put the shared text in the suffix, where a
+  // prefix-only check could not see it — the cheapest fix for redundancy is
+  // not to create it (Codex, #221).
+  if (c.length >= SELF_SUFFICIENT_CLAUSE_MIN_CHARS) return c.slice(0, maxChars);
   return `${c} — ${t}`.slice(0, maxChars);
 }
 
@@ -234,36 +287,33 @@ export function enforceRetrievalQueryBudget(args: {
 
   const deduped = Array.from(new Set(capped));
 
-  let tooSimilar = false;
-  for (let i = 0; i < deduped.length && !tooSimilar; i += 1) {
-    for (let j = i + 1; j < deduped.length; j += 1) {
-      if (queriesAreTooSimilar(deduped[i]!, deduped[j]!)) {
-        tooSimilar = true;
-        break;
-      }
+  // Drop the redundant members, keep the rest.
+  //
+  // This used to discard EVERY planner query as soon as one pair overlapped,
+  // so a single duplicate could take an unrelated retrieval angle down with it
+  // and shrink evidence coverage (Codex, #221). Order is preserved and the
+  // first of an overlapping pair survives, so the result is deterministic.
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const query of deduped) {
+    if (kept.some((k) => queriesAreTooSimilar(k, query))) {
+      dropped.push(query);
+      continue;
     }
+    kept.push(query);
   }
 
-  if (tooSimilar) {
+  if (dropped.length > 0) {
     warnings.push(
-      `planner retrieval queries overlapped by more than ${Math.round(
-        RETRIEVAL_QUERY_MAX_SHARED_PREFIX_RATIO * 100
-      )}% of the shorter query; replaced with deterministic sub-question queries`
+      `dropped ${dropped.length} planner retrieval quer${dropped.length === 1 ? 'y' : 'ies'} `
+        + 'that duplicated another by more than the overlap budget'
     );
-    return {
-      queries: buildDeterministicRetrievalQueries({
-        subQuestions: args.subQuestions,
-        fallbackQuery: args.fallbackQuery,
-        maxChars: args.maxChars,
-      }),
-      warnings,
-    };
   }
 
   return {
     queries:
-      deduped.length > 0
-        ? deduped
+      kept.length > 0
+        ? kept
         : buildDeterministicRetrievalQueries({
             subQuestions: args.subQuestions,
             fallbackQuery: args.fallbackQuery,
