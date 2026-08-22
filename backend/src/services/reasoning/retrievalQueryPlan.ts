@@ -122,18 +122,61 @@ export function deriveTopicSeed(query: string, maxChars: number = TOPIC_SEED_MAX
 }
 
 /**
+ * The shortest run of text that can plausibly be a sentence rather than an
+ * abbreviation artefact. "Compare U.S" is 11 characters and names nothing.
+ */
+const MIN_SENTENCE_CHARS = 24;
+
+/**
+ * Tokens that end in a period without ending a sentence.
+ *
+ * Matched case-insensitively against the word immediately before a candidate
+ * boundary. Any single letter is also treated as an abbreviation, which is
+ * what makes "U.S." work: the boundary after "U." is preceded by "U", and the
+ * one after "S." by "S".
+ */
+const ABBREVIATIONS = new Set([
+  'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st',
+  'inc', 'ltd', 'co', 'corp', 'dept', 'est',
+  'eg', 'ie', 'etc', 'vs', 'cf', 'al', 'approx', 'fig', 'no', 'vol', 'ch', 'pp',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sept', 'sep', 'oct', 'nov', 'dec',
+]);
+
+/** Whether a candidate '.' at `index` is an abbreviation rather than a full stop. */
+function isAbbreviationBoundary(text: string, index: number): boolean {
+  if (text[index] !== '.') return false;
+  let start = index;
+  while (start > 0 && /[A-Za-z.]/.test(text[start - 1]!)) start -= 1;
+  const token = text.slice(start, index).replace(/\./g, '').toLowerCase();
+  if (!token) return false;
+  return token.length === 1 || ABBREVIATIONS.has(token);
+}
+
+/**
  * Take the first sentence, or failing that cut on a word boundary.
  *
  * Cutting mid-word or mid-clause leaves a fragment that embeds as noise; a
  * whole clause embeds as a topic.
+ *
+ * Abbreviations are skipped rather than treated as sentence ends. A naive
+ * /[.?!]\s/ made `deriveTopicSeed('Compare U.S. healthcare policy reforms…')`
+ * return "Compare U.S", and for a confirmed brief with no extracted artifacts
+ * or constraints the seed is the ONLY retrieval query — so the run would
+ * search on a fragment that omits its own subject (Codex, #221).
  */
 function trimToSentence(text: string, maxChars: number): string {
-  const normalized = text.replace(/\s+/g, ' ').trim();
+  const normalized = normalizeQueryText(text);
   if (!normalized) return '';
 
-  const sentenceEnd = normalized.search(/[.?!](?:\s|$)/);
-  if (sentenceEnd > 0 && sentenceEnd + 1 <= maxChars) {
-    return normalized.slice(0, sentenceEnd).trim();
+  const boundary = /[.?!](?:\s|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = boundary.exec(normalized)) !== null) {
+    const index = match.index;
+    if (isAbbreviationBoundary(normalized, index)) continue;
+    // Too short to be the subject — keep scanning rather than return a stub.
+    if (index < MIN_SENTENCE_CHARS) continue;
+    if (index + 1 > maxChars) break;
+    return normalized.slice(0, index).trim();
   }
 
   if (normalized.length <= maxChars) return normalized;

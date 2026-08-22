@@ -67,7 +67,6 @@ import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrch
 import { closePhase, openPhase } from './phaseTiming';
 import {
   RETRIEVAL_QUERY_MAX_CHARS,
-  buildDeterministicRetrievalQueries,
   composeRetrievalQuery,
   deriveTopicSeed,
   enforceRetrievalQueryBudget,

@@ -200,3 +200,38 @@ describe('whitespace cannot smuggle a duplicate past the guard', () => {
     expect(result.warnings.join(' ')).toMatch(/overlapped by more than/);
   });
 });
+
+describe('deriveTopicSeed: abbreviations are not sentence ends', () => {
+  // Codex, #221: for a confirmed brief with no extracted artifacts or
+  // constraints the seed is the ONLY retrieval query, so a fragment here
+  // makes the whole run search for the wrong thing.
+  it('keeps U.S. inside the sentence', () => {
+    expect(deriveTopicSeed('Compare U.S. healthcare policy reforms and their outcomes.')).toBe(
+      'Compare U.S. healthcare policy reforms and their outcomes'
+    );
+  });
+
+  it('handles a title abbreviation', () => {
+    expect(deriveTopicSeed("Summarise Dr. Kahneman's work on decision heuristics. Then rank it.")).toBe(
+      "Summarise Dr. Kahneman's work on decision heuristics"
+    );
+  });
+
+  it('handles e.g. mid-sentence', () => {
+    expect(
+      deriveTopicSeed('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search. Rank them.')
+    ).toBe('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search');
+  });
+
+  it('does not return an implausibly short stub', () => {
+    const seed = deriveTopicSeed('No. 5 reactor coolant loop failure modes and their detection.');
+    expect(seed.length).toBeGreaterThan(11);
+    expect(seed).toContain('coolant');
+  });
+
+  it('still finds a genuine sentence end', () => {
+    expect(deriveTopicSeed('Rank six RAG evaluation methods. Then compare them.')).toBe(
+      'Rank six RAG evaluation methods'
+    );
+  });
+});
