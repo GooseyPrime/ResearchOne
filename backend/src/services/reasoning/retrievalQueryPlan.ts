@@ -65,6 +65,20 @@ export const RETRIEVAL_QUERY_MAX_SHARED_PREFIX_RATIO = 0.5;
  */
 export const RETRIEVAL_QUERY_MIN_SHARED_PREFIX_CHARS = 24;
 
+/**
+ * Collapse whitespace runs and trim.
+ *
+ * Applied before dedup and before the similarity comparison, not merely for
+ * tidiness: `trim()` alone leaves `"a  b"` and `"a b"` as distinct Set members
+ * AND makes their shared prefix end at the first differing space, so a pair
+ * that embeds identically passes both the dedup and the diversity guard
+ * (Copilot, #221). Embeddings do not care about extra whitespace, so neither
+ * can the checks that decide whether two queries ask different things.
+ */
+export function normalizeQueryText(text: string): string {
+  return String(text ?? '').replace(/\s+/g, ' ').trim();
+}
+
 export function commonPrefixLength(a: string, b: string): number {
   const max = Math.min(a.length, b.length);
   let i = 0;
@@ -155,11 +169,11 @@ export function buildDeterministicRetrievalQueries(args: {
   maxChars: number;
 }): string[] {
   const seeded = args.subQuestions
-    .map((q) => q.replace(/^Q\d+\s*:\s*/i, '').trim())
+    .map((q) => normalizeQueryText(q.replace(/^Q\d+\s*:\s*/i, '')))
     .filter(Boolean)
     .map((q) => q.slice(0, args.maxChars));
   if (seeded.length > 0) return Array.from(new Set(seeded));
-  return [args.fallbackQuery.trim().slice(0, args.maxChars)].filter(Boolean);
+  return [normalizeQueryText(args.fallbackQuery).slice(0, args.maxChars)].filter(Boolean);
 }
 
 export function enforceRetrievalQueryBudget(args: {
@@ -169,7 +183,7 @@ export function enforceRetrievalQueryBudget(args: {
   maxChars: number;
 }): { queries: string[]; warnings: string[] } {
   const warnings: string[] = [];
-  const trimmed = args.retrievalQueries.map((q) => q.trim()).filter(Boolean);
+  const trimmed = args.retrievalQueries.map(normalizeQueryText).filter(Boolean);
   const capped = trimmed.map((q) => (q.length > args.maxChars ? q.slice(0, args.maxChars) : q));
   if (trimmed.some((q, idx) => q.length !== capped[idx]!.length)) {
     warnings.push(`planner retrieval query exceeded ${args.maxChars} chars; truncated`);

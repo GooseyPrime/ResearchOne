@@ -5,6 +5,7 @@ import {
   composeRetrievalQuery,
   deriveTopicSeed,
   enforceRetrievalQueryBudget,
+  normalizeQueryText,
   queriesAreTooSimilar,
 } from '../services/reasoning/retrievalQueryPlan';
 
@@ -155,5 +156,47 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
     expect(result.queries).toEqual(['first angle', 'second angle']);
+  });
+});
+
+describe('normalizeQueryText', () => {
+  it('collapses whitespace runs, including newlines and tabs', () => {
+    expect(normalizeQueryText('  RAG   evaluation\n\tmethods  ')).toBe('RAG evaluation methods');
+  });
+
+  it('survives null-ish input', () => {
+    expect(normalizeQueryText('')).toBe('');
+  });
+});
+
+describe('whitespace cannot smuggle a duplicate past the guard', () => {
+  // Copilot, #221: `trim()` alone left "a  b" and "a b" as distinct Set
+  // members, and made their shared prefix end at the first differing space —
+  // so a pair that embeds identically passed both the dedup and the guard.
+  const base = 'Six distinct RAG evaluation methods, each presented with a comparison table';
+
+  it('dedupes queries differing only by internal whitespace', () => {
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [base, base.replace(/ /g, '  '), `\n  ${base}\t`],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: 'RAG evaluation',
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toEqual([base]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('still measures similarity on the normalized text', () => {
+    const padded = `${base}  and  more`.replace(/ /g, '   ');
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [base, padded],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: 'RAG evaluation',
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    // Normalized, these share the whole of the shorter one — caught, not passed.
+    expect(result.warnings.join(' ')).toMatch(/overlapped by more than/);
   });
 });
