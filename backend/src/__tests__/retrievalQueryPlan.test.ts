@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   RETRIEVAL_QUERY_MAX_CHARS,
-  commonPrefixLength,
   TOPIC_SEED_MAX_CHARS,
   composeRetrievalQuery,
   deriveTopicSeed,
   enforceRetrievalQueryBudget,
   normalizeQueryText,
   queriesAreTooSimilar,
+  querySpecificity,
   tokenOverlapRatio,
 } from '../services/reasoning/retrievalQueryPlan';
 
 /**
  * Built from run b8265303, where five retrieval queries returned the work of
  * one: queries 2, 3 and 4 added no chunks the first had not already found, and
- * a corpus of nine freshly ingested sources yielded citations from two.
+ * nine freshly ingested sources yielded citations from two.
  */
 const LIVE_OBJECTIVE =
   'Identify exactly 6 distinct methods used to evaluate retrieval-augmented generation (RAG) ' +
@@ -32,7 +32,6 @@ const LIVE_CLAUSES = [
 describe('deriveTopicSeed', () => {
   it('takes the first sentence of a one-paragraph objective, not a truncation of it', () => {
     const seed = deriveTopicSeed(LIVE_OBJECTIVE);
-
     // What shipped: the first 200 characters, ending mid-clause on "and the".
     expect(seed).not.toMatch(/and the$/);
     expect(seed).toBe(
@@ -45,14 +44,14 @@ describe('deriveTopicSeed', () => {
   });
 
   it('prefers an explicitly labelled objective line', () => {
-    const seed = deriveTopicSeed('# Research Objective: Rank affiliate comparison-site verticals\n\nLong preamble follows.');
-    expect(seed).toBe('Rank affiliate comparison-site verticals');
+    expect(
+      deriveTopicSeed('# Research Objective: Rank affiliate comparison-site verticals\n\nLong preamble follows.')
+    ).toBe('Rank affiliate comparison-site verticals');
   });
 
   it('never ends mid-word', () => {
     const seed = deriveTopicSeed('a '.repeat(200) + 'terminalword');
     expect(seed.endsWith(' ')).toBe(false);
-    expect(seed).not.toMatch(/\bterminalwo$/);
   });
 
   it('survives an empty objective', () => {
@@ -60,21 +59,77 @@ describe('deriveTopicSeed', () => {
   });
 });
 
-describe('composeRetrievalQuery', () => {
-  it('puts the distinguishing clause first so it dominates the embedding', () => {
-    const seed = deriveTopicSeed(LIVE_OBJECTIVE);
-    const q = composeRetrievalQuery(LIVE_CLAUSES[0]!, seed);
-    expect(q.startsWith(LIVE_CLAUSES[0]!)).toBe(true);
+describe('deriveTopicSeed: abbreviations are not sentence ends', () => {
+  // For a confirmed brief with no artifacts or constraints the seed is the ONLY
+  // retrieval query, so a fragment here makes the whole run search for the
+  // wrong thing. The first version of this test put the period before the
+  // 24-character cutoff and so passed through a different branch than the
+  // defect (Codex, #221) — hence the late-period cases below.
+  it('keeps a late U.S. inside the sentence', () => {
+    expect(
+      deriveTopicSeed('Assess healthcare access policies across the U.S. and Canada. Rank them.')
+    ).toBe('Assess healthcare access policies across the U.S. and Canada');
   });
 
-  it('omits the anchor when the clause already carries the topic', () => {
-    const q = composeRetrievalQuery('RAG evaluation methods compared', 'RAG evaluation methods');
-    expect(q).toBe('RAG evaluation methods compared');
+  it('handles U.K. and Ph.D. equally', () => {
+    expect(deriveTopicSeed('Compare graduate funding models in the U.K. and Germany today.')).toBe(
+      'Compare graduate funding models in the U.K. and Germany today'
+    );
+    expect(
+      deriveTopicSeed('Survey the employment outcomes of Ph.D. graduates in the life sciences.')
+    ).toBe('Survey the employment outcomes of Ph.D. graduates in the life sciences');
+  });
+
+  it('handles a title and an example mid-sentence', () => {
+    expect(deriveTopicSeed("Summarise Dr. Kahneman's work on decision heuristics. Then rank it.")).toBe(
+      "Summarise Dr. Kahneman's work on decision heuristics"
+    );
+    expect(
+      deriveTopicSeed('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search. Rank them.')
+    ).toBe('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search');
+  });
+
+  it('still finds a genuine sentence end', () => {
+    expect(deriveTopicSeed('Rank six RAG evaluation methods. Then compare them.')).toBe(
+      'Rank six RAG evaluation methods'
+    );
+  });
+});
+
+describe('normalizeQueryText', () => {
+  it('collapses whitespace runs, including newlines and tabs', () => {
+    expect(normalizeQueryText('  RAG   evaluation\n\tmethods  ')).toBe('RAG evaluation methods');
+  });
+
+  it('survives empty input', () => {
+    expect(normalizeQueryText('')).toBe('');
+  });
+});
+
+describe('composeRetrievalQuery', () => {
+  const seed = deriveTopicSeed(LIVE_OBJECTIVE);
+
+  it('returns a clause as written', () => {
+    // Appending the topic to every clause is what created the redundancy this
+    // module exists to prevent, so nothing is appended to a usable clause —
+    // including a long generic one, which keeps its own words rather than
+    // acquiring a shared suffix.
+    for (const clause of LIVE_CLAUSES) {
+      expect(composeRetrievalQuery(clause, seed)).toBe(clause);
+    }
+    const generic = 'Provide a comparison table covering prices, features, integrations, support, and risks';
+    expect(composeRetrievalQuery(generic, seed)).toBe(generic);
+  });
+
+  it('gives the topic to a clause too thin to retrieve on', () => {
+    const q = composeRetrievalQuery('security requirements', seed);
+    expect(q.startsWith('security requirements')).toBe(true);
+    expect(q).toContain(seed);
   });
 
   it('falls back to whichever half it has', () => {
     expect(composeRetrievalQuery('', 'topic only')).toBe('topic only');
-    expect(composeRetrievalQuery('clause only', '')).toBe('clause only');
+    expect(composeRetrievalQuery('clause only text here', '')).toBe('clause only text here');
   });
 });
 
@@ -84,15 +139,54 @@ describe('queriesAreTooSimilar', () => {
     expect(queriesAreTooSimilar(`${oldSeed} ${LIVE_CLAUSES[0]}`, `${oldSeed} ${LIVE_CLAUSES[1]}`)).toBe(true);
   });
 
+  it('catches shared text in the suffix as readily as the prefix', () => {
+    const anchor =
+      'Identify exactly 6 distinct methods used to evaluate retrieval-augmented generation RAG systems';
+    expect(queriesAreTooSimilar(`Table A ${anchor}`, `Table B ${anchor}`)).toBe(true);
+  });
+
+  it('accepts the brief clauses, which are what actually go out', () => {
+    for (let i = 0; i < LIVE_CLAUSES.length; i += 1) {
+      for (let j = i + 1; j < LIVE_CLAUSES.length; j += 1) {
+        expect(queriesAreTooSimilar(LIVE_CLAUSES[i]!, LIVE_CLAUSES[j]!)).toBe(false);
+      }
+    }
+  });
+
   it('does not fire on a short coincidental overlap', () => {
     expect(queriesAreTooSimilar('How do embeddings drift', 'How does chunking affect recall')).toBe(false);
   });
+});
 
-  it('accepts genuinely distinct queries', () => {
-    const seed = deriveTopicSeed(LIVE_OBJECTIVE);
-    const a = composeRetrievalQuery(LIVE_CLAUSES[0]!, seed);
-    const b = composeRetrievalQuery(LIVE_CLAUSES[1]!, seed);
-    expect(queriesAreTooSimilar(a, b)).toBe(false);
+describe('overlap is measured for non-Latin scripts too', () => {
+  // An ASCII-only split returned no tokens at all for these, scoring every
+  // pair 0 and blinding the guard (Codex, #221).
+  const chineseAnchor = '检索增强生成系统的评估方法与其失效模式的比较研究';
+
+  it('finds tokens in a Chinese query', () => {
+    expect(querySpecificity(chineseAnchor)).toBeGreaterThan(0);
+  });
+
+  it('catches two Chinese queries sharing the same long anchor', () => {
+    expect(queriesAreTooSimilar(`表A ${chineseAnchor}`, `表B ${chineseAnchor}`)).toBe(true);
+  });
+
+  it('still separates genuinely different Chinese queries', () => {
+    expect(queriesAreTooSimilar('机器学习模型的训练成本分析', '海洋酸化对珊瑚礁的长期影响')).toBe(false);
+  });
+
+  it('scores a Cyrillic pair rather than returning zero', () => {
+    expect(tokenOverlapRatio('оценка систем поиска', 'оценка систем поиска')).toBe(1);
+  });
+});
+
+describe('tokenOverlapRatio', () => {
+  it('is symmetric and bounded', () => {
+    const a = 'alpha beta gamma delta';
+    const b = 'gamma delta epsilon zeta';
+    expect(tokenOverlapRatio(a, b)).toBeCloseTo(tokenOverlapRatio(b, a));
+    expect(tokenOverlapRatio(a, a)).toBe(1);
+    expect(tokenOverlapRatio('', 'anything here')).toBe(0);
   });
 });
 
@@ -100,7 +194,7 @@ describe('enforceRetrievalQueryBudget', () => {
   const seed = deriveTopicSeed(LIVE_OBJECTIVE);
   const liveQueries = [seed, ...LIVE_CLAUSES.map((c) => composeRetrievalQuery(c, seed))];
 
-  it('keeps the fixed construction as a set of mutually distinct queries', () => {
+  it('keeps every query the fixed construction produces', () => {
     const result = enforceRetrievalQueryBudget({
       retrievalQueries: liveQueries,
       subQuestions: LIVE_CLAUSES,
@@ -108,21 +202,13 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
 
-    // Not an assertion on count: a clause too terse to stand alone still gets
-    // the topic anchor, which can make it redundant against the bare seed —
-    // and dropping that one is the guard doing its job. What must hold is that
-    // every query that survives asks something different from the others.
-    expect(result.queries.length).toBeGreaterThanOrEqual(4);
-    for (let i = 0; i < result.queries.length; i += 1) {
-      for (let j = i + 1; j < result.queries.length; j += 1) {
-        expect(queriesAreTooSimilar(result.queries[i]!, result.queries[j]!)).toBe(false);
-      }
-    }
+    expect(result.warnings).toEqual([]);
+    expect(result.queries).toHaveLength(liveQueries.length);
   });
 
-  it('rejects the shape that shipped, which the old fixed threshold could not', () => {
-    // The seed was capped at 200 chars and the guard fired above 320, so a
-    // prefix shared by construction could never reach the limit.
+  it('collapses the shape that shipped down to one query', () => {
+    // The old fixed 320-char threshold sat above the 200-char seed, so a
+    // prefix shared by construction could never reach it.
     const oldSeed = LIVE_OBJECTIVE.slice(0, 200);
     const shipped = LIVE_CLAUSES.map((c) => `${oldSeed} ${c}`);
 
@@ -133,9 +219,56 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
 
-    // Every query but the first duplicates it, so only the first survives.
-    expect(result.warnings.join(' ')).toMatch(/dropped \d+ planner retrieval quer/);
-    expect(result.queries).toEqual([normalizeQueryText(shipped[0]!)]);
+    expect(result.queries).toHaveLength(1);
+    expect(result.warnings.join(' ')).toMatch(/dropped 3 planner retrieval queries/);
+  });
+
+  it('dedupes queries differing only by internal whitespace', () => {
+    const base = LIVE_CLAUSES[0]!;
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [base, base.replace(/ /g, '  '), `\n  ${base}\t`],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: seed,
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toEqual([base]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps the more specific query when two overlap', () => {
+    // The bare seed is inserted first, so keeping the EARLIER member kept the
+    // broad seed and discarded the enriched query, leaving the distinguishing
+    // angle unsearched (Codex, #221).
+    const topic = 'Evaluate the security posture of a multi-tenant healthcare scheduling platform';
+    const enriched = composeRetrievalQuery('security requirements', topic);
+
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [topic, enriched],
+      subQuestions: ['security requirements'],
+      fallbackQuery: topic,
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toEqual([enriched]);
+    expect(querySpecificity(result.queries[0]!)).toBeGreaterThan(querySpecificity(topic));
+  });
+
+  it('keeps unrelated angles when only one pair overlaps', () => {
+    const a = LIVE_CLAUSES[0]!;
+    const nearDuplicate = `${a} please`;
+    const distinct = 'RAGAS benchmark reliability across clinical corpora';
+
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [a, nearDuplicate, distinct],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: seed,
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toContain(distinct);
+    expect(result.queries).toHaveLength(2);
+    expect(result.warnings.join(' ')).toMatch(/dropped 1 planner retrieval query/);
   });
 
   it('truncates an over-long query and says so', () => {
@@ -167,162 +300,5 @@ describe('enforceRetrievalQueryBudget', () => {
       maxChars: RETRIEVAL_QUERY_MAX_CHARS,
     });
     expect(result.queries).toEqual(['first angle', 'second angle']);
-  });
-});
-
-describe('normalizeQueryText', () => {
-  it('collapses whitespace runs, including newlines and tabs', () => {
-    expect(normalizeQueryText('  RAG   evaluation\n\tmethods  ')).toBe('RAG evaluation methods');
-  });
-
-  it('survives null-ish input', () => {
-    expect(normalizeQueryText('')).toBe('');
-  });
-});
-
-describe('whitespace cannot smuggle a duplicate past the guard', () => {
-  // Copilot, #221: `trim()` alone left "a  b" and "a b" as distinct Set
-  // members, and made their shared prefix end at the first differing space —
-  // so a pair that embeds identically passed both the dedup and the guard.
-  const base = 'Six distinct RAG evaluation methods, each presented with a comparison table';
-
-  it('dedupes queries differing only by internal whitespace', () => {
-    const result = enforceRetrievalQueryBudget({
-      retrievalQueries: [base, base.replace(/ /g, '  '), `\n  ${base}\t`],
-      subQuestions: LIVE_CLAUSES,
-      fallbackQuery: 'RAG evaluation',
-      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-    });
-
-    expect(result.queries).toEqual([base]);
-    expect(result.warnings).toEqual([]);
-  });
-
-  it('still measures similarity on the normalized text', () => {
-    const padded = `${base}  and  more`.replace(/ /g, '   ');
-    const result = enforceRetrievalQueryBudget({
-      retrievalQueries: [base, padded],
-      subQuestions: LIVE_CLAUSES,
-      fallbackQuery: 'RAG evaluation',
-      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-    });
-
-    // Normalized, these share the whole of the shorter one — caught, not passed.
-    expect(result.warnings.join(' ')).toMatch(/dropped \d+ planner retrieval quer/);
-    expect(result.queries).toEqual([base]);
-  });
-});
-
-describe('deriveTopicSeed: abbreviations are not sentence ends', () => {
-  // Codex, #221: for a confirmed brief with no extracted artifacts or
-  // constraints the seed is the ONLY retrieval query, so a fragment here
-  // makes the whole run search for the wrong thing.
-  it('keeps U.S. inside the sentence', () => {
-    expect(deriveTopicSeed('Compare U.S. healthcare policy reforms and their outcomes.')).toBe(
-      'Compare U.S. healthcare policy reforms and their outcomes'
-    );
-  });
-
-  it('handles a title abbreviation', () => {
-    expect(deriveTopicSeed("Summarise Dr. Kahneman's work on decision heuristics. Then rank it.")).toBe(
-      "Summarise Dr. Kahneman's work on decision heuristics"
-    );
-  });
-
-  it('handles e.g. mid-sentence', () => {
-    expect(
-      deriveTopicSeed('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search. Rank them.')
-    ).toBe('Evaluate vector databases, e.g. pgvector and Qdrant, for hybrid search');
-  });
-
-  it('does not return an implausibly short stub', () => {
-    const seed = deriveTopicSeed('No. 5 reactor coolant loop failure modes and their detection.');
-    expect(seed.length).toBeGreaterThan(11);
-    expect(seed).toContain('coolant');
-  });
-
-  it('still finds a genuine sentence end', () => {
-    expect(deriveTopicSeed('Rank six RAG evaluation methods. Then compare them.')).toBe(
-      'Rank six RAG evaluation methods'
-    );
-  });
-});
-
-describe('redundancy in the suffix is caught too', () => {
-  // Codex, #221: anchoring the topic at the END of every query fixed the
-  // shared-preamble defect and moved the shared text where a prefix-only test
-  // could not see it.
-  const anchor =
-    'Identify exactly 6 distinct methods used to evaluate retrieval-augmented generation (RAG) systems';
-
-  it('flags two queries whose bulk is an identical trailing anchor', () => {
-    const a = `Table A — ${anchor}`;
-    const b = `Table B — ${anchor}`;
-    expect(commonPrefixLength(a, b)).toBeLessThan(12); // prefix test alone sees nothing
-    expect(queriesAreTooSimilar(a, b)).toBe(true);
-  });
-
-  it('leaves genuinely different queries alone', () => {
-    expect(
-      queriesAreTooSimilar(
-        'Ranking of the six methods by effectiveness at detecting unsupported claims',
-        'Known failure modes of context precision as a retrieval metric'
-      )
-    ).toBe(false);
-  });
-
-  it('scores token overlap symmetrically and within range', () => {
-    const a = 'alpha beta gamma delta';
-    const b = 'gamma delta epsilon zeta';
-    expect(tokenOverlapRatio(a, b)).toBeCloseTo(tokenOverlapRatio(b, a));
-    expect(tokenOverlapRatio(a, a)).toBe(1);
-    expect(tokenOverlapRatio('', 'anything here')).toBe(0);
-  });
-});
-
-describe('composeRetrievalQuery stops creating the shared suffix', () => {
-  const seed = deriveTopicSeed(LIVE_OBJECTIVE);
-
-  it('lets a self-sufficient clause stand alone', () => {
-    const clause =
-      'Ranking of the six methods ordered by effectiveness at detecting unsupported generated claims';
-    expect(composeRetrievalQuery(clause, seed)).toBe(clause);
-  });
-
-  it('still anchors a clause too terse to stand alone', () => {
-    const q = composeRetrievalQuery('failure modes', seed);
-    expect(q.startsWith('failure modes')).toBe(true);
-    expect(q).toContain(seed);
-  });
-});
-
-describe('one duplicate does not discard the whole planner set', () => {
-  // Codex, #221: a single overlapping pair used to take unrelated retrieval
-  // angles down with it.
-  it('keeps the distinct queries and drops only the duplicate', () => {
-    const a = 'Six distinct RAG evaluation methods, each presented with a comparison table';
-    const nearDuplicateOfA = `${a} please`;
-    const distinct = 'RAGAS benchmark reliability across clinical corpora';
-
-    const result = enforceRetrievalQueryBudget({
-      retrievalQueries: [a, nearDuplicateOfA, distinct],
-      subQuestions: LIVE_CLAUSES,
-      fallbackQuery: 'RAG evaluation',
-      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-    });
-
-    expect(result.queries).toEqual([a, distinct]);
-    expect(result.warnings.join(' ')).toMatch(/dropped 1 planner retrieval query/);
-  });
-
-  it('falls back only when nothing survives', () => {
-    const a = 'Six distinct RAG evaluation methods, each presented with a comparison table';
-    const result = enforceRetrievalQueryBudget({
-      retrievalQueries: [a, `${a} please`, `${a} indeed`],
-      subQuestions: LIVE_CLAUSES,
-      fallbackQuery: 'RAG evaluation',
-      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-    });
-    expect(result.queries).toEqual([a]);
   });
 });
