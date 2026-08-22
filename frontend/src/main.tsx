@@ -39,9 +39,9 @@ if (import.meta.env.PROD && !String(clerkPublishableKey).trim()) {
       'Sign-in will not work. Set it in the Vercel project and redeploy.'
   );
 } else if (import.meta.env.PROD && String(clerkPublishableKey).trim().startsWith('pk_test_')) {
-  console.warn(
-    '[ResearchOne] This build uses a Clerk DEVELOPMENT instance key (pk_test_*). ' +
-      'Expected for preview deploys; never correct for researchone.io.'
+  console.info(
+    '[ResearchOne] Auth is served by a Clerk development instance (pk_test_*). ' +
+      'This is the current, deliberate configuration while on Clerk’s free plan.'
   );
 }
 
