@@ -331,26 +331,26 @@ const config = {
 
   /** Optional: publish full reports to GitHub for thenewontology.life Featured Reports workflow */
   featuredReportGithub: {
+    // No NODE_ENV-conditional defaults. A publishing target must be configured
+    // explicitly in every mode: defaulting to a real owner/repo outside
+    // production meant a developer machine silently wired the Featured Reports
+    // publisher to a live property, and made `development` behave differently
+    // from `production` in a way nothing surfaced.
     token: process.env.FEATURED_REPORT_GITHUB_TOKEN || '',
-    owner:
-      (process.env.FEATURED_REPORT_GITHUB_OWNER || '').trim() ||
-      (rawNodeEnv === 'production' ? '' : 'GooseyPrime'),
-    repo:
-      (process.env.FEATURED_REPORT_GITHUB_REPO || '').trim() ||
-      (rawNodeEnv === 'production' ? '' : 'newontology'),
+    owner: (process.env.FEATURED_REPORT_GITHUB_OWNER || '').trim(),
+    repo: (process.env.FEATURED_REPORT_GITHUB_REPO || '').trim(),
     path: process.env.FEATURED_REPORT_GITHUB_PATH || 'content/featured-reports/latest.md',
     branch: process.env.FEATURED_REPORT_GITHUB_BRANCH || 'main',
   },
 
   /** Optional: open GitHub Issues for terminal run errors so agents can triage and respond */
   errorReportGithub: {
+    // Same rule as featuredReportGithub: configure it or it stays off. An
+    // unconfigured non-production process must not file issues against a real
+    // repository just because NODE_ENV happened not to say "production".
     token: process.env.ERROR_REPORT_GITHUB_TOKEN || '',
-    owner:
-      (process.env.ERROR_REPORT_GITHUB_OWNER || '').trim() ||
-      (rawNodeEnv === 'production' ? '' : 'GooseyPrime'),
-    repo:
-      (process.env.ERROR_REPORT_GITHUB_REPO || '').trim() ||
-      (rawNodeEnv === 'production' ? '' : 'ResearchOne'),
+    owner: (process.env.ERROR_REPORT_GITHUB_OWNER || '').trim(),
+    repo: (process.env.ERROR_REPORT_GITHUB_REPO || '').trim(),
   },
 
   admin: {

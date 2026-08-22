@@ -174,6 +174,39 @@ function summarizeCorpusGateDecisions(decisions: Array<Record<string, unknown>>)
   };
 }
 
+const RETRIEVAL_QUERY_MAX_CHARS = 512;
+const RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS = 320;
+const TOPIC_SEED_MAX_CHARS = 200;
+
+/**
+ * A long research objective is a specification, not a search query.
+ *
+ * Embedding a multi-thousand-character objective produces a centroid that is
+ * close to nothing in particular, and the hybrid search's keyword arm receives
+ * the whole document as one "keyword". That is how a 16 KB retrieval query
+ * returns zero chunks from a corpus of ~98,000 embedded chunks.
+ *
+ * Reduce the objective to the shortest text that still names the subject: the
+ * first substantive line, with markdown scaffolding and any leading
+ * "Research Objective:"-style label removed. Callers combine this seed with a
+ * requested artifact or constraint to produce short, DISTINCT queries — never
+ * by prefixing the entire objective, which makes every query identical for the
+ * first several thousand characters.
+ */
+function deriveTopicSeed(query: string, maxChars: number = TOPIC_SEED_MAX_CHARS): string {
+  const lines = String(query ?? '')
+    .split('\n')
+    .map((line) => line.replace(/[#*_`>]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const labelled = /^(?:research objective|objective|goal|task|title)\s*[:\-\u2013]\s*(.+)$/i;
+  for (const line of lines) {
+    const match = labelled.exec(line);
+    const candidate = (match?.[1] ?? line).trim();
+    if (candidate.length >= 12) return candidate.slice(0, maxChars).trim();
+  }
+  return String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}
+
 function commonPrefixLength(a: string, b: string): number {
   const max = Math.min(a.length, b.length);
   let i = 0;
@@ -187,7 +220,7 @@ function buildDeterministicRetrievalQueries(args: {
   maxChars: number;
 }): string[] {
   const seeded = args.subQuestions
-    .map((q) => q.trim())
+    .map((q) => q.replace(/^Q\d+\s*:\s*/i, '').trim())
     .filter(Boolean)
     .map((q) => q.slice(0, args.maxChars));
   if (seeded.length > 0) return Array.from(new Set(seeded));
@@ -488,24 +521,35 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   supplemental?: string;
   isAdjudicative: boolean;
 }): ResearchPlan {
-  const baseQueries = new Set<string>([args.query]);
+  // The objective itself is never a retrieval query — see deriveTopicSeed.
+  const topicSeed = deriveTopicSeed(args.query);
+  const baseQueries = new Set<string>([topicSeed]);
   const artifactQueries = (args.brief?.requestedArtifacts ?? [])
     .map((artifact) => artifact.description?.trim())
     .filter((value): value is string => Boolean(value));
   const constraintQueries = (args.brief?.userConstraints ?? [])
     .map((constraint) => constraint.description?.trim())
     .filter((value): value is string => Boolean(value));
-  if (args.supplemental?.trim()) baseQueries.add(args.supplemental.trim());
-  for (const query of artifactQueries) baseQueries.add(`${args.query} ${query}`);
-  for (const query of constraintQueries) baseQueries.add(`${args.query} ${query}`);
+  if (args.supplemental?.trim()) {
+    baseQueries.add(args.supplemental.trim().slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
+  for (const query of artifactQueries) {
+    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
+  for (const query of constraintQueries) {
+    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+  }
 
-  const plannedQueries = normalizeRetrievalQueries(Array.from(baseQueries), args.query).slice(0, 12);
+  const plannedQueries = normalizeRetrievalQueries(Array.from(baseQueries), topicSeed).slice(0, 12);
   const retrievalGuard = enforceRetrievalQueryBudget({
     retrievalQueries: plannedQueries,
-    subQuestions: plannedQueries,
-    fallbackQuery: args.query,
-    maxChars: 512,
-    maxSharedPrefixChars: 320,
+    // Diversity fallback must draw on the requested artifacts and constraints,
+    // not on the planned queries it is replacing — seeding it with its own
+    // input is what made the previous guard a no-op.
+    subQuestions: [...artifactQueries, ...constraintQueries],
+    fallbackQuery: topicSeed,
+    maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
   });
   const retrievalQueries = retrievalGuard.queries;
   const subQuestions = retrievalQueries.map((query, index) => `Q${index + 1}: ${query}`);
@@ -517,7 +561,7 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   ];
 
   return {
-    sub_questions: subQuestions.length > 0 ? subQuestions : [args.query],
+    sub_questions: subQuestions.length > 0 ? subQuestions : [topicSeed],
     retrieval_queries: retrievalQueries.length > 0 ? retrievalQueries : [args.query],
     ...(args.isAdjudicative && {
       hypothesis: args.query,
@@ -1324,10 +1368,10 @@ async function runResearchJobInner(
     // Coerce every required field into the expected shape with safe fallbacks
     // so downstream readers (saveReport, buildReaderFrontMatter, prompts)
     // never see undefined.
-    plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, researchQuery);
+    plan.retrieval_queries = normalizeRetrievalQueries(plan.retrieval_queries, deriveTopicSeed(researchQuery));
     plan.sub_questions = Array.isArray(plan.sub_questions) && plan.sub_questions.length > 0
       ? plan.sub_questions.map((q) => String(q))
-      : [researchQuery];
+      : [deriveTopicSeed(researchQuery)];
     // hypothesis and falsification_criteria are only required for adjudicative
     // intents — descriptive/discovery intents omit them intentionally.
     if (isAdjudicative) {
@@ -1478,9 +1522,9 @@ async function runResearchJobInner(
       const retrievalGuard = enforceRetrievalQueryBudget({
         retrievalQueries: plan.retrieval_queries.slice(0, 5),
         subQuestions: plan.sub_questions,
-        fallbackQuery: researchQuery,
-        maxChars: 512,
-        maxSharedPrefixChars: 320,
+        fallbackQuery: deriveTopicSeed(researchQuery),
+        maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
       });
       const retrievalQueries = retrievalGuard.queries;
       if (retrievalGuard.warnings.length > 0) {
@@ -1836,9 +1880,9 @@ async function runResearchJobInner(
       const rediscoveryQueryGuard = enforceRetrievalQueryBudget({
         retrievalQueries: plan.retrieval_queries.slice(0, 5),
         subQuestions: plan.sub_questions,
-        fallbackQuery: researchQuery,
-        maxChars: 512,
-        maxSharedPrefixChars: 320,
+        fallbackQuery: deriveTopicSeed(researchQuery),
+        maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
       });
       for (const rq of rediscoveryQueryGuard.queries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
@@ -2110,6 +2154,11 @@ async function runResearchJobInner(
       });
       generatedReport = iterativeReport;
       plannedItemTitles = iterativeReport.plannedItemTitles;
+      // Synthesis is the largest phase of a run. Without this, `model_log` —
+      // and therefore the Run Summary's MODEL USAGE table and token totals —
+      // omitted `outline_architect`, every `section_drafter` call, the
+      // challenger and the synthesis-time `coherence_refiner` entirely.
+      modelLog.push(...iterativeReport.modelCalls);
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });

@@ -64,6 +64,17 @@ function deriveSourceOrigin(
     return normalizedMetadata as 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url';
   }
   const normalizedImportedVia = (importedVia ?? '').trim().toLowerCase();
+  // `imported_via` has exactly four writers. All four must map, or the origin
+  // silently becomes null and every rule keyed on it turns into a no-op:
+  //   discoveryOrchestrator          -> 'autonomous_discovery'
+  //   ingestion routes / supplemental -> 'manual_upload' | 'manual_url'
+  //   corpus sync                     -> 'corpus_sync'
+  // `autonomous_discovery` is the dominant value in a live corpus: it is an
+  // arXiv or PubMed paper that discovery fetched. That is INDEPENDENT external
+  // evidence, whichever user happened to be signed in when it was fetched.
+  // Only `corpus_sync` — ResearchOne re-ingesting its own output — is a self
+  // source, which is the distinction Rule 40's self_source_share exists to make.
+  if (normalizedImportedVia === 'autonomous_discovery') return 'external_discovery';
   if (normalizedImportedVia === 'manual_upload') return 'user_upload';
   if (normalizedImportedVia === 'manual_url') return 'user_supplied_url';
   if (normalizedImportedVia === 'corpus_sync') return 'researchone_generated';

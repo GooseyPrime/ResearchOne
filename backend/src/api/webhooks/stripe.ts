@@ -291,6 +291,49 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
   logger.info('stripe_invoice_payment_failed_flagged', { eventId, subscriptionId });
 };
 
+/**
+ * Event routing, by what the customer actually bought.
+ *
+ * ResearchOne sells three distinct things through Stripe and they settle through
+ * different events. Conflating them is how a payment "succeeds" while a balance
+ * never moves.
+ *
+ * 1. RECURRING SUBSCRIPTIONS (Checkout `mode: 'subscription'`)
+ *    Buys: a tier, whose entitlements are evaluated live on every request.
+ *    There is no balance to increment — the tier IS the entitlement.
+ *    Settles via: `checkout.session.completed` (initial),
+ *    `customer.subscription.created|updated|deleted` (lifecycle),
+ *    `invoice.payment_succeeded|failed` (renewal health).
+ *    Ongoing obligation: active status must be MONITORED. A subscription lapses
+ *    without any user action — card expiry, dispute, dunning — so the tier must
+ *    be revoked on `deleted` and flagged on `payment_failed`.
+ *    100%-OFF COUPONS: a fully discounted subscription produces a $0 invoice
+ *    with NO PaymentIntent and NO charge. `checkout.session.completed` still
+ *    fires and tier sync still works, but any handler keyed on a non-null
+ *    `payment_intent` will not run. A coupon-only test therefore proves tier
+ *    sync and proves NOTHING about (2) or (3) below.
+ *
+ * 2. WALLET TOP-UPS (Checkout `mode: 'payment'`)
+ *    Buys: prepaid credit, held as a ledger balance and DEBITED INTERNALLY as
+ *    the user consumes paid features — run add-ons (Devil's Advocate Review,
+ *    Parallel Search, Parallel Extract, Smart Citations) and any per-run
+ *    surcharge the tier does not already cover.
+ *    Settles via: `checkout.session.completed` only, through
+ *    `creditWalletFromCheckoutSession`.
+ *    Ongoing obligation: none from Stripe. Once credited, the balance is ours to
+ *    debit, so correctness rests entirely on the credit landing exactly once —
+ *    hence the idempotency guard in `dispatchWebhookEvent`.
+ *
+ * 3. MONITOR TOKEN PACKAGES (Checkout `mode: 'payment'`)
+ *    Buys: a countable quantity of monitor tokens, credited like (2) but drawn
+ *    down by monitor scheduling rather than by run add-ons.
+ *    Settles via: `checkout.session.completed` through
+ *    `creditMonitorTokensFromCheckoutSession`.
+ *
+ * Practical consequence: (1) is verified by watching subscription state over
+ * time; (2) and (3) are verified by asserting the ledger moved by the expected
+ * amount exactly once. Testing (1) does not test (2) or (3).
+ */
 const STRIPE_EVENT_HANDLERS: Record<string, WebhookEventHandler<StripeEventData>> = {
   'checkout.session.completed': handleCheckoutSessionCompleted,
   'customer.subscription.created': handleSubscriptionCreatedOrUpdated,

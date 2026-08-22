@@ -221,6 +221,17 @@ export function contractRequestsTable(
 
 export const TABLE_FORMATTING_RULES = `
 Markdown table rules (MANDATORY when you emit a table):
+- Use GitHub-Flavored Markdown pipe syntax: a header row, then a separator row
+  of dashes, then one row per line. NEVER separate columns with middle dots (·),
+  bullets, tabs, slashes, or any other character — even when the request or the
+  requested column list is written that way. A run of "A · B · C" lines is not a
+  table and renders as one unreadable paragraph.
+- Never emit a continuation placeholder in place of rows. Bracketed notes such as
+  "[rows 6-20 follow the same structure]" or "[remaining items omitted]" are draft
+  artifacts, not deliverable content. Emit every row you were asked for, or state
+  plainly which rows you could not produce and why.
+- Keep the table to at most 8 columns. If more fields are required, split into two
+  tables joined by the identifier column and label each one.
 - One row per line. A row must NEVER be split across lines or interrupted by a
   blank line — a blank line ends the table and everything after it is lost.
 - Never repeat a row.
@@ -792,7 +803,19 @@ export async function generateIterativeReport(args: {
   plannedItemTitles: ReadonlySet<string>;
   /** How many sections the refiner returned usably; the rest kept their draft. */
   refinedSectionCount: number;
+  /**
+   * Every role call this function made, for `research_runs.model_log`.
+   *
+   * These used to be discarded at this boundary, so the Run Summary's MODEL
+   * USAGE table showed no `outline_architect` and no `section_drafter` — the
+   * two roles that write the report — and its token totals omitted the whole
+   * synthesis phase, the largest single cost centre in a run. Cost telemetry
+   * was never affected (`emitCallTelemetry` fires inside `callRoleModel`); only
+   * the user-facing summary was.
+   */
+  modelCalls: Awaited<ReturnType<typeof callRoleModel>>[];
 }> {
+  const modelCalls: Awaited<ReturnType<typeof callRoleModel>>[] = [];
   let activeSectionPlan: RuntimeSectionPlanEntry[];
   let templateNarrativeHint = '';
   let templateVerifierRubric = '';
@@ -926,6 +949,8 @@ Return strict JSON only.`,
     ],
   });
 
+  modelCalls.push(outlineResponse);
+
   const outlinePayload = safeJsonParse<{ outline?: Array<{ title?: string }> }>(outlineResponse.content);
   const outline = (outlinePayload?.outline ?? [])
     .map((s) => (s.title || '').trim())
@@ -1003,6 +1028,8 @@ Return section body text only. Do NOT write a markdown heading for this section 
         },
       ],
     });
+
+    modelCalls.push(sectionResult);
 
     // Headings are composed here, from the plan's ordinal, the report type's
     // label, and the drafter's declared item name. The model never authors one,
@@ -1091,7 +1118,7 @@ Return section body text only. Do NOT write a markdown heading for this section 
   await draftSequentially(trailing);
 
   const challenger = args.skipChallenger
-    ? { content: '', model: 'skipped-by-profile', role: 'internal_challenger', promptTokens: 0, completionTokens: 0, durationMs: 0, usedFallback: false, primaryModel: 'skipped-by-profile' }
+    ? { content: '', model: 'skipped-by-profile', role: 'internal_challenger' as const, promptTokens: 0, completionTokens: 0, durationMs: 0, usedFallback: false, primaryModel: 'skipped-by-profile' }
     : await callRoleModel({
         role: 'internal_challenger',
         ...v2,
@@ -1150,6 +1177,8 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
   // refiner returned a usable block. A section the refiner dropped, renamed, or
   // emptied keeps its drafted text — a coherence pass must never be able to
   // delete delivered work, and partial refinement beats discarding the report.
+  modelCalls.push(challenger, refinement);
+
   const refinedBodies = parseRefinedSections(refinement.content);
   const finalSections: ReportSectionDraft[] = sections.map((section) => {
     const refined = refinedBodies.get(section.key);
@@ -1165,5 +1194,6 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     // these exactly; nothing is inferred from the model's prose.
     plannedItemTitles: new Set(resolvedItemTitles),
     refinedSectionCount: refinedBodies.size,
+    modelCalls,
   };
 }
