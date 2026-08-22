@@ -64,6 +64,7 @@ import {
   parkRunAwaitingPlanConfirmation,
 } from '../planning/planWriteService';
 import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrchestratorNormalize';
+import { closePhase, openPhase } from './phaseTiming';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
 import {
@@ -1142,16 +1143,10 @@ async function runResearchJobInner(
     await assertNotCancelled(runId);
     // Phase timing: close out the previous phase and open the incoming one.
     const now = Date.now();
-    if (currentStage && currentStage !== stage) {
-      const phaseStart = phaseStartTimes[currentStage];
-      if (phaseStart != null) {
-        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (now - phaseStart);
-        delete phaseStartTimes[currentStage];
-      }
+    if (currentStage !== stage) {
+      closePhase(phaseDurations, phaseStartTimes, currentStage, now);
     }
-    if (phaseStartTimes[stage] == null) {
-      phaseStartTimes[stage] = now;
-    }
+    openPhase(phaseStartTimes, stage, now);
     currentStage = stage;
     currentPercent = percent;
 
@@ -2784,10 +2779,7 @@ ${generatedReport.markdown}`,
     patchAgentExecutionsReportIdForRun(runId, reportId);
 
     const preStatsNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] =
-        (phaseDurations[currentStage] ?? 0) + (preStatsNow - phaseStartTimes[currentStage]!);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, preStatsNow);
 
     const stageDurationPayload: Record<string, number | string | null> = {
       _profileDisplayName: orchProfile.displayName,
@@ -2883,9 +2875,7 @@ ${generatedReport.markdown}`,
 
     // Finalise the last active phase duration before building the summary.
     const finalNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (finalNow - phaseStartTimes[currentStage]);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, finalNow);
     // The summary status must be the status the run was actually written with.
     // It used to be hardcoded 'completed' on this path, so a run stored as
     // `failed` with gate status `contract_failed` still pushed a green
@@ -2920,9 +2910,7 @@ ${generatedReport.markdown}`,
       );
       await clearRunCancelled(runId);
       const cancelledNow = Date.now();
-      if (currentStage && phaseStartTimes[currentStage] != null) {
-        phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (cancelledNow - phaseStartTimes[currentStage]);
-      }
+      closePhase(phaseDurations, phaseStartTimes, currentStage, cancelledNow);
       const cancelledSummary: RunSummaryPayload = buildRunSummary({
         runId, status: 'cancelled',
         startedAt: runStartedAt, finishedAt: cancelledNow,
@@ -3077,9 +3065,7 @@ ${generatedReport.markdown}`,
 
     // Finalise phase timing before building the failure summary.
     const failedNow = Date.now();
-    if (currentStage && phaseStartTimes[currentStage] != null) {
-      phaseDurations[currentStage] = (phaseDurations[currentStage] ?? 0) + (failedNow - phaseStartTimes[currentStage]);
-    }
+    closePhase(phaseDurations, phaseStartTimes, currentStage, failedNow);
     const failureSummary: RunSummaryPayload = buildRunSummary({
       runId, status: finalStatus,
       startedAt: runStartedAt, finishedAt: failedNow,
