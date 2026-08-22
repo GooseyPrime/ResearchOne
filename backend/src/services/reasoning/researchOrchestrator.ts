@@ -65,6 +65,13 @@ import {
 } from '../planning/planWriteService';
 import { normalizeRetrievalQueries, normalizeRunOverrides } from './researchOrchestratorNormalize';
 import { closePhase, openPhase } from './phaseTiming';
+import {
+  RETRIEVAL_QUERY_MAX_CHARS,
+  buildDeterministicRetrievalQueries,
+  composeRetrievalQuery,
+  deriveTopicSeed,
+  enforceRetrievalQueryBudget,
+} from './retrievalQueryPlan';
 import { patchAgentExecutionsReportIdForRun, runScope } from '../telemetry';
 import { aggregateAndPersistDossierStatistics } from '../telemetry/dossierStatisticsAggregator';
 import {
@@ -175,102 +182,7 @@ function summarizeCorpusGateDecisions(decisions: Array<Record<string, unknown>>)
   };
 }
 
-const RETRIEVAL_QUERY_MAX_CHARS = 512;
-const RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS = 320;
-const TOPIC_SEED_MAX_CHARS = 200;
 
-/**
- * A long research objective is a specification, not a search query.
- *
- * Embedding a multi-thousand-character objective produces a centroid that is
- * close to nothing in particular, and the hybrid search's keyword arm receives
- * the whole document as one "keyword". That is how a 16 KB retrieval query
- * returns zero chunks from a corpus of ~98,000 embedded chunks.
- *
- * Reduce the objective to the shortest text that still names the subject: the
- * first substantive line, with markdown scaffolding and any leading
- * "Research Objective:"-style label removed. Callers combine this seed with a
- * requested artifact or constraint to produce short, DISTINCT queries — never
- * by prefixing the entire objective, which makes every query identical for the
- * first several thousand characters.
- */
-function deriveTopicSeed(query: string, maxChars: number = TOPIC_SEED_MAX_CHARS): string {
-  const lines = String(query ?? '')
-    .split('\n')
-    .map((line) => line.replace(/[#*_`>]+/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-  const labelled = /^(?:research objective|objective|goal|task|title)\s*[:\-\u2013]\s*(.+)$/i;
-  for (const line of lines) {
-    const match = labelled.exec(line);
-    const candidate = (match?.[1] ?? line).trim();
-    if (candidate.length >= 12) return candidate.slice(0, maxChars).trim();
-  }
-  return String(query ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
-}
-
-function commonPrefixLength(a: string, b: string): number {
-  const max = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
-  return i;
-}
-
-function buildDeterministicRetrievalQueries(args: {
-  subQuestions: string[];
-  fallbackQuery: string;
-  maxChars: number;
-}): string[] {
-  const seeded = args.subQuestions
-    .map((q) => q.replace(/^Q\d+\s*:\s*/i, '').trim())
-    .filter(Boolean)
-    .map((q) => q.slice(0, args.maxChars));
-  if (seeded.length > 0) return Array.from(new Set(seeded));
-  return [args.fallbackQuery.trim().slice(0, args.maxChars)].filter(Boolean);
-}
-
-function enforceRetrievalQueryBudget(args: {
-  retrievalQueries: string[];
-  subQuestions: string[];
-  fallbackQuery: string;
-  maxChars: number;
-  maxSharedPrefixChars: number;
-}): { queries: string[]; warnings: string[] } {
-  const warnings: string[] = [];
-  const trimmed = args.retrievalQueries.map((q) => q.trim()).filter(Boolean);
-  const capped = trimmed.map((q) => (q.length > args.maxChars ? q.slice(0, args.maxChars) : q));
-  if (trimmed.some((q, idx) => q.length !== capped[idx]!.length)) {
-    warnings.push(`planner retrieval query exceeded ${args.maxChars} chars; truncated`);
-  }
-  const deduped = Array.from(new Set(capped));
-  let sharedPrefixTooLarge = false;
-  for (let i = 0; i < deduped.length && !sharedPrefixTooLarge; i += 1) {
-    for (let j = i + 1; j < deduped.length; j += 1) {
-      if (commonPrefixLength(deduped[i]!, deduped[j]!) > args.maxSharedPrefixChars) {
-        sharedPrefixTooLarge = true;
-        break;
-      }
-    }
-  }
-  if (sharedPrefixTooLarge) {
-    warnings.push(`planner retrieval queries shared >${args.maxSharedPrefixChars} leading chars; replaced with deterministic sub-question queries`);
-    return {
-      queries: buildDeterministicRetrievalQueries({
-        subQuestions: args.subQuestions,
-        fallbackQuery: args.fallbackQuery,
-        maxChars: args.maxChars,
-      }),
-      warnings,
-    };
-  }
-  return {
-    queries: deduped.length > 0 ? deduped : buildDeterministicRetrievalQueries({
-      subQuestions: args.subQuestions,
-      fallbackQuery: args.fallbackQuery,
-      maxChars: args.maxChars,
-    }),
-    warnings,
-  };
-}
 
 function stubReasoningFromRetriever(retrieverMarkdown: string): string {
   return `Reasoning stage skipped by orchestration profile. Retriever analysis follows.\n\n${retrieverMarkdown}`;
@@ -534,11 +446,15 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
   if (args.supplemental?.trim()) {
     baseQueries.add(args.supplemental.trim().slice(0, RETRIEVAL_QUERY_MAX_CHARS));
   }
+  // The distinguishing clause LEADS and the topic anchors. Seeding every query
+  // with the same prefix made all five embed to nearly the same vector in run
+  // b8265303: queries 2, 3 and 4 returned no chunks the first had not already
+  // found. See `retrievalQueryPlan`.
   for (const query of artifactQueries) {
-    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+    baseQueries.add(composeRetrievalQuery(query, topicSeed, RETRIEVAL_QUERY_MAX_CHARS));
   }
   for (const query of constraintQueries) {
-    baseQueries.add(`${topicSeed} ${query}`.slice(0, RETRIEVAL_QUERY_MAX_CHARS));
+    baseQueries.add(composeRetrievalQuery(query, topicSeed, RETRIEVAL_QUERY_MAX_CHARS));
   }
 
   const plannedQueries = normalizeRetrievalQueries(Array.from(baseQueries), topicSeed).slice(0, 12);
@@ -550,7 +466,6 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
     subQuestions: [...artifactQueries, ...constraintQueries],
     fallbackQuery: topicSeed,
     maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-    maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
   });
   const retrievalQueries = retrievalGuard.queries;
   const subQuestions = retrievalQueries.map((query, index) => `Q${index + 1}: ${query}`);
@@ -1519,7 +1434,6 @@ async function runResearchJobInner(
         subQuestions: plan.sub_questions,
         fallbackQuery: deriveTopicSeed(researchQuery),
         maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
       });
       const retrievalQueries = retrievalGuard.queries;
       if (retrievalGuard.warnings.length > 0) {
@@ -1882,7 +1796,6 @@ async function runResearchJobInner(
         subQuestions: plan.sub_questions,
         fallbackQuery: deriveTopicSeed(researchQuery),
         maxChars: RETRIEVAL_QUERY_MAX_CHARS,
-        maxSharedPrefixChars: RETRIEVAL_QUERY_MAX_SHARED_PREFIX_CHARS,
       });
       for (const rq of rediscoveryQueryGuard.queries) {
         const rqStr = typeof rq === 'string' ? rq : JSON.stringify(rq);
