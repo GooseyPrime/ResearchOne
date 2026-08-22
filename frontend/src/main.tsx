@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? '';
 
 // Enforcement lives in `vite.config.ts`, at BUILD time. A MISSING key fails
-// every production-mode build; a `pk_test_*` key is accepted, because
+// every build, regardless of Vite mode; a `pk_test_*` key is accepted, because
 // ResearchOne deliberately runs a Clerk development instance while on Clerk's
 // free plan, and becomes a failure once REQUIRE_LIVE_CLERK_KEY=1.
 //
