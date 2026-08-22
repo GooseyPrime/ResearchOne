@@ -108,6 +108,7 @@ drove the rules is at
 | [`.cursor/rules/40-corpus-competence-gate.mdc`](.cursor/rules/40-corpus-competence-gate.mdc) | Corpus is sealed by default; unlocks per topic partition on independence + density thresholds; self-referential source guard. |
 | [`.cursor/rules/42-deliverable-integrity.mdc`](.cursor/rules/42-deliverable-integrity.mdc) | Gates are never satisfied by stubs; degraded modes modify synthesis instead of replacing it; LLM-derived control values need deterministic fallbacks. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
+| [`.cursor/rules/44-pre-review-self-check.mdc`](.cursor/rules/44-pre-review-self-check.mdc) | The five defect themes automated review repeatedly catches, and the check to run after every change and before requesting review. |
 
 ## Repo-specific reading list (in priority order)
 
