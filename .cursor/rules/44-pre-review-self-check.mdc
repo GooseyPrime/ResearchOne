@@ -1,0 +1,137 @@
+---
+description: The defect themes Codex and Copilot repeatedly catch, and the self-check to run after every code change and BEFORE requesting review. Read before opening or updating any PR.
+alwaysApply: true
+---
+
+# Rule 44 — Pre-review self-check
+
+## Why this rule exists
+
+Across PRs #217–#221, automated review raised **eighteen** findings. They were
+not eighteen different mistakes. They were five mistakes, each made repeatedly,
+and most of them were made *while fixing the previous one*.
+
+That has a cost beyond the rework. A reviewer spending its pass on a dead
+import and an ASCII-only regex is a reviewer **not** spending it on the
+architecture. Shallow defects crowd out deep review: they consume the same
+finite attention, and every round of them is a round where nobody looked at
+whether the design was right. The point of this rule is not tidiness. It is to
+make the reviewers useful by giving them nothing cheap to find.
+
+## The five themes
+
+### T1 — Verification shaped like the fix
+
+The most expensive one, because it produces *false* confidence rather than no
+confidence.
+
+- `vite build --mode development` with no key was run as case 5 of a
+  verification matrix, observed to pass, and recorded as *"builds (dev server
+  unaffected)"*. It was not the dev server. It was the exact command that
+  proved the guard was bypassable. The failing case was executed and written
+  down as the guarantee. (#220)
+- A `U.S.` regression test was added for abbreviation handling and placed the
+  period before the 24-character cutoff, so it passed through a different
+  branch and masked the defect it was written to cover. (#221)
+- Every similarity test examined the prefix, because the fix was about the
+  prefix — so the suite agreed with the code that suffix overlap did not
+  exist. (#221)
+
+**Check:** for each test you add, ask *what would this still pass if the fix
+were reverted?* If the answer is "nothing", the test is a description of the
+implementation, not a check on it. Run the failing case FIRST, watch it fail,
+then fix. A verification you designed alongside the fix inherits the fix's
+blind spots.
+
+### T2 — A cheap syntactic proxy for a semantic property
+
+Reaching for something countable when the property is about meaning.
+
+- `mode === 'production'` for *"is this a deployable build"* — Vite's
+  authoritative signal is `command`. (#220)
+- Shared-prefix length for *"do these queries ask different things"*. (#221)
+- Clause character count for *"does this name the research subject"* — a long
+  generic clause is still generic. (#221)
+- `split(/[^a-z0-9]+/)` for *"significant tokens"* — returns nothing for
+  Chinese, Japanese, Arabic or Cyrillic. (#221)
+
+**Check:** name the property in a sentence. If the sentence is about meaning
+and the code measures length, position, or ASCII shape, the proxy will be
+wrong for some real input. Ask which real input.
+
+### T3 — Incomplete enumeration
+
+A set was handled partially, and the unhandled members silently took a default.
+
+- `deriveSourceOrigin` mapped three of four `imported_via` writers; the missing
+  one was the most common value in a live corpus, so both rules keyed on origin
+  became no-ops. (#217)
+- The Clerk assertion covered Vercel builds and not the Docker build path, then
+  not `docker compose up <subset>` either. (#220)
+- Whitespace normalization was applied where queries were constructed and not
+  where planner queries entered. (#221)
+
+**Check:** when you touch a mapping, a switch, or a guard, list every producer
+and every consumer *by grepping for them*, and account for each. "The ones I
+know about" is not the list.
+
+### T4 — Substituting a check without preserving what it protected
+
+- The `owner_user_id` ownership check was replaced by a `sourceOrigin` check.
+  Both are reasonable; they answer different questions, and dropping the first
+  let a requester's own uploads be cited back to them as independent external
+  evidence. (#218)
+- Removing the duplicate `appendRunProgressEvent` calls also removed the only
+  writer of the terminal `eventType`, which the frontend still keyed on. (#218)
+- Replacing the whole planner query set on one overlapping pair discarded
+  unrelated retrieval angles. (#221)
+
+**Check:** before deleting or replacing a check, write down what it prevents.
+If the replacement does not prevent that too, you need both.
+
+### T5 — One condition doing two jobs
+
+- A single early return scoped the *missing-key* rule and the *test-key* rule
+  together, so preview builds skipped both. (#219)
+- A fixed 320-char shared-prefix threshold sat above the 200-char seed it was
+  meant to catch, making the guard unreachable by construction. (#221)
+
+**Check:** if a guard has two reasons to fire, give it two conditions. If a
+threshold protects against a value the code itself generates, assert the
+relationship between them rather than hardcoding both.
+
+## The self-check
+
+Run all of it after the change and before pushing. Not one of these is
+optional because "the change is small" — several of the findings above came
+from one-line changes.
+
+```bash
+# 1. The gates the repo actually enforces. tsc alone does NOT catch an unused
+#    import; that is a lint error, and it has blocked a PR before.
+cd backend  && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
+cd frontend && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
+```
+
+Then, in your own words, on the diff:
+
+1. **T1** — Which new test fails if I revert the fix? Did I run any case
+   *before* fixing and watch it fail?
+2. **T2** — For each threshold or predicate: what is the property in words, and
+   what real input breaks the proxy?
+3. **T3** — What is the complete set of producers and consumers of anything I
+   changed? Did I grep for them rather than recall them?
+4. **T4** — What did any check I removed or replaced prevent? Is that still
+   prevented?
+5. **T5** — Does any guard I wrote have two reasons to fire behind one
+   condition?
+6. **Paths** — Which invocation paths build or run this? Vercel, Docker,
+   compose, CI, the dev server, the deploy script. Which did I actually
+   exercise?
+
+## What good looks like
+
+A PR where the reviewers' only findings are about design, not about a dead
+import, an unhandled enum member, or a test that agrees with its own
+implementation. Until that is the norm, the reviewers are being spent on work
+that should never have reached them.
