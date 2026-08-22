@@ -56,6 +56,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # Vite inlines these at build time; Docker does not inherit them from the
+      # host. The Clerk key is required rather than defaulted — an image built
+      # without it cannot sign anyone in, so failing here with a named
+      # variable beats shipping one that looks fine until a user tries.
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:?set VITE_CLERK_PUBLISHABLE_KEY in your .env before building the frontend image}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-}
     ports:
       - "5173:5173"
     depends_on:
