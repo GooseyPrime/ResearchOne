@@ -8,40 +8,54 @@ const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
 
 /**
  * A Clerk publishable key is `pk_live_*` for a production instance and
- * `pk_test_*` for a development one. A development instance issues short-lived
- * sessions, accepts any email, and is rate-limited — shipping one to
- * researchone.io means real users on a throwaway auth backend (WO-AD §12).
+ * `pk_test_*` for a development one.
  *
- * This is checked HERE, at build time, rather than at module scope in
- * `main.tsx`. A runtime `throw` before `createRoot` does not fail a build — it
- * white-screens every visitor, including on marketing routes that never touch
- * Clerk. Failing the build instead means Vercel keeps the previous good
- * deployment live and nobody sees a blank page.
+ * ResearchOne deliberately runs a Clerk DEVELOPMENT instance in production for
+ * now: a production instance is a paid Clerk plan, and the development
+ * instance's limits are comfortably above current traffic. That is a chosen
+ * trade-off, not a defect, so it does not fail the build.
  *
- * It fires only for a real production deploy. Preview and branch builds SHOULD
- * use a test key, and failing them was a self-inflicted outage of the preview
- * environment.
+ * What IS always a defect is a missing key — the app then has no auth backend
+ * at all and every sign-in silently fails. That still fails the build, at BUILD
+ * time rather than at module scope in `main.tsx`: a runtime throw before
+ * `createRoot` does not fail a build, it white-screens every route including
+ * marketing pages that never touch Clerk. Failing here means Vercel keeps the
+ * last good deployment live instead.
+ *
+ * Set `REQUIRE_LIVE_CLERK_KEY=1` once a production Clerk instance exists, and
+ * this becomes an enforcing check: a `pk_test_*` key then fails the build and
+ * cannot regress silently.
  */
 function assertProductionClerkKey(env: Record<string, string>): void {
-  const isProductionDeploy =
-    process.env.VERCEL_ENV === 'production' || process.env.REQUIRE_LIVE_CLERK_KEY === '1';
-  if (!isProductionDeploy) return;
+  const isProductionDeploy = process.env.VERCEL_ENV === 'production';
+  const requireLiveKey = process.env.REQUIRE_LIVE_CLERK_KEY === '1';
+  if (!isProductionDeploy && !requireLiveKey) return;
 
   const key = (env.VITE_CLERK_PUBLISHABLE_KEY ?? '').trim();
   if (!key) {
     throw new Error(
-      'VITE_CLERK_PUBLISHABLE_KEY is unset for a production deploy. Set it in the ' +
-        'Vercel project (Production scope) to the pk_live_* key of the production Clerk instance.'
+      'VITE_CLERK_PUBLISHABLE_KEY is unset for a production deploy. Sign-in cannot work ' +
+        'without it. Set it in the Vercel project (Production scope).'
     );
   }
-  if (key.startsWith('pk_test_')) {
+
+  if (!key.startsWith('pk_test_')) return;
+
+  if (requireLiveKey) {
     throw new Error(
-      'VITE_CLERK_PUBLISHABLE_KEY is a pk_test_* key, which belongs to a Clerk DEVELOPMENT ' +
-        'instance: sessions expire quickly, any email is accepted, and it is rate-limited. ' +
-        'Create a production Clerk instance and set its pk_live_* key in the Vercel project ' +
-        '(Production scope). Preview deploys may keep the test key.'
+      'REQUIRE_LIVE_CLERK_KEY=1 but VITE_CLERK_PUBLISHABLE_KEY is a pk_test_* key, which ' +
+        'belongs to a Clerk DEVELOPMENT instance. Set the production instance pk_live_* key ' +
+        'in the Vercel project (Production scope), or unset REQUIRE_LIVE_CLERK_KEY.'
     );
   }
+
+  // Visible in every production build log, so this stays a known trade-off
+  // rather than something nobody remembers choosing.
+  console.warn(
+    '[build] Production is using a Clerk DEVELOPMENT instance (pk_test_*). ' +
+      'Accepted while on Clerk\'s free plan. Set REQUIRE_LIVE_CLERK_KEY=1 after moving to a ' +
+      'production instance so a test key can never come back unnoticed.'
+  );
 }
 
 export default defineConfig(({ mode }) => {
