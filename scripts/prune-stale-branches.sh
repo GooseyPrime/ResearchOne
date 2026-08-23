@@ -45,9 +45,8 @@ log "=== ResearchOne stale-branch prune — $(date -u) ==="
 log "DRY_RUN=${DRY_RUN}  REPO=${REPO}"
 log ""
 
-# Fetch all remote branches
-mapfile -t BRANCHES < <(gh api "repos/${REPO}/branches?per_page=100&page=1" --jq '.[].name'; \
-                         gh api "repos/${REPO}/branches?per_page=100&page=2" --jq '.[].name' 2>/dev/null || true)
+# Fetch all remote branches (paginated so branch count > 200 is handled)
+mapfile -t BRANCHES < <(gh api --paginate "repos/${REPO}/branches?per_page=100" --jq '.[].name')
 
 log "Found ${#BRANCHES[@]} remote branches."
 log ""
