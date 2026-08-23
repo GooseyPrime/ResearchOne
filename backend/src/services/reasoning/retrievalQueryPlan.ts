@@ -83,17 +83,39 @@ export function normalizeQueryText(text: string): string {
  * language independent, and engaged only when word tokenization finds nothing,
  * so Latin-script behaviour is unchanged.
  */
+/** Scripts that do not separate words with spaces. */
+const UNSPACED_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+
 function significantTokens(text: string): Set<string> {
   const normalized = normalizeQueryText(text).toLowerCase();
   if (!normalized) return new Set();
 
-  const words = normalized.split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 2);
-  if (words.length > 0) return new Set(words);
+  const tokens = new Set<string>();
+  for (const word of normalized.split(/[^\p{L}\p{N}]+/u)) {
+    if (!word) continue;
 
-  const dense = normalized.replace(/[^\p{L}\p{N}]+/gu, '');
-  const bigrams = new Set<string>();
-  for (let i = 0; i + 1 < dense.length; i += 1) bigrams.add(dense.slice(i, i + 2));
-  return bigrams;
+    // An unspaced script arrives as ONE long "word", so splitting on
+    // whitespace is not tokenization for it — a whole Chinese sentence became
+    // a single token, two such queries scored 1.0 or 0.0 with nothing in
+    // between, and the bigram fallback below never ran because a token
+    // existed. Per-token rather than whole-string, so a mixed-script query
+    // gets both treatments (Codex, #221).
+    if (UNSPACED_SCRIPT.test(word)) {
+      const chars = Array.from(word);
+      if (chars.length === 1) {
+        tokens.add(word);
+        continue;
+      }
+      for (let i = 0; i + 1 < chars.length; i += 1) {
+        tokens.add(chars[i]! + chars[i + 1]!);
+      }
+      continue;
+    }
+
+    if (word.length > 2) tokens.add(word);
+  }
+  return tokens;
 }
 
 /** How much a query actually specifies. */
@@ -265,17 +287,30 @@ export function enforceRetrievalQueryBudget(args: {
   const kept: string[] = [];
   const dropped: string[] = [];
   for (const query of deduped) {
-    const rivalIndex = kept.findIndex((k) => queriesAreTooSimilar(k, query));
-    if (rivalIndex === -1) {
+    // ALL rivals, not just the first. A later query can overlap several
+    // retained ones at once — two distinct queries plus a third carrying their
+    // union — and replacing only the first left the rest standing, redundant
+    // against the replacement and never rechecked (Codex, #221).
+    const rivalIndices = kept
+      .map((k, i) => (queriesAreTooSimilar(k, query) ? i : -1))
+      .filter((i) => i !== -1);
+
+    if (rivalIndices.length === 0) {
       kept.push(query);
       continue;
     }
-    if (querySpecificity(query) > querySpecificity(kept[rivalIndex]!)) {
-      dropped.push(kept[rivalIndex]!);
-      kept[rivalIndex] = query;
+
+    const specificity = querySpecificity(query);
+    const supersedesAll = rivalIndices.every((i) => specificity > querySpecificity(kept[i]!));
+    if (!supersedesAll) {
+      dropped.push(query);
       continue;
     }
-    dropped.push(query);
+
+    for (const i of rivalIndices) dropped.push(kept[i]!);
+    kept[rivalIndices[0]!] = query;
+    // Highest index first, so earlier positions stay valid as we splice.
+    for (let r = rivalIndices.length - 1; r >= 1; r -= 1) kept.splice(rivalIndices[r]!, 1);
   }
 
   if (dropped.length > 0) {

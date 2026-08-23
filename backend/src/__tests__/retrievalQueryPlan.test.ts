@@ -159,12 +159,20 @@ describe('queriesAreTooSimilar', () => {
 });
 
 describe('overlap is measured for non-Latin scripts too', () => {
-  // An ASCII-only split returned no tokens at all for these, scoring every
-  // pair 0 and blinding the guard (Codex, #221).
   const chineseAnchor = '检索增强生成系统的评估方法与其失效模式的比较研究';
 
-  it('finds tokens in a Chinese query', () => {
-    expect(querySpecificity(chineseAnchor)).toBeGreaterThan(0);
+  it('tokenizes an unspaced script into more than one token', () => {
+    // The whole Chinese run arrives from the whitespace split as ONE token.
+    // The earlier version returned early on that, so the bigram fallback never
+    // ran and every Chinese pair scored 1.0 or 0.0 with nothing between — the
+    // tests passed for the wrong reason (Codex, #221).
+    expect(querySpecificity(chineseAnchor)).toBeGreaterThan(5);
+  });
+
+  it('scores partial overlap between related Chinese queries', () => {
+    const ratio = tokenOverlapRatio('检索增强生成系统的评估方法', '检索增强生成系统的失效模式');
+    expect(ratio).toBeGreaterThan(0);
+    expect(ratio).toBeLessThan(1);
   });
 
   it('catches two Chinese queries sharing the same long anchor', () => {
@@ -173,6 +181,12 @@ describe('overlap is measured for non-Latin scripts too', () => {
 
   it('still separates genuinely different Chinese queries', () => {
     expect(queriesAreTooSimilar('机器学习模型的训练成本分析', '海洋酸化对珊瑚礁的长期影响')).toBe(false);
+  });
+
+  it('tokenizes each script in a mixed-script query', () => {
+    const tokens = querySpecificity('retrieval augmented generation 检索增强生成系统');
+    // Latin words plus Chinese bigrams, not one or the other.
+    expect(tokens).toBeGreaterThan(6);
   });
 
   it('scores a Cyrillic pair rather than returning zero', () => {
@@ -269,6 +283,45 @@ describe('enforceRetrievalQueryBudget', () => {
     expect(result.queries).toContain(distinct);
     expect(result.queries).toHaveLength(2);
     expect(result.warnings.join(' ')).toMatch(/dropped 1 planner retrieval query/);
+  });
+
+  it('removes every rival a more specific query supersedes', () => {
+    // A later query can overlap several retained ones at once. Replacing only
+    // the first left the others standing, redundant against the replacement
+    // and never rechecked (Codex, #221).
+    const a = 'alpha beta gamma delta theta';
+    const b = 'alpha beta gamma epsilon zeta';
+    const union = 'alpha beta gamma delta theta epsilon zeta';
+
+    expect(queriesAreTooSimilar(a, b)).toBe(false); // a and b are distinct
+    expect(queriesAreTooSimilar(a, union)).toBe(true);
+    expect(queriesAreTooSimilar(b, union)).toBe(true);
+
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [a, b, union],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: seed,
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toEqual([union]);
+    expect(result.warnings.join(' ')).toMatch(/dropped 2 planner retrieval queries/);
+  });
+
+  it('keeps the retained pair when the newcomer supersedes only one of them', () => {
+    const a = 'alpha beta gamma delta theta';
+    const b = 'alpha beta gamma epsilon zeta';
+    const partial = 'alpha beta gamma delta theta iota';
+
+    const result = enforceRetrievalQueryBudget({
+      retrievalQueries: [a, b, partial],
+      subQuestions: LIVE_CLAUSES,
+      fallbackQuery: seed,
+      maxChars: RETRIEVAL_QUERY_MAX_CHARS,
+    });
+
+    expect(result.queries).toContain(b);
+    expect(result.queries).toHaveLength(2);
   });
 
   it('truncates an over-long query and says so', () => {
