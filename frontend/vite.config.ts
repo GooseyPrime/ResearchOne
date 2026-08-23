@@ -7,41 +7,56 @@ import path from 'path';
 const SPLIT_DEPLOYMENT_DEFAULT_ORIGIN = 'https://api.researchone.io';
 
 /**
- * A Clerk publishable key is `pk_live_*` for a production instance and
- * `pk_test_*` for a development one.
+ * Clerk key checks for a deployable build.
  *
- * ResearchOne deliberately runs a Clerk DEVELOPMENT instance in production for
- * now: a production instance is a paid Clerk plan, and the development
- * instance's limits are comfortably above current traffic. That is a chosen
- * trade-off, not a defect, so it does not fail the build.
+ * TWO separate rules, and conflating them was the defect Copilot caught on
+ * #219: a single early return scoped BOTH to production deploys, so a preview
+ * build with no key at all sailed through and shipped
+ * `<ClerkProvider publishableKey="">` — an app where every sign-in fails.
  *
- * What IS always a defect is a missing key — the app then has no auth backend
- * at all and every sign-in silently fails. That still fails the build, at BUILD
- * time rather than at module scope in `main.tsx`: a runtime throw before
- * `createRoot` does not fail a build, it white-screens every route including
- * marketing pages that never touch Clerk. Failing here means Vercel keeps the
- * last good deployment live instead.
+ *   Key MISSING      — fails every BUILD, whatever the deploy target or mode.
+ *                      There is no environment in which shipping a bundle with
+ *                      no auth backend is intended. Only `vite dev` is exempt,
+ *                      because it is not a deployable artifact.
  *
- * Set `REQUIRE_LIVE_CLERK_KEY=1` once a production Clerk instance exists, and
- * this becomes an enforcing check: a `pk_test_*` key then fails the build and
- * cannot regress silently.
+ *                      Gated on `command`, not `mode`: Vite's ConfigEnv defines
+ *                      `command` as 'serve' | 'build', while `mode` is
+ *                      independently selectable with `--mode`. Testing `mode`
+ *                      let `vite build --mode development` emit a deployable
+ *                      bundle with an empty key, and wrongly rejected
+ *                      `vite dev --mode production` (Codex, #220).
+ *
+ *   Key is pk_test_* — a Clerk DEVELOPMENT instance. ResearchOne deliberately
+ *                      runs one in production: a production instance is a paid
+ *                      Clerk plan and the development instance's limits sit
+ *                      well above current traffic. Accepted, and logged once so
+ *                      the trade-off stays visible. Preview builds are expected
+ *                      to use one and say nothing.
+ *
+ * Set `REQUIRE_LIVE_CLERK_KEY=1` once a production Clerk instance exists and
+ * `pk_test_*` becomes a build failure that cannot regress unnoticed.
+ *
+ * All of this is BUILD time rather than module scope in `main.tsx`. A throw
+ * before `createRoot` does not fail a build — it renders nothing on every
+ * route, including marketing pages that never touch Clerk. Failing here means
+ * Vercel keeps the last good deployment live instead.
  */
-function assertProductionClerkKey(env: Record<string, string>): void {
-  const isProductionDeploy = process.env.VERCEL_ENV === 'production';
-  const requireLiveKey = process.env.REQUIRE_LIVE_CLERK_KEY === '1';
-  if (!isProductionDeploy && !requireLiveKey) return;
+function assertClerkKey(env: Record<string, string>, command: 'serve' | 'build'): void {
+  // `vite dev` is not a deployable artifact; every built one is checked.
+  if (command !== 'build') return;
 
   const key = (env.VITE_CLERK_PUBLISHABLE_KEY ?? '').trim();
   if (!key) {
     throw new Error(
-      'VITE_CLERK_PUBLISHABLE_KEY is unset for a production deploy. Sign-in cannot work ' +
-        'without it. Set it in the Vercel project (Production scope).'
+      'VITE_CLERK_PUBLISHABLE_KEY is unset. A build without it ships ClerkProvider with an ' +
+        'empty key and every sign-in fails. Set it in the Vercel project for this scope ' +
+        '(Production and Preview both need one).'
     );
   }
 
   if (!key.startsWith('pk_test_')) return;
 
-  if (requireLiveKey) {
+  if (process.env.REQUIRE_LIVE_CLERK_KEY === '1') {
     throw new Error(
       'REQUIRE_LIVE_CLERK_KEY=1 but VITE_CLERK_PUBLISHABLE_KEY is a pk_test_* key, which ' +
         'belongs to a Clerk DEVELOPMENT instance. Set the production instance pk_live_* key ' +
@@ -49,16 +64,18 @@ function assertProductionClerkKey(env: Record<string, string>): void {
     );
   }
 
-  // Visible in every production build log, so this stays a known trade-off
-  // rather than something nobody remembers choosing.
-  console.warn(
-    '[build] Production is using a Clerk DEVELOPMENT instance (pk_test_*). ' +
-      'Accepted while on Clerk\'s free plan. Set REQUIRE_LIVE_CLERK_KEY=1 after moving to a ' +
-      'production instance so a test key can never come back unnoticed.'
-  );
+  if (process.env.VERCEL_ENV === 'production') {
+    // Visible in every production build log, so this stays a known trade-off
+    // rather than something nobody remembers choosing.
+    console.warn(
+      '[build] Production is using a Clerk DEVELOPMENT instance (pk_test_*). ' +
+        'Accepted while on Clerk\'s free plan. Set REQUIRE_LIVE_CLERK_KEY=1 after moving to a ' +
+        'production instance so a test key can never come back unnoticed.'
+    );
+  }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // Vitest only defaults NODE_ENV to 'test' when it is UNSET. A machine with
   // NODE_ENV=production exported globally therefore runs the suite against
   // React's production build, where `act()` throws — every React component test
@@ -71,7 +88,7 @@ export default defineConfig(({ mode }) => {
   if (mode === 'test') process.env.NODE_ENV = 'test';
 
   const fileEnv = loadEnv(mode, process.cwd(), '');
-  if (mode !== 'test') assertProductionClerkKey(fileEnv);
+  assertClerkKey(fileEnv, command);
   const useProdDefaults = mode === 'production';
   const apiBase =
     fileEnv.VITE_API_BASE_URL?.trim() ||

@@ -56,6 +56,19 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # Vite inlines these at build time; Docker does not inherit them from the
+      # host, so each needs an explicit build arg.
+      #
+      # Deliberately `:-` and not `:?`. Compose resolves every substitution
+      # while LOADING the project, before it honours a requested service
+      # subset — so `${VAR:?...}` here would fail `docker compose up -d
+      # postgres`, a command that never touches the frontend (Codex, #220).
+      # The requirement belongs where it can be scoped to the frontend build,
+      # and `vite.config.ts` already fails that build by name.
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-}
     ports:
       - "5173:5173"
     depends_on:
