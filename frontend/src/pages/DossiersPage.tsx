@@ -261,7 +261,7 @@ function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => v
           {row.reportTitle && <p className="text-xs text-slate-400 line-clamp-1">Report: {row.reportTitle}</p>}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <DossierStatusBadge status={row.runStatus} />
+          <DossierStatusBadge status={row.runStatus} gateStatus={row.gateStatus} />
           <IntentBadge intent={row.planIntent} />
         </div>
       </div>

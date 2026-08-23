@@ -518,6 +518,125 @@ export const REPORT_WORD_COUNT_MAX = 12000;
 export const REPORT_WORD_COUNT_DEFAULT = 2200;
 const GENERATED_TITLE_MAX_LENGTH = 120;
 
+/**
+ * Generic structural section labels that should never become a report title.
+ * A model sometimes emits these as the first heading when it is building an
+ * outline before a subject-specific introduction — e.g. "Dimensions Table",
+ * "Comparison Table", "Recommendation", "Overview".
+ *
+ * The pattern is intentionally case-insensitive and anchored to the full
+ * candidate string so "Recommendation Framework for X" still passes.
+ */
+const STRUCTURAL_LABEL_PATTERN =
+  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography)$/i;
+
+export function looksLikeStructuralLabel(candidate: string): boolean {
+  return STRUCTURAL_LABEL_PATTERN.test(candidate.trim());
+}
+
+/**
+ * Markdown block syntax that is never a report title.
+ *
+ * `looksLikeStructuralLabel` rejects a heading such as `# Dimensions Table`,
+ * and the title fallback then walks to the next non-empty line. For a report
+ * that opens with the table that heading introduced, that line is the table's
+ * header row — so rejecting the label stored `| Dimension | Option A |` as the
+ * title instead (Codex, PR #224). Delimiter rows, horizontal rules, and code
+ * fences reach the fallback the same way and are the same defect: block
+ * syntax, not a sentence.
+ *
+ * Each alternative is anchored to the whole trimmed line, so prose that merely
+ * contains a pipe or a dash is unaffected.
+ */
+const MARKDOWN_BLOCK_SYNTAX_PATTERN = /^(?:\|.*|[-:|*_\s]{3,}|`{3,}.*|~{3,}.*|>\s.*)$/;
+
+export function looksLikeMarkdownBlockSyntax(candidate: string): boolean {
+  return MARKDOWN_BLOCK_SYNTAX_PATTERN.test(candidate.trim());
+}
+
+/**
+ * A GitHub-flavoured Markdown table delimiter row (`| --- | :---: |`).
+ *
+ * Leading and trailing pipes are optional in GFM, so a header row can read
+ * `Metric | Short-read | Long-read` — prose-shaped, and invisible to
+ * `looksLikeMarkdownBlockSyntax`. What identifies it is the row underneath, so
+ * the title fallback looks ahead one line.
+ *
+ * The pipe is required. Without it, `---` under a line of prose is a setext
+ * heading — which is exactly the kind of line that *should* become the title.
+ */
+export function isTableDelimiterRow(line: string): boolean {
+  const trimmed = line.trim();
+  return /^[-:|\s]+$/.test(trimmed) && trimmed.includes('|') && /-{3,}/.test(trimmed);
+}
+
+/**
+ * Wrappers a model puts around a heading it is emphasising or quoting.
+ * Ordered longest-first so `***x***` is not mistaken for `*` + `**x**` + `*`.
+ */
+const HEADING_WRAPPERS: ReadonlyArray<readonly [string, string]> = [
+  ['***', '***'],
+  ['**', '**'],
+  ['*', '*'],
+  ['___', '___'],
+  ['__', '__'],
+  ['_', '_'],
+  ['~~', '~~'],
+  ['"', '"'],
+  ["'", "'"],
+  ['“', '”'],
+  ['‘', '’'],
+  ['«', '»'],
+];
+
+/**
+ * Remove emphasis, quoting and trailing punctuation from a heading.
+ *
+ * `looksLikeStructuralLabel` anchors its pattern to the whole candidate, so
+ * `# **Overview**`, `` # `Recommendation` `` and `# "Findings"` all slipped
+ * past it and were stored as report titles verbatim, Markdown included
+ * (Codex, #224 second pass).
+ *
+ * Only *balanced* decoration is peeled, and only when the delimiter does not
+ * recur inside. `*Nature* on CRISPR` and `**A** vs **B**` are left alone —
+ * those are emphasised spans within a title, not a wrapped title.
+ */
+export function stripHeadingDecoration(candidate: string): string {
+  let text = candidate.trim();
+
+  for (let guard = 0; guard < 8; guard += 1) {
+    const before = text;
+
+    // A balanced backtick run of any length: `x`, ``x``, ```x```.
+    const fenced = text.match(/^(`+)([\s\S]+)\1$/);
+    if (fenced?.[2] && !fenced[2].includes('`')) {
+      text = fenced[2].trim();
+      continue;
+    }
+
+    for (const [open, close] of HEADING_WRAPPERS) {
+      if (text.length <= open.length + close.length) continue;
+      if (!text.startsWith(open) || !text.endsWith(close)) continue;
+      const inner = text.slice(open.length, text.length - close.length).trim();
+      // A recurring delimiter means these are two spans, not one wrapper.
+      if (!inner || inner.includes(open) || inner.includes(close)) continue;
+      text = inner;
+      break;
+    }
+    if (text !== before) continue;
+
+    const detrailed = text.replace(/[\s:;,.]+$/, '');
+    if (detrailed && detrailed !== text) {
+      text = detrailed;
+      continue;
+    }
+
+    break;
+  }
+
+  return text || candidate.trim();
+}
+
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
@@ -525,16 +644,36 @@ export function clampWordTarget(n: number | undefined): number {
 
 export function deriveGeneratedReportTitle(query: string, markdown: string, intentId?: string): string {
   const headingMatch = markdown.match(/^\s*#\s+(.+?)\s*$/m);
-  const firstHeading = headingMatch?.[1]?.trim();
-  if (firstHeading && firstHeading.length <= GENERATED_TITLE_MAX_LENGTH && !looksLikeRawQuery(firstHeading, query)) {
+  // Decoration is stripped before the checks AND kept stripped in the result:
+  // `# **Overview**` must be recognised as the structural label it is, and a
+  // heading that survives should not carry raw Markdown into the title.
+  const firstHeading = stripHeadingDecoration(headingMatch?.[1] ?? '');
+  if (
+    firstHeading &&
+    firstHeading.length <= GENERATED_TITLE_MAX_LENGTH &&
+    !looksLikeRawQuery(firstHeading, query) &&
+    !looksLikeStructuralLabel(firstHeading)
+  ) {
     return firstHeading;
   }
 
-  const firstSentence = markdown
+  const bodyLines = markdown
     .replace(/^#+\s+/gm, '')
     .split(/\n+/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0 && !looksLikeRawQuery(line, query));
+    .map((line) => line.trim());
+
+  const firstSentence = bodyLines.find(
+    (line, index) =>
+      line.length > 0 &&
+      !looksLikeRawQuery(line, query) &&
+      // Decorated here too — `**Overview**` as a body line is the same label.
+      // Only the check is stripped; the line is returned as written, so a real
+      // sentence keeps its punctuation.
+      !looksLikeStructuralLabel(stripHeadingDecoration(line)) &&
+      !looksLikeMarkdownBlockSyntax(line) &&
+      // A pipe-less table header row is only identifiable by its delimiter row.
+      !isTableDelimiterRow(bodyLines[index + 1] ?? '')
+  );
   if (firstSentence) {
     return trimTitle(firstSentence);
   }

@@ -123,6 +123,7 @@ export function BugNoteProvider({ children, userId, route, runId }: BugNoteProvi
   return <BugNoteContext.Provider value={value}>{children}</BugNoteContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBugNote(): BugNoteContextValue {
   return useContext(BugNoteContext);
 }

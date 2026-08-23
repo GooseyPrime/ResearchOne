@@ -10,6 +10,7 @@ import {
 } from './researchEnsemblePresets';
 import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
 import { resolveCorsOrigins } from './corsOrigins';
+import { resolveRetrievalMinSimilarity } from './retrievalSimilarityFloor';
 import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
 
 loadEnv();
@@ -294,10 +295,12 @@ const config = {
   },
 
   retrieval: {
-    minSimilarityDefault: (() => {
-      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
-      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
-    })(),
+    // 0.55, floor included. REVERTED from a 0.45 default with a 0.30 floor.
+    // The rationale, the incident behind it, and what changing it requires all
+    // live in `config/retrievalSimilarityFloor.ts` — which exists as its own
+    // module so the clamp is directly testable. It was inline here when #224
+    // lowered it, and no test covered it.
+    minSimilarityDefault: resolveRetrievalMinSimilarity(process.env.RETRIEVAL_MIN_SIMILARITY),
     corpusGate: {
       minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),
       minDistinctSources: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_SOURCES || '25', 10),

@@ -132,6 +132,11 @@ describe('retrieveChunksWithAudit corpus competence gate', () => {
 
     expect(result.citableChunks).toEqual([]);
     expect(result.corpusGate.status).toBe('sealed');
+    // 0.55, not 0.30. This assertion was lowered alongside the production
+    // default in #224, which left the regression suite green against the exact
+    // value that previously let the operator's own project notes be cited as
+    // external evidence (AGENTS.md:207-210). A regression test that accepts the
+    // known-bad value protects nothing. (Codex, #224 second pass.)
     expect(result.corpusGate.minSimilarity).toBeGreaterThanOrEqual(0.55);
     expect(result.corpusGate.reason).toContain('single_domain_share');
     expect(generateEmbeddingsMock).not.toHaveBeenCalled();

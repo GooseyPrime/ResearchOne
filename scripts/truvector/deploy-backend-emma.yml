@@ -1,0 +1,98 @@
+# Deploy TruVector Core backend to Emma runtime VM over SSH.
+# Modelled on ResearchOne .github/workflows/deploy-backend-emma.yml.
+#
+# Copy this file to truvector-core/.github/workflows/deploy-backend-emma.yml
+# and set the same secrets as ResearchOne (EMMA_HOST, EMMA_USER, EMMA_SSH_KEY)
+# — they already point at the same VM.
+# Optional: EMMA_PORT (default 22), EMMA_KNOWN_HOSTS, EMMA_PUBLIC_HEALTH_URL.
+
+name: Deploy backend to Emma
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'ecosystem.config.js'
+      - 'scripts/**'
+      - '.github/workflows/deploy-backend-emma.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-truvector-backend-emma
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_USER: ${{ secrets.EMMA_USER }}
+          EMMA_SSH_KEY: ${{ secrets.EMMA_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${EMMA_HOST}" ] || { echo "::error::Missing or empty EMMA_HOST"; exit 1; }
+          [ -n "${EMMA_USER}" ] || { echo "::error::Missing or empty EMMA_USER"; exit 1; }
+          [ -n "${EMMA_SSH_KEY}" ] || { echo "::error::Missing or empty EMMA_SSH_KEY"; exit 1; }
+
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EMMA_SSH_KEY }}
+
+      - name: Configure SSH known_hosts
+        env:
+          EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_PORT: ${{ secrets.EMMA_PORT }}
+          EMMA_KNOWN_HOSTS: ${{ secrets.EMMA_KNOWN_HOSTS }}
+        run: |
+          set -e
+          SSH_PORT="${EMMA_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "${EMMA_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${EMMA_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
+          else
+            echo "::warning::EMMA_KNOWN_HOSTS not set; using ssh-keyscan"
+            ssh-keyscan -p "${SSH_PORT}" -H "${EMMA_HOST}" >> ~/.ssh/known_hosts
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy over SSH
+        env:
+          EMMA_USER: ${{ secrets.EMMA_USER }}
+          EMMA_HOST: ${{ secrets.EMMA_HOST }}
+          EMMA_PORT: ${{ secrets.EMMA_PORT }}
+          EMMA_DEPLOY_PATH: ${{ secrets.EMMA_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          SSH_PORT="${EMMA_PORT:-22}"
+          DEPLOY_PATH="${EMMA_DEPLOY_PATH:-/opt/truvector}"
+
+          ssh -p "${SSH_PORT}" "${EMMA_USER}@${EMMA_HOST}" \
+            "TRUVECTOR_DEPLOY_ROOT=${DEPLOY_PATH} \
+             DEPLOY_SOURCE=github-actions \
+             bash ${DEPLOY_PATH}/scripts/deploy-runtime.sh"
+
+      - name: Remote health check
+        if: ${{ env.EMMA_PUBLIC_HEALTH_URL != '' }}
+        env:
+          EMMA_PUBLIC_HEALTH_URL: ${{ secrets.EMMA_PUBLIC_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${EMMA_PUBLIC_HEALTH_URL}/health" || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              echo "Remote health OK (HTTP 200)"
+              exit 0
+            fi
+            echo "Health attempt ${i}: HTTP ${HTTP_CODE:-timeout} — retrying in 5s"
+            sleep 5
+          done
+          echo "::error::Remote health check failed after 60s"
+          exit 1

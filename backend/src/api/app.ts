@@ -33,6 +33,11 @@ import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
 const app = express();
+
+// trust proxy is set to 1 for the single Nginx hop in front of Express on Emma.
+// If Cloudflare is ever placed in front of Nginx, this value must be raised to
+// reflect the new proxy depth — otherwise every request appears to come from
+// the Nginx IP and all per-IP buckets collapse into one global bucket.
 app.set('trust proxy', 1);
 
 // JSON API only — do not send Content-Security-Policy (Helmet default breaks
@@ -96,6 +101,41 @@ app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
 
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
+
+// Per-user rate limit — layered on top of the per-IP floor above (WO-AE-4).
+// Authenticated requests are counted per Clerk user id as well as per IP, so
+// neither shared egress (office NAT, VPN exit) nor throwaway accounts defeats
+// the limit on its own. Unauthenticated requests fall through to the IP limit.
+//
+// Two different numbers, deliberately:
+//   - 150 req / 15 min is the WO-AE-4 *client* budget — what one tab watching
+//     one run may consume, verified in the browser network panel. Polling hooks
+//     back off while the socket is healthy (`getAdaptiveRefetchIntervalMs`).
+//   - 300 req / 15 min is this *server* ceiling. It sits at 2x the client
+//     budget so a user with a second tab open, or one reconnecting after a
+//     socket drop, is not throttled for behaving normally. Setting the ceiling
+//     to the budget would make the expected case the failure case.
+// (Copilot flagged the earlier comment for citing 150 next to `max: 300`, #224.)
+const perUserLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = (req as unknown as { auth?: { userId?: string | null } }).auth?.userId;
+    // Fall back to IP so the limiter never drops requests for unknown reasons
+    return userId ?? req.ip ?? 'unknown';
+  },
+  skip: (req) => {
+    const userId = (req as unknown as { auth?: { userId?: string | null } }).auth?.userId;
+    return !userId; // only apply to authenticated users
+  },
+  message: {
+    error: 'rate_limited',
+    detail: 'Too many requests from this account. Please slow down and retry shortly.',
+  },
+});
+app.use('/api', perUserLimiter);
 
 // Mount public health endpoints explicitly before any auth-protected routes.
 app.use('/api/health', healthRoutes);

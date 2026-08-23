@@ -119,7 +119,7 @@ export default function DossierDetailPage() {
 
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <DossierStatusBadge status={data.runStatus} />
+          <DossierStatusBadge status={data.runStatus} gateStatus={data.gateStatus} />
           <IntentBadge intent={data.plan.intent} />
           {data.plan.orchestrationProfile ? (
             <span className="text-xs rounded-md border border-slate-700 px-2 py-0.5 text-slate-400">

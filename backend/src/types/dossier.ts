@@ -52,6 +52,8 @@ export interface Dossier {
   dossierId: string;
   runId: string;
   runStatus: string;
+  /** Gate status from failure_meta — more specific than runStatus for degraded/failed runs. */
+  gateStatus: string | null;
   request: DossierRequest;
   plan: DossierPlan;
   report: DossierReportLink;
@@ -75,6 +77,8 @@ export interface DossierListRow {
   dossierId: string;
   runId: string;
   runStatus: string;
+  /** Gate status from failure_meta — more specific than runStatus for degraded/failed runs. */
+  gateStatus: string | null;
   requestQuery: string;
   planIntent: string | null;
   dossierCreatedAt: string;

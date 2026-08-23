@@ -76,7 +76,7 @@ export default function AddOnsPage() {
 
   const monitors =
     monitorsQuery.isError || monitorsQuery.isLoading ? [] : (monitorsQuery.data?.monitors ?? []);
-  const addons = catalogQuery.data?.addons ?? [];
+  const addons = useMemo(() => catalogQuery.data?.addons ?? [], [catalogQuery.data?.addons]);
 
   const reportAddons = useMemo(() => addons.filter((a) => a.category === 'report_monitor'), [addons]);
   const runAddons = useMemo(() => addons.filter((a) => a.category === 'research_run'), [addons]);

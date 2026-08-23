@@ -159,10 +159,12 @@ export default function UnifiedResearchConsole({
 
 export type { ResearchEngineMode };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function researchModeFromSearchParams(searchParams: URLSearchParams): ResearchEngineMode {
   return isDeepResearchFromSearchParams(searchParams) ? 'deep' : 'standard';
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function applyResearchModeToSearchParams(
   prev: URLSearchParams,
   next: ResearchEngineMode
@@ -176,6 +178,7 @@ export function applyResearchModeToSearchParams(
   return nextParams;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function syncEngineQueryParam(
   searchParams: URLSearchParams,
   engineVersion?: string | null

@@ -12,6 +12,9 @@ import { refreshRuntimeModelOverrides } from './services/runtimeModelStore';
 import { runV2OpenRouterPreflightAndLog } from './services/openrouter/openrouterPreflight';
 import { startTierResetCron } from './jobs/tierResetCron';
 import { startRetentionCleanupCron } from './jobs/retentionCleanupCron';
+import { startSupabaseKeepAliveCron } from './jobs/supabaseKeepAliveCron';
+import { startSupabaseLogExportCron } from './jobs/supabaseLogExportCron';
+import { startSupabaseBackupCron } from './jobs/supabaseBackupCron';
 
 async function main() {
   try {
@@ -84,6 +87,15 @@ async function main() {
 
     startRetentionCleanupCron();
     logger.info('Retention cleanup cron started');
+
+    startSupabaseKeepAliveCron();
+    logger.info('Supabase keep-alive cron started');
+
+    startSupabaseLogExportCron();
+    logger.info('Supabase log-export cron started');
+
+    startSupabaseBackupCron();
+    logger.info('Supabase backup cron started');
 
     // Best-effort: probe OpenRouter to confirm every V2 default primary
     // has at least one live upstream for the configured account. Logs a
