@@ -37,11 +37,14 @@ confidence.
   prefix — so the suite agreed with the code that suffix overlap did not
   exist. (#221)
 
-**Check:** for each test you add, ask *what would this still pass if the fix
-were reverted?* If the answer is "nothing", the test is a description of the
-implementation, not a check on it. Run the failing case FIRST, watch it fail,
-then fix. A verification you designed alongside the fix inherits the fix's
-blind spots.
+**Check:** for each test you add, ask *does this FAIL if I revert the fix?* It
+must. A test that still passes against the buggy code is a description of the
+implementation, not a check on it — and the way to find out is to revert and
+run, not to reason about it.
+
+Run the failing case FIRST, watch it fail, then fix. A verification designed
+alongside the fix inherits the fix's blind spots; a verification written
+against the bug cannot.
 
 ### T2 — A cheap syntactic proxy for a semantic property
 
@@ -106,17 +109,28 @@ Run all of it after the change and before pushing. Not one of these is
 optional because "the change is small" — several of the findings above came
 from one-line changes.
 
+Run the repo's own scripts, from the repository root. They are what CI runs,
+so a hand-written `eslint` invocation can pass while the gate fails — the
+frontend's `lint` script carries `--max-warnings 0`, which a bare `eslint src`
+does not.
+
+Each workspace runs in its own subshell, so the first `cd` cannot strand the
+second. `cd backend && … && cd frontend` resolves the second as
+`backend/frontend`, and the frontend half never runs at all.
+
 ```bash
-# 1. The gates the repo actually enforces. tsc alone does NOT catch an unused
-#    import; that is a lint error, and it has blocked a PR before.
-cd backend  && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
-cd frontend && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
+# From the repository root.
+(cd backend  && npm run typecheck && npm run lint && npm test)
+(cd frontend && npm run typecheck && npm run lint && npm test)
 ```
+
+`typecheck` alone does NOT catch an unused import; that is a lint error, and it
+has blocked a PR before.
 
 Then, in your own words, on the diff:
 
-1. **T1** — Which new test fails if I revert the fix? Did I run any case
-   *before* fixing and watch it fail?
+1. **T1** — Which new test *fails* when the fix is reverted? Did I run a case
+   before fixing and watch it fail, or only after and watch it pass?
 2. **T2** — For each threshold or predicate: what is the property in words, and
    what real input breaks the proxy?
 3. **T3** — What is the complete set of producers and consumers of anything I
