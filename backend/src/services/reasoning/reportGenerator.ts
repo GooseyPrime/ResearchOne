@@ -570,6 +570,73 @@ export function isTableDelimiterRow(line: string): boolean {
   return /^[-:|\s]+$/.test(trimmed) && trimmed.includes('|') && /-{3,}/.test(trimmed);
 }
 
+/**
+ * Wrappers a model puts around a heading it is emphasising or quoting.
+ * Ordered longest-first so `***x***` is not mistaken for `*` + `**x**` + `*`.
+ */
+const HEADING_WRAPPERS: ReadonlyArray<readonly [string, string]> = [
+  ['***', '***'],
+  ['**', '**'],
+  ['*', '*'],
+  ['___', '___'],
+  ['__', '__'],
+  ['_', '_'],
+  ['~~', '~~'],
+  ['"', '"'],
+  ["'", "'"],
+  ['“', '”'],
+  ['‘', '’'],
+  ['«', '»'],
+];
+
+/**
+ * Remove emphasis, quoting and trailing punctuation from a heading.
+ *
+ * `looksLikeStructuralLabel` anchors its pattern to the whole candidate, so
+ * `# **Overview**`, `` # `Recommendation` `` and `# "Findings"` all slipped
+ * past it and were stored as report titles verbatim, Markdown included
+ * (Codex, #224 second pass).
+ *
+ * Only *balanced* decoration is peeled, and only when the delimiter does not
+ * recur inside. `*Nature* on CRISPR` and `**A** vs **B**` are left alone —
+ * those are emphasised spans within a title, not a wrapped title.
+ */
+export function stripHeadingDecoration(candidate: string): string {
+  let text = candidate.trim();
+
+  for (let guard = 0; guard < 8; guard += 1) {
+    const before = text;
+
+    // A balanced backtick run of any length: `x`, ``x``, ```x```.
+    const fenced = text.match(/^(`+)([\s\S]+)\1$/);
+    if (fenced?.[2] && !fenced[2].includes('`')) {
+      text = fenced[2].trim();
+      continue;
+    }
+
+    for (const [open, close] of HEADING_WRAPPERS) {
+      if (text.length <= open.length + close.length) continue;
+      if (!text.startsWith(open) || !text.endsWith(close)) continue;
+      const inner = text.slice(open.length, text.length - close.length).trim();
+      // A recurring delimiter means these are two spans, not one wrapper.
+      if (!inner || inner.includes(open) || inner.includes(close)) continue;
+      text = inner;
+      break;
+    }
+    if (text !== before) continue;
+
+    const detrailed = text.replace(/[\s:;,.]+$/, '');
+    if (detrailed && detrailed !== text) {
+      text = detrailed;
+      continue;
+    }
+
+    break;
+  }
+
+  return text || candidate.trim();
+}
+
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
@@ -577,7 +644,10 @@ export function clampWordTarget(n: number | undefined): number {
 
 export function deriveGeneratedReportTitle(query: string, markdown: string, intentId?: string): string {
   const headingMatch = markdown.match(/^\s*#\s+(.+?)\s*$/m);
-  const firstHeading = headingMatch?.[1]?.trim();
+  // Decoration is stripped before the checks AND kept stripped in the result:
+  // `# **Overview**` must be recognised as the structural label it is, and a
+  // heading that survives should not carry raw Markdown into the title.
+  const firstHeading = stripHeadingDecoration(headingMatch?.[1] ?? '');
   if (
     firstHeading &&
     firstHeading.length <= GENERATED_TITLE_MAX_LENGTH &&
@@ -596,7 +666,10 @@ export function deriveGeneratedReportTitle(query: string, markdown: string, inte
     (line, index) =>
       line.length > 0 &&
       !looksLikeRawQuery(line, query) &&
-      !looksLikeStructuralLabel(line) &&
+      // Decorated here too — `**Overview**` as a body line is the same label.
+      // Only the check is stripped; the line is returned as written, so a real
+      // sentence keeps its punctuation.
+      !looksLikeStructuralLabel(stripHeadingDecoration(line)) &&
       !looksLikeMarkdownBlockSyntax(line) &&
       // A pipe-less table header row is only identifiable by its delimiter row.
       !isTableDelimiterRow(bodyLines[index + 1] ?? '')

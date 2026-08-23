@@ -10,6 +10,7 @@ import {
 } from './researchEnsemblePresets';
 import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from './defaultModels';
 import { resolveCorsOrigins } from './corsOrigins';
+import { resolveRetrievalMinSimilarity } from './retrievalSimilarityFloor';
 import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
 
 loadEnv();
@@ -294,29 +295,12 @@ const config = {
   },
 
   retrieval: {
-    minSimilarityDefault: (() => {
-      // 0.55, floor included. REVERTED from a 0.45 default with a 0.30 floor.
-      //
-      // The floor is not a tuning knob, it is a guard against a failure that
-      // already happened. AGENTS.md records it: `retrieveChunks({
-      // minSimilarity: 0.3 })` matched the operator's own project notes to an
-      // unrelated market query, and every citation in the resulting report was
-      // the user's own documentation. A low threshold does not merely return
-      // more chunks — it manufactures false authority, which is the one thing
-      // this product cannot ship.
-      //
-      // The hypothesis that 0.55 is too aggressive for text-embedding-3-small
-      // may well be right. WO-AE-2 asked for it to be MEASURED — the same
-      // query at 0.55 / 0.45 / 0.35, recording chunk count, source count, and
-      // whether the extra chunks are on topic — precisely so the floor is not
-      // moved on an untested belief. That measurement has not been done.
-      //
-      // To change this: run the measurement, put the numbers in the PR, and
-      // re-run the self-source analysis in Rule 40 against the lower value.
-      // Not before.
-      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
-      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
-    })(),
+    // 0.55, floor included. REVERTED from a 0.45 default with a 0.30 floor.
+    // The rationale, the incident behind it, and what changing it requires all
+    // live in `config/retrievalSimilarityFloor.ts` — which exists as its own
+    // module so the clamp is directly testable. It was inline here when #224
+    // lowered it, and no test covered it.
+    minSimilarityDefault: resolveRetrievalMinSimilarity(process.env.RETRIEVAL_MIN_SIMILARITY),
     corpusGate: {
       minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),
       minDistinctSources: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_SOURCES || '25', 10),

@@ -23,6 +23,7 @@ DELETED=0
 SKIPPED_OPEN=0
 SKIPPED_PROTECTED=0
 SKIPPED_NO_PR=0
+FAILED=0
 
 # Branches that must never be deleted regardless of PR state.
 PROTECTED_BRANCHES=(
@@ -71,16 +72,24 @@ for branch in "${BRANCHES[@]}"; do
       log "[DELETE  ] ${branch} (PR state: ${PR_STATE})"
       if [[ "${DRY_RUN}" != "0" ]]; then
         log "           (dry-run — not deleting)"
+        (( DELETED++ )) || true
       else
         # Branch names contain `/` (cursor/foo, copilot/bar). The refs API
         # needs those percent-encoded or the DELETE 404s and nothing is
         # pruned while the script reports success (Copilot, #224).
         encoded_branch="$(printf '%s' "${branch}" | jq -sRr @uri)"
-        gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded_branch}" && \
-          log "           deleted." || \
+        # Count the outcome, not the attempt. The previous `&& log || log`
+        # chain resolved to the successful `log`, so a permission, network or
+        # API failure still incremented DELETED and exited 0 — automation saw
+        # a branch reported as deleted that was still there (Codex, #224).
+        if gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded_branch}"; then
+          log "           deleted."
+          (( DELETED++ )) || true
+        else
           log "           ERROR: delete failed"
+          (( FAILED++ )) || true
+        fi
       fi
-      (( DELETED++ )) || true
       ;;
     OPEN)
       log "[KEEP    ] ${branch} (PR state: OPEN)"
@@ -102,9 +111,18 @@ log "  Deleted (or would delete): ${DELETED}"
 log "  Kept (protected):          ${SKIPPED_PROTECTED}"
 log "  Kept (open PR):            ${SKIPPED_OPEN}"
 log "  No PR found (skipped):     ${SKIPPED_NO_PR}"
+log "  Failed to delete:          ${FAILED}"
 log "  Log: ${LOG_FILE}"
 
 if [[ "${DRY_RUN}" != "0" ]]; then
   log ""
   log "This was a DRY RUN. To delete: DRY_RUN=0 bash scripts/prune-stale-branches.sh"
+fi
+
+# Exit nonzero when any delete failed, so a scheduled run surfaces the problem
+# instead of reporting a clean prune (Codex, #224).
+if (( FAILED > 0 )); then
+  log ""
+  log "ERROR: ${FAILED} branch deletion(s) failed. See ${LOG_FILE}."
+  exit 1
 fi

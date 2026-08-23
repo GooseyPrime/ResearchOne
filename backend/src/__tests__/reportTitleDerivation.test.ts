@@ -21,6 +21,7 @@ import {
   isTableDelimiterRow,
   looksLikeMarkdownBlockSyntax,
   looksLikeStructuralLabel,
+  stripHeadingDecoration,
 } from '../services/reasoning/reportGenerator';
 
 describe('looksLikeStructuralLabel', () => {
@@ -132,6 +133,75 @@ describe('looksLikeMarkdownBlockSyntax', () => {
     'A-B testing outcomes',
   ])('returns false for prose: %s', (line) => {
     expect(looksLikeMarkdownBlockSyntax(line)).toBe(false);
+  });
+});
+
+/**
+ * Codex, PR #224 second pass: `looksLikeStructuralLabel` anchors its pattern to
+ * the whole candidate, so any Markdown decoration left on a heading made a
+ * generic label unrecognisable and it was stored as the title verbatim.
+ */
+describe('stripHeadingDecoration', () => {
+  it.each([
+    ['**Overview**', 'Overview'],
+    ['*Overview*', 'Overview'],
+    ['***Overview***', 'Overview'],
+    ['__Overview__', 'Overview'],
+    ['_Overview_', 'Overview'],
+    ['~~Overview~~', 'Overview'],
+    ['`Recommendation`', 'Recommendation'],
+    ['``Recommendation``', 'Recommendation'],
+    ['"Findings"', 'Findings'],
+    ["'Findings'", 'Findings'],
+    ['“Findings”', 'Findings'],
+    ['Overview:', 'Overview'],
+    ['Overview.', 'Overview'],
+    ['**"Overview"**', 'Overview'],
+    ['**Overview:**', 'Overview'],
+    ['  **Overview**  ', 'Overview'],
+  ])('strips %s -> %s', (input, expected) => {
+    expect(stripHeadingDecoration(input)).toBe(expected);
+  });
+
+  it.each([
+    // An emphasised span inside a title is not a wrapper — leave it alone.
+    '*Nature* on CRISPR-Cas9',
+    '**A** vs **B**',
+    'Why "Alignment" Is Hard',
+    'Comparison of RNA-Sequencing Methods',
+  ])('leaves %s unchanged', (input) => {
+    expect(stripHeadingDecoration(input)).toBe(input);
+  });
+
+  it('never returns an empty string for decoration-only input', () => {
+    expect(stripHeadingDecoration('****')).toBeTruthy();
+  });
+});
+
+describe('deriveGeneratedReportTitle — decorated headings', () => {
+  const query = 'compare rna sequencing methods';
+
+  it.each(['# **Overview**', '# `Recommendation`', '# "Findings"', '# __Analysis__', '# Conclusion:'])(
+    'rejects the decorated structural label %s',
+    (heading) => {
+      const md = `${heading}\n\nShort-read sequencing remains the cheaper option at scale.`;
+      const title = deriveGeneratedReportTitle(query, md, 'comparative');
+
+      expect(title).toBe('Short-read sequencing remains the cheaper option at scale.');
+      expect(title).not.toMatch(/[*_`"]/);
+    }
+  );
+
+  it('keeps a real subject heading and strips only its decoration', () => {
+    const md = '# **Comparison of RNA-Sequencing Methods**\n\nBody text.';
+    expect(deriveGeneratedReportTitle(query, md)).toBe('Comparison of RNA-Sequencing Methods');
+  });
+
+  it('rejects a decorated structural label appearing as a body line', () => {
+    const md = '# Dimensions Table\n\n**Overview**\n\nLong-read platforms resolve structural variants.';
+    expect(deriveGeneratedReportTitle(query, md, 'comparative')).toBe(
+      'Long-read platforms resolve structural variants.'
+    );
   });
 });
 

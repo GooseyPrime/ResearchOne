@@ -11,7 +11,10 @@ Across PRs #217–#221, automated review raised **eighteen** findings. They were
 not eighteen different mistakes. They were five mistakes, each made repeatedly,
 and most of them were made *while fixing the previous one*. PR #224 added
 fifteen more and four new themes (T6–T9), all four from an agent implementing a
-written work order.
+written work order. A second Codex pass on the *fixes* found six more — three
+of them defects in the fix itself, which is why the last line of every theme
+below is a check to run against your own patch, not only against the code you
+inherited.
 
 That has a cost beyond the rework. A reviewer spending its pass on a dead
 import and an ASCII-only regex is a reviewer **not** spending it on the
@@ -39,11 +42,24 @@ confidence.
   prefix — so the suite agreed with the code that suffix overlap did not
   exist. (#221)
 
+- Restoring the 0.55 retrieval floor in `config/index.ts` left the one
+  assertion that touched it — `corpusCompetenceGate.test.ts` — still accepting
+  0.30, because the same PR had relaxed the test alongside the code. The fix
+  was real and the suite would still have gone green on a re-break. **When you
+  revert a bad change, grep for every test that was edited in the same commit.**
+  A fix whose regression test was widened with it is not protected. (#224)
+
 **Check:** for each test you add, ask *what would this still pass if the fix
 were reverted?* If the answer is "nothing", the test is a description of the
 implementation, not a check on it. Run the failing case FIRST, watch it fail,
 then fix. A verification you designed alongside the fix inherits the fix's
 blind spots.
+
+**Corollary — testability is part of the fix.** A value that cannot be asserted
+without booting the whole config module will not be asserted. The retrieval
+floor was an inline IIFE inside `config/index.ts` when it was lowered; it is now
+`config/retrievalSimilarityFloor.ts` with its own suite. If a guard matters
+enough to write a comment about, extract it far enough to test.
 
 ### T2 — A cheap syntactic proxy for a semantic property
 
@@ -56,6 +72,14 @@ Reaching for something countable when the property is about meaning.
   generic clause is still generic. (#221)
 - `split(/[^a-z0-9]+/)` for *"significant tokens"* — returns nothing for
   Chinese, Japanese, Arabic or Cyrillic. (#221)
+- *"a response arrived with a non-empty body"* for **"the service is ready"**.
+  Nginx and PM2 both answer 502/503 with a body during a restart, so the deploy
+  health loop accepted the first one, broke out, and failed a deploy that was
+  merely still starting. The property is *HTTP 200*, and nothing weaker. (#224)
+- An anchored full-string match for *"is this heading a generic label"*.
+  `# **Overview**`, `` # `Recommendation` `` and `# "Findings"` all carried
+  Markdown decoration, so the pattern did not fire and the decoration was
+  stored in the report title verbatim. Normalize before you match. (#224)
 
 **Check:** name the property in a sentence. If the sentence is about meaning
 and the code measures length, position, or ASCII shape, the proxy will be
@@ -157,10 +181,25 @@ service down while failing.
   the whole API process. An ops job must never be able to take down the service
   it monitors. (#224)
 
-**Check:** for every background job, name the two failure modes explicitly:
-*what does it log when the remote call returns non-2xx?* and *what happens if
-the body throws before the first try/catch?* If the answer to the first is
-"the same as success", the job's monitoring value is zero.
+- `prune-stale-branches.sh` ran `gh api -X DELETE … && log "deleted." || log
+  "ERROR"`. The chain's value is the *successful log command*, so a permission
+  or network failure still incremented `DELETED` and the script exited 0. The
+  summary reported branches as pruned that were still there. **`&& … || …` is
+  not error handling; it is error laundering.** Use `if cmd; then … else …
+  fi`, count outcomes rather than attempts, and exit nonzero. (#224)
+- The backup cron's failure path ran `fs.unlinkSync(filePath)` on the *dated*
+  filename. A restart on the same UTC day re-runs the immediate cron against
+  that same name, so a second run failing for any reason deleted the morning's
+  good dump. Cleanup that can destroy a prior success is not cleanup. Write to
+  a per-attempt temporary path and rename only after the command succeeds.
+  (#224)
+
+**Check:** for every background job, name three failure modes explicitly:
+*what does it log when the remote call returns non-2xx?*, *what happens if the
+body throws before the first try/catch?*, and *what does it exit with when the
+work did not happen?* If the answer to the first is "the same as success", the
+job's monitoring value is zero. And for anything that deletes: name the state
+in which that delete destroys a good artifact.
 
 ### T9 — Untrusted config reaching a privileged sink
 
@@ -178,11 +217,24 @@ a filesystem path, a shell argument list, a URL — without validation.
   path; a branch with `#` or `?` in its name addresses a different ref.
   (#224)
 
+- **The sanitizer's own failure path re-admitted what it sanitized.** The fix
+  for the `pg_dump` argv exposure ended `} catch { return { safeUrl: url } }` —
+  an unparseable URL, or a password with a malformed `%` escape, handed the
+  original credential-bearing string straight back to the caller, which passed
+  it to `pg_dump` as argv. The exposure was closed on the happy path and left
+  open on the error path. Found on the *second* review pass, on the fix for the
+  first. (#224)
+
 **Check:** trace every value that comes from an env var, an API response, or a
 filename through to where it is *used*, not where it is read. If it reaches a
 path, an argv array, a URL, or SQL, it needs sanitizing or parameterizing at
 that boundary. "It is our own config" is not a validation — a typo is as
 damaging as an attacker here.
+
+**And check the sanitizer's `catch`.** A sanitizer has exactly two honest
+outcomes: a safe value, or a refusal. If yours has a third — "hand back the
+input and let the next layer deal with it" — it does not sanitize, it only
+usually sanitizes. Reject the input and skip the work.
 
 ## The self-check
 

@@ -79,21 +79,39 @@ JSON
 echo "[deploy] waiting for API on :3000"
 HEALTH_JSON=""
 HEALTH_HTTP_CODE=""
+LAST_CODE=""
+LAST_BODY=""
+# Only a 200 ends the wait. Nginx and PM2 both answer 502/503 with a body
+# while the app is still coming up, and the previous condition accepted any
+# non-empty response — so the first restart-window 502 broke the loop, the
+# Python check exited immediately, and the advertised 90s startup wait never
+# happened for an otherwise healthy deploy (Codex, #224).
 for i in $(seq 1 90); do
   HEALTH_TMP="$(mktemp)"
   code="$(curl -s -o "${HEALTH_TMP}" -w "%{http_code}" --max-time 3 http://127.0.0.1:3000/health 2>/dev/null || true)"
-  if [[ -n "${code}" && "${code}" != "000" && -s "${HEALTH_TMP}" ]]; then
+  if [[ "${code}" == "200" && -s "${HEALTH_TMP}" ]]; then
     HEALTH_HTTP_CODE="${code}"
     HEALTH_JSON="$(cat "${HEALTH_TMP}")"
     rm -f "${HEALTH_TMP}"
     break
+  fi
+  # Keep the most recent attempt so the timeout message says what was actually
+  # being returned, rather than only that nothing worked.
+  if [[ -n "${code}" && "${code}" != "000" ]]; then
+    LAST_CODE="${code}"
+    LAST_BODY="$(head -c 400 "${HEALTH_TMP}" 2>/dev/null || true)"
   fi
   rm -f "${HEALTH_TMP}"
   sleep 1
 done
 
 if [[ -z "${HEALTH_JSON}" ]]; then
-  echo "[deploy] ERROR: could not GET /health from 127.0.0.1:3000 after 90s" >&2
+  if [[ -n "${LAST_CODE}" ]]; then
+    echo "[deploy] ERROR: /health never returned 200 within 90s; last response was HTTP ${LAST_CODE}" >&2
+    echo "[deploy]        body: ${LAST_BODY}" >&2
+  else
+    echo "[deploy] ERROR: could not GET /health from 127.0.0.1:3000 after 90s" >&2
+  fi
   exit 1
 fi
 

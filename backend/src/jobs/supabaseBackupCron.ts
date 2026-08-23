@@ -59,8 +59,14 @@ function loadBackupProjects(): BackupProject[] {
  *
  * PGPASSWORD reaches the child through its environment instead, which is not
  * world-readable in the process table.
+ *
+ * Returns `null` when the string cannot be sanitized — an unparseable URL, or
+ * a password with a malformed `%` escape that `decodeURIComponent` rejects.
+ * The caller must then skip the project. Falling back to the original string
+ * would put the password back in argv, which is the exact exposure this
+ * function exists to remove (Codex, #224 second pass).
  */
-function splitCredentials(url: string): { safeUrl: string; env: NodeJS.ProcessEnv } {
+export function splitCredentials(url: string): { safeUrl: string; env: NodeJS.ProcessEnv } | null {
   try {
     const parsed = new URL(url);
     const password = decodeURIComponent(parsed.password || '');
@@ -70,9 +76,7 @@ function splitCredentials(url: string): { safeUrl: string; env: NodeJS.ProcessEn
       env: password ? { PGPASSWORD: password } : {},
     };
   } catch {
-    // Not a parseable URL — hand it back untouched rather than guessing, and
-    // let pg_dump report the problem.
-    return { safeUrl: url, env: {} };
+    return null;
   }
 }
 
@@ -94,19 +98,38 @@ async function backupProject(project: BackupProject, dest: string): Promise<void
   const fileName = `${sanitizeLabel(project.label)}-${dateStr}.dump`;
   const filePath = path.join(dest, fileName);
 
-  const { safeUrl, env } = splitCredentials(project.url);
+  const credentials = splitCredentials(project.url);
+  if (!credentials) {
+    // Never fall back to the raw URL: it carries the password, and pg_dump
+    // takes its connection string as an argv element.
+    logger.error('supabase_backup_config_invalid', {
+      label: project.label,
+      reason: 'connection string could not be parsed or its password could not be decoded',
+    });
+    return;
+  }
+  const { safeUrl, env } = credentials;
+
+  // Dump to a per-attempt temporary path and rename only on success. The
+  // filename is dated, so a restart on the same UTC day re-runs the immediate
+  // cron against the same name; writing in place meant a failed rerun deleted
+  // that day's already-good backup (Codex, #224 second pass).
+  const tmpPath = `${filePath}.tmp-${process.pid}`;
 
   logger.info('supabase_backup_started', { label: project.label, file: filePath });
   try {
     await execFileAsync('pg_dump', [
       '--format=custom',    // custom format: supports parallel restore, compression
       '--no-password',
-      '--file', filePath,
+      '--file', tmpPath,
       safeUrl,
     ], {
       timeout: 10 * 60 * 1000 /* 10 min */,
       env: { ...process.env, ...env },
     });
+
+    // Same directory, so this is an atomic replace on POSIX.
+    fs.renameSync(tmpPath, filePath);
 
     const stat = fs.statSync(filePath);
     logger.info('supabase_backup_ok', {
@@ -115,8 +138,9 @@ async function backupProject(project: BackupProject, dest: string): Promise<void
       bytes: stat.size,
     });
   } catch (err) {
-    // Clean up partial dump so the next run creates a fresh file
-    try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    // Only the failed attempt is removed. Any previous successful dump at
+    // `filePath` is untouched.
+    try { fs.unlinkSync(tmpPath); } catch { /* nothing to clean up */ }
     logger.error('supabase_backup_failed', {
       label: project.label,
       error: redact(err instanceof Error ? err.message : String(err)),
