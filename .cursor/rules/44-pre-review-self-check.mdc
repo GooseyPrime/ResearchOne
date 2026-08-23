@@ -61,6 +61,19 @@ floor was an inline IIFE inside `config/index.ts` when it was lowered; it is now
 `config/retrievalSimilarityFloor.ts` with its own suite. If a guard matters
 enough to write a comment about, extract it far enough to test.
 
+**Corollary — a documented command is a verification artifact, so run it.**
+The gate block in *this file* read `cd backend && …` on one line and
+`cd frontend && …` on the next. The first `cd` persists, so the second looked
+for `backend/frontend` and the frontend gates never ran. It also used
+`npx eslint src --quiet`, which suppresses exactly the warnings the real
+frontend gate (`--max-warnings 0`) fails on. Nobody had executed the block —
+it was written from memory of what the gates were.
+
+It then propagated: the WO-AF handoff copied it verbatim, and both reviewers
+caught it there (#225). **A snippet you paste into a doc has not been verified
+by having been written down before.** Run it, from the directory the reader
+will be in, and paste what it actually printed.
+
 ### T2 — A cheap syntactic proxy for a semantic property
 
 Reaching for something countable when the property is about meaning.
@@ -243,11 +256,30 @@ optional because "the change is small" — several of the findings above came
 from one-line changes.
 
 ```bash
-# 1. The gates the repo actually enforces. tsc alone does NOT catch an unused
-#    import; that is a lint error, and it has blocked a PR before.
-cd backend  && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
-cd frontend && npx tsc --noEmit && npx eslint src --quiet && npx vitest run
+# 1. Branch first — Rule 32 and AGENTS.md:26-30 mandate the helper, which
+#    handles the pre-assigned-branch and restricted-ref cases. A bare
+#    `git checkout -b` discards a pre-assigned branch.
+bash scripts/git/prepare-work-branch.sh <topic-slug>          # or --reuse
+
+# 2. The gates the repo actually enforces. Run the repo's own npm scripts, not
+#    hand-rolled npx equivalents: frontend lint is
+#    `eslint src --report-unused-disable-directives --max-warnings 0`, so an
+#    `npx eslint src --quiet` here passes on exactly the warnings CI fails on.
+#    tsc alone does NOT catch an unused import; that is a lint error and it has
+#    blocked a PR before.
+#
+#    Each workspace runs in its own subshell. Chaining `cd backend && …` then
+#    `cd frontend && …` leaves the shell inside backend/ and the second line
+#    looks for backend/frontend, so the frontend gates silently never run.
+( cd backend  && NODE_ENV=test npm run typecheck && npm run lint && npm run test )
+( cd frontend && npm run typecheck && npm run lint && npm run test )
 ```
+
+Verified as written: both subshells run from the repo root and the shell is
+still at the root afterwards. On Windows run these through `cmd`, not Git Bash —
+`npm run <script>` exits 1 there even when the underlying command succeeds
+(`npx tsc --noEmit` exits 0 on the same tree), so Git Bash reports a false
+failure and you will chase a gate that already passes.
 
 Then, in your own words, on the diff:
 
