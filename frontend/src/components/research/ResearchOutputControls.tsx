@@ -38,6 +38,7 @@ export interface ResearchOutputControlsProps {
   compact?: boolean;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function resolveTargetWordCount(preset: string, custom: number): number {
   if (preset === 'short') return 1200;
   if (preset === 'standard') return 2200;
@@ -47,6 +48,7 @@ export function resolveTargetWordCount(preset: string, custom: number): number {
   return 2200;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function normalizeReportFormats(values: string[]): string[] {
   const filtered = values.filter((value): value is (typeof REPORT_FORMAT_OPTIONS)[number]['value'] =>
     REPORT_FORMAT_OPTIONS.some((option) => option.value === value)

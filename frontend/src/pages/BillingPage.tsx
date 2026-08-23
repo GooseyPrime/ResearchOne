@@ -253,7 +253,7 @@ export default function BillingPage() {
     onError: (err: unknown) => setTokenPrefsError(extractApiError(err)),
   });
 
-  const configuredTokenPackages = monitorPackagesQuery.data?.packages ?? [];
+  const configuredTokenPackages = useMemo(() => monitorPackagesQuery.data?.packages ?? [], [monitorPackagesQuery.data?.packages]);
   const defaultAutoTopupPackageId = useMemo(() => {
     const saved = monitorTokensQuery.data?.autoTopupPackageId;
     if (saved && configuredTokenPackages.some((p) => p.id === saved)) return saved;

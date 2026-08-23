@@ -33,6 +33,11 @@ import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
 
 const app = express();
+
+// trust proxy is set to 1 for the single Nginx hop in front of Express on Emma.
+// If Cloudflare is ever placed in front of Nginx, this value must be raised to
+// reflect the new proxy depth — otherwise every request appears to come from
+// the Nginx IP and all per-IP buckets collapse into one global bucket.
 app.set('trust proxy', 1);
 
 // JSON API only — do not send Content-Security-Policy (Helmet default breaks
@@ -96,6 +101,33 @@ app.use('/api/landing', landingPersonaEventLimiter, landingRoutes);
 
 app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
+
+// Per-user rate limit — layered on top of the per-IP floor above (WO-AE-4).
+// Authenticated requests that exhaust 150/15min per user are throttled before
+// the per-IP bucket is hit. Unauthenticated requests fall through to the IP
+// limit only. Polling hooks reduce their interval when the socket is connected
+// (frontend `getAdaptiveRefetchIntervalMs`), so the steady-state budget should
+// stay well under this ceiling for a single tab watching one run.
+const perUserLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = (req as unknown as { auth?: { userId?: string | null } }).auth?.userId;
+    // Fall back to IP so the limiter never drops requests for unknown reasons
+    return userId ?? req.ip ?? 'unknown';
+  },
+  skip: (req) => {
+    const userId = (req as unknown as { auth?: { userId?: string | null } }).auth?.userId;
+    return !userId; // only apply to authenticated users
+  },
+  message: {
+    error: 'rate_limited',
+    detail: 'Too many requests from this account. Please slow down and retry shortly.',
+  },
+});
+app.use('/api', perUserLimiter);
 
 // Mount public health endpoints explicitly before any auth-protected routes.
 app.use('/api/health', healthRoutes);

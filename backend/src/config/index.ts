@@ -295,8 +295,14 @@ const config = {
 
   retrieval: {
     minSimilarityDefault: (() => {
-      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
-      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
+      // Default lowered from 0.55 → 0.45 (WO-AE-2): text-embedding-3-small routinely
+      // scores genuinely relevant passages at 0.35–0.50. The former 0.55 floor was
+      // cutting out the majority of ingested chunks (run b8265303: 13 chunks from 2
+      // of 9 available sources). The Math.max(0.55, ...) clamp is removed so the
+      // threshold is honestly configurable via RETRIEVAL_MIN_SIMILARITY.
+      // Do NOT lower below 0.30 without re-running the self-source analysis (Rule 40).
+      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.45');
+      return Number.isFinite(parsed) ? Math.max(0.30, parsed) : 0.45;
     })(),
     corpusGate: {
       minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),

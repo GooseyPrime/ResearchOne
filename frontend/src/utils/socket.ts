@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { setSocketHealthProvider } from './apiRateLimit';
 
 let socket: Socket | null = null;
 
@@ -11,6 +12,9 @@ export function getSocket(): Socket {
       reconnectionDelay: 1000,
       withCredentials: false,
     });
+    // Register the connection-state provider so polling hooks can back off
+    // when live events are flowing (WO-AE-4 / getAdaptiveRefetchIntervalMs).
+    setSocketHealthProvider(() => socket?.connected ?? false);
   }
   return socket;
 }

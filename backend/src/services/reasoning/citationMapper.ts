@@ -43,6 +43,9 @@ CRITICAL RULES:
 - Provide a short chunk_quote (max 100 chars) showing which part of the chunk is cited
 - Confidence must be 0.0–1.0; only include citations with confidence >= 0.3
 - Each citation maps one section_type to one chunk_id, with optional source_id and claim_id
+- Chunks are listed as "[CHUNK N] ID: <uuid>" — use the exact UUID as the chunk_id value
+- Report sections reference chunks by their 1-based number (e.g. "Chunk 3") — find the chunk
+  with that number and return its UUID as chunk_id
 
 Output JSON with this exact schema:
 {
@@ -82,12 +85,23 @@ export async function mapAndPersistCitations(args: {
   const wave53Maps = args.sourceClassMap ?? args.sourceClassByChunkId;
   const chunkLimit = args.chunkContextLimit ?? Math.min(chunks.length, 40);
 
+  // Build an ordered list of chunks for the context window, and an index→uuid
+  // lookup so the model can cite by 1-based number (matching the synthesizer
+  // format) and we resolve it to a real UUID on the way back.
+  const contextChunks = chunks.slice(0, chunkLimit);
+  const chunkByIndex = new Map<number, RetrievedChunk>(contextChunks.map((c, i) => [i + 1, c]));
+
   logger.info(`[citations:${runId}] Mapping citations for ${reportSections.length} sections`);
 
-  const chunkContext = chunks
-    .slice(0, chunkLimit)
-    .map(c => `[CHUNK ${c.id}] Source URL: ${c.source_url || 'unknown'}\nTitle: ${c.source_title || 'unknown'}\nChunk Index: ${typeof c.chunk_index === 'number' ? c.chunk_index : 'unknown'}\n${c.content.slice(0, 250)}`)
-    .join('\n---\n');
+  const chunkContext = contextChunks
+    .map((c, i) => [
+      `[CHUNK ${i + 1}] ID: ${c.id}`,
+      `Source URL: ${c.source_url || 'unknown'}`,
+      `Title: ${c.source_title || 'unknown'}`,
+      c.content.slice(0, 250),
+      '---',
+    ].join('\n'))
+    .join('\n');
 
   const sectionContext = reportSections
     .map(s => `[SECTION: ${s.type}] ${s.title}\n${s.content.slice(0, 400)}`)
@@ -99,6 +113,7 @@ export async function mapAndPersistCitations(args: {
     .join('\n');
 
   let result: CitationMapResult = { citations: [], uncitedSections: [], notes: '' };
+  const chunkById = new Map(chunks.map((c) => [c.id, c]));
 
   try {
     const modelResult = await callRoleModel({
@@ -124,8 +139,24 @@ export async function mapAndPersistCitations(args: {
         uncited_sections: string[];
         notes: string;
       };
+
+      // Resolve chunk_id: the model may return a 1-based index number (matching
+      // the "[CHUNK N]" format we sent) or a UUID. Normalise to UUID, then drop
+      // any citation whose chunk_id is not a known chunk — a fabricated ID
+      // produces a dangling FK that the dossier query can never resolve.
+      const resolvedCitations = (parsed.citations ?? [])
+        .map((c) => {
+          const asIndex = Number(c.chunk_id);
+          if (!Number.isNaN(asIndex) && Number.isInteger(asIndex) && asIndex >= 1) {
+            const resolved = chunkByIndex.get(asIndex);
+            if (resolved) return { ...c, chunk_id: resolved.id };
+          }
+          return c;
+        })
+        .filter((c) => c.section_type && c.chunk_id && c.confidence >= 0.3 && chunkById.has(c.chunk_id));
+
       result = {
-        citations: (parsed.citations ?? []).filter(c => c.section_type && c.chunk_id && c.confidence >= 0.3),
+        citations: resolvedCitations,
         uncitedSections: parsed.uncited_sections ?? [],
         notes: parsed.notes ?? '',
       };
@@ -136,7 +167,20 @@ export async function mapAndPersistCitations(args: {
   }
 
   if (result.citations.length === 0) {
-    logger.info(`[citations:${runId}] No citations mapped`);
+    // If the report references chunks by number but none resolved, that is a
+    // deliverable failure — the reader cannot follow any citation back to a
+    // source. Log a specific, actionable message so it is never silently swallowed.
+    const reportText = reportSections.map((s) => s.content).join('\n');
+    const hasChunkRefs = /\bChunk\s+\d+\b/i.test(reportText);
+    if (hasChunkRefs && chunks.length > 0) {
+      logger.error(
+        `[citations:${runId}] CITATION FAILURE: report contains chunk references but no citations resolved to a source. ` +
+        `chunks_available=${chunks.length} chunks_in_context=${contextChunks.length} ` +
+        `sections=${reportSections.length}`,
+      );
+    } else {
+      logger.info(`[citations:${runId}] No citations mapped`);
+    }
     return result;
   }
 
@@ -153,7 +197,6 @@ export async function mapAndPersistCitations(args: {
     [reportId]
   );
   const sectionIdByType = new Map<string, string>(sectionRows.map(r => [r.section_type, r.id]));
-  const chunkById = new Map(chunks.map((c) => [c.id, c]));
 
   await withTransaction(async (client) => {
     for (const citation of result.citations) {

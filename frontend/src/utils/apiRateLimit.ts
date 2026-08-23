@@ -7,6 +7,14 @@ let cooldownUntilMs = 0;
 const DEFAULT_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 5 * 60_000;
 
+/**
+ * Multiplier applied to baseline refetch intervals while the socket is healthy.
+ * A single tab watching one run fires dozens of React Query hooks at 5–30s.
+ * When the socket is delivering live events those polls are redundant; backing
+ * off 6× keeps the same 15-minute budget well under 150 requests (WO-AE-4).
+ */
+const SOCKET_HEALTHY_BACKOFF_FACTOR = 6;
+
 function parseRetryAfterMs(headers: Record<string, unknown> | undefined): number | null {
   if (!headers) return null;
   const ra = (headers['retry-after'] ?? headers['Retry-After']) as string | number | undefined;
@@ -26,16 +34,43 @@ export function isInApiRateLimitCooldown(): boolean {
   return Date.now() < cooldownUntilMs;
 }
 
+/** Injected by the socket initialisation layer; returns true when connected. */
+let socketHealthProvider: (() => boolean) | null = null;
+
 /**
- * React Query `refetchInterval` helper: use a long interval while the API is rate-limiting us.
+ * Register a function that returns the current Socket.IO connection state.
+ * Call once from `socket.ts` when the socket instance is created (WO-AE-4).
+ */
+export function setSocketHealthProvider(provider: () => boolean): void {
+  socketHealthProvider = provider;
+}
+
+function isSocketConnectedAndHealthy(): boolean {
+  return socketHealthProvider?.() ?? false;
+}
+
+/**
+ * React Query `refetchInterval` helper.
+ *
+ * Returns a longer interval when:
+ * 1. The API returned 429 and set a cooldown window, OR
+ * 2. The Socket.IO connection is live — live events make polling redundant.
+ *
+ * Returns the baseline when neither condition holds (socket disconnected / not
+ * yet established), so the UI degrades gracefully to polling-only mode.
  */
 export function getAdaptiveRefetchIntervalMs(baselineMs: number): number {
-  if (!isInApiRateLimitCooldown()) return baselineMs;
-  const remainingCooldownMs = Math.min(
-    Math.max(cooldownUntilMs - Date.now(), 0),
-    MAX_COOLDOWN_MS
-  );
-  return Math.max(remainingCooldownMs, baselineMs);
+  if (isInApiRateLimitCooldown()) {
+    const remainingCooldownMs = Math.min(
+      Math.max(cooldownUntilMs - Date.now(), 0),
+      MAX_COOLDOWN_MS
+    );
+    return Math.max(remainingCooldownMs, baselineMs);
+  }
+  if (isSocketConnectedAndHealthy()) {
+    return baselineMs * SOCKET_HEALTHY_BACKOFF_FACTOR;
+  }
+  return baselineMs;
 }
 
 export function applyApiRateLimitInterceptor(client: AxiosInstance): void {

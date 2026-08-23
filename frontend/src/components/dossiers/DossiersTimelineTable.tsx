@@ -108,6 +108,7 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function timelineRowsToCsv(rows: DossierTimelineRow[]): string {
   const header = ['occurredAt', 'eventType', 'dossierId', 'query', 'revisionNumber', 'engineVersion', 'runStatus', 'reportId', 'runId'];
   const escape = (v: string | number | null | undefined) => {

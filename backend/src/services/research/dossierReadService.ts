@@ -79,6 +79,7 @@ function mapRowToListEntry(r: Record<string, unknown>, extended: boolean): Dossi
     dossierId: String(r.dossier_id),
     runId: String(r.run_id),
     runStatus: String(r.run_status ?? ''),
+    gateStatus: r.run_gate_status != null ? String(r.run_gate_status) : null,
     requestQuery: String(r.request_query ?? ''),
     planIntent: r.plan_intent != null ? String(r.plan_intent) : null,
     dossierCreatedAt,
@@ -103,7 +104,7 @@ function resolveListOrderBy(sortBy: DossierSortBy | undefined, extended: boolean
   return 'dossier_created_at DESC';
 }
 
-const LIST_SELECT_EXTENDED = `SELECT dossier_id, run_id, run_status, request_query, plan_intent, dossier_created_at,
+const LIST_SELECT_EXTENDED = `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, plan_intent, dossier_created_at,
             report_id, report_title, sources_cited_count, total_duration_ms,
             last_activity_at, report_version_number, is_spinoff, is_revised,
             spinoff_from_report_id, engine_version`;
@@ -167,6 +168,7 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
     dossierId: String(row.dossier_id),
     runId: String(row.run_id),
     runStatus: String(row.run_status ?? ''),
+    gateStatus: row.run_gate_status != null ? String(row.run_gate_status) : null,
     request,
     plan,
     report,

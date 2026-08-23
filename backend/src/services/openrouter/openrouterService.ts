@@ -931,6 +931,11 @@ TITLE RULES — follow these precisely:
 - Every title must name its specific subject. Never emit a bare generic noun
   ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
   scanning the table of contents must be able to tell the sections apart.
+- Never use a structural or formatting label as a section title. Forbidden titles
+  include (but are not limited to): "Dimensions Table", "Comparison Table",
+  "Ranking Table", "Summary Table", "Recommendation", "Overview", "Introduction",
+  "Findings", "Analysis", "Conclusion", "Results", "Executive Summary",
+  "Methodology", "Background", "Appendix". Always name the specific subject instead.
 - Titles must be unique across the outline. If two sections would cover the same
   subject, merge them or differentiate the subject.
 - Emit sections in the order they should be read. The consumer renders them in
@@ -1298,6 +1303,11 @@ TITLE RULES — follow these precisely:
 - Every title must name its specific subject. Never emit a bare generic noun
   ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
   scanning the table of contents must be able to tell the sections apart.
+- Never use a structural or formatting label as a section title. Forbidden titles
+  include (but are not limited to): "Dimensions Table", "Comparison Table",
+  "Ranking Table", "Summary Table", "Recommendation", "Overview", "Introduction",
+  "Findings", "Analysis", "Conclusion", "Results", "Executive Summary",
+  "Methodology", "Background", "Appendix". Always name the specific subject instead.
 - Titles must be unique across the outline. If two sections would cover the same
   subject, merge them or differentiate the subject.
 - Emit sections in the order they should be read. The consumer renders them in

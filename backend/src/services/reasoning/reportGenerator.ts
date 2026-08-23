@@ -518,6 +518,22 @@ export const REPORT_WORD_COUNT_MAX = 12000;
 export const REPORT_WORD_COUNT_DEFAULT = 2200;
 const GENERATED_TITLE_MAX_LENGTH = 120;
 
+/**
+ * Generic structural section labels that should never become a report title.
+ * A model sometimes emits these as the first heading when it is building an
+ * outline before a subject-specific introduction — e.g. "Dimensions Table",
+ * "Comparison Table", "Recommendation", "Overview".
+ *
+ * The pattern is intentionally case-insensitive and anchored to the full
+ * candidate string so "Recommendation Framework for X" still passes.
+ */
+const STRUCTURAL_LABEL_PATTERN =
+  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography)$/i;
+
+export function looksLikeStructuralLabel(candidate: string): boolean {
+  return STRUCTURAL_LABEL_PATTERN.test(candidate.trim());
+}
+
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
@@ -526,7 +542,12 @@ export function clampWordTarget(n: number | undefined): number {
 export function deriveGeneratedReportTitle(query: string, markdown: string, intentId?: string): string {
   const headingMatch = markdown.match(/^\s*#\s+(.+?)\s*$/m);
   const firstHeading = headingMatch?.[1]?.trim();
-  if (firstHeading && firstHeading.length <= GENERATED_TITLE_MAX_LENGTH && !looksLikeRawQuery(firstHeading, query)) {
+  if (
+    firstHeading &&
+    firstHeading.length <= GENERATED_TITLE_MAX_LENGTH &&
+    !looksLikeRawQuery(firstHeading, query) &&
+    !looksLikeStructuralLabel(firstHeading)
+  ) {
     return firstHeading;
   }
 
@@ -534,7 +555,7 @@ export function deriveGeneratedReportTitle(query: string, markdown: string, inte
     .replace(/^#+\s+/gm, '')
     .split(/\n+/)
     .map((line) => line.trim())
-    .find((line) => line.length > 0 && !looksLikeRawQuery(line, query));
+    .find((line) => line.length > 0 && !looksLikeRawQuery(line, query) && !looksLikeStructuralLabel(line));
   if (firstSentence) {
     return trimTitle(firstSentence);
   }
