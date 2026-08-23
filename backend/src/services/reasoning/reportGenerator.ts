@@ -534,6 +534,42 @@ export function looksLikeStructuralLabel(candidate: string): boolean {
   return STRUCTURAL_LABEL_PATTERN.test(candidate.trim());
 }
 
+/**
+ * Markdown block syntax that is never a report title.
+ *
+ * `looksLikeStructuralLabel` rejects a heading such as `# Dimensions Table`,
+ * and the title fallback then walks to the next non-empty line. For a report
+ * that opens with the table that heading introduced, that line is the table's
+ * header row — so rejecting the label stored `| Dimension | Option A |` as the
+ * title instead (Codex, PR #224). Delimiter rows, horizontal rules, and code
+ * fences reach the fallback the same way and are the same defect: block
+ * syntax, not a sentence.
+ *
+ * Each alternative is anchored to the whole trimmed line, so prose that merely
+ * contains a pipe or a dash is unaffected.
+ */
+const MARKDOWN_BLOCK_SYNTAX_PATTERN = /^(?:\|.*|[-:|*_\s]{3,}|`{3,}.*|~{3,}.*|>\s.*)$/;
+
+export function looksLikeMarkdownBlockSyntax(candidate: string): boolean {
+  return MARKDOWN_BLOCK_SYNTAX_PATTERN.test(candidate.trim());
+}
+
+/**
+ * A GitHub-flavoured Markdown table delimiter row (`| --- | :---: |`).
+ *
+ * Leading and trailing pipes are optional in GFM, so a header row can read
+ * `Metric | Short-read | Long-read` — prose-shaped, and invisible to
+ * `looksLikeMarkdownBlockSyntax`. What identifies it is the row underneath, so
+ * the title fallback looks ahead one line.
+ *
+ * The pipe is required. Without it, `---` under a line of prose is a setext
+ * heading — which is exactly the kind of line that *should* become the title.
+ */
+export function isTableDelimiterRow(line: string): boolean {
+  const trimmed = line.trim();
+  return /^[-:|\s]+$/.test(trimmed) && trimmed.includes('|') && /-{3,}/.test(trimmed);
+}
+
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
@@ -551,11 +587,20 @@ export function deriveGeneratedReportTitle(query: string, markdown: string, inte
     return firstHeading;
   }
 
-  const firstSentence = markdown
+  const bodyLines = markdown
     .replace(/^#+\s+/gm, '')
     .split(/\n+/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0 && !looksLikeRawQuery(line, query) && !looksLikeStructuralLabel(line));
+    .map((line) => line.trim());
+
+  const firstSentence = bodyLines.find(
+    (line, index) =>
+      line.length > 0 &&
+      !looksLikeRawQuery(line, query) &&
+      !looksLikeStructuralLabel(line) &&
+      !looksLikeMarkdownBlockSyntax(line) &&
+      // A pipe-less table header row is only identifiable by its delimiter row.
+      !isTableDelimiterRow(bodyLines[index + 1] ?? '')
+  );
   if (firstSentence) {
     return trimTitle(firstSentence);
   }

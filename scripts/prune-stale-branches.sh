@@ -72,7 +72,11 @@ for branch in "${BRANCHES[@]}"; do
       if [[ "${DRY_RUN}" != "0" ]]; then
         log "           (dry-run — not deleting)"
       else
-        gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}" && \
+        # Branch names contain `/` (cursor/foo, copilot/bar). The refs API
+        # needs those percent-encoded or the DELETE 404s and nothing is
+        # pruned while the script reports success (Copilot, #224).
+        encoded_branch="$(printf '%s' "${branch}" | jq -sRr @uri)"
+        gh api -X DELETE "repos/${REPO}/git/refs/heads/${encoded_branch}" && \
           log "           deleted." || \
           log "           ERROR: delete failed"
       fi

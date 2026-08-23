@@ -28,6 +28,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import { guardCronRun, loadProjectConfig, sanitizeLabel } from './supabaseProjects';
 
 const execFileAsync = promisify(execFile);
 
@@ -41,18 +42,45 @@ interface BackupProject {
 }
 
 function loadBackupProjects(): BackupProject[] {
-  const raw = process.env.SUPABASE_BACKUP_PROJECTS;
-  if (!raw) return [];
+  return loadProjectConfig<BackupProject>(
+    'SUPABASE_BACKUP_PROJECTS',
+    'supabase_backup',
+    (c) => typeof c.url === 'string' && (c.url as string).length > 0
+  );
+}
+
+/**
+ * Split a postgres URL into libpq env vars and a password-free URL.
+ *
+ * The connection string carries the database password. Passing it as a
+ * `pg_dump` argument publishes it in the host's process list for the duration
+ * of the dump, and Node's `execFile` failure message embeds the full argv —
+ * which was then written straight to the application log (Codex, #224).
+ *
+ * PGPASSWORD reaches the child through its environment instead, which is not
+ * world-readable in the process table.
+ */
+function splitCredentials(url: string): { safeUrl: string; env: NodeJS.ProcessEnv } {
   try {
-    return (JSON.parse(raw) as BackupProject[]).filter(
-      (p) => typeof p.url === 'string' && typeof p.label === 'string'
-    );
-  } catch (err) {
-    logger.error('supabase_backup_config_parse_error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
+    const parsed = new URL(url);
+    const password = decodeURIComponent(parsed.password || '');
+    parsed.password = '';
+    return {
+      safeUrl: parsed.toString(),
+      env: password ? { PGPASSWORD: password } : {},
+    };
+  } catch {
+    // Not a parseable URL — hand it back untouched rather than guessing, and
+    // let pg_dump report the problem.
+    return { safeUrl: url, env: {} };
   }
+}
+
+/** Strip anything that looks like a credential out of a message before logging. */
+function redact(message: string): string {
+  return message
+    .replace(/\/\/[^\s/@]*:[^\s/@]*@/g, '//***:***@')
+    .replace(/PGPASSWORD=\S+/g, 'PGPASSWORD=***');
 }
 
 function getBackupDest(): string {
@@ -61,8 +89,12 @@ function getBackupDest(): string {
 
 async function backupProject(project: BackupProject, dest: string): Promise<void> {
   const dateStr = new Date().toISOString().slice(0, 10);
-  const fileName = `${project.label}-${dateStr}.dump`;
+  // Sanitized: an unsanitized label containing `/` or `..` composes a path
+  // that escapes the backup destination entirely (Copilot, #224).
+  const fileName = `${sanitizeLabel(project.label)}-${dateStr}.dump`;
   const filePath = path.join(dest, fileName);
+
+  const { safeUrl, env } = splitCredentials(project.url);
 
   logger.info('supabase_backup_started', { label: project.label, file: filePath });
   try {
@@ -70,8 +102,11 @@ async function backupProject(project: BackupProject, dest: string): Promise<void
       '--format=custom',    // custom format: supports parallel restore, compression
       '--no-password',
       '--file', filePath,
-      project.url,
-    ], { timeout: 10 * 60 * 1000 /* 10 min */ });
+      safeUrl,
+    ], {
+      timeout: 10 * 60 * 1000 /* 10 min */,
+      env: { ...process.env, ...env },
+    });
 
     const stat = fs.statSync(filePath);
     logger.info('supabase_backup_ok', {
@@ -84,7 +119,7 @@ async function backupProject(project: BackupProject, dest: string): Promise<void
     try { fs.unlinkSync(filePath); } catch { /* ignore */ }
     logger.error('supabase_backup_failed', {
       label: project.label,
-      error: err instanceof Error ? err.message : String(err),
+      error: redact(err instanceof Error ? err.message : String(err)),
     });
   }
 }
@@ -108,8 +143,8 @@ async function runBackup(): Promise<void> {
 
 export function startSupabaseBackupCron(): void {
   if (intervalId) return;
-  runBackup();
-  intervalId = setInterval(runBackup, ONE_DAY_MS);
+  guardCronRun('supabase_backup', runBackup);
+  intervalId = setInterval(() => guardCronRun('supabase_backup', runBackup), ONE_DAY_MS);
 }
 
 export function stopSupabaseBackupCron(): void {

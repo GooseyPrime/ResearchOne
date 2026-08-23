@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import { guardCronRun, loadProjectConfig, sanitizeLabel } from './supabaseProjects';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -31,18 +32,11 @@ interface LogProject {
 }
 
 function loadLogProjects(): LogProject[] {
-  const raw = process.env.SUPABASE_LOG_PROJECTS;
-  if (!raw) return [];
-  try {
-    return (JSON.parse(raw) as LogProject[]).filter(
-      (p) => typeof p.ref === 'string' && p.ref.length > 0
-    );
-  } catch (err) {
-    logger.error('supabase_log_export_config_parse_error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
-  }
+  return loadProjectConfig<LogProject>(
+    'SUPABASE_LOG_PROJECTS',
+    'supabase_log_export',
+    (c) => typeof c.ref === 'string' && (c.ref as string).length > 0
+  );
 }
 
 function getLogDest(): string {
@@ -85,7 +79,7 @@ async function fetchProjectLogs(token: string, ref: string): Promise<string> {
 
 async function exportProjectLogs(token: string, project: LogProject, dest: string): Promise<void> {
   const dateStr = new Date().toISOString().slice(0, 10);
-  const fileName = `${project.label}-${dateStr}.ndjson`;
+  const fileName = `${sanitizeLabel(project.label)}-${dateStr}.ndjson`;
   const filePath = path.join(dest, fileName);
 
   try {
@@ -125,8 +119,8 @@ async function runLogExport(): Promise<void> {
 
 export function startSupabaseLogExportCron(): void {
   if (intervalId) return;
-  runLogExport();
-  intervalId = setInterval(runLogExport, ONE_DAY_MS);
+  guardCronRun('supabase_log_export', runLogExport);
+  intervalId = setInterval(() => guardCronRun('supabase_log_export', runLogExport), ONE_DAY_MS);
 }
 
 export function stopSupabaseLogExportCron(): void {

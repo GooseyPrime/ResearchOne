@@ -9,7 +9,9 @@ alwaysApply: true
 
 Across PRs #217–#221, automated review raised **eighteen** findings. They were
 not eighteen different mistakes. They were five mistakes, each made repeatedly,
-and most of them were made *while fixing the previous one*.
+and most of them were made *while fixing the previous one*. PR #224 added
+fifteen more and four new themes (T6–T9), all four from an agent implementing a
+written work order.
 
 That has a cost beyond the rework. A reviewer spending its pass on a dead
 import and an ASCII-only regex is a reviewer **not** spending it on the
@@ -18,7 +20,7 @@ finite attention, and every round of them is a round where nobody looked at
 whether the design was right. The point of this rule is not tidiness. It is to
 make the reviewers useful by giving them nothing cheap to find.
 
-## The five themes
+## The themes
 
 ### T1 — Verification shaped like the fix
 
@@ -100,6 +102,88 @@ If the replacement does not prevent that too, you need both.
 threshold protects against a value the code itself generates, assert the
 relationship between them rather than hardcoding both.
 
+### T6 — Reversing the instruction while implementing it
+
+The work order named a constraint; the change did the opposite of it, in the
+same commit that claimed to satisfy it.
+
+- WO-AE-2 said, of the retrieval similarity floor: *"Do NOT just lower it.
+  Measure."* The implementation lowered the default 0.55 → 0.45 and the clamp
+  0.55 → 0.30. `AGENTS.md:207` records why the floor is 0.55: at 0.3,
+  `retrieveChunks` matched the operator's own project notes to an unrelated
+  market query and every citation in the report was the user's own
+  documentation. The one thing the brief forbade was the change that was
+  made. (#224)
+
+This is the most dangerous theme in the list, because a reviewer reading only
+the diff sees a plausible tuning change. Only the brief makes it a defect.
+
+**Check:** re-read the work order's own words for the section you touched
+*after* writing the change, not before. Quote the constraint in the PR body and
+say how the diff satisfies it. If you believe a stated constraint is wrong,
+say so in the PR and leave the code alone — do not silently overrule it.
+
+### T7 — Recreating a shared object from a remembered subset
+
+A view, type, schema, or config was rebuilt from what the author had in front
+of them rather than from the current definition, silently dropping the rest.
+
+- Migration `056_v_dossier_gate_status.sql` recreated `v_dossier` to add one
+  column, `run_gate_status`. It was written from an older projection and
+  dropped **ten** columns that migration 048 had added (`engine_version`,
+  `has_spinoffs`, `is_revised`, `is_spinoff`, `last_activity_at`,
+  `last_revision_at`, `report_parent_report_id`, `report_revision_count`,
+  `report_version_number`, `revision_count`). `CREATE OR REPLACE VIEW`
+  succeeds, so nothing fails at migration time — the columns simply vanish
+  from the API. (#224)
+
+**Check:** when a migration or refactor recreates a whole object to change one
+part of it, start from the current definition text, and diff old against new
+mechanically (`grep -o 'AS [a-z_]*'`, a column list, a type's keys) before
+committing. Never retype it from memory or from an older file.
+
+### T8 — Ops code that cannot fail loudly
+
+A background job reported success it had not achieved, or could take the
+service down while failing.
+
+- `supabaseKeepAliveCron` treated any completed `fetch` as a successful ping.
+  A 401 from a rotated service-role key logged the same line as a 200, so the
+  job that exists to prevent project pause would report healthy right up until
+  the project paused. (#224)
+- All three Supabase cron bodies were invoked as `void fn()` / `setInterval(fn)`
+  with the per-item `try/catch` *inside* the loop. A failure before the loop —
+  `mkdirSync` on a full disk — became an unhandled rejection, which can restart
+  the whole API process. An ops job must never be able to take down the service
+  it monitors. (#224)
+
+**Check:** for every background job, name the two failure modes explicitly:
+*what does it log when the remote call returns non-2xx?* and *what happens if
+the body throws before the first try/catch?* If the answer to the first is
+"the same as success", the job's monitoring value is zero.
+
+### T9 — Untrusted config reaching a privileged sink
+
+An operator-supplied string was passed to something that interprets it —
+a filesystem path, a shell argument list, a URL — without validation.
+
+- `project.label` from a JSON env var was interpolated directly into backup and
+  log-export filenames. A label containing `/` or `..` writes outside the
+  destination. (#224)
+- `supabaseBackupCron` passed a full `postgresql://user:password@host/db` URL
+  as a `pg_dump` **argv** element, so the database password was visible to any
+  local `ps`. Postgres supports `PGPASSWORD` in the environment precisely to
+  avoid this. (#224)
+- `prune-stale-branches.sh` interpolated a raw branch name into a GitHub API
+  path; a branch with `#` or `?` in its name addresses a different ref.
+  (#224)
+
+**Check:** trace every value that comes from an env var, an API response, or a
+filename through to where it is *used*, not where it is read. If it reaches a
+path, an argv array, a URL, or SQL, it needs sanitizing or parameterizing at
+that boundary. "It is our own config" is not a validation — a typo is as
+damaging as an attacker here.
+
 ## The self-check
 
 Run all of it after the change and before pushing. Not one of these is
@@ -125,9 +209,17 @@ Then, in your own words, on the diff:
    prevented?
 5. **T5** — Does any guard I wrote have two reasons to fire behind one
    condition?
-6. **Paths** — Which invocation paths build or run this? Vercel, Docker,
-   compose, CI, the dev server, the deploy script. Which did I actually
-   exercise?
+6. **T6** — What does the work order say, in its own words, about the thing I
+   changed? Does the diff do that, or the opposite of it?
+7. **T7** — Did I recreate any shared object (view, type, schema, config)? Did
+   I diff its old and new definitions mechanically?
+8. **T8** — For each background job: what does it log on a non-2xx, and what
+   happens if it throws before the first try/catch?
+9. **T9** — Which env-var or API-supplied strings reach a path, an argv array,
+   a URL, or SQL? Are they sanitized at that boundary?
+10. **Paths** — Which invocation paths build or run this? Vercel, Docker,
+    compose, CI, the dev server, the deploy script. Which did I actually
+    exercise?
 
 ## What good looks like
 

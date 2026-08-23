@@ -1,16 +1,28 @@
 -- Migration 056: Add run_gate_status to v_dossier.
 --
--- The dossier list shows run_status ('failed') but the run summary shows
--- the richer gate status ('completed_degraded'). Both are correct, but they
--- disagree with each other — causing reader confusion (WO-AE-6).
+-- The dossier list shows run_status ('failed') while the run summary shows the
+-- richer gate status ('completed_degraded'). Both are correct and they
+-- disagree, which is the #212 defect class: two surfaces giving a reader
+-- different words for the same outcome.
 --
--- failure_meta->>'gate_status' is written by the orchestrator for every
--- non-clean terminal state. Exposing it via v_dossier lets every surface
--- that reads from the canonical view derive its display state from the same
--- shared rule (runStatusDisplay) instead of independently re-interpreting
--- the raw run_status.
+-- `failure_meta->>'gate_status'` is written by the orchestrator for every
+-- non-clean terminal state. Exposing it on the canonical view lets every
+-- surface derive its display state from the shared runStatusDisplay rules
+-- rather than re-interpreting raw run_status independently.
 --
 -- Deploy-skew safe: code reads run_gate_status with a null fallback.
+--
+-- IMPORTANT — this recreates the FULL migration 048 projection plus the one
+-- new column. The first version of this migration was written from an older
+-- copy of the view and silently dropped ten columns that 047 and 048 had
+-- added: engine_version, has_spinoffs, is_revised, is_spinoff,
+-- last_activity_at, last_revision_at, report_parent_report_id,
+-- report_revision_count, report_version_number and revision_count. The list
+-- and timeline services fall back to legacy paths when those are absent, so
+-- spinoffs would have vanished from dossier responses and activity sorting
+-- would have stayed disabled permanently rather than only across a deploy
+-- skew (Codex, PR #224). A view migration must restate the whole contract,
+-- never a remembered subset of it.
 
 DROP VIEW IF EXISTS v_dossier;
 CREATE VIEW v_dossier
@@ -27,6 +39,10 @@ SELECT
   rr.created_at            AS dossier_created_at,
   rr.status::text          AS run_status,
   rr.failure_meta->>'gate_status' AS run_gate_status,
+  rr.engine_version        AS engine_version,
+  rr.spinoff_from_run_id,
+  rr.spinoff_from_report_id,
+  (rr.spinoff_from_run_id IS NOT NULL OR rr.spinoff_from_report_id IS NOT NULL) AS is_spinoff,
   rp.id                    AS plan_id,
   rp.intent                AS plan_intent,
   rp.orchestration_profile AS plan_orchestration_profile,
@@ -39,6 +55,22 @@ SELECT
   rep.status::text         AS report_status,
   rep.finalized_at         AS report_finalized_at,
   rep.evidence_tier_summary AS report_evidence_tier_summary,
+  rep.version_number       AS report_version_number,
+  rep.parent_report_id     AS report_parent_report_id,
+  COALESCE(rev_stats.revision_count, 0) AS report_revision_count,
+  (COALESCE(rev_stats.revision_count, 0) > 0 OR rep.parent_report_id IS NOT NULL) AS is_revised,
+  EXISTS (
+    SELECT 1 FROM research_runs child
+    WHERE child.spinoff_from_run_id = rr.id
+       OR (rep.id IS NOT NULL AND child.spinoff_from_report_id = rep.id)
+  ) AS has_spinoffs,
+  GREATEST(
+    rr.created_at,
+    rr.updated_at,
+    rr.completed_at,
+    rep.finalized_at,
+    rev_stats.last_revision_at
+  ) AS last_activity_at,
   ds.total_duration_ms,
   ds.tokens_input,
   ds.tokens_output,
@@ -81,5 +113,13 @@ LEFT JOIN LATERAL (
   ORDER BY r.created_at DESC NULLS LAST
   LIMIT 1
 ) rep ON true
+LEFT JOIN LATERAL (
+  SELECT
+    COUNT(*)::int AS revision_count,
+    MAX(rv.created_at) AS last_revision_at
+  FROM report_revisions rv
+  WHERE rv.report_id = rep.id
+     OR rv.base_report_id = rep.root_report_id
+) rev_stats ON rep.id IS NOT NULL
 LEFT JOIN dossier_statistics ds
   ON ds.run_id = rr.id;

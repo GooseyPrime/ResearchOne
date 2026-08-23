@@ -21,6 +21,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { guardCronRun, loadProjectConfig } from './supabaseProjects';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -33,19 +34,11 @@ interface SupabaseProject {
 }
 
 function loadProjects(): SupabaseProject[] {
-  const raw = process.env.SUPABASE_KEEPALIVE_PROJECTS;
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown[];
-    return (parsed as SupabaseProject[]).filter(
-      (p) => typeof p.url === 'string' && typeof p.key === 'string'
-    );
-  } catch (err) {
-    logger.error('supabase_keepalive_config_parse_error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
-  }
+  return loadProjectConfig<SupabaseProject>(
+    'SUPABASE_KEEPALIVE_PROJECTS',
+    'supabase_keepalive',
+    (c) => typeof c.url === 'string' && typeof c.key === 'string'
+  );
 }
 
 async function pingProject(project: SupabaseProject): Promise<void> {
@@ -61,6 +54,18 @@ async function pingProject(project: SupabaseProject): Promise<void> {
       },
       signal: controller.signal,
     });
+    // A rotated key answers 401/403 and a paused-project wake can answer 5xx.
+    // `fetch` resolves for all of them, so logging unconditionally left this
+    // job permanently green while the project drifted toward its idle pause —
+    // the exact outcome it exists to prevent (Codex, #224).
+    if (!res.ok) {
+      logger.error('supabase_keepalive_ping_failed', {
+        label: project.label,
+        status: res.status,
+        reason: 'non-2xx response; the project was not confirmed awake',
+      });
+      return;
+    }
     logger.info('supabase_keepalive_ping_ok', { label: project.label, status: res.status });
   } catch (err) {
     logger.error('supabase_keepalive_ping_failed', {
@@ -85,8 +90,8 @@ async function runKeepAlive(): Promise<void> {
 
 export function startSupabaseKeepAliveCron(): void {
   if (intervalId) return;
-  runKeepAlive();
-  intervalId = setInterval(runKeepAlive, FIVE_DAYS_MS);
+  guardCronRun('supabase_keepalive', runKeepAlive);
+  intervalId = setInterval(() => guardCronRun('supabase_keepalive', runKeepAlive), FIVE_DAYS_MS);
 }
 
 export function stopSupabaseKeepAliveCron(): void {

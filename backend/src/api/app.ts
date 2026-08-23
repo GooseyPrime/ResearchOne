@@ -103,11 +103,19 @@ app.use(clerkAuthMiddleware);
 app.use(rlsContextMiddleware);
 
 // Per-user rate limit — layered on top of the per-IP floor above (WO-AE-4).
-// Authenticated requests that exhaust 150/15min per user are throttled before
-// the per-IP bucket is hit. Unauthenticated requests fall through to the IP
-// limit only. Polling hooks reduce their interval when the socket is connected
-// (frontend `getAdaptiveRefetchIntervalMs`), so the steady-state budget should
-// stay well under this ceiling for a single tab watching one run.
+// Authenticated requests are counted per Clerk user id as well as per IP, so
+// neither shared egress (office NAT, VPN exit) nor throwaway accounts defeats
+// the limit on its own. Unauthenticated requests fall through to the IP limit.
+//
+// Two different numbers, deliberately:
+//   - 150 req / 15 min is the WO-AE-4 *client* budget — what one tab watching
+//     one run may consume, verified in the browser network panel. Polling hooks
+//     back off while the socket is healthy (`getAdaptiveRefetchIntervalMs`).
+//   - 300 req / 15 min is this *server* ceiling. It sits at 2x the client
+//     budget so a user with a second tab open, or one reconnecting after a
+//     socket drop, is not throttled for behaving normally. Setting the ceiling
+//     to the budget would make the expected case the failure case.
+// (Copilot flagged the earlier comment for citing 150 next to `max: 300`, #224.)
 const perUserLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,

@@ -295,14 +295,27 @@ const config = {
 
   retrieval: {
     minSimilarityDefault: (() => {
-      // Default lowered from 0.55 → 0.45 (WO-AE-2): text-embedding-3-small routinely
-      // scores genuinely relevant passages at 0.35–0.50. The former 0.55 floor was
-      // cutting out the majority of ingested chunks (run b8265303: 13 chunks from 2
-      // of 9 available sources). The Math.max(0.55, ...) clamp is removed so the
-      // threshold is honestly configurable via RETRIEVAL_MIN_SIMILARITY.
-      // Do NOT lower below 0.30 without re-running the self-source analysis (Rule 40).
-      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.45');
-      return Number.isFinite(parsed) ? Math.max(0.30, parsed) : 0.45;
+      // 0.55, floor included. REVERTED from a 0.45 default with a 0.30 floor.
+      //
+      // The floor is not a tuning knob, it is a guard against a failure that
+      // already happened. AGENTS.md records it: `retrieveChunks({
+      // minSimilarity: 0.3 })` matched the operator's own project notes to an
+      // unrelated market query, and every citation in the resulting report was
+      // the user's own documentation. A low threshold does not merely return
+      // more chunks — it manufactures false authority, which is the one thing
+      // this product cannot ship.
+      //
+      // The hypothesis that 0.55 is too aggressive for text-embedding-3-small
+      // may well be right. WO-AE-2 asked for it to be MEASURED — the same
+      // query at 0.55 / 0.45 / 0.35, recording chunk count, source count, and
+      // whether the extra chunks are on topic — precisely so the floor is not
+      // moved on an untested belief. That measurement has not been done.
+      //
+      // To change this: run the measurement, put the numbers in the PR, and
+      // re-run the self-source analysis in Rule 40 against the lower value.
+      // Not before.
+      const parsed = parseFloat(process.env.RETRIEVAL_MIN_SIMILARITY || '0.55');
+      return Number.isFinite(parsed) ? Math.max(0.55, parsed) : 0.55;
     })(),
     corpusGate: {
       minDistinctDomains: parseInt(process.env.CORPUS_GATE_MIN_DISTINCT_DOMAINS || '8', 10),

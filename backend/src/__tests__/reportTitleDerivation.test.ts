@@ -16,7 +16,12 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   buildVerifierPromptForIntent: () => 'mock',
 }));
 
-import { deriveGeneratedReportTitle, looksLikeStructuralLabel } from '../services/reasoning/reportGenerator';
+import {
+  deriveGeneratedReportTitle,
+  isTableDelimiterRow,
+  looksLikeMarkdownBlockSyntax,
+  looksLikeStructuralLabel,
+} from '../services/reasoning/reportGenerator';
 
 describe('looksLikeStructuralLabel', () => {
   it.each([
@@ -96,5 +101,103 @@ describe('deriveGeneratedReportTitle', () => {
     const title = 'Overview of CRISPR-Cas9 Applications in Oncology';
     const md = `# ${title}\n\nContent here.`;
     expect(deriveGeneratedReportTitle(query, md)).toBe(title);
+  });
+});
+
+/**
+ * Codex, PR #224: rejecting the `# Dimensions Table` heading made the fallback
+ * walk onto the table it introduced, so the header row became the title.
+ */
+describe('looksLikeMarkdownBlockSyntax', () => {
+  it.each([
+    '| Dimension | Option A | Option B |',
+    '|---|---|---|',
+    '| --- | :---: | ---: |',
+    '--- | --- | ---',
+    '---',
+    '***',
+    '___',
+    '```',
+    '```markdown',
+    '~~~',
+    '> Quoted line',
+  ])('returns true for block syntax: %s', (line) => {
+    expect(looksLikeMarkdownBlockSyntax(line)).toBe(true);
+  });
+
+  it.each([
+    'Comparison of RNA-Sequencing Methods',
+    'Cost-Benefit Analysis of Short-Read vs Long-Read Platforms',
+    'Throughput | accuracy trade-offs in modern sequencers',
+    'A-B testing outcomes',
+  ])('returns false for prose: %s', (line) => {
+    expect(looksLikeMarkdownBlockSyntax(line)).toBe(false);
+  });
+});
+
+describe('isTableDelimiterRow', () => {
+  it.each(['| --- | --- |', '|---|---|', '--- | --- | ---', '| :--- | ---: |', '| --- |'])(
+    'returns true for delimiter row: %s',
+    (line) => {
+      expect(isTableDelimiterRow(line)).toBe(true);
+    }
+  );
+
+  it('returns false for a setext heading underline, which has no pipe', () => {
+    // `Some Real Title` followed by `---` is an H2, not a table.
+    expect(isTableDelimiterRow('---')).toBe(false);
+  });
+
+  it.each(['Metric | Short-read', 'Long-read platforms resolve structural variants.', ''])(
+    'returns false for: %s',
+    (line) => {
+      expect(isTableDelimiterRow(line)).toBe(false);
+    }
+  );
+});
+
+describe('deriveGeneratedReportTitle — markdown tables', () => {
+  const query = 'compare rna sequencing methods';
+
+  it('does not store a table header row as the title', () => {
+    const md = [
+      '# Dimensions Table',
+      '',
+      '| Dimension | Option A | Option B |',
+      '| --- | --- | --- |',
+      '| Cost | Low | High |',
+      '',
+      'Short-read sequencing remains the cheaper option at scale.',
+    ].join('\n');
+
+    const title = deriveGeneratedReportTitle(query, md, 'comparative');
+
+    expect(title).toBe('Short-read sequencing remains the cheaper option at scale.');
+  });
+
+  it('skips a horizontal rule and a delimiter row to reach prose', () => {
+    const md = [
+      '# Overview',
+      '',
+      '---',
+      '',
+      'Metric | Short-read | Long-read',
+      '--- | --- | ---',
+      '',
+      'Long-read platforms resolve structural variants that short reads miss.',
+    ].join('\n');
+
+    expect(deriveGeneratedReportTitle(query, md, 'comparative')).toBe(
+      'Long-read platforms resolve structural variants that short reads miss.'
+    );
+  });
+
+  it('falls back to the intent title when the report is nothing but a table', () => {
+    const md = ['# Comparison Table', '', '| A | B |', '| --- | --- |', '| 1 | 2 |'].join('\n');
+
+    const title = deriveGeneratedReportTitle(query, md, 'comparative');
+
+    expect(title).toBe('Comparative Report');
+    expect(title).not.toContain('|');
   });
 });

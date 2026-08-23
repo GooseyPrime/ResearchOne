@@ -40,9 +40,17 @@ git fetch origin
 git reset --hard "${GIT_REF}"
 
 # ── Build ───────────────────────────────────────────────────────────────────
-echo "[deploy] npm ci + build"
-npm ci --omit=dev
+# `--omit=dev` removes esbuild and typescript, which `npm run build` needs, so
+# the build ran against a tree missing its own build tooling (Copilot, #224).
+# The build happens on the VM, so devDependencies must be present for it.
+echo "[deploy] npm ci (with dev deps, required to build) + build"
+npm ci --include=dev
 npm run build
+
+# Drop the build-only tree afterwards so the running service carries production
+# dependencies alone.
+echo "[deploy] prune dev dependencies"
+npm prune --omit=dev
 
 # ── Logs dir ────────────────────────────────────────────────────────────────
 mkdir -p "${DEPLOY_ROOT}/logs"

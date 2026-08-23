@@ -62,11 +62,20 @@ so ~3 GB per project. Mount a dedicated volume if disk is tight.
 
 ## Security fixes for golden-goose-studio
 
-Apply `golden-goose-studio-security.sql` via the Supabase SQL editor or psql:
+Apply `golden-goose-studio-security.sql` via the Supabase SQL editor or psql.
+
+This is a one-off manual apply, so it takes a plain connection string — not
+`SUPABASE_BACKUP_PROJECTS`, which is the JSON array the backup cron reads and
+is not a valid `psql` argument. Copy the string from
+**Project Settings → Database → Connection string → URI**:
 
 ```bash
-psql "$SUPABASE_BACKUP_PROJECTS_URL" -f docs/supabase-ops/golden-goose-studio-security.sql
+export GGS_DATABASE_URL='postgresql://postgres.<ref>:<password>@<host>:5432/postgres'
+psql "$GGS_DATABASE_URL" -f docs/supabase-ops/golden-goose-studio-security.sql
 ```
+
+Prefix the `export` with a space (or use `read -rs`) so the password does not
+land in shell history.
 
 ### Leaked-password protection
 
