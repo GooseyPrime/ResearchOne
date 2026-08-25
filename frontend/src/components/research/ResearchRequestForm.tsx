@@ -297,7 +297,7 @@ export default function ResearchRequestForm() {
 
   return (
     <div className="space-y-5">
-      <FreeLifetimeQuotaBanner variant="deep-research" />
+      <FreeLifetimeQuotaBanner />
 
       <form
         className="card-glow p-6 space-y-4"

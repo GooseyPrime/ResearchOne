@@ -392,12 +392,12 @@ export default function BillingPage() {
                       <span className="text-slate-200 font-medium">
                         {Math.max(0, subQuery.data.lifetimeReportCap - (subQuery.data.lifetimeReportsUsed ?? 0))}
                       </span>{' '}
-                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining (General Research), available in both Research and Deep Research modes.
+                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining, using the General Research objective.
                     </>
                   ) : (
                     <>
-                      You have access to limited lifetime research runs using General Research, available in
-                      both Research and Deep Research modes.
+                      You have access to a limited number of lifetime research runs, using the General
+                      Research objective.
                     </>
                   )}
                 </p>
@@ -409,7 +409,7 @@ export default function BillingPage() {
                     View plans &amp; upgrade
                   </Link>
                   <Link
-                    to="/app/research?engine=v2"
+                    to="/app/research"
                     className="text-sm text-indigo-400 hover:text-indigo-300"
                   >
                     Start researching

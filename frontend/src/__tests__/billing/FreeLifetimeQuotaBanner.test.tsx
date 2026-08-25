@@ -13,10 +13,10 @@ vi.mock('../../hooks/useBillingSubscription', async (importOriginal) => {
   };
 });
 
-function renderBanner(variant: 'research' | 'deep-research' = 'research') {
+function renderBanner() {
   return renderToString(
     <MemoryRouter>
-      <FreeLifetimeQuotaBanner variant={variant} />
+      <FreeLifetimeQuotaBanner />
     </MemoryRouter>
   );
 }
@@ -54,7 +54,7 @@ describe('FreeLifetimeQuotaBanner', () => {
     expect(renderBanner()).toBe('');
   });
 
-  it('shows cap 2 and shared-pool copy for free_demo on Research variant', () => {
+  it('shows what is left of the free allowance', () => {
     useBillingSubscriptionQuery.mockReturnValue({
       authReady: true,
       isLoading: false,
@@ -69,14 +69,16 @@ describe('FreeLifetimeQuotaBanner', () => {
         currentPeriodEnd: null,
       },
     });
-    const html = renderBanner('research');
-    expect(html).toContain('Free tier — Research');
+    const html = renderBanner();
+    expect(html).toContain('Free tier');
     expect(html).toContain('>1<');
     expect(html).toContain('>2<');
-    expect(html).toContain('shared across Research and Deep Research modes');
   });
 
-  it('shows Deep Research heading for deep-research variant', () => {
+  it('no longer explains a distinction between two kinds of run', () => {
+    // The banner used to say the allowance was "shared across Research and
+    // Deep Research modes", and that one of the two used a richer ensemble.
+    // There is one kind of run, so both sentences became untrue.
     useBillingSubscriptionQuery.mockReturnValue({
       authReady: true,
       isLoading: false,
@@ -91,8 +93,9 @@ describe('FreeLifetimeQuotaBanner', () => {
         currentPeriodEnd: null,
       },
     });
-    const html = renderBanner('deep-research');
-    expect(html).toContain('Free tier — Deep Research');
-    expect(html).toContain('V2 multi-model ensemble');
+    const html = renderBanner();
+    expect(html).not.toContain('Deep Research');
+    expect(html).not.toContain('V2');
+    expect(html).not.toContain('modes');
   });
 });

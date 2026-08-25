@@ -62,7 +62,7 @@ const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
  * (shared corpus exploration for InTellMe / operators) — admin only.
  */
 const NAV_ITEMS: NavItem[] = [
-  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Standard and Deep Research' },
+  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start a new research request' },
   { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
   { to: '/app/add-ons', label: 'Add-ons', icon: Package, desc: 'Catalog, purchase & manage add-ons', requireTier: 'pro' },
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources (admin)', requireAdmin: true },
