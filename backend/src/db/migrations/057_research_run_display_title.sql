@@ -11,8 +11,17 @@
 -- rather than derived independently by each client. Four consumers of one
 -- mapping with four implementations is Rule 44 T3 by construction.
 --
--- Written when the plan gate persists a plan (the planner has already produced
--- `topicAnalysis.summary`; nothing new is computed). NULL until then.
+-- Written in two places, both under `WHERE display_title IS NULL` so a run's
+-- name never changes under the reader:
+--   1. the plan gate, from `topicAnalysis.summary` (nothing new is computed);
+--   2. report finalisation, from `deriveGeneratedReportTitle`, for a run whose
+--      plan produced no usable summary.
+--
+-- The second writer did not exist in the first draft of this migration, whose
+-- comment nonetheless described it. A run with an empty plan summary therefore
+-- stayed untitled forever, and the run workspace — which has no `report_title`
+-- to fall back to — showed the bare reference for a finished report (Copilot,
+-- PR #227).
 --
 -- NO SQL BACKFILL, deliberately. Readers resolve
 -- `display_title -> report_title -> run_ref` in ONE TypeScript helper
@@ -20,9 +29,10 @@
 -- a second time in plpgsql, and two implementations of one rule is the
 -- `run_ref`/`run_ref_check_char` parity problem again — worth it there because
 -- a column DEFAULT had to work from many insert paths, not worth it here.
--- Historical completed runs pick up `report_title`, which
--- `deriveGeneratedReportTitle` already produced correctly; historical failed
--- runs fall back to `run_ref`.
+-- Historical completed runs pick up `report_title` on surfaces that project it
+-- (the dossier list does; the run workspace does not), and historical failed
+-- runs fall back to `run_ref`. Runs finishing from here on are named by writer
+-- 2 above, so the workspace has a real title rather than a reference.
 --
 -- `run_ref` comes along for the ride because the fallback chain needs it: a
 -- pre-057 run that never produced a report has neither a display_title nor a

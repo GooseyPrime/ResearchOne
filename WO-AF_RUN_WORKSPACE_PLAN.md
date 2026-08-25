@@ -1,7 +1,13 @@
 # WO-AF — Run workspace plan
 
-Branch: `cursor/run-workspace` (base `origin/main` @ `cc177dd`).
-Status: **plan for review. No product code changed yet.**
+Branch: `cursor/run-workspace` — **implemented and shipped in PR #227.**
+
+Status: this document is the record of what was investigated, decided and built.
+It was written as a plan before any product code changed; every decision in §3
+is now implemented, and §6 records how each was answered. Copilot flagged that
+leaving it reading "plan for review / no product code changed yet" made the work
+order look unfinished and contradicted the shipped behaviour — correct, and this
+header is the fix.
 
 ---
 
@@ -188,8 +194,12 @@ So: **`research_runs.display_title`**, migration 057.
 
 - Written when the planner produces topic analysis (the plan gate already has
   a topic summary, so nothing new is computed).
-- Backfilled at report generation from the existing
-  `deriveGeneratedReportTitle`, so completed runs converge on the report title.
+- Also written at report generation from `deriveGeneratedReportTitle`, under
+  `WHERE display_title IS NULL`, so a run whose plan produced no topic summary
+  is still named once its report exists. This was claimed in the first draft of
+  the plan and of migration 057 before any report-time writer existed — Copilot
+  caught the contradiction; the writer now exists in `researchOrchestrator`,
+  savepoint-guarded so a missing column cannot poison the report transaction.
 - `NULL` until planning produces one; every reader falls back to `run_ref`
   (`R1-20260823-1557-XXXXX-C`), already assigned to every run and already the
   value a user quotes to support.

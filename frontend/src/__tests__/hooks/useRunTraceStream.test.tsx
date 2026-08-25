@@ -97,6 +97,15 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+/** A wrapper whose client the test can drive, for cases that need a real refetch. */
+function makeDrivableWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  return { qc, Wrapper };
+}
+
 beforeEach(() => {
   getResearchRun.mockResolvedValue(bareRunRow());
 });
@@ -197,13 +206,40 @@ describe('useRunTraceStream', () => {
     // fallback event stamped `new Date().toISOString()`, and the timestamp is
     // part of traceEventKey, so every poll produced a new key and the
     // placeholder would have stacked up one row at a time.
+    //
+    // The first version of this test called `rerender()`, which re-renders the
+    // hook but does NOT refetch — the `run` object keeps its identity, so the
+    // ingestion effect never re-runs and the test passed whatever the fallback
+    // timestamp did (Copilot, #227). It has to drive a real refetch, which is
+    // what a poll actually is.
+    const { qc, Wrapper } = makeDrivableWrapper();
     getResearchRun.mockResolvedValue(runRow({ progress_events: [] }));
-    const { result, rerender } = renderHook(() => useRunTraceStream(RUN_ID), { wrapper });
-    await waitFor(() => expect(result.current.traceEvents.length).toBe(1));
 
-    rerender();
-    rerender();
+    const { result } = renderHook(() => useRunTraceStream(RUN_ID), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.traceEvents).toHaveLength(1));
+    const firstStamp = result.current.traceEvents[0].timestamp;
+
+    // Each poll returns a row that CHANGED — otherwise React Query's structural
+    // sharing keeps the previous object, the `run`-dependent effect never
+    // re-runs, and the test proves nothing whatever the fallback does. The
+    // field that moves (`retry_attempts`) is deliberately not one the
+    // placeholder is built from, so the placeholder's identity should be
+    // unchanged across all three polls.
+    for (let poll = 1; poll <= 3; poll += 1) {
+      getResearchRun.mockResolvedValue(
+        runRow({ progress_events: [], retry_attempts: poll })
+      );
+      await act(async () => {
+        await qc.refetchQueries({ queryKey: ['research-run', RUN_ID] });
+      });
+    }
+
+    expect(result.current.run?.retry_attempts).toBe(3); // the effect really re-ran
+    expect(result.current.traceEvents).toHaveLength(1);
+    // The guarantee: the placeholder's key is a function of the ROW, not of
+    // when we happened to poll. A `new Date()` stamp mints a new key each time
+    // and this assertion is what catches it.
+    expect(result.current.traceEvents[0].timestamp).toBe(firstStamp);
   });
 
   it('F — switching runId does not show the previous run’s events', async () => {

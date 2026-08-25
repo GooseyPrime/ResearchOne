@@ -42,17 +42,33 @@ import RunRequestDisclosure from '@/components/research/RunRequestDisclosure';
 import RunPlanGate from '@/components/research/RunPlanGate';
 import { useRunTraceStream } from '@/hooks/useRunTraceStream';
 import { getResearchRuns, type ResearchRun } from '@/utils/api';
-import { getAdaptiveRefetchIntervalMs } from '@/utils/apiRateLimit';
 import { getSocket } from '@/utils/socket';
 import { mapApiRunStage } from '@/lib/researchone/runMappers';
 import { isReferenceTitle, runDisplayTitle } from '@/utils/runDisplayTitle';
 import { RUN_TONE_CLASSES, resolveRunDisplayState } from '@/utils/runStatusDisplay';
-import { isInFlightRunStatus } from '@/utils/researchRuns';
+import { isInFlightRunStatus, researchRunsPollIntervalMs } from '@/utils/researchRuns';
 import {
   RESEARCH_PAGE_PATH,
   dossierReportUrlForRun,
   failedRunReportUrl,
+  requestPrefillUrl,
 } from '@/utils/researchRunRoutes';
+
+/**
+ * Plain-language reasons for the gate outcomes that leave `error_message` null.
+ * Keyed on `failure_meta.gate_status`, the same value `resolveRunDisplayState`
+ * reads for the status chip, so the chip and the explanation cannot disagree.
+ */
+const GATE_FAILURE_COPY: Record<string, string> = {
+  contract_failed:
+    'The report was produced but did not deliver what the request asked for.',
+  verification_failed:
+    'The report was produced but did not pass verification against its evidence.',
+  no_evidence:
+    'No usable sources were retrieved, so there was nothing to build a report from.',
+  completed_degraded:
+    'The report was produced but did not meet every quality gate.',
+};
 
 const EMPTY_RUNS: ResearchRun[] = [];
 
@@ -75,7 +91,12 @@ export function LiveRunPanel() {
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
     staleTime: 5_000,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(8_000),
+    // Every observer of a query key runs its OWN refetch timer — React Query
+    // deduplicates in-flight fetches but does not share the schedules. Layout,
+    // the header badge and this panel are three observers, so an unconditional
+    // interval here multiplied the polling instead of joining it (Copilot).
+    // The shared resolver returns false when nothing is in flight.
+    refetchInterval: (query) => researchRunsPollIntervalMs(query.state.data, 8_000),
   });
 
   const otherActiveRuns = useMemo(
@@ -333,20 +354,45 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
   }
 
   if (run.status === 'failed' || run.status === 'aborted') {
+    // A quality-gate failure leaves `error_message` NULL and records the reason
+    // in `failure_meta.gate_status`, so `error_message || 'This run did not
+    // finish.'` rendered the generic sentence for exactly the three outcomes a
+    // reader most needs explained — contract_failed, verification_failed and
+    // no_evidence — and dropped the persisted retryability with it (Copilot).
+    const meta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
+    const gateStatus = typeof meta.gate_status === 'string' ? meta.gate_status : null;
+    const retryable = meta.retryable === true;
+    const reason =
+      run.error_message ||
+      (gateStatus ? GATE_FAILURE_COPY[gateStatus] : null) ||
+      'This run did not finish.';
+
     return (
       <div className="r1-panel border-r1-skeptic/30 p-4">
         <div className="flex items-start gap-2">
           <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-r1-skeptic" aria-hidden />
-          <p className="text-sm text-r1-skeptic">
-            {run.error_message || 'This run did not finish.'}
-          </p>
+          <div>
+            <p className="text-sm text-r1-skeptic">{reason}</p>
+            {gateStatus && (
+              <p className="r1-mono-label mt-1 text-[10px] text-r1-dim">
+                {gateStatus.replace(/_/g, ' ').toUpperCase()}
+              </p>
+            )}
+          </div>
         </div>
-        <Link
-          to={failedRunReportUrl(run.id)}
-          className="mt-3 inline-block text-sm text-r1-cyan hover:underline"
-        >
-          Open diagnostics
-        </Link>
+        {retryable && (
+          <p className="mt-2 text-xs text-amber-300">
+            This failure is retryable — the same request can be run again.
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-3 text-sm">
+          <Link to={failedRunReportUrl(run.id)} className="text-r1-cyan hover:underline">
+            Open diagnostics
+          </Link>
+          <Link to={requestPrefillUrl(run.id)} className="text-r1-cyan hover:underline">
+            Run it again
+          </Link>
+        </div>
       </div>
     );
   }
@@ -355,11 +401,17 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
     return (
       <div className="r1-panel p-4">
         <p className="text-sm text-r1-muted">This run was cancelled.</p>
+        {/*
+          "Start a new run from this request" has to actually carry the request.
+          This linked to a bare `/app/research`, which discards it — the same
+          defect as the plan-gate cancel path, in the panel whose own label
+          promises otherwise (Copilot).
+        */}
         <Link
-          to={RESEARCH_PAGE_PATH}
+          to={requestPrefillUrl(run.id)}
           className="mt-3 inline-block text-sm text-r1-cyan hover:underline"
         >
-          Start a new request
+          Start a new run from this request
         </Link>
       </div>
     );
