@@ -30,8 +30,15 @@ describe('runAddons', () => {
   });
 
   it('applyAdversarialTwinToSkepticMode un-skips challenge and enables gate', () => {
+    // WO-AH changed what this add-on is FOR. `exploratory` used to skip the
+    // challenge stage entirely, so buying Devil's Advocate turned the pass on.
+    // Every profile now runs it, so the add-on's job is to escalate the pass
+    // from `annotate` (recorded alongside the draft) to `gate` (runs before
+    // synthesis and can block it) — the strongest pass available, which is what
+    // the buyer was always paying for.
     const exploratory = ORCHESTRATION_PROFILES.exploratory;
-    expect(shouldRunPipelineStage(exploratory, 'challenge')).toBe(false);
+    expect(shouldRunPipelineStage(exploratory, 'challenge')).toBe(true);
+    expect(exploratory.skepticMode).toBe('annotate');
 
     const profile = applyAdversarialTwinToSkepticMode(exploratory, ['adversarial_twin']);
     expect(profile.skepticMode).toBe('gate');
@@ -53,5 +60,26 @@ describe('runAddons', () => {
       false,
     );
     expect(keys).toEqual(['adversarial_twin']);
+  });
+});
+
+describe("Devil's Advocate must never become a no-op (WO-AH)", () => {
+  it('escalates every profile to gate, not just ones that were off', () => {
+    // The old implementation read `skepticMode === 'off' ? 'gate' : skepticMode`,
+    // which returns the profile unchanged once nothing is 'off'. A $5.00 per-run
+    // paid add-on would have silently stopped doing anything. TypeScript caught
+    // it when 'off' left the profile type; this catches it if the expression
+    // ever comes back.
+    for (const [intent, profile] of Object.entries(ORCHESTRATION_PROFILES)) {
+      const upgraded = applyAdversarialTwinToSkepticMode(profile, ['adversarial_twin']);
+      expect(upgraded.skepticMode, `${intent} must escalate to gate`).toBe('gate');
+      expect(shouldRunPipelineStage(upgraded, 'challenge'), intent).toBe(true);
+    }
+  });
+
+  it('changes nothing when the add-on was not bought', () => {
+    for (const profile of Object.values(ORCHESTRATION_PROFILES)) {
+      expect(applyAdversarialTwinToSkepticMode(profile, [])).toBe(profile);
+    }
   });
 });

@@ -62,8 +62,18 @@ export function parseResearchObjective(raw: unknown): ResearchObjective | undefi
 /** Legacy label for fast structured extraction (V1 paths); still in BASE_ALLOWLIST. */
 export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
 
-/** Prepended to skeptic / internal_challenger system prompts when `engineVersion === 'v2'`. */
-export const RED_TEAM_V2_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
+/**
+ * Prepended to the challenge pass's system prompt, on every report.
+ *
+ * This used to apply only when `engineVersion === 'v2'`, which meant a Standard
+ * run got a materially softer adversarial pass than a Deep one — while the Deep
+ * card sold "a skeptic step that argues against the draft to catch weak claims"
+ * as the differentiator. The difference was a paywall, not a judgement about the
+ * request. WO-AH removes it: every report is challenged with the same
+ * instruction, and what varies is the pass's STRENGTH (annotate vs gate), which
+ * the planner decides from the request.
+ */
+export const CHALLENGE_PASS_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
 
 /** Wave 5.3 — reasoner operational constraint (editable via appendReasonerPolicyConstraint + openrouter SYSTEM_PROMPTS.reasoner body). */
 export const REASONER_CONSENSUS_CONSTRAINT = `

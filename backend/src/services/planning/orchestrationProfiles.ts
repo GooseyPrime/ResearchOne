@@ -23,6 +23,27 @@ export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 export type SkepticMode = 'off' | 'gate' | 'annotate';
 
+/**
+ * What a PROFILE may choose. `'off'` is deliberately excluded (WO-AH).
+ *
+ * The operator's instruction is that the challenge pass runs on every report —
+ * "we need to verify that the research is correct no matter what type of request
+ * the user has." Seven of these seventeen profiles used to answer that question
+ * with "don't verify this kind of request", which is a decision the product no
+ * longer makes.
+ *
+ * What stays agent-decided is the STRENGTH. `annotate` raises challenges and
+ * records them alongside the draft; `gate` runs the challenge before synthesis
+ * and can block it. `gate` is the "additional adversarial pass" the planner
+ * still decides per intent.
+ *
+ * `SkepticMode` keeps `'off'` because plan payloads persisted before this change
+ * contain it and must still read back without throwing. It is only new profile
+ * definitions that cannot express it — a compile error rather than a lint note,
+ * so the eighteenth profile cannot reintroduce the gap.
+ */
+export type ProfileSkepticMode = Exclude<SkepticMode, 'off'>;
+
 /** Steelman intensity; applied by runSteelmanPass in researchOrchestrator when mode !== off. */
 export type SteelmanMode = 'off' | 'standard' | 'per_option' | 'as_product' | 'symmetric';
 
@@ -31,7 +52,7 @@ export interface OrchestrationProfileDefinition {
   displayName: string;
   agentsToRun: readonly PipelineStage[];
   agentsToSkip: readonly PipelineStage[];
-  skepticMode: SkepticMode;
+  skepticMode: ProfileSkepticMode;
   steelmanMode: SteelmanMode;
   /** Stable id for report layout / dossier UI (Wave 5.2 templates). */
   outputTemplateId: string;
@@ -49,6 +70,16 @@ function P(p: Omit<OrchestrationProfileDefinition, 'intent'> & { intent: IntentI
   }
   if (run.length + skip.length !== PIPELINE_STAGES.length) {
     throw new Error(`orchestrationProfiles: duplicate or extra stages for intent ${p.intent}`);
+  }
+  // The challenge pass is the floor, not a per-intent option (WO-AH). The type
+  // stops a profile setting `skepticMode: 'off'`; this stops one skipping the
+  // stage instead, which is the same gap by another route — all seven profiles
+  // that disabled the pass did BOTH.
+  if (skip.includes('challenge')) {
+    throw new Error(
+      `orchestrationProfiles: intent ${p.intent} skips the challenge stage. ` +
+        'Every report is verified; choose annotate or gate for its strength.'
+    );
   }
   return p;
 }
@@ -71,8 +102,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   factual_report: P({
     intent: 'factual_report',
     displayName: 'Factual report',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_factual_report',
     expectedLengthRange: { minWords: 1200, maxWords: 6000 },
@@ -120,8 +152,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   opportunity_discovery: P({
     intent: 'opportunity_discovery',
     displayName: 'Opportunity discovery',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_opportunity_discovery',
     expectedLengthRange: { minWords: 2000, maxWords: 10000 },
@@ -129,8 +162,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   feasibility: P({
     intent: 'feasibility',
     displayName: 'Feasibility',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_feasibility',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
@@ -138,8 +172,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   implementation: P({
     intent: 'implementation',
     displayName: 'Implementation',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_implementation',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
@@ -168,8 +203,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   how_to: P({
     intent: 'how_to',
     displayName: 'How-to',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_how_to',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
@@ -187,8 +223,9 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
   exploratory: P({
     intent: 'exploratory',
     displayName: 'Exploratory',
-    ...skipOnly('challenge'),
-    skepticMode: 'off',
+    agentsToRun: FULL,
+    agentsToSkip: [],
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_exploratory',
     expectedLengthRange: { minWords: 1200, maxWords: 7000 },
@@ -219,12 +256,11 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     ...skipOnly(
       'discovery',
       'reasoning',
-      'challenge',
       'synthesis',
       'plain_language',
       'epistemic_persistence',
     ),
-    skepticMode: 'off',
+    skepticMode: 'annotate',
     steelmanMode: 'off',
     outputTemplateId: 'intent_reference_lookup',
     expectedLengthRange: { minWords: 400, maxWords: 2500 },

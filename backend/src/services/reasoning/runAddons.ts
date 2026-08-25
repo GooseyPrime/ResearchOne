@@ -3,6 +3,7 @@ import {
   PIPELINE_STAGES,
   type OrchestrationProfileDefinition,
   type PipelineStage,
+  type ProfileSkepticMode,
 } from '../planning/orchestrationProfiles';
 
 export const RUN_ADDON_KEYS = [
@@ -60,7 +61,23 @@ export function applyAdversarialTwinToSkepticMode(
   );
   const agentsToSkip = PIPELINE_STAGES.filter((s) => skipSet.has(s));
   const agentsToRun = PIPELINE_STAGES.filter((s) => !skipSet.has(s));
-  const skepticMode = profile.skepticMode === 'off' ? 'gate' : profile.skepticMode;
+  // WO-AH: this used to read `profile.skepticMode === 'off' ? 'gate' : profile.skepticMode`.
+  //
+  // That worked only because seven profiles WERE 'off': buying the add-on turned
+  // the challenge pass on. Now that every profile runs it, the old expression
+  // returns the profile's own mode unchanged — so a $5.00 per-run paid add-on
+  // would have silently become a no-op for every run. TypeScript caught it,
+  // because 'off' is no longer in the profile's type.
+  //
+  // T4 — what did the add-on guarantee? That the buyer got the strongest
+  // adversarial pass available. With the floor at 'annotate', that guarantee now
+  // means 'gate': the challenge runs BEFORE synthesis and can block it, rather
+  // than being recorded alongside a draft that was written regardless.
+  //
+  // NOTE FOR PRODUCT: the catalog still describes this as "a dedicated critique
+  // pass on a research run", which is what every run now gets. The copy needs to
+  // say what is actually being bought — a blocking pass, not the only pass.
+  const skepticMode: ProfileSkepticMode = 'gate';
 
   return { ...profile, agentsToSkip, agentsToRun, skepticMode };
 }

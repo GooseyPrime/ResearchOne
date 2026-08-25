@@ -1952,15 +1952,28 @@ async function runResearchJobInner(
     const wave53SteelmanUserBlock = formatSteelmanBlockForSkeptic(wave53SteelmanByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 6: SKEPTIC — challenge conclusions (off | gate | annotate)
+    // STAGE 6: CHALLENGE PASS — pressure-test the conclusions (annotate | gate)
+    //
+    // Runs on every report (WO-AH). The `&& orchProfile.skepticMode !== 'off'`
+    // that used to gate this is gone: no profile can express 'off' any more, so
+    // the comparison was dead code and TypeScript said so.
+    //
+    // T4 — what did that check protect? It let seven intent profiles decline to
+    // verify their own output. That is the behaviour this work order removes,
+    // not one to preserve.
+    //
+    // The stage check stays. It is not redundant: the profile a run executes is
+    // the one returned by `applyAdversarialTwinToSkepticMode`, and a future
+    // add-on or runtime override could still alter the stage list. A guard that
+    // is currently always true is cheaper than one that is missing when it stops
+    // being true.
     // ────────────────────────────────────────────────────────────────
     let skepticResult: ModelCallResult;
     const skepticAnnotations: Array<Record<string, unknown>> = [];
-    const skepticRuns =
-      shouldRunPipelineStage(orchProfile, 'challenge') && orchProfile.skepticMode !== 'off';
+    const skepticRuns = shouldRunPipelineStage(orchProfile, 'challenge');
 
     if (!skepticRuns) {
-      await progress('challenge', 65, 'Skeptic skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('challenge', 65, 'Challenge pass skipped for this run', { substep: 'stage_skipped' });
       skepticResult = orchestrationStubModelResult('skeptic', '');
     } else if (orchProfile.skepticMode === 'annotate') {
       await progress('challenge', 65, 'Collecting skeptical annotations (sidebar)...', { substep: 'skeptic_annotate' });
