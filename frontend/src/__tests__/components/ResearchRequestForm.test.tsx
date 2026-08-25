@@ -276,6 +276,7 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () => 
       query: 'Compare EU and US device pathways',
       supplemental: 'Only post-2022 filings\n\nHostile Peer Reviewer',
       supplemental_attachments: [{ kind: 'url', url: 'https://example.test/a' }],
+      requested_research_objective: 'AUTO',
       research_objective: 'PATENT_GAP_ANALYSIS',
       citation_style: 'mla',
       requested_formats: ['comparison_table'],
@@ -291,6 +292,13 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () => 
     // of it, not stay glued to the notes.
     expect(screen.getByDisplayValue('Only post-2022 filings')).toBeInTheDocument();
     expect(screen.getByText(/Hostile Peer Reviewer/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Automatic — ResearchOne selects from the request')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call.researchObjective).toBeUndefined();
+    expect(call.requestedResearchObjective).toBe('AUTO');
   });
 
   it('leaves the form alone when there is no prefill parameter', async () => {

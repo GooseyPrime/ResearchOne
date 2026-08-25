@@ -29,7 +29,7 @@ export function researchRequestFormFromRun(run: ResearchRun): ResearchRequestFor
     .filter((a) => a.kind === 'url' && a.url)
     .map((a) => a.url as string);
 
-  const objective = run.research_objective;
+  const objective = run.requested_research_objective ?? run.research_objective;
   const researchObjective =
     typeof objective === 'string' &&
     [

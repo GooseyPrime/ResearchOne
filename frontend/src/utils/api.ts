@@ -176,6 +176,7 @@ export interface ResearchRun {
   supplemental?: string;
   supplemental_attachments?: ResearchSupplementalAttachment[];
   engine_version?: string | null;
+  requested_research_objective?: 'AUTO' | ResearchObjective | string | null;
   research_objective?: ResearchObjective | string | null;
   status:
     | 'queued'
