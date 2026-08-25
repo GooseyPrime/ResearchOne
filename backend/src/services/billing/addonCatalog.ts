@@ -54,18 +54,17 @@ function buildCatalog(): AddonCatalogEntry[] {
       comingSoon: false,
       stripeConfigured: rcwPrice,
     },
-    {
-      id: 'adversarial_twin',
-      name: "Devil's Advocate Review",
-      description:
-        'A dedicated critique pass on a research run — flags contradictions, unsupported claims, reasoning gaps, and exact passages that need attention. Extra wallet surcharge when your tier does not include it.',
-      priceLabel: '+$5.00 per run (wallet)',
-      billingModel: 'per_run',
-      category: 'research_run',
-      runAddonKey: 'adversarial_twin',
-      comingSoon: false,
-      stripeConfigured: false,
-    },
+    // "Devil's Advocate Review" ($5.00 per run) was removed in WO-AH.
+    //
+    // It sold "a dedicated critique pass on a research run". Every run now gets
+    // one, so the add-on was charging for something the product already does.
+    // Selling verification back to the customer also implies the unpaid version
+    // is the one where nobody checked the work, which is not a claim to make
+    // about your own research product.
+    //
+    // Historical runs may still carry `adversarial_twin` in `selected_addons`.
+    // `normalizeRunAddonKeys` filters unknown keys, so those rows read back
+    // clean rather than throwing.
     {
       id: 'parallel_search',
       name: 'Parallel Search',

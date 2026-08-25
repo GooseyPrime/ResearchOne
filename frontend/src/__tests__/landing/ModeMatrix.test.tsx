@@ -14,6 +14,6 @@ describe('ModeMatrix', () => {
   });
 
   it('includes skeptic intensity column', () => {
-    expect(html).toContain('Skeptic intensity');
+    expect(html).toContain('Challenge depth');
   });
 });

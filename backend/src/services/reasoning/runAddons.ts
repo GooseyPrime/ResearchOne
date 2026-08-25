@@ -1,12 +1,6 @@
 import { queryOne } from '../../db/pool';
-import {
-  PIPELINE_STAGES,
-  type OrchestrationProfileDefinition,
-  type PipelineStage,
-} from '../planning/orchestrationProfiles';
 
 export const RUN_ADDON_KEYS = [
-  'adversarial_twin',
   'parallel_search',
   'parallel_extract',
   'smart_citations',
@@ -46,24 +40,12 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
   };
 }
 
-/**
- * Devil's Advocate add-on: un-skip challenge and enable skeptic gate so the paid pass runs.
+/*
+ * `applyAdversarialTwinToSkepticMode` was removed in WO-AH along with the
+ * add-on it existed for. It un-skipped the challenge stage and forced the
+ * strongest challenge mode; every run now runs the challenge pass, and how
+ * strong it is is decided by the planner from the request rather than bought.
  */
-export function applyAdversarialTwinToSkepticMode(
-  profile: OrchestrationProfileDefinition,
-  addons: readonly RunAddonKey[]
-): OrchestrationProfileDefinition {
-  if (!hasRunAddon(addons, 'adversarial_twin')) return profile;
-
-  const skipSet = new Set<PipelineStage>(
-    profile.agentsToSkip.filter((s): s is PipelineStage => s !== 'challenge')
-  );
-  const agentsToSkip = PIPELINE_STAGES.filter((s) => skipSet.has(s));
-  const agentsToRun = PIPELINE_STAGES.filter((s) => !skipSet.has(s));
-  const skepticMode = profile.skepticMode === 'off' ? 'gate' : profile.skepticMode;
-
-  return { ...profile, agentsToSkip, agentsToRun, skepticMode };
-}
 
 export async function resolveRunAddons(runId: string, jobAddons?: string[]): Promise<RunAddonKey[]> {
   const fromJob = normalizeRunAddonKeys(jobAddons);

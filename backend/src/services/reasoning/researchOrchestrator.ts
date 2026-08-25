@@ -49,6 +49,8 @@ import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
 import { incrementReportCount } from '../tier/tierService';
+import { resolveSourceIngestBudget } from '../discovery/sourceBudget';
+import { RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import type {
   ProgressCallback,
   ResearchJobData,
@@ -79,7 +81,6 @@ import {
 } from '../planning/orchestrationRuntime';
 import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
 import {
-  applyAdversarialTwinToSkepticMode,
   buildRunAddonPipelineEffects,
   resolveRunAddons,
 } from './runAddons';
@@ -1007,10 +1008,7 @@ async function runResearchJobInner(
   const runStartedAt = Date.now();
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
-  const orchProfile = applyAdversarialTwinToSkepticMode(
-    resolveOrchestrationProfileFromJob(data),
-    runAddons
-  );
+  const orchProfile = resolveOrchestrationProfileFromJob(data);
   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
   const sourceClassesFromPlan =
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
@@ -1324,7 +1322,17 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
-        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
+        // The configured cap is a floor for an ordinary run, not the answer
+        // for every run: a long report or a twenty-item deliverable needs more
+        // than ten sources to be built out of. See `resolveSourceIngestBudget`.
+        maxIngestCapOverride: resolveSourceIngestBudget({
+          configuredCap: config.discovery.maxIngestPerRun,
+          targetWordCount: data.targetWordCount,
+          requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
+            (artifact) => typeof artifact.exactCount === 'number'
+          )?.exactCount,
+          addonCapOverride: addonEffects.maxIngestCapOverride,
+        }),
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds:
           data.confirmedPlanPayload?.researchBrief?.epistemicPosture === 'causal_test' ? 6 : 4,
@@ -1740,7 +1748,8 @@ async function runResearchJobInner(
         ?.exactCount;
     let sourceAssessment = assessSourceSufficiency({
       intentId: orchProfile.intent as never,
-      citableChunkCount: allChunks.length,
+      citableChunks: allChunks,
+      requesterUserId: creditCtx?.userId ?? null,
       specialistOutputs: latestSpecialistOutputs,
       rediscoveryPassesRemaining: 1,
       requestedArtifactCount,
@@ -1770,7 +1779,17 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
-        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
+        // The configured cap is a floor for an ordinary run, not the answer
+        // for every run: a long report or a twenty-item deliverable needs more
+        // than ten sources to be built out of. See `resolveSourceIngestBudget`.
+        maxIngestCapOverride: resolveSourceIngestBudget({
+          configuredCap: config.discovery.maxIngestPerRun,
+          targetWordCount: data.targetWordCount,
+          requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
+            (artifact) => typeof artifact.exactCount === 'number'
+          )?.exactCount,
+          addonCapOverride: addonEffects.maxIngestCapOverride,
+        }),
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds: 2,
         onDeterministicFallback: async ({ reason, queries }) => {
@@ -1854,7 +1873,8 @@ async function runResearchJobInner(
       await runSpecialistStage();
       sourceAssessment = assessSourceSufficiency({
         intentId: orchProfile.intent as never,
-        citableChunkCount: allChunks.length,
+        citableChunks: allChunks,
+        requesterUserId: creditCtx?.userId ?? null,
         specialistOutputs: latestSpecialistOutputs,
         rediscoveryPassesRemaining: 0,
         requestedArtifactCount,
@@ -1877,13 +1897,18 @@ async function runResearchJobInner(
       await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
         substep: 'low_evidence_labeled_delivery',
       });
-    } else if (sourceAssessment.action === 'rediscover') {
-      // Adjudicative intent exhausted all rediscovery passes. Adjudication
-      // genuinely cannot proceed without evidence — but it must fail loudly
-      // rather than emit a placeholder report shaped like a verdict.
+    } else if (sourceAssessment.action === 'insufficient_evidence_fail_closed') {
+      // An intent that delivers a verdict, with no independent evidence and no
+      // rediscovery passes left. It must fail loudly rather than emit a
+      // placeholder shaped like a verdict.
+      //
+      // This branch used to be `action === 'rediscover'` — the same value the
+      // gate returns when it wants ANOTHER pass — so "try again" and "stop,
+      // there is nothing to conclude from" were one token apart and told apart
+      // only by a counter somewhere else. It has its own name now.
       sourceFailureReason = sourceAssessment.reason;
       adjudicativeEvidenceExhausted = true;
-      await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
+      await progress('reasoning', 49, 'No independent evidence was found for a claim that needs verifying; stopping rather than guessing.', {
         substep: 'adjudicative_evidence_exhausted',
       });
     }
@@ -1952,18 +1977,30 @@ async function runResearchJobInner(
     const wave53SteelmanUserBlock = formatSteelmanBlockForSkeptic(wave53SteelmanByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
-    // STAGE 6: SKEPTIC — challenge conclusions (off | gate | annotate)
+    // STAGE 6: CHALLENGE PASS — pressure-test the conclusions (annotate | gate)
+    //
+    // Runs on every report (WO-AH). The `&& orchProfile.skepticMode !== 'off'`
+    // that used to gate this is gone: no profile can express 'off' any more, so
+    // the comparison was dead code and TypeScript said so.
+    //
+    // T4 — what did that check protect? It let seven intent profiles decline to
+    // verify their own output. That is the behaviour this work order removes,
+    // not one to preserve.
+    //
+    // The stage check stays. It is not redundant: the profile a run executes is
+    // a runtime override could still alter the stage list, and a guard that
+    // is currently always true is cheaper than one that is missing when it stops
+    // being true.
     // ────────────────────────────────────────────────────────────────
     let skepticResult: ModelCallResult;
     const skepticAnnotations: Array<Record<string, unknown>> = [];
-    const skepticRuns =
-      shouldRunPipelineStage(orchProfile, 'challenge') && orchProfile.skepticMode !== 'off';
+    const skepticRuns = shouldRunPipelineStage(orchProfile, 'challenge');
 
     if (!skepticRuns) {
-      await progress('challenge', 65, 'Skeptic skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('challenge', 65, 'Claim checking skipped for this run', { substep: 'stage_skipped' });
       skepticResult = orchestrationStubModelResult('skeptic', '');
     } else if (orchProfile.skepticMode === 'annotate') {
-      await progress('challenge', 65, 'Collecting skeptical annotations (sidebar)...', { substep: 'skeptic_annotate' });
+      await progress('challenge', 65, 'Checking the claims and noting objections...', { substep: 'skeptic_annotate' });
       skepticResult = await callRoleModel({
         role: 'skeptic',
         ...v2,
@@ -1991,7 +2028,7 @@ async function runResearchJobInner(
         snapshot: { output: skepticResult.content, annotate: true },
       });
     } else {
-      await progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
+      await progress('challenge', 65, 'Arguing against the draft to find weak claims...', { substep: 'skeptic_started' });
 
       skepticResult = await callRoleModel({
         role: 'skeptic',
@@ -2019,7 +2056,7 @@ async function runResearchJobInner(
 
     const challengesForSynthesis =
       orchProfile.skepticMode === 'annotate'
-        ? 'Skeptical cross-checks were captured as structured sidebar annotations and are not inlined in this narrative.'
+        ? 'Challenge notes were captured as structured sidebar annotations and are not inlined in this narrative.'
         : skepticResult.content;
 
     // ────────────────────────────────────────────────────────────────
@@ -2211,8 +2248,19 @@ ${generatedReport.markdown}`,
       deterministic_metrics?: Record<string, number>;
     };
     let contractAuditResult: ContractAuditResult | null = null;
+    const auditRequestedFormats = confirmedResearchBrief?.requestedFormats ?? data.requestedFormats;
     const runContractAudit = async (markdown: string): Promise<void> => {
-      if (!researchBrief || (researchBrief.requestedArtifacts.length === 0 && researchBrief.userConstraints.length === 0)) {
+      // A requested FORMAT is a contract too. Skipping the audit whenever the
+      // brief happened to extract no artifacts meant "give me a comparison
+      // table" was checked by nothing at all — the same instruct-and-do-not-
+      // check gap as the table expectation itself, one level further up.
+      const formatIsAContract = resolveTableExpectation(null, undefined, auditRequestedFormats).required;
+      if (
+        !researchBrief ||
+        (researchBrief.requestedArtifacts.length === 0 &&
+          researchBrief.userConstraints.length === 0 &&
+          !formatIsAContract)
+      ) {
         contractAuditResult = null;
         return;
       }
@@ -2228,7 +2276,14 @@ ${generatedReport.markdown}`,
       // A required table that renders as a wall of pipes, drops columns, or
       // carries the wrong row count is a contract failure the auditor should
       // catch — not something the reader discovers.
-      const tableExpectation = resolveTableExpectation(researchBrief, requestedArtifactCount);
+      const tableExpectation = resolveTableExpectation(
+        researchBrief,
+        requestedArtifactCount,
+        // The drafter is told to emit a table when the requested format asks
+        // for one; the auditor now checks the same input, so "Comparison
+        // table" is verified rather than merely requested.
+        auditRequestedFormats
+      );
       const tableIssues = checkTableContract(markdown, tableExpectation);
       const tableMessages = tableIssues.map((issue) => issue.message);
 
@@ -2743,7 +2798,11 @@ ${generatedReport.markdown}`,
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
         }
         if (creditCtx.type === 'subscription' && creditCtx.userId) {
-          await incrementReportCount(creditCtx.userId, engineVersion === 'v2');
+          // WO-AH-6: every run now uses the one engine, so `engineVersion`
+          // no longer distinguishes a deep run from a cheap one. Which quota
+          // a finished report consumes is an operator decision and lives in
+          // one place; see `RUN_CONSUMES_DEEP_QUOTA`.
+          await incrementReportCount(creditCtx.userId, RUN_CONSUMES_DEEP_QUOTA);
         }
       } catch (creditErr) {
         logger.error('credit_charge_on_completion_failed', {

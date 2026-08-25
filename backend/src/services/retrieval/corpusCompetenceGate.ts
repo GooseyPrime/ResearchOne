@@ -190,12 +190,45 @@ export function evaluateCorpusGate(args: {
   };
 }
 
+/**
+ * Intents whose conclusions must rest on material the requester did not
+ * supply.
+ *
+ * This list did not contain `adjudication`, `investigation`,
+ * `story_verification` or `position_brief` — the four intents that produce a
+ * verdict about a claim, and therefore the four with the most to lose from
+ * citing the requester's own file back at them as corroboration. A market
+ * report was held to a standard a fact-check was not.
+ *
+ * (GitHub #228 P1, requirement 6: "user-owned sources do not count as
+ * independent evidence for intents requiring independence".)
+ */
 export function intentNeedsIndependentExternalEvidence(intentId?: IntentId): boolean {
-  return intentId === 'opportunity_discovery'
+  return ADJUDICATIVE_INTENTS.has(intentId as IntentId)
+    || intentId === 'opportunity_discovery'
     || intentId === 'comparative'
     || intentId === 'feasibility'
     || intentId === 'recommendation'
     || intentId === 'exploratory';
+}
+
+/**
+ * Intents that deliver a verdict and must fail closed without independent
+ * evidence rather than deliver a labelled low-evidence answer.
+ *
+ * One definition, exported, because the evidence gate and the retrieval
+ * citability filter were each carrying their own copy and the copies had
+ * drifted apart.
+ */
+export const ADJUDICATIVE_INTENTS: ReadonlySet<IntentId> = new Set<IntentId>([
+  'adjudication',
+  'investigation',
+  'story_verification',
+  'position_brief',
+]);
+
+export function isAdjudicativeIntent(intentId?: IntentId): boolean {
+  return ADJUDICATIVE_INTENTS.has(intentId as IntentId);
 }
 
 export function extractPartitionFromTags(tags: string[]): string | null {

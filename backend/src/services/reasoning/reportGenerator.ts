@@ -44,6 +44,63 @@ const ITEM_NAME_MARKER = /^[ \t]*(?:[*_`]{0,2})ITEM[ _-]?NAME(?:[*_`]{0,2})[ \t]
 const MAX_ITEM_NAME_CHARS = 70;
 
 /**
+ * A number the model put at the front of a name that is about to be numbered.
+ *
+ * Covers `16.`, `16)`, `16.1 `, `16 -`, `#16 -`, `Item 16:`, `Opportunity 3 —`.
+ *
+ * A bare number followed only by a space is stripped ONLY when it is
+ * multi-level (`16.1 Name`). `2024 outlook` keeps its year: a leading number
+ * with no punctuation after it is usually part of the name, and deleting it
+ * would be a worse defect than the one this fixes.
+ */
+const LEADING_ORDINAL =
+  /^\s*(?:#+\s*)?(?:[A-Za-z][A-Za-z ]{0,20}?\s)?(?:\d+(?:\.\d+)+\s+|\d+(?:\.\d+)*\s*[.):\u2013\u2014-]\s+)/;
+
+/**
+ * Strip a numbering prefix the drafter added to an item name.
+ *
+ * Item headings are numbered by CODE from the plan's ordinal. When the drafter
+ * also numbers its `ITEM NAME` line — which it does, because the section it was
+ * handed is numbered in the plan it can see — the two numbers are concatenated
+ * and the reader gets `## 16. 16. Something`. The operator saw "16.16" and
+ * "18.18" in a real report.
+ *
+ * The pipeline owns the ordinal, so the model's copy of it is discarded rather
+ * than trusted.
+ */
+export function stripLeadingOrdinal(name: string): string {
+  let out = (name ?? '').trim();
+  // Twice at most: "Section 16. 16. Foo" is one model doing it in two places.
+  for (let i = 0; i < 2; i += 1) {
+    const next = out.replace(LEADING_ORDINAL, '').trim();
+    if (next === out || !next) break;
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * Remove a Markdown heading the drafter wrote at the top of a section body.
+ *
+ * Every section's heading is prepended by the assembler (`## ${title}`). A body
+ * that opens with its own heading therefore renders two, and if the model
+ * numbered its heading the reader sees the ordinal twice. The drafter is told
+ * not to write one; being told is not a guarantee, and this is the guarantee.
+ *
+ * Only a heading at the very top is removed, and only one: headings further
+ * down are the section's own sub-structure and belong to the reader.
+ */
+export function stripLeadingSectionHeading(body: string): string {
+  const text = (body ?? '').replace(/^\s+/, '');
+  const match = text.match(/^#{1,6}[ \t]+[^\n]*\n+/);
+  if (!match) return text.trim();
+  const rest = text.slice(match[0].length).trim();
+  // A section whose entire content was one heading keeps it — better a
+  // duplicated heading than an empty section.
+  return rest || text.trim();
+}
+
+/**
  * Pull the drafter's item name off a section body, returning the name and the
  * body with the marker line removed.
  *
@@ -62,8 +119,9 @@ export function extractItemName(body: string): { itemName: string | null; conten
     .trim();
 
   const content = text.replace(match[0], '').replace(/^\s*\n/, '').trimStart();
-  if (!raw || raw.length > MAX_ITEM_NAME_CHARS) return { itemName: null, content };
-  return { itemName: raw, content };
+  const named = stripLeadingOrdinal(raw);
+  if (!named || named.length > MAX_ITEM_NAME_CHARS) return { itemName: null, content };
+  return { itemName: named, content };
 }
 
 /**
@@ -135,7 +193,9 @@ export function parseRefinedSections(response: string): Map<string, string> {
     if (!key || !body) continue;
     // A refiner that emits a heading anyway would otherwise leave it stranded
     // mid-section, since the real heading is prepended by the assembler.
-    const withoutHeading = body.replace(/^##\s+[^\n]*\n+/, '').trim();
+    // Any level, not only `##`: a refiner that wrote `###` slipped straight
+    // through the old pattern and rendered under the assembler's heading.
+    const withoutHeading = stripLeadingSectionHeading(body);
     if (!withoutHeading) continue;
     out.set(key, withoutHeading);
   }
@@ -1121,7 +1181,13 @@ Return section body text only. Do NOT write a markdown heading for this section 
           })
         : section.title;
 
-    return { title: finalTitle, key: section.key, content: sectionText };
+    return {
+      title: finalTitle,
+      key: section.key,
+      // The assembler prepends the heading, so a heading the drafter wrote
+      // anyway would render twice — with the ordinal in it twice.
+      content: stripLeadingSectionHeading(sectionText),
+    };
   };
 
   let drafted = 0;

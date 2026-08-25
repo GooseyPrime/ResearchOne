@@ -12,7 +12,7 @@ import {
   getIntentOutputTemplate,
 } from '../formatting/templates/intentOutputTemplates';
 import {
-  RED_TEAM_V2_SYSTEM_PREFIX,
+  CHALLENGE_PASS_SYSTEM_PREFIX,
   isHfRepoModel,
   type ModelCallPurpose,
   type ResearchObjective,
@@ -285,9 +285,24 @@ function getModeOverlay(objective: string, role: string): string | undefined {
   return MODE_OVERLAYS[objective as keyof typeof MODE_OVERLAYS]?.[role as AgentRole];
 }
 
-function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
+/**
+ * System-prompt augmentations, applied to every run (WO-AH).
+ *
+ * This returned early unless `engineVersion === 'v2'`, which withheld TWO things
+ * from every Standard run:
+ *
+ *   1. the challenge pass's adversarial prefix, and
+ *   2. the WO-M mode overlays keyed on `researchObjective`.
+ *
+ * T4 — what did the gate protect? Nothing about correctness or safety. It made
+ * cheaper runs produce weaker output. Since the agents now decide depth from the
+ * request rather than the user picking a tier, both augmentations apply
+ * everywhere. The overlay lookup was already guarded on `researchObjective`
+ * being present, so removing the outer gate cannot make it fire on a run that
+ * has no objective.
+ */
+function applySystemAugmentations(options: ModelCallOptions): ChatMessage[] {
   let msgs = options.messages;
-  if (options.engineVersion?.trim() !== 'v2') return msgs;
 
   if (
     (options.role === 'skeptic' || options.role === 'internal_challenger') &&
@@ -296,7 +311,7 @@ function applyV2SystemAugmentations(options: ModelCallOptions): ChatMessage[] {
     const idx = msgs.findIndex((m) => m.role === 'system');
     if (idx >= 0) {
       msgs = msgs.map((msg, i) =>
-        i === idx ? { ...msg, content: `${RED_TEAM_V2_SYSTEM_PREFIX}${msg.content}` } : msg
+        i === idx ? { ...msg, content: `${CHALLENGE_PASS_SYSTEM_PREFIX}${msg.content}` } : msg
       );
     }
   }
@@ -347,7 +362,7 @@ async function callHfChat(model: string, options: ModelCallOptions): Promise<Mod
   }
 
   const start = Date.now();
-  const messages = applyV2SystemAugmentations(options).map((m) => ({
+  const messages = applySystemAugmentations(options).map((m) => ({
     role: m.role as 'system' | 'user' | 'assistant',
     content: m.content,
   }));
@@ -437,7 +452,7 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
   const start = Date.now();
   const body: Record<string, unknown> = {
     model,
-    messages: applyV2SystemAugmentations(options),
+    messages: applySystemAugmentations(options),
     temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
     max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
   };
@@ -468,7 +483,7 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
 }
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
-  const messages: ChatMessage[] = applyV2SystemAugmentations(options);
+  const messages: ChatMessage[] = applySystemAugmentations(options);
   const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
   const apiKey = options.byokApiKeyOverride ?? config.openrouter.apiKey;
   const headers = buildOpenRouterAppHeaders(apiKey);

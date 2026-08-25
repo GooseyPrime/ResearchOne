@@ -80,7 +80,8 @@ export function RecentRuns() {
         {runs.map((run, index) => {
           const status = statusConfig[run.status];
           const StatusIcon = status.icon;
-          const tierMeta = evidenceTierMeta[run.evidenceTier];
+          // Only when the run actually has one. A default here is a claim.
+          const tierMeta = run.evidenceTier ? evidenceTierMeta[run.evidenceTier] : null;
           const apiStatus = apiStatusById.get(run.id) ?? run.status;
 
           return (
@@ -98,25 +99,31 @@ export function RecentRuns() {
                   </div>
 
                   <div data-ev-id="ev_cc18836fbb" className="flex-1 min-w-0">
-                    <div data-ev-id="ev_11df843385" className="flex items-center gap-2 flex-wrap mb-1">
-                      <span
-                        data-ev-id="ev_3733080d30"
-                        className={`r1-tag text-[9px] ${
-                          tierMeta.color === 'cyan'
-                            ? 'r1-tag-cyan'
-                            : tierMeta.color === 'green'
-                              ? 'r1-tag-green'
-                              : tierMeta.color === 'amber'
-                                ? 'r1-tag-amber'
-                                : ''
-                        }`}
-                      >
-                        {tierMeta.label.toUpperCase()}
-                      </span>
-                      <span data-ev-id="ev_4870d2aab3" className="r1-mono-label text-[9px] text-r1-dim">
-                        {run.mode.toUpperCase()}
-                      </span>
-                    </div>
+                    {tierMeta || run.mode ? (
+                      <div data-ev-id="ev_11df843385" className="flex items-center gap-2 flex-wrap mb-1">
+                        {tierMeta ? (
+                          <span
+                            data-ev-id="ev_3733080d30"
+                            className={`r1-tag text-[9px] ${
+                              tierMeta.color === 'cyan'
+                                ? 'r1-tag-cyan'
+                                : tierMeta.color === 'green'
+                                  ? 'r1-tag-green'
+                                  : tierMeta.color === 'amber'
+                                    ? 'r1-tag-amber'
+                                    : ''
+                            }`}
+                          >
+                            {tierMeta.label.toUpperCase()}
+                          </span>
+                        ) : null}
+                        {run.mode ? (
+                          <span data-ev-id="ev_4870d2aab3" className="r1-mono-label text-[9px] text-r1-dim">
+                            {run.mode.toUpperCase()}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <p data-ev-id="ev_0e8e8e8e8e" className="text-sm text-r1-heading line-clamp-2">
                       {run.query}
                     </p>

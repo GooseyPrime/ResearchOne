@@ -90,7 +90,7 @@ describe('PersonaAwareHero — forcePersona', () => {
   it('forcePersona="osint" renders the OSINT variant immediately', async () => {
     renderHero({ forcePersona: 'osint' });
     await waitFor(() => {
-      expect(screen.getByText(/Skeptic reasoning/i)).toBeInTheDocument();
+      expect(screen.getByText(/Built to challenge stories/i)).toBeInTheDocument();
       expect(screen.getByText('For investigative work')).toBeInTheDocument();
     });
   });

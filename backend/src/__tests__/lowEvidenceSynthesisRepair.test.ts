@@ -5,6 +5,15 @@ import {
 } from '../services/reasoning/sourceSufficiencyGate';
 import { buildDeterministicDiscoveryQueries } from '../services/discovery/deterministicDiscoveryQueries';
 
+
+/** Chunks the system discovered for itself: independent external evidence. */
+function independentChunks(n: number): Array<{ source_origin: string; owner_user_id: null }> {
+  return Array.from({ length: n }, () => ({
+    source_origin: 'external_discovery',
+    owner_user_id: null,
+  }));
+}
+
 /**
  * Regression suite for run 6c59b711 — "Opportunity Discovery Report" that
  * shipped twenty identical placeholder blocks, 0 sources, 0 evidence chunks,
@@ -12,19 +21,41 @@ import { buildDeterministicDiscoveryQueries } from '../services/discovery/determ
  */
 
 describe('evidence sufficiency — a sealed corpus is not an evidence failure', () => {
-  it('does NOT require citable corpus chunks when specialists produced signals', () => {
+  // This assertion used to read `expect(result.action).toBe('sufficient')`,
+  // and that was the defect in GitHub #228 P1 written down as a requirement:
+  // two arrays produced by a model, with nothing retrieved at all, declared
+  // the run's evidence sufficient. A model certifying its own output.
+  //
+  // The requirement the old test was protecting — a sealed corpus must not
+  // force refusal — is real and is unchanged. It is met by the branch below:
+  // this run rediscovers, and if that finds nothing it still delivers the
+  // full artifact with an honest label. It never refuses.
+  it('does not let specialist output alone certify a run as evidenced', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: {
         market_scout: { opportunities: [{ name: 'a' }, { name: 'b' }] },
       },
       rediscoveryPassesRemaining: 1,
       corpusIntentionallySealed: true,
     });
-    // Previously: required specialistSignalCount > 0 AND citableChunkCount > 0,
-    // so a deliberately sealed corpus forced every run into degraded delivery.
-    expect(result.action).toBe('sufficient');
+    expect(result.action).toBe('rediscover');
+    expect(result.analyticalSignalCount).toBe(2);
+    expect(result.independentChunkCount).toBe(0);
+  });
+
+  it('still delivers rather than refusing when a sealed corpus yields nothing', () => {
+    const result = assessSourceSufficiency({
+      intentId: 'opportunity_discovery',
+      citableChunks: [],
+      specialistOutputs: {
+        market_scout: { opportunities: [{ name: 'a' }, { name: 'b' }] },
+      },
+      rediscoveryPassesRemaining: 0,
+      corpusIntentionallySealed: true,
+    });
+    expect(result.action).toBe('low_evidence_labeled_delivery');
   });
 
   // This case previously asserted 'sufficient', and that assertion described
@@ -39,7 +70,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('does not call discovery sources sufficient when none of them retrieved', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: {},
       rediscoveryPassesRemaining: 1,
       discoverySourceCount: 12,
@@ -51,7 +82,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('delivers with a label, never refuses, when discovery retrieved nothing twice', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: {},
       rediscoveryPassesRemaining: 0,
       discoverySourceCount: 12,
@@ -63,7 +94,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('is sufficient as soon as discovery sources actually yield chunks', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 8,
+      citableChunks: independentChunks(8),
       specialistOutputs: {},
       rediscoveryPassesRemaining: 1,
       discoverySourceCount: 12,
@@ -75,19 +106,22 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('still hard-fails an adjudicative intent with no evidence after rediscovery', () => {
     const result = assessSourceSufficiency({
       intentId: 'adjudication',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: {},
       rediscoveryPassesRemaining: 0,
       discoverySourceCount: 12,
       corpusIntentionallySealed: true,
     });
-    expect(result.action).toBe('rediscover');
+    // Renamed from 'rediscover': "go round again" and "stop, there is nothing
+    // here to conclude from" used to be the same value, told apart only by a
+    // counter held somewhere else.
+    expect(result.action).toBe('insufficient_evidence_fail_closed');
   });
 
   it('still re-discovers when every evidence stream is genuinely empty', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: { market_scout: { opportunities: [] } },
       rediscoveryPassesRemaining: 1,
       discoverySourceCount: 0,
@@ -98,7 +132,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('falls to labeled delivery (not refusal) once rediscovery is exhausted', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: { market_scout: { opportunities: [] } },
       rediscoveryPassesRemaining: 0,
       discoverySourceCount: 0,
@@ -109,7 +143,7 @@ describe('evidence sufficiency — a sealed corpus is not an evidence failure', 
   it('does not leak internal agent ids or corpus-gate jargon into reader-facing gaps', () => {
     const result = assessSourceSufficiency({
       intentId: 'opportunity_discovery',
-      citableChunkCount: 0,
+      citableChunks: [],
       specialistOutputs: { market_scout: { opportunities: [] }, competitor_mapper: { competitors: [] } },
       rediscoveryPassesRemaining: 0,
       corpusIntentionallySealed: true,

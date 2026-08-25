@@ -68,7 +68,18 @@ const TAX: IntentDefinition[] = [
     shortDescription: 'Symmetric deep-dive on contested topics.',
     documentShape: 'Thesis, strongest counter-case, evidence balance, follow-ups.',
     defaultOrchestrationProfile: 'investigation',
-    triggerPatterns: [/\b(contested|disputed|cover[- ]?up|who benefits|what really happened)\b/i],
+    triggerPatterns: [
+      /\b(contested|disputed|cover[- ]?up|who benefits|what really happened)\b/i,
+      // "Investigate why X went over budget" is the plainest way anyone asks
+      // for this and matched nothing, so it fell through to the model — and
+      // when the model was unavailable, to factual_report.
+      /\binvestigat\w*/i,
+      /\broot cause\b/i,
+      // Deliberately NOT a bare `why (did|does)`: "why does Postgres use
+      // MVCC?" is an explanation, not an investigation, and routing it here
+      // would trade one misroute for a commoner one.
+      /\bwhy\b[^.?!]{0,60}\b(fail(ed|ure)?|collapse\w*|overr(a|u)n|over budget|went wrong|delayed|cancell?ed)\b/i,
+    ],
     isMultiLayer: true,
   },
   {
@@ -77,7 +88,16 @@ const TAX: IntentDefinition[] = [
     shortDescription: 'Verify a specific narrative or reported account.',
     documentShape: 'Claim, corroborating evidence, contradicting evidence, verdict.',
     defaultOrchestrationProfile: 'story_verification',
-    triggerPatterns: [/\b(is (it|this) (true|accurate|real)|verify (this|the) (story|claim|report)|did (this|that) (really )?happen|fact[- ]?check (this|that))\b/i],
+    triggerPatterns: [
+      /\b(is (it|this) (true|accurate|real)|did (this|that) (really )?happen|fact[- ]?check (this|that))\b/i,
+      // "Verify whether this story is true" used to match ADJUDICATION's
+      // `verify (that|whether)` and nothing here, so a story to check came
+      // back shaped as a claim/case-for/case-against/verdict document instead
+      // of confirmed / unconfirmed / false-or-misleading. The words between
+      // "verify" and the thing being verified are not the point.
+      /\bverif\w*\b[^.?!]{0,40}\b(story|stories|account|report|reporting|article|narrative|claim)s?\b/i,
+      /\b(story|account|article|report)\b[^.?!]{0,40}\b(is|are) (true|accurate|real|false)\b/i,
+    ],
     isMultiLayer: false,
   },
   {
@@ -86,7 +106,15 @@ const TAX: IntentDefinition[] = [
     shortDescription: 'Surface market or domain opportunities.',
     documentShape: 'Landscape overview, opportunity gaps, sizing signals, recommended moves.',
     defaultOrchestrationProfile: 'opportunity_discovery',
-    triggerPatterns: [/\b(market opportunity|white space|unmet (need|demand)|emerging (market|space)|where (is|are) (the )?(opportunity|gap))\b/i],
+    triggerPatterns: [
+      /\b(market opportunity|white space|unmet (need|demand)|emerging (market|space)|where (is|are) (the )?(opportunity|gap))\b/i,
+      // The operator's own request — "find me 20 affiliate marketing niches
+      // ranked by income potential" — matched nothing at all.
+      /\bniches?\b/i,
+      /\bopportunit\w*/i,
+      /\branked by\b[^.?!]{0,40}\b(potential|income|revenue|profit|demand|value)\b/i,
+      /\b(ideas|ways)\b[^.?!]{0,20}\b(to|for)\b[^.?!]{0,20}\b(make|earn|monetis|monetiz|start)\w*/i,
+    ],
     isMultiLayer: true,
   },
   {
@@ -95,7 +123,13 @@ const TAX: IntentDefinition[] = [
     shortDescription: 'Assess whether a plan or idea is viable.',
     documentShape: 'Viability criteria, enabling factors, blockers, risk register, recommendation.',
     defaultOrchestrationProfile: 'feasibility',
-    triggerPatterns: [/\b(feasib|is (it|this) (viable|possible|realistic|practical)|can (we|I|it) (do|build|achieve)|what would it take)\b/i],
+    // `\b(feasib|…)\b` could never match "feasible": there is no word
+    // boundary between "b" and "l", so the alternative only matched the
+    // non-word "feasib". Every feasibility question fell through to the model.
+    triggerPatterns: [
+      /\bfeasib\w*/i,
+      /\b(is (it|this) (viable|possible|realistic|practical)|can (we|i|it) (do|build|achieve)|what would it take)\b/i,
+    ],
     isMultiLayer: false,
   },
   {
@@ -140,7 +174,12 @@ const TAX: IntentDefinition[] = [
     shortDescription: 'Decision support with elicited constraints.',
     documentShape: 'Options, criteria, scored recommendation, caveats.',
     defaultOrchestrationProfile: 'recommendation',
-    triggerPatterns: [/\b(which (one|option)|should I|recommend|best choice|decide between)\b/i],
+    triggerPatterns: [
+      // "should I" missed "should we", which is how anyone asking on behalf of
+      // a team phrases it.
+      /\b(which (one|option)|should (i|we)|recommend\w*|best choice|decide between)\b/i,
+      /\bwhich\b[^.?!]{0,40}\bshould (i|we)\b/i,
+    ],
     isMultiLayer: true,
   },
   {

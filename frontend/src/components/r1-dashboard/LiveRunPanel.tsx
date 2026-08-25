@@ -31,17 +31,17 @@
  *    produced. This page now reads the API row directly and shows only facts
  *    the row actually carries.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { AlertCircle, Clock, FileText, Plus, XCircle } from 'lucide-react';
+import { AlertCircle, Clock, FileText, Plus, XCircle, XOctagon } from 'lucide-react';
 import { pipelineStages } from '@/content/researchoneUiData';
 import LiveResearchTraceLog from '@/components/research/LiveResearchTraceLog';
 import RunRequestDisclosure from '@/components/research/RunRequestDisclosure';
 import RunPlanGate from '@/components/research/RunPlanGate';
 import { useRunTraceStream } from '@/hooks/useRunTraceStream';
-import { getResearchRuns, type ResearchRun } from '@/utils/api';
+import { cancelResearchRun, getResearchRuns, type ResearchRun } from '@/utils/api';
 import { getSocket } from '@/utils/socket';
 import { mapApiRunStage } from '@/lib/researchone/runMappers';
 import { isReferenceTitle, runDisplayTitle } from '@/utils/runDisplayTitle';
@@ -272,6 +272,8 @@ export function LiveRunPanel() {
             </div>
 
             <RunOutcomePanel run={run} />
+
+            {!isTerminal && <CancelRunControl run={run} />}
           </div>
         </div>
       </div>
@@ -333,6 +335,81 @@ function RunWorkspaceRail({
         RUN {runId.slice(0, 8)}
       </span>
     </nav>
+  );
+}
+
+/**
+ * Stop a run that should not finish.
+ *
+ * The ability to cancel has existed on the API since long before this page did;
+ * there was simply no control for it anywhere in the product, so a run that
+ * never got picked up sat in the queue forever and the only way out was a
+ * database edit. `POST /api/research/:id/cancel` removes a queued job, asks a
+ * running one to stop cooperatively, and discards one parked at the plan gate.
+ *
+ * Two-step rather than a confirm dialog: cancelling is irreversible, and a
+ * browser dialog blocks the page it interrupts.
+ */
+function CancelRunControl({ run }: { run: ResearchRun }) {
+  const queryClient = useQueryClient();
+  const [armed, setArmed] = useState(false);
+
+  const cancel = useMutation({
+    mutationFn: () => cancelResearchRun(run.id),
+    onSuccess: () => {
+      setArmed(false);
+      void queryClient.invalidateQueries({ queryKey: ['research-run', run.id] });
+      void queryClient.invalidateQueries({ queryKey: ['research-runs'] });
+    },
+  });
+
+  const pending = cancel.isPending;
+
+  return (
+    <div className="r1-panel p-4">
+      {!armed ? (
+        <button
+          type="button"
+          onClick={() => setArmed(true)}
+          className="r1-focus-ring inline-flex w-full items-center justify-center gap-2 rounded border border-r1-border px-4 py-2.5 text-sm text-r1-muted transition-colors hover:border-r1-skeptic/50 hover:text-r1-skeptic"
+        >
+          <XOctagon className="h-4 w-4" aria-hidden />
+          Cancel this run
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-r1-muted">
+            {run.status === 'running'
+              ? 'Stop this run? Work already done is kept, but no report will be produced.'
+              : 'Cancel this run? It has not started, so nothing is lost.'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => cancel.mutate()}
+              className="r1-focus-ring flex-1 rounded bg-r1-skeptic px-3 py-2 text-sm font-semibold text-r1-canvas transition-opacity disabled:opacity-60"
+            >
+              {pending ? 'Cancelling…' : 'Yes, cancel'}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setArmed(false)}
+              className="r1-focus-ring flex-1 rounded border border-r1-border px-3 py-2 text-sm text-r1-muted disabled:opacity-60"
+            >
+              Keep running
+            </button>
+          </div>
+        </div>
+      )}
+
+      {cancel.isError && (
+        <p className="mt-3 text-xs text-r1-skeptic">
+          Could not cancel this run. It may have already finished — reload to see its current state.
+        </p>
+      )}
+    </div>
   );
 }
 

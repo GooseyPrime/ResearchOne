@@ -108,13 +108,72 @@ function resolveListOrderBy(sortBy: DossierSortBy | undefined, extended: boolean
   return 'dossier_created_at DESC';
 }
 
-const LIST_SELECT_EXTENDED = `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, run_display_title, run_ref, plan_intent, dossier_created_at,
+/**
+ * The dossier list projection, as a ladder rather than a cliff.
+ *
+ * A deploy can put this code in front of a database that has not run migration
+ * 057 yet. The old handling caught the resulting "column does not exist" and
+ * fell all the way back to the LEGACY projection — which drops the gate status,
+ * last activity, version number, spinoff and revision flags and engine version,
+ * none of which have anything to do with 057. A missing column from the newest
+ * migration silently cost the list nine columns that had been there for
+ * months, and the list rendered as though those runs had no history.
+ *
+ * Each rung removes only what the rung below it cannot have. `titleSearch`
+ * moves with the columns for the same reason: a WHERE clause naming
+ * `run_display_title` fails exactly like a SELECT naming it, so the search
+ * predicate has to be dropped on the same rung the column is.
+ *
+ * This is the ladder I had already built for `listDossiers` in #227 and did
+ * not apply to its neighbour — the thing Rule 44 T3 exists to prevent.
+ */
+type DossierListProjection = {
+  /** How much of the row `mapRowToListEntry` may trust. */
+  extended: boolean;
+  /** True once `run_display_title` / `run_ref` are known to be selectable. */
+  withDisplayTitle: boolean;
+  select: string;
+};
+
+const LIST_PROJECTIONS: readonly DossierListProjection[] = [
+  {
+    extended: true,
+    withDisplayTitle: true,
+    select: `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, run_display_title, run_ref, plan_intent, dossier_created_at,
             report_id, report_title, sources_cited_count, total_duration_ms,
             last_activity_at, report_version_number, is_spinoff, is_revised,
-            spinoff_from_report_id, engine_version`;
+            spinoff_from_report_id, engine_version`,
+  },
+  {
+    // Pre-057: everything the extended view had before the display title.
+    extended: true,
+    withDisplayTitle: false,
+    select: `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, plan_intent, dossier_created_at,
+            report_id, report_title, sources_cited_count, total_duration_ms,
+            last_activity_at, report_version_number, is_spinoff, is_revised,
+            spinoff_from_report_id, engine_version`,
+  },
+  {
+    // Pre-extended view entirely. The last rung, not the first response.
+    extended: false,
+    withDisplayTitle: false,
+    select: `SELECT dossier_id, run_id, run_status, request_query, plan_intent, dossier_created_at,
+            report_id, report_title, sources_cited_count, total_duration_ms`,
+  },
+];
 
-const LIST_SELECT_LEGACY = `SELECT dossier_id, run_id, run_status, request_query, plan_intent, dossier_created_at,
-            report_id, report_title, sources_cited_count, total_duration_ms`;
+/**
+ * What a text search looks at.
+ *
+ * A run's heading in the list is its display title, so searching a list by the
+ * words on it has to include that column — searching only `request_query` and
+ * `report_title` means typing what you can see and getting nothing back.
+ */
+function buildSearchPredicate(paramIndex: number, withDisplayTitle: boolean): string {
+  const columns = ['request_query', 'report_title'];
+  if (withDisplayTitle) columns.push('run_display_title');
+  return `(${columns.map((c) => `${c} ILIKE $${paramIndex} ESCAPE '\\'`).join(' OR ')})`;
+}
 
 function mapRowToDossier(row: Record<string, unknown>): Dossier {
   const reportEvidenceTierSummary = parseTierSummary(row.report_evidence_tier_summary);
@@ -248,69 +307,68 @@ export async function listDossiers(filters: DossierListFilters, ctx: DossierAuth
     params.push(filters.dateTo);
   }
   const searchTrimmed = filters.search?.trim();
+  const searchParamIndex = searchTrimmed ? p : null;
   if (searchTrimmed) {
     const pattern = `%${searchTrimmed.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
-    conds.push(
-      `(request_query ILIKE $${p} ESCAPE '\\' OR report_title ILIKE $${p} ESCAPE '\\')`,
-    );
+    // The predicate itself is built per rung, because it may name a column the
+    // database does not have yet. Only the parameter is fixed here.
     params.push(pattern);
     p++;
   }
 
-  const where = conds.join(' AND ');
   const sortBy = filters.sortBy ?? 'last_activity_at';
-  let countRows: { c: string }[];
-  let rows: Record<string, unknown>[];
-  let extended = true;
-
   const listParams = [...params, pageSize, offset];
   const limIdx = params.length + 1;
   const offIdx = params.length + 2;
 
-  try {
-    countRows = await query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM v_dossier WHERE ${where}`,
-      params,
-    );
-    const orderBy = resolveListOrderBy(sortBy, true);
-    rows = await query<Record<string, unknown>>(
-      `${LIST_SELECT_EXTENDED}
-     FROM v_dossier
-     WHERE ${where}
-     ORDER BY ${orderBy}
-     LIMIT $${limIdx} OFFSET $${offIdx}`,
-      listParams,
-    );
-  } catch (e) {
-    if (!isDossierDeploySkewPgError(e)) throw e;
-    extended = false;
-    logger.debug('dossier list: extended v_dossier columns unavailable (deploy skew)', { err: String(e) });
+  const whereFor = (withDisplayTitle: boolean): string => {
+    const all = [...conds];
+    if (searchParamIndex !== null) {
+      all.push(buildSearchPredicate(searchParamIndex, withDisplayTitle));
+    }
+    return all.join(' AND ');
+  };
+
+  let lastError: unknown = null;
+  for (let rung = 0; rung < LIST_PROJECTIONS.length; rung += 1) {
+    const projection = LIST_PROJECTIONS[rung]!;
+    const where = whereFor(projection.withDisplayTitle);
     try {
-      countRows = await query<{ c: string }>(
+      const countRows = await query<{ c: string }>(
         `SELECT COUNT(*)::text AS c FROM v_dossier WHERE ${where}`,
         params,
       );
-      rows = await query<Record<string, unknown>>(
-        `${LIST_SELECT_LEGACY}
+      const rows = await query<Record<string, unknown>>(
+        `${projection.select}
      FROM v_dossier
      WHERE ${where}
-     ORDER BY ${resolveListOrderBy(sortBy, false)}
+     ORDER BY ${resolveListOrderBy(sortBy, projection.extended)}
      LIMIT $${limIdx} OFFSET $${offIdx}`,
         listParams,
       );
-    } catch (fallbackErr) {
-      if (isViewMissingPgError(fallbackErr)) {
-        logger.debug('dossier list: v_dossier unavailable (deploy skew)', { err: String(fallbackErr) });
+      return {
+        rows: rows.map((r) => mapRowToListEntry(r, projection.extended)),
+        total: Number(countRows[0]?.c ?? 0),
+        page,
+        pageSize,
+      };
+    } catch (e) {
+      // A missing view is terminal — no rung of the ladder can help, and every
+      // rung would raise the same error while logging three times.
+      if (isViewMissingPgError(e)) {
+        logger.debug('dossier list: v_dossier unavailable (deploy skew)', { err: String(e) });
         return { rows: [], total: 0, page, pageSize };
       }
-      rejectUnscopedReadOnScopeError(fallbackErr, 'dossierReadService.listDossiers');
+      if (!isDossierDeploySkewPgError(e)) throw e;
+      lastError = e;
+      logger.debug('dossier list: dropping to a narrower v_dossier projection (deploy skew)', {
+        rung,
+        err: String(e),
+      });
     }
   }
 
-  const total = Number(countRows[0]?.c ?? 0);
-  const mapped: DossierListRow[] = rows.map((r) => mapRowToListEntry(r, extended));
-
-  return { rows: mapped, total, page, pageSize };
+  rejectUnscopedReadOnScopeError(lastError, 'dossierReadService.listDossiers');
 }
 
 function mapHistoryRows(reportRows: Record<string, unknown>[]): DossierReportHistoryEntry[] {

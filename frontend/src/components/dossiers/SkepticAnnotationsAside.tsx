@@ -65,7 +65,7 @@ export default function SkepticAnnotationsAside({ annotations, className }: Prop
         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-slate-100 hover:bg-slate-900/60 rounded-t-lg"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="font-medium">Skeptical cross-checks</span>
+        <span className="font-medium">Challenge notes</span>
         {open ? <ChevronDown size={18} className="shrink-0 text-slate-400" /> : <ChevronRight size={18} className="shrink-0 text-slate-400" />}
       </button>
       {open ? (

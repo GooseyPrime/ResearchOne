@@ -6,9 +6,9 @@ export const MARKETING_FAQ_ITEMS = [
       'Mainstream assistants optimize for fast cited answers. ResearchOne builds a plan first, gathers and reads sources, then applies specialist analysis based on your requested outcome. It keeps evidence, interpretation, uncertainty, and contradictions visible in one cited report.',
   },
   {
-    question: 'What does the Skeptic agent actually do?',
+    question: 'What does the challenge pass actually do?',
     answer:
-      'The Skeptic is a dedicated check that argues against the draft: it surfaces counter-sources, stress-tests claims, and preserves contradictions as named outputs rather than smoothing them away.',
+      'The challenge pass argues against the draft: it surfaces counter-sources, stress-tests claims, and preserves contradictions as named outputs rather than smoothing them away.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -45,7 +45,7 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
       'ResearchOne is plan-first and outcome-adaptive: it can run different specialist methods for explanation, comparison, verification, implementation research, or quantitative analysis. The comparison is structural auditability and explicit uncertainty handling versus a single chat-shaped pass.',
   },
   {
-    question: 'What does the Skeptic agent actually do?',
+    question: 'What does the challenge pass actually do?',
     answer:
       'It receives the draft report and argues against it: searches for counter-sources, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
   },

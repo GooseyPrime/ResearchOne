@@ -38,10 +38,12 @@ vi.mock('../../utils/socket', () => ({
 
 const getResearchRun = vi.fn();
 const getResearchRuns = vi.fn();
+const cancelResearchRun = vi.fn();
 vi.mock('../../utils/api', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getResearchRun: (...a: unknown[]) => getResearchRun(...a),
   getResearchRuns: (...a: unknown[]) => getResearchRuns(...a),
+  cancelResearchRun: (...a: unknown[]) => cancelResearchRun(...a),
 }));
 
 // The plan gate is a surface of its own — it reaches for Clerk auth, billing
@@ -121,6 +123,7 @@ async function mountReady(over: Partial<ResearchRun> = {}) {
 beforeEach(() => {
   getResearchRun.mockResolvedValue(runRow());
   getResearchRuns.mockResolvedValue([]);
+  cancelResearchRun.mockResolvedValue({ ok: true, status: 'cancelled' });
 });
 
 afterEach(() => {
@@ -274,5 +277,64 @@ describe('LiveRunPanel — plan gate', () => {
     // reader to watch progress that cannot start until they act.
     await mountReady({ status: 'plan_pending_confirmation' });
     expect(screen.queryByText('PIPELINE_PROGRESS')).toBeNull();
+  });
+});
+
+describe('LiveRunPanel — cancelling a run', () => {
+  it('offers to cancel a queued run that never started', async () => {
+    // The reason this exists: a run that was never picked up sat queued
+    // indefinitely and there was no control anywhere in the product to stop it.
+    await mountReady({ status: 'queued' });
+    expect(screen.getByRole('button', { name: /Cancel this run/i })).toBeTruthy();
+  });
+
+  it('offers to cancel a run that is executing', async () => {
+    await mountReady({ status: 'running' });
+    expect(screen.getByRole('button', { name: /Cancel this run/i })).toBeTruthy();
+  });
+
+  it('does not offer to cancel a run that already finished', async () => {
+    await mountReady({ status: 'completed' });
+    expect(screen.queryByRole('button', { name: /Cancel this run/i })).toBeNull();
+  });
+
+  it('asks before doing it, and does nothing until confirmed', async () => {
+    // Cancelling cannot be undone. One stray click should not end a run.
+    await mountReady({ status: 'running' });
+    await act(async () => {
+      screen.getByRole('button', { name: /Cancel this run/i }).click();
+    });
+    expect(cancelResearchRun).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Keep running/i })).toBeTruthy();
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Yes, cancel/i }).click();
+    });
+    expect(cancelResearchRun).toHaveBeenCalledWith(RUN_ID);
+  });
+
+  it('backs out without cancelling', async () => {
+    await mountReady({ status: 'queued' });
+    await act(async () => {
+      screen.getByRole('button', { name: /Cancel this run/i }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: /Keep running/i }).click();
+    });
+    expect(cancelResearchRun).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Cancel this run/i })).toBeTruthy();
+  });
+
+  it('says so when the run could not be cancelled', async () => {
+    // It may have finished between the page loading and the click.
+    cancelResearchRun.mockRejectedValue(new Error('Cannot cancel run in status completed'));
+    await mountReady({ status: 'running' });
+    await act(async () => {
+      screen.getByRole('button', { name: /Cancel this run/i }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: /Yes, cancel/i }).click();
+    });
+    await waitFor(() => expect(screen.getByText(/Could not cancel this run/i)).toBeTruthy());
   });
 });

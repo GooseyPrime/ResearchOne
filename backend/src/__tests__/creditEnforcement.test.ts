@@ -24,7 +24,7 @@ describe('computeRunCost', () => {
     const { costCents, addonSurchargeCents, errors } = computeRunCost(
       'sovereign',
       'GENERAL_EPISTEMIC_RESEARCH',
-      ['living_reports', 'adversarial_twin'],
+      ['living_reports'],
     );
     expect(errors).toHaveLength(0);
     expect(addonSurchargeCents).toBe(0);
@@ -51,25 +51,20 @@ describe('computeRunCost', () => {
     expect(costCents).toBe(400 + 50);
   });
 
-  it('pro tier can purchase adversarial_twin with wallet surcharge', () => {
-    const { costCents, addonSurchargeCents, errors } = computeRunCost('pro', 'GENERAL_EPISTEMIC_RESEARCH', [
-      'adversarial_twin',
-    ]);
-    expect(errors).toHaveLength(0);
-    expect(addonSurchargeCents).toBe(500);
-    expect(costCents).toBe(900);
-  });
-
-  it('free_demo cannot use adversarial_twin when deep research is disabled', () => {
-    const { errors } = computeRunCost('anonymous', 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
-    expect(errors).toHaveLength(1);
-    expect(errors[0].status).toBe(403);
+  it('no longer sells the challenge pass as an add-on (WO-AH)', () => {
+    // "Devil's Advocate Review" was $5.00 per run for a critique pass every run
+    // now gets. It is not purchasable, so it is simply an unknown key — the same
+    // 400 any other unrecognised addon gets, on every tier.
+    for (const tier of ['pro', 'anonymous', 'sovereign'] as const) {
+      const { errors } = computeRunCost(tier, 'GENERAL_EPISTEMIC_RESEARCH', ['adversarial_twin']);
+      expect(errors, tier).toHaveLength(1);
+      expect(errors[0].status, tier).toBe(400);
+    }
   });
 
   it('sovereign tier waives included addons but still surcharges parallel add-ons', () => {
     const { costCents, addonSurchargeCents, errors } = computeRunCost('sovereign', 'GENERAL_EPISTEMIC_RESEARCH', [
       'living_reports',
-      'adversarial_twin',
       'provenance_ledger',
       'parallel_search',
       'parallel_extract',
@@ -83,10 +78,9 @@ describe('computeRunCost', () => {
   it('team tier waives living_reports surcharge when livingReportsIncluded', () => {
     const { addonSurchargeCents, costCents } = computeRunCost('team', 'GENERAL_EPISTEMIC_RESEARCH', [
       'living_reports',
-      'adversarial_twin',
     ]);
-    expect(addonSurchargeCents).toBe(500);
-    expect(costCents).toBe(900);
+    expect(addonSurchargeCents).toBe(0);
+    expect(costCents).toBe(400);
   });
 
   it('defaults to 400 for null objective', () => {

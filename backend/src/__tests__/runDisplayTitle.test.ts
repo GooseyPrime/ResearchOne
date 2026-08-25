@@ -89,6 +89,19 @@ describe('deriveRunDisplayTitle', () => {
     );
   });
 
+  it('strips wrappers BEFORE cutting at a sentence boundary', () => {
+    // Codex, post-merge review of #227. The order used to be reversed, so a
+    // summary wrapped in emphasis had its boundary search run against a string
+    // whose first sentence still carried the opening `**`, leaving the closing
+    // one orphaned on a fragment that no longer ended the string.
+    expect(deriveRunDisplayTitle('**Compares EU and US pathways. Both are contested.**')).toBe(
+      'Compares EU and US pathways'
+    );
+    expect(deriveRunDisplayTitle('"Reviews filing regimes. Two jurisdictions."')).toBe(
+      'Reviews filing regimes'
+    );
+  });
+
   it('truncates an over-long summary at the shared cap', () => {
     const long = `${'Compares regulatory pathways across jurisdictions '.repeat(6)}end`;
     const out = deriveRunDisplayTitle(long);

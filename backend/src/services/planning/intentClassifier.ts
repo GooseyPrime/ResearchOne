@@ -281,6 +281,10 @@ const HIGH_SPECIFICITY_INTENTS = new Set<IntentId>([
   'comparative',
   'how_to',
   'recommendation',
+  // "Investigate X" names the activity outright. Leaving it out meant a single
+  // hit on the plainest possible phrasing deferred to the model, and with the
+  // model unavailable the request became a factual report.
+  'investigation',
 ]);
 
 /** Prefer more specific intents when hit counts are tied. */

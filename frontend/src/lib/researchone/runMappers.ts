@@ -4,7 +4,6 @@
 
 import type { ResearchRun as ApiResearchRun } from '../../utils/api';
 import type {
-  EvidenceTier,
   ResearchRun as VaultResearchRun,
   ResearchStage,
   RunStatus,
@@ -51,17 +50,27 @@ export function mapApiRunStage(stage?: string | null): ResearchStage {
   return STAGE_MAP[key] ?? 'reasoner';
 }
 
+/**
+ * Map an API run row to the UI's run type, carrying only what the row says.
+ *
+ * This used to hardcode `sourcesRetrieved: 0`, `contradictionsDetected: 0` and
+ * `evidenceTier: 'supported'` because the type demanded them and the row does
+ * not have them. Run `f1e74c06` was observed in production rendering "Source
+ * corroboration tier: SUPPORTED" while queued at 0% with zero sources.
+ *
+ * `mode` went the same way: it said `'standard'` on every run, and after
+ * WO-AH there is no mode to report at all.
+ *
+ * The fields are optional now. Absent means unknown, and unknown renders as
+ * nothing rather than as a reassuring default.
+ */
 export function mapApiRunToVaultRun(run: ApiResearchRun): VaultResearchRun {
   return {
     id: run.id,
     query: run.query || run.title || 'Untitled research',
-    mode: 'standard',
     status: mapApiRunStatus(run.status),
     currentStage: mapApiRunStage(run.progress_stage),
     progress: run.progress_percent ?? 0,
-    sourcesRetrieved: 0,
-    contradictionsDetected: 0,
-    evidenceTier: 'supported' as EvidenceTier,
     createdAt: run.created_at ?? run.started_at ?? new Date().toISOString(),
     updatedAt: run.progress_updated_at ?? run.completed_at ?? run.created_at,
     completedAt: run.completed_at ?? undefined,

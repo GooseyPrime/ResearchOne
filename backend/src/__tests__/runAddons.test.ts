@@ -5,14 +5,10 @@ vi.mock('../db/pool', () => ({
 }));
 
 import {
-  applyAdversarialTwinToSkepticMode,
+  RUN_ADDON_KEYS,
   buildRunAddonPipelineEffects,
   normalizeRunAddonKeys,
 } from '../services/reasoning/runAddons';
-import {
-  ORCHESTRATION_PROFILES,
-  shouldRunPipelineStage,
-} from '../services/planning/orchestrationProfiles';
 import { parseAddonsFromStartRequest } from '../services/reasoning/parseResearchAddons';
 
 describe('runAddons', () => {
@@ -29,15 +25,6 @@ describe('runAddons', () => {
     expect(effects.retrievalTopK).toBe(15);
   });
 
-  it('applyAdversarialTwinToSkepticMode un-skips challenge and enables gate', () => {
-    const exploratory = ORCHESTRATION_PROFILES.exploratory;
-    expect(shouldRunPipelineStage(exploratory, 'challenge')).toBe(false);
-
-    const profile = applyAdversarialTwinToSkepticMode(exploratory, ['adversarial_twin']);
-    expect(profile.skepticMode).toBe('gate');
-    expect(shouldRunPipelineStage(profile, 'challenge')).toBe(true);
-    expect(profile.agentsToSkip).not.toContain('challenge');
-  });
 
   it('parseAddonsFromStartRequest reads JSON array from multipart', () => {
     const keys = parseAddonsFromStartRequest(
@@ -49,9 +36,22 @@ describe('runAddons', () => {
 
   it('parseAddonsFromStartRequest reads addons array from JSON body', () => {
     const keys = parseAddonsFromStartRequest(
-      { addons: ['adversarial_twin', 'unknown'] },
+      { addons: ['parallel_search', 'unknown'] },
       false,
     );
-    expect(keys).toEqual(['adversarial_twin']);
+    expect(keys).toEqual(['parallel_search']);
+  });
+});
+
+describe("Devil's Advocate add-on is gone (WO-AH)", () => {
+  it('is not a purchasable run add-on any more', () => {
+    expect(RUN_ADDON_KEYS).not.toContain('adversarial_twin');
+  });
+
+  it('drops the key from a historical run rather than throwing', () => {
+    // Runs bought before the removal still carry it in `selected_addons`.
+    expect(normalizeRunAddonKeys(['adversarial_twin', 'parallel_search'])).toEqual([
+      'parallel_search',
+    ]);
   });
 });

@@ -31,6 +31,21 @@ const PHASE_COLORS: Record<string, string> = {
 };
 const FALLBACK_COLOR = '#64748b';
 
+/**
+ * Stored phase value -> what a person reads.
+ *
+ * `agent_executions.phase` holds 'Skeptic' on every row ever written, so the
+ * value itself cannot be renamed without either a migration or two buckets for
+ * one thing. The word is not shown; the stored key is translated at the edge.
+ */
+const PHASE_DISPLAY_LABELS: Record<string, string> = {
+  Skeptic: 'Challenge',
+};
+
+function phaseLabel(bucket: string): string {
+  return PHASE_DISPLAY_LABELS[bucket] ?? bucket;
+}
+
 function fmtUsd(n: number, frac = 4): string {
   if (!isFinite(n)) return '$0';
   // Sub-cent precision for tiny aggregates; condensed for big ones.
@@ -287,9 +302,9 @@ export default function CostAnalytics() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={breakdown.data.buckets}
+                    data={breakdown.data.buckets.map((b) => ({ ...b, bucketLabel: phaseLabel(b.bucket) }))}
                     dataKey="totalCostUsd"
-                    nameKey="bucket"
+                    nameKey="bucketLabel"
                     cx="50%"
                     cy="50%"
                     outerRadius={90}
@@ -316,12 +331,12 @@ export default function CostAnalytics() {
             {breakdown.data?.buckets && breakdown.data.buckets.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={breakdown.data.buckets}
+                  data={breakdown.data.buckets.map((b) => ({ ...b, bucketLabel: phaseLabel(b.bucket) }))}
                   margin={{ left: 0, right: 12, top: 8, bottom: 32 }}
                 >
                   <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
                   <XAxis
-                    dataKey="bucket"
+                    dataKey="bucketLabel"
                     stroke="#94a3b8"
                     tick={{ fontSize: 10 }}
                     angle={-30}
@@ -430,7 +445,7 @@ export default function CostAnalytics() {
                           color: PHASE_COLORS[r.topPhase] ?? FALLBACK_COLOR,
                         }}
                       >
-                        {r.topPhase}
+                        {phaseLabel(r.topPhase)}
                       </span>
                     )}
                   </td>

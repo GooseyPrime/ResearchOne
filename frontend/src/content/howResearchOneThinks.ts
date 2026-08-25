@@ -43,7 +43,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
     body:
       'Sources are retrieved and read before any reasoning is written. The reasoning agent then drafts ' +
       'findings grounded in those sources, with a citation for every claim. A separate challenge step ' +
-      '(skeptic agent) then argues against the draft — catching unsupported assertions, weak corroboration, ' +
+      '(the challenge pass) then argues against the draft — catching unsupported assertions, weak corroboration, ' +
       'and potential confirmation bias — before synthesis. This means conclusions go through an internal ' +
       'challenge review before you see them.',
   },
@@ -104,7 +104,7 @@ export const POSTURE_FAMILIES: readonly PostureFamily[] = [
     id: 'challenge',
     label: 'Challenge',
     shortDescription:
-      'Skeptic posture. A dedicated challenge step argues against draft conclusions before synthesis. Catches weak corroboration and confirmation bias. Used for adjudication, investigation, and story-verification paths.',
+      'Challenge posture. A dedicated challenge step argues against draft conclusions before synthesis. Catches weak corroboration and confirmation bias. Used for adjudication, investigation, and story-verification paths.',
     badgeClass: 'text-rose-300 border-rose-700/50',
   },
   {
@@ -166,7 +166,7 @@ export const INTENT_HELP_TEXT: Record<string, string> = {
   literature_review:
     'Academic-register synthesis of peer-reviewed sources. Neutral posture; citation quality and recency weighted heavily.',
   comparative:
-    'Structured comparison across options along consistent dimensions. Challenge posture: a skeptic gate critiques each option before synthesis.',
+    'Structured comparison across options along consistent dimensions. Challenge posture: the challenge pass critiques each option before synthesis.',
   how_to:
     'Procedural guide answering "how do I…" questions. Lightweight neutral posture focused on actionable steps.',
   recommendation:
@@ -180,7 +180,7 @@ export const INTENT_HELP_TEXT: Record<string, string> = {
   reference_lookup:
     'Single-fact or single-definition retrieval. Lightest pipeline — fast neutral retrieval, no challenge step.',
   legacy:
-    'Pre-taxonomy run; intent inferred conservatively. Challenge posture with a skeptic gate before synthesis.',
+    'Pre-taxonomy run; intent inferred conservatively. Challenge posture: the challenge pass runs before synthesis.',
 };
 
 // ---------------------------------------------------------------------------

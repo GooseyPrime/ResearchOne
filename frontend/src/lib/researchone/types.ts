@@ -43,13 +43,26 @@ export type RunStatus =
 export interface ResearchRun {
   id: string;
   query: string;
-  mode: ResearchMode;
+  /**
+   * Optional throughout because the run-list API row carries none of it.
+   *
+   * These were required, so the mapper filled them in: `sourcesRetrieved: 0`,
+   * `contradictionsDetected: 0`, `evidenceTier: 'supported'` — on every run,
+   * including queued ones that had done nothing. A recent-runs row therefore
+   * carried a corroboration badge for a run with no sources, which is a
+   * confident claim about evidence quality that no evidence produced, on the
+   * product whose stated purpose is verification.
+   *
+   * A type that cannot say "unknown" forces callers to invent a value. Now it
+   * can, and the renderers show these only when they are real.
+   */
+  mode?: ResearchMode;
   status: RunStatus;
   currentStage: ResearchStage;
   progress: number; // 0-100
-  sourcesRetrieved: number;
-  contradictionsDetected: number;
-  evidenceTier: EvidenceTier;
+  sourcesRetrieved?: number;
+  contradictionsDetected?: number;
+  evidenceTier?: EvidenceTier;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -100,7 +113,7 @@ export interface Claim {
   confidence: number; // 0-1
   citations: Citation[];
   contradictions?: Contradiction[];
-  skepticNotes?: string[];
+  challengeNotes?: string[];
 }
 
 export interface Citation {

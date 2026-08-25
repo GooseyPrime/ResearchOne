@@ -9,7 +9,7 @@ export interface IntentOutputTemplate {
   title: string;
   /** Ordered section ids for dossier / report chrome. */
   sections: readonly string[];
-  /** When true, UI shows skeptical annotations in a collapsible aside. */
+  /** When true, UI shows the challenge notes in a collapsible aside. */
   sidebarSkepticAnnotations: boolean;
   /** When false, omit plain-language footer block in dossier chrome. */
   showPlainLanguageFooter: boolean;
@@ -34,7 +34,7 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     sections: ['established', 'contested', 'hypothesized', 'lore', 'open_questions'],
     sidebarSkepticAnnotations: true,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Layered exposition; sidebar holds skeptical cross-checks.',
+    narrativeHint: 'Layered exposition; sidebar holds the challenge notes.',
   },
   intent_adjudication: {
     id: 'intent_adjudication',

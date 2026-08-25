@@ -1,15 +1,89 @@
 import type { IntentId } from '../planning/intentTaxonomy';
+import { isAdjudicativeIntent } from '../retrieval/corpusCompetenceGate';
+import { isCitableAsIndependent } from '../retrieval/sourceIndependence';
 
 export interface EvidenceSufficiencyResult {
-  action: 'sufficient' | 'rediscover' | 'low_evidence_labeled_delivery';
+  action:
+    | 'sufficient'
+    | 'rediscover'
+    | 'low_evidence_labeled_delivery'
+    /** Adjudicative intent, no independent evidence, no passes left. Stop. */
+    | 'insufficient_evidence_fail_closed';
   reason: 'sufficient' | 'insufficient_evidence';
   gaps: string[];
+  /** Everything the run has, for reporting. NOT the sufficiency test. */
   usableSignalCount: number;
+  /** Retrieved citable chunks the requester did not supply. */
+  independentChunkCount: number;
+  /** Items extracted by specialist models. Analysis, never evidence. */
+  analyticalSignalCount: number;
 }
 
+/** The shape the gate needs from a retrieved chunk. */
+export interface EvidenceChunk {
+  source_origin?: string | null;
+  owner_user_id?: string | null;
+}
+
+/**
+ * Does this run have enough evidence to conclude anything?
+ *
+ * ## What was wrong
+ *
+ * This returned `sufficient` the moment `specialistSignalCount > 0`. That
+ * count is the length of arrays a *model* produced — `corroborating`,
+ * `competitors`, `signals`, `metrics`. The orchestrator hands those to
+ * synthesis labelled "analysis only; not independent evidence", and this gate
+ * accepted them as evidence anyway.
+ *
+ * So: retrieval returns nothing citable, a specialist writes a plausible
+ * structured answer out of its own general knowledge, the count goes above
+ * zero, and a story-verification run ships a verdict backed by nothing but
+ * the model that wrote it. Circular verification, on a product whose entire
+ * claim is verification. (GitHub #228 P1.)
+ *
+ * ## The rule now
+ *
+ * Analytical coverage and independent evidence are two different quantities
+ * and only one of them can make a run sufficient:
+ *
+ *   - Specialist output enriches synthesis. It never counts as evidence.
+ *   - Sources INGESTED are not evidence RETRIEVED. Discovery counts only once
+ *     it has produced a retrievable citable chunk — a pass that fetched twelve
+ *     papers and yielded no chunk has given synthesis nothing to cite. (Runs
+ *     0eee6032 and 243995b4 took exactly that branch: discovery reported
+ *     sources, retrieval returned zero chunks, this gate said `sufficient`,
+ *     and synthesis spent twenty minutes writing a report with no citations
+ *     which was then reported complete.)
+ *   - An intent that delivers a verdict needs chunks the requester did not
+ *     supply. Its own uploads are context, not corroboration.
+ *   - Everything else may proceed on any citable chunk, and when there are
+ *     none it still delivers the full artifact — honestly labelled — rather
+ *     than refusing.
+ *
+ * The 0.55 retrieval-similarity floor is upstream and untouched
+ * (`AGENTS.md:207` — do not lower it).
+ *
+ * ## Why this does not seal every run
+ *
+ * The previous behaviour was introduced because Rule 40 seals a small corpus
+ * by design, so corpus chunks are legitimately zero on many runs. That is
+ * still true and still handled: live discovery for the current run has its
+ * owner cleared upstream, so a run's own discovered sources ARE independent
+ * citable chunks. A sealed corpus means discovery is the evidence path, not
+ * that there is no evidence path.
+ */
 export function assessSourceSufficiency(args: {
   intentId?: IntentId;
-  citableChunkCount: number;
+  /**
+   * Citable chunks retrieved this run. Passed as records rather than a count
+   * because the gate has to be able to tell independent evidence from the
+   * requester's own material itself — a count computed by the caller is a
+   * check this gate cannot enforce.
+   */
+  citableChunks: readonly EvidenceChunk[];
+  /** Who is asking, so their own unclassified sources are not "independent". */
+  requesterUserId?: string | null;
   specialistOutputs: Record<string, unknown>;
   rediscoveryPassesRemaining: number;
   requestedArtifactCount?: number;
@@ -22,70 +96,51 @@ export function assessSourceSufficiency(args: {
    */
   corpusIntentionallySealed?: boolean;
 }): EvidenceSufficiencyResult {
-  const specialistSignalCount = countUsableSignals(args.specialistOutputs);
+  const analyticalSignalCount = countUsableSignals(args.specialistOutputs);
+  const citableChunkCount = args.citableChunks.length;
+  const independentChunkCount = args.citableChunks.filter((chunk) =>
+    isCitableAsIndependent(chunk, args.requesterUserId)
+  ).length;
   const discoverySourceCount = Math.max(0, args.discoverySourceCount ?? 0);
-  const usableSignalCount =
-    specialistSignalCount + Math.max(0, args.citableChunkCount) + discoverySourceCount;
+  const usableSignalCount = analyticalSignalCount + citableChunkCount + discoverySourceCount;
   const gaps = collectEvidenceGaps(
     args.specialistOutputs,
-    args.citableChunkCount,
+    citableChunkCount,
     args.corpusIntentionallySealed ?? false
   );
 
-  // Rule 40 seals the corpus by design while it is still small, so
-  // `citableChunkCount` is legitimately 0 on most runs. Requiring corpus chunks
-  // here made every run permanently "insufficient" and forced the whole product
-  // into degraded delivery. Extracted specialist signals OR retrieved chunks
-  // are each sufficient on their own.
+  const adjudicative = isAdjudicativeIntent(args.intentId);
+  const evidenceCount = adjudicative ? independentChunkCount : citableChunkCount;
+
+  // Evidence is necessary. It is not on its own enough.
   //
-  // `discoverySourceCount` deliberately does NOT short-circuit to 'sufficient'
-  // on its own. Sources INGESTED are not evidence RETRIEVED: a discovery pass
-  // that fetched twelve papers, none of which produced a retrievable chunk,
-  // has given synthesis nothing to cite. Runs 0eee6032 and 243995b4 took
-  // exactly that branch — discovery reported sources, retrieval returned zero
-  // chunks, this gate said 'sufficient', and synthesis spent twenty minutes
-  // producing a report with no citations that was then reported as complete.
+  // Specialists reporting zero usable data points against a corpus that DID
+  // return chunks is the original reference failure mode: retrieval found
+  // text, nothing could be extracted from it, and the run proceeded as though
+  // it had evidence. That earns a rediscovery pass, because chunks that yield
+  // nothing may simply be off-topic.
   //
-  // Discovery sources still matter: they are why the outcome below is one more
-  // rediscovery pass and then a LABELED delivery, rather than a refusal. They
-  // remain in `usableSignalCount` for reporting.
-  //
-  // Chunks alone are still not sufficient either. Specialists reporting zero
-  // usable data points against a corpus that DID return chunks is the original
-  // reference failure mode: retrieval found text, nothing could be extracted
-  // from it, and the run proceeded as though it had evidence. That case earns
-  // a rediscovery pass, because chunks that yield nothing may simply be
-  // off-topic.
-  const discoveryProducedEvidence = discoverySourceCount > 0 && args.citableChunkCount > 0;
-  if (specialistSignalCount > 0 || discoveryProducedEvidence) {
-    return {
-      action: 'sufficient',
-      reason: 'sufficient',
-      gaps: [],
-      usableSignalCount,
-    };
+  // The condition is "specialists ran and found nothing", not "no signals" —
+  // an intent whose profile skips the specialist stage has no signals to
+  // report and must not be starved by a test aimed at a different failure.
+  const specialistsRan = Object.keys(args.specialistOutputs).length > 0;
+  const analysisIsUsable = !specialistsRan || analyticalSignalCount > 0;
+
+  const base = { usableSignalCount, independentChunkCount, analyticalSignalCount };
+
+  if (evidenceCount > 0 && analysisIsUsable) {
+    return { action: 'sufficient', reason: 'sufficient', gaps: [], ...base };
   }
 
-  const nonAdjudicative =
-    args.intentId !== 'adjudication'
-    && args.intentId !== 'investigation'
-    && args.intentId !== 'story_verification'
-    && args.intentId !== 'position_brief';
-
   if (args.rediscoveryPassesRemaining > 0) {
-    return {
-      action: 'rediscover',
-      reason: 'insufficient_evidence',
-      gaps,
-      usableSignalCount,
-    };
+    return { action: 'rediscover', reason: 'insufficient_evidence', gaps, ...base };
   }
 
   return {
-    action: nonAdjudicative ? 'low_evidence_labeled_delivery' : 'rediscover',
+    action: adjudicative ? 'insufficient_evidence_fail_closed' : 'low_evidence_labeled_delivery',
     reason: 'insufficient_evidence',
     gaps,
-    usableSignalCount,
+    ...base,
   };
 }
 
