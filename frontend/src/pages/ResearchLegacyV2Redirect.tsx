@@ -9,5 +9,6 @@ import { RESEARCH_PAGE_PATH } from '../utils/researchRunRoutes';
 export default function ResearchLegacyV2Redirect() {
   const location = useLocation();
   const search = location.search ?? '';
-  return <Navigate to={`${RESEARCH_PAGE_PATH}${search}`} replace />;
+  const hash = location.hash ?? '';
+  return <Navigate to={`${RESEARCH_PAGE_PATH}${search}${hash}`} replace />;
 }

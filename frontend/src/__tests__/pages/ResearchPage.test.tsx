@@ -54,6 +54,22 @@ describe('ResearchPage', () => {
     );
     render(<RouterProvider router={router} />);
     expect(router.state.location.pathname).toBe('/app/run/abc');
+    expect(router.state.location.hash).toBe('#plan');
+    expect(screen.getByTestId('run-workspace')).toBeTruthy();
+  });
+
+  it('encodes a redirected run id before putting it in the workspace path', () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/app/research', element: <ResearchPage /> },
+        { path: '/app/run/:runId', element: <div data-testid="run-workspace">Run workspace</div> },
+      ],
+      { initialEntries: ['/app/research?runId=a%2Fb%3Fc'] }
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(router.state.location.pathname).toBe('/app/run/a%2Fb%3Fc');
     expect(screen.getByTestId('run-workspace')).toBeTruthy();
   });
 });

@@ -8,12 +8,13 @@
  * `/app/run/<id>`; WO-AH leaves this page with the one thing it is for.
  */
 
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { FlaskConical } from 'lucide-react';
 import ResearchRequestForm from '../components/research/ResearchRequestForm';
-import { parseRunIdFromSearchParams } from '../utils/researchRunRoutes';
+import { liveResearchUrl, parseRunIdFromSearchParams } from '../utils/researchRunRoutes';
 
 export default function ResearchPage() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const runId = parseRunIdFromSearchParams(searchParams);
 
@@ -22,7 +23,7 @@ export default function ResearchPage() {
   // in — including waiting at the plan gate, which used to be the one case
   // that stayed on this page.
   if (runId) {
-    return <Navigate to={`/app/run/${runId}`} replace />;
+    return <Navigate to={`${liveResearchUrl(runId)}${location.hash ?? ''}`} replace />;
   }
 
   return (

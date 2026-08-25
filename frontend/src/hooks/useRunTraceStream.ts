@@ -100,7 +100,7 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
     // genuinely newer event, and the window's contents depended on delivery
     // timing rather than on time (Codex, post-merge review of #227).
     setTraceEvents((prev) =>
-      sortEventsChronological(mergeTraceEvents(prev, incoming, Number.MAX_SAFE_INTEGER)).slice(
+      sortEventsChronological(mergeTraceEvents(prev, incoming, prev.length + incoming.length)).slice(
         -RUN_TRACE_MAX_EVENTS
       )
     );

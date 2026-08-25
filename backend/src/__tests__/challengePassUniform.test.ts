@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { CHALLENGE_PASS_SYSTEM_PREFIX } from '../services/reasoning/reasoningModelPolicy';
 
+function extractFunctionSource(src: string, functionName: string): string {
+  const start = src.indexOf(`function ${functionName}`);
+  expect(start).toBeGreaterThan(-1);
+
+  const bodyStart = src.indexOf('{', start);
+  expect(bodyStart).toBeGreaterThan(-1);
+
+  let depth = 0;
+  for (let index = bodyStart; index < src.length; index += 1) {
+    const char = src[index];
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    if (depth === 0) {
+      return src.slice(start, index + 1);
+    }
+  }
+
+  throw new Error(`Could not extract function ${functionName}`);
+}
+
 /**
  * WO-AH — the challenge pass gets the same instruction on every report.
  *
@@ -30,9 +50,7 @@ describe('challenge pass instruction', () => {
       'utf8'
     );
 
-    const start = src.indexOf('function applySystemAugmentations');
-    expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf('\n}', start));
+    const body = extractFunctionSource(src, 'applySystemAugmentations');
 
     expect(body).toContain(CHALLENGE_PASS_SYSTEM_PREFIX.slice(0, 0) + 'CHALLENGE_PASS_SYSTEM_PREFIX');
     // No early return on the engine, and no engine comparison anywhere in it.
