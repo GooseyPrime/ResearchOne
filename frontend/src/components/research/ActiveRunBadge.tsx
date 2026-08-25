@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ChevronDown } from 'lucide-react';
 import { getResearchRuns, type ResearchRun } from '../../utils/api';
-import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
-import { isInFlightRunStatus } from '../../utils/researchRuns';
+import { isInFlightRunStatus, researchRunsPollIntervalMs } from '../../utils/researchRuns';
 import { liveResearchUrl } from '../../utils/researchRunRoutes';
 import { runDisplayTitle } from '../../utils/runDisplayTitle';
 
@@ -89,7 +88,17 @@ export default function ActiveRunBadge() {
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
     staleTime: 5_000,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(8_000),
+    // The SAME in-flight predicate `Layout` uses on this key. React Query takes
+    // the shortest interval across all observers of a query, so an
+    // unconditional interval here would have overridden Layout's idle backoff
+    // and kept every mounted Layout polling the run list every eight seconds
+    // forever, whether or not anything was running (Codex, #227).
+    //
+    // The badge this replaced was gated by `enabled: Boolean(activeRun?.runId)`,
+    // which is what stopped it polling at idle. Dropping the store dependency
+    // dropped that guard with it — Rule 44 T4, in the same PR whose body is
+    // largely about T4.
+    refetchInterval: (query) => researchRunsPollIntervalMs(query.state.data, 8_000),
   });
 
   const inFlight = runs.filter((r) => isInFlightRunStatus(r.status)).sort(byUrgency);

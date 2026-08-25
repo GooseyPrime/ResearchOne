@@ -6,11 +6,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import ResearchEasyPage from '../../pages/ResearchEasyPage';
 
-const { navigateMock, invalidateQueriesMock, startResearchMock } = vi.hoisted(() => ({
-  navigateMock: vi.fn(),
-  invalidateQueriesMock: vi.fn(),
-  startResearchMock: vi.fn(),
-}));
+const { navigateMock, invalidateQueriesMock, startResearchMock, getResearchRunMock } = vi.hoisted(
+  () => ({
+    navigateMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+    startResearchMock: vi.fn(),
+    getResearchRunMock: vi.fn(),
+  })
+);
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -39,6 +42,7 @@ vi.mock('../../utils/api', async () => {
   return {
     ...actual,
     startResearch: startResearchMock,
+    getResearchRun: getResearchRunMock,
   };
 });
 
@@ -47,7 +51,10 @@ vi.mock('../../utils/supplementalIngestNotifications', () => ({
 }));
 
 vi.mock('../../utils/researchRunRoutes', () => ({
-  liveResearchUrl: () => '/app/research?runId=run-1#plan',
+  liveResearchUrl: () => '/app/run/run-1',
+  REQUEST_PREFILL_PARAM: 'prefill',
+  parsePrefillRunIdFromSearchParams: (sp: { get: (k: string) => string | null }) =>
+    sp.get('prefill')?.trim() || null,
 }));
 
 vi.mock('../../utils/clarifyingQuestions', () => ({
@@ -189,5 +196,38 @@ describe('ResearchEasyPage', () => {
   it('renders attachment dropzone', () => {
     renderPage();
     expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument();
+  });
+});
+
+describe('ResearchEasyPage — cancelled plan restores the request', () => {
+  beforeEach(() => {
+    getResearchRunMock.mockReset();
+  });
+
+  it('consumes ?prefill= on the DEFAULT surface', async () => {
+    // Codex, #227. Cancelling at the plan gate navigates to
+    // `/app/research?prefill=<runId>`, and `UnifiedResearchConsole` defaults
+    // that URL to EZ — but the prefill hook was mounted only by the Lab pages.
+    // The parameter was never consumed and the user got a blank form: exactly
+    // the outcome the mechanism was built to prevent.
+    getResearchRunMock.mockResolvedValue({
+      id: 'run-1',
+      query: 'Compare EU and US device pathways',
+      supplemental: 'Only post-2022 filings',
+      supplemental_attachments: [{ kind: 'url', url: 'https://example.test/a' }],
+    });
+
+    renderPage(['/app/research?prefill=run-1']);
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('Compare EU and US device pathways')).toBeInTheDocument()
+    );
+    expect(getResearchRunMock).toHaveBeenCalledWith('run-1');
+  });
+
+  it('leaves the form alone when there is no prefill parameter', async () => {
+    renderPage(['/app/research']);
+    await waitFor(() => expect(screen.getAllByTestId('attachment-dropzone').length).toBeGreaterThan(0));
+    expect(getResearchRunMock).not.toHaveBeenCalled();
   });
 });

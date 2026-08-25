@@ -29,7 +29,7 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
-import { hasInFlightResearchRuns, IN_FLIGHT_RUN_STATUSES } from '../../utils/researchRuns';
+import { IN_FLIGHT_RUN_STATUSES, researchRunsPollIntervalMs } from '../../utils/researchRuns';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -144,10 +144,7 @@ export default function Layout() {
   const { data: allRuns } = useQuery<ResearchRun[]>({
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
-    refetchInterval: (query) =>
-      hasInFlightResearchRuns(query.state.data)
-        ? getAdaptiveRefetchIntervalMs(6_000)
-        : false,
+    refetchInterval: (query) => researchRunsPollIntervalMs(query.state.data, 6_000),
   });
 
   // The store's `activeRun` is a SINGULAR primary-run hint, and the only thing

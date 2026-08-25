@@ -15,6 +15,7 @@ import { extractApiError, startResearch } from '../utils/api';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import { liveResearchUrl } from '../utils/researchRunRoutes';
 import { buildClarifyingQuestions } from '../utils/clarifyingQuestions';
+import { useRequestPrefillFromRun } from '../hooks/useRequestPrefillFromRun';
 
 type EasyDepth = 'standard' | 'deep';
 
@@ -23,6 +24,32 @@ export default function ResearchEasyPage() {
   const qc = useQueryClient();
   const addNotification = useStore((s) => s.addNotification);
   const { canAccessDeep, tierGateUnknown } = useCanAccessDeepResearch();
+
+  // Cancelling at the plan gate sends the user here with `?prefill=<runId>`,
+  // because cancel means "let me edit it", not "discard what I typed".
+  //
+  // Codex caught that this hook was mounted only by the Lab surfaces while
+  // `UnifiedResearchConsole` defaults `?prefill=` to EZ — so the parameter was
+  // never consumed and the user got a blank form, which is precisely the
+  // outcome the mechanism exists to prevent. Every surface that can be the
+  // landing surface has to be able to restore the request.
+  //
+  // EZ restores what EZ can hold: the request, its supplemental notes and any
+  // URL attachments. It deliberately does NOT switch the user to the Lab
+  // surface to recover Lab-only controls — the run's engine is not a thing this
+  // system distinguishes any more, and moving someone to a different form than
+  // the one they were on would be a stranger surprise than a missing field.
+  useRequestPrefillFromRun((run) => {
+    setQuery(run.query ?? '');
+    setSupplemental(run.supplemental ?? '');
+    const urlLines = (run.supplemental_attachments ?? [])
+      .filter((a) => a.kind === 'url' && a.url)
+      .map((a) => a.url as string);
+    setUrls(urlLines);
+    setSiteCrawlEnabled(false);
+    setCrawlLayers(2);
+    setFiles([]);
+  });
 
   const [query, setQuery] = useState('');
   const [depth, setDepth] = useState<EasyDepth>('standard');
