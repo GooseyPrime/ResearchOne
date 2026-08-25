@@ -49,6 +49,24 @@ confidence.
   revert a bad change, grep for every test that was edited in the same commit.**
   A fix whose regression test was widened with it is not protected. (#224)
 
+- Both abbreviation fixtures for a sentence-boundary check happened to be
+  followed by lowercase words (`U.S. and`, `E.U. filing`), so the suite agreed
+  with an implementation that decided boundaries from Latin letter case. The
+  case that caught it — `vs. Mexico` — was the one the implementation had no
+  reason to pass. **A fixture that passes for a reason other than the one you
+  are testing is not a test.** (#227)
+- **Reading the code is not running it.** `LiveRunPanel` capped its state at
+  `.slice(0, 12)`, so screenshots showing dozens of rows were explained as a
+  stale deploy. Production was current. The cap bounded the STATE; the DOM was
+  unbounded, because the row key was `${timestamp}-${stage}` and
+  `AnimatePresence` retains ghost children on a key collision — three duplicate
+  emits rendered five rows. A reproduction found it in one run; two rounds of
+  reasoning about the source had not. (#227)
+- The reverse also applies to your own confidence. Three mutations of a new
+  hook — drop the sort, concat instead of merge, drop the hydration — each
+  failed a different, targeted subset of its suite. That is the check this
+  theme asks for, and it takes about a minute. (#227)
+
 **Check:** for each test you add, ask *what would this still pass if the fix
 were reverted?* If the answer is "nothing", the test is a description of the
 implementation, not a check on it. Run the failing case FIRST, watch it fail,
@@ -94,6 +112,19 @@ Reaching for something countable when the property is about meaning.
   Markdown decoration, so the pattern did not fire and the decoration was
   stored in the report title verbatim. Normalize before you match. (#224)
 
+- `(?<=[.!?])\s+(?=[^a-z])` for **"is this a sentence boundary"**. It decides
+  sentence structure from Latin letter *case*, so it splits Cyrillic, Greek and
+  CJK text at every period — Russian name initials became one-word titles. This
+  is the `split(/[^a-z0-9]+/)` defect of #221 in a different place, written by
+  someone who had read that entry. **A theme you have read is not a theme you
+  have avoided.** (#227)
+- `` `${timestamp}-${stage}` `` for **"which event is this"**. Two events in the
+  same stage and the same millisecond collide, and the collision was not
+  cosmetic: React's reconciler and `AnimatePresence` both key on it, so ghost
+  rows accumulated past the state cap and rendered in stale positions. There is
+  a `traceEventKey` in the codebase that composes seven fields for exactly this
+  reason; the renderer did not use it. (#227)
+
 **Check:** name the property in a sentence. If the sentence is about meaning
 and the code measures length, position, or ASCII shape, the proxy will be
 wrong for some real input. Ask which real input.
@@ -110,6 +141,15 @@ A set was handled partially, and the unhandled members silently took a default.
 - Whitespace normalization was applied where queries were constructed and not
   where planner queries entered. (#221)
 
+- Four surfaces rendered a live trace and each owned its own state. Two deduped
+  and sorted with identical local copies of the same function; one deduped and
+  never sorted; one did neither. The WO-AF handoff, written while reading this
+  code, counted it as "three surfaces normalize and one does not" — wrong in
+  both directions. **When a careful enumeration written by someone looking
+  straight at the code still miscounts, the answer is not a better count; it is
+  removing the thing being counted.** The state is now shared, so a surface
+  cannot diverge from an implementation it does not own. (#227)
+
 **Check:** when you touch a mapping, a switch, or a guard, list every producer
 and every consumer *by grepping for them*, and account for each. "The ones I
 know about" is not the list.
@@ -124,6 +164,19 @@ know about" is not the list.
   writer of the terminal `eventType`, which the frontend still keyed on. (#218)
 - Replacing the whole planner query set on one overlapping pair discarded
   unrelated retrieval angles. (#221)
+
+- Consolidating a plan gate that had been wired up twice would have silently
+  GRANTED v1 runs two things they never had: saved orchestration profiles and
+  the auto-confirm countdown. One call site passed `tierAllowsSavedProfiles={false}`
+  and no `planPrefs`; the other passed both. **A prop set to a falsy value is a
+  decision, and merging two call sites discards the quieter one.** Both are now
+  gated on the engine, and the fact that the restriction may be an oversight is
+  recorded rather than acted on. (#227)
+- A notification suppressed itself with `pathname.startsWith('/app/research')`,
+  meaning "don't tell someone what they are already looking at". Moving the gate
+  to `/app/run/:id` made that guard both miss its target and start suppressing
+  the notice for users composing an unrelated request. **A guard written against
+  a location has to move when the location does.** (#227)
 
 **Check:** before deleting or replacing a check, write down what it prevents.
 If the replacement does not prevent that too, you need both.
@@ -173,6 +226,16 @@ of them rather than from the current definition, silently dropping the rest.
   `report_version_number`, `revision_count`). `CREATE OR REPLACE VIEW`
   succeeds, so nothing fails at migration time — the columns simply vanish
   from the API. (#224)
+
+- The mechanical text diff is the minimum, not the proof. Migration 057 was
+  produced by copying 056's body and inserting two lines, and
+  `diff <(grep -o 'AS [a-z_]*' 056) <(grep -o 'AS [a-z_]*' 057)` showed exactly
+  two additions — but that only compares what two FILES say. The check that
+  actually settles it is applying the whole chain to a real database and diffing
+  `information_schema.columns` between a build stopped at 056 and one that
+  includes 057: 49 columns to 51, the difference being exactly the two new
+  names. Postgres will tell you what the view really has; the SQL text only
+  tells you what you wrote. (#227)
 
 **Check:** when a migration or refactor recreates a whole object to change one
 part of it, start from the current definition text, and diff old against new

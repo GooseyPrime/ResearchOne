@@ -1,6 +1,6 @@
 # Follow-up — `mapApiRunToVaultRun` fabricates run metrics
 
-Surfaced by: WO-AF (run workspace), PR TBD. Filed under Rule 22 — a discovery
+Surfaced by: WO-AF (run workspace), PR #227. Filed under Rule 22 — a discovery
 outside the current work order's scope is either fixed now or tracked, never
 dismissed.
 
