@@ -49,6 +49,7 @@ import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
 import { incrementReportCount } from '../tier/tierService';
+import { resolveSourceIngestBudget } from '../discovery/sourceBudget';
 import { RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import type {
   ProgressCallback,
@@ -1321,7 +1322,17 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
-        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
+        // The configured cap is a floor for an ordinary run, not the answer
+        // for every run: a long report or a twenty-item deliverable needs more
+        // than ten sources to be built out of. See `resolveSourceIngestBudget`.
+        maxIngestCapOverride: resolveSourceIngestBudget({
+          configuredCap: config.discovery.maxIngestPerRun,
+          targetWordCount: data.targetWordCount,
+          requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
+            (artifact) => typeof artifact.exactCount === 'number'
+          )?.exactCount,
+          addonCapOverride: addonEffects.maxIngestCapOverride,
+        }),
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds:
           data.confirmedPlanPayload?.researchBrief?.epistemicPosture === 'causal_test' ? 6 : 4,
@@ -1737,7 +1748,8 @@ async function runResearchJobInner(
         ?.exactCount;
     let sourceAssessment = assessSourceSufficiency({
       intentId: orchProfile.intent as never,
-      citableChunkCount: allChunks.length,
+      citableChunks: allChunks,
+      requesterUserId: creditCtx?.userId ?? null,
       specialistOutputs: latestSpecialistOutputs,
       rediscoveryPassesRemaining: 1,
       requestedArtifactCount,
@@ -1767,7 +1779,17 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
-        maxIngestCapOverride: addonEffects.maxIngestCapOverride,
+        // The configured cap is a floor for an ordinary run, not the answer
+        // for every run: a long report or a twenty-item deliverable needs more
+        // than ten sources to be built out of. See `resolveSourceIngestBudget`.
+        maxIngestCapOverride: resolveSourceIngestBudget({
+          configuredCap: config.discovery.maxIngestPerRun,
+          targetWordCount: data.targetWordCount,
+          requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
+            (artifact) => typeof artifact.exactCount === 'number'
+          )?.exactCount,
+          addonCapOverride: addonEffects.maxIngestCapOverride,
+        }),
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds: 2,
         onDeterministicFallback: async ({ reason, queries }) => {
@@ -1851,7 +1873,8 @@ async function runResearchJobInner(
       await runSpecialistStage();
       sourceAssessment = assessSourceSufficiency({
         intentId: orchProfile.intent as never,
-        citableChunkCount: allChunks.length,
+        citableChunks: allChunks,
+        requesterUserId: creditCtx?.userId ?? null,
         specialistOutputs: latestSpecialistOutputs,
         rediscoveryPassesRemaining: 0,
         requestedArtifactCount,
@@ -1874,13 +1897,18 @@ async function runResearchJobInner(
       await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
         substep: 'low_evidence_labeled_delivery',
       });
-    } else if (sourceAssessment.action === 'rediscover') {
-      // Adjudicative intent exhausted all rediscovery passes. Adjudication
-      // genuinely cannot proceed without evidence — but it must fail loudly
-      // rather than emit a placeholder report shaped like a verdict.
+    } else if (sourceAssessment.action === 'insufficient_evidence_fail_closed') {
+      // An intent that delivers a verdict, with no independent evidence and no
+      // rediscovery passes left. It must fail loudly rather than emit a
+      // placeholder shaped like a verdict.
+      //
+      // This branch used to be `action === 'rediscover'` — the same value the
+      // gate returns when it wants ANOTHER pass — so "try again" and "stop,
+      // there is nothing to conclude from" were one token apart and told apart
+      // only by a counter somewhere else. It has its own name now.
       sourceFailureReason = sourceAssessment.reason;
       adjudicativeEvidenceExhausted = true;
-      await progress('reasoning', 49, 'Adjudicative evidence exhausted after rediscovery; halting synthesis.', {
+      await progress('reasoning', 49, 'No independent evidence was found for a claim that needs verifying; stopping rather than guessing.', {
         substep: 'adjudicative_evidence_exhausted',
       });
     }
@@ -2237,7 +2265,14 @@ ${generatedReport.markdown}`,
       // A required table that renders as a wall of pipes, drops columns, or
       // carries the wrong row count is a contract failure the auditor should
       // catch — not something the reader discovers.
-      const tableExpectation = resolveTableExpectation(researchBrief, requestedArtifactCount);
+      const tableExpectation = resolveTableExpectation(
+        researchBrief,
+        requestedArtifactCount,
+        // The drafter is told to emit a table when the requested format asks
+        // for one; the auditor now checks the same input, so "Comparison
+        // table" is verified rather than merely requested.
+        confirmedResearchBrief?.requestedFormats ?? data.requestedFormats
+      );
       const tableIssues = checkTableContract(markdown, tableExpectation);
       const tableMessages = tableIssues.map((issue) => issue.message);
 

@@ -24,7 +24,9 @@ export interface TableContractIssue {
     | 'table_missing'
     | 'table_malformed'
     | 'table_row_count'
-    | 'table_columns_missing';
+    | 'table_columns_missing'
+    /** Rows that belong to a table are sitting outside one as loose text. */
+    | 'table_truncated';
   message: string;
 }
 
@@ -143,6 +145,61 @@ export function extractMarkdownTables(markdown: string): MarkdownTable[] {
   return tables;
 }
 
+/**
+ * Lines that read as table rows but are not inside any table.
+ *
+ * The operator's run shipped a table of opportunities that stopped at row 13
+ * and then continued as pipe-delimited text underneath it — the model broke
+ * the table (a blank line, a stray heading, a row split across two lines) and
+ * kept going in plain text. Every check in this file looked at the table that
+ * WAS parsed, so a table missing seven of its rows and trailing them below as
+ * prose passed a row-count check that counted the fragment.
+ *
+ * A line counts as an orphan when it has at least two unescaped pipes with
+ * content either side and is not part of a parsed table, a delimiter row, or a
+ * fenced block. That is deliberately narrow: ordinary prose almost never has
+ * two pipes on one line, and being wrong here costs a false contract failure.
+ */
+export function findOrphanTableRows(markdown: string): string[] {
+  const masked = maskFencedCodeBlocks(markdown ?? '');
+  const lines = masked.split(/\r?\n/);
+
+  // Mark every line that belongs to a recognised table.
+  const claimed = new Set<number>();
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const headerLine = lines[i] ?? '';
+    const delimiterLine = lines[i + 1] ?? '';
+    if (!headerLine.includes('|')) continue;
+    if (!DELIMITER_ROW.test(delimiterLine)) continue;
+    if (splitRow(headerLine).length < 2) continue;
+    claimed.add(i);
+    claimed.add(i + 1);
+    let cursor = i + 2;
+    while (cursor < lines.length) {
+      const line = lines[cursor] ?? '';
+      if (!line.includes('|') || line.trim() === '') break;
+      claimed.add(cursor);
+      cursor += 1;
+    }
+    i = cursor - 1;
+  }
+
+  const orphans: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (claimed.has(i)) continue;
+    const line = lines[i] ?? '';
+    if (!line.trim()) continue;
+    if (DELIMITER_ROW.test(line)) continue;
+    const cells = splitRow(line);
+    if (cells.length < 3) continue;
+    // Require real content in at least three cells, so a sentence that happens
+    // to contain "a | b" is not read as a stranded row.
+    if (cells.filter((cell) => cell.length > 0).length < 3) continue;
+    orphans.push(line.trim());
+  }
+  return orphans;
+}
+
 function normalizeHeader(value: string): string {
   return value
     .toLowerCase()
@@ -164,6 +221,14 @@ export interface TableContractExpectation {
 const TABLE_REQUEST_PATTERN = /\btables?\b|\bmatrix\b|\bgrid\b|\bspreadsheet\b|\bcolumns?\b/i;
 
 /**
+ * Format keys are snake_case, and `_` is a word character — so `\btable\b`
+ * never matched `comparison_table`. The check must see the words, not the key.
+ */
+function mentionsTable(value: string | null | undefined): boolean {
+  return TABLE_REQUEST_PATTERN.test((value ?? '').replace(/[_-]+/g, ' '));
+}
+
+/**
  * Derive a table expectation from the confirmed brief.
  *
  * Only requires a table when the user actually asked for one — most report
@@ -180,21 +245,35 @@ export function resolveTableExpectation(
     }>;
     userConstraints?: ReadonlyArray<{ description?: string }>;
   } | null | undefined,
-  requestedArtifactCount?: number
+  requestedArtifactCount?: number,
+  /**
+   * Formats the user asked for on the request form.
+   *
+   * The section drafter is told to emit a table when the requested FORMAT says
+   * so (`contractRequestsTable` reads both), but this auditor read only the
+   * brief. Choosing "Comparison table" therefore instructed the writer and
+   * verified nothing — the exact instruct-and-do-not-check split that lets a
+   * report ship as prose when a table was asked for.
+   */
+  requestedFormats?: readonly string[] | null
 ): TableContractExpectation {
-  if (!brief) return { required: false };
+  const formatWantsTable = (requestedFormats ?? []).some((format) => mentionsTable(format));
+  if (!brief) {
+    return formatWantsTable
+      ? { required: true, expectedRowCount: requestedArtifactCount }
+      : { required: false };
+  }
 
   const artifacts = brief.requestedArtifacts ?? [];
   const tableArtifact = artifacts.find((artifact) => {
-    const haystack = `${artifact.type ?? ''} ${artifact.description ?? ''}`;
-    return TABLE_REQUEST_PATTERN.test(haystack);
+    return mentionsTable(`${artifact.type ?? ''} ${artifact.description ?? ''}`);
   });
 
   const constraintsMentionTable = (brief.userConstraints ?? []).some((constraint) =>
-    TABLE_REQUEST_PATTERN.test(constraint?.description ?? '')
+    mentionsTable(constraint?.description)
   );
 
-  if (!tableArtifact && !constraintsMentionTable) {
+  if (!tableArtifact && !constraintsMentionTable && !formatWantsTable) {
     return { required: false };
   }
 
@@ -224,8 +303,24 @@ export function checkTableContract(
 ): TableContractIssue[] {
   if (!expectation.required) return [];
 
+  const orphanRows = findOrphanTableRows(markdown);
+  const truncationIssues: TableContractIssue[] =
+    orphanRows.length > 0
+      ? [
+          {
+            code: 'table_truncated' as const,
+            message:
+              `${orphanRows.length} pipe-delimited row(s) appear outside any table — the table was broken ` +
+              'and the remaining rows continue as loose text. Emit one unbroken table: header row, ' +
+              'delimiter row, then every data row on its own line with no blank line between them. ' +
+              `First stranded row: ${orphanRows[0]?.slice(0, 160)}`,
+          },
+        ]
+      : [];
+
   const tables = extractMarkdownTables(markdown);
   if (tables.length === 0) {
+    if (truncationIssues.length > 0) return truncationIssues;
     return [
       {
         code: 'table_missing',
@@ -248,9 +343,9 @@ export function checkTableContract(
   scored.sort((a, b) => b.matchedCount - a.matchedCount || b.table.rows.length - a.table.rows.length);
 
   const best = scored[0];
-  if (!best) return [];
+  if (!best) return truncationIssues;
 
-  const issues: TableContractIssue[] = [];
+  const issues: TableContractIssue[] = [...truncationIssues];
   const { table } = best;
 
   const malformed = table.rows.filter((row) => row.length !== table.headers.length);

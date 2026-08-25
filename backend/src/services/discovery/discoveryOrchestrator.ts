@@ -27,6 +27,7 @@ import {
 } from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
+import { partitionByRelevance } from './candidateRelevance';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
@@ -558,7 +559,29 @@ async function runDiscoveryOrchestratorInner(args: {
 
   // ─── Step 3: Score/rank candidates ──────────────────────────────────────────
   // Sort by score descending, then rank ascending.
-  const ranked = [...allCandidates].sort((a, b) => b.score - a.score || a.rank - b.rank);
+  const scoreRanked = [...allCandidates].sort((a, b) => b.score - a.score || a.rank - b.rank);
+
+  // Then: is it about the thing that was asked?
+  //
+  // Provider scores are not comparable across providers — arXiv's idea of a
+  // good match for "affiliate marketing niches" is still a paper — and nothing
+  // between an API response and the ingest queue used to ask whether the
+  // result was on topic. On-topic candidates are ingested first; off-topic
+  // ones are held back and used only to avoid starving a run of sources, and
+  // when they are used it is recorded as such.
+  const relevance = partitionByRelevance(researchQuery, scoreRanked);
+  const relevanceFloor = Math.max(minUsableSources ?? 0, Math.min(3, maxIngest));
+  const ranked =
+    relevance.onTopic.length >= relevanceFloor
+      ? [...relevance.onTopic, ...relevance.offTopic]
+      : scoreRanked;
+  const offTopicUrls = new Set(relevance.offTopic.map((candidate) => candidate.url));
+  if (relevance.offTopic.length > 0) {
+    logger.info(
+      `[discovery:${runId}] ${relevance.offTopic.length} of ${scoreRanked.length} candidates read as off-topic for this request` +
+        (relevance.onTopic.length >= relevanceFloor ? ' and were deprioritised' : ' but were kept — too few on-topic candidates to drop them')
+    );
+  }
 
   // ─── Step 4: Check which candidates are already in corpus ───────────────────
   const selected: DiscoverySource[] = [];
@@ -618,7 +641,9 @@ async function runDiscoveryOrchestratorInner(args: {
 
       selected.push({
         ...candidate,
-        selectionRationale: `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}`,
+        selectionRationale: offTopicUrls.has(candidate.url)
+          ? `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}, off-topic for this request (kept: too few on-topic candidates)`
+          : `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}`,
         ingested: true,
         ingestionJobId: jobId,
       });

@@ -68,8 +68,15 @@ describe('listDossiers sortBy', () => {
     expect(listSql).toContain('ORDER BY COALESCE(last_activity_at, dossier_created_at) DESC');
   });
 
-  it('falls back to legacy list columns on deploy skew', async () => {
-    const skewErr = Object.assign(new Error('column does not exist'), { code: '42703' });
+  it('drops only the columns migration 057 added when the database predates it', async () => {
+    // This test used to assert the opposite — that a pre-057 database got the
+    // LEGACY projection — and that assertion was the defect written down.
+    // Losing `run_display_title` cost the list its gate status, last activity,
+    // version number, spinoff and revision flags and engine version, none of
+    // which have anything to do with 057. (#228 P2 / 227-d.)
+    const skewErr = Object.assign(new Error('column "run_display_title" does not exist'), {
+      code: '42703',
+    });
     queryMock
       .mockRejectedValueOnce(skewErr)
       .mockResolvedValueOnce([{ c: '0' }])
@@ -78,12 +85,50 @@ describe('listDossiers sortBy', () => {
     const result = await listDossiers({ page: 1, pageSize: 20, sortBy: 'last_activity_at' }, ctx);
 
     expect(result.rows).toEqual([]);
-    const fallbackSql = String(queryMock.mock.calls[2]?.[0] ?? '');
-    expect(fallbackSql).not.toContain('last_activity_at');
-    expect(fallbackSql).toContain('ORDER BY dossier_created_at DESC');
+    const secondRungSql = String(queryMock.mock.calls[2]?.[0] ?? '');
+    expect(secondRungSql).not.toContain('run_display_title');
+    expect(secondRungSql).not.toContain('run_ref');
+    // Everything that existed before 057 is still selected.
+    expect(secondRungSql).toContain('last_activity_at');
+    expect(secondRungSql).toContain('report_version_number');
+    expect(secondRungSql).toContain('is_spinoff');
+    expect(secondRungSql).toContain('engine_version');
+    expect(secondRungSql).toContain('run_gate_status');
+    expect(secondRungSql).toContain('ORDER BY COALESCE(last_activity_at, dossier_created_at) DESC');
   });
 
-  it('passes search ILIKE filter when search is non-empty', async () => {
+  it('only reaches the legacy projection when the extended one is gone too', async () => {
+    const skewErr = Object.assign(new Error('column does not exist'), { code: '42703' });
+    queryMock
+      .mockRejectedValueOnce(skewErr) // rung 0 count
+      .mockRejectedValueOnce(skewErr) // rung 1 count
+      .mockResolvedValueOnce([{ c: '0' }])
+      .mockResolvedValueOnce([]);
+
+    const result = await listDossiers({ page: 1, pageSize: 20, sortBy: 'last_activity_at' }, ctx);
+
+    expect(result.rows).toEqual([]);
+    const legacySql = String(queryMock.mock.calls[3]?.[0] ?? '');
+    expect(legacySql).not.toContain('last_activity_at');
+    expect(legacySql).toContain('ORDER BY dossier_created_at DESC');
+  });
+
+  it('stops at a missing view instead of walking every rung', async () => {
+    const missingView = Object.assign(new Error('relation "v_dossier" does not exist'), {
+      code: '42P01',
+    });
+    queryMock.mockRejectedValueOnce(missingView);
+
+    const result = await listDossiers({ page: 1, pageSize: 20 }, ctx);
+
+    expect(result.rows).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('searches the title a reader can actually see, not only the raw query', async () => {
+    // The list heading is the display title. Searching only `request_query`
+    // and `report_title` meant typing the words on screen returned nothing.
     queryMock.mockResolvedValueOnce([{ c: '0' }]).mockResolvedValueOnce([]);
 
     await listDossiers({ page: 1, pageSize: 20, search: '  anomaly  ' }, ctx);
@@ -91,7 +136,27 @@ describe('listDossiers sortBy', () => {
     const countSql = String(queryMock.mock.calls[0]?.[0] ?? '');
     expect(countSql).toContain('request_query ILIKE');
     expect(countSql).toContain('report_title ILIKE');
+    expect(countSql).toContain('run_display_title ILIKE');
     expect(queryMock.mock.calls[0]?.[1]).toContain('%anomaly%');
+  });
+
+  it('drops the display-title search term on a pre-057 database rather than erroring', async () => {
+    // A WHERE clause naming a missing column fails exactly like a SELECT
+    // naming it, so the predicate has to come off the same rung the column
+    // does. Otherwise the fallback raises the error it was written to avoid.
+    const skewErr = Object.assign(new Error('column "run_display_title" does not exist'), {
+      code: '42703',
+    });
+    queryMock
+      .mockRejectedValueOnce(skewErr)
+      .mockResolvedValueOnce([{ c: '0' }])
+      .mockResolvedValueOnce([]);
+
+    await listDossiers({ page: 1, pageSize: 20, search: 'anomaly' }, ctx);
+
+    const secondRungCountSql = String(queryMock.mock.calls[1]?.[0] ?? '');
+    expect(secondRungCountSql).not.toContain('run_display_title');
+    expect(secondRungCountSql).toContain('request_query ILIKE');
   });
 });
 

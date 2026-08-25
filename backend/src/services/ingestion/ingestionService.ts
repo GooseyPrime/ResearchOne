@@ -486,11 +486,50 @@ export async function fetchUrlRawHtml(url: string): Promise<string> {
   return typeof response.data === 'string' ? response.data : String(response.data);
 }
 
-function parseHtmlToContent(html: string, pageUrl: string): FetchResult {
+/**
+ * A readable name for a source whose page gave us no title.
+ *
+ * Falling back to the URL produced sources whose title was
+ * `https://arxiv.org/pdf/2204.08880v1` — a source with no title cannot be
+ * assessed by a reader or weighed by a model, and several of those appeared in
+ * the operator's report. This turns a path into words where the path has any,
+ * and otherwise names the host, which is at least a claim about provenance.
+ */
+export function titleFromUrl(rawUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const bare = (segments[segments.length - 1] ?? '').replace(/\.(pdf|html?|php|aspx?|txt|md)$/i, '');
+  // A segment that is only digits, dots and version markers ("2204.08880v1")
+  // is an identifier, not a name — keep it intact and say what it identifies.
+  if (!bare) return host;
+  if (/^[\d.v]+$/i.test(bare)) return `${host} ${bare}`;
+  const slug = bare.replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return slug ? `${slug} (${host})` : host;
+}
+
+/** True when a stored title is really just the address of the thing. */
+export function titleIsJustTheUrl(title: string | null | undefined, url: string): boolean {
+  const t = (title ?? '').trim();
+  if (!t) return true;
+  if (t === url.trim()) return true;
+  return /^https?:\/\/\S+$/i.test(t);
+}
+
+export function parseHtmlToContent(html: string, pageUrl: string): FetchResult {
   const retrievalTimestamp = new Date().toISOString();
 
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  const title = titleMatch ? titleMatch[1].trim() : pageUrl;
+  const rawTitle = titleMatch ? titleMatch[1].trim() : '';
+  // Never store the address as the name of the thing. A PDF served over HTTP
+  // has no <title> at all, which is how `https://arxiv.org/pdf/2204.08880v1`
+  // became the title of a source in a finished report.
+  const title = titleIsJustTheUrl(rawTitle, pageUrl) ? titleFromUrl(pageUrl) : rawTitle;
 
   const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
     || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i);
@@ -530,10 +569,53 @@ function parseHtmlToContent(html: string, pageUrl: string): FetchResult {
   return { content, title, canonicalUrl, metaDescription, retrievalTimestamp };
 }
 
-/** Shared URL fetch used by ingestion workers and revision supplemental sync-fetch. */
+/** True when a URL or its content type says the body is a PDF, not a page. */
+export function looksLikePdf(url: string, contentType?: string | null): boolean {
+  if ((contentType ?? '').toLowerCase().includes('application/pdf')) return true;
+  try {
+    return /\.pdf$/i.test(new URL(url).pathname) || /\/pdf\//i.test(new URL(url).pathname);
+  } catch {
+    return /\.pdf($|\?)/i.test(url);
+  }
+}
+
+/**
+ * Shared URL fetch used by ingestion workers and revision supplemental
+ * sync-fetch.
+ *
+ * A PDF used to go through the HTML path: fetched as text, stripped of
+ * `<tags>` that were never there, and stored as whatever survived. An arXiv
+ * paper ingested that way contributes a source row and no readable content,
+ * which is how a report can report nine sources and cite almost none of them.
+ * PDFs are extracted as PDFs, with their embedded title when they carry one.
+ */
 export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
-  const html = await fetchUrlRawHtml(url);
-  return parseHtmlToContent(html, url);
+  assertPublicHttpUrl(url);
+  const retrievalTimestamp = new Date().toISOString();
+
+  const head = await axios.get(url, {
+    timeout: 30000,
+    headers: { 'User-Agent': 'ResearchOne/1.0 (+https://researchone.io)' },
+    maxContentLength: 50 * 1024 * 1024,
+    responseType: 'arraybuffer',
+    validateStatus: (status) => status >= 200 && status < 400,
+  });
+  const contentType = String(head.headers?.['content-type'] ?? '');
+  const buffer = Buffer.from(head.data as ArrayBuffer);
+
+  if (looksLikePdf(url, contentType)) {
+    const extracted = await extractPdf(buffer);
+    const embeddedTitle = (extracted.metadata.title ?? '').trim();
+    return {
+      content: extracted.text,
+      title: titleIsJustTheUrl(embeddedTitle, url) ? titleFromUrl(url) : embeddedTitle,
+      canonicalUrl: null,
+      metaDescription: null,
+      retrievalTimestamp,
+    };
+  }
+
+  return parseHtmlToContent(buffer.toString('utf8'), url);
 }
 
 function estimateTokens(text: string): number {
