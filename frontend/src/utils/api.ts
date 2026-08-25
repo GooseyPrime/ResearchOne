@@ -162,6 +162,15 @@ export interface ResearchRun {
    * applied yet.
    */
   run_ref?: string | null;
+  /**
+   * The run's human-facing name, written server-side at the plan gate
+   * (migration 057). `title` is NOT this: the API sets it to the raw prompt
+   * truncated to 200 characters, which is why every surface that reached for a
+   * run's name rendered the prompt. Null until the planner has produced a topic
+   * summary, and absent entirely on deployments where 057 has not applied yet —
+   * resolve it through `runDisplayTitle`, never directly.
+   */
+  display_title?: string | null;
   title: string;
   query: string;
   supplemental?: string;
@@ -352,6 +361,10 @@ export interface DossierListRow {
   /** Gate status from failure_meta — more specific than runStatus for degraded/failed runs. */
   gateStatus?: string | null;
   requestQuery: string;
+  /** `research_runs.display_title` (migration 057). Absent on pre-057 rows. */
+  displayTitle?: string | null;
+  /** `research_runs.run_ref` — last resort in the title chain. Absent on pre-057 rows. */
+  runRef?: string | null;
   planIntent: string | null;
   dossierCreatedAt: string;
   reportId: string | null;

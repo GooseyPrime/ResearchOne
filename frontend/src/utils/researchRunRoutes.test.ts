@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEEP_RESEARCH_ENGINE_QUERY,
   DEEP_RESEARCH_PAGE_URL,
   RESEARCH_PAGE_PATH,
   dossierReportUrlForRun,
@@ -8,6 +7,8 @@ import {
   isDeepResearchFromSearchParams,
   isDeepResearchEngine,
   liveResearchUrl,
+  parsePrefillRunIdFromSearchParams,
+  requestPrefillUrl,
   parseRunIdFromSearchParams,
   researchPagePathForEngine,
   researchPagePathForRun,
@@ -68,14 +69,39 @@ describe('parseRunIdFromSearchParams', () => {
 describe('liveResearchUrl', () => {
   const id = 'run-uuid-1';
 
-  it('builds standard research deep link', () => {
-    expect(liveResearchUrl(id)).toBe(`/app/research?runId=${encodeURIComponent(id)}`);
+  it('points at the run’s own workspace, not the request page', () => {
+    // It used to return `/app/research?runId=…`, which `ResearchPage` then
+    // redirected to `/app/run/…` — except with `#plan`, where it stayed put.
+    // Which page a click landed on depended on the run's state at that moment.
+    expect(liveResearchUrl(id)).toBe(`/app/run/${encodeURIComponent(id)}`);
   });
 
-  it('builds v2 deep link with engine query and optional plan hash', () => {
-    expect(liveResearchUrl(id, { engineVersion: 'v2', focusPlan: true })).toBe(
-      `/app/research?runId=${encodeURIComponent(id)}&engine=${DEEP_RESEARCH_ENGINE_QUERY}#plan`
+  it('keeps #plan meaning “take me to the gate”', () => {
+    // The gate renders at id="plan" inside the workspace, so the anchor
+    // resolves without a second navigation.
+    expect(liveResearchUrl(id, { focusPlan: true })).toBe(
+      `/app/run/${encodeURIComponent(id)}#plan`
     );
+  });
+
+  it('encodes a run id that needs it', () => {
+    expect(liveResearchUrl('a/b?c')).toBe('/app/run/a%2Fb%3Fc');
+  });
+});
+
+describe('requestPrefillUrl', () => {
+  it('carries a run back to the request page so cancel does not discard it', () => {
+    expect(requestPrefillUrl('run-9')).toBe('/app/research?prefill=run-9');
+  });
+
+  it('round-trips through the parser', () => {
+    const url = new URL(requestPrefillUrl('run-9'), 'https://x.test');
+    expect(parsePrefillRunIdFromSearchParams(url.searchParams)).toBe('run-9');
+  });
+
+  it('treats a blank prefill param as absent', () => {
+    expect(parsePrefillRunIdFromSearchParams(new URLSearchParams('prefill='))).toBeNull();
+    expect(parsePrefillRunIdFromSearchParams(new URLSearchParams('prefill=%20'))).toBeNull();
   });
 });
 

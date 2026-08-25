@@ -11,7 +11,7 @@ import {
 } from '@/utils/api';
 import LiveRevisionTraceLog from '@/components/research/LiveRevisionTraceLog';
 import RevisionAttachmentAuditPanel from '@/components/reports/RevisionAttachmentAuditPanel';
-import { mergeTraceEvents } from '@/utils/traceEventWindow';
+import { mergeTraceEvents, sortEventsChronological } from '@/utils/traceEventWindow';
 import { getSocket, subscribeToRevisionJob } from '@/utils/socket';
 import {
   isReportRevisionRequestState,
@@ -136,7 +136,10 @@ export default function ReportRevisionWorkspacePage() {
       const p = raw as RevisionProgressPayload;
       if (p.reportId && p.reportId !== baseReportId) return;
       const evt = toTraceEvent(p);
-      setTraceEvents((prev) => mergeTraceEvents(prev, [evt], 150));
+      // Deduped AND ordered. This surface merged without ever sorting, so a
+      // revision event that arrived out of order stayed out of order — the same
+      // defect as the run page, in the one place nobody had looked.
+      setTraceEvents((prev) => sortEventsChronological(mergeTraceEvents(prev, [evt], 150)));
       setLatestProgress({
         stage: evt.stage,
         percent: evt.percent ?? 0,

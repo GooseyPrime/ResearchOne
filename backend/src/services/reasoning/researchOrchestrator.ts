@@ -3360,6 +3360,52 @@ async function saveReport(args: {
     }
     reportId = reportResult.rows[0].id;
 
+    // Give the run a name if the plan gate never did.
+    //
+    // Migration 057's comment and the WO-AF plan both claimed completed runs
+    // would pick up `deriveGeneratedReportTitle`'s output — but no report-time
+    // writer existed, so `insertGateResearchPlan` was the only path and a run
+    // whose plan produced no topic summary stayed untitled forever. The
+    // workspace has no `report_title` to fall back to, so it showed the run
+    // reference for a finished, perfectly well-titled report (Copilot, #227).
+    //
+    // `WHERE display_title IS NULL` keeps the plan-time title authoritative: a
+    // run's name must not change under the reader the moment its report lands.
+    // Inside the report transaction on purpose — a title without a report is
+    // the state this is fixing, and the reverse is no better.
+    if (reportTitle && reportTitle.trim()) {
+      // SAVEPOINT, not a bare try/catch. Catching an error inside a Postgres
+      // transaction does not un-abort it: a 42703 here would poison the
+      // transaction and every section insert below would then fail with
+      // "current transaction is aborted", turning a cosmetic column into a
+      // lost report. The report insert above uses the same guard for the same
+      // reason.
+      await client.query('SAVEPOINT pre_display_title_write');
+      try {
+        await client.query(
+          `UPDATE research_runs
+              SET display_title = $2
+            WHERE id = $1::uuid
+              AND display_title IS NULL`,
+          [runId, reportTitle.trim().slice(0, 300)]
+        );
+        await client.query('RELEASE SAVEPOINT pre_display_title_write');
+      } catch (titleErr) {
+        await client.query('ROLLBACK TO SAVEPOINT pre_display_title_write');
+        // 42703: migration 057 not applied yet — an expected rollout state.
+        // Anything else is logged; a missing display name must never fail a
+        // finished report, but it must not fail silently either.
+        const code = (titleErr as { code?: string })?.code;
+        if (code !== '42703') {
+          logger.warn('research_run_display_title_report_write_failed', {
+            runId,
+            code,
+            message: titleErr instanceof Error ? titleErr.message : String(titleErr),
+          });
+        }
+      }
+    }
+
     // Insert all sections
     for (let i = 0; i < sections.length; i++) {
       const sec = sections[i];

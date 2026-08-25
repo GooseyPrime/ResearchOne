@@ -8,6 +8,7 @@ import { extractApiError, type DossierListRow } from '../utils/api';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import IntentBadge from '../components/dossiers/IntentBadge';
 import DossiersTimelineTable, { timelineRowsToCsv } from '../components/dossiers/DossiersTimelineTable';
+import { runDisplayTitle } from '../utils/runDisplayTitle';
 
 type ViewMode = 'cards' | 'timeline';
 
@@ -257,8 +258,22 @@ function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => v
           <p className="text-xs text-slate-500">
             {activityAt ? formatDistanceToNow(new Date(activityAt), { addSuffix: true }) : '—'}
           </p>
-          <p className="text-sm text-white font-medium line-clamp-2">{row.requestQuery || '—'}</p>
-          {row.reportTitle && <p className="text-xs text-slate-400 line-clamp-1">Report: {row.reportTitle}</p>}
+          {/*
+            The card is headed by the run's NAME, not by its request. It used to
+            render `requestQuery`, so the library was a wall of raw prompts —
+            "# Research Objective: Identify and Rank the 20 Best Affiliate…",
+            Markdown `#` and all. The request is still here, one line down and
+            in a muted weight, because it is how a reader recognises a dossier
+            they wrote; it is just not the headline.
+          */}
+          <p className="text-sm text-white font-medium line-clamp-2">
+            {runDisplayTitle({
+              display_title: row.displayTitle,
+              report_title: row.reportTitle,
+              run_ref: row.runRef,
+            })}
+          </p>
+          <p className="text-xs text-slate-400 line-clamp-1">{row.requestQuery || '—'}</p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <DossierStatusBadge status={row.runStatus} gateStatus={row.gateStatus} />

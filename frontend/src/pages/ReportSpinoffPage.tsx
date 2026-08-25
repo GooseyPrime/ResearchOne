@@ -205,7 +205,7 @@ export default function ReportSpinoffPage() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
       addNotification('info', 'Spinoff research queued — opening live run.');
-      navigate(liveResearchUrl(data.runId, { engineVersion: engineVersion === 'v2' ? 'v2' : 'v1' }));
+      navigate(liveResearchUrl(data.runId));
     },
     onError: (err: unknown) => {
       addNotification('error', extractSpinoffError(err));

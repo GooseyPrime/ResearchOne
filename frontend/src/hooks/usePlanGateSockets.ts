@@ -46,10 +46,7 @@ export function usePlanGateSockets({
         });
         addNotification('info', 'Research plan is ready — review and confirm to continue.', {
           label: 'Review plan',
-          to: liveResearchUrl(payload.runId, {
-            engineVersion: engineVersionHint,
-            focusPlan: true,
-          }),
+          to: liveResearchUrl(payload.runId, { focusPlan: true }),
         });
       }
     };

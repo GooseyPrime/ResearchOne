@@ -80,6 +80,16 @@ export interface DossierListRow {
   /** Gate status from failure_meta — more specific than runStatus for degraded/failed runs. */
   gateStatus: string | null;
   requestQuery: string;
+  /**
+   * `research_runs.display_title` (migration 057). The dossier CARD used to be
+   * headed by `requestQuery`, so the library rendered raw prompts —
+   * `# Research Objective: Identify and Rank the 20 Best Affiliate…`, Markdown
+   * `#` included. Null on pre-057 rows, where the reader falls back to
+   * `reportTitle` and then the run reference.
+   */
+  displayTitle: string | null;
+  /** `research_runs.run_ref` — the last resort in the title chain, and the value a user quotes to support. */
+  runRef: string | null;
   planIntent: string | null;
   dossierCreatedAt: string;
   reportId: string | null;

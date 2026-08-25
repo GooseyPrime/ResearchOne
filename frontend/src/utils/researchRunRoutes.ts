@@ -39,23 +39,47 @@ export function parseRunIdFromSearchParams(
   return raw && raw.length > 0 ? raw : null;
 }
 
-function researchSearchParams(runId: string, engineVersion?: string | null): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set('runId', runId);
-  if (isDeepResearchEngine(engineVersion)) {
-    params.set('engine', DEEP_RESEARCH_ENGINE_QUERY);
-  }
-  return params;
+/** Query param the request page reads to restore a previous run's inputs. */
+export const REQUEST_PREFILL_PARAM = 'prefill';
+
+/**
+ * The canonical URL for a run in flight: its own workspace.
+ *
+ * This used to return `/app/research?runId=<id>`, and `ResearchPage` then
+ * redirected that to `/app/run/<id>` — except when the link carried `#plan`,
+ * where it stayed and rendered the plan gate instead. Which page a user landed
+ * on therefore depended on whether the run happened to be awaiting plan
+ * approval at the moment they clicked, and the codebase asserted both were
+ * correct. Every caller of this builder now lands in one place that handles
+ * every state, and stays there.
+ *
+ * `#plan` still means "take me to the gate" — the gate renders at `id="plan"`
+ * inside the workspace, so the anchor resolves without a second navigation.
+ *
+ * The `?runId=` redirect in `ResearchPage` stays for bookmarks and links that
+ * predate this, which is why its test stays too.
+ */
+export function liveResearchUrl(runId: string, opts?: { focusPlan?: boolean }): string {
+  return `/app/run/${encodeURIComponent(runId)}${opts?.focusPlan ? '#plan' : ''}`;
 }
 
-/** Deep link to resume live tracking and plan review on the unified research page. */
-export function liveResearchUrl(
-  runId: string,
-  opts?: { engineVersion?: string | null; focusPlan?: boolean }
-): string {
-  const params = researchSearchParams(runId, opts?.engineVersion);
-  const hash = opts?.focusPlan ? '#plan' : '';
-  return `${RESEARCH_PAGE_PATH}?${params.toString()}${hash}`;
+/**
+ * Back to the request page with a previous run's inputs restored.
+ *
+ * Cancelling at the plan gate used to call `applyRequestFormFromRun` on the
+ * page the user was already on, because "cancel" means "not like that, let me
+ * edit it" rather than "discard what I typed". A run now lives on its own
+ * route with no form on it, so the request has to travel back by URL.
+ */
+export function requestPrefillUrl(runId: string): string {
+  return `${RESEARCH_PAGE_PATH}?${REQUEST_PREFILL_PARAM}=${encodeURIComponent(runId)}`;
+}
+
+export function parsePrefillRunIdFromSearchParams(
+  searchParams: URLSearchParams | { get: (key: string) => string | null }
+): string | null {
+  const raw = searchParams.get(REQUEST_PREFILL_PARAM)?.trim();
+  return raw && raw.length > 0 ? raw : null;
 }
 
 /** Entry URL for Deep Research mode (no active run). */

@@ -81,6 +81,10 @@ function mapRowToListEntry(r: Record<string, unknown>, extended: boolean): Dossi
     runStatus: String(r.run_status ?? ''),
     gateStatus: r.run_gate_status != null ? String(r.run_gate_status) : null,
     requestQuery: String(r.request_query ?? ''),
+    // `extended`-gated with everything else 057 and before added: the legacy
+    // select cannot name a column the view does not have yet.
+    displayTitle: extended && r.run_display_title != null ? String(r.run_display_title) : null,
+    runRef: extended && r.run_ref != null ? String(r.run_ref) : null,
     planIntent: r.plan_intent != null ? String(r.plan_intent) : null,
     dossierCreatedAt,
     reportId: r.report_id != null ? String(r.report_id) : null,
@@ -104,7 +108,7 @@ function resolveListOrderBy(sortBy: DossierSortBy | undefined, extended: boolean
   return 'dossier_created_at DESC';
 }
 
-const LIST_SELECT_EXTENDED = `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, plan_intent, dossier_created_at,
+const LIST_SELECT_EXTENDED = `SELECT dossier_id, run_id, run_status, run_gate_status, request_query, run_display_title, run_ref, plan_intent, dossier_created_at,
             report_id, report_title, sources_cited_count, total_duration_ms,
             last_activity_at, report_version_number, is_spinoff, is_revised,
             spinoff_from_report_id, engine_version`;

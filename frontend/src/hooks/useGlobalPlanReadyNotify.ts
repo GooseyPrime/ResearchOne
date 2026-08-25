@@ -33,15 +33,17 @@ export function useGlobalPlanReadyNotify(runs: ResearchRun[] | undefined) {
       if (!payload?.runId || !payload.planId) return;
       void qc.invalidateQueries({ queryKey: ['research-runs'] });
 
-      if (pathnameRef.current.startsWith('/app/research')) return;
+      // Don't notify someone who is already looking at the gate. That used to
+      // mean "anywhere under /app/research", because the gate rendered on the
+      // request page. The gate now renders in the run's own workspace, so the
+      // check has to name THIS run's workspace — the old prefix would both
+      // miss the new location and wrongly suppress the notice for a user
+      // composing an unrelated request (Rule 44 T4).
+      if (pathnameRef.current.startsWith(`/app/run/${payload.runId}`)) return;
 
-      const row = runsRef.current.find((r) => r.id === payload.runId);
       addNotification('info', 'Research plan is ready — review and confirm to continue.', {
         label: 'Review plan',
-        to: liveResearchUrl(payload.runId, {
-          engineVersion: row?.engine_version,
-          focusPlan: true,
-        }),
+        to: liveResearchUrl(payload.runId, { focusPlan: true }),
       });
     };
 

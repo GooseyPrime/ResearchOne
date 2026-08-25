@@ -1,3 +1,5 @@
+import type { ResearchProgressEvent, ResearchRun } from './api';
+
 /**
  * Bounded trace / live-event buffers: keep the newest N items with oldest at the front
  * after append (newest-at-bottom before any chronological sort).
@@ -82,4 +84,71 @@ export function mergeTraceEvents<T extends TraceEventIdentity>(
   }
 
   return merged.slice(-max);
+}
+
+
+/**
+ * Trace normalization, in ONE module.
+ *
+ * `mergeTraceEvents` above was already shared. The sort was not: identical
+ * `sortEventsChronological` functions were defined inside
+ * `ResearchStandardPage` and `ResearchDeepPage`, `LiveRunPanel` had neither,
+ * and `ReportRevisionWorkspacePage` merged without ever sorting. Three
+ * different answers to one question, which is Rule 44 T3.
+ *
+ * Dedup and ordering now live beside each other, so a surface that reaches for
+ * one is looking straight at the other.
+ */
+export function normalizeProgressEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
+  return {
+    ...evt,
+    stage: evt.stage || 'planning',
+    percent: Number.isFinite(evt.percent) ? evt.percent : 0,
+    message: evt.message || evt.stage || 'Update',
+    timestamp: evt.timestamp || new Date().toISOString(),
+  };
+}
+
+export function sortEventsChronological(
+  events: readonly ResearchProgressEvent[]
+): ResearchProgressEvent[] {
+  return [...events].sort((a, b) =>
+    String(a.timestamp || '').localeCompare(String(b.timestamp || ''))
+  );
+}
+
+/**
+ * Trace events carried by a run row.
+ *
+ * The synthesised fallback for a row with no `progress_events` takes its
+ * timestamp from the row, never from `Date.now()`. A generated timestamp is
+ * part of `traceEventKey`, so a fresh one on every poll would produce a NEW
+ * key each time and the dedup would have nothing to match — the placeholder
+ * would accumulate one row per poll, which is the exact duplication this hook
+ * exists to remove. A row with no timestamp of its own yields no fallback at
+ * all rather than an undedupable one.
+ */
+export function eventsFromRunRow(run: ResearchRun): ResearchProgressEvent[] {
+  const raw = run.progress_events;
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw
+      .filter((e): e is ResearchProgressEvent => Boolean(e) && typeof e === 'object')
+      .map((e) => normalizeProgressEvent({ ...e, runId: e.runId || run.id }));
+  }
+
+  const stamp = run.progress_updated_at || run.started_at || run.created_at;
+  if (!stamp) return [];
+  if (run.progress_message == null && run.progress_percent == null && !run.progress_stage) {
+    return [];
+  }
+
+  return [
+    normalizeProgressEvent({
+      runId: run.id,
+      stage: run.progress_stage || run.status || 'planning',
+      percent: run.progress_percent ?? 0,
+      message: run.progress_message || 'Resuming run…',
+      timestamp: stamp,
+    }),
+  ];
 }

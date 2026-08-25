@@ -14,6 +14,11 @@ import {
   type ContractArtifact,
   type SectionPlanEntry,
 } from './contractOutline';
+import {
+  GENERATED_TITLE_MAX_LENGTH,
+  stripHeadingDecoration,
+  trimTitle,
+} from '../research/titleShaping';
 
 export interface ReportSectionDraft {
   title: string;
@@ -516,7 +521,6 @@ export const REPORT_WORD_COUNT_PER_SECTION_FLOOR = 80;
 export const REPORT_WORD_COUNT_MIN = ADJUDICATIVE_SECTION_PLAN.length * REPORT_WORD_COUNT_PER_SECTION_FLOOR;
 export const REPORT_WORD_COUNT_MAX = 12000;
 export const REPORT_WORD_COUNT_DEFAULT = 2200;
-const GENERATED_TITLE_MAX_LENGTH = 120;
 
 /**
  * Generic structural section labels that should never become a report title.
@@ -570,72 +574,10 @@ export function isTableDelimiterRow(line: string): boolean {
   return /^[-:|\s]+$/.test(trimmed) && trimmed.includes('|') && /-{3,}/.test(trimmed);
 }
 
-/**
- * Wrappers a model puts around a heading it is emphasising or quoting.
- * Ordered longest-first so `***x***` is not mistaken for `*` + `**x**` + `*`.
- */
-const HEADING_WRAPPERS: ReadonlyArray<readonly [string, string]> = [
-  ['***', '***'],
-  ['**', '**'],
-  ['*', '*'],
-  ['___', '___'],
-  ['__', '__'],
-  ['_', '_'],
-  ['~~', '~~'],
-  ['"', '"'],
-  ["'", "'"],
-  ['“', '”'],
-  ['‘', '’'],
-  ['«', '»'],
-];
 
-/**
- * Remove emphasis, quoting and trailing punctuation from a heading.
- *
- * `looksLikeStructuralLabel` anchors its pattern to the whole candidate, so
- * `# **Overview**`, `` # `Recommendation` `` and `# "Findings"` all slipped
- * past it and were stored as report titles verbatim, Markdown included
- * (Codex, #224 second pass).
- *
- * Only *balanced* decoration is peeled, and only when the delimiter does not
- * recur inside. `*Nature* on CRISPR` and `**A** vs **B**` are left alone —
- * those are emphasised spans within a title, not a wrapped title.
- */
-export function stripHeadingDecoration(candidate: string): string {
-  let text = candidate.trim();
-
-  for (let guard = 0; guard < 8; guard += 1) {
-    const before = text;
-
-    // A balanced backtick run of any length: `x`, ``x``, ```x```.
-    const fenced = text.match(/^(`+)([\s\S]+)\1$/);
-    if (fenced?.[2] && !fenced[2].includes('`')) {
-      text = fenced[2].trim();
-      continue;
-    }
-
-    for (const [open, close] of HEADING_WRAPPERS) {
-      if (text.length <= open.length + close.length) continue;
-      if (!text.startsWith(open) || !text.endsWith(close)) continue;
-      const inner = text.slice(open.length, text.length - close.length).trim();
-      // A recurring delimiter means these are two spans, not one wrapper.
-      if (!inner || inner.includes(open) || inner.includes(close)) continue;
-      text = inner;
-      break;
-    }
-    if (text !== before) continue;
-
-    const detrailed = text.replace(/[\s:;,.]+$/, '');
-    if (detrailed && detrailed !== text) {
-      text = detrailed;
-      continue;
-    }
-
-    break;
-  }
-
-  return text || candidate.trim();
-}
+/** Re-exported so existing importers of this module are unaffected by the
+ *  move to `services/research/titleShaping` (Rule 44 T4). */
+export { stripHeadingDecoration };
 
 export function clampWordTarget(n: number | undefined): number {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return REPORT_WORD_COUNT_DEFAULT;
@@ -872,11 +814,6 @@ function titleFromTemplateSection(sectionKey: string): string {
     .join(' ');
 }
 
-function trimTitle(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= GENERATED_TITLE_MAX_LENGTH) return normalized;
-  return normalized.slice(0, GENERATED_TITLE_MAX_LENGTH - 1).trimEnd() + '…';
-}
 
 function looksLikeRawQuery(candidate: string, query: string): boolean {
   const normalizedCandidate = candidate.replace(/\s+/g, ' ').trim().toLowerCase();

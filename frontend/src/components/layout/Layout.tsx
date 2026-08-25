@@ -29,7 +29,7 @@ import api, {
   type ResearchRun,
 } from '../../utils/api';
 import { getAdaptiveRefetchIntervalMs } from '../../utils/apiRateLimit';
-import { hasInFlightResearchRuns, IN_FLIGHT_RUN_STATUSES } from '../../utils/researchRuns';
+import { IN_FLIGHT_RUN_STATUSES, researchRunsPollIntervalMs } from '../../utils/researchRuns';
 import { useStore } from '../../store/useStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSocket, subscribeToCorpus } from '../../utils/socket';
@@ -144,12 +144,14 @@ export default function Layout() {
   const { data: allRuns } = useQuery<ResearchRun[]>({
     queryKey: ['research-runs'],
     queryFn: () => getResearchRuns(),
-    refetchInterval: (query) =>
-      hasInFlightResearchRuns(query.state.data)
-        ? getAdaptiveRefetchIntervalMs(6_000)
-        : false,
+    refetchInterval: (query) => researchRunsPollIntervalMs(query.state.data, 6_000),
   });
 
+  // The store's `activeRun` is a SINGULAR primary-run hint, and the only thing
+  // that still reads it is `bugNoteRunId` below — a bug report needs one run id,
+  // not a set. `ActiveRunBadge` used to depend on it, which is why the header
+  // could only ever represent one run however many were going; it now filters
+  // the same `allRuns` list itself and keeps all of them.
   useEffect(() => {
     const runs = allRuns ?? EMPTY_RESEARCH_RUNS;
     const inFlight = runs.filter((r) =>

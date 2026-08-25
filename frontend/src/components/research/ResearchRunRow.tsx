@@ -61,10 +61,7 @@ export default function ResearchRunRow({
       ? run.progress_events[run.progress_events.length - 1]
       : null;
 
-  const resumeTarget = liveResearchUrl(run.id, {
-    engineVersion: run.engine_version,
-    focusPlan: isPlanGate,
-  });
+  const resumeTarget = liveResearchUrl(run.id, { focusPlan: isPlanGate });
 
   const openRequest = () => {
     if (run.report_id) {

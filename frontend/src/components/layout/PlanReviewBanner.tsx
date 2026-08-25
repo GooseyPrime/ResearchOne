@@ -26,7 +26,7 @@ export default function PlanReviewBanner({ runs }: { runs: ResearchRun[] }) {
           </span>
         </div>
         <Link
-          to={liveResearchUrl(top.id, { engineVersion: top.engine_version, focusPlan: true })}
+          to={liveResearchUrl(top.id, { focusPlan: true })}
           className="btn-secondary text-xs py-1 px-3 shrink-0"
         >
           Review plan
