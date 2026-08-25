@@ -9,7 +9,6 @@ import {
   useBillingSubscriptionQuery,
 } from '../../hooks/useBillingSubscription';
 import { useStore } from '../../store/useStore';
-import { isDeepResearchEngine } from '../../utils/researchRunRoutes';
 import { requestPrefillUrl } from '../../utils/researchRunRoutes';
 
 /**
@@ -21,39 +20,41 @@ import { requestPrefillUrl } from '../../utils/researchRunRoutes';
  * page was not a request page. A run now proceeds in its own workspace, so the
  * gate has to be there too, and it is defined once.
  *
- * TWO DELIBERATE ENGINE GATES (Rule 44 T4 — what did the old props protect?)
+ * NO ENGINE GATE (deliberately, on the operator's instruction).
  *
  * `ResearchStandardPage` passed `tierAllowsSavedProfiles={false}` and no
- * `planPrefs`; `ResearchDeepPage` passed both. Consolidating naively would have
- * silently GRANTED saved profiles and the auto-confirm countdown to v1 runs,
- * neither of which they had. Both are therefore gated on the engine, which
- * reproduces the previous behaviour exactly for both kinds of run.
+ * `planPrefs`; `ResearchDeepPage` passed both. My first pass reproduced that
+ * split by gating on `engine_version`, on the T4 reasoning that consolidating
+ * two call sites must not silently grant one of them capabilities it never had.
  *
- * Whether v1 runs *should* honour a user's auto-confirm preference is a real
- * product question — it looks more like an oversight than a decision — but it
- * is not this work order's to answer, and changing it here would be a
- * behaviour change disguised as a refactor.
+ * That was the wrong question. The operator's answer: there is no v1 and v2 —
+ * every report is orchestrated by the same agents, which decide what a request
+ * needs from the request itself. A gate on `engine_version` encodes a
+ * distinction the system no longer makes, so preserving it faithfully would
+ * have been preserving a bug. Auto-confirm and saved profiles are account
+ * capabilities, gated on the account's tier and nothing else.
+ *
+ * `engine_version` still exists on the row and still gates a separate DEEP
+ * report quota in `checkTierAccess` / `incrementReportCount`. Removing that is
+ * a pricing decision, not a refactor, and is tracked separately.
  */
 export interface RunPlanGateProps {
   runId: string;
   runStatus: string | undefined;
-  engineVersion?: string | null;
 }
 
-export default function RunPlanGate({ runId, runStatus, engineVersion }: RunPlanGateProps) {
+export default function RunPlanGate({ runId, runStatus }: RunPlanGateProps) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addNotification } = useStore();
   const [snapshot, setSnapshot] = useState<PlanGateSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isDeep = isDeepResearchEngine(engineVersion);
-
   const { data: subscriptionData, isLoading: subLoading, isError: subError, authReady } =
     useBillingSubscriptionQuery();
   const tierResolved = authReady && !subLoading && (!subError || Boolean(subscriptionData));
   const tier = tierResolved ? effectiveEntitlementTier(subscriptionData) : null;
-  const planPrefsQuery = usePlanPreferencesQuery({ enabled: authReady && tierResolved && isDeep });
+  const planPrefsQuery = usePlanPreferencesQuery({ enabled: authReady && tierResolved });
 
   usePlanGateHydration({ trackingRunId: runId, runStatus, setPlanGateLocal: setSnapshot });
 
@@ -76,8 +77,8 @@ export default function RunPlanGate({ runId, runStatus, engineVersion }: RunPlan
         snapshot={snapshot}
         busy={busy}
         onBusy={setBusy}
-        planPrefs={isDeep ? planPrefsQuery.data : undefined}
-        tierAllowsSavedProfiles={isDeep && Boolean(tier && tier !== 'free_demo')}
+        planPrefs={planPrefsQuery.data}
+        tierAllowsSavedProfiles={Boolean(tier && tier !== 'free_demo')}
         onInvalidatePlanPrefs={() =>
           void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY })
         }
@@ -89,9 +90,7 @@ export default function RunPlanGate({ runId, runStatus, engineVersion }: RunPlan
           setBusy(false);
           void qc.invalidateQueries({ queryKey: ['research-runs'] });
           void qc.invalidateQueries({ queryKey: ['research-run', runId] }, { cancelRefetch: false });
-          if (isDeep) {
-            void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY }, { cancelRefetch: false });
-          }
+          void qc.invalidateQueries({ queryKey: PLAN_PREFERENCES_QUERY_KEY }, { cancelRefetch: false });
         }}
         onAfterCancel={() => {
           // What the old handler did here was `applyRequestFormFromRun(row)` —

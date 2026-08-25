@@ -175,7 +175,7 @@ export function LiveRunPanel() {
               defaultOpen={run.status === 'queued'}
             />
 
-            <RunPlanGate runId={runId} runStatus={run.status} engineVersion={run.engine_version} />
+            <RunPlanGate runId={runId} runStatus={run.status} />
 
             {!isTerminal && run.status !== 'plan_pending_confirmation' && (
               <motion.div
