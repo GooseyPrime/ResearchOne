@@ -46,13 +46,17 @@ export function ProtocolMarquee() {
         {marqueeContent.map((label, i) => {
           const pos = i % allLabels.length;
           const isOperational = pos >= protocolLabels.length;
-          const isSkeptic = label === 'SKEPTIC';
+          // The marquee's emphasised stage. This compared against 'SKEPTIC'
+          // until the label itself was renamed, at which point the comparison
+          // stopped matching anything and the emphasis silently disappeared —
+          // a label rename that took a behaviour with it.
+          const isChallenge = label === 'CHALLENGE';
 
           return (
             <span data-ev-id="ev_88411fd3ca"
             key={`${label}-${i}`}
             className={`inline-flex items-center gap-3 px-4 py-2 font-mono text-xs tracking-wider ${
-            isSkeptic ?
+            isChallenge ?
             'text-r1-skeptic' :
             isOperational ?
             'text-r1-green' :
@@ -61,7 +65,7 @@ export function ProtocolMarquee() {
 
               <span data-ev-id="ev_8af012abfc"
               className={`w-1.5 h-1.5 rounded-full ${
-              isSkeptic ?
+              isChallenge ?
               'bg-r1-skeptic' :
               isOperational ?
               'bg-r1-green animate-pulse' :

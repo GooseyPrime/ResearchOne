@@ -26,7 +26,6 @@ import { supplementalUrlCrawlPayload } from '@/utils/supplementalUrlCrawl';
 import { effectiveEntitlementTier, useBillingSubscriptionQuery } from '@/hooks/useBillingSubscription';
 import { useStore } from '@/store/useStore';
 import { liveResearchUrl } from '@/utils/researchRunRoutes';
-import clsx from 'clsx';
 
 function extractSpinoffError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -54,7 +53,6 @@ export default function ReportSpinoffPage() {
     : null;
   const filteredObjectiveOptions = objectivesForTier(userTier);
 
-  const [engineVersion, setEngineVersion] = useState<'v2' | 'standard'>('v2');
   const [query, setQuery] = useState('');
   const [supplemental, setSupplemental] = useState('');
   const [supplementalFiles, setSupplementalFiles] = useState<File[]>([]);
@@ -82,15 +80,12 @@ export default function ReportSpinoffPage() {
     queryKey: ['research-v2-ensemble-presets'],
     queryFn: getResearchV2EnsemblePresets,
     staleTime: 60_000,
-    enabled: engineVersion === 'v2',
   });
 
   useEffect(() => {
     if (!prefill) return;
     setQuery(prefill.query ?? '');
     setSupplemental(prefill.supplemental?.trim() ?? '');
-    if (prefill.engineVersion === 'v2') setEngineVersion('v2');
-    else if (prefill.engineVersion === 'v1') setEngineVersion('standard');
     if (prefill.researchObjective) {
       setResearchObjective(prefill.researchObjective as ResearchObjective);
     }
@@ -114,7 +109,7 @@ export default function ReportSpinoffPage() {
   }, [tierResolved, userTier, researchObjective, filteredObjectiveOptions]);
 
   useEffect(() => {
-    if (engineVersion !== 'v2' || !ensembleData?.presets) return;
+    if (!ensembleData?.presets) return;
     const preset = ensembleData.presets[researchObjective];
     if (!prefill?.modelOverrides && preset) {
       const rows: Record<string, { primary?: string; fallback?: string; fallbackEnabled?: boolean }> = {};
@@ -124,7 +119,7 @@ export default function ReportSpinoffPage() {
       }
       setModelRows(rows);
     }
-  }, [ensembleData, researchObjective, engineVersion, prefill?.modelOverrides]);
+  }, [ensembleData, researchObjective, prefill?.modelOverrides]);
 
   useEffect(() => {
     const raw = prefill?.modelOverrides;
@@ -168,7 +163,7 @@ export default function ReportSpinoffPage() {
   }, [reportLengthPreset, reportLengthCustom]);
 
   const runtimeOverridesPayload = useMemo(() => {
-    if (engineVersion !== 'v2' || !ensembleData?.presets) return undefined;
+    if (!ensembleData?.presets) return undefined;
     const baseline = ensembleData.presets[researchObjective];
     if (!baseline) return undefined;
     const payload: Record<string, unknown> = {};
@@ -181,7 +176,7 @@ export default function ReportSpinoffPage() {
       };
     }
     return Object.keys(payload).length > 0 ? payload : undefined;
-  }, [modelRows, ensembleData, researchObjective, engineVersion]);
+  }, [modelRows, ensembleData, researchObjective]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -190,8 +185,7 @@ export default function ReportSpinoffPage() {
         supplemental: supplemental.trim() || undefined,
         filterTags: filterTags ? filterTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
         modelOverrides: runtimeOverridesPayload,
-        engineVersion: engineVersion === 'v2' ? 'v2' : undefined,
-        ...(engineVersion === 'v2' ? { researchObjective } : {}),
+        researchObjective,
         targetWordCount: resolvedTargetWordCount,
         supplementalFiles: supplementalFiles.length > 0 ? supplementalFiles : undefined,
         supplementalUrls: supplementalUrls.length > 0 ? supplementalUrls : undefined,
@@ -249,38 +243,6 @@ export default function ReportSpinoffPage() {
       ) : (
         <div className="card-glow p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="section-title block mb-2">Engine</label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={clsx(
-                    'px-3 py-1.5 rounded-lg text-sm border',
-                    engineVersion === 'v2'
-                      ? 'border-accent/50 bg-accent/10 text-accent'
-                      : 'border-indigo-900/40 text-slate-400 hover:border-accent/30',
-                  )}
-                  onClick={() => setEngineVersion('v2')}
-                  disabled={mutation.isPending}
-                >
-                  Deep (V2)
-                </button>
-                <button
-                  type="button"
-                  className={clsx(
-                    'px-3 py-1.5 rounded-lg text-sm border',
-                    engineVersion === 'standard'
-                      ? 'border-accent/50 bg-accent/10 text-accent'
-                      : 'border-indigo-900/40 text-slate-400 hover:border-accent/30',
-                  )}
-                  onClick={() => setEngineVersion('standard')}
-                  disabled={mutation.isPending}
-                >
-                  Standard (V1)
-                </button>
-              </div>
-            </div>
-
             <div>
               <label className="section-title block mb-2">Research query</label>
               <textarea
@@ -397,7 +359,7 @@ export default function ReportSpinoffPage() {
               />
             </div>
 
-            {engineVersion === 'v2' && ensembleData?.presets?.[researchObjective] ? (
+            {ensembleData?.presets?.[researchObjective] ? (
               <div className="space-y-2">
                 <button
                   type="button"

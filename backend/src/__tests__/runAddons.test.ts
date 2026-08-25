@@ -9,10 +9,6 @@ import {
   buildRunAddonPipelineEffects,
   normalizeRunAddonKeys,
 } from '../services/reasoning/runAddons';
-import {
-  ORCHESTRATION_PROFILES,
-  shouldRunPipelineStage,
-} from '../services/planning/orchestrationProfiles';
 import { parseAddonsFromStartRequest } from '../services/reasoning/parseResearchAddons';
 
 describe('runAddons', () => {

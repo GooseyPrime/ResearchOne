@@ -77,6 +77,7 @@ vi.mock('../queue/queues', () => ({
 
 import request from 'supertest';
 import testApp from '../api/app';
+import { RUN_CONSUMES_DEEP_QUOTA } from '../config/researchEngine';
 
 const REPORT_ID = '11111111-1111-4111-8111-111111111111';
 const RUN_ID = '22222222-2222-4222-8222-222222222222';
@@ -149,11 +150,14 @@ describe('POST /api/research/spinoff', () => {
 
     expect(res.status).toBe(202);
     expect(res.body.runId).toBeTruthy();
+    // WO-AH-5: the fourth argument used to be `engineVersion === 'v2'`. There
+    // is one engine now, so it is the deep-quota classification constant and
+    // no longer varies with the request.
     expect(mocks.checkTierAccessMock).toHaveBeenCalledWith(
       'user_spinoff_test',
       'GENERAL_EPISTEMIC_RESEARCH',
       expect.any(Number),
-      true,
+      RUN_CONSUMES_DEEP_QUOTA,
       expect.anything()
     );
     expect(mocks.insertRunMock).toHaveBeenCalledWith(

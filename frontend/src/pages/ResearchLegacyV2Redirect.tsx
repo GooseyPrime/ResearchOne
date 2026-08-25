@@ -1,18 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { DEEP_RESEARCH_ENGINE_QUERY, RESEARCH_PAGE_PATH } from '../utils/researchRunRoutes';
+import { RESEARCH_PAGE_PATH } from '../utils/researchRunRoutes';
 
-/** Legacy `/app/research-v2` → unified `/app/research?engine=v2` (preserves runId, hash, other params). */
+/**
+ * `/app/research-v2` was the Deep Research entry point. There is one research
+ * page now and one engine behind it, so this keeps old links working and
+ * carries any query string across unchanged.
+ */
 export default function ResearchLegacyV2Redirect() {
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  if (!params.has('engine')) {
-    params.set('engine', DEEP_RESEARCH_ENGINE_QUERY);
-  }
-  const search = params.toString();
-  return (
-    <Navigate
-      to={{ pathname: RESEARCH_PAGE_PATH, search: search ? `?${search}` : '', hash: location.hash }}
-      replace
-    />
-  );
+  const search = location.search ?? '';
+  return <Navigate to={`${RESEARCH_PAGE_PATH}${search}`} replace />;
 }

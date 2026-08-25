@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, UserX } from 'lucide-react';
 import clsx from 'clsx';
 import {
-  isPresetSkepticPersonaLabel,
-  SKEPTIC_PERSONA_OPTIONS,
-} from '../../utils/skepticPersonaSupplemental';
+  CHALLENGE_PERSPECTIVE_OPTIONS,
+  isPresetChallengePerspective,
+} from '../../utils/challengePerspective';
 
-export { SKEPTIC_PERSONA_OPTIONS };
+export { CHALLENGE_PERSPECTIVE_OPTIONS };
 
-type SkepticPersonaSelectorProps = {
+type ChallengePerspectiveSelectorProps = {
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
@@ -16,18 +16,22 @@ type SkepticPersonaSelectorProps = {
 };
 
 /**
- * Optional adversarial persona hint sent as `supplemental` on Deep (V2) submits.
- * Backend applies V2 red-team prompts via engineVersion + skeptic role — not a separate API field.
+ * Optional steer for the challenge pass, sent as supplemental context.
+ *
+ * This used to be the “persona” picker on the Deep form only — a control
+ * whose own label named the pipeline role. Every report is challenged now, so
+ * it appears on the one form, and it says what it does in words a reader
+ * recognises.
  */
-export default function SkepticPersonaSelector({
+export default function ChallengePerspectiveSelector({
   value,
   onChange,
   disabled = false,
   className,
-}: SkepticPersonaSelectorProps) {
+}: ChallengePerspectiveSelectorProps) {
   const [open, setOpen] = useState(false);
   const [customActive, setCustomActive] = useState(
-    () => Boolean(value.trim()) && !isPresetSkepticPersonaLabel(value)
+    () => Boolean(value.trim()) && !isPresetChallengePerspective(value)
   );
 
   useEffect(() => {
@@ -35,21 +39,23 @@ export default function SkepticPersonaSelector({
       setCustomActive(false);
       return;
     }
-    if (isPresetSkepticPersonaLabel(value)) {
+    if (isPresetChallengePerspective(value)) {
       setCustomActive(false);
     }
   }, [value]);
 
-  const showCustomInput = customActive || (Boolean(value.trim()) && !isPresetSkepticPersonaLabel(value));
+  const showCustomInput =
+    customActive || (Boolean(value.trim()) && !isPresetChallengePerspective(value));
   const triggerLabel = showCustomInput
-    ? value.trim() || 'Custom persona (describe below)'
-    : value || 'Select adversarial persona (optional)';
+    ? value.trim() || 'Custom perspective (describe below)'
+    : value || 'No particular perspective';
 
   return (
     <div className={clsx('relative', className)}>
-      <label className="section-title block mb-2">Adversarial persona (optional)</label>
+      <label className="section-title block mb-2">Challenge perspective (optional)</label>
       <p className="text-xs text-slate-500 mb-2">
-        Steers the challenge pass. Sent as supplemental context for this run only.
+        Your report is argued against before it concludes. Pick whose objections it should have to
+        survive, or leave this alone and we will choose from your request.
       </p>
       <button
         type="button"
@@ -70,40 +76,41 @@ export default function SkepticPersonaSelector({
             {triggerLabel}
           </span>
         </span>
-        <ChevronDown className={clsx('w-4 h-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          className={clsx('w-4 h-4 shrink-0 text-slate-400 transition-transform', open && 'rotate-180')}
+        />
       </button>
       {open && !disabled ? (
         <ul
           className="absolute z-20 mt-1 w-full rounded-lg border border-surface-400/80 bg-surface-100 shadow-xl max-h-64 overflow-y-auto"
           role="listbox"
         >
-          {SKEPTIC_PERSONA_OPTIONS.map((persona) => (
-            <li key={persona.id}>
+          {CHALLENGE_PERSPECTIVE_OPTIONS.map((perspective) => (
+            <li key={perspective.id}>
               <button
                 type="button"
                 role="option"
                 aria-selected={
-                  persona.id === 'custom'
-                    ? showCustomInput
-                    : value === persona.label
+                  perspective.id === 'custom' ? showCustomInput : value === perspective.label
                 }
                 className={clsx(
                   'w-full px-3 py-2.5 text-left text-sm hover:bg-accent/10 transition-colors',
-                  (persona.id === 'custom' ? showCustomInput : value === persona.label) && 'bg-accent/15'
+                  (perspective.id === 'custom' ? showCustomInput : value === perspective.label) &&
+                    'bg-accent/15'
                 )}
                 onClick={() => {
-                  if (persona.id === 'custom') {
+                  if (perspective.id === 'custom') {
                     setCustomActive(true);
                     onChange('');
                   } else {
                     setCustomActive(false);
-                    onChange(persona.label);
+                    onChange(perspective.label);
                   }
                   setOpen(false);
                 }}
               >
-                <span className="font-medium text-slate-200">{persona.label}</span>
-                <span className="block text-xs text-slate-500 mt-0.5">{persona.description}</span>
+                <span className="font-medium text-slate-200">{perspective.label}</span>
+                <span className="block text-xs text-slate-500 mt-0.5">{perspective.description}</span>
               </button>
             </li>
           ))}
@@ -112,10 +119,10 @@ export default function SkepticPersonaSelector({
       {showCustomInput && !disabled ? (
         <textarea
           className="mt-2 w-full rounded-lg border border-surface-400/80 bg-surface-200/40 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-accent/50 focus:outline-none min-h-[72px] resize-y"
-          placeholder="Describe the adversarial stance (e.g. regulatory auditor focused on primary-source gaps)…"
+          placeholder="Describe the stance to argue from (for example: a regulator looking for gaps in primary sources)…"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          aria-label="Custom adversarial persona"
+          aria-label="Custom challenge perspective"
         />
       ) : null}
     </div>

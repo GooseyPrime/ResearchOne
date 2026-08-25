@@ -49,6 +49,7 @@ import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
 import { incrementReportCount } from '../tier/tierService';
+import { RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import type {
   ProgressCallback,
   ResearchJobData,
@@ -2751,7 +2752,11 @@ ${generatedReport.markdown}`,
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
         }
         if (creditCtx.type === 'subscription' && creditCtx.userId) {
-          await incrementReportCount(creditCtx.userId, engineVersion === 'v2');
+          // WO-AH-6: every run now uses the one engine, so `engineVersion`
+          // no longer distinguishes a deep run from a cheap one. Which quota
+          // a finished report consumes is an operator decision and lives in
+          // one place; see `RUN_CONSUMES_DEEP_QUOTA`.
+          await incrementReportCount(creditCtx.userId, RUN_CONSUMES_DEEP_QUOTA);
         }
       } catch (creditErr) {
         logger.error('credit_charge_on_completion_failed', {

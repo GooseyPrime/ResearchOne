@@ -26,6 +26,13 @@ export interface ResearchOutputControlsProps {
   objective: string;
   onObjectiveChange: (v: string) => void;
   showObjective?: boolean;
+  /**
+   * Objectives this user may actually pick. Tiers do not all get the same set,
+   * and offering one that the API will reject with a 403 is worse than not
+   * offering it. Defaults to every objective when the caller has no tier
+   * information to filter by.
+   */
+  objectiveOptions?: ReadonlyArray<{ value: string; label: string }>;
   reportFormats: string[];
   onReportFormatsChange: (v: string[]) => void;
   reportLengthPreset: ReportLengthPreset;
@@ -61,6 +68,7 @@ export default function ResearchOutputControls({
   objective,
   onObjectiveChange,
   showObjective = true,
+  objectiveOptions = RESEARCH_OBJECTIVE_OPTIONS,
   reportFormats,
   onReportFormatsChange,
   reportLengthPreset,
@@ -91,7 +99,7 @@ export default function ResearchOutputControls({
               disabled={disabled}
             >
               <option value="AUTO">Automatic — ResearchOne selects from the request</option>
-              {RESEARCH_OBJECTIVE_OPTIONS.map((option) => (
+              {objectiveOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

@@ -1,27 +1,9 @@
 import type { CitationStyleSlug, ResearchObjective, ResearchRun } from './api';
-import { isInFlightRunStatus } from './researchRuns';
-
-/** Run is actively tracked on the research page (trace + plan gate), not draft-only view. */
-export function isLiveAttachedResearchRun(status: string | undefined | null): boolean {
-  return isInFlightRunStatus(status ?? '');
-}
 
 export type ResearchRequestFormSlice = {
   query: string;
   supplemental: string;
   filterTags: string;
-};
-
-/** Map a persisted run row into the standard research request form fields. */
-export function researchRequestFromRun(run: ResearchRun): ResearchRequestFormSlice {
-  return {
-    query: run.query ?? '',
-    supplemental: run.supplemental ?? '',
-    filterTags: '',
-  };
-}
-
-export type DeepResearchRequestFormSlice = ResearchRequestFormSlice & {
   researchObjective?: ResearchObjective;
   citationStyle?: CitationStyleSlug;
   requestedFormats?: string[];
@@ -29,9 +11,20 @@ export type DeepResearchRequestFormSlice = ResearchRequestFormSlice & {
   supplementalUrlLines: string[];
 };
 
-/** Map a persisted run row into Deep Research form fields (query + V2 options). */
-export function deepResearchRequestFromRun(run: ResearchRun): DeepResearchRequestFormSlice {
-  const base = researchRequestFromRun(run);
+/**
+ * Map a persisted run row back into the request form.
+ *
+ * There used to be two of these — a "standard" slice with three fields and a
+ * "deep" slice with everything — because there were two forms. One form, one
+ * mapping: the fields a run row does not carry come back empty, which is the
+ * same thing the narrow version did.
+ */
+export function researchRequestFormFromRun(run: ResearchRun): ResearchRequestFormSlice {
+  const base = {
+    query: run.query ?? '',
+    supplemental: run.supplemental ?? '',
+    filterTags: '',
+  };
   const urlLines = (run.supplemental_attachments ?? [])
     .filter((a) => a.kind === 'url' && a.url)
     .map((a) => a.url as string);

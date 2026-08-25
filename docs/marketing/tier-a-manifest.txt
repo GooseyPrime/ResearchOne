@@ -1,6 +1,8 @@
 # Tier A marketing / in-app label surfaces — one path per line (repo-relative).
-frontend/src/components/research/ResearchEngineModeToggle.tsx
-frontend/src/components/research/DeepResearchUpgradeModal.tsx
+frontend/src/components/research/ResearchRequestForm.tsx
+frontend/src/components/research/ChallengePerspectiveSelector.tsx
+frontend/src/pages/ResearchPage.tsx
+frontend/src/pages/ResearchV2GuidePage.tsx
 frontend/src/constants/researchObjectives.ts
 frontend/src/content/researchoneUiData.ts
 frontend/src/content/landingFeatureCards.ts

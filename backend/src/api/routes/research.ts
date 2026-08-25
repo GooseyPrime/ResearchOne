@@ -30,6 +30,7 @@ import {
   rejectionToHttpBody,
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
+import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
   buildCreditChargeContextForRun,
@@ -180,23 +181,19 @@ async function handleStartResearchRun(
       }
       const supplementalUrlCrawl = supplementalUrlCrawlParsed.crawl;
 
-      let engineVersion: string | undefined;
       let researchObjectiveRaw: unknown;
       let targetWordCountRaw: unknown;
       let requestedFormatsRaw: unknown;
       let requestedResearchObjectiveRaw: unknown;
       let requestedMethodologyRaw: unknown;
-      const jsonBodyFull = req.body as { engineVersion?: string; researchObjective?: string; targetWordCount?: unknown; requestedFormats?: unknown; requestedResearchObjective?: unknown; requestedMethodology?: unknown };
+      const jsonBodyFull = req.body as { researchObjective?: string; targetWordCount?: unknown; requestedFormats?: unknown; requestedResearchObjective?: unknown; requestedMethodology?: unknown };
       if (isMultipart) {
-        const ev = body.engineVersion;
-        engineVersion = typeof ev === 'string' ? ev.trim() : undefined;
         researchObjectiveRaw = body.researchObjective;
         targetWordCountRaw = body.targetWordCount;
         requestedFormatsRaw = body.requestedFormats;
         requestedResearchObjectiveRaw = body.requestedResearchObjective;
         requestedMethodologyRaw = body.requestedMethodology;
       } else {
-        engineVersion = typeof jsonBodyFull.engineVersion === 'string' ? jsonBodyFull.engineVersion.trim() : undefined;
         researchObjectiveRaw = jsonBodyFull.researchObjective;
         targetWordCountRaw = jsonBodyFull.targetWordCount;
         requestedFormatsRaw = jsonBodyFull.requestedFormats;
@@ -259,12 +256,6 @@ async function handleStartResearchRun(
         };
       }
 
-      const eng = engineVersion ?? '';
-      if (eng && eng !== 'v2') {
-        res.status(400).json({ error: 'engineVersion must be "v2" when set' });
-        return;
-      }
-
       let researchObjective = parseResearchObjective(
         typeof researchObjectiveRaw === 'string' ? researchObjectiveRaw : undefined
       );
@@ -276,7 +267,7 @@ async function handleStartResearchRun(
       // placeholder below overwrites the distinction. The worker uses this to
       // decide if the intent-derived objective may take over (WO-AA Phase 6).
       const researchObjectiveExplicit = Boolean(researchObjective);
-      if (eng === 'v2' && !researchObjective) {
+      if (!researchObjective) {
         // Pricing and persistence need a concrete value here; intent
         // classification has not run yet. Marked non-explicit above so the
         // orchestrator can replace it once the brief resolves.
@@ -318,7 +309,7 @@ async function handleStartResearchRun(
           userId,
           researchObjective ?? null,
           walletBalanceCents,
-          eng === 'v2',
+          RUN_CONSUMES_DEEP_QUOTA,
           subscriptionRow
         );
         if (!tierCheck.allowed) {
@@ -399,7 +390,7 @@ async function handleStartResearchRun(
         supplemental: supplemental ?? '',
         normalizedOverridesJson: JSON.stringify(normalizedOverrides),
         attachmentsJson: JSON.stringify(attachments),
-        engineVersion: eng === 'v2' ? 'v2' : null,
+        engineVersion: RESEARCH_ENGINE_VERSION,
         researchObjective: researchObjective ?? null,
         targetWordCount: targetWordCount ?? null,
         requestedFormats: requestedFormats ?? null,
@@ -460,7 +451,7 @@ async function handleStartResearchRun(
           supplemental,
           filterTags,
           modelOverrides: normalizedOverrides,
-          engineVersion: eng === 'v2' ? 'v2' : undefined,
+          engineVersion: RESEARCH_ENGINE_VERSION,
           researchObjective: researchObjective ?? undefined,
           researchObjectiveExplicit,
           targetWordCount,

@@ -705,7 +705,6 @@ export interface StartResearchPayload {
   supplemental?: string;
   filterTags?: string[];
   modelOverrides?: Record<string, unknown>;
-  engineVersion?: 'v2';
   researchObjective?: ResearchObjective;
   supplementalUrls?: string[];
   supplementalUrlCrawl?: { siteCrawl: boolean; crawlLayers: number };
@@ -739,7 +738,6 @@ export const startResearch = (data: StartResearchPayload) => {
     if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
       form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
     }
-    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (typeof rest.targetWordCount === 'number') {
       form.append('targetWordCount', String(rest.targetWordCount));
@@ -816,7 +814,6 @@ export const startResearchSpinoff = (fromReportId: string, data: StartResearchPa
     if (rest.modelOverrides && Object.keys(rest.modelOverrides).length > 0) {
       form.append('modelOverrides', JSON.stringify(rest.modelOverrides));
     }
-    if (rest.engineVersion) form.append('engineVersion', rest.engineVersion);
     if (rest.researchObjective) form.append('researchObjective', rest.researchObjective);
     if (typeof rest.targetWordCount === 'number') {
       form.append('targetWordCount', String(rest.targetWordCount));
