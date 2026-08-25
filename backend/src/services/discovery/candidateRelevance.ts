@@ -126,3 +126,30 @@ export function partitionByRelevance<T extends { title?: string | null; snippet?
   }
   return { onTopic, offTopic };
 }
+
+/**
+ * The candidates discovery will actually try to ingest, in order.
+ *
+ * On-topic first; off-topic ONLY as far as the floor. Concatenating the whole
+ * off-topic set after the on-topic one merely reordered the list, and the
+ * selection loop runs until it has `maxIngest` sources — so a 40-source run
+ * with three relevant results still fetched and embedded 37 the filter had
+ * just classified as unrelated (Codex P1, PR #229).
+ *
+ * Returns the kept off-topic URLs too, so the trace can say plainly which
+ * sources were used to make up a shortfall.
+ */
+export function selectByRelevance<T extends { title?: string | null; snippet?: string | null; url?: string | null }>(
+  researchQuery: string,
+  candidates: readonly T[],
+  floor: number
+): { ranked: T[]; toppedUpUrls: Set<string | null | undefined>; dropped: number } {
+  const { onTopic, offTopic } = partitionByRelevance(researchQuery, candidates);
+  const shortfall = Math.max(0, floor - onTopic.length);
+  const topUp = offTopic.slice(0, shortfall);
+  return {
+    ranked: [...onTopic, ...topUp],
+    toppedUpUrls: new Set(topUp.map((candidate) => candidate.url)),
+    dropped: offTopic.length - topUp.length,
+  };
+}

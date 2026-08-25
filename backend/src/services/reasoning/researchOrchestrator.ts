@@ -81,7 +81,10 @@ import {
 } from '../planning/orchestrationRuntime';
 import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
 import {
+  applyLegacyPaidChallengeUpgrade,
   buildRunAddonPipelineEffects,
+  paidForLegacyChallengeUpgrade,
+  readRawRunAddons,
   resolveRunAddons,
 } from './runAddons';
 import {
@@ -1008,7 +1011,13 @@ async function runResearchJobInner(
   const runStartedAt = Date.now();
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
-  const orchProfile = resolveOrchestrationProfileFromJob(data);
+  let orchProfile = resolveOrchestrationProfileFromJob(data);
+  // A run that paid for the old stronger-challenge add-on before it was
+  // removed still gets what it paid for. See LEGACY_PAID_CHALLENGE_UPGRADE_KEY.
+  if (paidForLegacyChallengeUpgrade(await readRawRunAddons(runId, data.addons))) {
+    orchProfile = applyLegacyPaidChallengeUpgrade(orchProfile);
+    logger.info('legacy_paid_challenge_upgrade_applied', { runId });
+  }
   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
   const sourceClassesFromPlan =
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)

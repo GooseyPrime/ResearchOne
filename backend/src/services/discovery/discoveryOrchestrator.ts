@@ -27,7 +27,8 @@ import {
 } from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
-import { partitionByRelevance } from './candidateRelevance';
+import { selectByRelevance } from './candidateRelevance';
+import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
@@ -363,11 +364,25 @@ async function runDiscoveryOrchestratorInner(args: {
     }
   }
 
-  const capCeiling =
+  // The caller's budget is a FLOOR, not just a ceiling.
+  //
+  // This used to be `min(planner's number, cap)`, so a planner that asked for
+  // ten sources capped a 7,000-word report at ten however large a budget the
+  // request earned — which is the under-sourcing the scaled budget was written
+  // to fix, still happening, with the new helper computing a number that
+  // nothing used. Testing the helper in isolation missed it: the test was
+  // shaped like the fix instead of like the failure (Codex P1, PR #229).
+  //
+  // The planner may still ask for MORE than the floor, up to the hard ceiling.
+  // What it may no longer do is ask for less than the deliverable needs.
+  const budgetFloor =
     typeof maxIngestCapOverride === 'number' && maxIngestCapOverride > 0
       ? maxIngestCapOverride
       : config.discovery.maxIngestPerRun;
-  const maxIngest = Math.min(discoveryPlan.max_sources_to_ingest || capCeiling, capCeiling);
+  const maxIngest = effectiveIngestCap({
+    budgetFloor,
+    plannerRequest: discoveryPlan.max_sources_to_ingest,
+  });
 
   logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
 
@@ -569,17 +584,18 @@ async function runDiscoveryOrchestratorInner(args: {
   // result was on topic. On-topic candidates are ingested first; off-topic
   // ones are held back and used only to avoid starving a run of sources, and
   // when they are used it is recorded as such.
-  const relevance = partitionByRelevance(researchQuery, scoreRanked);
+  // Off-topic candidates top up to the FLOOR, and no further. See
+  // `selectByRelevance` for what the whole-list version cost.
   const relevanceFloor = Math.max(minUsableSources ?? 0, Math.min(3, maxIngest));
-  const ranked =
-    relevance.onTopic.length >= relevanceFloor
-      ? [...relevance.onTopic, ...relevance.offTopic]
-      : scoreRanked;
-  const offTopicUrls = new Set(relevance.offTopic.map((candidate) => candidate.url));
-  if (relevance.offTopic.length > 0) {
+  const { ranked, toppedUpUrls: offTopicUrls, dropped } = selectByRelevance(
+    researchQuery,
+    scoreRanked,
+    relevanceFloor
+  );
+  if (dropped > 0 || offTopicUrls.size > 0) {
     logger.info(
-      `[discovery:${runId}] ${relevance.offTopic.length} of ${scoreRanked.length} candidates read as off-topic for this request` +
-        (relevance.onTopic.length >= relevanceFloor ? ' and were deprioritised' : ' but were kept — too few on-topic candidates to drop them')
+      `[discovery:${runId}] off-topic candidates for this request: ${dropped} dropped, ` +
+        `${offTopicUrls.size} kept to reach the ${relevanceFloor}-source floor`
     );
   }
 

@@ -111,7 +111,14 @@ const TAX: IntentDefinition[] = [
       // The operator's own request — "find me 20 affiliate marketing niches
       // ranked by income potential" — matched nothing at all.
       /\bniches?\b/i,
-      /\bopportunit\w*/i,
+      // NOT a bare `opportunit\w*`. "Compare investment opportunities A and B"
+      // hit this once and `comparative` once, and the tie-break by specificity
+      // put opportunity discovery first — so an explicit comparison request
+      // deterministically got a landscape report instead, without the model
+      // ever being asked (Codex P2, PR #229). Discovery language only.
+      /\b(find|identif\w+|discover|surface|uncover|spot|list|explore|where)\b[^.?!]{0,40}\bopportunit\w*/i,
+      /\bopportunit\w*[^.?!]{0,40}\b(gap|whitespace|white space|landscape|untapped|unmet|emerging)\b/i,
+      /\b(untapped|overlooked|emerging|new)\s+opportunit\w*/i,
       /\branked by\b[^.?!]{0,40}\b(potential|income|revenue|profit|demand|value)\b/i,
       /\b(ideas|ways)\b[^.?!]{0,20}\b(to|for)\b[^.?!]{0,20}\b(make|earn|monetis|monetiz|start)\w*/i,
     ],

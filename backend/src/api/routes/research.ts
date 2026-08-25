@@ -31,6 +31,7 @@ import {
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
+import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
   buildCreditChargeContextForRun,
@@ -965,6 +966,9 @@ router.post('/:id/cancel', async (req, res, next) => {
       return;
     }
     if (status === 'queued') {
+      // Before the job is removed — the queued run's credit context lives on
+      // the job, and removing it first would take the hold id with it.
+      await releaseHoldForCancelledRun(req.params.id);
       const job = await researchQueue.getJob(req.params.id);
       if (job) {
         await job.remove();
@@ -986,6 +990,7 @@ router.post('/:id/cancel', async (req, res, next) => {
     // status", which meant the one state a user is most likely to abandon was
     // the one state they could not abandon.
     if (status === 'plan_pending_confirmation') {
+      await releaseHoldForCancelledRun(req.params.id);
       await query(
         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
         [req.params.id]

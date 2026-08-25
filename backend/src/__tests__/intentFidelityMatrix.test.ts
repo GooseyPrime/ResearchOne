@@ -424,3 +424,27 @@ describe('intent routing does not over-claim', () => {
     expect(brief.primaryIntent).toBe('investigation');
   });
 });
+
+describe('an explicit operation wins over an incidental noun', () => {
+  it.each([
+    ['Compare investment opportunities A and B', 'comparative'],
+    ['Which investment opportunity should we take?', 'recommendation'],
+  ])('routes %s to %s, not opportunity discovery', async (prompt, expected) => {
+    // A bare `opportunit\w*` trigger hit once here and `comparative` once, and
+    // the specificity tie-break put opportunity discovery first — so an
+    // explicit comparison deterministically got a landscape report.
+    const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
+    expect(brief.primaryIntent).toBe(expected);
+  });
+
+  it('still routes a genuine discovery request', async () => {
+    for (const prompt of [
+      'Find me 20 affiliate marketing niches ranked by income potential.',
+      'Identify untapped opportunities in industrial heat recovery',
+      'Where are the opportunity gaps in small-business payroll software?',
+    ]) {
+      const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
+      expect(brief.primaryIntent).toBe('opportunity_discovery');
+    }
+  });
+});

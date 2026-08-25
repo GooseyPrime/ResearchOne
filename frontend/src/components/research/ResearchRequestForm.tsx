@@ -114,10 +114,18 @@ export default function ResearchRequestForm() {
   const addNotification = useStore((s) => s.addNotification);
 
   const subscriptionQuery = useBillingSubscriptionQuery();
-  const tierResolved = !subscriptionQuery.isLoading;
+  // A failed lookup is UNKNOWN, not free.
+  //
+  // `!isLoading` alone marked the tier resolved when `/billing/subscription`
+  // errored with nothing cached, and the fallback is `free_demo` — so a paid
+  // user whose lookup failed lost saved profiles, lost the objectives their
+  // tier allows, and had any objective they had already chosen reset to
+  // automatic by the effect below (Codex P2, PR #229).
+  const tierResolved = !subscriptionQuery.isLoading && !(subscriptionQuery.isError && !subscriptionQuery.data);
   const userTier: EntitlementTierKey | null = tierResolved
     ? ((effectiveEntitlementTier(subscriptionQuery.data) ?? 'free_demo') as EntitlementTierKey)
     : null;
+  const tierLookupFailed = Boolean(subscriptionQuery.isError && !subscriptionQuery.data);
   const tierAllowsSavedProfiles = Boolean(userTier && userTier !== 'free_demo');
   const objectiveOptions = useMemo(() => objectivesForTier(userTier), [userTier]);
 
@@ -177,10 +185,18 @@ export default function ResearchRequestForm() {
 
   // Cancelling at the plan gate comes back here as `?prefill=<runId>`, because
   // cancel means "let me edit it", not "throw away what I typed".
+  //
+  // Every prefillable field is reset to its default FIRST, then the run's own
+  // values applied. Assigning only the fields the run happens to carry left
+  // the rest of the previous request in place, so a second `?prefill=` on a
+  // still-mounted form could submit one request carrying another request's
+  // objective, citation style, formats, word target or model overrides
+  // (Codex P2, PR #229).
   useRequestPrefillFromRun((run) => {
     const slice = researchRequestFormFromRun(run);
     const { supplemental: body, challengePerspective: perspective } =
       splitSupplementalAndPerspective(slice.supplemental);
+
     setQuery(slice.query);
     setSupplemental(body);
     setChallengePerspective(perspective);
@@ -189,18 +205,24 @@ export default function ResearchRequestForm() {
     setSiteCrawlEnabled(false);
     setCrawlLayers(2);
     setFilterTags(slice.filterTags);
-    if (slice.researchObjective) setObjective(slice.researchObjective);
-    if (slice.citationStyle) setCitationStyle(slice.citationStyle);
-    if (slice.requestedFormats?.length) setReportFormats(slice.requestedFormats);
+
+    setObjective(slice.researchObjective ?? 'AUTO');
+    setCitationStyle(slice.citationStyle ?? 'apa');
+    setReportFormats(slice.requestedFormats?.length ? slice.requestedFormats : ['automatic']);
     if (typeof slice.targetWordCount === 'number') {
       setReportLengthPreset('custom');
       setReportLengthCustom(slice.targetWordCount);
+    } else {
+      setReportLengthPreset('standard');
+      setReportLengthCustom(2200);
     }
+
     const overrides = run.model_overrides as Record<string, ModelRow> | undefined;
-    if (overrides && typeof overrides === 'object' && Object.keys(overrides).length > 0) {
-      setModelRows(overrides);
-      setModelsOpen(true);
-    }
+    const hasOverrides =
+      Boolean(overrides) && typeof overrides === 'object' && Object.keys(overrides!).length > 0;
+    setModelRows(hasOverrides ? overrides! : {});
+    setModelsOpen(hasOverrides);
+
     // Anything the user had opened, they will want open again.
     setSourcesOpen(Boolean(body.trim()) || slice.supplementalUrlLines.length > 0 || Boolean(slice.filterTags));
     setOutputOpen(Boolean(slice.requestedFormats?.length) || typeof slice.targetWordCount === 'number');
@@ -306,6 +328,13 @@ export default function ResearchRequestForm() {
           submit();
         }}
       >
+        {tierLookupFailed ? (
+          <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+            We could not check your plan just now, so options that depend on it are hidden. Your
+            request will still run — reload if you need them.
+          </p>
+        ) : null}
+
         <div>
           <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
             <FlaskConical size={18} className="text-accent" />

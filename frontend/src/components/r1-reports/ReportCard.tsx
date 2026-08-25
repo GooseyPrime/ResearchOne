@@ -33,7 +33,7 @@ export function ReportCard({ report, index = 0 }: ReportCardProps) {
             tierMeta.color === 'cyan' ? 'r1-tag-cyan' :
             tierMeta.color === 'green' ? 'r1-tag-green' :
             tierMeta.color === 'amber' ? 'r1-tag-amber' :
-            tierMeta.color === 'red' ? 'border-r1-skeptic/50 text-r1-skeptic' : ''}`
+            tierMeta.color === 'red' ? 'border-r1-challenge/50 text-r1-challenge' : ''}`
             }>
               {tierMeta.label.toUpperCase()}
             </span>

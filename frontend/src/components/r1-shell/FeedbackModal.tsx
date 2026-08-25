@@ -196,9 +196,9 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
                   {/* Error message */}
                   {status === 'error' && errorMessage &&
-              <div data-ev-id="ev_b648c1bc1a" className="flex items-center gap-2 px-3 py-2 bg-r1-red-margin border border-r1-skeptic/30 rounded">
-                      <AlertCircle className="w-4 h-4 text-r1-skeptic" />
-                      <span data-ev-id="ev_0169b7bf13" className="text-xs text-r1-skeptic">{errorMessage}</span>
+              <div data-ev-id="ev_b648c1bc1a" className="flex items-center gap-2 px-3 py-2 bg-r1-red-margin border border-r1-challenge/30 rounded">
+                      <AlertCircle className="w-4 h-4 text-r1-challenge" />
+                      <span data-ev-id="ev_0169b7bf13" className="text-xs text-r1-challenge">{errorMessage}</span>
                     </div>
               }
 

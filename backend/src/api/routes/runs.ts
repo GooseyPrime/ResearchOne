@@ -316,7 +316,11 @@ router.post('/:runId/plan/cancel', async (req: Request, res: Response, next: Nex
       run.resume_job_payload && typeof run.resume_job_payload === 'object' && !Array.isArray(run.resume_job_payload)
         ? (run.resume_job_payload as ResearchJobData)
         : null;
-    if (payload?.creditChargeContext?.type === 'wallet' && payload.creditChargeContext.holdId && payload.creditChargeContext.userId) {
+    // Keyed on the hold, not on `type === 'wallet'`: a subscription run that
+    // bought a paid add-on also places a hold for the surcharge, and the old
+    // condition stranded exactly those. Same defect as the cancel route's
+    // missing release, so it is fixed in both places rather than one.
+    if (payload?.creditChargeContext?.holdId && payload.creditChargeContext.userId) {
       try {
         await releaseHold(payload.creditChargeContext.holdId, payload.creditChargeContext.userId);
       } catch (relErr) {

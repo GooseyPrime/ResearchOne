@@ -61,14 +61,14 @@ export function MethodologyPipeline() {
                 }}
                 className={`relative p-4 lg:p-5 rounded-lg border transition-all duration-250 ${
                 isSkeptic ?
-                'bg-r1-red-margin border-r1-skeptic/40 hover:border-r1-skeptic/60 ring-1 ring-r1-skeptic/20 col-span-1 sm:col-span-2 lg:col-span-1' :
+                'bg-r1-red-margin border-r1-challenge/40 hover:border-r1-challenge/60 ring-1 ring-r1-challenge/20 col-span-1 sm:col-span-2 lg:col-span-1' :
                 'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
                 }>
 
                 {/* Stage number and icon */}
                 <div data-ev-id="ev_250f535ade" className="flex items-center gap-3 mb-3">
                   <span data-ev-id="ev_656687c9b3" className={`font-mono text-xs font-medium ${
-                  isSkeptic ? 'text-r1-skeptic' : 'text-r1-muted'}`
+                  isSkeptic ? 'text-r1-challenge' : 'text-r1-muted'}`
                   }>
                     {stageNumber}
                   </span>
@@ -81,7 +81,7 @@ export function MethodologyPipeline() {
                   }>
                     <Icon className={`w-4 h-4 ${
                     isSkeptic ?
-                    'text-r1-skeptic' :
+                    'text-r1-challenge' :
                     index < 5 ?
                     'text-r1-cyan' :
                     'text-r1-amber'}`
@@ -91,7 +91,7 @@ export function MethodologyPipeline() {
                 
                 {/* Stage name */}
                 <h3 data-ev-id="ev_76a40884b7" className={`text-sm font-semibold mb-1.5 ${
-                isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
+                isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
                 }>
                   {stage.name}
                 </h3>
@@ -104,7 +104,7 @@ export function MethodologyPipeline() {
                 {/* Skeptic badge */}
                 {isSkeptic &&
                 <div data-ev-id="ev_23492da6c8" className="absolute -top-2 -right-2">
-                    <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-skeptic/50 text-r1-skeptic bg-r1-canvas">
+                    <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-challenge/50 text-r1-challenge bg-r1-canvas">
                       CHALLENGE
                     </span>
                   </div>

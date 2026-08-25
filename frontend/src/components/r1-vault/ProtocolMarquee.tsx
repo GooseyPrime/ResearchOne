@@ -57,7 +57,7 @@ export function ProtocolMarquee() {
             key={`${label}-${i}`}
             className={`inline-flex items-center gap-3 px-4 py-2 font-mono text-xs tracking-wider ${
             isChallenge ?
-            'text-r1-skeptic' :
+            'text-r1-challenge' :
             isOperational ?
             'text-r1-green' :
             'text-r1-muted'}`
@@ -66,7 +66,7 @@ export function ProtocolMarquee() {
               <span data-ev-id="ev_8af012abfc"
               className={`w-1.5 h-1.5 rounded-full ${
               isChallenge ?
-              'bg-r1-skeptic' :
+              'bg-r1-challenge' :
               isOperational ?
               'bg-r1-green animate-pulse' :
               'bg-r1-cyan'}`

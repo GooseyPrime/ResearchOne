@@ -83,7 +83,12 @@ export default {
           green: '#2ECC71',
           'green-dim': '#2ECC7180',
           'blue-rule': '#8CABD914',
-          skeptic: '#FF6B6B',
+          // Renamed from `skeptic`. The operator's instruction is that the
+          // word is not one the product says, and a Tier A page carrying
+          // `text-r1-skeptic` fails the jargon gate however invisible the
+          // class name is to a reader. A gate you have to argue with is worse
+          // than one you satisfy.
+          challenge: '#FF6B6B',
           verified: '#4ECDC4',
         },
       },
