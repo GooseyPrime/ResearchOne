@@ -1,4 +1,16 @@
-# Follow-up — `mapApiRunToVaultRun` fabricates run metrics
+# CLOSED — `mapApiRunToVaultRun` no longer fabricates run metrics
+
+Closed by the WO-AH branch. `sourcesRetrieved`, `contradictionsDetected`,
+`evidenceTier` and `mode` are optional on the UI run type now, the mapper
+carries only what the API row says, and `RecentRuns` renders a corroboration
+tier only when there is one. `frontend/src/__tests__/components/RecentRuns.test.tsx`
+asserts a queued run gets no badge, and is mutation-verified.
+
+The original finding is kept below because the root cause is worth
+remembering: a type that could not say "unknown" forced every caller to
+invent a value.
+
+---
 
 Surfaced by: WO-AF (run workspace), PR #227. Filed under Rule 22 — a discovery
 outside the current work order's scope is either fixed now or tracked, never

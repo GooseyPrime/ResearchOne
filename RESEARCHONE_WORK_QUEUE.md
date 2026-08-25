@@ -182,11 +182,11 @@ Recorded so the findings are not lost:
 
 ---
 
-## P3 — `mapApiRunToVaultRun` fabricates run metrics
+## P3 — `mapApiRunToVaultRun` fabricates run metrics — **DONE**
 
-`docs/FOLLOW-UP_fabricated-run-metrics.md`. Hardcodes `sourcesRetrieved: 0`,
-`contradictionsDetected: 0`, `evidenceTier: 'supported'`. Fixed on the run
-workspace; still live for its other callers.
+The fields are optional on the UI run type now, so "unknown" is sayable and the
+mapper stops inventing `evidenceTier: 'supported'` for runs that have done
+nothing. `RecentRuns` badges a corroboration tier only when there is one.
 
 ---
 
