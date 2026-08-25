@@ -55,9 +55,10 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
 
   const skepticRaw = (profile.skepticMode ?? profile.skeptic_mode ?? 'off') as string;
   const steelmanRaw = (profile.steelmanMode ?? profile.steelman_mode ?? 'off') as string;
-  const addons = Array.isArray(payload.addons) ? payload.addons : [];
-  const hasAdversarialTwin = addons.includes('adversarial_twin');
-  const effectiveSkepticRaw = skepticRaw === 'off' && hasAdversarialTwin ? 'gate' : skepticRaw;
+  // The Devil's Advocate add-on used to upgrade a run whose profile had the
+  // challenge pass switched off. Every run runs it now and nothing is bought,
+  // so the raw mode from the plan is the mode (WO-AH).
+  const effectiveSkepticRaw = skepticRaw;
   const displayName =
    typeof profile.name === 'string'
      ? profile.name

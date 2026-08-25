@@ -36,12 +36,6 @@ const ADDON_COSTS: Record<string, AddonCostSpec> = {
     eligibilityFeature: 'livingReportsIncluded',
     waiveWhenIncluded: 'livingReportsIncluded',
   },
-  adversarial_twin: {
-    costCents: 500,
-    /** Purchasable per-run add-on on Pro+ (wallet surcharge); not tied to provenance ledger tier flag. */
-    eligibilityFeature: 'deepResearchAccess',
-    waiveWhenIncluded: 'adversarialTwinIncluded',
-  },
   provenance_ledger: {
     costCents: 300,
     eligibilityFeature: 'provenanceLedgerIncluded',

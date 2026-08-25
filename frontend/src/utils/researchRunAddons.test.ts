@@ -8,15 +8,15 @@ import {
 
 describe('researchRunAddons', () => {
   it('parses comma-separated addons from query param', () => {
-    expect(parseAddonsFromSearchParam('adversarial_twin,parallel_search')).toEqual([
-      'adversarial_twin',
+    expect(parseAddonsFromSearchParam('smart_citations,parallel_search')).toEqual([
+      'smart_citations',
       'parallel_search',
     ]);
   });
 
   it('ignores unknown keys', () => {
-    expect(parseAddonsFromSearchParam('adversarial_twin,living_reports')).toEqual([
-      'adversarial_twin',
+    expect(parseAddonsFromSearchParam('smart_citations,living_reports')).toEqual([
+      'smart_citations',
     ]);
   });
 
@@ -30,5 +30,13 @@ describe('researchRunAddons', () => {
     expect(
       filterAddonsToCatalogKeys(['parallel_search', 'nope'], RESEARCH_RUN_ADDON_CATALOG_KEYS),
     ).toEqual(['parallel_search']);
+  });
+
+  it('drops the removed Devil\u2019s Advocate key from an old deep link (WO-AH)', () => {
+    // Add-ons pages and emails may still carry `?addons=adversarial_twin`.
+    expect(parseAddonsFromSearchParam('adversarial_twin')).toEqual([]);
+    expect(parseAddonsFromSearchParam('adversarial_twin,parallel_search')).toEqual([
+      'parallel_search',
+    ]);
   });
 });

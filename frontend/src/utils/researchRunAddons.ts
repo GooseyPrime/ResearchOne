@@ -2,7 +2,6 @@
 export const RESEARCH_ADDONS_QUERY_KEY = 'addons';
 
 export const RESEARCH_RUN_ADDON_CATALOG_KEYS = new Set([
-  'adversarial_twin',
   'parallel_search',
   'parallel_extract',
   'smart_citations',

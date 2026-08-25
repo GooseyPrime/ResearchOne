@@ -79,7 +79,6 @@ import {
 } from '../planning/orchestrationRuntime';
 import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
 import {
-  applyAdversarialTwinToSkepticMode,
   buildRunAddonPipelineEffects,
   resolveRunAddons,
 } from './runAddons';
@@ -1007,10 +1006,7 @@ async function runResearchJobInner(
   const runStartedAt = Date.now();
   const phaseStartTimes: Record<string, number> = {};
   const phaseDurations: Record<string, number> = {};
-  const orchProfile = applyAdversarialTwinToSkepticMode(
-    resolveOrchestrationProfileFromJob(data),
-    runAddons
-  );
+  const orchProfile = resolveOrchestrationProfileFromJob(data);
   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
   const sourceClassesFromPlan =
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
@@ -1963,8 +1959,7 @@ async function runResearchJobInner(
     // not one to preserve.
     //
     // The stage check stays. It is not redundant: the profile a run executes is
-    // the one returned by `applyAdversarialTwinToSkepticMode`, and a future
-    // add-on or runtime override could still alter the stage list. A guard that
+    // a runtime override could still alter the stage list, and a guard that
     // is currently always true is cheaper than one that is missing when it stops
     // being true.
     // ────────────────────────────────────────────────────────────────
