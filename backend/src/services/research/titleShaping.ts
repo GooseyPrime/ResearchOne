@@ -160,6 +160,15 @@ export function deriveRunDisplayTitle(summary: string | null | undefined): strin
   const flattened = summary.replace(/\s+/g, ' ').trim();
   if (!flattened) return null;
 
-  const shaped = trimTitle(stripHeadingDecoration(firstSentence(flattened)));
+  // Strip the wrappers BEFORE looking for a sentence boundary.
+  //
+  // This ran `firstSentence` first, so a summary wrapped in emphasis or quotes
+  // — `**Compares EU and US pathways. Both are contested.**` — had its boundary
+  // search performed against a string whose first sentence still carried an
+  // opening `**`, and the closing wrapper was then orphaned on a fragment that
+  // no longer ended the string. Decoration has to come off before the text is
+  // cut, not after (Codex, post-merge review of #227).
+  const undecorated = stripHeadingDecoration(flattened);
+  const shaped = trimTitle(stripHeadingDecoration(firstSentence(undecorated)));
   return shaped || null;
 }

@@ -4,7 +4,7 @@ const MODES = [
     bestFor: 'Contested questions where sources are mixed',
     runTime: '8–15 min',
     overlay: 'Balanced planner; tier-weighted report writer',
-    skepticIntensity: 'Standard' as const,
+    challengeDepth: 'Standard' as const,
     outputEmphasis: 'Tiered source summary',
   },
   {
@@ -12,7 +12,7 @@ const MODES = [
     bestFor: 'Tracking incentives, networks, narrative drift',
     runTime: '12–20 min',
     overlay: 'Actor-graph planner; timeline retriever',
-    skepticIntensity: 'Elevated' as const,
+    challengeDepth: 'Elevated' as const,
     outputEmphasis: 'Timeline + actor map',
   },
   {
@@ -20,7 +20,7 @@ const MODES = [
     bestFor: 'Mapping prior art and novelty',
     runTime: '10–18 min',
     overlay: 'Prior-art retriever; mechanism analyzer',
-    skepticIntensity: 'Standard' as const,
+    challengeDepth: 'Standard' as const,
     outputEmphasis: 'Gap analysis + novelty matrix',
   },
   {
@@ -28,7 +28,7 @@ const MODES = [
     bestFor: 'Mechanism → implementation paths',
     runTime: '10–15 min',
     overlay: 'Mechanism-first reasoner',
-    skepticIntensity: 'Standard' as const,
+    challengeDepth: 'Standard' as const,
     outputEmphasis: 'Application hypotheses',
   },
   {
@@ -36,7 +36,7 @@ const MODES = [
     bestFor: 'Are these signals related?',
     runTime: '10–18 min',
     overlay: 'Correlation planner; contradiction-preserving report compiler',
-    skepticIntensity: 'Elevated' as const,
+    challengeDepth: 'Elevated' as const,
     outputEmphasis: 'Hypothesis ranking with conflicts',
   },
 ] as const;
@@ -66,11 +66,11 @@ export default function ModeMatrix() {
                 <td className="px-4 py-3 text-r1-text-muted">{row.overlay}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    row.skepticIntensity === 'Elevated'
+                    row.challengeDepth === 'Elevated'
                       ? 'bg-tier-strong_evidence/25 text-sky-200'
                       : 'bg-r1-text-muted/10 text-r1-text-muted'
                   }`}>
-                    {row.skepticIntensity}
+                    {row.challengeDepth}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-r1-text-muted">{row.outputEmphasis}</td>

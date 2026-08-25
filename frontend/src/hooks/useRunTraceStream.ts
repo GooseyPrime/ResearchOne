@@ -92,8 +92,17 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
 
   const ingest = useCallback((incoming: readonly ResearchProgressEvent[]) => {
     if (incoming.length === 0) return;
+    // Merge unbounded, sort, THEN keep the newest N.
+    //
+    // This read `sortEventsChronological(mergeTraceEvents(prev, incoming, MAX))`,
+    // which slices in MERGE order — arrival order — before anything is sorted.
+    // An event that arrives late but belongs earlier could therefore evict a
+    // genuinely newer event, and the window's contents depended on delivery
+    // timing rather than on time (Codex, post-merge review of #227).
     setTraceEvents((prev) =>
-      sortEventsChronological(mergeTraceEvents(prev, incoming, RUN_TRACE_MAX_EVENTS))
+      sortEventsChronological(mergeTraceEvents(prev, incoming, Number.MAX_SAFE_INTEGER)).slice(
+        -RUN_TRACE_MAX_EVENTS
+      )
     );
   }, []);
 

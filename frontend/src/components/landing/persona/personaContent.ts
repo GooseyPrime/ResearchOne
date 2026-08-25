@@ -14,7 +14,7 @@
  *
  * Per Master Brief: the four persona variants below were selected
  * because they are the four buyer tribes where ResearchOne wins on
- * structural differentiators no incumbent can match (Skeptic agent,
+ * structural differentiators no incumbent can match (the challenge pass,
  * uncensored open-weight reasoning, contradiction-as-data,
  * post-publication revision).
  */
@@ -60,7 +60,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   // ──────────────────────────────────────────────────────────────
   osint: {
     eyebrow: 'For investigative work',
-    headline: 'Adversarial checking for stories that don\u2019t survive consensus.',
+    headline: 'Built to challenge stories that don\u2019t survive consensus.',
     subhead:
       'A dedicated challenge pass. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',

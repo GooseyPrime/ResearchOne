@@ -100,7 +100,7 @@ export interface Claim {
   confidence: number; // 0-1
   citations: Citation[];
   contradictions?: Contradiction[];
-  skepticNotes?: string[];
+  challengeNotes?: string[];
 }
 
 export interface Citation {

@@ -19,7 +19,7 @@ describe('HeroPipelineVisual', () => {
       'Retriever',
       'Retriever Analysis',
       'Reasoner',
-      'Skeptic',
+      'Challenge',
       'Drafting',
       'Verifier',
       'Report',
@@ -35,7 +35,7 @@ describe('HeroPipelineVisual', () => {
     expect(html).toContain('This example ResearchOne flow has four phases');
   });
 
-  it('has aria-label on Skeptic chip', () => {
-    expect(html).toContain('Dedicated skeptic agent');
+  it('has aria-label on the challenge chip', () => {
+    expect(html).toContain('Challenge pass');
   });
 });

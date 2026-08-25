@@ -201,6 +201,30 @@ describe('useRunTraceStream', () => {
     expect(result.current.traceEvents[0].message).toBe(`Report section ${total - RUN_TRACE_MAX_EVENTS + 1}/25`);
   });
 
+  it('D2 — a late arrival cannot evict a newer event', async () => {
+    // Codex, post-merge review of #227. The window was sliced in MERGE order —
+    // arrival order — before anything was sorted, so an event that arrived late
+    // but belonged earlier could push out a genuinely newer one. What the window
+    // held depended on delivery timing rather than on time.
+    const { result } = renderHook(() => useRunTraceStream(RUN_ID), { wrapper });
+    await waitFor(() => expect(result.current.run).not.toBeNull());
+
+    const at = (n: number) => new Date(Date.UTC(2026, 7, 23, 16, 0, 0) + n * 1000).toISOString();
+
+    act(() => {
+      // Fill the window with the NEWEST events first...
+      for (let n = RUN_TRACE_MAX_EVENTS; n >= 1; n -= 1) emit(evt(n, at(n)));
+      // ...then deliver one that is older than everything already held.
+      emit(evt(0, at(0)));
+    });
+
+    expect(result.current.traceEvents).toHaveLength(RUN_TRACE_MAX_EVENTS);
+    const messages = result.current.traceEvents.map((e) => e.message);
+    // The newest event must survive; the oldest is the one that goes.
+    expect(messages).toContain(`Report section ${RUN_TRACE_MAX_EVENTS}/25`);
+    expect(messages).not.toContain('Report section 0/25');
+  });
+
   it('E — a row with no persisted events does not accumulate a placeholder per poll', async () => {
     // The defect this would have imported from useAttachResearchRun: its
     // fallback event stamped `new Date().toISOString()`, and the timestamp is

@@ -20,7 +20,7 @@ describe('ResearchEngineModeToggle', () => {
     expect(screen.getByText('Standard Research')).toBeTruthy();
     expect(screen.getByText(/Fast, multi-source research/)).toBeTruthy();
     expect(screen.getByText('Deep Research')).toBeTruthy();
-    expect(screen.getByText(/skeptic step that argues against the draft/)).toBeTruthy();
+    expect(screen.getByText(/challenge step that argues against the draft/)).toBeTruthy();
   });
 
   it('shows Pro plan required hint when deep is locked', () => {

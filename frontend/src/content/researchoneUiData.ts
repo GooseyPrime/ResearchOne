@@ -393,7 +393,7 @@ Significant contradictions exist in stakeholder assessments of enforcement effec
       severity: 'moderate' as const,
     },
   ],
-  skepticNotes: [
+  challengeNotes: [
     'Limited longitudinal data on enforcement outcomes - most frameworks are less than 2 years old',
     'Industry-funded studies may exhibit bias toward voluntary approaches',
     'Cross-jurisdictional comparison complicated by definitional differences in "AI system"',

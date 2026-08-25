@@ -1,6 +1,6 @@
 /**
  * AnimatedProcessFlow - Clean pipeline visualization
- * Data flows through 9 stages, skeptic stage highlighted
+ * Data flows through 9 stages, the challenge stage highlighted
  */
 
 import { useEffect, useState } from 'react';
