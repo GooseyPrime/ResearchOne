@@ -2,7 +2,7 @@ export const SKEPTIC_PERSONA_OPTIONS = [
   { id: 'fda', label: 'FDA Compliance Officer', description: 'Regulatory scrutiny focus' },
   { id: 'peer', label: 'Hostile Peer Reviewer', description: 'Academic rigor challenge' },
   { id: 'defense', label: 'Defense Attorney', description: 'Adversarial cross-examination' },
-  { id: 'investor', label: 'Skeptical Investor', description: 'Due diligence perspective' },
+  { id: 'investor', label: 'Due-diligence Investor', description: 'Due diligence perspective' },
   { id: 'journalist', label: 'Investigative Journalist', description: 'Source verification focus' },
   { id: 'custom', label: 'Custom Persona', description: 'Define your own adversary' },
 ] as const;

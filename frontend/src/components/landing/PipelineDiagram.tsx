@@ -4,7 +4,7 @@ const STAGES = [
   'Retriever',
   'Analysis',
   'Reasoner',
-  'Skeptic',
+  'Challenge',
   'Synthesizer',
   'Verifier',
   'Report',

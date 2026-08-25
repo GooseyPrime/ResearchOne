@@ -177,7 +177,7 @@ export default function AnimatedPipelineHero({
           The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
           and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
           Retriever Analysis stages. Phase three, Reason and Verify, includes the
-          Reasoner and Skeptic stages when additional challenge checking is needed.
+          Reasoner and Challenge stages when additional checking is needed.
           Phase four, Write and Cite, includes
           the Drafting, Verifier, Report, and Recordkeeping stages.
         </p>
@@ -234,7 +234,7 @@ export default function AnimatedPipelineHero({
                       color: '#E0E0E0',
                       boxShadow: isSkeptic ? `0 0 12px ${palette.skepticRing}55` : 'none',
                     }}
-                    aria-label={isSkeptic ? 'Dedicated skeptic check' : stage.label}
+                    aria-label={isSkeptic ? 'Challenge pass' : stage.label}
                   >
                     {stage.label}
                   </span>

@@ -942,16 +942,34 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
 // POST /api/research/:id/cancel — cancel queued or cooperatively stop running
 router.post('/:id/cancel', async (req, res, next) => {
   try {
-    const rows = await query<{ id: string; status: string }>(
-      `SELECT id, status FROM research_runs WHERE id=$1`,
-      [req.params.id]
-    );
+    // Scoped to the caller. This read was `WHERE id=$1` with no ownership
+    // filter, so any signed-in user who knew or guessed a run id could cancel
+    // someone else's research — including a run mid-execution. Nothing in the
+    // UI reached this endpoint, which is presumably why it went unnoticed; WO-AH
+    // puts a Cancel button on the run workspace, so it is fixed in the same
+    // change rather than exposed as-is.
+    //
+    // A run the caller does not own is 404, not 403: an id that is not theirs
+    // should not be confirmable as existing.
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+
+    let rows: Array<{ id: string; status: string }>;
+    try {
+      rows = await query<{ id: string; status: string }>(
+        `SELECT id, status FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      rejectUnscopedReadOnScopeError(scopeErr, 'POST /api/research/:id/cancel');
+    }
+
     if (rows.length === 0) {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
     const { status } = rows[0];
-    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+    if (status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'aborted') {
       res.status(400).json({ error: `Cannot cancel run in status ${status}` });
       return;
     }
@@ -970,6 +988,18 @@ router.post('/:id/cancel', async (req, res, next) => {
     if (status === 'running') {
       await markRunCancelled(req.params.id);
       res.json({ ok: true, status: 'cancellation_requested' });
+      return;
+    }
+    // A run parked at the plan gate has no queue job and is not executing, so it
+    // cancels like a queued one. It used to fall through to "Unexpected run
+    // status", which meant the one state a user is most likely to abandon was
+    // the one state they could not abandon.
+    if (status === 'plan_pending_confirmation') {
+      await query(
+        `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
+        [req.params.id]
+      );
+      res.json({ ok: true, status: 'cancelled' });
       return;
     }
     res.status(400).json({ error: 'Unexpected run status' });

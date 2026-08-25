@@ -448,7 +448,7 @@ export default function PlanConfirmationPanel({
           ) : null}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
             <span>
-              <span className="text-slate-500">Skeptic:</span> {posture.skepticLabel}
+              <span className="text-slate-500">Challenge:</span> {posture.skepticLabel}
             </span>
             <span>
               <span className="text-slate-500">Formulation enhancement:</span> {posture.steelmanLabel}

@@ -41,7 +41,7 @@ const MODES = [
   },
 ] as const;
 
-const COLUMNS = ['Mode', 'Best for', 'Typical run time', 'Mode-specific overlay', 'Skeptic intensity', 'Output emphasis'] as const;
+const COLUMNS = ['Mode', 'Best for', 'Typical run time', 'Mode-specific overlay', 'Challenge depth', 'Output emphasis'] as const;
 
 export default function ModeMatrix() {
   return (

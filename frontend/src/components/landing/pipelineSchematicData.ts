@@ -77,8 +77,8 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
   },
   {
     index: 7,
-    stageName: 'Skeptic Pass',
-    agent: 'Skeptic',
+    stageName: 'Challenge Pass',
+    agent: 'Challenge',
     agentKind: 'skeptic',
     input: 'Draft synthesis',
     output: 'Counter-claims + preserved disagreements',

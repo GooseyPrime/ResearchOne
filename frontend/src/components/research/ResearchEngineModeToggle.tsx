@@ -14,7 +14,7 @@ const MODE_COPY: Record<
   deep: {
     title: 'Deep Research',
     description:
-      'Full multi-stage pipeline with research types, longer reports, and a skeptic step that argues against the draft to catch weak claims.',
+      'Full multi-stage pipeline with research types, longer reports, and a challenge step that argues against the draft to catch weak claims.',
   },
 };
 

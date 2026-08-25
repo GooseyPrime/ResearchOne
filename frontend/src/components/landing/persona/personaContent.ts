@@ -60,9 +60,9 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
   // ──────────────────────────────────────────────────────────────
   osint: {
     eyebrow: 'For investigative work',
-    headline: 'Skeptic reasoning for stories that don\u2019t survive consensus.',
+    headline: 'Adversarial checking for stories that don\u2019t survive consensus.',
     subhead:
-      'A dedicated Skeptic agent. Contradictions preserved as data, not flattened to a single answer. ' +
+      'A dedicated challenge pass. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',
     ctas: [
       { label: 'See the Investigative mode', to: '/sample-report?topic=investigative', variant: 'primary' },

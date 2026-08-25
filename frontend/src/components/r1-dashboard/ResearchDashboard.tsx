@@ -68,7 +68,7 @@ export function ResearchDashboard() {
     { id: 'fda', label: 'FDA Compliance Officer', description: 'Regulatory scrutiny focus' },
     { id: 'peer', label: 'Hostile Peer Reviewer', description: 'Academic rigor challenge' },
     { id: 'defense', label: 'Defense Attorney', description: 'Adversarial cross-examination' },
-    { id: 'investor', label: 'Skeptical Investor', description: 'Due diligence perspective' },
+    { id: 'investor', label: 'Due-diligence Investor', description: 'Due diligence perspective' },
     { id: 'journalist', label: 'Investigative Journalist', description: 'Source verification focus' },
     { id: 'custom', label: 'Custom Persona', description: 'Define your own adversary' },
   ];
@@ -193,7 +193,7 @@ export function ResearchDashboard() {
                   className="w-full flex items-center justify-between px-4 py-3 bg-r1-panel-lift border border-r1-border rounded-lg text-left hover:border-r1-border-strong transition-colors r1-focus-ring"
                 >
                   <span data-ev-id="ev_3e6706cd03" className={skepticPersona ? 'text-r1-text' : 'text-r1-muted'}>
-                    {skepticPersona || 'Select adversarial persona (optional)'}
+                    {skepticPersona || 'Select a challenge perspective (optional)'}
                   </span>
                   <ChevronDown
                     className={`w-4 h-4 text-r1-muted transition-transform ${isPersonaDropdownOpen ? 'rotate-180' : ''}`}

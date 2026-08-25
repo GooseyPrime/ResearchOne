@@ -13,7 +13,7 @@ export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; descript
   synthesizer: { name: 'Report Writer', description: 'Drafts your deliverables from the confirmed plan.' },
   verifier: { name: 'Citation Verifier', description: 'Confirms every claim is supported by an accessible source.' },
   contract_auditor: { name: 'Contract Auditor', description: 'Checks that every requested deliverable was actually delivered.' },
-  skeptic: { name: 'Skeptic', description: 'Challenges key conclusions for high-stakes recommendations.' },
+  skeptic: { name: 'Challenge', description: 'Argues against the draft to catch weak or unsupported claims.' },
 };
 
 /**

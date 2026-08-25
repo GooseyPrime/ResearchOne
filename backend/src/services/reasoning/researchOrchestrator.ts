@@ -1968,10 +1968,10 @@ async function runResearchJobInner(
     const skepticRuns = shouldRunPipelineStage(orchProfile, 'challenge');
 
     if (!skepticRuns) {
-      await progress('challenge', 65, 'Challenge pass skipped for this run', { substep: 'stage_skipped' });
+      await progress('challenge', 65, 'Claim checking skipped for this run', { substep: 'stage_skipped' });
       skepticResult = orchestrationStubModelResult('skeptic', '');
     } else if (orchProfile.skepticMode === 'annotate') {
-      await progress('challenge', 65, 'Collecting skeptical annotations (sidebar)...', { substep: 'skeptic_annotate' });
+      await progress('challenge', 65, 'Checking the claims and noting objections...', { substep: 'skeptic_annotate' });
       skepticResult = await callRoleModel({
         role: 'skeptic',
         ...v2,
@@ -1999,7 +1999,7 @@ async function runResearchJobInner(
         snapshot: { output: skepticResult.content, annotate: true },
       });
     } else {
-      await progress('challenge', 65, 'Challenging conclusions with skeptic...', { substep: 'skeptic_started' });
+      await progress('challenge', 65, 'Arguing against the draft to find weak claims...', { substep: 'skeptic_started' });
 
       skepticResult = await callRoleModel({
         role: 'skeptic',
@@ -2027,7 +2027,7 @@ async function runResearchJobInner(
 
     const challengesForSynthesis =
       orchProfile.skepticMode === 'annotate'
-        ? 'Skeptical cross-checks were captured as structured sidebar annotations and are not inlined in this narrative.'
+        ? 'Challenge notes were captured as structured sidebar annotations and are not inlined in this narrative.'
         : skepticResult.content;
 
     // ────────────────────────────────────────────────────────────────

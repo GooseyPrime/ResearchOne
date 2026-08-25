@@ -24,7 +24,7 @@ export default function DeepResearchUpgradeModal({ onClose }: { onClose: () => v
         </div>
         <p className="mt-3 text-sm text-slate-400">
           Deep Research unlocks five research types, longer reports, citation-style control, saved setups,
-          and a selectable skeptic persona. Upgrade to Pro (or above) for full access and higher monthly
+          and a selectable challenge perspective. Upgrade to Pro (or above) for full access and higher monthly
           deep-report limits.
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-3">

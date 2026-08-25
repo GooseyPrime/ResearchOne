@@ -49,7 +49,7 @@ export default function SkepticPersonaSelector({
     <div className={clsx('relative', className)}>
       <label className="section-title block mb-2">Adversarial persona (optional)</label>
       <p className="text-xs text-slate-500 mb-2">
-        Steers the skeptic / red-team pass. Sent as supplemental context for this run only.
+        Steers the challenge pass. Sent as supplemental context for this run only.
       </p>
       <button
         type="button"

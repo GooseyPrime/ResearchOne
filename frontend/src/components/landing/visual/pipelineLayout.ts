@@ -71,7 +71,7 @@ export const PIPELINE_STAGES: readonly PipelineStage[] = [
   { id: 'retriever_analysis',  label: 'Retriever Analysis',   phase: 'retrieve',   x: 600, y: 90 },
   { id: 'reasoner',            label: 'Reasoner',             phase: 'reason',     x: 790, y: 90 },
   // Bottom row, right to left (snake reversal).
-  { id: 'skeptic',             label: 'Skeptic',              phase: 'reason',     x: 920, y: 270, emphasis: true },
+  { id: 'skeptic',             label: 'Challenge',              phase: 'reason',     x: 920, y: 270, emphasis: true },
   { id: 'synthesizer',         label: 'Drafting',             phase: 'synthesize', x: 740, y: 270 },
   { id: 'verifier',            label: 'Verifier',             phase: 'synthesize', x: 560, y: 270 },
   { id: 'report',              label: 'Report',               phase: 'synthesize', x: 380, y: 270 },

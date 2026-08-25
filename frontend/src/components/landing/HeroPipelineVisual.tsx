@@ -11,7 +11,7 @@ const PHASES = [
   },
   {
     label: 'REASON & VERIFY',
-    stages: ['Reasoner', 'Skeptic'],
+    stages: ['Reasoner', 'Challenge'],
   },
   {
     label: 'WRITE & CITE',
@@ -29,7 +29,7 @@ export default function HeroPipelineVisual() {
       <p className="sr-only">
         This example ResearchOne flow has four phases. Phase one, Plan, includes the Planner and Discovery stages.
         Phase two, Retrieve and Read, includes the Retriever and Retriever Analysis stages.
-        Phase three, Reason and Verify, includes the Reasoner and Skeptic stages when additional challenge checking
+        Phase three, Reason and Verify, includes the Reasoner and Challenge stages when additional checking
         is needed.
         Phase four, Write and Cite, includes the Drafting, Verifier, Report, and Recordkeeping stages.
       </p>
@@ -51,11 +51,11 @@ export default function HeroPipelineVisual() {
                 <span
                   key={stage}
                   className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                    stage === 'Skeptic'
+                    stage === 'Challenge'
                       ? 'animate-glow border-r1-accent bg-r1-accent/20 text-r1-text'
                       : 'border-r1-accent/30 bg-r1-accent/5 text-r1-text'
                   }`}
-                  aria-label={stage === 'Skeptic' ? 'Dedicated skeptic agent' : undefined}
+                  aria-label={stage === 'Challenge' ? 'Challenge pass' : undefined}
                 >
                   {stage}
                 </span>
@@ -77,11 +77,11 @@ export default function HeroPipelineVisual() {
                 <span
                   key={stage}
                   className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                    stage === 'Skeptic'
+                    stage === 'Challenge'
                       ? 'animate-glow border-r1-accent bg-r1-accent/20 text-r1-text'
                       : 'border-r1-accent/30 bg-r1-accent/5 text-r1-text'
                   }`}
-                  aria-label={stage === 'Skeptic' ? 'Dedicated skeptic agent' : undefined}
+                  aria-label={stage === 'Challenge' ? 'Challenge pass' : undefined}
                 >
                   {stage}
                 </span>

@@ -79,8 +79,8 @@ export const pipelineStages: PipelineStage[] = [
   },
   {
     id: 'skeptic',
-    name: 'Skeptic',
-    description: 'Dedicated skeptic check with optional critique personas that stress-test conclusions',
+    name: 'Challenge',
+    description: 'Challenge pass with optional critique perspectives that stress-test conclusions',
     isSkeptic: true,
   },
   {
@@ -108,7 +108,7 @@ export const protocolLabels = [
   'RETRIEVER',
   'QUANTITATIVE EXTRACTOR',
   'REASONER',
-  'SKEPTIC',
+  'CHALLENGE',
   'DRAFTING',
   'VERIFIER',
   'FORMATTER',
@@ -116,9 +116,9 @@ export const protocolLabels = [
 
 export const operationalPhrases = [
   'FUNDING BIAS CHECK ACTIVE',
-  'SKEPTIC PERSONA INJECTED',
+  'CHALLENGE PERSPECTIVE APPLIED',
   'CONTRADICTION PRESERVED',
-  'SKEPTIC PASS COMPLETE',
+  'CHALLENGE PASS COMPLETE',
   'REVISION LINEAGE ENABLED',
   'CITATION INTEGRITY VERIFIED',
   'SOCKET TRACE READY',
@@ -149,8 +149,8 @@ export const capabilities: Capability[] = [
   },
   {
     id: 'red-team',
-    title: 'Custom Skeptic Personas',
-    description: 'Assign specialized critique personas to the Skeptic step—FDA compliance officer, hostile peer reviewer, or defense attorney.',
+    title: 'Custom Challenge Perspectives',
+    description: 'Assign specialised critique perspectives to the challenge pass—FDA compliance officer, hostile peer reviewer, or defence attorney.',
     icon: 'UserX',
   },
   {
@@ -226,8 +226,8 @@ export const featureBlocks: FeatureBlock[] = [
   },
   {
     number: '06',
-    title: 'Dedicated Skeptic Check',
-    subtitle: 'SKEPTIC · WEAKNESS_SCAN',
+    title: 'Challenge Pass',
+    subtitle: 'CHALLENGE · WEAKNESS_SCAN',
     description: 'Optional critique personas stress-test every conclusion, exposing logical gaps and unsupported claims before publication.',
     isSkeptic: true,
   },
@@ -298,8 +298,8 @@ export const researchModes: { id: ResearchMode; label: string; description: stri
   },
   {
     id: 'adversarial',
-    label: 'Enhanced skeptic',
-    description: 'Heavier skeptic check with more thorough weakness detection',
+    label: 'Deeper challenge',
+    description: 'A heavier challenge pass with more thorough weakness detection',
   },
   {
     id: 'comprehensive',
@@ -400,7 +400,7 @@ Significant contradictions exist in stakeholder assessments of enforcement effec
   ],
   revisionHistory: [
     { version: 1, timestamp: '2024-01-15T10:30:00Z', changes: 'Initial draft generated', agent: 'Drafting' },
-    { version: 2, timestamp: '2024-01-15T11:45:00Z', changes: 'Skeptic pass completed - 3 weaknesses flagged', agent: 'Skeptic' },
+    { version: 2, timestamp: '2024-01-15T11:45:00Z', changes: 'Challenge pass completed - 3 weaknesses flagged', agent: 'Challenge' },
     { version: 3, timestamp: '2024-01-15T13:00:00Z', changes: 'Citations verified, 2 sources upgraded', agent: 'Verifier' },
     { version: 4, timestamp: '2024-01-15T14:22:00Z', changes: 'Final review and publication', agent: 'Report' },
   ],
