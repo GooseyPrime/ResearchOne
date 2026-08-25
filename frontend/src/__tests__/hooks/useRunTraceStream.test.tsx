@@ -234,7 +234,12 @@ describe('useRunTraceStream', () => {
       });
     }
 
-    expect(result.current.run?.retry_attempts).toBe(3); // the effect really re-ran
+    // `refetchQueries` resolves when the FETCH completes; the observer's state
+    // update lands in a later React commit, which is fast enough to look
+    // synchronous locally and is not on a loaded CI runner. Asserting it bare
+    // made this test flaky in exactly the environment that gates the merge —
+    // it passed here and failed on GitHub with `expected 2 to be 3`.
+    await waitFor(() => expect(result.current.run?.retry_attempts).toBe(3));
     expect(result.current.traceEvents).toHaveLength(1);
     // The guarantee: the placeholder's key is a function of the ROW, not of
     // when we happened to poll. A `new Date()` stamp mints a new key each time
