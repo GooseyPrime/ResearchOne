@@ -190,6 +190,33 @@ nothing. `RecentRuns` badges a corroboration tier only when there is one.
 
 ---
 
+## Where PR #229 stands
+
+Everything above is on `cursor/one-research-system`, in draft PR #229. CI green
+on every check.
+
+Review round 1 produced fifteen findings. Copilot fixed four itself; the other
+eleven are fixed and every thread has a reply. Four were P1 — a stranded wallet
+hold on the Cancel button this PR adds, five dollars charged for a removed
+add-on's stronger pass, and two fixes that computed the right answer and handed
+it to something that ignored it.
+
+**Do not merge until both reviewers have gone quiet and every new thread has a
+reply.** #227 was merged before the final Codex pass landed, which is how four
+defects reached `main`.
+
+### The two things waiting on the operator
+
+1. **AH-6, the deep-report quota.** Every run now reaches the pipeline that
+   used to be Deep. Either every run counts as a deep run (Student 15 → 4
+   reports a month, Pro 25 → 5), or the sub-cap stops binding and the general
+   monthly cap is the only limit. The interim is the second, in one constant,
+   `RUN_CONSUMES_DEEP_QUOTA`.
+2. **Cost accounting (WO-AG).** Parked at your instruction. Findings recorded
+   below; no cost code has been touched.
+
+---
+
 ## Standing obligations
 
 - **Rule 44** — full self-check before requesting review; add new defect themes
