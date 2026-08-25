@@ -566,13 +566,19 @@ router.get('/', async (req, res, next) => {
     const userId = req.auth?.userId ?? null;
     const orgId = req.auth?.orgId ?? null;
 
-    // `run_ref` is what a user quotes to support, so it has to reach the client.
-    // Selected separately because the application can be live before migration
-    // 055 applies; on 42703 we retry without it rather than failing the list.
+    // Columns added by later migrations, newest first. The application can be
+    // live before a migration applies, so on 42703 the newest optional column
+    // is dropped and the read retried, rather than failing the whole list.
+    //
+    // `run_ref` is what a user quotes to support and `display_title` is what
+    // every surface shows instead of the raw prompt, so both have to reach the
+    // client whenever they exist. Dropping them one at a time matters: a single
+    // combined fallback would lose `run_ref` too on a database that has 055 but
+    // not 057 — which is every database for the length of one deploy.
+    const OPTIONAL_RUN_COLUMNS = ['display_title', 'run_ref'] as const;
     const baseCols = `id, title, LEFT(query, 512) AS query, supplemental, supplemental_attachments, engine_version, research_objective, status, error_message, failed_stage, failure_meta,
                       progress_stage, progress_percent, progress_message, progress_updated_at,
                       started_at, completed_at, created_at, report_id`;
-    const colsWithRef = `${baseCols}, run_ref`;
 
     let rows: unknown[];
     try {
@@ -585,12 +591,18 @@ router.get('/', async (req, res, next) => {
         where += ` AND status=$${params.length}`;
       }
       const suffix = `FROM research_runs${where} ORDER BY created_at DESC LIMIT 50`;
-      try {
-        rows = await query(`SELECT ${colsWithRef} ${suffix}`, params);
-      } catch (refErr) {
-        if ((refErr as { code?: string })?.code !== '42703') throw refErr;
-        // Migration 055 not applied yet — the list is still useful without it.
-        rows = await query(`SELECT ${baseCols} ${suffix}`, params);
+      let optional: readonly string[] = OPTIONAL_RUN_COLUMNS;
+      for (;;) {
+        const cols = optional.length > 0 ? `${baseCols}, ${optional.join(', ')}` : baseCols;
+        try {
+          rows = await query(`SELECT ${cols} ${suffix}`, params);
+          break;
+        } catch (colErr) {
+          // Out of columns to drop, or a failure that is not a missing column:
+          // this is a real error and must surface rather than loop.
+          if ((colErr as { code?: string })?.code !== '42703' || optional.length === 0) throw colErr;
+          optional = optional.slice(1);
+        }
       }
     } catch (scopeErr) {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');

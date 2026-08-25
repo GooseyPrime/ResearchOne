@@ -85,7 +85,7 @@ export default function ResearchEasyPage() {
         researchLabel: 'Research',
         defaultStartedMessage: 'Research started — tracking detailed progress...',
       });
-      navigate(liveResearchUrl(data.runId, { engineVersion: selectedEngineVersion, focusPlan: true }));
+      navigate(liveResearchUrl(data.runId, { focusPlan: true }));
     },
     onError: (err) => {
       addNotification('error', extractApiError(err));

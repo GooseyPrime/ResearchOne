@@ -150,6 +150,11 @@ export default function Layout() {
         : false,
   });
 
+  // The store's `activeRun` is a SINGULAR primary-run hint, and the only thing
+  // that still reads it is `bugNoteRunId` below — a bug report needs one run id,
+  // not a set. `ActiveRunBadge` used to depend on it, which is why the header
+  // could only ever represent one run however many were going; it now filters
+  // the same `allRuns` list itself and keeps all of them.
   useEffect(() => {
     const runs = allRuns ?? EMPTY_RESEARCH_RUNS;
     const inFlight = runs.filter((r) =>

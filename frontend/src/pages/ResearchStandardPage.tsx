@@ -38,7 +38,7 @@ import { classifyLiveStatus, deriveRunState } from '../utils/researchLiveStatus'
 import { dossierReportUrlForRun } from '../utils/researchRunRoutes';
 import { isLiveAttachedResearchRun, researchRequestFromRun } from '../utils/researchOpenRun';
 import { useResearchPageShell } from './ResearchPageContext';
-import { mergeTraceEvents } from '../utils/traceEventWindow';
+import { mergeTraceEvents, sortEventsChronological } from '../utils/traceEventWindow';
 import { applySupplementalIngestNotifications } from '../utils/supplementalIngestNotifications';
 import FreeLifetimeQuotaBanner from '../components/billing/FreeLifetimeQuotaBanner';
 import SiteCrawlControls from '../components/research/SiteCrawlControls';
@@ -49,6 +49,8 @@ import { BILLING_SUBSCRIPTION_QUERY_KEY } from '../hooks/useBillingSubscription'
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import clsx from 'clsx';
+import { useRequestPrefillFromRun } from '../hooks/useRequestPrefillFromRun';
+import { liveResearchUrl } from '../utils/researchRunRoutes';
 
 interface ResearchFailureEvent {
   runId: string;
@@ -103,10 +105,6 @@ function normalizeEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
     message: evt.message || evt.stage || 'Update',
     timestamp: evt.timestamp || new Date().toISOString(),
   };
-}
-
-function sortEventsChronological(events: ResearchProgressEvent[]): ResearchProgressEvent[] {
-  return [...events].sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
 }
 
 export default function ResearchStandardPage() {
@@ -189,6 +187,8 @@ export default function ResearchStandardPage() {
     setShowSupplemental(Boolean(slice.supplemental.trim()) || urlLines.length > 0);
   }, []);
 
+  useRequestPrefillFromRun(applyRequestFormFromRun);
+
   const { attachRun, detachRun: detachTracking } = useResearchRunTracking({
     trackingRunId,
     setTrackingRunId,
@@ -266,23 +266,19 @@ export default function ResearchStandardPage() {
   const mutation = useMutation({
     mutationFn: startResearch,
     onSuccess: (data) => {
-      setPlanGateLocal(null);
-      const queuedEvt: ResearchProgressEvent = {
-        runId: data.runId,
-        stage: 'planning',
-        percent: 0,
-        message: 'Research queued...',
-        timestamp: new Date().toISOString(),
-      };
-      setProgress(queuedEvt);
-      setActiveRun(queuedEvt);
-      setTraceEvents([queuedEvt]);
-      void attachRun({ runId: data.runId });
       applySupplementalIngestNotifications(data.supplementalIngest, addNotification, {
         researchLabel: 'Research',
         defaultStartedMessage: 'Research started — tracking detailed progress...',
       });
       qc.invalidateQueries({ queryKey: ['research-runs'] });
+      // Hand the request off. The run proceeds in its own workspace and this
+      // page keeps NO state about it, so it is immediately ready for the next
+      // request — which is the whole point: a request page that stops being a
+      // request page the moment you use it can only ever hold one run.
+      //
+      // Notifications are global, so anything the supplemental ingest has to
+      // say still reaches the user after the navigation.
+      navigate(liveResearchUrl(data.runId));
     },
     onError: (error) => {
       addNotification('error', extractStartResearchErrorMessage(error));

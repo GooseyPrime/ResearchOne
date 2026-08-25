@@ -6,9 +6,50 @@ import { query, queryOne, withTransaction } from '../../db/pool';
 import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';
 import type { PlanPayload } from './planTypes';
 import { planSummaryFromPayload } from './planTypes';
+import { deriveRunDisplayTitle } from '../research/titleShaping';
+import { logger } from '../../utils/logger';
 
 export interface InsertGatePlanResult {
   planId: string;
+}
+
+
+/**
+ * Persist the run's human-facing title, derived from the plan just written.
+ *
+ * Server-side and once, rather than derived by each client. `research_runs.title`
+ * is the raw prompt truncated (`api/routes/research.ts`), so every surface that
+ * reached for a run's name rendered the prompt: the live run page as a bold
+ * `<h1>`, the dossier cards as headlines carrying Markdown `#`. Four consumers
+ * of one mapping deriving it four times is Rule 44 T3 by construction.
+ *
+ * Best-effort by design — a run with no `display_title` reads correctly through
+ * the `display_title -> report_title -> run_ref` fallback, so failing the plan
+ * write over a cosmetic column would trade a real outcome for a display one.
+ * "Best-effort" is not "silent", though: 42703 is the expected pre-migration-057
+ * case and is left alone, and everything else is logged (Rule 44 T8 — a job
+ * whose failure logs the same as its success has no monitoring value).
+ */
+async function writeRunDisplayTitle(runId: string, planPayload: PlanPayload): Promise<void> {
+  const title = deriveRunDisplayTitle(planPayload.topicAnalysis?.summary);
+  if (!title) return;
+  try {
+    await query(
+      `UPDATE research_runs
+          SET display_title = $2
+        WHERE id = $1::uuid
+          AND display_title IS NULL`,
+      [runId, title]
+    );
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    if (code === '42703') return; // migration 057 not applied yet
+    logger.warn('research_run_display_title_write_failed', {
+      runId,
+      code,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 export async function insertGateResearchPlan(input: {
@@ -39,6 +80,7 @@ export async function insertGateResearchPlan(input: {
     ]
   );
   if (!row?.id) throw new Error('insertGateResearchPlan: missing plan id');
+  await writeRunDisplayTitle(input.runId, input.planPayload);
   return { planId: row.id };
 }
 
