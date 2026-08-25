@@ -245,10 +245,14 @@ describe('AI-6 — a source is never titled with its own address', () => {
     expect(parsed.title).toBe('Affiliate niche benchmarks');
   });
 
-  it('knows a PDF from a page', () => {
-    expect(looksLikePdf('https://arxiv.org/pdf/2204.08880v1')).toBe(true);
-    expect(looksLikePdf('https://example.com/paper.pdf')).toBe(true);
-    expect(looksLikePdf('https://example.com/page', 'application/pdf; charset=binary')).toBe(true);
-    expect(looksLikePdf('https://example.com/page', 'text/html')).toBe(false);
+  it('knows a PDF from a page by its first bytes, not by its path', () => {
+    // `https://arxiv.org/pdf/2204.08880v1` has no extension, and
+    // `https://example.com/pdf/guide.html` has the wrong one — guessing from
+    // the path gets both of them wrong in opposite directions.
+    expect(looksLikePdf(null, Buffer.from('%PDF-1.5\n...'))).toBe(true);
+    expect(looksLikePdf('application/pdf; charset=binary')).toBe(true);
+    expect(looksLikePdf('text/html', Buffer.from('<html><body>pdf</body></html>'))).toBe(false);
+    expect(looksLikePdf(null, Buffer.from('<html>/pdf/ guide</html>'))).toBe(false);
+    expect(looksLikePdf(null)).toBe(false);
   });
 });

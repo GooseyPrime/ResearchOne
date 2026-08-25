@@ -397,3 +397,30 @@ describe('intent fidelity — the matrix covers what the product offers', () => 
     }
   });
 });
+
+describe('intent routing does not over-claim', () => {
+  // The patterns added to close the routing gaps must not swallow requests
+  // that belong somewhere else. A bare "why does X work" is an explanation.
+  it.each([
+    'Why does Postgres use MVCC instead of locking?',
+    'Why do birds migrate?',
+    'What is the difference between TCP and UDP?',
+  ])('does not turn %s into an investigation', async (prompt) => {
+    let resolved: string | null = null;
+    try {
+      resolved = (await classifyIntent(prompt, undefined, { allowFallbackByRole: {} })).primaryIntent;
+    } catch {
+      resolved = null;
+    }
+    expect(resolved).not.toBe('investigation');
+  });
+
+  it('still routes a real investigation', async () => {
+    const brief = await classifyIntent(
+      'Why did the rail modernization program fail to deliver on time?',
+      undefined,
+      { allowFallbackByRole: {} }
+    );
+    expect(brief.primaryIntent).toBe('investigation');
+  });
+});

@@ -569,14 +569,22 @@ export function parseHtmlToContent(html: string, pageUrl: string): FetchResult {
   return { content, title, canonicalUrl, metaDescription, retrievalTimestamp };
 }
 
-/** True when a URL or its content type says the body is a PDF, not a page. */
-export function looksLikePdf(url: string, contentType?: string | null): boolean {
+/**
+ * Is this body a PDF?
+ *
+ * The file's own first bytes are the only reliable answer. A first version of
+ * this guessed from the path and treated any URL containing a `/pdf/` segment
+ * as a PDF, which would have sent `https://example.com/pdf/guide.html` to the
+ * PDF extractor to fail — trading one bad ingest for another.
+ *
+ * Content type is trusted when it is explicit; the path is not consulted at
+ * all, because `https://arxiv.org/pdf/2204.08880v1` has no extension and
+ * `/pdf/guide.html` has the wrong one.
+ */
+export function looksLikePdf(contentType: string | null | undefined, body?: Buffer): boolean {
   if ((contentType ?? '').toLowerCase().includes('application/pdf')) return true;
-  try {
-    return /\.pdf$/i.test(new URL(url).pathname) || /\/pdf\//i.test(new URL(url).pathname);
-  } catch {
-    return /\.pdf($|\?)/i.test(url);
-  }
+  if (!body || body.length < 5) return false;
+  return body.subarray(0, 5).toString('latin1') === '%PDF-';
 }
 
 /**
@@ -603,7 +611,7 @@ export async function fetchUrlForIngest(url: string): Promise<FetchResult> {
   const contentType = String(head.headers?.['content-type'] ?? '');
   const buffer = Buffer.from(head.data as ArrayBuffer);
 
-  if (looksLikePdf(url, contentType)) {
+  if (looksLikePdf(contentType, buffer)) {
     const extracted = await extractPdf(buffer);
     const embeddedTitle = (extracted.metadata.title ?? '').trim();
     return {

@@ -75,7 +75,10 @@ const TAX: IntentDefinition[] = [
       // when the model was unavailable, to factual_report.
       /\binvestigat\w*/i,
       /\broot cause\b/i,
-      /\bwhy (did|does|has|have|was|were)\b/i,
+      // Deliberately NOT a bare `why (did|does)`: "why does Postgres use
+      // MVCC?" is an explanation, not an investigation, and routing it here
+      // would trade one misroute for a commoner one.
+      /\bwhy\b[^.?!]{0,60}\b(fail(ed|ure)?|collapse\w*|overr(a|u)n|over budget|went wrong|delayed|cancell?ed)\b/i,
     ],
     isMultiLayer: true,
   },

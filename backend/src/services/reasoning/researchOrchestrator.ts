@@ -2248,8 +2248,19 @@ ${generatedReport.markdown}`,
       deterministic_metrics?: Record<string, number>;
     };
     let contractAuditResult: ContractAuditResult | null = null;
+    const auditRequestedFormats = confirmedResearchBrief?.requestedFormats ?? data.requestedFormats;
     const runContractAudit = async (markdown: string): Promise<void> => {
-      if (!researchBrief || (researchBrief.requestedArtifacts.length === 0 && researchBrief.userConstraints.length === 0)) {
+      // A requested FORMAT is a contract too. Skipping the audit whenever the
+      // brief happened to extract no artifacts meant "give me a comparison
+      // table" was checked by nothing at all — the same instruct-and-do-not-
+      // check gap as the table expectation itself, one level further up.
+      const formatIsAContract = resolveTableExpectation(null, undefined, auditRequestedFormats).required;
+      if (
+        !researchBrief ||
+        (researchBrief.requestedArtifacts.length === 0 &&
+          researchBrief.userConstraints.length === 0 &&
+          !formatIsAContract)
+      ) {
         contractAuditResult = null;
         return;
       }
@@ -2271,7 +2282,7 @@ ${generatedReport.markdown}`,
         // The drafter is told to emit a table when the requested format asks
         // for one; the auditor now checks the same input, so "Comparison
         // table" is verified rather than merely requested.
-        confirmedResearchBrief?.requestedFormats ?? data.requestedFormats
+        auditRequestedFormats
       );
       const tableIssues = checkTableContract(markdown, tableExpectation);
       const tableMessages = tableIssues.map((issue) => issue.message);
