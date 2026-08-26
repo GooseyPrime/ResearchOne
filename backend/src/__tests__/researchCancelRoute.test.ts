@@ -102,7 +102,7 @@ describe('POST /api/research/:id/cancel', () => {
     expect(mocks.releaseHoldForCancelledRun).toHaveBeenCalledWith('run_1');
   });
 
-  it('does not re-read the removed job when the captured queue context is incomplete', async () => {
+  it('falls back to persisted hold context when the captured queue context is incomplete', async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     mocks.query
       .mockResolvedValueOnce([{ id: 'run_1', status: 'queued' }])
@@ -118,7 +118,7 @@ describe('POST /api/research/:id/cancel', () => {
     expect(res.body).toEqual({ ok: true, status: 'cancelled' });
     expect(remove).toHaveBeenCalled();
     expect(mocks.releaseHold).not.toHaveBeenCalled();
-    expect(mocks.releaseHoldForCancelledRun).not.toHaveBeenCalled();
+    expect(mocks.releaseHoldForCancelledRun).toHaveBeenCalledWith('run_1');
     expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_incomplete_hold_context', { runId: 'run_1' });
   });
 });
