@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   markRunCancelled: vi.fn(),
   releaseHoldForCancelledRun: vi.fn(),
   releaseHold: vi.fn(),
+  loggerWarn: vi.fn(),
 }));
 
 vi.mock('../middleware/clerkAuth', () => ({
@@ -38,6 +39,14 @@ vi.mock('../services/billing/walletReservations', () => ({
   releaseHold: mocks.releaseHold,
 }));
 
+vi.mock('../utils/logger', () => ({
+  logger: {
+    warn: mocks.loggerWarn,
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import researchRouter from '../api/routes/research';
 
 function appForTest() {
@@ -56,6 +65,7 @@ beforeEach(() => {
   mocks.markRunCancelled.mockReset();
   mocks.releaseHoldForCancelledRun.mockReset();
   mocks.releaseHold.mockReset();
+  mocks.loggerWarn.mockReset();
 });
 
 describe('POST /api/research/:id/cancel', () => {
@@ -75,5 +85,20 @@ describe('POST /api/research/:id/cancel', () => {
     expect(mocks.releaseHold).not.toHaveBeenCalled();
     expect(mocks.releaseHoldForCancelledRun).not.toHaveBeenCalled();
     expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs when a queued cancellation cannot read hold context from the queue job', async () => {
+    mocks.query
+      .mockResolvedValueOnce([{ id: 'run_1', status: 'queued' }])
+      .mockResolvedValueOnce([]);
+    mocks.getJob.mockResolvedValueOnce(null);
+    mocks.releaseHoldForCancelledRun.mockResolvedValueOnce(undefined);
+
+    const res = await request(appForTest()).post('/api/research/run_1/cancel').send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, status: 'cancelled' });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_missing_hold_context', { runId: 'run_1' });
+    expect(mocks.releaseHoldForCancelledRun).toHaveBeenCalledWith('run_1');
   });
 });

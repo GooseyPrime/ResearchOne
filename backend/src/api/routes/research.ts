@@ -995,6 +995,9 @@ router.post('/:id/cancel', async (req, res, next) => {
           });
         });
       } else {
+        if (!job) {
+          logger.warn('queued_cancel_missing_hold_context', { runId: req.params.id });
+        }
         await releaseHoldForCancelledRun(req.params.id);
       }
       await query(
