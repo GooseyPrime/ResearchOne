@@ -74,7 +74,7 @@ export default function FailedRunReportPage() {
 
   const retryMutation = useMutation({
     mutationFn: () => retryResearchRunFromFailure(runId!),
-    onSuccess: () => navigate('/app/research?engine=v2'),
+    onSuccess: () => navigate('/app/research'),
     onError: (err) => setRetryError(extractApiError(err)),
   });
 

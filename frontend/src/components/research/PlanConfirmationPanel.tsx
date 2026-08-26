@@ -331,7 +331,7 @@ export default function PlanConfirmationPanel({
       setSaveOpen(false);
       setSaveName('');
       onInvalidateSavedProfiles?.();
-      onNotify('success', 'Profile saved — select it before your next run on Deep Research.');
+      onNotify('success', 'Profile saved — select it before your next run.');
     } catch (e) {
       onNotify('error', extractApiError(e));
     } finally {

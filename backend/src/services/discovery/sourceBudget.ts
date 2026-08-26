@@ -57,3 +57,26 @@ export function resolveSourceIngestBudget(args: {
 
   return Math.min(MAX_SOURCES_PER_RUN, Math.max(configured, byLength, byItems, addon));
 }
+/**
+ * How many sources this run may actually ingest.
+ *
+ * The budget above is a FLOOR. Discovery used to compute
+ * `min(planner's request, cap)`, so a planner asking for ten sources capped a
+ * 7,000-word report at ten and the scaled budget changed nothing (Codex P1,
+ * PR #229). The planner may ask for MORE, up to the hard ceiling; what it may
+ * not do is ask for less than the deliverable needs.
+ *
+ * Lives here, next to the floor it enforces, rather than inline in the
+ * orchestrator — a test of the arithmetic that re-implements the arithmetic
+ * proves nothing.
+ */
+export function effectiveIngestCap(args: {
+  budgetFloor: number;
+  /** `max_sources_to_ingest` from the discovery plan; 0 or absent means none. */
+  plannerRequest?: number | null;
+}): number {
+  const floor = Math.min(MAX_SOURCES_PER_RUN, Math.max(0, Math.floor(args.budgetFloor)));
+  const requested = Math.max(0, Math.floor(args.plannerRequest ?? 0));
+  const ceiling = MAX_SOURCES_PER_RUN;
+  return Math.min(Math.max(requested, floor), ceiling);
+}

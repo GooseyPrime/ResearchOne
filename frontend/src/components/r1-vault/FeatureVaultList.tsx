@@ -25,7 +25,7 @@ export function FeatureVaultList() {
             }}
             className={`relative p-6 rounded-lg border transition-colors duration-250 ${
             isSkeptic ?
-            'bg-r1-red-margin border-r1-skeptic/30 hover:border-r1-skeptic/50' :
+            'bg-r1-red-margin border-r1-challenge/30 hover:border-r1-challenge/50' :
             'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
             }>
 
@@ -33,7 +33,7 @@ export function FeatureVaultList() {
             <div data-ev-id="ev_1683730318" className="flex items-start gap-4">
               <span data-ev-id="ev_9f68888c48" className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg font-mono text-lg font-semibold ${
               isSkeptic ?
-              'bg-r1-red/20 text-r1-skeptic' :
+              'bg-r1-red/20 text-r1-challenge' :
               index < 5 ?
               'bg-r1-cyan/10 text-r1-cyan' :
               'bg-r1-amber/10 text-r1-amber'}`
@@ -45,12 +45,12 @@ export function FeatureVaultList() {
                 {/* Title row */}
                 <div data-ev-id="ev_fa77225fcd" className="flex items-center gap-3 flex-wrap mb-1">
                   <h3 data-ev-id="ev_ac1257d3b7" className={`text-lg font-semibold ${
-                  isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
+                  isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
                   }>
                     {feature.title}
                   </h3>
                   {isSkeptic &&
-                  <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-skeptic/50 text-r1-skeptic">
+                  <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-challenge/50 text-r1-challenge">
                       CHALLENGE
                     </span>
                   }

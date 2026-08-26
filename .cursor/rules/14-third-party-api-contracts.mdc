@@ -84,6 +84,10 @@ When integrating a third-party **browser widget** (SheerID, BugNote, etc.):
 - ✅ `enqueueResearchResumeAfterPlan(queue, runId, confirmedPlanId)`
   (PR #141) removes stale dedupe jobs and **validates** `confirmedPlanId`
   on raced/final jobs — existence of a job id alone is not success.
+- ✅ A queued-run cancel path that refunds money must capture the job-scoped
+  credit context **before** `Job.remove()`, release the hold only after remove
+  succeeds, and fall back to cooperative cancellation when BullMQ reports the
+  job locked or already active (PR #231).
 - ✅ `isHfRepoModel(model)` disambiguates HF vs. OpenRouter and is
   imported by every caller.
 

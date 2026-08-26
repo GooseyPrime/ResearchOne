@@ -46,6 +46,61 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
  * strongest challenge mode; every run now runs the challenge pass, and how
  * strong it is is decided by the planner from the request rather than bought.
  */
+/**
+ * The removed add-on's key, kept for runs that were already paid for.
+ *
+ * A run queued before this deploy with "Devil's Advocate Review" selected
+ * carries a wallet hold that includes the $5 surcharge. `normalizeRunAddonKeys`
+ * drops the key as unknown, so the run would complete, the orchestrator would
+ * consume the hold, and the customer would have paid five dollars for a
+ * stronger pass that never ran (Codex P1, PR #229).
+ *
+ * Rather than unpick the billing, the run gets what it bought: its challenge
+ * pass is forced to the strongest setting. Delete this once no queued or
+ * plan-pending run created before the WO-AH deploy remains — it is dead the
+ * moment the last of them finishes, and it is doing nothing for every run
+ * created since.
+ */
+export const LEGACY_PAID_CHALLENGE_UPGRADE_KEY = 'adversarial_twin';
+
+/**
+ * Did this run pay for the stronger challenge pass under the old add-on?
+ *
+ * Reads the RAW values, deliberately: `normalizeRunAddonKeys` filters the key
+ * out, which is exactly why the paid upgrade went missing.
+ */
+export function paidForLegacyChallengeUpgrade(raw: unknown): boolean {
+  return Array.isArray(raw) && raw.some((item) => item === LEGACY_PAID_CHALLENGE_UPGRADE_KEY);
+}
+
+/** Force the strongest challenge pass on a profile, leaving everything else. */
+export function applyLegacyPaidChallengeUpgrade<T extends { skepticMode: 'gate' | 'annotate' }>(
+  profile: T
+): T {
+  return profile.skepticMode === 'gate' ? profile : { ...profile, skepticMode: 'gate' as const };
+}
+
+/** Raw persisted add-ons for a run, unfiltered. Deploy-skew safe. */
+export async function readRawRunAddons(runId: string, jobAddons?: unknown): Promise<unknown> {
+  try {
+    const row = await queryOne<{ selected_addons: unknown }>(
+      `SELECT selected_addons FROM research_runs WHERE id = $1`,
+      [runId]
+    );
+    if (!Array.isArray(jobAddons)) return row?.selected_addons ?? null;
+    if (!Array.isArray(row?.selected_addons)) return jobAddons;
+
+    const merged = [...jobAddons];
+    for (const item of row.selected_addons) {
+      if (!merged.includes(item)) {
+        merged.push(item);
+      }
+    }
+    return merged;
+  } catch {
+    return Array.isArray(jobAddons) ? jobAddons : null;
+  }
+}
 
 export async function resolveRunAddons(runId: string, jobAddons?: string[]): Promise<RunAddonKey[]> {
   const fromJob = normalizeRunAddonKeys(jobAddons);

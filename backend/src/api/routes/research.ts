@@ -31,6 +31,8 @@ import {
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
+import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
+import { releaseHold } from '../../services/billing/walletReservations';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
   buildCreditChargeContextForRun,
@@ -49,6 +51,7 @@ import {
   resolveOwnedReportForSpinoff,
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -966,8 +969,37 @@ router.post('/:id/cancel', async (req, res, next) => {
     }
     if (status === 'queued') {
       const job = await researchQueue.getJob(req.params.id);
+      const creditContext =
+        job?.data && typeof job.data === 'object' && !Array.isArray(job.data)
+          ? (job.data as ResearchJobData).creditChargeContext
+          : null;
       if (job) {
-        await job.remove();
+        try {
+          await job.remove();
+        } catch (removeErr) {
+          await markRunCancelled(req.params.id);
+          logger.warn('queued_cancel_job_remove_lost_race', {
+            runId: req.params.id,
+            error: removeErr instanceof Error ? removeErr.message : String(removeErr),
+          });
+          res.json({ ok: true, status: 'cancellation_requested' });
+          return;
+        }
+      }
+      if (creditContext?.holdId && creditContext.userId) {
+        await releaseHold(creditContext.holdId, creditContext.userId).catch((releaseErr) => {
+          logger.warn('queued_cancel_hold_release_failed', {
+            runId: req.params.id,
+            holdId: creditContext.holdId,
+            error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+          });
+        });
+      } else {
+        logger.warn('queued_cancel_hold_context_fallback', {
+          runId: req.params.id,
+          reason: job ? 'incomplete_queue_context' : 'missing_queue_job',
+        });
+        await releaseHoldForCancelledRun(req.params.id);
       }
       await query(
         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
@@ -986,6 +1018,7 @@ router.post('/:id/cancel', async (req, res, next) => {
     // status", which meant the one state a user is most likely to abandon was
     // the one state they could not abandon.
     if (status === 'plan_pending_confirmation') {
+      await releaseHoldForCancelledRun(req.params.id);
       await query(
         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
         [req.params.id]

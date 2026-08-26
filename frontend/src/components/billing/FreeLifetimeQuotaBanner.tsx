@@ -4,21 +4,15 @@ import {
   useBillingSubscriptionQuery,
 } from '../../hooks/useBillingSubscription';
 
-export type FreeLifetimeQuotaBannerVariant = 'research' | 'deep-research';
-
-const VARIANT_HEADING: Record<FreeLifetimeQuotaBannerVariant, string> = {
-  research: 'Free tier — Research',
-  'deep-research': 'Free tier — Deep Research',
-};
-
-type Props = {
-  variant: FreeLifetimeQuotaBannerVariant;
-};
-
 /**
- * Shared lifetime free-demo quota for V1 Research and V2 Deep Research (single pool).
+ * Lifetime free-tier allowance.
+ *
+ * This used to take a `variant` naming which of the two request pages it was
+ * sitting on, and it explained that the two shared one pool. There is one page
+ * and one kind of run now, so the variant would only have been a way to say
+ * something untrue in two places.
  */
-export default function FreeLifetimeQuotaBanner({ variant }: Props) {
+export default function FreeLifetimeQuotaBanner() {
   const { authReady, isLoading, isError, data } = useBillingSubscriptionQuery();
   const tierResolved = authReady && !isLoading && (!isError || Boolean(data));
   const userTier = tierResolved ? effectiveEntitlementTier(data) ?? 'free_demo' : null;
@@ -34,24 +28,17 @@ export default function FreeLifetimeQuotaBanner({ variant }: Props) {
 
   return (
     <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
-      <p className="font-medium text-slate-200">{VARIANT_HEADING[variant]}</p>
+      <p className="font-medium text-slate-200">Free tier</p>
       <p className="mt-1 text-slate-400">
         {showQuota && remaining !== null ? (
           <>
             You have <span className="text-slate-200 font-medium">{remaining}</span> of{' '}
-            <span className="text-slate-200 font-medium">{cap}</span> lifetime research runs remaining
-            (General Research), shared across Research and Deep Research modes. Completed runs
-            update this count.
+            <span className="text-slate-200 font-medium">{cap}</span> lifetime research runs left.
+            Completed runs update this count.
           </>
         ) : (
-          <>
-            Lifetime research runs on the free tier use the General Research objective only,
-            shared across Research and Deep Research modes.{' '}
-          </>
-        )}
-        {variant === 'deep-research' ? (
-          <>Deep Research uses the V2 multi-model ensemble for richer analysis. </>
-        ) : null}
+          <>Free-tier runs use the General Research objective. </>
+        )}{' '}
         <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
           Upgrade for more objectives and higher limits.
         </Link>

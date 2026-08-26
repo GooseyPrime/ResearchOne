@@ -26,7 +26,12 @@ import {
   resolveTableExpectation,
 } from '../services/reasoning/tableContract';
 import { resolveSourceIngestBudget, MAX_SOURCES_PER_RUN } from '../services/discovery/sourceBudget';
-import { partitionByRelevance, scoreCandidateRelevance, topicTerms } from '../services/discovery/candidateRelevance';
+import {
+  partitionByRelevance,
+  scoreCandidateRelevance,
+  selectByRelevance,
+  topicTerms,
+} from '../services/discovery/candidateRelevance';
 import {
   looksLikePdf,
   parseHtmlToContent,
@@ -60,27 +65,63 @@ describe('AI-1 — a section is numbered once', () => {
     expect(composeItemHeading({ ordinal: 3, label: 'Year', itemName: '2024' })).toBe('3. 2024');
   });
 
-  it('removes a heading the drafter wrote at the top of its body', () => {
-    expect(stripLeadingSectionHeading('## 16. Vertical SaaS\n\nBody text.')).toBe('Body text.');
-    expect(stripLeadingSectionHeading('#### Sub thing\n\nBody.')).toBe('Body.');
+  it.each([
+    'ISO 27001: Security controls',
+    'Type 2: Diabetes care',
+    'GPT 4: Enterprise automation',
+    'Section 508: Accessibility',
+  ])('does not eat the subject of %s', (name) => {
+    // The prefix allowance was `[A-Za-z][A-Za-z ]{0,20}`, which matched any
+    // short word before a number — so these names were reduced to whatever
+    // followed the colon, corrupting the heading it was meant to fix.
+    expect(stripLeadingOrdinal(name)).toBe(name);
   });
 
-  it('keeps headings that are part of the section, not its title', () => {
+  it("removes the drafter's copy of the heading the assembler will add", () => {
+    expect(stripLeadingSectionHeading('## 16. Vertical SaaS\n\nBody text.', '16. Vertical SaaS')).toBe(
+      'Body text.'
+    );
+    // Numbering and punctuation are set aside when comparing.
+    expect(stripLeadingSectionHeading('### Vertical SaaS!\n\nBody.', '16. Vertical SaaS')).toBe('Body.');
+    expect(stripLeadingSectionHeading('### 概述\n\n正文。', '概述')).toBe('正文。');
+  });
+
+  it('keeps a leading subsection heading that is NOT the section title', () => {
+    // The first version removed any leading heading of any level, so a section
+    // opening with `### Risks` kept its text and lost its label.
+    const body = '### Risks\n\nSome risks.';
+    expect(stripLeadingSectionHeading(body, '4. Vertical SaaS')).toBe(body);
+    expect(stripLeadingSectionHeading('#### Implementation details\n\nBody.', 'Overview')).toBe(
+      '#### Implementation details\n\nBody.'
+    );
+    expect(stripLeadingSectionHeading('### 风险\n\n正文。', '概述')).toBe('### 风险\n\n正文。');
+  });
+
+  it('keeps headings that are further down the section', () => {
     const body = 'Opening paragraph.\n\n### Risks\n\nSome risks.';
-    expect(stripLeadingSectionHeading(body)).toBe(body);
+    expect(stripLeadingSectionHeading(body, 'Overview')).toBe(body);
   });
 
   it('keeps a body that is nothing but a heading rather than blanking the section', () => {
-    expect(stripLeadingSectionHeading('## Only a heading')).toBe('## Only a heading');
+    expect(stripLeadingSectionHeading('## Only a heading', 'Only a heading')).toBe('## Only a heading');
   });
 
-  it('strips a refiner heading of any level, not only ##', () => {
-    // The old pattern matched `^##` exactly, so a refiner that answered with
-    // `###` rendered a second heading under the assembler's.
+  it('strips a refiner heading at any level when it repeats the section title', () => {
+    const titles = new Map([['summary', '4. Summary']]);
     const refined = parseRefinedSections(
-      '<<<SECTION key="summary">>>\n### 4. Summary\n\nReal body.\n<<<END SECTION>>>'
+      '<<<SECTION key="summary">>>\n### 4. Summary\n\nReal body.\n<<<END SECTION>>>',
+      titles
     );
     expect(refined.get('summary')).toBe('Real body.');
+  });
+
+  it('leaves a refiner subsection heading alone', () => {
+    const titles = new Map([['summary', '4. Summary']]);
+    const refined = parseRefinedSections(
+      '<<<SECTION key="summary">>>\n### Risks\n\nReal body.\n<<<END SECTION>>>',
+      titles
+    );
+    expect(refined.get('summary')).toBe('### Risks\n\nReal body.');
   });
 });
 
@@ -205,6 +246,29 @@ describe('AI-5 — a source has to be about the request', () => {
     expect(onTopic.length).toBe(ON_TOPIC.length);
   });
 
+  it('does not let off-topic candidates fill the rest of the ingest budget', () => {
+    // The first version appended every off-topic candidate after the on-topic
+    // ones, and the selection loop runs until it has `maxIngest` sources — so
+    // a large run with three relevant results still fetched and embedded the
+    // rest, recreating the failure the filter exists to prevent.
+    const { ranked, dropped, toppedUpUrls } = selectByRelevance(QUERY, [...ON_TOPIC, ...OFF_TOPIC], 3);
+    expect(ranked.map((c) => c.url)).toEqual(ON_TOPIC.map((c) => c.url));
+    expect(dropped).toBe(OFF_TOPIC.length);
+    expect(toppedUpUrls.size).toBe(0);
+  });
+
+  it('tops up with off-topic candidates only as far as the floor', () => {
+    // Starving a run of sources is the other failure. One on-topic result and
+    // a floor of three means exactly two off-topic results are borrowed.
+    const { ranked, dropped, toppedUpUrls } = selectByRelevance(
+      QUERY,
+      [ON_TOPIC[0]!, ...OFF_TOPIC],
+      3
+    );
+    expect(ranked).toHaveLength(3);
+    expect(toppedUpUrls.size).toBe(2);
+    expect(dropped).toBe(OFF_TOPIC.length - 2);
+  });
   it('needs only one match on a very short query', () => {
     const terms = topicTerms('tokamak');
     expect(scoreCandidateRelevance(terms, { title: 'Tokamak confinement scaling' }).onTopic).toBe(true);

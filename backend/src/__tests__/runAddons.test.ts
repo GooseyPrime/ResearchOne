@@ -8,8 +8,12 @@ import {
   RUN_ADDON_KEYS,
   buildRunAddonPipelineEffects,
   normalizeRunAddonKeys,
+  readRawRunAddons,
 } from '../services/reasoning/runAddons';
 import { parseAddonsFromStartRequest } from '../services/reasoning/parseResearchAddons';
+import { queryOne } from '../db/pool';
+
+const queryOneMock = vi.mocked(queryOne);
 
 describe('runAddons', () => {
   it('normalizes and dedupes addon keys', () => {
@@ -52,6 +56,17 @@ describe("Devil's Advocate add-on is gone (WO-AH)", () => {
     // Runs bought before the removal still carry it in `selected_addons`.
     expect(normalizeRunAddonKeys(['adversarial_twin', 'parallel_search'])).toEqual([
       'parallel_search',
+    ]);
+  });
+
+  it('still reads the persisted raw add-ons when job payload kept only surviving keys', async () => {
+    queryOneMock.mockResolvedValueOnce({
+      selected_addons: ['parallel_search', 'adversarial_twin'],
+    } as never);
+
+    await expect(readRawRunAddons('run_1', ['parallel_search'])).resolves.toEqual([
+      'parallel_search',
+      'adversarial_twin',
     ]);
   });
 });

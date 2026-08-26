@@ -44,6 +44,44 @@ const ITEM_NAME_MARKER = /^[ \t]*(?:[*_`]{0,2})ITEM[ _-]?NAME(?:[*_`]{0,2})[ \t]
 const MAX_ITEM_NAME_CHARS = 70;
 
 /**
+ * Words that can precede an ordinal and still be numbering rather than a name.
+ *
+ * An enumerated list, not `[A-Za-z]{1,20}`. The permissive version matched any
+ * short word before the number, so `ISO 27001: Security controls` became
+ * `Security controls`, `Type 2: Diabetes care` became `Diabetes care`, and
+ * `GPT 4: Enterprise automation` lost its subject — the heading corrupted by
+ * the fix for corrupted headings (Codex P2, PR #229).
+ *
+ * Add a word here only when it is a numbering label in its own right AND is
+ * plausible output from a drafter. `section` and `part` are deliberately
+ * absent: the drafter is prompted with the report type's item label
+ * (Opportunity, Finding, Claim, Option, Step…), so it has little reason to
+ * write "Section 4: X", while `Section 508: Accessibility` and
+ * `Part 121: Operations` are real names this would have eaten. When a label is
+ * ambiguous, not stripping costs a duplicated number; stripping costs the
+ * subject of the heading.
+ */
+const ORDINAL_LABELS = [
+  'item',
+  'items',
+  'no',
+  'number',
+  'step',
+  'phase',
+  'opportunity',
+  'option',
+  'finding',
+  'claim',
+  'entry',
+  'event',
+  'factor',
+  'recommendation',
+  'argument',
+  'direction',
+  'study',
+] as const;
+
+/**
  * A number the model put at the front of a name that is about to be numbered.
  *
  * Covers `16.`, `16)`, `16.1 `, `16 -`, `#16 -`, `Item 16:`, `Opportunity 3 —`.
@@ -53,8 +91,11 @@ const MAX_ITEM_NAME_CHARS = 70;
  * with no punctuation after it is usually part of the name, and deleting it
  * would be a worse defect than the one this fixes.
  */
-const LEADING_ORDINAL =
-  /^\s*(?:#+\s*)?(?:[A-Za-z][A-Za-z ]{0,20}?\s)?(?:\d+(?:\.\d+)+\s+|\d+(?:\.\d+)*\s*[.):\u2013\u2014-]\s+)/;
+const LEADING_ORDINAL = new RegExp(
+  `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
+    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
+  'i'
+);
 
 /**
  * Strip a numbering prefix the drafter added to an item name.
@@ -79,25 +120,50 @@ export function stripLeadingOrdinal(name: string): string {
   return out;
 }
 
+/** Compare two heading-ish strings ignoring case, punctuation and numbering. */
+function headingKey(value: string): string {
+  return stripLeadingOrdinal(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 /**
- * Remove a Markdown heading the drafter wrote at the top of a section body.
+ * Remove a Markdown heading the drafter wrote at the top of a section body,
+ * but ONLY when it is a second copy of the heading the assembler will add.
  *
- * Every section's heading is prepended by the assembler (`## ${title}`). A body
- * that opens with its own heading therefore renders two, and if the model
- * numbered its heading the reader sees the ordinal twice. The drafter is told
- * not to write one; being told is not a guarantee, and this is the guarantee.
+ * Every section's heading is prepended by the assembler (`## ${title}`), so a
+ * body that opens with its own copy renders two — and if the model numbered
+ * its copy, the reader sees the ordinal twice.
  *
- * Only a heading at the very top is removed, and only one: headings further
- * down are the section's own sub-structure and belong to the reader.
+ * The first version of this removed any leading heading of any level. That
+ * deleted a section which legitimately opens with `### Risks` or
+ * `#### Implementation details`, keeping the text and losing its label: a
+ * structural loss in exchange for a cosmetic fix (Codex P2, PR #229). It now
+ * removes a heading only when it says the same thing as the composed title,
+ * once numbering and punctuation are set aside.
  */
-export function stripLeadingSectionHeading(body: string): string {
+export function stripLeadingSectionHeading(body: string, composedTitle?: string): string {
   const text = (body ?? '').replace(/^\s+/, '');
-  const match = text.match(/^#{1,6}[ \t]+[^\n]*\n+/);
+  const match = text.match(/^(#{1,6})[ \t]+([^\n]*)\n+/);
   if (!match) return text.trim();
+
+  const headingText = match[2] ?? '';
   const rest = text.slice(match[0].length).trim();
   // A section whose entire content was one heading keeps it — better a
   // duplicated heading than an empty section.
-  return rest || text.trim();
+  if (!rest) return text.trim();
+
+  if (composedTitle === undefined) {
+    // No title to compare against: only a top-level `#`/`##` is plausibly the
+    // section's own title being repeated. A `###` or deeper is sub-structure.
+    return (match[1] ?? '').length <= 2 ? rest : text.trim();
+  }
+
+  const heading = headingKey(headingText);
+  const title = headingKey(composedTitle);
+  if (!heading || !title) return text.trim();
+  return heading === title ? rest : text.trim();
 }
 
 /**
@@ -181,8 +247,17 @@ export function formatSectionsForRefiner(
  *
  * Blocks with an unknown key, or with an empty body, are omitted so the caller
  * falls back to the drafted text rather than blanking a section.
+ *
+ * `titlesByKey` lets a refined block be stripped of a repeated section heading
+ * on the same terms as a drafted one: only when the heading says what the
+ * assembler is about to say. Without it, `### Risks` at the top of a refined
+ * block is indistinguishable from a repeated title, and guessing loses the
+ * reader a real subsection.
  */
-export function parseRefinedSections(response: string): Map<string, string> {
+export function parseRefinedSections(
+  response: string,
+  titlesByKey?: ReadonlyMap<string, string>
+): Map<string, string> {
   const out = new Map<string, string>();
   const text = response ?? '';
   SECTION_BLOCK_PATTERN.lastIndex = 0;
@@ -191,11 +266,9 @@ export function parseRefinedSections(response: string): Map<string, string> {
     const key = (match[1] ?? '').trim();
     const body = (match[2] ?? '').trim();
     if (!key || !body) continue;
-    // A refiner that emits a heading anyway would otherwise leave it stranded
-    // mid-section, since the real heading is prepended by the assembler.
-    // Any level, not only `##`: a refiner that wrote `###` slipped straight
-    // through the old pattern and rendered under the assembler's heading.
-    const withoutHeading = stripLeadingSectionHeading(body);
+    // A refiner that emits a copy of the section's heading would otherwise
+    // leave it stranded under the real one, which the assembler prepends.
+    const withoutHeading = stripLeadingSectionHeading(body, titlesByKey?.get(key));
     if (!withoutHeading) continue;
     out.set(key, withoutHeading);
   }
@@ -1184,9 +1257,10 @@ Return section body text only. Do NOT write a markdown heading for this section 
     return {
       title: finalTitle,
       key: section.key,
-      // The assembler prepends the heading, so a heading the drafter wrote
-      // anyway would render twice — with the ordinal in it twice.
-      content: stripLeadingSectionHeading(sectionText),
+      // The assembler prepends the heading, so the drafter's own copy of it
+      // would render twice — with the ordinal in it twice. Only a copy: a
+      // section that opens with `### Risks` keeps its `### Risks`.
+      content: stripLeadingSectionHeading(sectionText, finalTitle),
     };
   };
 
@@ -1321,7 +1395,10 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
   // delete delivered work, and partial refinement beats discarding the report.
   modelCalls.push(challenger, refinement);
 
-  const refinedBodies = parseRefinedSections(refinement.content);
+  const refinedBodies = parseRefinedSections(
+    refinement.content,
+    new Map(sections.map((section) => [section.key, section.title]))
+  );
   const finalSections: ReportSectionDraft[] = sections.map((section) => {
     const refined = refinedBodies.get(section.key);
     return refined ? { ...section, content: refined } : section;

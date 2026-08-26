@@ -118,6 +118,12 @@ Reaching for something countable when the property is about meaning.
   is the `split(/[^a-z0-9]+/)` defect of #221 in a different place, written by
   someone who had read that entry. **A theme you have read is not a theme you
   have avoided.** (#227)
+- `replace(/[^a-z0-9]+/g, ' ')` for **"normalize headings before comparing
+  them"**. It returns the empty string for Chinese, Japanese, Arabic, Cyrillic
+  and other non-Latin headings, so a guard meant to remove only duplicated
+  section titles deleted legitimate subsection labels like `### 风险`. If the
+  property is textual identity, the normalization must preserve real letters or
+  the fallback must preserve the original structure. (#231)
 - `` `${timestamp}-${stage}` `` for **"which event is this"**. Two events in the
   same stage and the same millisecond collide, and the collision was not
   cosmetic: React's reconciler and `AnimatePresence` both key on it, so ghost
@@ -149,6 +155,20 @@ A set was handled partially, and the unhandled members silently took a default.
   straight at the code still miscounts, the answer is not a better count; it is
   removing the thing being counted.** The state is now shared, so a surface
   cannot diverge from an implementation it does not own. (#227)
+- A plan-gate run carried both normalized job add-ons and raw persisted
+  `selected_addons`, but the helper returned early on any non-empty normalized
+  array. That silently dropped the legacy paid `adversarial_twin` key whenever
+  it coexisted with a surviving add-on like `parallel_search`: the run consumed
+  a surcharge for a stronger challenge pass it never applied. **When one
+  producer is normalized or filtered, it is not authoritative for features that
+  normalization can erase.** Merge or re-read the raw producer before deciding
+  the capability is absent. (#231)
+- Tier resolution on the request form looked complete when
+  `useBillingSubscriptionQuery()` was merely disabled pending Clerk readiness.
+  `isLoading === false` plus empty data rendered paid users as `free_demo` until
+  auth finished, hiding tier-gated objectives and saved profiles. **A disabled
+  query is not resolved state.** Enumerate readiness signals from auth as well
+  as data fetching before deriving entitlement. (#231)
 
 **Check:** when you touch a mapping, a switch, or a guard, list every producer
 and every consumer *by grepping for them*, and account for each. "The ones I
@@ -177,6 +197,14 @@ know about" is not the list.
   to `/app/run/:id` made that guard both miss its target and start suppressing
   the notice for users composing an unrelated request. **A guard written against
   a location has to move when the location does.** (#227)
+- A queued-run cancel path refunded the wallet hold before `Job.remove()`. When
+  BullMQ lost the queue race and the job was already locked, the route returned
+  an error while the worker kept running with no hold left to consume. The old
+  order protected "don't lose the hold id when the job disappears"; the new
+  order also has to protect "don't release funds until cancellation is real."
+  Capture the context first, remove the job second, and if the remove loses the
+  race, switch to cooperative cancellation instead of pretending the queued
+  cancel succeeded. (#231)
 
 **Check:** before deleting or replacing a check, write down what it prevents.
 If the replacement does not prevent that too, you need both.

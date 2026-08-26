@@ -31,6 +31,7 @@ import { researchResumeJobId } from '../../queue/researchQueueJobs';
 import { enqueueResearchResumeAfterPlan } from '../../utils/researchResumeQueueing';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { logger } from '../../utils/logger';
+import { paidForLegacyChallengeUpgrade, readRawRunAddons } from '../../services/reasoning/runAddons';
 
 const router = Router();
 router.use(requireAuth);
@@ -75,6 +76,26 @@ function isPlanPayload(v: unknown): v is PlanPayload {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
   const o = v as Record<string, unknown>;
   return Boolean(o.intent && o.topicAnalysis && o.orchestrationProfile);
+}
+
+function withEffectiveLegacyChallengeMode(
+  planPayload: Record<string, unknown>,
+  rawAddons: unknown
+): Record<string, unknown> {
+  if (!paidForLegacyChallengeUpgrade(rawAddons)) return planPayload;
+  const orchestrationProfile = planPayload.orchestrationProfile;
+  if (!orchestrationProfile || typeof orchestrationProfile !== 'object' || Array.isArray(orchestrationProfile)) {
+    return planPayload;
+  }
+  const skepticMode = (orchestrationProfile as Record<string, unknown>).skepticMode;
+  if (skepticMode === 'gate') return planPayload;
+  return {
+    ...planPayload,
+    orchestrationProfile: {
+      ...(orchestrationProfile as Record<string, unknown>),
+      skepticMode: 'gate',
+    },
+  };
 }
 
 /** POST /api/runs/:runId/plan/refine */
@@ -316,7 +337,11 @@ router.post('/:runId/plan/cancel', async (req: Request, res: Response, next: Nex
       run.resume_job_payload && typeof run.resume_job_payload === 'object' && !Array.isArray(run.resume_job_payload)
         ? (run.resume_job_payload as ResearchJobData)
         : null;
-    if (payload?.creditChargeContext?.type === 'wallet' && payload.creditChargeContext.holdId && payload.creditChargeContext.userId) {
+    // Keyed on the hold, not on `type === 'wallet'`: a subscription run that
+    // bought a paid add-on also places a hold for the surcharge, and the old
+    // condition stranded exactly those. Same defect as the cancel route's
+    // missing release, so it is fixed in both places rather than one.
+    if (payload?.creditChargeContext?.holdId && payload.creditChargeContext.userId) {
       try {
         await releaseHold(payload.creditChargeContext.holdId, payload.creditChargeContext.userId);
       } catch (relErr) {
@@ -410,10 +435,23 @@ router.get('/:runId/plan', async (req: Request, res: Response, next: NextFunctio
       res.status(404).json({ error: 'Dossier not found for this run' });
       return;
     }
+    let plan = dossier.plan;
+    if (dossier.runStatus === 'plan_pending_confirmation' && plan.planPayload && typeof plan.planPayload === 'object') {
+      const run = await loadRunForPlanGate(runId, ctx.userId, ctx.orgId);
+      const resumePayload =
+        run?.resume_job_payload && typeof run.resume_job_payload === 'object' && !Array.isArray(run.resume_job_payload)
+          ? (run.resume_job_payload as ResearchJobData)
+          : null;
+      const rawAddons = await readRawRunAddons(runId, resumePayload?.addons);
+      plan = {
+        ...plan,
+        planPayload: withEffectiveLegacyChallengeMode(plan.planPayload, rawAddons),
+      };
+    }
     res.json({
       runId: dossier.runId,
       runStatus: dossier.runStatus,
-      plan: dossier.plan,
+      plan,
     });
   } catch (e) {
     next(e);

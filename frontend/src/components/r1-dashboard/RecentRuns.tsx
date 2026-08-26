@@ -15,7 +15,7 @@ const statusConfig: Record<RunStatus, { icon: typeof CheckCircle; color: string;
   queued: { icon: Clock, color: 'text-r1-muted', label: 'Queued' },
   running: { icon: Loader2, color: 'text-r1-cyan', label: 'Running' },
   complete: { icon: CheckCircle, color: 'text-r1-green', label: 'Complete' },
-  failed: { icon: XCircle, color: 'text-r1-skeptic', label: 'Failed' },
+  failed: { icon: XCircle, color: 'text-r1-challenge', label: 'Failed' },
   cancelled: { icon: AlertCircle, color: 'text-r1-amber', label: 'Cancelled' },
 };
 

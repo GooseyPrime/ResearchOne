@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import ResearchRequestForm from '../../components/research/ResearchRequestForm';
 
@@ -87,6 +87,38 @@ function renderForm(initialEntries: string[] = ['/app/research']) {
   );
 }
 
+/** Renders the form with a control that performs a real in-router navigation. */
+function renderFormWithNavigation(initialEntries: string[]) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  client.invalidateQueries = invalidateQueriesMock as typeof client.invalidateQueries;
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <Routes>
+          <Route
+            path="/app/research"
+            element={
+              <>
+                <SecondPrefillLink />
+                <ResearchRequestForm />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+function SecondPrefillLink() {
+  return (
+    <Link data-testid="go-to-second-prefill" to="/app/research?prefill=run-2">
+      second
+    </Link>
+  );
+}
 async function submitWith(text: string) {
   fireEvent.change(screen.getByPlaceholderText(QUESTION), { target: { value: text } });
   fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
@@ -106,7 +138,7 @@ beforeEach(() => {
     },
   });
   savedProfilesMock.mockResolvedValue({ profiles: [] });
-  subscriptionMock.mockReturnValue({ data: { tier: 'pro' }, isLoading: false, isError: false });
+  subscriptionMock.mockReturnValue({ authReady: true, data: { tier: 'pro' }, isLoading: false, isError: false });
 });
 
 afterEach(() => cleanup());
@@ -301,9 +333,68 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () => 
     expect(call.requestedResearchObjective).toBe('AUTO');
   });
 
+  it('clears the previous request before applying a second prefill', async () => {
+    // Assigning only the fields the run carries left the rest of the previous
+    // request in place, so one request could be submitted carrying another
+    // request's objective, citation style, formats or model overrides.
+    //
+    // Driven through a real in-router navigation because the hook strips the
+    // param after applying: a second prefill only happens on a new URL, which
+    // is exactly the scenario the defect needed.
+    getResearchRunMock.mockImplementation((id: string) =>
+      id === 'run-1'
+        ? Promise.resolve({
+            id: 'run-1',
+            query: 'First request',
+            supplemental: '',
+            research_objective: 'PATENT_GAP_ANALYSIS',
+            citation_style: 'mla',
+            requested_formats: ['comparison_table'],
+            target_word_count: 6000,
+            model_overrides: { planner: { primary: 'vendor/one' } },
+          })
+        : Promise.resolve({ id: 'run-2', query: 'Second request', supplemental: '' })
+    );
+
+    renderFormWithNavigation(['/app/research?prefill=run-1']);
+    await waitFor(() => expect(screen.getByDisplayValue('First request')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('go-to-second-prefill'));
+    await waitFor(() => expect(screen.getByDisplayValue('Second request')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
+    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.researchObjective).toBeUndefined();
+    expect(call.requestedFormats).toBeUndefined();
+    expect(call.targetWordCount).toBeUndefined();
+    expect(call.modelOverrides).toBeUndefined();
+    expect(call.citationStyle).toBe('apa');
+  });
   it('leaves the form alone when there is no prefill parameter', async () => {
     renderForm(['/app/research']);
     await waitFor(() => expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument());
     expect(getResearchRunMock).not.toHaveBeenCalled();
+  });
+});
+describe('ResearchRequestForm — a failed plan lookup is unknown, not free', () => {
+  it('does not downgrade a paid user to the free tier when the lookup errors', async () => {
+    // `!isLoading` alone marked the tier resolved, and the fallback is
+    // free_demo — so an errored lookup silently removed saved profiles and
+    // the objectives a paid tier allows.
+    subscriptionMock.mockReturnValue({ authReady: true, data: undefined, isLoading: false, isError: true });
+    renderForm();
+
+    expect(screen.getByText(/could not check your plan/i)).toBeInTheDocument();
+    // Permissive while unknown: every objective is still offered rather than
+    // the free tier's single one.
+    fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
+    const objectiveSelect = screen.getByDisplayValue(/Automatic/);
+    expect(objectiveSelect.querySelectorAll('option').length).toBeGreaterThan(2);
+  });
+
+  it('says nothing about the plan when the lookup worked', () => {
+    renderForm();
+    expect(screen.queryByText(/could not check your plan/i)).toBeNull();
   });
 });

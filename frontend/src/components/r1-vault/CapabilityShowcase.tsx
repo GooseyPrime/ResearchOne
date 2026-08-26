@@ -59,7 +59,7 @@ export function CapabilityShowcase() {
                 'bg-r1-panel-lift border-r1-border-strong' :
                 'bg-r1-panel border-r1-border'} ${
 
-                isSkeptic ? 'ring-1 ring-r1-skeptic/20' : ''}`
+                isSkeptic ? 'ring-1 ring-r1-challenge/20' : ''}`
                 }
                 style={{ transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
 
@@ -73,7 +73,7 @@ export function CapabilityShowcase() {
                 }>
                   <Icon className={`w-5 h-5 ${
                   isSkeptic ?
-                  'text-r1-skeptic' :
+                  'text-r1-challenge' :
                   isHovered ?
                   'text-r1-cyan' :
                   'text-r1-muted'} transition-colors duration-250`
@@ -82,7 +82,7 @@ export function CapabilityShowcase() {
                 
                 {/* Title */}
                 <h3 data-ev-id="ev_03bb716a12" className={`text-lg font-semibold mb-3 leading-snug transition-colors duration-250 ${
-                isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
+                isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
                 }>
                   {capability.title}
                 </h3>
@@ -100,7 +100,7 @@ export function CapabilityShowcase() {
                 aria-hidden="true">
 
                   <div data-ev-id="ev_d7acf0c1bb" className={`absolute top-3 right-3 w-1.5 h-1.5 rounded-full ${
-                  isSkeptic ? 'bg-r1-skeptic' : 'bg-r1-cyan'}`
+                  isSkeptic ? 'bg-r1-challenge' : 'bg-r1-cyan'}`
                   } />
                 </div>
               </motion.div>);
