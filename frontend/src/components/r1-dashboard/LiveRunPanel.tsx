@@ -371,7 +371,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
         <button
           type="button"
           onClick={() => setArmed(true)}
-          className="r1-focus-ring inline-flex w-full items-center justify-center gap-2 rounded border border-r1-border px-4 py-2.5 text-sm text-r1-muted transition-colors hover:border-r1-skeptic/50 hover:text-r1-skeptic"
+          className="r1-focus-ring inline-flex w-full items-center justify-center gap-2 rounded border border-r1-border px-4 py-2.5 text-sm text-r1-muted transition-colors hover:border-r1-challenge/50 hover:text-r1-challenge"
         >
           <XOctagon className="h-4 w-4" aria-hidden />
           Cancel this run
@@ -388,7 +388,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
               type="button"
               disabled={pending}
               onClick={() => cancel.mutate()}
-              className="r1-focus-ring flex-1 rounded bg-r1-skeptic px-3 py-2 text-sm font-semibold text-r1-canvas transition-opacity disabled:opacity-60"
+              className="r1-focus-ring flex-1 rounded bg-r1-challenge px-3 py-2 text-sm font-semibold text-r1-canvas transition-opacity disabled:opacity-60"
             >
               {pending ? 'Cancelling…' : 'Yes, cancel'}
             </button>
@@ -405,7 +405,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
       )}
 
       {cancel.isError && (
-        <p className="mt-3 text-xs text-r1-skeptic">
+        <p className="mt-3 text-xs text-r1-challenge">
           Could not cancel this run. It may have already finished — reload to see its current state.
         </p>
       )}

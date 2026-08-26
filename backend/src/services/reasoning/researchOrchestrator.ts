@@ -131,6 +131,22 @@ export type {
 } from './researchOrchestratorTypes';
 export { isResearchJobParkedAtPlanGate } from './researchOrchestratorTypes';
 
+export async function releaseHoldForCooperativeCancellation(
+  runId: string,
+  creditCtx?: { holdId?: string; userId?: string } | null
+): Promise<void> {
+  if (!creditCtx?.holdId || !creditCtx.userId) return;
+  try {
+    await releaseHold(creditCtx.holdId, creditCtx.userId);
+  } catch (releaseErr) {
+    logger.error('credit_hold_release_on_cancellation_failed', {
+      runId,
+      holdId: creditCtx.holdId,
+      error: releaseErr instanceof Error ? releaseErr.message : 'Unknown',
+    });
+  }
+}
+
 async function assertNotCancelled(runId: string): Promise<void> {
   if (await isRunCancellationRequested(runId)) {
     throw new ResearchCancelledError();
@@ -2918,6 +2934,11 @@ ${generatedReport.markdown}`,
         `UPDATE research_runs SET status='cancelled', error_message=$1, completed_at=NOW(), progress_stage=NULL, progress_percent=NULL, progress_message=NULL, progress_updated_at=NULL WHERE id=$2`,
         ['Cancelled by user', runId]
       );
+      // Cooperative cancellation (queue race lost after `Job.remove()`) still
+      // owns hold release here. The route must not refund before the job is
+      // truly gone, so the worker is the first place that can safely release
+      // once execution has started.
+      await releaseHoldForCooperativeCancellation(runId, creditCtx);
       await clearRunCancelled(runId);
       const cancelledNow = Date.now();
       closePhase(phaseDurations, phaseStartTimes, currentStage, cancelledNow);

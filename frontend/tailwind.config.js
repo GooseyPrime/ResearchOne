@@ -83,11 +83,11 @@ export default {
           green: '#2ECC71',
           'green-dim': '#2ECC7180',
           'blue-rule': '#8CABD914',
-          // Renamed from `skeptic`. The operator's instruction is that the
-          // word is not one the product says, and a Tier A page carrying
-          // `text-r1-skeptic` fails the jargon gate however invisible the
-          // class name is to a reader. A gate you have to argue with is worse
-          // than one you satisfy.
+          // Renamed from the older challenge-pass token. The operator's
+          // instruction is that the old word is not one the product says, and
+          // keeping it in generated utility names made the jargon gate fail
+          // even when the string was invisible to readers. A gate you have to
+          // argue with is worse than one you satisfy.
           challenge: '#FF6B6B',
           verified: '#4ECDC4',
         },
