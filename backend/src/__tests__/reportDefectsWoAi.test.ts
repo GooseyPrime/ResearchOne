@@ -267,7 +267,6 @@ describe('AI-5 — a source has to be about the request', () => {
     expect(toppedUpUrls.size).toBe(2);
     expect(dropped).toBe(OFF_TOPIC.length - 2);
   });
-
   it('needs only one match on a very short query', () => {
     const terms = topicTerms('tokamak');
     expect(scoreCandidateRelevance(terms, { title: 'Tokamak confinement scaling' }).onTopic).toBe(true);

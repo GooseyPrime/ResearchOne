@@ -424,7 +424,6 @@ describe('intent routing does not over-claim', () => {
     expect(brief.primaryIntent).toBe('investigation');
   });
 });
-
 describe('an explicit operation wins over an incidental noun', () => {
   it.each([
     ['Compare investment opportunities A and B', 'comparative'],

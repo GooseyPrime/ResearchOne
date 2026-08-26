@@ -181,16 +181,16 @@ export function SampleReportView() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }}
-              className="r1-panel p-5 ring-1 ring-r1-challenge/20">
+              className="r1-panel p-5 ring-1 ring-r1-skeptic/20">
 
               <div data-ev-id="ev_20174d00fc" className="flex items-center gap-2 mb-4">
-                <ShieldAlert className="w-4 h-4 text-r1-challenge" />
+                <ShieldAlert className="w-4 h-4 text-r1-skeptic" />
                 <span data-ev-id="ev_8ef45dd2b1" className="r1-mono-label text-[10px]">CHALLENGE_NOTES</span>
               </div>
               <ul data-ev-id="ev_463cae128f" className="flex flex-col gap-3">
                 {report.challengeNotes.map((note, index) =>
                 <li data-ev-id="ev_7cd16fd811" key={index} className="flex items-start gap-2">
-                    <span data-ev-id="ev_bf254a447f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-challenge" />
+                    <span data-ev-id="ev_bf254a447f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-skeptic" />
                     <span data-ev-id="ev_8c3fab0cf3" className="text-xs text-r1-muted leading-relaxed">{note}</span>
                   </li>
                 )}

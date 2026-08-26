@@ -121,11 +121,16 @@ export default function ResearchRequestForm() {
   // user whose lookup failed lost saved profiles, lost the objectives their
   // tier allows, and had any objective they had already chosen reset to
   // automatic by the effect below (Codex P2, PR #229).
-  const tierResolved = !subscriptionQuery.isLoading && !(subscriptionQuery.isError && !subscriptionQuery.data);
+  const tierResolved =
+    subscriptionQuery.authReady &&
+    !subscriptionQuery.isLoading &&
+    !(subscriptionQuery.isError && !subscriptionQuery.data);
   const userTier: EntitlementTierKey | null = tierResolved
     ? ((effectiveEntitlementTier(subscriptionQuery.data) ?? 'free_demo') as EntitlementTierKey)
     : null;
-  const tierLookupFailed = Boolean(subscriptionQuery.isError && !subscriptionQuery.data);
+  const tierLookupFailed = Boolean(
+    subscriptionQuery.authReady && subscriptionQuery.isError && !subscriptionQuery.data
+  );
   const tierAllowsSavedProfiles = Boolean(userTier && userTier !== 'free_demo');
   const objectiveOptions = useMemo(() => objectivesForTier(userTier), [userTier]);
 
@@ -196,7 +201,6 @@ export default function ResearchRequestForm() {
     const slice = researchRequestFormFromRun(run);
     const { supplemental: body, challengePerspective: perspective } =
       splitSupplementalAndPerspective(slice.supplemental);
-
     setQuery(slice.query);
     setSupplemental(body);
     setChallengePerspective(perspective);
@@ -222,7 +226,6 @@ export default function ResearchRequestForm() {
       Boolean(overrides) && typeof overrides === 'object' && Object.keys(overrides!).length > 0;
     setModelRows(hasOverrides ? overrides! : {});
     setModelsOpen(hasOverrides);
-
     // Anything the user had opened, they will want open again.
     setSourcesOpen(Boolean(body.trim()) || slice.supplementalUrlLines.length > 0 || Boolean(slice.filterTags));
     setOutputOpen(Boolean(slice.requestedFormats?.length) || typeof slice.targetWordCount === 'number');
@@ -334,7 +337,6 @@ export default function ResearchRequestForm() {
             request will still run — reload if you need them.
           </p>
         ) : null}
-
         <div>
           <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
             <FlaskConical size={18} className="text-accent" />

@@ -119,7 +119,6 @@ function SecondPrefillLink() {
     </Link>
   );
 }
-
 async function submitWith(text: string) {
   fireEvent.change(screen.getByPlaceholderText(QUESTION), { target: { value: text } });
   fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
@@ -139,7 +138,7 @@ beforeEach(() => {
     },
   });
   savedProfilesMock.mockResolvedValue({ profiles: [] });
-  subscriptionMock.mockReturnValue({ data: { tier: 'pro' }, isLoading: false, isError: false });
+  subscriptionMock.mockReturnValue({ authReady: true, data: { tier: 'pro' }, isLoading: false, isError: false });
 });
 
 afterEach(() => cleanup());
@@ -372,20 +371,18 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () => 
     expect(call.modelOverrides).toBeUndefined();
     expect(call.citationStyle).toBe('apa');
   });
-
   it('leaves the form alone when there is no prefill parameter', async () => {
     renderForm(['/app/research']);
     await waitFor(() => expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument());
     expect(getResearchRunMock).not.toHaveBeenCalled();
   });
 });
-
 describe('ResearchRequestForm — a failed plan lookup is unknown, not free', () => {
   it('does not downgrade a paid user to the free tier when the lookup errors', async () => {
     // `!isLoading` alone marked the tier resolved, and the fallback is
     // free_demo — so an errored lookup silently removed saved profiles and
     // the objectives a paid tier allows.
-    subscriptionMock.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    subscriptionMock.mockReturnValue({ authReady: true, data: undefined, isLoading: false, isError: true });
     renderForm();
 
     expect(screen.getByText(/could not check your plan/i)).toBeInTheDocument();

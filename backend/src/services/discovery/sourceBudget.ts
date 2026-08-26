@@ -57,7 +57,6 @@ export function resolveSourceIngestBudget(args: {
 
   return Math.min(MAX_SOURCES_PER_RUN, Math.max(configured, byLength, byItems, addon));
 }
-
 /**
  * How many sources this run may actually ingest.
  *

@@ -46,7 +46,6 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
  * strongest challenge mode; every run now runs the challenge pass, and how
  * strong it is is decided by the planner from the request rather than bought.
  */
-
 /**
  * The removed add-on's key, kept for runs that were already paid for.
  *

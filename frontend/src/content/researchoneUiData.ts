@@ -80,7 +80,7 @@ export const pipelineStages: PipelineStage[] = [
   {
     id: 'skeptic',
     name: 'Challenge',
-    description: 'Argues against the draft, with an optional perspective to argue from',
+    description: 'Challenge pass that argues against the draft, with optional critique perspectives to stress-test conclusions',
     isSkeptic: true,
   },
   {
@@ -228,7 +228,7 @@ export const featureBlocks: FeatureBlock[] = [
     number: '06',
     title: 'Challenge Pass',
     subtitle: 'CHALLENGE · WEAKNESS_SCAN',
-    description: 'Every conclusion is argued against before publication, exposing logical gaps and unsupported claims. You may choose whose objections it has to survive.',
+    description: 'Optional critique personas argue against every conclusion before publication, exposing logical gaps and unsupported claims.',
     isSkeptic: true,
   },
   {

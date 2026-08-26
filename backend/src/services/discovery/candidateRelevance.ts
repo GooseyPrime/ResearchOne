@@ -126,7 +126,6 @@ export function partitionByRelevance<T extends { title?: string | null; snippet?
   }
   return { onTopic, offTopic };
 }
-
 /**
  * The candidates discovery will actually try to ingest, in order.
  *
