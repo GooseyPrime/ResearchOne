@@ -100,7 +100,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every claim ' +
       'to a source card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',
     ctas: [
-      { label: 'Student plan \u2014 $9/mo', to: '/pricing#student',  variant: 'primary' },
+      { label: 'Student plan \u2014 coming soon', to: '/pricing#student',  variant: 'primary' },
       { label: 'Methodology',               to: '/methodology',      variant: 'secondary' },
     ],
     proofLine: 'Source-corroboration tiers \u00B7 Contradiction preservation \u00B7 Post-publication revision when the literature moves.',

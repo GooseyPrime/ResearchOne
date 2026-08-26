@@ -23,6 +23,7 @@ import {
   classifyResearchFailureForSocket,
   isBenignPlanResumeAwaitingConfirm,
 } from '../utils/researchFailureRouting';
+import { createResearchWorker } from './createResearchWorker';
 
 async function markInterruptedResearchRuns(): Promise<void> {
   const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
@@ -94,8 +95,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
   );
 
   // ─── Research Worker ─────────────────────────────────────────────────
-  new Worker(
-    QUEUE_NAMES.RESEARCH,
+  createResearchWorker(
     async (job: Job) => {
       if (job.name === RESEARCH_JOB_RESUME_AFTER_PLAN) {
         const data = job.data as ResearchResumeAfterPlanJobData;
@@ -233,7 +233,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         throw err;
       }
     },
-    { connection: createRedisConnection(), concurrency: 1 }
+    createRedisConnection(),
   );
 
   // ─── Atlas Export Worker ──────────────────────────────────────────────

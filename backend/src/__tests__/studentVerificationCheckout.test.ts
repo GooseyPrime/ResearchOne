@@ -1,6 +1,4 @@
-/**
- * Student tier checkout requires SheerID verification (or admin allowlist).
- */
+/** Student is visibly deferred and cannot be entered through a direct API call. */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../middleware/clerkAuth', async (importOriginal) => {
@@ -44,8 +42,11 @@ vi.mock('../services/billing/stripeClient', async (importOriginal) => {
     }),
     getTopupAmountForPrice: () => null,
     getSubscriptionPriceOptions: () => [],
-    getTierForSubscriptionPrice: (priceId: string) =>
-      priceId === 'price_student_monthly' ? 'student' : null,
+    getTierForSubscriptionPrice: (priceId: string) => {
+      if (priceId === 'price_student_monthly') return 'student';
+      if (priceId === 'price_team_monthly') return 'team';
+      return null;
+    },
   };
 });
 
@@ -69,20 +70,23 @@ beforeEach(() => {
   });
 });
 
-describe('POST /api/billing/checkout/subscription — student verification gate', () => {
-  it('returns 403 when unverified user attempts student checkout', async () => {
+describe('POST /api/billing/checkout/subscription — deferred plans', () => {
+  it.each([
+    ['student', 'price_student_monthly', 'Student'],
+    ['team', 'price_team_monthly', 'Team'],
+  ])('returns 409 when a user attempts %s checkout', async (tier, priceId, label) => {
     studentVerificationMocks.isStudentVerified.mockResolvedValue(false);
 
     const res = await request(testApp)
       .post('/api/billing/checkout/subscription')
-      .send({ priceId: 'price_student_monthly', tier: 'student' });
+      .send({ priceId, tier });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(409);
     expect(res.body).toEqual({
-      error: 'Student verification is required before subscribing to the Student plan',
-      code: 'STUDENT_VERIFICATION_REQUIRED',
+      error: `${label} subscriptions are coming soon`,
+      code: 'PLAN_COMING_SOON',
     });
     expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
-    expect(studentVerificationMocks.isStudentVerified).toHaveBeenCalledWith('user_test');
+    expect(studentVerificationMocks.isStudentVerified).not.toHaveBeenCalled();
   });
 });

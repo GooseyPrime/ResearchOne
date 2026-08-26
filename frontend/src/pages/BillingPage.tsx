@@ -277,10 +277,14 @@ export default function BillingPage() {
         .
       </p>
 
-      {billingIntent === 'pro' || billingIntent === 'student' ? (
+      {billingIntent === 'pro' ? (
         <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
-          Continue your {billingIntent === 'student' ? 'Student' : 'Pro'} subscription below — checkout opens on
-          Stripe.
+          Continue your Pro subscription below — checkout opens on Stripe.
+        </p>
+      ) : null}
+      {billingIntent === 'student' ? (
+        <p className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Student subscriptions are coming soon. Available plans are shown below.
         </p>
       ) : null}
 

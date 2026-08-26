@@ -94,7 +94,7 @@ export function buildSupplementalIngestNotifications(
   return notifications;
 }
 
-/** Push supplemental ingest toasts (or a default "started" info toast). */
+/** Push supplemental ingest toasts (or a default accepted/queued info toast). */
 export function applySupplementalIngestNotifications(
   ing: SupplementalIngestSummary | undefined,
   notify: (severity: SupplementalIngestNotifySeverity, message: string) => void,
@@ -102,7 +102,7 @@ export function applySupplementalIngestNotifications(
 ): void {
   const notes = buildSupplementalIngestNotifications(ing, opts);
   if (notes.length === 0) {
-    notify('info', opts?.defaultStartedMessage ?? 'Research started — tracking detailed progress...');
+    notify('info', opts?.defaultStartedMessage ?? 'Request accepted — waiting for an available research worker...');
     return;
   }
   for (const note of notes) {

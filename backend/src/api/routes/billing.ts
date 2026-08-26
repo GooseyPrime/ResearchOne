@@ -5,6 +5,7 @@ import {
   getTopupAmountForPrice,
   getSubscriptionPriceOptions,
   getTierForSubscriptionPrice,
+  isSelfServeSubscriptionTier,
 } from '../../services/billing/stripeClient';
 import {
   buildMonitorTokenCheckoutSessionCreateParams,
@@ -304,6 +305,13 @@ router.post('/checkout/subscription', async (req, res, next) => {
     }
     if (!isTierName(tier) || tier === 'anonymous' || tier === 'free_demo') {
       res.status(400).json({ error: 'Invalid subscription tier' });
+      return;
+    }
+    if (!isSelfServeSubscriptionTier(tier)) {
+      res.status(409).json({
+        error: `${catalogTier === 'student' ? 'Student' : 'Team'} subscriptions are coming soon`,
+        code: 'PLAN_COMING_SOON',
+      });
       return;
     }
 

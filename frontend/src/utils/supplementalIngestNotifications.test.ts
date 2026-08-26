@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildSupplementalIngestNotifications } from './supplementalIngestNotifications';
+import {
+  applySupplementalIngestNotifications,
+  buildSupplementalIngestNotifications,
+} from './supplementalIngestNotifications';
 
 describe('buildSupplementalIngestNotifications', () => {
   it('returns info when files and URLs queue successfully', () => {
@@ -51,5 +54,12 @@ describe('buildSupplementalIngestNotifications', () => {
 
   it('returns empty array when ingest summary is undefined', () => {
     expect(buildSupplementalIngestNotifications(undefined)).toEqual([]);
+  });
+
+  it('does not claim a newly accepted request has already started', () => {
+    const messages: string[] = [];
+    applySupplementalIngestNotifications(undefined, (_severity, message) => messages.push(message));
+    expect(messages).toEqual(['Request accepted — waiting for an available research worker...']);
+    expect(messages[0]).not.toContain('Research started');
   });
 });

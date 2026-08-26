@@ -142,8 +142,14 @@ export function LiveRunPanel() {
 
   if (isLoading || !run) {
     return (
-      <div className="r1-panel p-8 text-center">
-        <Clock className="mx-auto h-6 w-6 animate-spin text-r1-cyan" />
+      <div className="min-h-full bg-r1-canvas px-4 py-8 sm:px-6 lg:px-8" aria-live="polite">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="r1-panel overflow-hidden p-8 text-center sm:p-12">
+            <Clock className="mx-auto h-6 w-6 animate-spin text-r1-cyan" />
+            <p className="mt-4 text-sm font-medium text-r1-heading">Loading research workspace…</p>
+            <p className="mt-1 text-xs text-r1-muted">Retrieving the request, status, and saved trace.</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -164,7 +170,7 @@ export function LiveRunPanel() {
   return (
     <div className="bg-r1-canvas pb-12">
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
-        <RunWorkspaceRail runId={runId} otherActiveRuns={otherActiveRuns} />
+        <RunWorkspaceRail otherActiveRuns={otherActiveRuns} />
 
         <div className="mb-6">
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -241,13 +247,23 @@ export function LiveRunPanel() {
               </motion.div>
             )}
 
+            {run.status === 'queued' && (
+              <div
+                role="status"
+                className="rounded-lg border border-r1-amber/25 bg-r1-amber/[0.06] px-4 py-3 text-sm text-r1-muted"
+              >
+                <span className="font-medium text-r1-heading">Request accepted.</span>{' '}
+                Waiting for an available research worker; this page will update automatically.
+              </div>
+            )}
+
             <div className="r1-panel p-4">
               <LiveResearchTraceLog
                 traceEvents={traceEvents}
                 scrollClassName="max-h-[32rem]"
                 emptyMessage={
                   run.status === 'queued'
-                    ? 'Queued. The trace starts as soon as a worker picks this run up.'
+                    ? 'Waiting for worker events…'
                     : 'Waiting for events…'
                 }
               />
@@ -298,10 +314,8 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
  * report. Dossiers was the only way out, and only by using the sidebar.
  */
 function RunWorkspaceRail({
-  runId,
   otherActiveRuns,
 }: {
-  runId: string;
   otherActiveRuns: ResearchRun[];
 }) {
   return (
@@ -330,10 +344,6 @@ function RunWorkspaceRail({
           ))}
         </>
       )}
-
-      <span className="r1-mono-label ml-auto text-[10px] text-r1-dim">
-        RUN {runId.slice(0, 8)}
-      </span>
     </nav>
   );
 }

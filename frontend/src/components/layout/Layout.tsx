@@ -23,7 +23,6 @@ import { useEnsureUserSynced } from '../../hooks/useEnsureUserSynced';
 import api, {
   getStats,
   getSystemHealth,
-  readBreakGlassAdminTokenFromSession,
   restartRuntime,
   getResearchRuns,
   type ResearchRun,
@@ -91,9 +90,6 @@ export default function Layout() {
   const { setStats, stats, setActiveRun, activeRun } = useStore();
   const [healthOpen, setHealthOpen] = useState(false);
   const [restartBusy, setRestartBusy] = useState(false);
-  const [breakGlassToken, setBreakGlassToken] = useState<string | undefined>(() =>
-    readBreakGlassAdminTokenFromSession(),
-  );
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   useEnsureUserSynced();
 
@@ -233,7 +229,7 @@ export default function Layout() {
     if (!window.confirm('Restart runtime now? Active jobs may be interrupted.')) return;
     setRestartBusy(true);
     try {
-      await restartRuntime(isAllowlistedAdmin ? undefined : breakGlassToken);
+      await restartRuntime();
       for (let i = 0; i < MAX_RESTART_POLL_ATTEMPTS; i++) {
         await new Promise(resolve => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
         try {
@@ -255,15 +251,15 @@ export default function Layout() {
       route={location.pathname}
       runId={bugNoteRunId}
     >
-    <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
-      <aside className="w-60 flex-shrink-0 border-r border-indigo-900/20 flex flex-col bg-surface-300">
-        <div className="p-5 border-b border-indigo-900/20">
+    <div className="app-shell flex h-screen overflow-hidden">
+      <aside className="app-shell-sidebar flex w-60 flex-shrink-0 flex-col border-r border-white/[0.07]">
+        <div className="border-b border-white/[0.07] p-5">
           <Link
             to="/app/research"
             className="flex items-center gap-3 rounded-lg p-1 -m-1 outline-offset-2 hover:bg-surface-200/40 transition-colors focus-visible:outline focus-visible:outline-accent"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-research-teal flex items-center justify-center glow-accent">
-              <Cpu size={16} className="text-white" aria-hidden />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-r1-cyan/25 bg-white/[0.04] shadow-[0_0_24px_rgba(99,230,255,0.08)]">
+              <Cpu size={16} className="text-r1-cyan" aria-hidden />
             </div>
             <div className="font-bold text-white text-sm leading-tight">ResearchOne</div>
           </Link>
@@ -285,7 +281,7 @@ export default function Layout() {
         </nav>
 
         {isAllowlistedAdmin && stats && (
-          <div className="p-3 border-t border-indigo-900/20 space-y-2">
+          <div className="space-y-2 border-t border-white/[0.07] p-3">
             <div className="section-title mb-2">Corpus</div>
             <div className="grid grid-cols-2 gap-2">
               <StatPill label="Sources" value={stats.source_count} />
@@ -304,7 +300,7 @@ export default function Layout() {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-12 border-b border-indigo-900/20 flex items-center justify-between px-6 bg-surface-300/50 glass flex-shrink-0">
+        <header className="app-shell-header flex h-12 flex-shrink-0 items-center justify-between border-b border-white/[0.07] px-6">
           <div className="text-sm text-slate-400">{activeNavItem?.desc ?? 'ResearchOne'}</div>
           <div className="flex items-center gap-3">
             <ActiveRunBadge />
@@ -329,7 +325,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto grid-bg">
+        <main className="app-shell-main flex-1 overflow-y-auto">
           <NotificationBanner />
           <PlanReviewBanner runs={allRuns ?? EMPTY_RESEARCH_RUNS} />
           <Outlet />
@@ -346,8 +342,6 @@ export default function Layout() {
           onRestart={handleRestart}
           restartBusy={restartBusy}
           isAllowlistedAdmin={isAllowlistedAdmin}
-          breakGlassAdminToken={breakGlassToken}
-          onBreakGlassAdminTokenChange={() => setBreakGlassToken(readBreakGlassAdminTokenFromSession())}
         />
 
       <Notifications />
