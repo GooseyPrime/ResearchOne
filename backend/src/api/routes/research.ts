@@ -32,6 +32,7 @@ import {
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
+import { releaseHold } from '../../services/billing/walletReservations';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
   buildCreditChargeContextForRun,
@@ -50,6 +51,7 @@ import {
   resolveOwnedReportForSpinoff,
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -966,12 +968,34 @@ router.post('/:id/cancel', async (req, res, next) => {
       return;
     }
     if (status === 'queued') {
-      // Before the job is removed — the queued run's credit context lives on
-      // the job, and removing it first would take the hold id with it.
-      await releaseHoldForCancelledRun(req.params.id);
       const job = await researchQueue.getJob(req.params.id);
+      const creditContext =
+        job?.data && typeof job.data === 'object' && !Array.isArray(job.data)
+          ? (job.data as ResearchJobData).creditChargeContext
+          : null;
       if (job) {
-        await job.remove();
+        try {
+          await job.remove();
+        } catch (removeErr) {
+          await markRunCancelled(req.params.id);
+          logger.warn('queued_cancel_job_remove_lost_race', {
+            runId: req.params.id,
+            error: removeErr instanceof Error ? removeErr.message : String(removeErr),
+          });
+          res.json({ ok: true, status: 'cancellation_requested' });
+          return;
+        }
+      }
+      if (creditContext?.holdId && creditContext.userId) {
+        await releaseHold(creditContext.holdId, creditContext.userId).catch((releaseErr) => {
+          logger.warn('queued_cancel_hold_release_failed', {
+            runId: req.params.id,
+            holdId: creditContext.holdId,
+            error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+          });
+        });
+      } else {
+        await releaseHoldForCancelledRun(req.params.id);
       }
       await query(
         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,

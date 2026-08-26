@@ -124,7 +124,7 @@ export function stripLeadingOrdinal(name: string): string {
 function headingKey(value: string): string {
   return stripLeadingOrdinal(value)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -162,7 +162,7 @@ export function stripLeadingSectionHeading(body: string, composedTitle?: string)
 
   const heading = headingKey(headingText);
   const title = headingKey(composedTitle);
-  if (!heading) return rest;
+  if (!heading || !title) return text.trim();
   return heading === title ? rest : text.trim();
 }
 

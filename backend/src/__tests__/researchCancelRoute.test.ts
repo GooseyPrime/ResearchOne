@@ -1,0 +1,79 @@
+import express from 'express';
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(),
+  getJob: vi.fn(),
+  markRunCancelled: vi.fn(),
+  releaseHoldForCancelledRun: vi.fn(),
+  releaseHold: vi.fn(),
+}));
+
+vi.mock('../middleware/clerkAuth', () => ({
+  requireAuth: (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
+    req.auth = { userId: 'user_test', orgId: null, sessionId: null };
+    next();
+  },
+}));
+
+vi.mock('../db/pool', () => ({
+  query: mocks.query,
+}));
+
+vi.mock('../queue/queues', () => ({
+  researchQueue: { getJob: mocks.getJob, add: vi.fn() },
+  intellmeDeletionQueue: { add: vi.fn() },
+}));
+
+vi.mock('../services/researchCancellation', () => ({
+  markRunCancelled: mocks.markRunCancelled,
+}));
+
+vi.mock('../services/billing/releaseRunHold', () => ({
+  releaseHoldForCancelledRun: mocks.releaseHoldForCancelledRun,
+}));
+
+vi.mock('../services/billing/walletReservations', () => ({
+  releaseHold: mocks.releaseHold,
+}));
+
+import researchRouter from '../api/routes/research';
+
+function appForTest() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/research', researchRouter);
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  });
+  return app;
+}
+
+beforeEach(() => {
+  mocks.query.mockReset();
+  mocks.getJob.mockReset();
+  mocks.markRunCancelled.mockReset();
+  mocks.releaseHoldForCancelledRun.mockReset();
+  mocks.releaseHold.mockReset();
+});
+
+describe('POST /api/research/:id/cancel', () => {
+  it('falls back to cooperative cancellation when queued job removal loses the race', async () => {
+    mocks.query.mockResolvedValueOnce([{ id: 'run_1', status: 'queued' }]);
+    mocks.getJob.mockResolvedValueOnce({
+      data: { creditChargeContext: { holdId: 'hold_1', userId: 'user_1' } },
+      remove: vi.fn().mockRejectedValue(new Error('Job is locked')),
+    });
+    mocks.markRunCancelled.mockResolvedValueOnce(undefined);
+
+    const res = await request(appForTest()).post('/api/research/run_1/cancel').send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, status: 'cancellation_requested' });
+    expect(mocks.markRunCancelled).toHaveBeenCalledWith('run_1');
+    expect(mocks.releaseHold).not.toHaveBeenCalled();
+    expect(mocks.releaseHoldForCancelledRun).not.toHaveBeenCalled();
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+});

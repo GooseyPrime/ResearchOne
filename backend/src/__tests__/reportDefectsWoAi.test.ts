@@ -83,6 +83,7 @@ describe('AI-1 — a section is numbered once', () => {
     );
     // Numbering and punctuation are set aside when comparing.
     expect(stripLeadingSectionHeading('### Vertical SaaS!\n\nBody.', '16. Vertical SaaS')).toBe('Body.');
+    expect(stripLeadingSectionHeading('### 概述\n\n正文。', '概述')).toBe('正文。');
   });
 
   it('keeps a leading subsection heading that is NOT the section title', () => {
@@ -93,6 +94,7 @@ describe('AI-1 — a section is numbered once', () => {
     expect(stripLeadingSectionHeading('#### Implementation details\n\nBody.', 'Overview')).toBe(
       '#### Implementation details\n\nBody.'
     );
+    expect(stripLeadingSectionHeading('### 风险\n\n正文。', '概述')).toBe('### 风险\n\n正文。');
   });
 
   it('keeps headings that are further down the section', () => {
