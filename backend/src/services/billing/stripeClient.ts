@@ -73,7 +73,7 @@ export interface SubscriptionPriceOption {
   annualAmountCents: number;
 }
 
-export function isSelfServeSubscriptionTier(tier: string): boolean {
+export function isSelfServeSubscriptionTier(tier: string): tier is 'pro' | 'byok' {
   return tier === 'pro' || tier === 'byok';
 }
 
