@@ -994,11 +994,11 @@ router.post('/:id/cancel', async (req, res, next) => {
             error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
           });
         });
-      } else {
-        if (!job) {
-          logger.warn('queued_cancel_missing_hold_context', { runId: req.params.id });
-        }
+      } else if (!job) {
+        logger.warn('queued_cancel_missing_hold_context', { runId: req.params.id });
         await releaseHoldForCancelledRun(req.params.id);
+      } else {
+        logger.warn('queued_cancel_incomplete_hold_context', { runId: req.params.id });
       }
       await query(
         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
