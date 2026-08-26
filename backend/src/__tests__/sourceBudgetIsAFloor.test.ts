@@ -38,6 +38,10 @@ describe('a planner cannot ask for fewer sources than the deliverable needs', ()
     expect(effectiveIngestCap({ budgetFloor, plannerRequest: 500 })).toBe(MAX_SOURCES_PER_RUN);
   });
 
+  it('clamps a misconfigured floor to the hard ceiling', () => {
+    expect(effectiveIngestCap({ budgetFloor: MAX_SOURCES_PER_RUN + 5, plannerRequest: 0 })).toBe(MAX_SOURCES_PER_RUN);
+  });
+
   it('falls back to the floor when the planner names no number at all', () => {
     const budgetFloor = resolveSourceIngestBudget({ configuredCap: 10, targetWordCount: 4000 });
     expect(effectiveIngestCap({ budgetFloor, plannerRequest: 0 })).toBe(budgetFloor);

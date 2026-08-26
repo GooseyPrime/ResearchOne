@@ -75,8 +75,8 @@ export function effectiveIngestCap(args: {
   /** `max_sources_to_ingest` from the discovery plan; 0 or absent means none. */
   plannerRequest?: number | null;
 }): number {
-  const floor = Math.max(0, Math.floor(args.budgetFloor));
+  const floor = Math.min(MAX_SOURCES_PER_RUN, Math.max(0, Math.floor(args.budgetFloor)));
   const requested = Math.max(0, Math.floor(args.plannerRequest ?? 0));
-  const ceiling = Math.max(floor, MAX_SOURCES_PER_RUN);
+  const ceiling = MAX_SOURCES_PER_RUN;
   return Math.min(Math.max(requested, floor), ceiling);
 }

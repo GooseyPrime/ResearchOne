@@ -82,15 +82,23 @@ export function applyLegacyPaidChallengeUpgrade<T extends { skepticMode: 'gate' 
 
 /** Raw persisted add-ons for a run, unfiltered. Deploy-skew safe. */
 export async function readRawRunAddons(runId: string, jobAddons?: unknown): Promise<unknown> {
-  if (Array.isArray(jobAddons) && jobAddons.length > 0) return jobAddons;
   try {
     const row = await queryOne<{ selected_addons: unknown }>(
       `SELECT selected_addons FROM research_runs WHERE id = $1`,
       [runId]
     );
-    return row?.selected_addons ?? null;
+    if (!Array.isArray(jobAddons)) return row?.selected_addons ?? null;
+    if (!Array.isArray(row?.selected_addons)) return jobAddons;
+
+    const merged = [...jobAddons];
+    for (const item of row.selected_addons) {
+      if (!merged.includes(item)) {
+        merged.push(item);
+      }
+    }
+    return merged;
   } catch {
-    return null;
+    return Array.isArray(jobAddons) ? jobAddons : null;
   }
 }
 
