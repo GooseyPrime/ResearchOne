@@ -98,7 +98,10 @@ describe('POST /api/research/:id/cancel', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, status: 'cancelled' });
-    expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_missing_hold_context', { runId: 'run_1' });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_hold_context_fallback', {
+      runId: 'run_1',
+      reason: 'missing_queue_job',
+    });
     expect(mocks.releaseHoldForCancelledRun).toHaveBeenCalledWith('run_1');
   });
 
@@ -119,6 +122,9 @@ describe('POST /api/research/:id/cancel', () => {
     expect(remove).toHaveBeenCalled();
     expect(mocks.releaseHold).not.toHaveBeenCalled();
     expect(mocks.releaseHoldForCancelledRun).toHaveBeenCalledWith('run_1');
-    expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_incomplete_hold_context', { runId: 'run_1' });
+    expect(mocks.loggerWarn).toHaveBeenCalledWith('queued_cancel_hold_context_fallback', {
+      runId: 'run_1',
+      reason: 'incomplete_queue_context',
+    });
   });
 });

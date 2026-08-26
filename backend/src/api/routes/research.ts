@@ -994,11 +994,11 @@ router.post('/:id/cancel', async (req, res, next) => {
             error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
           });
         });
-      } else if (!job) {
-        logger.warn('queued_cancel_missing_hold_context', { runId: req.params.id });
-        await releaseHoldForCancelledRun(req.params.id);
       } else {
-        logger.warn('queued_cancel_incomplete_hold_context', { runId: req.params.id });
+        logger.warn('queued_cancel_hold_context_fallback', {
+          runId: req.params.id,
+          reason: job ? 'incomplete_queue_context' : 'missing_queue_job',
+        });
         await releaseHoldForCancelledRun(req.params.id);
       }
       await query(
