@@ -1,0 +1,1873 @@
+From 239dab3048d7adb967d9fd991c69001b132b53de Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 26 Aug 2026 12:43:28 +0000
+Subject: [PATCH] Re-land the eleven review fixes the #229 squash left behind
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+PR #229 was squash-merged from a point three commits before the branch
+tip, so `main` has the WO-AH work, the evidence gate, the six report
+defects and the intent matrix — but not the review round that followed.
+Four of the missing fixes are P1, and all four are live defects on main
+right now:
+
+- Pressing Cancel on a run freezes the user's wallet money for thirty
+  minutes. The button this PR series added has no hold release behind it.
+- A run queued with the removed "Devil's Advocate" add-on is charged $5
+  for a stronger challenge pass that never runs.
+- The scaled source budget computes a number nothing uses: discovery
+  still takes `min(planner's request, cap)`, so the "only 9 sources"
+  complaint is not actually fixed on main.
+- The relevance filter classifies sources as off-topic and then ingests
+  them anyway to fill the cap, so the "why are these sources here"
+  complaint is not actually fixed either.
+
+Two more are regressions #229 itself introduced and shipped:
+
+- `stripLeadingOrdinal` turns `ISO 27001: Security controls` into
+  `Security controls` — the fix for corrupted headings corrupting them.
+- `stripLeadingSectionHeading` deletes the label from any section that
+  opens with `### Risks`.
+
+The rest: a failed billing lookup silently downgrading a paid user to
+free, a second prefill carrying the previous request's settings, an
+over-broad opportunity trigger stealing explicit comparison requests,
+five screens still advertising "Deep Research", and `/docs` still saying
+"skeptic" while outside the jargon manifest.
+
+No new work. This is the content of `cursor/one-research-system` that
+`main` does not have, applied unchanged, with the tests and the
+mutation evidence that came with each fix.
+
+Gates: backend 1581 pass, frontend 362 pass, typecheck and lint clean
+both sides, Tier A check passes on 20 files.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011G3e1Pev1BxsDJoEco61Y3
+---
+ RESEARCHONE_WORK_QUEUE.md                     |  27 ++++
+ .../src/__tests__/cancelReleasesHold.test.ts  | 101 +++++++++++++++
+ .../__tests__/intentFidelityMatrix.test.ts    |  24 ++++
+ .../src/__tests__/reportDefectsWoAi.test.ts   |  85 ++++++++++--
+ .../__tests__/sourceBudgetIsAFloor.test.ts    |  68 ++++++++++
+ backend/src/api/routes/research.ts            |   5 +
+ backend/src/api/routes/runs.ts                |   6 +-
+ .../src/services/billing/releaseRunHold.ts    |  82 ++++++++++++
+ .../services/discovery/candidateRelevance.ts  |  27 ++++
+ .../discovery/discoveryOrchestrator.ts        |  40 ++++--
+ .../src/services/discovery/sourceBudget.ts    |  24 ++++
+ .../src/services/planning/intentTaxonomy.ts   |   9 +-
+ .../src/services/reasoning/reportGenerator.ts | 121 ++++++++++++++----
+ .../reasoning/researchOrchestrator.ts         |  11 +-
+ backend/src/services/reasoning/runAddons.ts   |  48 +++++++
+ docs/marketing/tier-a-manifest.txt            |   2 +
+ .../billing/FreeLifetimeQuotaBanner.test.tsx  |  23 ++--
+ .../components/ResearchRequestForm.test.tsx   |  96 +++++++++++++-
+ .../account/PlanConfirmationSettingsCard.tsx  |   4 +-
+ .../SavedOrchestrationProfilesCard.tsx        |   4 +-
+ .../billing/FreeLifetimeQuotaBanner.tsx       |  37 ++----
+ frontend/src/components/layout/Layout.tsx     |   2 +-
+ .../components/r1-dashboard/LiveRunPanel.tsx  |  14 +-
+ .../components/r1-dashboard/RecentRuns.tsx    |   2 +-
+ .../src/components/r1-reports/ReportCard.tsx  |   2 +-
+ .../r1-reports/SampleReportView.tsx           |   8 +-
+ .../src/components/r1-shell/FeedbackModal.tsx |   6 +-
+ .../r1-vault/CapabilityShowcase.tsx           |   8 +-
+ .../components/r1-vault/FeatureVaultList.tsx  |   8 +-
+ .../r1-vault/MethodologyPipeline.tsx          |  10 +-
+ .../components/r1-vault/ProtocolMarquee.tsx   |   4 +-
+ .../research/PlanConfirmationPanel.tsx        |   2 +-
+ .../research/ResearchRequestForm.tsx          |  47 +++++--
+ frontend/src/content/researchoneUiData.ts     |   4 +-
+ frontend/src/pages/BillingPage.tsx            |   8 +-
+ frontend/src/pages/FailedRunReportPage.tsx    |   2 +-
+ frontend/src/pages/MarketingDocsPage.tsx      |   2 +-
+ frontend/src/pages/MethodologyPage.tsx        |  15 ++-
+ frontend/src/theme.css                        |   2 +-
+ frontend/tailwind.config.js                   |   7 +-
+ 40 files changed, 850 insertions(+), 147 deletions(-)
+ create mode 100644 backend/src/__tests__/cancelReleasesHold.test.ts
+ create mode 100644 backend/src/__tests__/sourceBudgetIsAFloor.test.ts
+ create mode 100644 backend/src/services/billing/releaseRunHold.ts
+
+diff --git a/RESEARCHONE_WORK_QUEUE.md b/RESEARCHONE_WORK_QUEUE.md
+index 65a48ee..8804a5d 100644
+--- a/RESEARCHONE_WORK_QUEUE.md
++++ b/RESEARCHONE_WORK_QUEUE.md
+@@ -190,6 +190,33 @@ nothing. `RecentRuns` badges a corroboration tier only when there is one.
+ 
+ ---
+ 
++## Where PR #229 stands
++
++Everything above is on `cursor/one-research-system`, in draft PR #229. CI green
++on every check.
++
++Review round 1 produced fifteen findings. Copilot fixed four itself; the other
++eleven are fixed and every thread has a reply. Four were P1 — a stranded wallet
++hold on the Cancel button this PR adds, five dollars charged for a removed
++add-on's stronger pass, and two fixes that computed the right answer and handed
++it to something that ignored it.
++
++**Do not merge until both reviewers have gone quiet and every new thread has a
++reply.** #227 was merged before the final Codex pass landed, which is how four
++defects reached `main`.
++
++### The two things waiting on the operator
++
++1. **AH-6, the deep-report quota.** Every run now reaches the pipeline that
++   used to be Deep. Either every run counts as a deep run (Student 15 → 4
++   reports a month, Pro 25 → 5), or the sub-cap stops binding and the general
++   monthly cap is the only limit. The interim is the second, in one constant,
++   `RUN_CONSUMES_DEEP_QUOTA`.
++2. **Cost accounting (WO-AG).** Parked at your instruction. Findings recorded
++   below; no cost code has been touched.
++
++---
++
+ ## Standing obligations
+ 
+ - **Rule 44** — full self-check before requesting review; add new defect themes
+diff --git a/backend/src/__tests__/cancelReleasesHold.test.ts b/backend/src/__tests__/cancelReleasesHold.test.ts
+new file mode 100644
+index 0000000..9c18ac6
+--- /dev/null
++++ b/backend/src/__tests__/cancelReleasesHold.test.ts
+@@ -0,0 +1,101 @@
++/**
++ * Cancelling a run gives the money back (Codex P1, PR #229).
++ *
++ * A run that costs wallet money places a hold before it starts. Nothing in the
++ * product could cancel a run, so nothing released the hold on cancellation —
++ * the money sat in `reserved_cents` until the hold aged out after thirty
++ * minutes and the hourly reaper noticed. WO-AH puts a Cancel button on the run
++ * workspace, which turns a dormant gap into one a user hits by pressing the
++ * button we gave them.
++ */
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++const mocks = vi.hoisted(() => ({
++  queryMock: vi.fn(),
++  queryOneMock: vi.fn(),
++  getJobMock: vi.fn(),
++  releaseHoldMock: vi.fn(),
++}));
++
++vi.mock('../db/pool', () => ({
++  query: mocks.queryMock,
++  queryOne: mocks.queryOneMock,
++  withTransaction: vi.fn(),
++  rlsStore: { run: <T>(_c: unknown, fn: () => T): T => fn(), getStore: () => undefined },
++}));
++
++vi.mock('../queue/queues', () => ({
++  researchQueue: { getJob: mocks.getJobMock, add: vi.fn() },
++  intellmeDeletionQueue: { add: vi.fn() },
++}));
++
++vi.mock('../services/billing/walletReservations', () => ({
++  releaseHold: mocks.releaseHoldMock,
++  consumeHold: vi.fn(),
++}));
++
++import { releaseHoldForCancelledRun } from '../services/billing/releaseRunHold';
++
++const RUN_ID = '33333333-3333-4333-8333-333333333333';
++
++beforeEach(() => {
++  mocks.queryMock.mockReset();
++  mocks.queryOneMock.mockReset();
++  mocks.getJobMock.mockReset();
++  mocks.releaseHoldMock.mockReset();
++  mocks.queryMock.mockResolvedValue([]);
++  mocks.getJobMock.mockResolvedValue(null);
++  mocks.releaseHoldMock.mockResolvedValue(undefined);
++});
++
++describe('releaseHoldForCancelledRun', () => {
++  it("releases a queued run's hold, which lives on its queue job", async () => {
++    mocks.getJobMock.mockResolvedValue({
++      data: { creditChargeContext: { type: 'wallet', holdId: 'hold_1', userId: 'user_1' } },
++    });
++
++    await releaseHoldForCancelledRun(RUN_ID);
++
++    expect(mocks.releaseHoldMock).toHaveBeenCalledWith('hold_1', 'user_1');
++  });
++
++  it("releases a plan-gate run's hold, which lives in resume_job_payload", async () => {
++    mocks.queryMock.mockResolvedValue([
++      { resume_job_payload: { creditChargeContext: { type: 'wallet', holdId: 'hold_2', userId: 'user_2' } } },
++    ]);
++
++    await releaseHoldForCancelledRun(RUN_ID);
++
++    expect(mocks.releaseHoldMock).toHaveBeenCalledWith('hold_2', 'user_2');
++  });
++
++  it('releases a subscription run whose hold covers a paid add-on surcharge', async () => {
++    // Keyed on the hold, not on `type === 'wallet'`. A subscription run with a
++    // paid add-on holds money too, and a wallet-only test would pass while
++    // exactly those stayed stranded.
++    mocks.getJobMock.mockResolvedValue({
++      data: { creditChargeContext: { type: 'subscription', holdId: 'hold_3', userId: 'user_3' } },
++    });
++
++    await releaseHoldForCancelledRun(RUN_ID);
++
++    expect(mocks.releaseHoldMock).toHaveBeenCalledWith('hold_3', 'user_3');
++  });
++
++  it('does nothing when the run never held any money', async () => {
++    mocks.getJobMock.mockResolvedValue({ data: { creditChargeContext: undefined } });
++
++    await releaseHoldForCancelledRun(RUN_ID);
++
++    expect(mocks.releaseHoldMock).not.toHaveBeenCalled();
++  });
++
++  it('never lets a failed release stop the cancellation', async () => {
++    mocks.getJobMock.mockResolvedValue({
++      data: { creditChargeContext: { holdId: 'hold_4', userId: 'user_4' } },
++    });
++    mocks.releaseHoldMock.mockRejectedValue(new Error('wallet unavailable'));
++
++    await expect(releaseHoldForCancelledRun(RUN_ID)).resolves.toBeUndefined();
++  });
++});
+diff --git a/backend/src/__tests__/intentFidelityMatrix.test.ts b/backend/src/__tests__/intentFidelityMatrix.test.ts
+index 806990f..69d668d 100644
+--- a/backend/src/__tests__/intentFidelityMatrix.test.ts
++++ b/backend/src/__tests__/intentFidelityMatrix.test.ts
+@@ -424,3 +424,27 @@ describe('intent routing does not over-claim', () => {
+     expect(brief.primaryIntent).toBe('investigation');
+   });
+ });
++
++describe('an explicit operation wins over an incidental noun', () => {
++  it.each([
++    ['Compare investment opportunities A and B', 'comparative'],
++    ['Which investment opportunity should we take?', 'recommendation'],
++  ])('routes %s to %s, not opportunity discovery', async (prompt, expected) => {
++    // A bare `opportunit\w*` trigger hit once here and `comparative` once, and
++    // the specificity tie-break put opportunity discovery first — so an
++    // explicit comparison deterministically got a landscape report.
++    const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
++    expect(brief.primaryIntent).toBe(expected);
++  });
++
++  it('still routes a genuine discovery request', async () => {
++    for (const prompt of [
++      'Find me 20 affiliate marketing niches ranked by income potential.',
++      'Identify untapped opportunities in industrial heat recovery',
++      'Where are the opportunity gaps in small-business payroll software?',
++    ]) {
++      const brief = await classifyIntent(prompt, undefined, { allowFallbackByRole: {} });
++      expect(brief.primaryIntent).toBe('opportunity_discovery');
++    }
++  });
++});
+diff --git a/backend/src/__tests__/reportDefectsWoAi.test.ts b/backend/src/__tests__/reportDefectsWoAi.test.ts
+index 29b20e9..7c79594 100644
+--- a/backend/src/__tests__/reportDefectsWoAi.test.ts
++++ b/backend/src/__tests__/reportDefectsWoAi.test.ts
+@@ -26,7 +26,12 @@ import {
+   resolveTableExpectation,
+ } from '../services/reasoning/tableContract';
+ import { resolveSourceIngestBudget, MAX_SOURCES_PER_RUN } from '../services/discovery/sourceBudget';
+-import { partitionByRelevance, scoreCandidateRelevance, topicTerms } from '../services/discovery/candidateRelevance';
++import {
++  partitionByRelevance,
++  scoreCandidateRelevance,
++  selectByRelevance,
++  topicTerms,
++} from '../services/discovery/candidateRelevance';
+ import {
+   looksLikePdf,
+   parseHtmlToContent,
+@@ -60,28 +65,62 @@ describe('AI-1 — a section is numbered once', () => {
+     expect(composeItemHeading({ ordinal: 3, label: 'Year', itemName: '2024' })).toBe('3. 2024');
+   });
+ 
+-  it('removes a heading the drafter wrote at the top of its body', () => {
+-    expect(stripLeadingSectionHeading('## 16. Vertical SaaS\n\nBody text.')).toBe('Body text.');
+-    expect(stripLeadingSectionHeading('#### Sub thing\n\nBody.')).toBe('Body.');
++  it.each([
++    'ISO 27001: Security controls',
++    'Type 2: Diabetes care',
++    'GPT 4: Enterprise automation',
++    'Section 508: Accessibility',
++  ])('does not eat the subject of %s', (name) => {
++    // The prefix allowance was `[A-Za-z][A-Za-z ]{0,20}`, which matched any
++    // short word before a number — so these names were reduced to whatever
++    // followed the colon, corrupting the heading it was meant to fix.
++    expect(stripLeadingOrdinal(name)).toBe(name);
++  });
++
++  it("removes the drafter's copy of the heading the assembler will add", () => {
++    expect(stripLeadingSectionHeading('## 16. Vertical SaaS\n\nBody text.', '16. Vertical SaaS')).toBe(
++      'Body text.'
++    );
++    // Numbering and punctuation are set aside when comparing.
++    expect(stripLeadingSectionHeading('### Vertical SaaS!\n\nBody.', '16. Vertical SaaS')).toBe('Body.');
+   });
+ 
+-  it('keeps headings that are part of the section, not its title', () => {
++  it('keeps a leading subsection heading that is NOT the section title', () => {
++    // The first version removed any leading heading of any level, so a section
++    // opening with `### Risks` kept its text and lost its label.
++    const body = '### Risks\n\nSome risks.';
++    expect(stripLeadingSectionHeading(body, '4. Vertical SaaS')).toBe(body);
++    expect(stripLeadingSectionHeading('#### Implementation details\n\nBody.', 'Overview')).toBe(
++      '#### Implementation details\n\nBody.'
++    );
++  });
++
++  it('keeps headings that are further down the section', () => {
+     const body = 'Opening paragraph.\n\n### Risks\n\nSome risks.';
+-    expect(stripLeadingSectionHeading(body)).toBe(body);
++    expect(stripLeadingSectionHeading(body, 'Overview')).toBe(body);
+   });
+ 
+   it('keeps a body that is nothing but a heading rather than blanking the section', () => {
+-    expect(stripLeadingSectionHeading('## Only a heading')).toBe('## Only a heading');
++    expect(stripLeadingSectionHeading('## Only a heading', 'Only a heading')).toBe('## Only a heading');
+   });
+ 
+-  it('strips a refiner heading of any level, not only ##', () => {
+-    // The old pattern matched `^##` exactly, so a refiner that answered with
+-    // `###` rendered a second heading under the assembler's.
++  it('strips a refiner heading at any level when it repeats the section title', () => {
++    const titles = new Map([['summary', '4. Summary']]);
+     const refined = parseRefinedSections(
+-      '<<<SECTION key="summary">>>\n### 4. Summary\n\nReal body.\n<<<END SECTION>>>'
++      '<<<SECTION key="summary">>>\n### 4. Summary\n\nReal body.\n<<<END SECTION>>>',
++      titles
+     );
+     expect(refined.get('summary')).toBe('Real body.');
+   });
++
++  it('leaves a refiner subsection heading alone', () => {
++    const titles = new Map([['summary', '4. Summary']]);
++    const refined = parseRefinedSections(
++      '<<<SECTION key="summary">>>\n### Risks\n\nReal body.\n<<<END SECTION>>>',
++      titles
++    );
++    expect(refined.get('summary')).toBe('### Risks\n\nReal body.');
++  });
+ });
+ 
+ describe('AI-2 / AI-3 — a requested table is a table, whole', () => {
+@@ -205,6 +244,30 @@ describe('AI-5 — a source has to be about the request', () => {
+     expect(onTopic.length).toBe(ON_TOPIC.length);
+   });
+ 
++  it('does not let off-topic candidates fill the rest of the ingest budget', () => {
++    // The first version appended every off-topic candidate after the on-topic
++    // ones, and the selection loop runs until it has `maxIngest` sources — so
++    // a large run with three relevant results still fetched and embedded the
++    // rest, recreating the failure the filter exists to prevent.
++    const { ranked, dropped, toppedUpUrls } = selectByRelevance(QUERY, [...ON_TOPIC, ...OFF_TOPIC], 3);
++    expect(ranked.map((c) => c.url)).toEqual(ON_TOPIC.map((c) => c.url));
++    expect(dropped).toBe(OFF_TOPIC.length);
++    expect(toppedUpUrls.size).toBe(0);
++  });
++
++  it('tops up with off-topic candidates only as far as the floor', () => {
++    // Starving a run of sources is the other failure. One on-topic result and
++    // a floor of three means exactly two off-topic results are borrowed.
++    const { ranked, dropped, toppedUpUrls } = selectByRelevance(
++      QUERY,
++      [ON_TOPIC[0]!, ...OFF_TOPIC],
++      3
++    );
++    expect(ranked).toHaveLength(3);
++    expect(toppedUpUrls.size).toBe(2);
++    expect(dropped).toBe(OFF_TOPIC.length - 2);
++  });
++
+   it('needs only one match on a very short query', () => {
+     const terms = topicTerms('tokamak');
+     expect(scoreCandidateRelevance(terms, { title: 'Tokamak confinement scaling' }).onTopic).toBe(true);
+diff --git a/backend/src/__tests__/sourceBudgetIsAFloor.test.ts b/backend/src/__tests__/sourceBudgetIsAFloor.test.ts
+new file mode 100644
+index 0000000..52159c1
+--- /dev/null
++++ b/backend/src/__tests__/sourceBudgetIsAFloor.test.ts
+@@ -0,0 +1,68 @@
++/**
++ * The scaled source budget has to be the effective limit (Codex P1, #229).
++ *
++ * `resolveSourceIngestBudget` computed a larger number for a long report, and
++ * `runDiscoveryOrchestrator` then took `min(planner's request, cap)` — so a
++ * planner asking for ten sources still capped a 7,000-word report at ten and
++ * the helper changed nothing. My original test exercised the helper in
++ * isolation, which is a test shaped like the fix rather than like the failure.
++ */
++import { describe, expect, it } from 'vitest';
++
++import {
++  effectiveIngestCap,
++  resolveSourceIngestBudget,
++  MAX_SOURCES_PER_RUN,
++} from '../services/discovery/sourceBudget';
++import { paidForLegacyChallengeUpgrade, applyLegacyPaidChallengeUpgrade } from '../services/reasoning/runAddons';
++
++// `effectiveIngestCap` is the function discovery actually calls, not a copy of
++// its arithmetic — a test that re-implements the expression it is checking
++// passes whatever the caller does.
++
++describe('a planner cannot ask for fewer sources than the deliverable needs', () => {
++  it('keeps the scaled budget when the planner asks for less', () => {
++    const budgetFloor = resolveSourceIngestBudget({ configuredCap: 10, targetWordCount: 7000 });
++    expect(budgetFloor).toBeGreaterThan(10);
++    // The old expression: Math.min(10 || cap, cap) === 10.
++    expect(effectiveIngestCap({ budgetFloor, plannerRequest: 10 })).toBe(budgetFloor);
++  });
++
++  it('lets the planner ask for more', () => {
++    const budgetFloor = resolveSourceIngestBudget({ configuredCap: 10 });
++    expect(effectiveIngestCap({ budgetFloor, plannerRequest: 25 })).toBe(25);
++  });
++
++  it('still refuses to exceed the hard ceiling', () => {
++    const budgetFloor = resolveSourceIngestBudget({ configuredCap: 10, requestedArtifactCount: 20 });
++    expect(effectiveIngestCap({ budgetFloor, plannerRequest: 500 })).toBe(MAX_SOURCES_PER_RUN);
++  });
++
++  it('falls back to the floor when the planner names no number at all', () => {
++    const budgetFloor = resolveSourceIngestBudget({ configuredCap: 10, targetWordCount: 4000 });
++    expect(effectiveIngestCap({ budgetFloor, plannerRequest: 0 })).toBe(budgetFloor);
++  });
++});
++
++/**
++ * A run that already paid for the removed add-on still gets what it bought
++ * (Codex P1, #229). Its wallet hold includes the surcharge and the orchestrator
++ * consumes it on completion, so dropping the key as "unknown" charged five
++ * dollars for a stronger pass that never ran.
++ */
++describe('an in-flight run keeps the challenge upgrade it paid for', () => {
++  it('recognises the removed key in raw persisted add-ons', () => {
++    expect(paidForLegacyChallengeUpgrade(['parallel_search', 'adversarial_twin'])).toBe(true);
++    expect(paidForLegacyChallengeUpgrade(['parallel_search'])).toBe(false);
++    expect(paidForLegacyChallengeUpgrade(null)).toBe(false);
++  });
++
++  it('forces the strongest challenge pass for such a run', () => {
++    expect(applyLegacyPaidChallengeUpgrade({ skepticMode: 'annotate' as const }).skepticMode).toBe('gate');
++  });
++
++  it('leaves a profile that already gates alone', () => {
++    const profile = { skepticMode: 'gate' as const, other: 1 };
++    expect(applyLegacyPaidChallengeUpgrade(profile)).toBe(profile);
++  });
++});
+diff --git a/backend/src/api/routes/research.ts b/backend/src/api/routes/research.ts
+index b7b11d0..43617de 100644
+--- a/backend/src/api/routes/research.ts
++++ b/backend/src/api/routes/research.ts
+@@ -31,6 +31,7 @@ import {
+ } from '../../services/reasoning/runStateMachine';
+ import { checkTierAccess } from '../../services/tier/tierService';
+ import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
++import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
+ import { getWalletSummary } from '../../services/billing/walletService';
+ import {
+   buildCreditChargeContextForRun,
+@@ -965,6 +966,9 @@ router.post('/:id/cancel', async (req, res, next) => {
+       return;
+     }
+     if (status === 'queued') {
++      // Before the job is removed — the queued run's credit context lives on
++      // the job, and removing it first would take the hold id with it.
++      await releaseHoldForCancelledRun(req.params.id);
+       const job = await researchQueue.getJob(req.params.id);
+       if (job) {
+         await job.remove();
+@@ -986,6 +990,7 @@ router.post('/:id/cancel', async (req, res, next) => {
+     // status", which meant the one state a user is most likely to abandon was
+     // the one state they could not abandon.
+     if (status === 'plan_pending_confirmation') {
++      await releaseHoldForCancelledRun(req.params.id);
+       await query(
+         `UPDATE research_runs SET status='cancelled', completed_at=NOW(), error_message='Cancelled by user' WHERE id=$1`,
+         [req.params.id]
+diff --git a/backend/src/api/routes/runs.ts b/backend/src/api/routes/runs.ts
+index c245cef..b4e9190 100644
+--- a/backend/src/api/routes/runs.ts
++++ b/backend/src/api/routes/runs.ts
+@@ -316,7 +316,11 @@ router.post('/:runId/plan/cancel', async (req: Request, res: Response, next: Nex
+       run.resume_job_payload && typeof run.resume_job_payload === 'object' && !Array.isArray(run.resume_job_payload)
+         ? (run.resume_job_payload as ResearchJobData)
+         : null;
+-    if (payload?.creditChargeContext?.type === 'wallet' && payload.creditChargeContext.holdId && payload.creditChargeContext.userId) {
++    // Keyed on the hold, not on `type === 'wallet'`: a subscription run that
++    // bought a paid add-on also places a hold for the surcharge, and the old
++    // condition stranded exactly those. Same defect as the cancel route's
++    // missing release, so it is fixed in both places rather than one.
++    if (payload?.creditChargeContext?.holdId && payload.creditChargeContext.userId) {
+       try {
+         await releaseHold(payload.creditChargeContext.holdId, payload.creditChargeContext.userId);
+       } catch (relErr) {
+diff --git a/backend/src/services/billing/releaseRunHold.ts b/backend/src/services/billing/releaseRunHold.ts
+new file mode 100644
+index 0000000..b4e15a6
+--- /dev/null
++++ b/backend/src/services/billing/releaseRunHold.ts
+@@ -0,0 +1,82 @@
++import { query } from '../../db/pool';
++import { logger } from '../../utils/logger';
++import { releaseHold } from './walletReservations';
++import { researchQueue } from '../../queue/queues';
++import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';
++
++/**
++ * Give a cancelled run's money back.
++ *
++ * A run that costs wallet money places a hold before it starts. If the run
++ * finishes, the orchestrator consumes or releases it. If the user cancels, the
++ * hold is nobody's job — the money sits in `reserved_cents` until the hold
++ * ages out after thirty minutes and the hourly reaper notices, and in the
++ * meantime the user may not have the balance to start the run they cancelled
++ * the first one in favour of.
++ *
++ * That was survivable while nothing in the product could cancel a run. WO-AH
++ * puts a Cancel button on the run workspace, so it isn't any more
++ * (Codex P1, PR #229).
++ *
++ * The context lives in two different places depending on how far the run got:
++ * a queued run carries it on its BullMQ job, and a run parked at the plan gate
++ * carries it in `resume_job_payload`. This looks in both, because a caller
++ * that has to know which one applies will eventually check the wrong one.
++ *
++ * Keyed on the presence of a hold, NOT on `type === 'wallet'`: a subscription
++ * run that bought a paid add-on also places a hold for the surcharge, and
++ * releasing only wallet-type contexts would strand exactly those.
++ */
++export async function releaseHoldForCancelledRun(runId: string): Promise<void> {
++  const context = await loadCreditContext(runId);
++  if (!context?.holdId || !context.userId) return;
++
++  try {
++    await releaseHold(context.holdId, context.userId);
++    logger.info('cancelled_run_hold_released', { runId, holdId: context.holdId });
++  } catch (err) {
++    // Cancellation must still succeed. The reaper is the backstop; this is the
++    // fast path, and a failure here is worth seeing in the logs.
++    logger.warn('cancelled_run_hold_release_failed', {
++      runId,
++      holdId: context.holdId,
++      err: err instanceof Error ? err.message : String(err),
++    });
++  }
++}
++
++type CreditContext = { holdId?: string; userId?: string };
++
++async function loadCreditContext(runId: string): Promise<CreditContext | null> {
++  const fromJob = await creditContextFromQueueJob(runId);
++  if (fromJob?.holdId) return fromJob;
++  return creditContextFromResumePayload(runId);
++}
++
++async function creditContextFromQueueJob(runId: string): Promise<CreditContext | null> {
++  try {
++    const job = await researchQueue.getJob(runId);
++    const data = job?.data as ResearchJobData | undefined;
++    return data?.creditChargeContext ?? null;
++  } catch (err) {
++    logger.warn('cancelled_run_hold_job_read_failed', { runId, err: String(err) });
++    return null;
++  }
++}
++
++async function creditContextFromResumePayload(runId: string): Promise<CreditContext | null> {
++  try {
++    const rows = await query<{ resume_job_payload: unknown }>(
++      `SELECT resume_job_payload FROM research_runs WHERE id = $1`,
++      [runId]
++    );
++    const payload = rows[0]?.resume_job_payload;
++    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
++    return (payload as ResearchJobData).creditChargeContext ?? null;
++  } catch (err) {
++    // Pre-migration databases may not have the column. A cancel must not fail
++    // because the refund path could not read.
++    logger.warn('cancelled_run_hold_payload_read_failed', { runId, err: String(err) });
++    return null;
++  }
++}
+diff --git a/backend/src/services/discovery/candidateRelevance.ts b/backend/src/services/discovery/candidateRelevance.ts
+index c26dee2..5fedb5f 100644
+--- a/backend/src/services/discovery/candidateRelevance.ts
++++ b/backend/src/services/discovery/candidateRelevance.ts
+@@ -126,3 +126,30 @@ export function partitionByRelevance<T extends { title?: string | null; snippet?
+   }
+   return { onTopic, offTopic };
+ }
++
++/**
++ * The candidates discovery will actually try to ingest, in order.
++ *
++ * On-topic first; off-topic ONLY as far as the floor. Concatenating the whole
++ * off-topic set after the on-topic one merely reordered the list, and the
++ * selection loop runs until it has `maxIngest` sources — so a 40-source run
++ * with three relevant results still fetched and embedded 37 the filter had
++ * just classified as unrelated (Codex P1, PR #229).
++ *
++ * Returns the kept off-topic URLs too, so the trace can say plainly which
++ * sources were used to make up a shortfall.
++ */
++export function selectByRelevance<T extends { title?: string | null; snippet?: string | null; url?: string | null }>(
++  researchQuery: string,
++  candidates: readonly T[],
++  floor: number
++): { ranked: T[]; toppedUpUrls: Set<string | null | undefined>; dropped: number } {
++  const { onTopic, offTopic } = partitionByRelevance(researchQuery, candidates);
++  const shortfall = Math.max(0, floor - onTopic.length);
++  const topUp = offTopic.slice(0, shortfall);
++  return {
++    ranked: [...onTopic, ...topUp],
++    toppedUpUrls: new Set(topUp.map((candidate) => candidate.url)),
++    dropped: offTopic.length - topUp.length,
++  };
++}
+diff --git a/backend/src/services/discovery/discoveryOrchestrator.ts b/backend/src/services/discovery/discoveryOrchestrator.ts
+index 9f3bc9d..16700d8 100644
+--- a/backend/src/services/discovery/discoveryOrchestrator.ts
++++ b/backend/src/services/discovery/discoveryOrchestrator.ts
+@@ -27,7 +27,8 @@ import {
+ } from './deterministicDiscoveryQueries';
+ import { query, queryOne } from '../../db/pool';
+ import { ingestionQueue } from '../../queue/queues';
+-import { partitionByRelevance } from './candidateRelevance';
++import { selectByRelevance } from './candidateRelevance';
++import { effectiveIngestCap } from './sourceBudget';
+ import { callRoleModel } from '../openrouter/openrouterService';
+ import { runScope } from '../telemetry';
+ import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
+@@ -363,11 +364,25 @@ async function runDiscoveryOrchestratorInner(args: {
+     }
+   }
+ 
+-  const capCeiling =
++  // The caller's budget is a FLOOR, not just a ceiling.
++  //
++  // This used to be `min(planner's number, cap)`, so a planner that asked for
++  // ten sources capped a 7,000-word report at ten however large a budget the
++  // request earned — which is the under-sourcing the scaled budget was written
++  // to fix, still happening, with the new helper computing a number that
++  // nothing used. Testing the helper in isolation missed it: the test was
++  // shaped like the fix instead of like the failure (Codex P1, PR #229).
++  //
++  // The planner may still ask for MORE than the floor, up to the hard ceiling.
++  // What it may no longer do is ask for less than the deliverable needs.
++  const budgetFloor =
+     typeof maxIngestCapOverride === 'number' && maxIngestCapOverride > 0
+       ? maxIngestCapOverride
+       : config.discovery.maxIngestPerRun;
+-  const maxIngest = Math.min(discoveryPlan.max_sources_to_ingest || capCeiling, capCeiling);
++  const maxIngest = effectiveIngestCap({
++    budgetFloor,
++    plannerRequest: discoveryPlan.max_sources_to_ingest,
++  });
+ 
+   logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
+ 
+@@ -569,17 +584,18 @@ async function runDiscoveryOrchestratorInner(args: {
+   // result was on topic. On-topic candidates are ingested first; off-topic
+   // ones are held back and used only to avoid starving a run of sources, and
+   // when they are used it is recorded as such.
+-  const relevance = partitionByRelevance(researchQuery, scoreRanked);
++  // Off-topic candidates top up to the FLOOR, and no further. See
++  // `selectByRelevance` for what the whole-list version cost.
+   const relevanceFloor = Math.max(minUsableSources ?? 0, Math.min(3, maxIngest));
+-  const ranked =
+-    relevance.onTopic.length >= relevanceFloor
+-      ? [...relevance.onTopic, ...relevance.offTopic]
+-      : scoreRanked;
+-  const offTopicUrls = new Set(relevance.offTopic.map((candidate) => candidate.url));
+-  if (relevance.offTopic.length > 0) {
++  const { ranked, toppedUpUrls: offTopicUrls, dropped } = selectByRelevance(
++    researchQuery,
++    scoreRanked,
++    relevanceFloor
++  );
++  if (dropped > 0 || offTopicUrls.size > 0) {
+     logger.info(
+-      `[discovery:${runId}] ${relevance.offTopic.length} of ${scoreRanked.length} candidates read as off-topic for this request` +
+-        (relevance.onTopic.length >= relevanceFloor ? ' and were deprioritised' : ' but were kept — too few on-topic candidates to drop them')
++      `[discovery:${runId}] off-topic candidates for this request: ${dropped} dropped, ` +
++        `${offTopicUrls.size} kept to reach the ${relevanceFloor}-source floor`
+     );
+   }
+ 
+diff --git a/backend/src/services/discovery/sourceBudget.ts b/backend/src/services/discovery/sourceBudget.ts
+index 0251074..adcc4fa 100644
+--- a/backend/src/services/discovery/sourceBudget.ts
++++ b/backend/src/services/discovery/sourceBudget.ts
+@@ -57,3 +57,27 @@ export function resolveSourceIngestBudget(args: {
+ 
+   return Math.min(MAX_SOURCES_PER_RUN, Math.max(configured, byLength, byItems, addon));
+ }
++
++/**
++ * How many sources this run may actually ingest.
++ *
++ * The budget above is a FLOOR. Discovery used to compute
++ * `min(planner's request, cap)`, so a planner asking for ten sources capped a
++ * 7,000-word report at ten and the scaled budget changed nothing (Codex P1,
++ * PR #229). The planner may ask for MORE, up to the hard ceiling; what it may
++ * not do is ask for less than the deliverable needs.
++ *
++ * Lives here, next to the floor it enforces, rather than inline in the
++ * orchestrator — a test of the arithmetic that re-implements the arithmetic
++ * proves nothing.
++ */
++export function effectiveIngestCap(args: {
++  budgetFloor: number;
++  /** `max_sources_to_ingest` from the discovery plan; 0 or absent means none. */
++  plannerRequest?: number | null;
++}): number {
++  const floor = Math.max(0, Math.floor(args.budgetFloor));
++  const requested = Math.max(0, Math.floor(args.plannerRequest ?? 0));
++  const ceiling = Math.max(floor, MAX_SOURCES_PER_RUN);
++  return Math.min(Math.max(requested, floor), ceiling);
++}
+diff --git a/backend/src/services/planning/intentTaxonomy.ts b/backend/src/services/planning/intentTaxonomy.ts
+index 6ad0dd5..af6f6f4 100644
+--- a/backend/src/services/planning/intentTaxonomy.ts
++++ b/backend/src/services/planning/intentTaxonomy.ts
+@@ -111,7 +111,14 @@ const TAX: IntentDefinition[] = [
+       // The operator's own request — "find me 20 affiliate marketing niches
+       // ranked by income potential" — matched nothing at all.
+       /\bniches?\b/i,
+-      /\bopportunit\w*/i,
++      // NOT a bare `opportunit\w*`. "Compare investment opportunities A and B"
++      // hit this once and `comparative` once, and the tie-break by specificity
++      // put opportunity discovery first — so an explicit comparison request
++      // deterministically got a landscape report instead, without the model
++      // ever being asked (Codex P2, PR #229). Discovery language only.
++      /\b(find|identif\w+|discover|surface|uncover|spot|list|explore|where)\b[^.?!]{0,40}\bopportunit\w*/i,
++      /\bopportunit\w*[^.?!]{0,40}\b(gap|whitespace|white space|landscape|untapped|unmet|emerging)\b/i,
++      /\b(untapped|overlooked|emerging|new)\s+opportunit\w*/i,
+       /\branked by\b[^.?!]{0,40}\b(potential|income|revenue|profit|demand|value)\b/i,
+       /\b(ideas|ways)\b[^.?!]{0,20}\b(to|for)\b[^.?!]{0,20}\b(make|earn|monetis|monetiz|start)\w*/i,
+     ],
+diff --git a/backend/src/services/reasoning/reportGenerator.ts b/backend/src/services/reasoning/reportGenerator.ts
+index 90dfd8c..51a1301 100644
+--- a/backend/src/services/reasoning/reportGenerator.ts
++++ b/backend/src/services/reasoning/reportGenerator.ts
+@@ -43,6 +43,44 @@ const ITEM_NAME_MARKER = /^[ \t]*(?:[*_`]{0,2})ITEM[ _-]?NAME(?:[*_`]{0,2})[ \t]
+ /** Longest item name we will put in a heading. */
+ const MAX_ITEM_NAME_CHARS = 70;
+ 
++/**
++ * Words that can precede an ordinal and still be numbering rather than a name.
++ *
++ * An enumerated list, not `[A-Za-z]{1,20}`. The permissive version matched any
++ * short word before the number, so `ISO 27001: Security controls` became
++ * `Security controls`, `Type 2: Diabetes care` became `Diabetes care`, and
++ * `GPT 4: Enterprise automation` lost its subject — the heading corrupted by
++ * the fix for corrupted headings (Codex P2, PR #229).
++ *
++ * Add a word here only when it is a numbering label in its own right AND is
++ * plausible output from a drafter. `section` and `part` are deliberately
++ * absent: the drafter is prompted with the report type's item label
++ * (Opportunity, Finding, Claim, Option, Step…), so it has little reason to
++ * write "Section 4: X", while `Section 508: Accessibility` and
++ * `Part 121: Operations` are real names this would have eaten. When a label is
++ * ambiguous, not stripping costs a duplicated number; stripping costs the
++ * subject of the heading.
++ */
++const ORDINAL_LABELS = [
++  'item',
++  'items',
++  'no',
++  'number',
++  'step',
++  'phase',
++  'opportunity',
++  'option',
++  'finding',
++  'claim',
++  'entry',
++  'event',
++  'factor',
++  'recommendation',
++  'argument',
++  'direction',
++  'study',
++] as const;
++
+ /**
+  * A number the model put at the front of a name that is about to be numbered.
+  *
+@@ -53,8 +91,11 @@ const MAX_ITEM_NAME_CHARS = 70;
+  * with no punctuation after it is usually part of the name, and deleting it
+  * would be a worse defect than the one this fixes.
+  */
+-const LEADING_ORDINAL =
+-  /^\s*(?:#+\s*)?(?:[A-Za-z][A-Za-z ]{0,20}?\s)?(?:\d+(?:\.\d+)+\s+|\d+(?:\.\d+)*\s*[.):\u2013\u2014-]\s+)/;
++const LEADING_ORDINAL = new RegExp(
++  `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
++    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
++  'i'
++);
+ 
+ /**
+  * Strip a numbering prefix the drafter added to an item name.
+@@ -79,25 +120,50 @@ export function stripLeadingOrdinal(name: string): string {
+   return out;
+ }
+ 
++/** Compare two heading-ish strings ignoring case, punctuation and numbering. */
++function headingKey(value: string): string {
++  return stripLeadingOrdinal(value)
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, ' ')
++    .trim();
++}
++
+ /**
+- * Remove a Markdown heading the drafter wrote at the top of a section body.
++ * Remove a Markdown heading the drafter wrote at the top of a section body,
++ * but ONLY when it is a second copy of the heading the assembler will add.
+  *
+- * Every section's heading is prepended by the assembler (`## ${title}`). A body
+- * that opens with its own heading therefore renders two, and if the model
+- * numbered its heading the reader sees the ordinal twice. The drafter is told
+- * not to write one; being told is not a guarantee, and this is the guarantee.
++ * Every section's heading is prepended by the assembler (`## ${title}`), so a
++ * body that opens with its own copy renders two — and if the model numbered
++ * its copy, the reader sees the ordinal twice.
+  *
+- * Only a heading at the very top is removed, and only one: headings further
+- * down are the section's own sub-structure and belong to the reader.
++ * The first version of this removed any leading heading of any level. That
++ * deleted a section which legitimately opens with `### Risks` or
++ * `#### Implementation details`, keeping the text and losing its label: a
++ * structural loss in exchange for a cosmetic fix (Codex P2, PR #229). It now
++ * removes a heading only when it says the same thing as the composed title,
++ * once numbering and punctuation are set aside.
+  */
+-export function stripLeadingSectionHeading(body: string): string {
++export function stripLeadingSectionHeading(body: string, composedTitle?: string): string {
+   const text = (body ?? '').replace(/^\s+/, '');
+-  const match = text.match(/^#{1,6}[ \t]+[^\n]*\n+/);
++  const match = text.match(/^(#{1,6})[ \t]+([^\n]*)\n+/);
+   if (!match) return text.trim();
++
++  const headingText = match[2] ?? '';
+   const rest = text.slice(match[0].length).trim();
+   // A section whose entire content was one heading keeps it — better a
+   // duplicated heading than an empty section.
+-  return rest || text.trim();
++  if (!rest) return text.trim();
++
++  if (composedTitle === undefined) {
++    // No title to compare against: only a top-level `#`/`##` is plausibly the
++    // section's own title being repeated. A `###` or deeper is sub-structure.
++    return (match[1] ?? '').length <= 2 ? rest : text.trim();
++  }
++
++  const heading = headingKey(headingText);
++  const title = headingKey(composedTitle);
++  if (!heading) return rest;
++  return heading === title ? rest : text.trim();
+ }
+ 
+ /**
+@@ -181,8 +247,17 @@ export function formatSectionsForRefiner(
+  *
+  * Blocks with an unknown key, or with an empty body, are omitted so the caller
+  * falls back to the drafted text rather than blanking a section.
++ *
++ * `titlesByKey` lets a refined block be stripped of a repeated section heading
++ * on the same terms as a drafted one: only when the heading says what the
++ * assembler is about to say. Without it, `### Risks` at the top of a refined
++ * block is indistinguishable from a repeated title, and guessing loses the
++ * reader a real subsection.
+  */
+-export function parseRefinedSections(response: string): Map<string, string> {
++export function parseRefinedSections(
++  response: string,
++  titlesByKey?: ReadonlyMap<string, string>
++): Map<string, string> {
+   const out = new Map<string, string>();
+   const text = response ?? '';
+   SECTION_BLOCK_PATTERN.lastIndex = 0;
+@@ -191,11 +266,9 @@ export function parseRefinedSections(response: string): Map<string, string> {
+     const key = (match[1] ?? '').trim();
+     const body = (match[2] ?? '').trim();
+     if (!key || !body) continue;
+-    // A refiner that emits a heading anyway would otherwise leave it stranded
+-    // mid-section, since the real heading is prepended by the assembler.
+-    // Any level, not only `##`: a refiner that wrote `###` slipped straight
+-    // through the old pattern and rendered under the assembler's heading.
+-    const withoutHeading = stripLeadingSectionHeading(body);
++    // A refiner that emits a copy of the section's heading would otherwise
++    // leave it stranded under the real one, which the assembler prepends.
++    const withoutHeading = stripLeadingSectionHeading(body, titlesByKey?.get(key));
+     if (!withoutHeading) continue;
+     out.set(key, withoutHeading);
+   }
+@@ -1184,9 +1257,10 @@ Return section body text only. Do NOT write a markdown heading for this section
+     return {
+       title: finalTitle,
+       key: section.key,
+-      // The assembler prepends the heading, so a heading the drafter wrote
+-      // anyway would render twice — with the ordinal in it twice.
+-      content: stripLeadingSectionHeading(sectionText),
++      // The assembler prepends the heading, so the drafter's own copy of it
++      // would render twice — with the ordinal in it twice. Only a copy: a
++      // section that opens with `### Risks` keeps its `### Risks`.
++      content: stripLeadingSectionHeading(sectionText, finalTitle),
+     };
+   };
+ 
+@@ -1321,7 +1395,10 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
+   // delete delivered work, and partial refinement beats discarding the report.
+   modelCalls.push(challenger, refinement);
+ 
+-  const refinedBodies = parseRefinedSections(refinement.content);
++  const refinedBodies = parseRefinedSections(
++    refinement.content,
++    new Map(sections.map((section) => [section.key, section.title]))
++  );
+   const finalSections: ReportSectionDraft[] = sections.map((section) => {
+     const refined = refinedBodies.get(section.key);
+     return refined ? { ...section, content: refined } : section;
+diff --git a/backend/src/services/reasoning/researchOrchestrator.ts b/backend/src/services/reasoning/researchOrchestrator.ts
+index 58c3cc4..d3f8042 100644
+--- a/backend/src/services/reasoning/researchOrchestrator.ts
++++ b/backend/src/services/reasoning/researchOrchestrator.ts
+@@ -81,7 +81,10 @@ import {
+ } from '../planning/orchestrationRuntime';
+ import { buildCanonicalExecutionPlan, type SpecialistExecutionStatus } from '../planning/executionPlan';
+ import {
++  applyLegacyPaidChallengeUpgrade,
+   buildRunAddonPipelineEffects,
++  paidForLegacyChallengeUpgrade,
++  readRawRunAddons,
+   resolveRunAddons,
+ } from './runAddons';
+ import {
+@@ -1008,7 +1011,13 @@ async function runResearchJobInner(
+   const runStartedAt = Date.now();
+   const phaseStartTimes: Record<string, number> = {};
+   const phaseDurations: Record<string, number> = {};
+-  const orchProfile = resolveOrchestrationProfileFromJob(data);
++  let orchProfile = resolveOrchestrationProfileFromJob(data);
++  // A run that paid for the old stronger-challenge add-on before it was
++  // removed still gets what it paid for. See LEGACY_PAID_CHALLENGE_UPGRADE_KEY.
++  if (paidForLegacyChallengeUpgrade(await readRawRunAddons(runId, data.addons))) {
++    orchProfile = applyLegacyPaidChallengeUpgrade(orchProfile);
++    logger.info('legacy_paid_challenge_upgrade_applied', { runId });
++  }
+   const confirmedResearchBrief = data.confirmedPlanPayload?.researchBrief;
+   const sourceClassesFromPlan =
+     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
+diff --git a/backend/src/services/reasoning/runAddons.ts b/backend/src/services/reasoning/runAddons.ts
+index e6b3ace..967318a 100644
+--- a/backend/src/services/reasoning/runAddons.ts
++++ b/backend/src/services/reasoning/runAddons.ts
+@@ -47,6 +47,54 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
+  * strong it is is decided by the planner from the request rather than bought.
+  */
+ 
++/**
++ * The removed add-on's key, kept for runs that were already paid for.
++ *
++ * A run queued before this deploy with "Devil's Advocate Review" selected
++ * carries a wallet hold that includes the $5 surcharge. `normalizeRunAddonKeys`
++ * drops the key as unknown, so the run would complete, the orchestrator would
++ * consume the hold, and the customer would have paid five dollars for a
++ * stronger pass that never ran (Codex P1, PR #229).
++ *
++ * Rather than unpick the billing, the run gets what it bought: its challenge
++ * pass is forced to the strongest setting. Delete this once no queued or
++ * plan-pending run created before the WO-AH deploy remains — it is dead the
++ * moment the last of them finishes, and it is doing nothing for every run
++ * created since.
++ */
++export const LEGACY_PAID_CHALLENGE_UPGRADE_KEY = 'adversarial_twin';
++
++/**
++ * Did this run pay for the stronger challenge pass under the old add-on?
++ *
++ * Reads the RAW values, deliberately: `normalizeRunAddonKeys` filters the key
++ * out, which is exactly why the paid upgrade went missing.
++ */
++export function paidForLegacyChallengeUpgrade(raw: unknown): boolean {
++  return Array.isArray(raw) && raw.some((item) => item === LEGACY_PAID_CHALLENGE_UPGRADE_KEY);
++}
++
++/** Force the strongest challenge pass on a profile, leaving everything else. */
++export function applyLegacyPaidChallengeUpgrade<T extends { skepticMode: 'gate' | 'annotate' }>(
++  profile: T
++): T {
++  return profile.skepticMode === 'gate' ? profile : { ...profile, skepticMode: 'gate' as const };
++}
++
++/** Raw persisted add-ons for a run, unfiltered. Deploy-skew safe. */
++export async function readRawRunAddons(runId: string, jobAddons?: unknown): Promise<unknown> {
++  if (Array.isArray(jobAddons) && jobAddons.length > 0) return jobAddons;
++  try {
++    const row = await queryOne<{ selected_addons: unknown }>(
++      `SELECT selected_addons FROM research_runs WHERE id = $1`,
++      [runId]
++    );
++    return row?.selected_addons ?? null;
++  } catch {
++    return null;
++  }
++}
++
+ export async function resolveRunAddons(runId: string, jobAddons?: string[]): Promise<RunAddonKey[]> {
+   const fromJob = normalizeRunAddonKeys(jobAddons);
+   if (fromJob.length > 0) return fromJob;
+diff --git a/docs/marketing/tier-a-manifest.txt b/docs/marketing/tier-a-manifest.txt
+index 8c72dca..106d74d 100644
+--- a/docs/marketing/tier-a-manifest.txt
++++ b/docs/marketing/tier-a-manifest.txt
+@@ -12,6 +12,8 @@ frontend/src/components/landing/ModeMatrix.tsx
+ frontend/src/components/landing/ComparisonTable.tsx
+ frontend/src/components/landing/TrustStrip.tsx
+ frontend/src/pages/LandingPage.tsx
++frontend/src/pages/MarketingDocsPage.tsx
++frontend/src/pages/MethodologyPage.tsx
+ frontend/src/components/r1-vault/AnimatedProcessFlow.tsx
+ frontend/src/pages/PricingPage.tsx
+ frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx
+diff --git a/frontend/src/__tests__/billing/FreeLifetimeQuotaBanner.test.tsx b/frontend/src/__tests__/billing/FreeLifetimeQuotaBanner.test.tsx
+index 4089f10..171b9b7 100644
+--- a/frontend/src/__tests__/billing/FreeLifetimeQuotaBanner.test.tsx
++++ b/frontend/src/__tests__/billing/FreeLifetimeQuotaBanner.test.tsx
+@@ -13,10 +13,10 @@ vi.mock('../../hooks/useBillingSubscription', async (importOriginal) => {
+   };
+ });
+ 
+-function renderBanner(variant: 'research' | 'deep-research' = 'research') {
++function renderBanner() {
+   return renderToString(
+     <MemoryRouter>
+-      <FreeLifetimeQuotaBanner variant={variant} />
++      <FreeLifetimeQuotaBanner />
+     </MemoryRouter>
+   );
+ }
+@@ -54,7 +54,7 @@ describe('FreeLifetimeQuotaBanner', () => {
+     expect(renderBanner()).toBe('');
+   });
+ 
+-  it('shows cap 2 and shared-pool copy for free_demo on Research variant', () => {
++  it('shows what is left of the free allowance', () => {
+     useBillingSubscriptionQuery.mockReturnValue({
+       authReady: true,
+       isLoading: false,
+@@ -69,14 +69,16 @@ describe('FreeLifetimeQuotaBanner', () => {
+         currentPeriodEnd: null,
+       },
+     });
+-    const html = renderBanner('research');
+-    expect(html).toContain('Free tier — Research');
++    const html = renderBanner();
++    expect(html).toContain('Free tier');
+     expect(html).toContain('>1<');
+     expect(html).toContain('>2<');
+-    expect(html).toContain('shared across Research and Deep Research modes');
+   });
+ 
+-  it('shows Deep Research heading for deep-research variant', () => {
++  it('no longer explains a distinction between two kinds of run', () => {
++    // The banner used to say the allowance was "shared across Research and
++    // Deep Research modes", and that one of the two used a richer ensemble.
++    // There is one kind of run, so both sentences became untrue.
+     useBillingSubscriptionQuery.mockReturnValue({
+       authReady: true,
+       isLoading: false,
+@@ -91,8 +93,9 @@ describe('FreeLifetimeQuotaBanner', () => {
+         currentPeriodEnd: null,
+       },
+     });
+-    const html = renderBanner('deep-research');
+-    expect(html).toContain('Free tier — Deep Research');
+-    expect(html).toContain('V2 multi-model ensemble');
++    const html = renderBanner();
++    expect(html).not.toContain('Deep Research');
++    expect(html).not.toContain('V2');
++    expect(html).not.toContain('modes');
+   });
+ });
+diff --git a/frontend/src/__tests__/components/ResearchRequestForm.test.tsx b/frontend/src/__tests__/components/ResearchRequestForm.test.tsx
+index b071f92..a2c8e94 100644
+--- a/frontend/src/__tests__/components/ResearchRequestForm.test.tsx
++++ b/frontend/src/__tests__/components/ResearchRequestForm.test.tsx
+@@ -2,7 +2,7 @@
+ import '@testing-library/jest-dom/vitest';
+ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+-import { MemoryRouter } from 'react-router-dom';
++import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+ import ResearchRequestForm from '../../components/research/ResearchRequestForm';
+ 
+@@ -87,6 +87,39 @@ function renderForm(initialEntries: string[] = ['/app/research']) {
+   );
+ }
+ 
++/** Renders the form with a control that performs a real in-router navigation. */
++function renderFormWithNavigation(initialEntries: string[]) {
++  const client = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  });
++  client.invalidateQueries = invalidateQueriesMock as typeof client.invalidateQueries;
++  return render(
++    <QueryClientProvider client={client}>
++      <MemoryRouter initialEntries={initialEntries}>
++        <Routes>
++          <Route
++            path="/app/research"
++            element={
++              <>
++                <SecondPrefillLink />
++                <ResearchRequestForm />
++              </>
++            }
++          />
++        </Routes>
++      </MemoryRouter>
++    </QueryClientProvider>
++  );
++}
++
++function SecondPrefillLink() {
++  return (
++    <Link data-testid="go-to-second-prefill" to="/app/research?prefill=run-2">
++      second
++    </Link>
++  );
++}
++
+ async function submitWith(text: string) {
+   fireEvent.change(screen.getByPlaceholderText(QUESTION), { target: { value: text } });
+   fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
+@@ -301,9 +334,70 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () =>
+     expect(call.requestedResearchObjective).toBe('AUTO');
+   });
+ 
++  it('clears the previous request before applying a second prefill', async () => {
++    // Assigning only the fields the run carries left the rest of the previous
++    // request in place, so one request could be submitted carrying another
++    // request's objective, citation style, formats or model overrides.
++    //
++    // Driven through a real in-router navigation because the hook strips the
++    // param after applying: a second prefill only happens on a new URL, which
++    // is exactly the scenario the defect needed.
++    getResearchRunMock.mockImplementation((id: string) =>
++      id === 'run-1'
++        ? Promise.resolve({
++            id: 'run-1',
++            query: 'First request',
++            supplemental: '',
++            research_objective: 'PATENT_GAP_ANALYSIS',
++            citation_style: 'mla',
++            requested_formats: ['comparison_table'],
++            target_word_count: 6000,
++            model_overrides: { planner: { primary: 'vendor/one' } },
++          })
++        : Promise.resolve({ id: 'run-2', query: 'Second request', supplemental: '' })
++    );
++
++    renderFormWithNavigation(['/app/research?prefill=run-1']);
++    await waitFor(() => expect(screen.getByDisplayValue('First request')).toBeInTheDocument());
++
++    fireEvent.click(screen.getByTestId('go-to-second-prefill'));
++    await waitFor(() => expect(screen.getByDisplayValue('Second request')).toBeInTheDocument());
++
++    fireEvent.click(screen.getByRole('button', { name: 'Plan my research' }));
++    await waitFor(() => expect(startResearchMock).toHaveBeenCalled());
++    const call = startResearchMock.mock.calls[0][0] as Record<string, unknown>;
++    expect(call.researchObjective).toBeUndefined();
++    expect(call.requestedFormats).toBeUndefined();
++    expect(call.targetWordCount).toBeUndefined();
++    expect(call.modelOverrides).toBeUndefined();
++    expect(call.citationStyle).toBe('apa');
++  });
++
+   it('leaves the form alone when there is no prefill parameter', async () => {
+     renderForm(['/app/research']);
+     await waitFor(() => expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument());
+     expect(getResearchRunMock).not.toHaveBeenCalled();
+   });
+ });
++
++describe('ResearchRequestForm — a failed plan lookup is unknown, not free', () => {
++  it('does not downgrade a paid user to the free tier when the lookup errors', async () => {
++    // `!isLoading` alone marked the tier resolved, and the fallback is
++    // free_demo — so an errored lookup silently removed saved profiles and
++    // the objectives a paid tier allows.
++    subscriptionMock.mockReturnValue({ data: undefined, isLoading: false, isError: true });
++    renderForm();
++
++    expect(screen.getByText(/could not check your plan/i)).toBeInTheDocument();
++    // Permissive while unknown: every objective is still offered rather than
++    // the free tier's single one.
++    fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
++    const objectiveSelect = screen.getByDisplayValue(/Automatic/);
++    expect(objectiveSelect.querySelectorAll('option').length).toBeGreaterThan(2);
++  });
++
++  it('says nothing about the plan when the lookup worked', () => {
++    renderForm();
++    expect(screen.queryByText(/could not check your plan/i)).toBeNull();
++  });
++});
+diff --git a/frontend/src/components/account/PlanConfirmationSettingsCard.tsx b/frontend/src/components/account/PlanConfirmationSettingsCard.tsx
+index ec3601c..f5ad6c1 100644
+--- a/frontend/src/components/account/PlanConfirmationSettingsCard.tsx
++++ b/frontend/src/components/account/PlanConfirmationSettingsCard.tsx
+@@ -101,8 +101,8 @@ export default function PlanConfirmationSettingsCard() {
+           {data.confirmedStreak < PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT ? (
+             <p className="text-[11px] text-slate-500">
+               Confirm plans from the{' '}
+-              <Link to="/app/research?engine=v2" className="text-accent hover:underline">
+-                Deep Research
++              <Link to="/app/research" className="text-accent hover:underline">
++                Research
+               </Link>{' '}
+               page without using &quot;Apply refinement&quot; {PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT} times in a row to unlock this toggle.
+             </p>
+diff --git a/frontend/src/components/account/SavedOrchestrationProfilesCard.tsx b/frontend/src/components/account/SavedOrchestrationProfilesCard.tsx
+index 1583b75..ad85bc1 100644
+--- a/frontend/src/components/account/SavedOrchestrationProfilesCard.tsx
++++ b/frontend/src/components/account/SavedOrchestrationProfilesCard.tsx
+@@ -48,8 +48,8 @@ export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: {
+       <h2 className="text-sm font-semibold text-white">Saved orchestration profiles</h2>
+       <p className="text-xs text-slate-400 leading-snug">
+         Save a plan from the confirmation panel on{' '}
+-        <Link to="/app/research?engine=v2" className="text-accent hover:underline">
+-          Deep Research
++        <Link to="/app/research" className="text-accent hover:underline">
++          Research
+         </Link>
+         . Select a profile before starting a run to seed the planner.
+       </p>
+diff --git a/frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx b/frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx
+index e88ff25..ac78107 100644
+--- a/frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx
++++ b/frontend/src/components/billing/FreeLifetimeQuotaBanner.tsx
+@@ -4,21 +4,15 @@ import {
+   useBillingSubscriptionQuery,
+ } from '../../hooks/useBillingSubscription';
+ 
+-export type FreeLifetimeQuotaBannerVariant = 'research' | 'deep-research';
+-
+-const VARIANT_HEADING: Record<FreeLifetimeQuotaBannerVariant, string> = {
+-  research: 'Free tier — Research',
+-  'deep-research': 'Free tier — Deep Research',
+-};
+-
+-type Props = {
+-  variant: FreeLifetimeQuotaBannerVariant;
+-};
+-
+ /**
+- * Shared lifetime free-demo quota for V1 Research and V2 Deep Research (single pool).
++ * Lifetime free-tier allowance.
++ *
++ * This used to take a `variant` naming which of the two request pages it was
++ * sitting on, and it explained that the two shared one pool. There is one page
++ * and one kind of run now, so the variant would only have been a way to say
++ * something untrue in two places.
+  */
+-export default function FreeLifetimeQuotaBanner({ variant }: Props) {
++export default function FreeLifetimeQuotaBanner() {
+   const { authReady, isLoading, isError, data } = useBillingSubscriptionQuery();
+   const tierResolved = authReady && !isLoading && (!isError || Boolean(data));
+   const userTier = tierResolved ? effectiveEntitlementTier(data) ?? 'free_demo' : null;
+@@ -34,24 +28,17 @@ export default function FreeLifetimeQuotaBanner({ variant }: Props) {
+ 
+   return (
+     <div className="rounded-lg border border-indigo-700/30 bg-indigo-950/20 p-4 text-sm text-slate-300">
+-      <p className="font-medium text-slate-200">{VARIANT_HEADING[variant]}</p>
++      <p className="font-medium text-slate-200">Free tier</p>
+       <p className="mt-1 text-slate-400">
+         {showQuota && remaining !== null ? (
+           <>
+             You have <span className="text-slate-200 font-medium">{remaining}</span> of{' '}
+-            <span className="text-slate-200 font-medium">{cap}</span> lifetime research runs remaining
+-            (General Research), shared across Research and Deep Research modes. Completed runs
+-            update this count.
++            <span className="text-slate-200 font-medium">{cap}</span> lifetime research runs left.
++            Completed runs update this count.
+           </>
+         ) : (
+-          <>
+-            Lifetime research runs on the free tier use the General Research objective only,
+-            shared across Research and Deep Research modes.{' '}
+-          </>
+-        )}
+-        {variant === 'deep-research' ? (
+-          <>Deep Research uses the V2 multi-model ensemble for richer analysis. </>
+-        ) : null}
++          <>Free-tier runs use the General Research objective. </>
++        )}{' '}
+         <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
+           Upgrade for more objectives and higher limits.
+         </Link>
+diff --git a/frontend/src/components/layout/Layout.tsx b/frontend/src/components/layout/Layout.tsx
+index b258528..4bc3b37 100644
+--- a/frontend/src/components/layout/Layout.tsx
++++ b/frontend/src/components/layout/Layout.tsx
+@@ -62,7 +62,7 @@ const PRO_PLUS_TIERS = ['pro', 'team', 'byok', 'sovereign', 'admin'] as const;
+  * (shared corpus exploration for InTellMe / operators) — admin only.
+  */
+ const NAV_ITEMS: NavItem[] = [
+-  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Standard and Deep Research' },
++  { to: '/app/research', label: 'Research', icon: FlaskConical, desc: 'Start a new research request' },
+   { to: '/app/dossiers', label: 'Dossiers', icon: BookOpen, desc: 'Research dossier library' },
+   { to: '/app/add-ons', label: 'Add-ons', icon: Package, desc: 'Catalog, purchase & manage add-ons', requireTier: 'pro' },
+   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources (admin)', requireAdmin: true },
+diff --git a/frontend/src/components/r1-dashboard/LiveRunPanel.tsx b/frontend/src/components/r1-dashboard/LiveRunPanel.tsx
+index cb94b6d..a19038f 100644
+--- a/frontend/src/components/r1-dashboard/LiveRunPanel.tsx
++++ b/frontend/src/components/r1-dashboard/LiveRunPanel.tsx
+@@ -131,7 +131,7 @@ export function LiveRunPanel() {
+   if (isError && !run) {
+     return (
+       <div className="r1-panel p-8 text-center">
+-        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-r1-skeptic" />
++        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-r1-challenge" />
+         <p className="text-r1-muted">Unable to load this run.</p>
+         <Link to={RESEARCH_PAGE_PATH} className="mt-4 inline-block text-sm text-r1-cyan hover:underline">
+           Start a new request
+@@ -371,7 +371,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
+         <button
+           type="button"
+           onClick={() => setArmed(true)}
+-          className="r1-focus-ring inline-flex w-full items-center justify-center gap-2 rounded border border-r1-border px-4 py-2.5 text-sm text-r1-muted transition-colors hover:border-r1-skeptic/50 hover:text-r1-skeptic"
++          className="r1-focus-ring inline-flex w-full items-center justify-center gap-2 rounded border border-r1-border px-4 py-2.5 text-sm text-r1-muted transition-colors hover:border-r1-challenge/50 hover:text-r1-challenge"
+         >
+           <XOctagon className="h-4 w-4" aria-hidden />
+           Cancel this run
+@@ -388,7 +388,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
+               type="button"
+               disabled={pending}
+               onClick={() => cancel.mutate()}
+-              className="r1-focus-ring flex-1 rounded bg-r1-skeptic px-3 py-2 text-sm font-semibold text-r1-canvas transition-opacity disabled:opacity-60"
++              className="r1-focus-ring flex-1 rounded bg-r1-challenge px-3 py-2 text-sm font-semibold text-r1-canvas transition-opacity disabled:opacity-60"
+             >
+               {pending ? 'Cancelling…' : 'Yes, cancel'}
+             </button>
+@@ -405,7 +405,7 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
+       )}
+ 
+       {cancel.isError && (
+-        <p className="mt-3 text-xs text-r1-skeptic">
++        <p className="mt-3 text-xs text-r1-challenge">
+           Could not cancel this run. It may have already finished — reload to see its current state.
+         </p>
+       )}
+@@ -445,11 +445,11 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
+       'This run did not finish.';
+ 
+     return (
+-      <div className="r1-panel border-r1-skeptic/30 p-4">
++      <div className="r1-panel border-r1-challenge/30 p-4">
+         <div className="flex items-start gap-2">
+-          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-r1-skeptic" aria-hidden />
++          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-r1-challenge" aria-hidden />
+           <div>
+-            <p className="text-sm text-r1-skeptic">{reason}</p>
++            <p className="text-sm text-r1-challenge">{reason}</p>
+             {gateStatus && (
+               <p className="r1-mono-label mt-1 text-[10px] text-r1-dim">
+                 {gateStatus.replace(/_/g, ' ').toUpperCase()}
+diff --git a/frontend/src/components/r1-dashboard/RecentRuns.tsx b/frontend/src/components/r1-dashboard/RecentRuns.tsx
+index 3cb30b0..a2be62b 100644
+--- a/frontend/src/components/r1-dashboard/RecentRuns.tsx
++++ b/frontend/src/components/r1-dashboard/RecentRuns.tsx
+@@ -15,7 +15,7 @@ const statusConfig: Record<RunStatus, { icon: typeof CheckCircle; color: string;
+   queued: { icon: Clock, color: 'text-r1-muted', label: 'Queued' },
+   running: { icon: Loader2, color: 'text-r1-cyan', label: 'Running' },
+   complete: { icon: CheckCircle, color: 'text-r1-green', label: 'Complete' },
+-  failed: { icon: XCircle, color: 'text-r1-skeptic', label: 'Failed' },
++  failed: { icon: XCircle, color: 'text-r1-challenge', label: 'Failed' },
+   cancelled: { icon: AlertCircle, color: 'text-r1-amber', label: 'Cancelled' },
+ };
+ 
+diff --git a/frontend/src/components/r1-reports/ReportCard.tsx b/frontend/src/components/r1-reports/ReportCard.tsx
+index 5cd50f7..0980815 100644
+--- a/frontend/src/components/r1-reports/ReportCard.tsx
++++ b/frontend/src/components/r1-reports/ReportCard.tsx
+@@ -33,7 +33,7 @@ export function ReportCard({ report, index = 0 }: ReportCardProps) {
+             tierMeta.color === 'cyan' ? 'r1-tag-cyan' :
+             tierMeta.color === 'green' ? 'r1-tag-green' :
+             tierMeta.color === 'amber' ? 'r1-tag-amber' :
+-            tierMeta.color === 'red' ? 'border-r1-skeptic/50 text-r1-skeptic' : ''}`
++            tierMeta.color === 'red' ? 'border-r1-challenge/50 text-r1-challenge' : ''}`
+             }>
+               {tierMeta.label.toUpperCase()}
+             </span>
+diff --git a/frontend/src/components/r1-reports/SampleReportView.tsx b/frontend/src/components/r1-reports/SampleReportView.tsx
+index 4a42e9f..2a756af 100644
+--- a/frontend/src/components/r1-reports/SampleReportView.tsx
++++ b/frontend/src/components/r1-reports/SampleReportView.tsx
+@@ -88,7 +88,7 @@ export function SampleReportView() {
+                             claimTier.color === 'cyan' ? 'r1-tag-cyan' :
+                             claimTier.color === 'green' ? 'r1-tag-green' :
+                             claimTier.color === 'amber' ? 'r1-tag-amber' :
+-                            claimTier.color === 'red' ? 'border-r1-skeptic/50 text-r1-skeptic' : ''}`
++                            claimTier.color === 'red' ? 'border-r1-challenge/50 text-r1-challenge' : ''}`
+                             }>
+                               {claimTier.label.toUpperCase()}
+                             </span>
+@@ -181,16 +181,16 @@ export function SampleReportView() {
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               transition={{ delay: 0.25 }}
+-              className="r1-panel p-5 ring-1 ring-r1-skeptic/20">
++              className="r1-panel p-5 ring-1 ring-r1-challenge/20">
+ 
+               <div data-ev-id="ev_20174d00fc" className="flex items-center gap-2 mb-4">
+-                <ShieldAlert className="w-4 h-4 text-r1-skeptic" />
++                <ShieldAlert className="w-4 h-4 text-r1-challenge" />
+                 <span data-ev-id="ev_8ef45dd2b1" className="r1-mono-label text-[10px]">CHALLENGE_NOTES</span>
+               </div>
+               <ul data-ev-id="ev_463cae128f" className="flex flex-col gap-3">
+                 {report.challengeNotes.map((note, index) =>
+                 <li data-ev-id="ev_7cd16fd811" key={index} className="flex items-start gap-2">
+-                    <span data-ev-id="ev_bf254a447f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-skeptic" />
++                    <span data-ev-id="ev_bf254a447f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-challenge" />
+                     <span data-ev-id="ev_8c3fab0cf3" className="text-xs text-r1-muted leading-relaxed">{note}</span>
+                   </li>
+                 )}
+diff --git a/frontend/src/components/r1-shell/FeedbackModal.tsx b/frontend/src/components/r1-shell/FeedbackModal.tsx
+index 9847d83..f2efca5 100644
+--- a/frontend/src/components/r1-shell/FeedbackModal.tsx
++++ b/frontend/src/components/r1-shell/FeedbackModal.tsx
+@@ -196,9 +196,9 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
+ 
+                   {/* Error message */}
+                   {status === 'error' && errorMessage &&
+-              <div data-ev-id="ev_b648c1bc1a" className="flex items-center gap-2 px-3 py-2 bg-r1-red-margin border border-r1-skeptic/30 rounded">
+-                      <AlertCircle className="w-4 h-4 text-r1-skeptic" />
+-                      <span data-ev-id="ev_0169b7bf13" className="text-xs text-r1-skeptic">{errorMessage}</span>
++              <div data-ev-id="ev_b648c1bc1a" className="flex items-center gap-2 px-3 py-2 bg-r1-red-margin border border-r1-challenge/30 rounded">
++                      <AlertCircle className="w-4 h-4 text-r1-challenge" />
++                      <span data-ev-id="ev_0169b7bf13" className="text-xs text-r1-challenge">{errorMessage}</span>
+                     </div>
+               }
+ 
+diff --git a/frontend/src/components/r1-vault/CapabilityShowcase.tsx b/frontend/src/components/r1-vault/CapabilityShowcase.tsx
+index 16d91e6..bb741d3 100644
+--- a/frontend/src/components/r1-vault/CapabilityShowcase.tsx
++++ b/frontend/src/components/r1-vault/CapabilityShowcase.tsx
+@@ -59,7 +59,7 @@ export function CapabilityShowcase() {
+                 'bg-r1-panel-lift border-r1-border-strong' :
+                 'bg-r1-panel border-r1-border'} ${
+ 
+-                isSkeptic ? 'ring-1 ring-r1-skeptic/20' : ''}`
++                isSkeptic ? 'ring-1 ring-r1-challenge/20' : ''}`
+                 }
+                 style={{ transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+ 
+@@ -73,7 +73,7 @@ export function CapabilityShowcase() {
+                 }>
+                   <Icon className={`w-5 h-5 ${
+                   isSkeptic ?
+-                  'text-r1-skeptic' :
++                  'text-r1-challenge' :
+                   isHovered ?
+                   'text-r1-cyan' :
+                   'text-r1-muted'} transition-colors duration-250`
+@@ -82,7 +82,7 @@ export function CapabilityShowcase() {
+                 
+                 {/* Title */}
+                 <h3 data-ev-id="ev_03bb716a12" className={`text-lg font-semibold mb-3 leading-snug transition-colors duration-250 ${
+-                isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
++                isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
+                 }>
+                   {capability.title}
+                 </h3>
+@@ -100,7 +100,7 @@ export function CapabilityShowcase() {
+                 aria-hidden="true">
+ 
+                   <div data-ev-id="ev_d7acf0c1bb" className={`absolute top-3 right-3 w-1.5 h-1.5 rounded-full ${
+-                  isSkeptic ? 'bg-r1-skeptic' : 'bg-r1-cyan'}`
++                  isSkeptic ? 'bg-r1-challenge' : 'bg-r1-cyan'}`
+                   } />
+                 </div>
+               </motion.div>);
+diff --git a/frontend/src/components/r1-vault/FeatureVaultList.tsx b/frontend/src/components/r1-vault/FeatureVaultList.tsx
+index ebda8e6..47a412c 100644
+--- a/frontend/src/components/r1-vault/FeatureVaultList.tsx
++++ b/frontend/src/components/r1-vault/FeatureVaultList.tsx
+@@ -25,7 +25,7 @@ export function FeatureVaultList() {
+             }}
+             className={`relative p-6 rounded-lg border transition-colors duration-250 ${
+             isSkeptic ?
+-            'bg-r1-red-margin border-r1-skeptic/30 hover:border-r1-skeptic/50' :
++            'bg-r1-red-margin border-r1-challenge/30 hover:border-r1-challenge/50' :
+             'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
+             }>
+ 
+@@ -33,7 +33,7 @@ export function FeatureVaultList() {
+             <div data-ev-id="ev_1683730318" className="flex items-start gap-4">
+               <span data-ev-id="ev_9f68888c48" className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg font-mono text-lg font-semibold ${
+               isSkeptic ?
+-              'bg-r1-red/20 text-r1-skeptic' :
++              'bg-r1-red/20 text-r1-challenge' :
+               index < 5 ?
+               'bg-r1-cyan/10 text-r1-cyan' :
+               'bg-r1-amber/10 text-r1-amber'}`
+@@ -45,12 +45,12 @@ export function FeatureVaultList() {
+                 {/* Title row */}
+                 <div data-ev-id="ev_fa77225fcd" className="flex items-center gap-3 flex-wrap mb-1">
+                   <h3 data-ev-id="ev_ac1257d3b7" className={`text-lg font-semibold ${
+-                  isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
++                  isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
+                   }>
+                     {feature.title}
+                   </h3>
+                   {isSkeptic &&
+-                  <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-skeptic/50 text-r1-skeptic">
++                  <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-challenge/50 text-r1-challenge">
+                       CHALLENGE
+                     </span>
+                   }
+diff --git a/frontend/src/components/r1-vault/MethodologyPipeline.tsx b/frontend/src/components/r1-vault/MethodologyPipeline.tsx
+index 5ebd04d..03212ea 100644
+--- a/frontend/src/components/r1-vault/MethodologyPipeline.tsx
++++ b/frontend/src/components/r1-vault/MethodologyPipeline.tsx
+@@ -61,14 +61,14 @@ export function MethodologyPipeline() {
+                 }}
+                 className={`relative p-4 lg:p-5 rounded-lg border transition-all duration-250 ${
+                 isSkeptic ?
+-                'bg-r1-red-margin border-r1-skeptic/40 hover:border-r1-skeptic/60 ring-1 ring-r1-skeptic/20 col-span-1 sm:col-span-2 lg:col-span-1' :
++                'bg-r1-red-margin border-r1-challenge/40 hover:border-r1-challenge/60 ring-1 ring-r1-challenge/20 col-span-1 sm:col-span-2 lg:col-span-1' :
+                 'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
+                 }>
+ 
+                 {/* Stage number and icon */}
+                 <div data-ev-id="ev_250f535ade" className="flex items-center gap-3 mb-3">
+                   <span data-ev-id="ev_656687c9b3" className={`font-mono text-xs font-medium ${
+-                  isSkeptic ? 'text-r1-skeptic' : 'text-r1-muted'}`
++                  isSkeptic ? 'text-r1-challenge' : 'text-r1-muted'}`
+                   }>
+                     {stageNumber}
+                   </span>
+@@ -81,7 +81,7 @@ export function MethodologyPipeline() {
+                   }>
+                     <Icon className={`w-4 h-4 ${
+                     isSkeptic ?
+-                    'text-r1-skeptic' :
++                    'text-r1-challenge' :
+                     index < 5 ?
+                     'text-r1-cyan' :
+                     'text-r1-amber'}`
+@@ -91,7 +91,7 @@ export function MethodologyPipeline() {
+                 
+                 {/* Stage name */}
+                 <h3 data-ev-id="ev_76a40884b7" className={`text-sm font-semibold mb-1.5 ${
+-                isSkeptic ? 'text-r1-skeptic' : 'text-r1-heading'}`
++                isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
+                 }>
+                   {stage.name}
+                 </h3>
+@@ -104,7 +104,7 @@ export function MethodologyPipeline() {
+                 {/* Skeptic badge */}
+                 {isSkeptic &&
+                 <div data-ev-id="ev_23492da6c8" className="absolute -top-2 -right-2">
+-                    <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-skeptic/50 text-r1-skeptic bg-r1-canvas">
++                    <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-challenge/50 text-r1-challenge bg-r1-canvas">
+                       CHALLENGE
+                     </span>
+                   </div>
+diff --git a/frontend/src/components/r1-vault/ProtocolMarquee.tsx b/frontend/src/components/r1-vault/ProtocolMarquee.tsx
+index dfe733f..5ddd50e 100644
+--- a/frontend/src/components/r1-vault/ProtocolMarquee.tsx
++++ b/frontend/src/components/r1-vault/ProtocolMarquee.tsx
+@@ -57,7 +57,7 @@ export function ProtocolMarquee() {
+             key={`${label}-${i}`}
+             className={`inline-flex items-center gap-3 px-4 py-2 font-mono text-xs tracking-wider ${
+             isChallenge ?
+-            'text-r1-skeptic' :
++            'text-r1-challenge' :
+             isOperational ?
+             'text-r1-green' :
+             'text-r1-muted'}`
+@@ -66,7 +66,7 @@ export function ProtocolMarquee() {
+               <span data-ev-id="ev_8af012abfc"
+               className={`w-1.5 h-1.5 rounded-full ${
+               isChallenge ?
+-              'bg-r1-skeptic' :
++              'bg-r1-challenge' :
+               isOperational ?
+               'bg-r1-green animate-pulse' :
+               'bg-r1-cyan'}`
+diff --git a/frontend/src/components/research/PlanConfirmationPanel.tsx b/frontend/src/components/research/PlanConfirmationPanel.tsx
+index c92c1f3..603390e 100644
+--- a/frontend/src/components/research/PlanConfirmationPanel.tsx
++++ b/frontend/src/components/research/PlanConfirmationPanel.tsx
+@@ -331,7 +331,7 @@ export default function PlanConfirmationPanel({
+       setSaveOpen(false);
+       setSaveName('');
+       onInvalidateSavedProfiles?.();
+-      onNotify('success', 'Profile saved — select it before your next run on Deep Research.');
++      onNotify('success', 'Profile saved — select it before your next run.');
+     } catch (e) {
+       onNotify('error', extractApiError(e));
+     } finally {
+diff --git a/frontend/src/components/research/ResearchRequestForm.tsx b/frontend/src/components/research/ResearchRequestForm.tsx
+index 09d54be..e6ad7df 100644
+--- a/frontend/src/components/research/ResearchRequestForm.tsx
++++ b/frontend/src/components/research/ResearchRequestForm.tsx
+@@ -114,10 +114,18 @@ export default function ResearchRequestForm() {
+   const addNotification = useStore((s) => s.addNotification);
+ 
+   const subscriptionQuery = useBillingSubscriptionQuery();
+-  const tierResolved = !subscriptionQuery.isLoading;
++  // A failed lookup is UNKNOWN, not free.
++  //
++  // `!isLoading` alone marked the tier resolved when `/billing/subscription`
++  // errored with nothing cached, and the fallback is `free_demo` — so a paid
++  // user whose lookup failed lost saved profiles, lost the objectives their
++  // tier allows, and had any objective they had already chosen reset to
++  // automatic by the effect below (Codex P2, PR #229).
++  const tierResolved = !subscriptionQuery.isLoading && !(subscriptionQuery.isError && !subscriptionQuery.data);
+   const userTier: EntitlementTierKey | null = tierResolved
+     ? ((effectiveEntitlementTier(subscriptionQuery.data) ?? 'free_demo') as EntitlementTierKey)
+     : null;
++  const tierLookupFailed = Boolean(subscriptionQuery.isError && !subscriptionQuery.data);
+   const tierAllowsSavedProfiles = Boolean(userTier && userTier !== 'free_demo');
+   const objectiveOptions = useMemo(() => objectivesForTier(userTier), [userTier]);
+ 
+@@ -177,10 +185,18 @@ export default function ResearchRequestForm() {
+ 
+   // Cancelling at the plan gate comes back here as `?prefill=<runId>`, because
+   // cancel means "let me edit it", not "throw away what I typed".
++  //
++  // Every prefillable field is reset to its default FIRST, then the run's own
++  // values applied. Assigning only the fields the run happens to carry left
++  // the rest of the previous request in place, so a second `?prefill=` on a
++  // still-mounted form could submit one request carrying another request's
++  // objective, citation style, formats, word target or model overrides
++  // (Codex P2, PR #229).
+   useRequestPrefillFromRun((run) => {
+     const slice = researchRequestFormFromRun(run);
+     const { supplemental: body, challengePerspective: perspective } =
+       splitSupplementalAndPerspective(slice.supplemental);
++
+     setQuery(slice.query);
+     setSupplemental(body);
+     setChallengePerspective(perspective);
+@@ -189,18 +205,24 @@ export default function ResearchRequestForm() {
+     setSiteCrawlEnabled(false);
+     setCrawlLayers(2);
+     setFilterTags(slice.filterTags);
+-    if (slice.researchObjective) setObjective(slice.researchObjective);
+-    if (slice.citationStyle) setCitationStyle(slice.citationStyle);
+-    if (slice.requestedFormats?.length) setReportFormats(slice.requestedFormats);
++
++    setObjective(slice.researchObjective ?? 'AUTO');
++    setCitationStyle(slice.citationStyle ?? 'apa');
++    setReportFormats(slice.requestedFormats?.length ? slice.requestedFormats : ['automatic']);
+     if (typeof slice.targetWordCount === 'number') {
+       setReportLengthPreset('custom');
+       setReportLengthCustom(slice.targetWordCount);
++    } else {
++      setReportLengthPreset('standard');
++      setReportLengthCustom(2200);
+     }
++
+     const overrides = run.model_overrides as Record<string, ModelRow> | undefined;
+-    if (overrides && typeof overrides === 'object' && Object.keys(overrides).length > 0) {
+-      setModelRows(overrides);
+-      setModelsOpen(true);
+-    }
++    const hasOverrides =
++      Boolean(overrides) && typeof overrides === 'object' && Object.keys(overrides!).length > 0;
++    setModelRows(hasOverrides ? overrides! : {});
++    setModelsOpen(hasOverrides);
++
+     // Anything the user had opened, they will want open again.
+     setSourcesOpen(Boolean(body.trim()) || slice.supplementalUrlLines.length > 0 || Boolean(slice.filterTags));
+     setOutputOpen(Boolean(slice.requestedFormats?.length) || typeof slice.targetWordCount === 'number');
+@@ -297,7 +319,7 @@ export default function ResearchRequestForm() {
+ 
+   return (
+     <div className="space-y-5">
+-      <FreeLifetimeQuotaBanner variant="deep-research" />
++      <FreeLifetimeQuotaBanner />
+ 
+       <form
+         className="card-glow p-6 space-y-4"
+@@ -306,6 +328,13 @@ export default function ResearchRequestForm() {
+           submit();
+         }}
+       >
++        {tierLookupFailed ? (
++          <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
++            We could not check your plan just now, so options that depend on it are hidden. Your
++            request will still run — reload if you need them.
++          </p>
++        ) : null}
++
+         <div>
+           <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+             <FlaskConical size={18} className="text-accent" />
+diff --git a/frontend/src/content/researchoneUiData.ts b/frontend/src/content/researchoneUiData.ts
+index 8bd89f6..be59e8d 100644
+--- a/frontend/src/content/researchoneUiData.ts
++++ b/frontend/src/content/researchoneUiData.ts
+@@ -80,7 +80,7 @@ export const pipelineStages: PipelineStage[] = [
+   {
+     id: 'skeptic',
+     name: 'Challenge',
+-    description: 'Challenge pass with optional critique perspectives that stress-test conclusions',
++    description: 'Argues against the draft, with an optional perspective to argue from',
+     isSkeptic: true,
+   },
+   {
+@@ -228,7 +228,7 @@ export const featureBlocks: FeatureBlock[] = [
+     number: '06',
+     title: 'Challenge Pass',
+     subtitle: 'CHALLENGE · WEAKNESS_SCAN',
+-    description: 'Optional critique personas stress-test every conclusion, exposing logical gaps and unsupported claims before publication.',
++    description: 'Every conclusion is argued against before publication, exposing logical gaps and unsupported claims. You may choose whose objections it has to survive.',
+     isSkeptic: true,
+   },
+   {
+diff --git a/frontend/src/pages/BillingPage.tsx b/frontend/src/pages/BillingPage.tsx
+index 5341c5c..d84ec44 100644
+--- a/frontend/src/pages/BillingPage.tsx
++++ b/frontend/src/pages/BillingPage.tsx
+@@ -392,12 +392,12 @@ export default function BillingPage() {
+                       <span className="text-slate-200 font-medium">
+                         {Math.max(0, subQuery.data.lifetimeReportCap - (subQuery.data.lifetimeReportsUsed ?? 0))}
+                       </span>{' '}
+-                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining (General Research), available in both Research and Deep Research modes.
++                      of {subQuery.data.lifetimeReportCap} lifetime research runs remaining, using the General Research objective.
+                     </>
+                   ) : (
+                     <>
+-                      You have access to limited lifetime research runs using General Research, available in
+-                      both Research and Deep Research modes.
++                      You have access to a limited number of lifetime research runs, using the General
++                      Research objective.
+                     </>
+                   )}
+                 </p>
+@@ -409,7 +409,7 @@ export default function BillingPage() {
+                     View plans &amp; upgrade
+                   </Link>
+                   <Link
+-                    to="/app/research?engine=v2"
++                    to="/app/research"
+                     className="text-sm text-indigo-400 hover:text-indigo-300"
+                   >
+                     Start researching
+diff --git a/frontend/src/pages/FailedRunReportPage.tsx b/frontend/src/pages/FailedRunReportPage.tsx
+index e19a71c..d9a0692 100644
+--- a/frontend/src/pages/FailedRunReportPage.tsx
++++ b/frontend/src/pages/FailedRunReportPage.tsx
+@@ -74,7 +74,7 @@ export default function FailedRunReportPage() {
+ 
+   const retryMutation = useMutation({
+     mutationFn: () => retryResearchRunFromFailure(runId!),
+-    onSuccess: () => navigate('/app/research?engine=v2'),
++    onSuccess: () => navigate('/app/research'),
+     onError: (err) => setRetryError(extractApiError(err)),
+   });
+ 
+diff --git a/frontend/src/pages/MarketingDocsPage.tsx b/frontend/src/pages/MarketingDocsPage.tsx
+index da2be88..1ac1a9b 100644
+--- a/frontend/src/pages/MarketingDocsPage.tsx
++++ b/frontend/src/pages/MarketingDocsPage.tsx
+@@ -15,7 +15,7 @@ export default function MarketingDocsPage() {
+         <ul className="mt-8 list-disc space-y-3 pl-5 text-r1-text-muted">
+           <li>
+             <Link to="/methodology" className="text-r1-accent hover:underline">
+-              Methodology — ten stages, modes, skeptic pass
++              Methodology — the stages a report goes through, and how it is challenged
+             </Link>
+           </li>
+           <li>
+diff --git a/frontend/src/pages/MethodologyPage.tsx b/frontend/src/pages/MethodologyPage.tsx
+index 3c5ef31..24fad9f 100644
+--- a/frontend/src/pages/MethodologyPage.tsx
++++ b/frontend/src/pages/MethodologyPage.tsx
+@@ -53,18 +53,19 @@ export default function MethodologyPage() {
+       <section data-ev-id="ev_f7aee2320e" className="py-20 lg:py-32 bg-r1-canvas-deep">
+         <div data-ev-id="ev_ba5a82429a" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+           <div className="grid lg:grid-cols-2 gap-12">
+-            {/* Skeptic check */}
+-            <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-skeptic/20">
+-              <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-skeptic/50 text-r1-skeptic">
++            {/* The challenge pass */}
++            <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-challenge/20">
++              <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-challenge/50 text-r1-challenge">
+                 CHALLENGE_REVIEW
+               </span>
+               <h3 data-ev-id="ev_d800821cdc" className="text-xl font-bold text-r1-heading mb-4">
+                 Why we argue against our own draft
+               </h3>
+               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
+-                For verification-heavy or high-stakes work, ResearchOne can run independent challenge checks before
+-                finalizing a report. These checks challenge important conclusions, look for weak
+-                corroboration, and surface alternative interpretations.
++                Every report is argued against before it concludes. The challenge pass presses on the
++                draft's important conclusions, looks for weak corroboration, and surfaces alternative
++                interpretations. How hard it presses is decided from the request: a claim to be
++                verified gets a harder pass than a how-to guide.
+               </p>
+               <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
+                 {[
+@@ -73,7 +74,7 @@ export default function MethodologyPage() {
+                 'Flags potential confirmation bias',
+                 'Surfaces contradictory evidence'].map((item, i) =>
+                 <li data-ev-id="ev_0dc4f9f082" key={i} className="flex items-start gap-2 text-sm text-r1-muted">
+-                    <span data-ev-id="ev_367358ce9f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-skeptic" />
++                    <span data-ev-id="ev_367358ce9f" className="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-r1-challenge" />
+                     {item}
+                   </li>
+                 )}
+diff --git a/frontend/src/theme.css b/frontend/src/theme.css
+index 3c8ce30..ff894ab 100644
+--- a/frontend/src/theme.css
++++ b/frontend/src/theme.css
+@@ -34,7 +34,7 @@
+   --color-r1-green-dim: #2ECC7180;
+ 
+   --color-r1-blue-rule: #8CABD914;
+-  --color-r1-skeptic: #FF6B6B;
++  --color-r1-challenge: #FF6B6B;
+   --color-r1-verified: #4ECDC4;
+ 
+   --radius-sm: 2px;
+diff --git a/frontend/tailwind.config.js b/frontend/tailwind.config.js
+index 538c953..904f0de 100644
+--- a/frontend/tailwind.config.js
++++ b/frontend/tailwind.config.js
+@@ -83,7 +83,12 @@ export default {
+           green: '#2ECC71',
+           'green-dim': '#2ECC7180',
+           'blue-rule': '#8CABD914',
+-          skeptic: '#FF6B6B',
++          // Renamed from `skeptic`. The operator's instruction is that the
++          // word is not one the product says, and a Tier A page carrying
++          // `text-r1-skeptic` fails the jargon gate however invisible the
++          // class name is to a reader. A gate you have to argue with is worse
++          // than one you satisfy.
++          challenge: '#FF6B6B',
+           verified: '#4ECDC4',
+         },
+       },
+-- 
+2.43.0
+
