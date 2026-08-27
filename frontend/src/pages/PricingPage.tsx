@@ -59,9 +59,10 @@ export default function PricingPage() {
           <div id="student" className="contents">
             <PricingCard
               title="Student"
+              badge="Coming soon"
+              comingSoon
               details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports"
-              cta="Verify and start"
-              ctaSlot={<SubscribeCTA tier="student" cta="Verify and start" marketingStatic />}
+              cta="Coming soon"
             />
           </div>
           <PricingCard
@@ -74,8 +75,9 @@ export default function PricingPage() {
           <PricingCard
             title="Team"
             badge="Coming soon"
+            comingSoon
             details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Private corpus, team library, SSO"
-            cta="Contact us"
+            cta="Team inquiry →"
             to="mailto:hello@researchone.io?subject=Team%20tier%20inquiry"
           />
           <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — BYOK keys — Private corpus (Ingest)" cta="Configure keys" to="/byok" />
@@ -128,7 +130,7 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-12 text-xs text-r1-text-muted">
-          All prices are in USD. Annual billing for subscription tiers saves 17%. Nonprofit and journalism teams: contact us for the Team tier discount.
+          All prices are in USD. Annual billing for available subscription tiers saves 17%.
         </p>
       </main>
       <LandingFooter />

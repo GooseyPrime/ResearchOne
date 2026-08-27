@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+const callRoleModelMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../services/openrouter/openrouterService', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  callRoleModel: callRoleModelMock,
+}));
 
 import { classifyIntent } from '../services/planning/intentClassifier';
 import { buildVerifierPromptForIntent } from '../services/openrouter/openrouterService';
@@ -56,6 +63,9 @@ describe('WO-AA fixture — intent classification survives markdown', () => {
   it('resolves the declared intent, not the lexically dominant one', async () => {
     // The prompt is saturated with "comparison"/"compare"; the declaration is
     // markdown-bold. Run 178fea66 classified this as `comparative`.
+    // Keep the fixture hermetic while exercising the production fallback:
+    // explicit declarations must survive an unavailable classifier provider.
+    callRoleModelMock.mockRejectedValue(new Error('offline classifier fixture'));
     const brief = await classifyIntent(REFERENCE_PROMPT, undefined, {
       allowFallbackByRole: {},
     });

@@ -17,7 +17,7 @@ describe('PricingPage', () => {
     expect(html).toContain('2 reports lifetime');
   });
 
-  it('shows all self-serve subscription tiers', () => {
+  it('shows available plans and clearly labels deferred tiers', () => {
     const html = render();
     expect(html).toContain('Free Demo');
     expect(html).toContain('Student');
@@ -27,10 +27,12 @@ describe('PricingPage', () => {
     expect(html).toContain('Sovereign Enterprise');
   });
 
-  it('marks Team as Coming soon with mailto Contact us', () => {
+  it('marks Student and Team as unavailable without exposing checkout controls', () => {
     const html = render();
-    expect(html).toContain('Coming soon');
-    expect(html).toContain('mailto:hello@researchone.io');
+    expect((html.match(/Not yet available/g) ?? [])).toHaveLength(2);
+    expect(html).not.toContain('Verify and start');
+    expect(html).toContain('mailto:hello@researchone.io?subject=Team%20tier%20inquiry');
+    expect(html).toContain('Team inquiry');
   });
 
   it('shows add-on pricing for Living Reports and Reverse-Citation Watch', () => {

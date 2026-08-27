@@ -215,10 +215,16 @@ If the replacement does not prevent that too, you need both.
   together, so preview builds skipped both. (#219)
 - A fixed 320-char shared-prefix threshold sat above the 200-char seed it was
   meant to catch, making the guard unreachable by construction. (#221)
+- A broad plan-availability guard rejected Student checkout before a later
+  Student-verification branch, leaving the verification branch unreachable and
+  obscuring what must be restored when the plan ships. (#232)
 
 **Check:** if a guard has two reasons to fire, give it two conditions. If a
 threshold protects against a value the code itself generates, assert the
-relationship between them rather than hardcoding both.
+relationship between them rather than hardcoding both. After adding a broad
+guard, audit the remainder of the route for narrower branches it makes
+unreachable; remove dead branches and record any future launch requirement in
+the plan-specific service or work order.
 
 ### T6 — Reversing the instruction while implementing it
 

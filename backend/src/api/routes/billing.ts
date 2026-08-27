@@ -5,6 +5,7 @@ import {
   getTopupAmountForPrice,
   getSubscriptionPriceOptions,
   getTierForSubscriptionPrice,
+  isSelfServeSubscriptionTier,
 } from '../../services/billing/stripeClient';
 import {
   buildMonitorTokenCheckoutSessionCreateParams,
@@ -40,7 +41,6 @@ import {
   isStudentVerified,
   recordStudentVerification,
 } from '../../services/billing/studentVerificationService';
-import { isAllowlistedAdminUserId } from '../../services/auth/adminAllowlist';
 
 const router = Router();
 
@@ -306,15 +306,11 @@ router.post('/checkout/subscription', async (req, res, next) => {
       res.status(400).json({ error: 'Invalid subscription tier' });
       return;
     }
-
-    if (
-      tier === 'student' &&
-      !isAllowlistedAdminUserId(userId) &&
-      !(await isStudentVerified(userId))
-    ) {
-      res.status(403).json({
-        error: 'Student verification is required before subscribing to the Student plan',
-        code: 'STUDENT_VERIFICATION_REQUIRED',
+    if (!isSelfServeSubscriptionTier(tier)) {
+      const tierLabel = catalogTier.charAt(0).toUpperCase() + catalogTier.slice(1);
+      res.status(409).json({
+        error: `${tierLabel} subscriptions are coming soon`,
+        code: 'PLAN_COMING_SOON',
       });
       return;
     }

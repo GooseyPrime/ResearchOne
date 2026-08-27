@@ -259,6 +259,29 @@ describe('LiveRunPanel — navigation', () => {
       within(nav).getByRole('link', { name: /Second concurrent run/i }).getAttribute('href')
     ).toBe('/app/run/36b25d18-0000-4000-8000-000000000000');
   });
+
+  it('does not expose a second clipped UUID as a competing run number', async () => {
+    await mountReady();
+    const nav = screen.getByRole('navigation', { name: /Run navigation/i });
+    expect(within(nav).queryByText(`RUN ${RUN_ID.slice(0, 8)}`)).toBeNull();
+    expect(screen.getAllByText(REF).length).toBeGreaterThan(0);
+  });
+});
+
+describe('LiveRunPanel — loading and queue clarity', () => {
+  it('explains the workspace loading state instead of showing a blank panel', () => {
+    getResearchRun.mockReturnValue(new Promise(() => undefined));
+    mount();
+    expect(screen.getByText('Loading research workspace…')).toBeTruthy();
+    expect(screen.getByText(/Retrieving the request, status, and saved trace/i)).toBeTruthy();
+  });
+
+  it('says an accepted queued request is waiting for worker capacity', async () => {
+    await mountReady({ status: 'queued', progress_stage: null, progress_percent: 0 });
+    expect(screen.getByRole('status').textContent).toMatch(
+      /Request accepted\.\s+Waiting for an available research worker/i,
+    );
+  });
 });
 
 describe('LiveRunPanel — plan gate', () => {

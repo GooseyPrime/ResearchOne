@@ -6,13 +6,13 @@
 
 @layer base {
   :root {
-    --color-bg: #0A0E1A;
-    --color-surface: #111827;
-    --color-surface-2: #172033;
-    --color-surface-3: #1e293b;
-    --color-border: rgba(99, 102, 241, 0.15);
-    --color-accent: #6366f1;
-    --color-accent-glow: rgba(99, 102, 241, 0.3);
+    --color-bg: #050608;
+    --color-surface: #0B0D11;
+    --color-surface-2: #11141A;
+    --color-surface-3: #161A22;
+    --color-border: rgba(255, 255, 255, 0.09);
+    --color-accent: #63E6FF;
+    --color-accent-glow: rgba(99, 230, 255, 0.16);
 
     /* Lab Notebook visual tokens — WO-V.
      * Mirrored in frontend/src/components/landing/visual/labNotebookTokens.ts
@@ -32,11 +32,15 @@
 
   html {
     @apply scroll-smooth;
+    text-rendering: optimizeLegibility;
   }
 
   body {
     background-color: var(--color-bg);
     @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
   }
 
   * {
@@ -164,10 +168,27 @@
     box-shadow: 0 0 20px var(--color-accent-glow);
   }
 
-  .grid-bg {
-    background-image: linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
+  .app-shell {
+    background: #050608;
+    color: var(--color-r1-text);
+  }
+
+  .app-shell-sidebar {
+    background: linear-gradient(180deg, rgba(14, 17, 23, 0.98), rgba(7, 9, 12, 0.99));
+    box-shadow: 16px 0 48px rgba(0, 0, 0, 0.18);
+  }
+
+  .app-shell-header {
+    background: rgba(7, 9, 12, 0.88);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(20px);
+  }
+
+  .app-shell-main {
+    background-color: #050608;
+    background-image:
+      radial-gradient(circle at 18% -8%, rgba(99, 230, 255, 0.055), transparent 34rem),
+      radial-gradient(circle at 92% 4%, rgba(246, 180, 81, 0.025), transparent 28rem);
   }
 
   /* Lab Notebook canvas — WO-V.

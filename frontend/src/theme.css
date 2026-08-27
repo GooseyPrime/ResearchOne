@@ -8,19 +8,19 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'Fira Code', monospace;
   --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  --color-r1-canvas: #0A0E1A;
-  --color-r1-canvas-deep: #060810;
-  --color-r1-panel: #101624;
-  --color-r1-panel-lift: #151C2E;
-  --color-r1-panel-hover: #1A2238;
-  --color-r1-border: #E0E0E029;
-  --color-r1-border-strong: #E0E0E052;
+  --color-r1-canvas: #050608;
+  --color-r1-canvas-deep: #020305;
+  --color-r1-panel: #0B0D11;
+  --color-r1-panel-lift: #11141A;
+  --color-r1-panel-hover: #161A22;
+  --color-r1-border: #FFFFFF17;
+  --color-r1-border-strong: #FFFFFF2E;
   --color-r1-border-glow: #63E6FF33;
 
-  --color-r1-text: #E0E0E0;
-  --color-r1-heading: #F0F2F5;
-  --color-r1-muted: #8A93A6;
-  --color-r1-dim: #5A6478;
+  --color-r1-text: #E2E6EC;
+  --color-r1-heading: #F7F8FA;
+  --color-r1-muted: #9AA3B2;
+  --color-r1-dim: #6F7886;
 
   --color-r1-cyan: #63E6FF;
   --color-r1-cyan-dim: #63E6FF80;
@@ -37,15 +37,15 @@
   --color-r1-challenge: #FF6B6B;
   --color-r1-verified: #4ECDC4;
 
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
   --shadow-glow-cyan: 0 0 20px #63E6FF26, 0 0 40px #63E6FF0D;
   --shadow-glow-amber: 0 0 20px #F6B45126, 0 0 40px #F6B4510D;
-  --shadow-panel: 0 1px 3px #00000040, 0 4px 12px #00000026;
-  --shadow-elevated: 0 4px 16px #00000066, 0 12px 40px #00000040;
+  --shadow-panel: 0 1px 0 #FFFFFF08 inset, 0 18px 45px #00000033;
+  --shadow-elevated: 0 1px 0 #FFFFFF0D inset, 0 24px 70px #00000073;
 }
 
 .r1-grain::before {
@@ -82,6 +82,7 @@
   background: var(--color-r1-panel);
   border: 1px solid var(--color-r1-border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
 }
 
 .r1-panel-lift {
@@ -108,7 +109,7 @@
 
 .r1-mono-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-r1-muted);

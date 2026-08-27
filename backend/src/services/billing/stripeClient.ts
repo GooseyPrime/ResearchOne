@@ -73,20 +73,13 @@ export interface SubscriptionPriceOption {
   annualAmountCents: number;
 }
 
+export function isSelfServeSubscriptionTier(tier: string): tier is 'pro' | 'byok' {
+  return tier === 'pro' || tier === 'byok';
+}
+
 export function getSubscriptionPriceOptions(): SubscriptionPriceOption[] {
   const ids = config.stripe.priceIds;
   const options: SubscriptionPriceOption[] = [];
-
-  if (ids.studentMonthly || ids.studentAnnual) {
-    options.push({
-      tier: 'student',
-      label: 'Student',
-      monthlyPriceId: ids.studentMonthly,
-      annualPriceId: ids.studentAnnual,
-      monthlyAmountCents: 900,
-      annualAmountCents: 9000,
-    });
-  }
 
   if (ids.proMonthly || ids.proAnnual) {
     options.push({
@@ -96,17 +89,6 @@ export function getSubscriptionPriceOptions(): SubscriptionPriceOption[] {
       annualPriceId: ids.proAnnual,
       monthlyAmountCents: 2900,
       annualAmountCents: 29000,
-    });
-  }
-
-  if (ids.teamSeatMonthly || ids.teamSeatAnnual) {
-    options.push({
-      tier: 'team',
-      label: 'Team Seat',
-      monthlyPriceId: ids.teamSeatMonthly,
-      annualPriceId: ids.teamSeatAnnual,
-      monthlyAmountCents: 9900,
-      annualAmountCents: 99000,
     });
   }
 
