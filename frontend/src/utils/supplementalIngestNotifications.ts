@@ -98,11 +98,11 @@ export function buildSupplementalIngestNotifications(
 export function applySupplementalIngestNotifications(
   ing: SupplementalIngestSummary | undefined,
   notify: (severity: SupplementalIngestNotifySeverity, message: string) => void,
-  opts?: { researchLabel?: string; defaultStartedMessage?: string },
+  opts?: { researchLabel?: string; defaultAcceptedMessage?: string },
 ): void {
   const notes = buildSupplementalIngestNotifications(ing, opts);
   if (notes.length === 0) {
-    notify('info', opts?.defaultStartedMessage ?? 'Request accepted — waiting for an available research worker...');
+    notify('info', opts?.defaultAcceptedMessage ?? 'Request accepted — waiting for an available research worker...');
     return;
   }
   for (const note of notes) {

@@ -297,7 +297,7 @@ export default function ResearchRequestForm() {
       syncAddonsToUrl();
       applySupplementalIngestNotifications(data.supplementalIngest, addNotification, {
         researchLabel: 'Research',
-        defaultStartedMessage: 'Request accepted — waiting for an available research worker...',
+        defaultAcceptedMessage: 'Request accepted — waiting for an available research worker...',
       });
       navigate(liveResearchUrl(data.runId, { focusPlan: true }));
     },

@@ -45,5 +45,6 @@ describe('research worker concurrency', () => {
     expect(resolveResearchWorkerConcurrency(undefined)).toBe(2);
     expect(resolveResearchWorkerConcurrency('0')).toBe(2);
     expect(resolveResearchWorkerConcurrency('not-a-number')).toBe(2);
+    expect(resolveResearchWorkerConcurrency('4junk')).toBe(2);
   });
 });

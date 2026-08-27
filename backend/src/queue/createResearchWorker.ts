@@ -7,7 +7,9 @@ export const MAX_RESEARCH_WORKER_CONCURRENCY = 8;
 export function resolveResearchWorkerConcurrency(
   rawValue: string | undefined = process.env.RESEARCH_WORKER_CONCURRENCY,
 ): number {
-  const parsed = Number.parseInt(rawValue ?? '', 10);
+  const raw = rawValue ?? '';
+  if (!/^\d+$/.test(raw)) return DEFAULT_RESEARCH_WORKER_CONCURRENCY;
+  const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_RESEARCH_WORKER_CONCURRENCY;
   return Math.min(parsed, MAX_RESEARCH_WORKER_CONCURRENCY);
 }
