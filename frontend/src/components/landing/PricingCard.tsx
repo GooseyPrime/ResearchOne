@@ -55,9 +55,16 @@ export default function PricingCard({
             </Link>
           ))))}
       {comingSoon ? (
-        <p className="mt-5 border-t border-white/10 pt-4 text-xs font-medium uppercase tracking-[0.16em] text-r1-text-muted">
-          Not yet available
-        </p>
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-r1-text-muted">
+            Not yet available
+          </p>
+          {to && isExternal(to) ? (
+            <a href={to} className="mt-3 inline-flex text-sm font-medium text-r1-accent hover:underline">
+              {cta}
+            </a>
+          ) : null}
+        </div>
       ) : null}
     </article>
   );

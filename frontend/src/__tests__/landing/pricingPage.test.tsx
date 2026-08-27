@@ -27,11 +27,12 @@ describe('PricingPage', () => {
     expect(html).toContain('Sovereign Enterprise');
   });
 
-  it('marks Student and Team as unavailable instead of exposing checkout controls', () => {
+  it('marks Student and Team as unavailable without exposing checkout controls', () => {
     const html = render();
     expect((html.match(/Not yet available/g) ?? [])).toHaveLength(2);
     expect(html).not.toContain('Verify and start');
-    expect(html).not.toContain('Team%20tier%20inquiry');
+    expect(html).toContain('mailto:hello@researchone.io?subject=Team%20tier%20inquiry');
+    expect(html).toContain('Team inquiry');
   });
 
   it('shows add-on pricing for Living Reports and Reverse-Citation Watch', () => {

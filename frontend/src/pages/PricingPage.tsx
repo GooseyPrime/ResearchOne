@@ -77,7 +77,8 @@ export default function PricingPage() {
             badge="Coming soon"
             comingSoon
             details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Private corpus, team library, SSO"
-            cta="Coming soon"
+            cta="Team inquiry →"
+            to="mailto:hello@researchone.io?subject=Team%20tier%20inquiry"
           />
           <PricingCard title="BYOK" details="$29/mo — All 5 modes, unlimited runs — BYOK keys — Private corpus (Ingest)" cta="Configure keys" to="/byok" />
           <PricingCard
