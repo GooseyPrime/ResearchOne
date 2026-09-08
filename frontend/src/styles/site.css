@@ -1,0 +1,68 @@
+/* ============================================================
+   InTellMe house base styles for ResearchOne.
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--obsidian);
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--wet-stone);
+  color: var(--parchment);
+  font-family: var(--body);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+.font-serif {
+  font-family: var(--display);
+  color: var(--ivory);
+  font-weight: 500;
+}
+
+.font-sans {
+  font-family: var(--body);
+}
+
+.font-mono {
+  font-family: var(--label);
+}
+
+:focus-visible {
+  outline: 1px solid var(--champagne);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--champagne-soft);
+  border-radius: 1px;
+}
+
+button,
+a.btn,
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  border-radius: 1px;
+  box-shadow: none !important;
+}

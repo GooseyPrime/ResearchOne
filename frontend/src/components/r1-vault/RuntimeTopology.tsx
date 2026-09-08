@@ -40,12 +40,12 @@ export function RuntimeTopology() {
             
             {/* Status badges */}
             <div data-ev-id="ev_f726318f87" className="mt-8 flex flex-wrap gap-3">
-              <span data-ev-id="ev_0d8a1da97f" className="r1-tag r1-tag-green">
-                <span data-ev-id="ev_0781ca9a91" className="w-1.5 h-1.5 rounded-full bg-r1-green animate-pulse" />
-                ALL SYSTEMS ONLINE
+              <span data-ev-id="ev_0d8a1da97f" className="r1-tag r1-tag-cyan">
+                <span data-ev-id="ev_0781ca9a91" className="w-1.5 h-1.5 rounded-full bg-r1-cyan animate-pulse" />
+                LIVE RUN MONITORING
               </span>
               <span data-ev-id="ev_2490d3df5f" className="r1-tag">
-                99.9% UPTIME SLA
+                PILOT VALIDATION IN PROGRESS
               </span>
             </div>
           </div>
@@ -56,7 +56,7 @@ export function RuntimeTopology() {
               {/* Header */}
               <div data-ev-id="ev_0d3fd3172b" className="flex items-center justify-between mb-6 pb-4 border-b border-r1-border">
                 <span data-ev-id="ev_23de226ec8" className="r1-mono-label text-[10px]">SYSTEM_ARCHITECTURE</span>
-                <span data-ev-id="ev_18b2518c73" className="r1-mono-label text-[10px] text-r1-green">HEALTHY</span>
+                <span data-ev-id="ev_18b2518c73" className="r1-mono-label text-[10px] text-r1-cyan">LIVE</span>
               </div>
               
               {/* Topology nodes */}
@@ -102,7 +102,7 @@ export function RuntimeTopology() {
                         
                         {/* Status indicator */}
                         <div data-ev-id="ev_718b19115c" className="flex-shrink-0">
-                          <span data-ev-id="ev_265df10357" className="w-2 h-2 rounded-full bg-r1-green" />
+                          <span data-ev-id="ev_265df10357" className="w-2 h-2 rounded-full bg-r1-cyan" />
                         </div>
                       </div>
                       

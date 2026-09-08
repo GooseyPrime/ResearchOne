@@ -33,19 +33,19 @@ export interface RunDisplayState {
 /** Tailwind classes per tone, so every surface renders a tone identically. */
 export const RUN_TONE_CLASSES: Record<RunDisplayTone, { text: string; border: string; chip: string }> = {
   success: {
-    text: 'text-green-400',
-    border: 'border-green-800/30',
-    chip: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+    text: 'text-r1-cyan',
+    border: 'border-r1-border-strong',
+    chip: 'text-r1-heading border-r1-border-strong bg-r1-cyan/10',
   },
   warning: {
-    text: 'text-amber-400',
-    border: 'border-amber-700/30',
-    chip: 'text-amber-300 border-amber-500/40 bg-amber-500/10',
+    text: 'text-r1-text',
+    border: 'border-r1-border',
+    chip: 'text-r1-text border-r1-border bg-r1-cyan/10',
   },
   failure: {
-    text: 'text-red-400',
-    border: 'border-red-800/30',
-    chip: 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+    text: 'text-r1-muted',
+    border: 'border-r1-border-strong',
+    chip: 'text-r1-heading border-r1-border-strong bg-r1-cyan/15',
   },
   neutral: {
     text: 'text-slate-400',

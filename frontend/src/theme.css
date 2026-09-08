@@ -4,48 +4,48 @@
  */
 
 :root {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'Fira Code', monospace;
-  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Fira Code', monospace;
+  --font-display: 'Fraunces', Georgia, serif;
 
-  --color-r1-canvas: #050608;
-  --color-r1-canvas-deep: #020305;
-  --color-r1-panel: #0B0D11;
-  --color-r1-panel-lift: #11141A;
-  --color-r1-panel-hover: #161A22;
-  --color-r1-border: #FFFFFF17;
-  --color-r1-border-strong: #FFFFFF2E;
-  --color-r1-border-glow: #63E6FF33;
+  --color-r1-canvas: #0d1117;
+  --color-r1-canvas-deep: #090c11;
+  --color-r1-panel: #101218;
+  --color-r1-panel-lift: #141b26;
+  --color-r1-panel-hover: #1a2433;
+  --color-r1-border: #7A8EA830;
+  --color-r1-border-strong: #7A8EA84D;
+  --color-r1-border-glow: #7A8EA852;
 
-  --color-r1-text: #E2E6EC;
-  --color-r1-heading: #F7F8FA;
-  --color-r1-muted: #9AA3B2;
-  --color-r1-dim: #6F7886;
+  --color-r1-text: #d4deec;
+  --color-r1-heading: #eef3fb;
+  --color-r1-muted: #9eacc1;
+  --color-r1-dim: #75849b;
 
-  --color-r1-cyan: #63E6FF;
-  --color-r1-cyan-dim: #63E6FF80;
-  --color-r1-cyan-glow: #63E6FF40;
-  --color-r1-amber: #F6B451;
-  --color-r1-amber-dim: #F6B45180;
-  --color-r1-amber-glow: #F6B45140;
-  --color-r1-red: #A7332B;
-  --color-r1-red-margin: #A7332B2E;
-  --color-r1-green: #2ECC71;
-  --color-r1-green-dim: #2ECC7180;
+  --color-r1-cyan: #7A8EA8;
+  --color-r1-cyan-dim: #7A8EA880;
+  --color-r1-cyan-glow: #7A8EA840;
+  --color-r1-amber: #9fb0c6;
+  --color-r1-amber-dim: #9fb0c680;
+  --color-r1-amber-glow: #9fb0c640;
+  --color-r1-red: #8b99ae;
+  --color-r1-red-margin: #8b99ae3d;
+  --color-r1-green: #93a7c4;
+  --color-r1-green-dim: #93a7c480;
 
-  --color-r1-blue-rule: #8CABD914;
-  --color-r1-challenge: #FF6B6B;
-  --color-r1-verified: #4ECDC4;
+  --color-r1-blue-rule: #7A8EA820;
+  --color-r1-challenge: #8fa2bf;
+  --color-r1-verified: #a3b4ca;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
+  --radius-sm: 1px;
+  --radius-md: 1px;
+  --radius-lg: 1px;
+  --radius-xl: 1px;
 
-  --shadow-glow-cyan: 0 0 20px #63E6FF26, 0 0 40px #63E6FF0D;
-  --shadow-glow-amber: 0 0 20px #F6B45126, 0 0 40px #F6B4510D;
-  --shadow-panel: 0 1px 0 #FFFFFF08 inset, 0 18px 45px #00000033;
-  --shadow-elevated: 0 1px 0 #FFFFFF0D inset, 0 24px 70px #00000073;
+  --shadow-glow-cyan: 0 0 12px #7A8EA833;
+  --shadow-glow-amber: 0 0 12px #9fb0c633;
+  --shadow-panel: none;
+  --shadow-elevated: none;
 }
 
 .r1-grain::before {

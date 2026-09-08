@@ -30,7 +30,7 @@ describe('resolveRunDisplayState', () => {
   });
 
   it('does not let a passing gate paint over a later failure', () => {
-    // Gates passed, then persistence or billing failed. Not green.
+    // Gates passed, then persistence or billing failed. Never painted as success.
     const state = resolveRunDisplayState({ status: 'failed', gateStatus: 'completed' });
     expect(state.status).toBe('failed');
     expect(state.tone).toBe('failure');
@@ -52,7 +52,7 @@ describe('resolveRunDisplayState', () => {
   });
 
   it('warns rather than reassures on an unrecognised or missing status', () => {
-    // A status this module has not been taught must not default to green.
+    // A status this module has not been taught must not default to success styling.
     expect(resolveRunDisplayState({ status: 'some_future_state' }).tone).toBe('warning');
     expect(resolveRunDisplayState({ status: '' }).tone).toBe('warning');
     expect(resolveRunDisplayState({ status: null }).status).toBe('unknown');
@@ -71,11 +71,11 @@ describe('resolveRunDisplayState', () => {
       expect(RUN_TONE_CLASSES[tone].border).toBeTruthy();
       expect(RUN_TONE_CLASSES[tone].chip).toBeTruthy();
     }
-    // Only the success tone may be green.
-    expect(RUN_TONE_CLASSES.success.text).toContain('green');
+    // House style avoids traffic-light colours; tones should use the SLATE INK palette.
+    expect(RUN_TONE_CLASSES.success.text).toContain('r1-cyan');
     for (const tone of ['warning', 'failure', 'neutral'] as const) {
-      expect(RUN_TONE_CLASSES[tone].text).not.toContain('green');
-      expect(RUN_TONE_CLASSES[tone].chip).not.toContain('emerald');
+      expect(RUN_TONE_CLASSES[tone].text).not.toMatch(/green|emerald|amber|red|rose/);
+      expect(RUN_TONE_CLASSES[tone].chip).not.toMatch(/green|emerald|amber|red|rose/);
     }
   });
 });

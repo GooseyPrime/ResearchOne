@@ -1,3 +1,5 @@
+@import './styles/tokens.css';
+@import './styles/site.css';
 @import './theme.css';
 
 @tailwind base;
@@ -6,13 +8,13 @@
 
 @layer base {
   :root {
-    --color-bg: #050608;
-    --color-surface: #0B0D11;
-    --color-surface-2: #11141A;
-    --color-surface-3: #161A22;
-    --color-border: rgba(255, 255, 255, 0.09);
-    --color-accent: #63E6FF;
-    --color-accent-glow: rgba(99, 230, 255, 0.16);
+    --color-bg: var(--obsidian);
+    --color-surface: var(--wet-stone);
+    --color-surface-2: #141b26;
+    --color-surface-3: #1a2433;
+    --color-border: rgba(122, 142, 168, 0.24);
+    --color-accent: var(--champagne);
+    --color-accent-glow: var(--champagne-soft);
 
     /* Lab Notebook visual tokens — WO-V.
      * Mirrored in frontend/src/components/landing/visual/labNotebookTokens.ts
@@ -20,14 +22,14 @@
      * Per Cursor rule 26 I-6, opacity ceilings are enforced because higher
      * values drop body-text contrast below WCAG AAA (7:1).
      */
-    --r1-notebook-bg: #0A0E1A;
-    --r1-notebook-rule-h: rgba(140, 171, 217, 0.08);
-    --r1-notebook-rule-v: rgba(167, 51, 43, 0.15);
+    --r1-notebook-bg: var(--wet-stone);
+    --r1-notebook-rule-h: rgba(122, 142, 168, 0.12);
+    --r1-notebook-rule-v: rgba(122, 142, 168, 0.18);
     --r1-notebook-line-spacing: 40px;
     --r1-notebook-margin-position: 80px;
     --r1-notebook-line-thickness: 1px;
-    --r1-notebook-text-body: #E0E0E0;
-    --r1-notebook-text-heading: #F0F2F5;
+    --r1-notebook-text-body: var(--parchment);
+    --r1-notebook-text-heading: var(--ivory);
   }
 
   html {
@@ -37,7 +39,7 @@
 
   body {
     background-color: var(--color-bg);
-    @apply font-sans;
+    font-family: var(--body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
@@ -90,23 +92,34 @@
   }
 
   .card-glow {
-    @apply card shadow-lg shadow-indigo-950/50;
+    @apply card;
   }
 
   .btn-primary {
-    @apply bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-lg
-           transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply text-slate-100 font-medium px-4 py-2 rounded-[1px] border transition-all duration-200
+           flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    background: transparent;
+    border-color: var(--champagne);
+  }
+
+  .btn-primary:hover {
+    background: var(--champagne-soft);
   }
 
   .btn-secondary {
-    @apply bg-surface-200 hover:bg-surface-100 text-slate-300 hover:text-white
-           font-medium px-4 py-2 rounded-lg border border-indigo-900/30
+    @apply text-slate-300 hover:text-slate-100 font-medium px-4 py-2 rounded-[1px] border
            transition-all duration-200 flex items-center gap-2;
+    background: transparent;
+    border-color: var(--bronze-edge);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--champagne);
   }
 
   .btn-ghost {
-    @apply text-slate-400 hover:text-white hover:bg-surface-200
-           font-medium px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-2;
+    @apply text-slate-400 hover:text-slate-200 font-medium px-3 py-2 rounded-[1px]
+           transition-all duration-200 flex items-center gap-2;
   }
 
   .input {
@@ -124,23 +137,33 @@
   }
 
   .badge-established_fact {
-    @apply bg-green-900/40 text-green-400 border border-green-800/40;
+    @apply text-slate-200 border;
+    background: rgba(122, 142, 168, 0.14);
+    border-color: rgba(122, 142, 168, 0.3);
   }
 
   .badge-strong_evidence {
-    @apply bg-blue-900/40 text-blue-400 border border-blue-800/40;
+    @apply text-slate-100 border;
+    background: rgba(122, 142, 168, 0.18);
+    border-color: rgba(122, 142, 168, 0.36);
   }
 
   .badge-testimony {
-    @apply bg-amber-900/40 text-amber-400 border border-amber-800/40;
+    @apply text-slate-300 border;
+    background: rgba(122, 142, 168, 0.1);
+    border-color: rgba(122, 142, 168, 0.24);
   }
 
   .badge-inference {
-    @apply bg-purple-900/40 text-purple-400 border border-purple-800/40;
+    @apply text-slate-300 border;
+    background: rgba(122, 142, 168, 0.08);
+    border-color: rgba(122, 142, 168, 0.2);
   }
 
   .badge-speculation {
-    @apply bg-red-900/40 text-red-400 border border-red-800/40;
+    @apply text-slate-400 border;
+    background: rgba(122, 142, 168, 0.05);
+    border-color: rgba(122, 142, 168, 0.16);
   }
 
   .stat-card {
@@ -165,30 +188,30 @@
   }
 
   .glow-accent {
-    box-shadow: 0 0 20px var(--color-accent-glow);
+    box-shadow: 0 0 12px var(--color-accent-glow);
   }
 
   .app-shell {
-    background: #050608;
+    background: var(--obsidian);
     color: var(--color-r1-text);
   }
 
   .app-shell-sidebar {
-    background: linear-gradient(180deg, rgba(14, 17, 23, 0.98), rgba(7, 9, 12, 0.99));
-    box-shadow: 16px 0 48px rgba(0, 0, 0, 0.18);
+    background: linear-gradient(180deg, rgba(16, 18, 24, 0.98), rgba(13, 17, 23, 0.99));
+    box-shadow: 16px 0 24px rgba(0, 0, 0, 0.14);
   }
 
   .app-shell-header {
-    background: rgba(7, 9, 12, 0.88);
+    background: rgba(16, 18, 24, 0.9);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
     backdrop-filter: blur(20px);
   }
 
   .app-shell-main {
-    background-color: #050608;
+    background-color: var(--obsidian);
     background-image:
-      radial-gradient(circle at 18% -8%, rgba(99, 230, 255, 0.055), transparent 34rem),
-      radial-gradient(circle at 92% 4%, rgba(246, 180, 81, 0.025), transparent 28rem);
+      radial-gradient(circle at 18% -8%, rgba(122, 142, 168, 0.06), transparent 34rem),
+      radial-gradient(circle at 92% 4%, rgba(122, 142, 168, 0.03), transparent 28rem);
   }
 
   /* Lab Notebook canvas — WO-V.
