@@ -4,9 +4,9 @@
  */
 
 :root {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'Fira Code', monospace;
-  --font-display: 'Fraunces', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', 'Plex Sans Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
 
   --color-r1-canvas: #0d1117;
   --color-r1-canvas-deep: #090c11;

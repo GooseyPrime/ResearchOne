@@ -15,24 +15,24 @@
  * SAME commit. The constants are co-canonical with the stylesheet.
  *
  * Per Cursor rule 26 I-6: alpha values below have been tuned against
- * the `r1-bg` (#0A0E1A) background to land body-text contrast at
+ * the notebook background token to land body-text contrast at
  * ≥ 7:1 (WCAG AAA). Do not raise opacity past the documented ceilings
  * without re-running the contrast check at `/landing-contrast-check.html`.
  */
 
 export const LAB_NOTEBOOK_TOKENS = {
-  // Background — matches the existing r1-bg in tailwind.config.js.
-  background: '#0A0E1A',
+  // Background — matches `--r1-notebook-bg` in `src/index.css`.
+  background: '#101218',
 
-  // Horizontal ruling — muted, highly transparent blue.
+  // Horizontal ruling — muted, highly transparent house accent.
   // Opacity ceiling: 0.12. Above that, body-text contrast drops below 7:1.
-  ruleHorizontal: 'rgba(140, 171, 217, 0.08)',
+  ruleHorizontal: 'rgba(122, 142, 168, 0.12)',
   ruleHorizontalOpacityCeiling: 0.12,
 
-  // Vertical margin line — muted, highly transparent red.
+  // Vertical margin line — muted, highly transparent house accent.
   // Opacity ceiling: 0.20. Above that, the line dominates the hero
   // and reduces the muted "old paper" feel that's the point.
-  ruleVertical: 'rgba(167, 51, 43, 0.15)',
+  ruleVertical: 'rgba(122, 142, 168, 0.18)',
   ruleVerticalOpacityCeiling: 0.20,
 
   // Line geometry. 40px ruling matches handwritten college-ruled
@@ -46,15 +46,15 @@ export const LAB_NOTEBOOK_TOKENS = {
   // effect at full contrast reduces reading speed by ~20% per the
   // dark-mode typography research summarized in
   // docs/WO-V_VISUAL_DESIGN_NOTES.md.
-  bodyText: '#E0E0E0',
+  bodyText: '#d4deec',
 
   // Heading text — slightly brighter for hierarchical lift, still off
   // pure white.
-  headingText: '#F0F2F5',
+  headingText: '#eef3fb',
 
   // Dimmed/secondary text — must remain readable on the lab-notebook
   // ground.
-  mutedText: '#94A3B8',
+  mutedText: '#9eacc1',
 } as const;
 
 export type LabNotebookTokens = typeof LAB_NOTEBOOK_TOKENS;

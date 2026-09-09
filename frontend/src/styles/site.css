@@ -39,6 +39,7 @@ h2,
 h3,
 .font-serif {
   font-family: var(--display);
+  font-optical-sizing: auto;
   color: var(--ivory);
   font-weight: 500;
 }
