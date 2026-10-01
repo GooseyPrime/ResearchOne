@@ -3,7 +3,29 @@ import { logger } from '../../utils/logger';
 import { getStripeClient } from './stripeClient';
 
 /**
+ * Stripe reports a customer that no longer exists in two ways: a retrieve that
+ * returns `{ deleted: true }`, or a `resource_missing` error for an id it never
+ * had (for example one created in another mode or account).
+ */
+async function storedCustomerIsGone(customerId: string, userId: string): Promise<boolean> {
+  try {
+    const customer = await getStripeClient().customers.retrieve(customerId);
+    return Boolean((customer as { deleted?: boolean }).deleted);
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === 'resource_missing') return true;
+    // A transient Stripe failure is not evidence the customer is gone. Keep the
+    // stored id; checkout will surface the real error if there is one.
+    logger.warn('stripe_customer_check_failed_keeping_stored_id', { userId, customerId, err });
+    return false;
+  }
+}
+
+/**
  * Returns a persistent Stripe Customer id for the Clerk user (1:1 mapping in stripe_customers).
+ *
+ * The stored id is checked against Stripe before it is reused. A customer that
+ * was deleted in Stripe made every checkout for that user fail with
+ * "No such customer"; such an id is now replaced and the mapping updated.
  */
 export async function getOrCreateStripeCustomer(
   userId: string,
@@ -15,7 +37,10 @@ export async function getOrCreateStripeCustomer(
       [userId]
     );
     if (existing?.stripe_customer_id) {
-      return existing.stripe_customer_id;
+      if (!(await storedCustomerIsGone(existing.stripe_customer_id, userId))) {
+        return existing.stripe_customer_id;
+      }
+      logger.warn('stripe_customer_stale_replacing', { userId, staleCustomerId: existing.stripe_customer_id });
     }
   } catch (err: unknown) {
     const pgCode = (err as { code?: string })?.code;
