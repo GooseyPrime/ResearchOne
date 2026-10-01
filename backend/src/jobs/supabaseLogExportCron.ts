@@ -13,7 +13,7 @@
  *   SUPABASE_LOG_DEST      Directory to write log files (default: /opt/researchone/logs/supabase)
  *
  * Example:
- *   SUPABASE_LOG_PROJECTS=[{"ref":"ftnhzjpyjvpyzetrcfht","label":"golden-goose-studio"}]
+ *   SUPABASE_LOG_PROJECTS=[{"ref":"<project-ref>","label":"example-project"}]
  */
 
 import * as fs from 'fs';

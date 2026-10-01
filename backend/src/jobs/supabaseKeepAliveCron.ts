@@ -17,7 +17,7 @@
  *                                label = human-readable name for logs
  *
  * Example:
- *   [{"url":"https://ftnhzjpyjvpyzetrcfht.supabase.co","key":"...","label":"golden-goose-studio"}]
+ *   [{"url":"https://<project-ref>.supabase.co","key":"...","label":"example-project"}]
  */
 
 import { logger } from '../utils/logger';

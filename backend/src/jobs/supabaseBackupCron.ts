@@ -16,7 +16,7 @@
  *   SUPABASE_BACKUP_DEST      Directory to write dump files (default: /opt/researchone/backups/supabase)
  *
  * Example:
- *   SUPABASE_BACKUP_PROJECTS=[{"url":"******db.ftnhzjpyjvpyzetrcfht.supabase.co:5432/postgres","label":"golden-goose-studio"}]
+ *   SUPABASE_BACKUP_PROJECTS=[{"url":"******db.<project-ref>.supabase.co:5432/postgres","label":"example-project"}]
  *
  * Requirements:
  *   - `pg_dump` must be installed on the host (apt-get install -y postgresql-client).

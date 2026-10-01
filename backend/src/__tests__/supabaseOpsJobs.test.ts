@@ -18,8 +18,8 @@ import { splitCredentials } from '../jobs/supabaseBackupCron';
 
 describe('sanitizeLabel', () => {
   it.each([
-    ['golden-goose-studio', 'golden-goose-studio'],
-    ['Golden Goose Studio', 'Golden-Goose-Studio'],
+    ['example-project', 'example-project'],
+    ['Example Project Name', 'Example-Project-Name'],
     ['prod_2026.01', 'prod_2026.01'],
   ])('passes a safe label through: %s', (input, expected) => {
     expect(sanitizeLabel(input)).toBe(expected);
