@@ -517,6 +517,10 @@ router.get('/:id', async (req, res, next) => {
           : stored.executive_summary,
       conclusion:
         typeof stored.conclusion === 'string' ? stripInternalLabelsFromReport(stored.conclusion) : stored.conclusion,
+      falsification_criteria:
+        typeof stored.falsification_criteria === 'string'
+          ? stripInternalLabelsFromReport(stored.falsification_criteria)
+          : stored.falsification_criteria,
       metadata: cleanReaderMetadata(stored.metadata),
     };
 

@@ -95,6 +95,11 @@ describe('stripInternalLabelsFromReport', () => {
     expect(stripInternalLabelsFromReport(input)).toBe(input);
   });
 
+  it('ignores link-definition text inside code when deciding what is a link', () => {
+    const input = 'Witness account [Testimony] below.\n\n```\n[Testimony]: example.md\n```';
+    expect(stripInternalLabelsFromReport(input)).toBe('Witness account below.\n\n```\n[Testimony]: example.md\n```');
+  });
+
   it('never touches spacing where nothing was removed', () => {
     const input = '| Project   | Cost |\n| :--- | ---: |\nTwo  spaces stay , and so does this .';
     expect(stripInternalLabelsFromReport(input)).toBe(input);

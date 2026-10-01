@@ -68,8 +68,13 @@ function escapeRegExp(text: string): string {
  * Reference links whose identifier is declared in the same text ("[ref]: url")
  * are links, whatever the identifier says; protect them for this text.
  */
+/** Code only (fences, inline spans, indented lines): the first three protected forms. */
+const CODE_ONLY = new RegExp(PROTECTED_SEGMENT_SOURCES.slice(0, 3).join('|'), 'g');
+
 function protectedSegmentFor(markdown: string): RegExp {
-  const declared = [...markdown.matchAll(new RegExp(LINK_DEFINITION_SOURCE, 'g'))]
+  // Definitions inside code are not definitions; blank code out before looking.
+  const outsideCode = markdown.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' '));
+  const declared = [...outsideCode.matchAll(new RegExp(LINK_DEFINITION_SOURCE, 'g'))]
     .map((m) => /\[([^\]\n]+)\]:/.exec(m[0])?.[1])
     .filter((ref): ref is string => Boolean(ref));
   if (declared.length === 0) return PROTECTED_SEGMENT;
