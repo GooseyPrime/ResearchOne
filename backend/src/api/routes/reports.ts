@@ -510,6 +510,7 @@ router.get('/:id', async (req, res, next) => {
     const stored = rows[0] as Record<string, unknown>;
     const report: Record<string, unknown> = {
       ...stored,
+      title: typeof stored.title === 'string' ? stripInternalLabelsFromReport(stored.title) : stored.title,
       executive_summary:
         typeof stored.executive_summary === 'string'
           ? stripInternalLabelsFromReport(stored.executive_summary)

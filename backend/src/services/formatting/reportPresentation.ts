@@ -74,19 +74,35 @@ function protectedSegmentFor(markdown: string): RegExp {
     .filter((ref): ref is string => Boolean(ref));
   if (declared.length === 0) return PROTECTED_SEGMENT;
   const refs = declared.map(escapeRegExp).join('|');
-  return new RegExp([`\\[[^\\]\\n]*\\]\\[\\s*(?:${refs})\\s*\\]`, ...PROTECTED_SEGMENT_SOURCES].join('|'), 'gi');
+  return new RegExp(
+    [
+      // "[text][ref]" with a declared ref.
+      `\\[[^\\]\\n]*\\]\\[\\s*(?:${refs})\\s*\\]`,
+      ...PROTECTED_SEGMENT_SOURCES,
+      // Shortcut "[ref]" or collapsed "[ref][]" reference links with a declared ref.
+      `\\[\\s*(?:${refs})\\s*\\](?:\\[\\])?`,
+    ].join('|'),
+    'gi'
+  );
 }
 
+/** Marks where a label was removed, so spacing is tidied only there. */
+const REMOVED = '\uE000';
+
 function cleanProse(text: string): string {
-  return text
-    .replace(TIER_INSIDE_BRACKET, '[')
-    .replace(TIER_ONLY_BRACKET, '')
-    .replace(SNAKE_TIER_TOKEN, '')
-    .replace(INTERNAL_STEP_NAME, '')
-    // Tidy only the gaps a removal can leave inside a line; leading indentation
-    // (nested lists, code) and table alignment rows are left alone.
-    .replace(/(\S)[ \t]+([.,;])/g, '$1$2')
-    .replace(/(\S)[ \t]{2,}(?=\S)/g, '$1 ');
+  return (
+    text
+      .replace(TIER_INSIDE_BRACKET, '[')
+      .replace(TIER_ONLY_BRACKET, REMOVED)
+      .replace(SNAKE_TIER_TOKEN, REMOVED)
+      .replace(INTERNAL_STEP_NAME, REMOVED)
+      // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
+      .replace(/[ \t]*\uE000+[ \t]*(?=[.,;:!?)\]])/g, '')
+      // A removal between words leaves one space.
+      .replace(/(?<=\S)[ \t]*\uE000+[ \t]*(?=\S)/g, ' ')
+      // A removal at the start or end of a line leaves nothing.
+      .replace(/[ \t]*\uE000+[ \t]*/g, '')
+  );
 }
 
 /**

@@ -90,6 +90,16 @@ describe('stripInternalLabelsFromReport', () => {
     expect(stripInternalLabelsFromReport(input)).toBe(input);
   });
 
+  it('never changes declared shortcut reference links', () => {
+    const input = 'See [Testimony] for the transcript.\n\n[Testimony]: hearing.md';
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('never touches spacing where nothing was removed', () => {
+    const input = '| Project   | Cost |\n| :--- | ---: |\nTwo  spaces stay , and so does this .';
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
   it('cleans labels in section headings', () => {
     expect(stripInternalLabelsFromReport('Primary evidence [Strong_Evidence - Chunk 1]')).toBe('Primary evidence [Chunk 1]');
   });
