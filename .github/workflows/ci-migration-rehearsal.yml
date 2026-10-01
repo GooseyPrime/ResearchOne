@@ -41,11 +41,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://researchone:devpassword@localhost:5432/researchone
           NODE_ENV: development
+          DISCOVERY_ENABLED: 'false'
         run: npm run migrate
       - name: Second apply must change nothing
         env:
           DATABASE_URL: postgresql://researchone:devpassword@localhost:5432/researchone
           NODE_ENV: development
+          DISCOVERY_ENABLED: 'false'
         run: |
           set -euo pipefail
           before=$(psql "postgresql://researchone:devpassword@localhost:5432/researchone" -Atc "SELECT count(*) FROM schema_migrations")
