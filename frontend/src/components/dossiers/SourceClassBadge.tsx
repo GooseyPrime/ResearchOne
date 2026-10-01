@@ -1,5 +1,5 @@
 /**
- * Wave 5.3 — labels how retrieved sources sit in public controversy / agreement dynamics.
+ * the source-class pass — labels how retrieved sources sit in public controversy / agreement dynamics.
  * Orthogonal to source-corroboration tiers (Rule 31: "sources" vocabulary on surfaces).
  */
 import { isSourceClassId, sourceClassBadgeShortLabel, type SourceClassId } from './sourceClassIds';

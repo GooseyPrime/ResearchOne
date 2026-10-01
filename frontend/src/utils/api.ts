@@ -282,7 +282,7 @@ export interface Report {
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {
     plain_language_markdown?: string;
-    /** Wave 5.2 — intent output template id */
+    /** the orchestration-profile pass — intent output template id */
     output_template_id?: string;
     orchestration_intent?: string;
     skeptic_mode?: string;
@@ -295,7 +295,7 @@ export interface Report {
   };
 }
 
-/** Wave 5.0 — aligns with `GET /api/dossiers` (backend `Dossier` type). */
+/** the dossier data-model pass — aligns with `GET /api/dossiers` (backend `Dossier` type). */
 export interface DossierRequest {
   query: string;
   supplemental: string | null;
@@ -306,7 +306,7 @@ export interface DossierRequest {
 export interface DossierPlan {
   planId: string | null;
   intent: string;
-  /** Wave 5.1+ — `research_plans.orchestration_profile` label */
+  /** the plan-confirmation pass+ — `research_plans.orchestration_profile` label */
   orchestrationProfile?: string | null;
   planSummary: string | null;
   planPayload: Record<string, unknown>;
@@ -338,7 +338,7 @@ export interface DossierStats {
   estimatedCostCents: number | null;
   actualCostCents: number | null;
   reportEvidenceTierSummary: Record<string, unknown> | null;
-  /** Wave 5.3 — source-class counts for retrieved chunks (orthogonal to tiers). */
+  /** the source-class pass — source-class counts for retrieved chunks (orthogonal to tiers). */
   sourceClassBreakdown: Record<string, unknown> | null;
   steelmanPassCount: number | null;
 }
@@ -372,7 +372,7 @@ export interface DossierListRow {
   reportTitle: string | null;
   sourcesCitedCount: number | null;
   totalDurationMs: number | null;
-  /** Wave 5.5+ — most recent activity (revision, run update, etc.). */
+  /** the dossier pass.5+ — most recent activity (revision, run update, etc.). */
   lastActivityAt?: string | null;
   versionNumber?: number | null;
   isSpinoff?: boolean;
@@ -720,7 +720,7 @@ export interface StartResearchPayload {
   requestedResearchObjective?: 'AUTO' | ResearchObjective;
   /** Reserved methodology hint for future routing. */
   requestedMethodology?: string;
-  /** Wave 5.4 — optional saved orchestration profile (paid tiers). */
+  /** the revision-spinoff pass — optional saved orchestration profile (paid tiers). */
   savedOrchestrationProfileId?: string;
   /** Per-run wallet add-ons (keys from billing add-on catalog). */
   addons?: string[];
@@ -881,7 +881,7 @@ export const getResearchRuns = (params?: { status?: string }) =>
 export const getResearchRun = (id: string) =>
   api.get<ResearchRun>(`/research/${id}`).then(r => r.data);
 
-/** Wave 5.1 — `GET /api/runs/:runId/plan` (dossier-shaped plan snapshot for the gate). */
+/** the plan-confirmation pass — `GET /api/runs/:runId/plan` (dossier-shaped plan snapshot for the gate). */
 export interface RunPlanGateResponse {
   runId: string;
   runStatus: string;
@@ -913,7 +913,7 @@ export const confirmRunPlanAtGate = (runId: string, planId?: string) =>
 export const cancelRunPlanAtGate = (runId: string) =>
   api.post<{ ok: boolean; runId: string; status: string }>(`/runs/${runId}/plan/cancel`, {}).then((r) => r.data);
 
-/** Wave 5.4 — plan refinement audit trail for a run. */
+/** the revision-spinoff pass — plan refinement audit trail for a run. */
 export interface PlanRevisionRow {
   id: string;
   revisionNumber: number;
@@ -927,7 +927,7 @@ export interface PlanRevisionRow {
 export const getRunPlanRevisions = (runId: string) =>
   api.get<{ runId: string; revisions: PlanRevisionRow[] }>(`/runs/${runId}/plan/revisions`).then((r) => r.data);
 
-/** Wave 5.4 — account plan auto-confirm preferences + preview. */
+/** the revision-spinoff pass — account plan auto-confirm preferences + preview. */
 export interface PlanPreferencesResponse {
   autoConfirmEnabled: boolean;
   autoConfirmThreshold: number;

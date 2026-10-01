@@ -34,7 +34,7 @@ export default {
           inference: '#8fa2bf',
           speculation: '#8b99ae',
         },
-        // Wave 5.3 — orthogonal source-class axis (retrieved sources), distinct from evidence tiers.
+        // the source-class pass — orthogonal source-class axis (retrieved sources), distinct from evidence tiers.
         sourceClass: {
           suppressed_and_recovered: '#6d28d9',
           actively_contested: '#ea580c',

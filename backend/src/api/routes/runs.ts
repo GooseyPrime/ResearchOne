@@ -1,5 +1,5 @@
 /**
- * Wave 5.1 — Plan confirmation gate API (Rule 33).
+ * the plan-confirmation pass — Plan confirmation gate API (Rule 33).
  * Mutations use planWriteService; reads use v_dossier via dossierReadService.
  */
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -381,7 +381,7 @@ router.post('/:runId/plan/cancel', async (req: Request, res: Response, next: Nex
   }
 });
 
-/** GET /api/runs/:runId/plan/revisions — plan refinement audit trail (Wave 5.4). */
+/** GET /api/runs/:runId/plan/revisions — plan refinement audit trail (the revision-spinoff pass). */
 router.get('/:runId/plan/revisions', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const ctx = ctxFromReq(req);

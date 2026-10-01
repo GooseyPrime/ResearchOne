@@ -1,5 +1,5 @@
 /**
- * Wave 5.3 — Steelman pass between reasoner output and skeptic challenge.
+ * the source-class pass — Steelman pass between reasoner output and skeptic challenge.
  */
 import { callRoleModel, SYSTEM_PROMPTS, type ModelCallResult } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';

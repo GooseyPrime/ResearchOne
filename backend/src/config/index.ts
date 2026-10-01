@@ -138,7 +138,7 @@ const config = {
     baseUrl: (process.env.PARALLEL_BASE_URL || 'https://api.parallel.ai/v1').replace(/\/+$/, ''),
   },
 
-  /** BugNote feedback widget + inbound webhooks (env-gated; see docs/integrations/bugnote-scope.md). */
+  /** BugNote feedback widget + inbound webhooks (env-gated; see the BugNote webhook contract). */
   bugnote: {
     webhookSecret: process.env.BUGNOTE_WEBHOOK_SECRET || '',
   },
@@ -216,7 +216,7 @@ const config = {
       process.env.QUANTITATIVE_QUALITY_AUDITOR_MODEL || CODE_DEFAULT_REASONING_MODELS.quantitativeQualityAuditor,
     embedding: process.env.EMBEDDING_MODEL || CODE_DEFAULT_REASONING_MODELS.embedding,
 
-    /** Wave 5.1 — intent/plan gate LLM; tier-uniform; env override for ops. */
+    /** the plan-confirmation pass — intent/plan gate LLM; tier-uniform; env override for ops. */
     planning: process.env.PLANNING_MODEL_ID?.trim() || CODE_DEFAULT_REASONING_MODELS.planner,
 
     fallbacks: {

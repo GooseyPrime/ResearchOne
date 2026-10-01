@@ -45,7 +45,7 @@ export function useReport(reportId: string | undefined) {
   });
 }
 
-/** Wave 5.4 — plan refinement revisions for a run (dossier ACL enforced server-side). */
+/** the revision-spinoff pass — plan refinement revisions for a run (dossier ACL enforced server-side). */
 export function usePlanRevisions(runId: string | undefined) {
   return useQuery<RunPlanRevisionsPayload>({
     queryKey: ['plan-revisions', runId],

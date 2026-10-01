@@ -3,8 +3,8 @@
  *
  * See:
  *   .cursor/rules/25-cost-sidecar-and-unit-economics.mdc
- *   docs/COST_SIDECAR_DESIGN.md
- *   docs/ResearchOne - Work Order U.md
+ *   Rule 25
+ *   Rule 25
  */
 export {
   runScope,

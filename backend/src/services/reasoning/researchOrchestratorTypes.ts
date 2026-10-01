@@ -38,12 +38,12 @@ export interface ResearchJobData {
   /** Preferred export citation style (mla, apa, …) persisted on the run row. */
   citationStyle?: string;
   creditChargeContext?: CreditChargeContext;
-  /** When true, Wave 5.1 plan gate (Stage 0.5) is skipped — set after user confirms. */
+  /** When true, the plan-confirmation pass plan gate (Stage 0.5) is skipped — set after user confirms. */
   skipPlanConfirmationGate?: boolean;
-  /** Confirmed gate plan (merged with canonical profile on resume). Wave 5.2. */
+  /** Confirmed gate plan (merged with canonical profile on resume). the orchestration-profile pass. */
   confirmedPlanPayload?: PlanPayload;
   /**
-   * Resolved saved orchestration profile (Wave 5.4). Set at enqueue time from
+   * Resolved saved orchestration profile (the revision-spinoff pass). Set at enqueue time from
    * `savedOrchestrationProfileId` so the worker does not re-hit the DB for access checks.
    */
   savedOrchestrationProfileSeed?: {
@@ -83,11 +83,11 @@ export interface ResearchProgress {
     | 'run_aborted';
   retryable?: boolean;
   failureMeta?: Record<string, unknown>;
-  /** Wave 5.1 plan gate — echoed on progress / sockets when a draft plan is ready. */
+  /** the plan-confirmation pass plan gate — echoed on progress / sockets when a draft plan is ready. */
   planId?: string;
   intent?: string;
   confidence?: number;
-  /** Wave 5.2 — active orchestration profile label for live UI. */
+  /** the orchestration-profile pass — active orchestration profile label for live UI. */
   profileDisplayName?: string;
 }
 
@@ -136,7 +136,7 @@ export interface ResearchJobCompletedResult {
   summary?: RunSummaryPayload;
 }
 
-/** Wave 5.1: run parked after Stage 0.5 until the user confirms the plan. */
+/** the plan-confirmation pass: run parked after Stage 0.5 until the user confirms the plan. */
 export interface ResearchJobParkedAtPlanGateResult {
   outcome: 'parked_at_plan_gate';
   runId: string;

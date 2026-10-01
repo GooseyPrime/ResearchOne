@@ -1,4 +1,4 @@
-/** Display labels for Wave 5.1+ intent ids (aligned with backend `intentTaxonomy.ts`). */
+/** Display labels for the plan-confirmation pass+ intent ids (aligned with backend `intentTaxonomy.ts`). */
 export const INTENT_DISPLAY_LABELS: Record<string, string> = {
   factual_report: 'Factual report',
   survey: 'Survey',

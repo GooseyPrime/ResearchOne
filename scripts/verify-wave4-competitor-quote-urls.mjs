@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Wave 4 — optional live check that competitor pages still contain verbatim quote substrings.
+ * the evidence-vocabulary pass — optional live check that competitor pages still contain verbatim quote substrings.
  * Does not run in CI by default. Usage: `node scripts/verify-wave4-competitor-quote-urls.mjs`
  * Exit 0 always; prints PASS/WARN per URL.
  */

@@ -48,7 +48,7 @@ const QUOTES: readonly QuoteCard[] = [
 
 export const WAVE4_COMPETITOR_QUOTE_URLS: readonly string[] = QUOTES.map((q) => q.url);
 
-/** Wave 4 — verbatim competitor quotes + ResearchOne counter-lines (Rule 31). */
+/** the evidence-vocabulary pass — verbatim competitor quotes + ResearchOne counter-lines (Rule 31). */
 export default function WhatCompetitorsActuallySay() {
   return (
     <section id="what-competitors-say" className="mt-16 scroll-mt-24">

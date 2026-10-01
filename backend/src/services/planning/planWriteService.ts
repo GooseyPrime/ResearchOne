@@ -1,5 +1,5 @@
 /**
- * Canonical DB writes for Wave 5.1 research_plans + plan_revisions (Rule 33).
+ * Canonical DB writes for the plan-confirmation pass research_plans + plan_revisions (Rule 33).
  * Reads for API responses use `v_dossier` via dossierReadService / GET plan route.
  */
 import { query, queryOne, withTransaction } from '../../db/pool';
@@ -128,7 +128,7 @@ export async function getGatePlanRowForRun(runId: string): Promise<{
   );
 }
 
-/** Plan refinement audit trail for a run (Wave 5.4). Caller must enforce run ACL. */
+/** Plan refinement audit trail for a run (the revision-spinoff pass). Caller must enforce run ACL. */
 export async function listPlanRevisionsForRun(runId: string): Promise<
   Array<{
     id: string;

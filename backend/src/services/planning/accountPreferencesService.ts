@@ -1,9 +1,9 @@
 /**
- * Wave 5.4 — account_preferences reads/writes (RLS via application_role).
+ * the revision-spinoff pass — account_preferences reads/writes (RLS via application_role).
  */
 import { query, queryOne } from '../../db/pool';
 
-/** Matches Wave 5.4 UI: auto-confirm cannot be enabled until this many clean confirms. */
+/** Matches the revision-spinoff pass UI: auto-confirm cannot be enabled until this many clean confirms. */
 export const PLAN_AUTO_CONFIRM_MIN_STREAK_TO_ENABLE = 5;
 
 export interface AccountPlanPreferences {
@@ -90,7 +90,7 @@ export async function resetPlanConfirmationStreak(userId: string): Promise<void>
   }
 }
 
-/** Increment streak when user confirms a plan that had zero refinements (Wave 5.4). */
+/** Increment streak when user confirms a plan that had zero refinements (the revision-spinoff pass). */
 export async function bumpPlanConfirmationStreakIfCleanConfirm(userId: string): Promise<void> {
   try {
     await query(

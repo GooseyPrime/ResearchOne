@@ -1,6 +1,6 @@
 /**
- * Best-effort dossier_statistics upsert from existing telemetry (Wave 5.0).
- * Wave 5.2: optional orchestration snapshot (agents ran/skipped, stage timings).
+ * Best-effort dossier_statistics upsert from existing telemetry (the dossier data-model pass).
+ * the orchestration-profile pass: optional orchestration snapshot (agents ran/skipped, stage timings).
  * Must never throw into the orchestrator completion path.
  */
 import { query, queryOne } from '../../db/pool';
@@ -13,7 +13,7 @@ export interface DossierOrchestrationStatsInput {
   agentsSkipped: readonly string[];
   stageDurations: Record<string, number | string | null>;
   skepticAnnotationsCount?: number | null;
-  /** Per-source-class chunk counts (Wave 5.3). */
+  /** Per-source-class chunk counts (the source-class pass). */
   sourceClassBreakdown?: Record<string, number> | null;
   /** Completed steelman passes this run (0/1 today — reserved if modes batched later). */
   steelmanPassCount?: number | null;

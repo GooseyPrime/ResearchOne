@@ -12,7 +12,7 @@
  *   I-4: idempotency key (run + role + purpose + time + model + invocation id).
  *   I-6: deploy-skew tolerance — Postgres 42P01 logged at DEBUG.
  *
- * See: docs/COST_SIDECAR_DESIGN.md
+ * See: Rule 25
  */
 import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, randomUUID } from 'crypto';

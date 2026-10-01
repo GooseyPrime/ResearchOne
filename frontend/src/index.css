@@ -295,7 +295,7 @@
   }
 
   /* Opaque fill on top of lab-notebook canvas: blocks horizontal ruling from showing through
-   * translucent cards, tables, or inputs. See docs/ResearchOne Site Audit 05122026.md. */
+   * translucent cards, tables, or inputs. See the landing layout notes. */
   .r1-marketing-surface {
     background-color: var(--r1-notebook-bg);
   }

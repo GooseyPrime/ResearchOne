@@ -35,7 +35,7 @@ export default function ComparisonTable() {
         Side-by-side with general-purpose research assistants. We win where defense matters.
       </p>
 
-      {/* Opaque surface: lab-notebook ruling must not show through or beat against row borders (see site audit note). */}
+      {/* Opaque surface: lab-notebook ruling must not show through or beat against row borders. */}
       <div
         data-testid="comparison-table-surface"
         className="r1-marketing-surface mt-6 overflow-hidden rounded-xl border border-white/10 shadow-sm shadow-black/20"

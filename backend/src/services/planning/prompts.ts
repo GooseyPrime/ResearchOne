@@ -1,5 +1,5 @@
 /**
- * Wave 5.1 planning-stage prompts (mutable). Not part of Rule 20
+ * the plan-confirmation pass planning-stage prompts (mutable). Not part of Rule 20
  * `constants/prompts.ts` — no REASONING_FIRST_PREAMBLE wrapping here.
  */
 

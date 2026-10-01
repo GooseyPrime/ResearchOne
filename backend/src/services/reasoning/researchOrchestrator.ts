@@ -1170,7 +1170,7 @@ async function runResearchJobInner(
 
   try {
     // ────────────────────────────────────────────────────────────────
-    // Wave 5.1 — Stage 0.5: intent classification + user-facing plan gate
+    // the plan-confirmation pass — Stage 0.5: intent classification + user-facing plan gate
     // (skipped on resume-after-confirm; `skipPlanConfirmationGate` is set
     // on the JSON payload stored by `parkRunAwaitingPlanConfirmation`).
     // ────────────────────────────────────────────────────────────────
@@ -1980,7 +1980,7 @@ async function runResearchJobInner(
 
     const specialistFindings: SpecialistFinding[] = [];
 
-    // Wave 5.3 — steelman pass (feeds skeptic user message + claim persistence)
+    // the source-class pass — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {
       await progress('reasoning', 62, 'Steelman pass: strengthening formulations before critique...', {
         substep: 'steelman_started',
@@ -3384,7 +3384,7 @@ async function saveReport(args: {
   supplementalAttachments: Record<string, unknown>[];
   reportGateStatus: ReportGateStatus;
   userId?: string;
-  /** Wave 5.2 — merged into `reports.metadata` (JSON-safe keys). */
+  /** the orchestration-profile pass — merged into `reports.metadata` (JSON-safe keys). */
   wave52Metadata?: Record<string, unknown>;
 }): Promise<string> {
   const {
@@ -3622,7 +3622,7 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
 }
 
 /**
- * Wave 5.1 — resume the main pipeline after the user confirmed the gate plan.
+ * the plan-confirmation pass — resume the main pipeline after the user confirmed the gate plan.
  * Reads `resume_job_payload` written at park time and re-enters `runResearchJob`
  * with `skipPlanConfirmationGate: true` (Rule 33).
  */

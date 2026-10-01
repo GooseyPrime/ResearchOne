@@ -37,7 +37,7 @@ export const MARKETING_FAQ_ITEMS = [
   },
 ] as const satisfies ReadonlyArray<{ question: string; answer: string }>;
 
-/** Site audit §2.10 FAQ questions verbatim — used on `/faq` only (Wave 2). */
+/** FAQ questions verbatim — used on `/faq` only. */
 export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'How is this different from ChatGPT Deep Research or Claude Research?',

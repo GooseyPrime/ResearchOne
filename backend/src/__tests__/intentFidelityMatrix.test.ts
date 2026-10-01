@@ -59,7 +59,7 @@ interface MatrixRow {
    *
    * False is not a pass mark. It records that this intent currently depends on
    * the classifier model, so a provider outage sends the request somewhere
-   * else — tracked in RESEARCHONE_WORK_QUEUE.md. The assertion still bites: if
+   * else — tracked in the report-quality rule. The assertion still bites: if
    * someone adds a trigger pattern, this test tells them to flip the flag.
    */
   resolvesWithoutAModel: boolean;

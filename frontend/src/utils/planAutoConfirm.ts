@@ -1,5 +1,5 @@
 /**
- * Wave 5.4 — client-side eligibility for plan auto-confirm (mirrors Wave-5.md intent;
+ * the revision-spinoff pass — client-side eligibility for plan auto-confirm (mirrors Wave-5.md intent;
  * competence strings are free-form LLM output, so this is a conservative heuristic).
  */
 export const PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT = 5;
@@ -17,7 +17,7 @@ const OOD_HINT_PATTERNS: RegExp[] = [
   /\b(high|elevated) (epistemic )?risk\b/i,
 ];
 
-/** When true, suppress auto-confirm and show the full gate (Wave 5.4 OOD rule). */
+/** When true, suppress auto-confirm and show the full gate (the revision-spinoff pass OOD rule). */
 export function suppressPlanAutoConfirmFromCompetence(competenceAssessment: string): boolean {
   const t = competenceAssessment.trim();
   if (!t) return false;
@@ -47,7 +47,7 @@ export interface PlanAutoConfirmPrefsSlice {
   confirmedStreak: number;
 }
 
-/** Wave 5.4 — gate still renders; countdown only when prefs resolved and eligibility holds. */
+/** the revision-spinoff pass — gate still renders; countdown only when prefs resolved and eligibility holds. */
 export function shouldStartPlanAutoConfirmCountdown(
   prefs: PlanAutoConfirmPrefsSlice | null | undefined,
   planPayload: Record<string, unknown>,

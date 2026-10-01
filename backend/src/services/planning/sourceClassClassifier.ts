@@ -1,5 +1,5 @@
 /**
- * Wave 5.3 — classify retrieved sources on an orthogonal source-class axis.
+ * the source-class pass — classify retrieved sources on an orthogonal source-class axis.
  */
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
