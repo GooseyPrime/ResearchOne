@@ -25,7 +25,7 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     sections: ['who_what_when', 'mechanism', 'sources', 'limits'],
     sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Encyclopedic who/what/when/where/how/why; omit contested-claims lane.',
+    narrativeHint: 'Encyclopedic who/what/when/where/how/why; plain informational prose.',
   },
   intent_survey: {
     id: 'intent_survey',

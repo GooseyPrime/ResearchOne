@@ -149,7 +149,7 @@ async function loadReportMarkdownForExport(
   let body: string;
   if (sectionRows.length > 0) {
     body = sectionRows
-      .map((s) => `## ${s.title}\n\n${stripInternalLabelsFromReport(s.content)}`)
+      .map((s) => `## ${stripInternalLabelsFromReport(s.title)}\n\n${stripInternalLabelsFromReport(s.content)}`)
       .join('\n\n');
   } else {
     const parts: string[] = [];

@@ -171,7 +171,7 @@ function reportToMarkdown(args: {
     lines.push(`**Research request:** ${requestLabel}`, '');
   }
   for (const s of args.sections) {
-    lines.push(`## ${s.title}`, '', stripInternalLabelsFromReport(s.content), '', '');
+    lines.push(`## ${stripInternalLabelsFromReport(s.title)}`, '', stripInternalLabelsFromReport(s.content), '', '');
   }
   return lines.join('\n').trim() + '\n';
 }
@@ -488,11 +488,11 @@ router.get('/:id', async (req, res, next) => {
     );
     // Reports saved before labels were removed at generation time still carry
     // them; clean what the reader sees without rewriting stored rows.
-    const sections = storedSections.map((section) =>
-      typeof section.content === 'string'
-        ? { ...section, content: stripInternalLabelsFromReport(section.content) }
-        : section
-    );
+    const sections = storedSections.map((section) => ({
+      ...section,
+      ...(typeof section.title === 'string' ? { title: stripInternalLabelsFromReport(section.title) } : {}),
+      ...(typeof section.content === 'string' ? { content: stripInternalLabelsFromReport(section.content) } : {}),
+    }));
 
     let hasActiveLivingReport = false;
     try {

@@ -41,21 +41,41 @@ const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\
 const CITATION_IN_BRACKET = '(?![^\\]\\n]*\\bchunk\\b)';
 const LABEL_OR_CITATION_IN_BRACKET = `(?![^\\]\\n]*\\bchunk\\b)(?!\\s*${TIER_WORD}\\s*\\])`;
 
-const PROTECTED_SEGMENT = new RegExp(
-  [
-    '(?:^|\\n) {0,3}(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n {0,3}\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
-    '(?<ticks>`+)(?:(?!\\k<ticks>)[^\\n]|\\n(?!\\n))+?\\k<ticks>',
-    '(?:^|(?<=\\n))(?: {4,}|\\t)[^\\n]*',
-    '\\[[^\\]\\n]*\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)',
-    // A reference-style link, but never two citation markers side by side.
-    `\\[${CITATION_IN_BRACKET}[^\\]\\n]*\\]\\[${LABEL_OR_CITATION_IN_BRACKET}[^\\]\\n]*\\]`,
-    // A link definition line: "[ref]: https://..." (or a relative or anchor target).
-    '(?:^|(?<=\\n)) {0,3}\\[[^\\]\\n]+\\]:[ \\t]*<?(?:https?:\\/\\/|\\/|#)[^\\n]*',
-    '<https?:\\/\\/[^>\\s]+>',
-    'https?:\\/\\/[^\\s)\\]>]+',
-  ].join('|'),
-  'gi'
-);
+const LINK_DEFINITION_SOURCE = String.raw`(?:^|(?<=\n)) {0,3}\[[^\]\n]+\]:[ \t]*(?:<[^>\n]*>|[^\s<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*(?=\n|$)`;
+
+const PROTECTED_SEGMENT_SOURCES: string[] = [
+  '(?:^|\\n) {0,3}(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n {0,3}\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
+  '(?<ticks>`+)(?:(?!\\k<ticks>)[^\\n]|\\n(?!\\n))+?\\k<ticks>',
+  '(?:^|(?<=\\n))(?: {4,}|\\t)[^\\n]*',
+  '\\[[^\\]\\n]*\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)',
+  // A reference-style link, but never two citation markers side by side.
+  `\\[${CITATION_IN_BRACKET}[^\\]\\n]*\\]\\[${LABEL_OR_CITATION_IN_BRACKET}[^\\]\\n]*\\]`,
+  // A link definition line: "[ref]: destination" with at most a quoted title.
+  LINK_DEFINITION_SOURCE,
+  '<https?:\\/\\/[^>\\s]+>',
+  // An email autolink.
+  '<[^@\\s<>]+@[^@\\s<>]+>',
+  'https?:\\/\\/[^\\s)\\]>]+',
+];
+
+const PROTECTED_SEGMENT = new RegExp(PROTECTED_SEGMENT_SOURCES.join('|'), 'gi');
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Reference links whose identifier is declared in the same text ("[ref]: url")
+ * are links, whatever the identifier says; protect them for this text.
+ */
+function protectedSegmentFor(markdown: string): RegExp {
+  const declared = [...markdown.matchAll(new RegExp(LINK_DEFINITION_SOURCE, 'g'))]
+    .map((m) => /\[([^\]\n]+)\]:/.exec(m[0])?.[1])
+    .filter((ref): ref is string => Boolean(ref));
+  if (declared.length === 0) return PROTECTED_SEGMENT;
+  const refs = declared.map(escapeRegExp).join('|');
+  return new RegExp([`\\[[^\\]\\n]*\\]\\[\\s*(?:${refs})\\s*\\]`, ...PROTECTED_SEGMENT_SOURCES].join('|'), 'gi');
+}
 
 function cleanProse(text: string): string {
   return text
@@ -79,7 +99,7 @@ function cleanProse(text: string): string {
 export function stripInternalLabelsFromReport(markdown: string): string {
   let out = '';
   let cursor = 0;
-  for (const match of markdown.matchAll(PROTECTED_SEGMENT)) {
+  for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
     const start = match.index ?? 0;
     out += cleanProse(markdown.slice(cursor, start)) + match[0];
     cursor = start + match[0].length;

@@ -76,6 +76,19 @@ describe('stripInternalLabelsFromReport', () => {
     expect(stripInternalLabelsFromReport(input)).toBe(input);
   });
 
+  it('never changes declared reference links, relative definitions or email links', () => {
+    const input = [
+      'See [the analysis][strong_evidence] and write to <strong_evidence@example.com>.',
+      '',
+      '[strong_evidence]: evidence.md',
+    ].join('\n');
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('cleans labels in section headings', () => {
+    expect(stripInternalLabelsFromReport('Primary evidence [Strong_Evidence - Chunk 1]')).toBe('Primary evidence [Chunk 1]');
+  });
+
   it('still cleans citation markers or labels written side by side', () => {
     expect(stripInternalLabelsFromReport('Costs rose [Strong_Evidence - Chunk 3][Testimony - Chunk 4].')).toBe(
       'Costs rose [Chunk 3][Chunk 4].'
