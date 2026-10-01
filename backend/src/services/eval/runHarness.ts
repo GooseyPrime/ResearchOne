@@ -3,6 +3,13 @@ import { judgeQuoteSupports } from './quoteSupportsJudge';
 import { scoreStoredReport, type ContradictionLink, type EvalCitation, type EvalScoreInput, type EvalScores } from './scoreReport';
 import { loadEvalTasks, type EvalTask, type FixtureDocument } from './taskSet';
 
+export class SignInRejectedError extends Error {
+  constructor() {
+    super('The sign-in was rejected or expired.');
+    this.name = 'SignInRejectedError';
+  }
+}
+
 export interface StoredRun {
   reportMarkdown: string;
   citations: EvalCitation[];
@@ -162,6 +169,9 @@ export async function submitTaskThroughAdminRoute(
     headers: { authorization: authHeader },
     body: form,
   });
+  if (response.status === 401 || response.status === 403) {
+    throw new SignInRejectedError();
+  }
   if (!response.ok) throw new Error(`admin start failed: ${response.status}`);
   const body = (await response.json()) as { runId: string };
   return { runId: body.runId };

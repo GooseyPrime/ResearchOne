@@ -1,22 +1,26 @@
 /**
  * Runs the measurement harness against a live ResearchOne deployment.
  *
- * This talks to the production start route and the production database.
- * The results table exists only after the harness pull request has merged
- * and the backend deploy has finished. It refuses to start unless
- * --confirm-spend is present.
+ * The admin sign-in is used only to submit tasks. Progress and results are
+ * read from the database this command already connects to. It refuses to
+ * start unless --confirm-spend is present.
  *
  *   npm run eval:harness -- --confirm-spend --limit 3
  */
 import { loadEnv } from '../bootstrap/loadEnv';
-import { initDb } from '../db/pool';
-import { loadStoredRun, runHarness, submitTaskThroughAdminRoute, type EvalTransport } from '../services/eval/runHarness';
+import { initDb, query } from '../db/pool';
+import {
+  loadStoredRun,
+  runHarness,
+  SignInRejectedError,
+  submitTaskThroughAdminRoute,
+  type EvalTransport,
+} from '../services/eval/runHarness';
 import { loadEvalTasks, type EvalTask } from '../services/eval/taskSet';
 
-export const HARNESS_CONCURRENCY = 2;
 export const DEFAULT_TASK_LIMIT = 3;
+export const RUN_TIMEOUT_MS = 45 * 60 * 1000;
 const POLL_MS = 15_000;
-const TIMEOUT_MS = 45 * 60 * 1000;
 
 export function assertSpendConfirmed(argv: string[]): void {
   if (!argv.includes('--confirm-spend')) {
@@ -57,18 +61,62 @@ export function parseLimit(argv: string[]): number {
   return value;
 }
 
-async function pollRun(apiBase: string, runId: string, authHeader: string): Promise<void> {
-  const started = Date.now();
-  for (;;) {
-    if (Date.now() - started > TIMEOUT_MS) throw new Error(`run ${runId} timed out`);
-    const response = await fetch(`${apiBase.replace(/\/$/, '')}/api/research/${runId}`, {
-      headers: { authorization: authHeader },
-    });
-    if (!response.ok) throw new Error(`poll failed: ${response.status}`);
-    const body = (await response.json()) as { status?: string };
-    if (body.status === 'completed' || body.status === 'failed' || body.status === 'cancelled') return;
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+export interface SubmittedTask {
+  task: EvalTask;
+  runId: string;
+  reference: string;
+}
+
+export async function submitSelectedTasks(args: {
+  tasks: EvalTask[];
+  submit: (task: EvalTask) => Promise<{ runId: string }>;
+  lookupReference: (runId: string) => Promise<string | null>;
+  print: (line: string) => void;
+}): Promise<SubmittedTask[]> {
+  const submitted: SubmittedTask[] = [];
+  for (const task of args.tasks) {
+    let started: { runId: string };
+    try {
+      started = await args.submit(task);
+    } catch (err) {
+      if (err instanceof SignInRejectedError) {
+        throw new SignInRejectedError();
+      }
+      throw err;
+    }
+    const reference = (await args.lookupReference(started.runId)) ?? started.runId;
+    args.print(`${task.id} reference=${reference} run=${started.runId}`);
+    submitted.push({ task, runId: started.runId, reference });
   }
+  return submitted;
+}
+
+export async function waitForRunInDatabase(args: {
+  runId: string;
+  readStatus: (runId: string) => Promise<string | null>;
+  timeoutMs: number;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}): Promise<void> {
+  const sleep = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const now = args.now ?? Date.now;
+  const started = now();
+  for (;;) {
+    if (now() - started > args.timeoutMs) throw new Error(`run ${args.runId} timed out`);
+    const status = await args.readStatus(args.runId);
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') return;
+    await sleep(POLL_MS);
+  }
+}
+
+async function lookupReference(runId: string): Promise<string | null> {
+  const rows = await query<{ run_ref: string | null }>(`SELECT run_ref FROM research_runs WHERE id = $1`, [runId]);
+  return rows[0]?.run_ref ?? null;
+}
+
+async function readStatus(runId: string): Promise<string | null> {
+  const rows = await query<{ status: string }>(`SELECT status FROM research_runs WHERE id = $1`, [runId]);
+  return rows[0]?.status ?? null;
 }
 
 async function main(): Promise<void> {
@@ -83,16 +131,22 @@ async function main(): Promise<void> {
   loadEnv();
   await initDb();
   const tasks = selectHarnessTasks(loadEvalTasks(), limit);
+  const submitted = await submitSelectedTasks({
+    tasks,
+    submit: (task) => submitTaskThroughAdminRoute(apiBase, task, task.fixtureDocuments ?? [], authHeader, flagOverrides),
+    lookupReference,
+    print: (line) => console.log(line),
+  });
   const transport: EvalTransport = {
-    start: (task, files, overrides) => submitTaskThroughAdminRoute(apiBase, task, files, authHeader, overrides),
-    wait: (runId) => pollRun(apiBase, runId, authHeader),
+    start: async (task) => {
+      const match = submitted.find((item) => item.task.id === task.id);
+      if (!match) throw new Error(`missing submission for ${task.id}`);
+      return { runId: match.runId };
+    },
+    wait: (runId) => waitForRunInDatabase({ runId, readStatus, timeoutMs: RUN_TIMEOUT_MS }),
     load: loadStoredRun,
   };
-  const rows = [];
-  for (let i = 0; i < tasks.length; i += HARNESS_CONCURRENCY) {
-    const batch = tasks.slice(i, i + HARNESS_CONCURRENCY);
-    rows.push(...(await runHarness(transport, batch, flagOverrides)));
-  }
+  const rows = await runHarness(transport, submitted.map((item) => item.task), flagOverrides);
   for (const row of rows) {
     console.log(
       `${row.taskId} run=${row.runId} tokens=${row.tokens ?? 'none'} recorded_cost_usd=${row.recordedCostUsd ?? 'none'} (floor; missing prices record as zero)`
