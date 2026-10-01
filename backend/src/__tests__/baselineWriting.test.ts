@@ -2,6 +2,36 @@ import { describe, expect, it } from 'vitest';
 import { RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK } from '../constants/prompts';
 import { applySystemAugmentations } from '../services/openrouter/openrouterService';
 import { deriveGeneratedReportTitle } from '../services/reasoning/reportGenerator';
+import {
+  capSummary,
+  lookupNeedsDiscovery,
+  plainQuestionIntent,
+  presentationFailures,
+  readerSections,
+  readerTitle,
+  removeRepeatedSentences,
+  scoreNoRepetition,
+  scorePresentationClean,
+  scoreReportQuality,
+  scoreStructureComplete,
+  stripGradeLines,
+  wordFloor,
+} from '../services/reasoning/baselineReport';
+import { buildCanonicalExecutionPlan } from '../services/planning/executionPlan';
+import { getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
+
+const SAMPLE = `# What the FDA authorized
+## Summary
+The FDA authorized Casgevy, the first CRISPR-based therapy, in December 2023.
+## Key findings
+- Casgevy is a CRISPR therapy for sickle cell disease.
+## What the sources report
+The authorization covered patients 12 and older with recurrent vaso-occlusive crises.
+## Limits of this report
+Data after the authorization decision was not re-reviewed.
+## About this report
+Two sources were read on 1 Oct 2026.
+`;
 
 describe('baseline writing messages', () => {
   it('sends a factual writer neither the knowledge-base block nor the adversarial prefix', () => {
@@ -28,5 +58,51 @@ describe('baseline writing messages', () => {
     expect(deriveGeneratedReportTitle('What year was it?', '# Framing\n\nThe FDA authorized Casgevy in 2023.')).toBe(
       'The FDA authorized Casgevy in 2023.'
     );
+    expect(readerTitle('What year was it?', 'What year was it?')).toBe('What the sources report');
+  });
+
+  it('uses the reader section order and a short summary', () => {
+    expect(readerSections('factual_report').map((section) => section.title)).toEqual([
+      'Summary',
+      'Key findings',
+      'What the sources report',
+      'Where sources disagree',
+      'Limits of this report',
+      'References',
+      'About this report',
+    ]);
+    expect(capSummary('word '.repeat(200)).split(/\s+/).length).toBe(150);
+  });
+
+  it('strips grades from the writer context and scores a clean fixture in CI', () => {
+    expect(stripGradeLines('Evidence Tier: established_fact\nThe study reported a result.')).not.toMatch(/established_fact/);
+    expect(scorePresentationClean(SAMPLE)).toBe(1);
+    expect(scoreStructureComplete(SAMPLE)).toBe(1);
+    expect(scoreNoRepetition([{ content: SAMPLE }])).toBe(1);
+    expect(scoreReportQuality(SAMPLE)).toBeGreaterThanOrEqual(4);
+    expect(presentationFailures('The verdict was established_fact.')).toContain('verdict');
+  });
+
+  it('removes a repeated sentence after one redraft still repeats', () => {
+    const sentence = 'The FDA authorized Casgevy for sickle cell disease in December 2023.';
+    const cleaned = removeRepeatedSentences([
+      { key: 'a', title: 'Summary', content: sentence },
+      { key: 'b', title: 'Body', content: sentence },
+    ]);
+    expect(cleaned[1].content).not.toContain('Casgevy');
+  });
+
+  it('lowers the floor for a short factual request and routes a failed classifier to factual research', () => {
+    process.env.BASELINE_LAYER_ENABLED = 'true';
+    expect(wordFloor('factual_report')).toBe(120);
+    expect(plainQuestionIntent(true, false)).toBe('factual_report');
+    const plan = buildCanonicalExecutionPlan({
+      profile: getOrchestrationProfileForIntent('reference_lookup'),
+      corpusEmpty: true,
+    });
+    expect(plan.skipReasons.discovery).toBeUndefined();
+    expect(plan.corePipelineStages).toContain('discovery');
+    expect(lookupNeedsDiscovery(true)).toBe(true);
+    delete process.env.BASELINE_LAYER_ENABLED;
   });
 });

@@ -1,4 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
+import { baselineLayerEnabled } from '../../config';
+import { readerSections, removeRepeatedSentences, stripGradeLines, capSummary, presentationFailures } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -1039,6 +1041,9 @@ export async function generateIterativeReport(args: {
       );
     }
     activeSectionPlan = sectionPlanFromTemplate(args.outputTemplateId);
+    if (baselineLayerEnabled() && args.isAdjudicative !== true) {
+      activeSectionPlan = readerSections(args.intentId);
+    }
     templateNarrativeHint = template.narrativeHint;
     templateVerifierRubric = template.verifierRubric;
     templateRequiredDeliverables = template.requiredDeliverables;
@@ -1232,7 +1237,7 @@ Required deliverables for this intent:\n${templateRequiredDeliverables.length > 
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 ${itemNameDirectiveFor(section)}
-Source material: ${args.sourceContext}
+Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
@@ -1406,9 +1411,29 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     return refined ? { ...section, content: refined } : section;
   });
 
+  const cleaned = baselineLayerEnabled() && args.isAdjudicative !== true
+    ? removeRepeatedSentences(finalSections).map((section) =>
+        section.key === 'summary' ? { ...section, content: capSummary(section.content) } : section
+      )
+    : finalSections;
+  let markdown = cleaned.map((s) => `## ${s.title}\n${s.content}`).join('\n\n');
+  if (baselineLayerEnabled() && args.isAdjudicative !== true && presentationFailures(markdown).length > 0) {
+    const redraft = await callRoleModel({
+      role: 'coherence_refiner',
+      ...v2,
+      baselineLayer: true,
+      messages: [
+        { role: 'system', content: 'Rewrite the report in plain encyclopedia prose. Remove grade labels and courtroom wording. Do not add facts.' },
+        { role: 'user', content: markdown },
+      ],
+    });
+    modelCalls.push(redraft);
+    markdown = redraft.content;
+  }
+
   return {
-    markdown: finalSections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n'),
-    sections: finalSections,
+    markdown,
+    sections: cleaned,
     outline: resolvedOutline,
     targetWordCount,
     // Item headings as actually composed by this pipeline. The auditor matches

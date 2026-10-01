@@ -479,6 +479,13 @@ export async function classifyIntent(
         `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
       );
     }
+    if (process.env.BASELINE_LAYER_ENABLED === 'true') {
+      return defaultResearchBrief(
+        'factual_report',
+        0.5,
+        `Classifier call failed (${detail}); a plain question resolved to factual_report.`
+      );
+    }
     throw err;
   }
 
