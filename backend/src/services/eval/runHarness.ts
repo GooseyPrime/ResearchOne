@@ -1,5 +1,6 @@
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
+import { judgeReportQuality } from './reportQualityJudge';
 import { scoreStoredReport, type ContradictionLink, type EvalCitation, type EvalScoreInput, type EvalScores } from './scoreReport';
 import { loadEvalTasks, type EvalTask, type FixtureDocument } from './taskSet';
 
@@ -69,7 +70,11 @@ export async function runHarness(
     const judged = await judgeQuoteSupports(
       stored.citations.map((row) => ({ sentence: row.claimText ?? '', quote: row.chunkQuote }))
     );
-    const scores = scoreStoredReport(buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides));
+    const reportQuality = await judgeReportQuality(stored.reportMarkdown);
+    const scores = scoreStoredReport({
+      ...buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides),
+      reportQuality,
+    });
     await query(
       `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
       [started.runId, task.id, JSON.stringify(scores), process.env.GIT_SHA ?? null]

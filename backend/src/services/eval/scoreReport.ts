@@ -1,3 +1,5 @@
+import { scoreNoRepetition, scorePresentationClean, scoreStructureComplete } from '../reasoning/baselineReport';
+
 export interface EvalCitation {
   alias: string;
   chunkQuote: string;
@@ -24,6 +26,7 @@ export interface EvalScoreInput {
   citationLock?: boolean;
   seconds?: number | null;
   tokens?: number | null;
+  reportQuality?: number | null;
 }
 
 export interface EvalScores {
@@ -43,6 +46,10 @@ export interface EvalScores {
   pairwise_vs_reference?: number | null;
   pairwise_chatgpt?: number | null;
   pairwise_perplexity?: number | null;
+  presentation_clean: number;
+  structure_complete: number;
+  no_repetition: number;
+  report_quality: number | null;
 }
 
 function aliasesIn(report: string): string[] {
@@ -119,6 +126,10 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
       : null,
     time_to_report: input.seconds ?? null,
     tokens: input.tokens ?? null,
+    presentation_clean: scorePresentationClean(report),
+    structure_complete: scoreStructureComplete(report),
+    no_repetition: scoreNoRepetition([{ content: report }]),
+    report_quality: input.reportQuality ?? null,
   };
 }
 

@@ -1,117 +1,104 @@
 import { baselineLayerEnabled } from '../../config';
+import { readerFacingLabelHits } from '../formatting/reportPresentation';
 
-export const READER_SECTION_ORDER = [
-  'summary',
-  'key_findings',
-  'body',
-  'disagreement',
-  'limits',
-  'references',
-  'about',
-] as const;
-
-const READER_HEADINGS: Record<(typeof READER_SECTION_ORDER)[number], string> = {
-  summary: 'Summary',
-  key_findings: 'Key findings',
-  body: 'What the sources report',
-  disagreement: 'Where sources disagree',
-  limits: 'Limits of this report',
-  references: 'References',
-  about: 'About this report',
-};
-
-const SURVEY_HEADINGS: Record<string, string> = {
-  established: 'What is well established',
-  contested: 'Where researchers disagree',
-  hypothesized: 'Open questions',
-  lore: 'What is repeated without a primary record',
-  open_questions: 'Open questions',
-};
-
-const FORBIDDEN = [
-  'established_fact',
-  'strong_evidence',
-  'testimony',
-  'inference',
-  'speculation',
-  'under_review',
-  'plan_pending_confirmation',
-  'verdict',
-  'case for',
-  'case against',
-  'falsified',
-  'adjudicate',
-  'this report synthesizes evidence',
-];
-
-export function readerSections(intentId: string | undefined): Array<{ key: string; title: string; weight: number }> {
-  if (intentId === 'survey') {
-    return [
-      { key: 'summary', title: 'Summary', weight: 1 },
-      { key: 'established', title: SURVEY_HEADINGS.established, weight: 1 },
-      { key: 'contested', title: SURVEY_HEADINGS.contested, weight: 1 },
-      { key: 'hypothesized', title: SURVEY_HEADINGS.hypothesized, weight: 1 },
-      { key: 'limits', title: 'Limits of this report', weight: 1 },
-      { key: 'about', title: 'About this report', weight: 1 },
-    ];
-  }
-  if (intentId === 'how_to') {
-    return [
-      { key: 'summary', title: 'Summary', weight: 1 },
-      { key: 'steps', title: 'Steps', weight: 1 },
-      { key: 'limits', title: 'Limits of this report', weight: 1 },
-      { key: 'about', title: 'About this report', weight: 1 },
-    ];
-  }
-  if (intentId === 'comparative') {
-    return [
-      { key: 'summary', title: 'Summary', weight: 1 },
-      { key: 'comparison', title: 'Comparison', weight: 1 },
-      { key: 'limits', title: 'Limits of this report', weight: 1 },
-      { key: 'about', title: 'About this report', weight: 1 },
-    ];
-  }
-  return READER_SECTION_ORDER.map((key) => ({ key, title: READER_HEADINGS[key], weight: 1 }));
+export interface UsedSource {
+  title: string;
+  publisher?: string | null;
+  date?: string | null;
+  url?: string | null;
 }
 
+export function topicHeadings(query: string): string[] {
+  const subject = query.replace(/[?]+$/g, '').replace(/^(what|when|why|how|who|where)\s+/i, '').trim();
+  const topic = subject || 'the question';
+  return [`How ${topic} is described`, `What the records show about ${topic}`];
+}
+
+export function readerSections(intentId: string | undefined, query = ''): Array<{ key: string; title: string; weight: number; system?: boolean }> {
+  const body =
+    intentId === 'survey'
+      ? [
+          { key: 'established', title: 'What is well established', weight: 1 },
+          { key: 'contested', title: 'Where researchers disagree', weight: 1 },
+          { key: 'open_questions', title: 'Open questions', weight: 1 },
+        ]
+      : intentId === 'how_to'
+        ? [{ key: 'steps', title: 'Steps', weight: 1 }]
+        : intentId === 'comparative'
+          ? [{ key: 'comparison', title: 'Comparison', weight: 1 }]
+          : topicHeadings(query).map((title, index) => ({ key: `topic_${index}`, title, weight: 1 }));
+  return [
+    { key: 'summary', title: 'Summary', weight: 1 },
+    { key: 'key_findings', title: 'Key findings', weight: 1 },
+    ...body,
+    { key: 'limits', title: 'Limits of this report', weight: 1 },
+    { key: 'references', title: 'References', weight: 1, system: true },
+    { key: 'about', title: 'About this report', weight: 1, system: true },
+  ];
+}
+
+export function draftedSections(intentId: string | undefined, query = ''): Array<{ key: string; title: string; weight: number }> {
+  return readerSections(intentId, query).filter((section) => !section.system);
+}
+
+/** Remove a grade field or label. Ordinary words such as testimony stay. */
 export function stripGradeLines(context: string): string {
   return context
     .split('\n')
-    .filter((line) => !/evidence tier|established_fact|strong_evidence|testimony|inference|speculation/i.test(line))
+    .map((line) =>
+      line
+        .replace(/^\s*evidence tier\s*:\s*\S+\s*$/i, '')
+        .replace(/\b(?:established_fact|strong_evidence)\b:?/gi, '')
+        .replace(/\[\s*(?:established_fact|strong_evidence|testimony|inference|speculation)\s*\]/gi, '')
+    )
     .join('\n');
 }
 
-export function capSummary(text: string, maxWords = 150): string {
+export function trimSummaryAtSentence(text: string, maxWords = 150): string {
   const words = text.trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, maxWords).join(' ');
+  if (words.length <= maxWords) return text.trim();
+  const cut = words.slice(0, maxWords).join(' ');
+  const boundary = cut.match(/^[\s\S]*[.!?](?=\s|$)/);
+  return (boundary?.[0] ?? cut).trim();
 }
 
 export function presentationFailures(text: string): string[] {
-  const lower = text.toLowerCase();
-  return FORBIDDEN.filter((word) => lower.includes(word));
+  return readerFacingLabelHits(text);
 }
 
 export function scorePresentationClean(text: string): number {
   return presentationFailures(text).length === 0 ? 1 : 0;
 }
 
-export function scoreStructureComplete(text: string): number {
-  const hasTitle = /^#\s+\S/m.test(text);
-  const hasSummary = /^##\s+Summary/m.test(text);
-  const summary = text.split(/^##\s+/m)[1] ?? '';
-  const words = summary.split(/\s+/).filter(Boolean).length;
-  return hasTitle && hasSummary && words <= 150 ? 1 : 0;
+export const REQUIRED_READER_SECTIONS = ['Summary', 'Key findings', 'Limits of this report', 'References', 'About this report'];
+
+export function scoreStructureComplete(text: string, required = REQUIRED_READER_SECTIONS): number {
+  const headings = [...text.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1]?.trim() ?? '');
+  let cursor = 0;
+  for (const title of required) {
+    const index = headings.findIndex((heading, position) => position >= cursor && heading === title);
+    if (index === -1) return 0;
+    cursor = index + 1;
+  }
+  const summary = text.split(/^##\s+Summary\s*$/m)[1]?.split(/^##\s+/m)[0] ?? '';
+  return summary.trim().split(/\s+/).filter(Boolean).length <= 150 ? 1 : 0;
+}
+
+function proseBlocks(content: string): string[] {
+  return content.split(/\n{2,}/).filter((block) => !block.trim().startsWith('```') && !block.includes('|'));
 }
 
 export function repeatedSentences(sections: Array<{ content: string }>): string[] {
   const seen = new Set<string>();
   const repeated: string[] = [];
   for (const section of sections) {
-    for (const sentence of section.content.split(/(?<=[.!?])\s+/)) {
-      const key = sentence.trim().toLowerCase();
-      if (key.length < 40) continue;
-      if (seen.has(key)) repeated.push(sentence.trim());
-      seen.add(key);
+    for (const block of proseBlocks(section.content)) {
+      for (const sentence of block.split(/(?<=[.!?])\s+/)) {
+        const key = sentence.trim().toLowerCase();
+        if (key.length < 40) continue;
+        if (seen.has(key)) repeated.push(sentence.trim());
+        seen.add(key);
+      }
     }
   }
   return repeated;
@@ -121,24 +108,31 @@ export function scoreNoRepetition(sections: Array<{ content: string }>): number 
   return repeatedSentences(sections).length === 0 ? 1 : 0;
 }
 
-export function removeRepeatedSentences(sections: Array<{ title: string; key: string; content: string }>): Array<{ title: string; key: string; content: string }> {
+export function removeRepeatedSentences<T extends { content: string }>(sections: T[]): T[] {
   const seen = new Set<string>();
   return sections.map((section) => {
-    const kept = section.content.split(/(?<=[.!?])\s+/).filter((sentence) => {
-      const key = sentence.trim().toLowerCase();
-      if (key.length < 40) return true;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+    const blocks = section.content.split(/\n{2,}/);
+    const next = blocks.map((block) => {
+      if (block.trim().startsWith('```') || block.includes('|')) return block;
+      return block
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => {
+          const key = sentence.trim().toLowerCase();
+          if (key.length < 40) return true;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .join(' ');
     });
-    return { ...section, content: kept.join(' ') };
+    return { ...section, content: next.join('\n\n') };
   });
 }
 
 export function readerTitle(query: string, proposed: string): string {
   const title = proposed.trim();
   if (!title || title.toLowerCase() === 'framing' || title.toLowerCase() === query.trim().toLowerCase()) {
-    return 'What the sources report';
+    return topicHeadings(query)[0] ?? 'Report';
   }
   return title;
 }
@@ -158,11 +152,15 @@ export function lookupNeedsDiscovery(corpusEmpty: boolean): boolean {
   return baselineLayerEnabled() && corpusEmpty;
 }
 
-export function scoreReportQuality(text: string): number {
-  let score = 1;
-  if (/^##\s+Summary/m.test(text)) score += 1;
-  if (/^##\s+Key findings/m.test(text)) score += 1;
-  if (!presentationFailures(text).length) score += 1;
-  if (text.split(/\s+/).length < 2000) score += 1;
-  return score;
+export function buildReferences(sources: UsedSource[]): string {
+  return sources
+    .map((source, index) => {
+      const parts = [source.publisher, source.title, source.date].filter(Boolean);
+      return `${index + 1}. ${parts.join(', ')}${source.url ? ` ${source.url}` : ''}`;
+    })
+    .join('\n');
+}
+
+export function buildAbout(sources: UsedSource[], searched: string): string {
+  return `About this report: ${searched}. ${sources.length} source${sources.length === 1 ? ' was' : 's were'} read.`;
 }

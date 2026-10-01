@@ -1,4 +1,5 @@
 import { config } from '../../config';
+import { plainQuestionIntent } from '../reasoning/baselineReport';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { IntentId } from './intentTaxonomy';
 import { getIntentById, INTENT_TAXONOMY } from './intentTaxonomy';
@@ -479,7 +480,7 @@ export async function classifyIntent(
         `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
       );
     }
-    if (process.env.BASELINE_LAYER_ENABLED === 'true') {
+    if (plainQuestionIntent(true, false)) {
       return defaultResearchBrief(
         'factual_report',
         0.5,

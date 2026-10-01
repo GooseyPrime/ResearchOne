@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import axios, { AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
 import { config, baselineLayerEnabled } from '../../config';
-import { REASONING_FIRST_PREAMBLE, RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, withLayer1Preamble, withPreamble, withStandardPreamble } from '../../constants/prompts';
+import { LAYER_1_SOURCE_HANDLING, REASONING_FIRST_PREAMBLE, RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
@@ -308,11 +308,13 @@ export function applySystemAugmentations(options: ModelCallOptions): ChatMessage
   const layer1 = options.baselineLayer === true && options.isAdjudicative !== true;
 
   if (layer1) {
-    msgs = msgs.map((msg) =>
-      msg.role === 'system'
-        ? { ...msg, content: withLayer1Preamble(msg.content.replace(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, '').trim()) }
-        : msg
-    );
+    msgs = msgs.map((msg) => {
+      if (msg.role !== 'system' || msg.content.includes(LAYER_1_SOURCE_HANDLING)) return msg;
+      const replaced = msg.content.includes(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK)
+        ? msg.content.replace(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, LAYER_1_SOURCE_HANDLING)
+        : `${LAYER_1_SOURCE_HANDLING}\n\n${msg.content}`;
+      return { ...msg, content: replaced };
+    });
   }
 
   if (
