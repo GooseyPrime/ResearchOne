@@ -8,7 +8,7 @@ alwaysApply: true
 ## Why this rule exists
 
 ResearchOne's root-cause failure (documented in
-`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md`) is that
+`the redesign specification`) is that
 intent classification happens correctly but is then discarded: the
 final planner, synthesizer, verifier, section drafter, and coherence
 refiner all independently re-impose a universal hypothesis-and-
@@ -126,7 +126,7 @@ would pass an epistemic skeptic but fail a contract auditor instantly.
 
 ### R-8. Regression fixture
 
-The exact prompt from `onlinbusinessreport.md` must be a fixture in
+The exact prompt from `the regression example` must be a fixture in
 the classifier and pipeline test suite. Tests must assert:
 - Intent resolves to `opportunity_discovery` + `feasibility` +
   `implementation` (not `general_epistemic_research`).

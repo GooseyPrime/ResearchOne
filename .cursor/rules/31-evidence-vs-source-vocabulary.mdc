@@ -8,25 +8,25 @@ globs:
   - "docs/**/*.md"
 ---
 
-# Rule 31 — Evidence vs. source vocabulary (Wave 4)
+# Rule 31 — Evidence vs. source vocabulary (the evidence-vocabulary pass)
 
 ## Why this rule exists
 
-Marketing must not conflate **primary evidence** (artifacts attached to events) with **sources** (documented interpretations — what retrieval returns). The backend preambles already distinguish consensus, cited material, and primary checks; Wave 4 locks the same discipline on public surfaces. See `docs/wave-4-evidence-vocabulary-scope.md`.
+Marketing must not conflate **primary evidence** (artifacts attached to events) with **sources** (documented interpretations — what retrieval returns). The backend preambles already distinguish consensus, cited material, and primary checks; the evidence-vocabulary pass locks the same discipline on public surfaces. See `Rule 31`.
 
 ## Discipline
 
 1. Reserve **“evidence”** for **primary artifacts** directly attached to an event (FOIA returns, raw data, sensor traces, original documents, recordings). If the sentence is about papers, articles, or web text the model retrieved, use **“sources”** (or “source-corroboration tiers”, “source card”, etc.).
-2. Use **source-corroboration tiers** / **source card** / **citation-and-source chain** per the mapping table in the Wave 4 scope doc. Do not rename backend tier **identifiers** (`established_fact`, `strong_evidence`, `testimony`, `inference`, `speculation`) — Rule 28.
+2. Use **source-corroboration tiers** / **source card** / **citation-and-source chain** per the mapping table in the the evidence-vocabulary pass scope doc. Do not rename backend tier **identifiers** (`established_fact`, `strong_evidence`, `testimony`, `inference`, `speculation`) — Rule 28.
 3. **Display label** for `strong_evidence` is **“Strong corroboration”** on user-facing JSX; CSS/Tailwind classes may remain `tier-strong_evidence`, `.badge-strong_evidence`, etc.
 
 ## Competitor comparison content
 
-When citing competitors: **verbatim** quotes only, with URL and accessed date; no characterization beyond what the source says. If a URL later fails, preserve a snapshot (Wayback, archive, or `docs/snapshots/`) and update the doc — per Wave 4 scope doc.
+When citing competitors: **verbatim** quotes only, with URL and accessed date; no characterization beyond what the source says. If a URL later fails, preserve a snapshot (Wayback, archive, or `docs/snapshots/`) and update the doc — per the evidence-vocabulary pass scope doc.
 
 ## Trigger
 
-Any PR that adds, removes, or changes **marketing prose**; adds a new **public-facing** surface; or adds **competitor-comparison** content must conform to this rule and stay within the Wave 4 scope inventory unless governance extends scope.
+Any PR that adds, removes, or changes **marketing prose**; adds a new **public-facing** surface; or adds **competitor-comparison** content must conform to this rule and stay within the the evidence-vocabulary pass scope inventory unless governance extends scope.
 
 ## Fences (do not amend via this rule)
 

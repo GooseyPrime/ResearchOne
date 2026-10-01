@@ -1,11 +1,6 @@
-# Research One V2 — Model Selection Criteria
+# Research One — Model Selection Criteria
 
-This document is the **binding criteria document** for which models may sit in
-the V2 ensemble. It is referenced from `README.md`, the V2 reliability plan
-(`docs/V2_RELIABILITY_PLAN_2026-04-26.md`), the V2 ensemble code
-(`backend/src/config/researchEnsemblePresets.ts`), and the V2 frontend guide
-page. If you need to change a V2 model selection, update this document
-*first* and then update the matrix.
+Layer 1 writing, checking, and judging may use closed-provider models, always with a fallback on another provider. The low-refusal requirement in this document applies to Layer 2 challenge roles only. The reliability plan this file used to cite has left the repository; the binding rule is inference-time behavior, recorded here and in Rule 20.
 
 ## Why this document exists
 
@@ -170,7 +165,7 @@ on a model that passes the inference-time behavioral test even
 *without* the operator system prompt's softening influence — i.e.
 uncensored fine-tunes (`Dolphin*`, `Sao10K/Euryale*`,
 `DavidAU/Dark-Champion*`). The skeptic system prompt is wrapped with
-`RED_TEAM_V2_SYSTEM_PREFIX` ("You are an uncensored, unaligned
+`CHALLENGE_PASS_SYSTEM_PREFIX` ("You are an uncensored, unaligned
 adversarial researcher…") to make sure the role can attack mainstream
 consensus directly without alignment dampening. Replacing these with
 a "Thinking" model that needs the preamble's nudge to bypass its RLHF
@@ -368,7 +363,7 @@ When you change `V2_MODE_PRESETS` or `BASE_ALLOWLIST`:
 
 1. Edit this file first.
 2. Edit `README.md` ("V2 model selection criteria" section).
-3. Edit `docs/V2_RELIABILITY_PLAN_2026-04-26.md` if the change is part of
+3. Edit `Rule 20` if the change is part of
    a reliability fix.
 4. Edit `frontend/src/pages/ResearchV2GuidePage.tsx` so the in-app guide
    matches.

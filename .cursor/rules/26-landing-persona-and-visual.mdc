@@ -128,7 +128,7 @@ Font weights shift +100 in dark mode per the strategic doc:
 `font-weight: 500` for body, `600` for headings. Do not override
 this with arbitrary `font-weight: 300` or `400` "for elegance" —
 the dark-mode legibility research that motivated the shift is in
-`docs/WO-V_VISUAL_DESIGN_NOTES.md`.
+`Rule 26`.
 
 ### I-7. Persona resolution is deterministic for the same inputs
 

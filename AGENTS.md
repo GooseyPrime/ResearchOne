@@ -67,9 +67,8 @@ rules.
 
 The rules in `.cursor/rules/` exist because the agent shipped 22
 reviewer-caught bugs across PRs #36–#40 and the user asked for a
-self-update so those patterns do not recur. The retrospective that
-drove the rules is at
-[`docs/retrospectives/2026-04-28-pr36-40-review-findings.md`](docs/retrospectives/2026-04-28-pr36-40-review-findings.md).
+self-update so those patterns do not recur. The themes from that
+review are in this file.
 
 ## Rule index
 
@@ -84,7 +83,7 @@ drove the rules is at
 | [`.cursor/rules/15-doc-pr-and-code-parity.mdc`](.cursor/rules/15-doc-pr-and-code-parity.mdc) | Re-read the PR body / docs against the final commit. Verify external claims live. |
 | [`.cursor/rules/16-tests-must-fail-without-the-fix.mdc`](.cursor/rules/16-tests-must-fail-without-the-fix.mdc) | A test that passes both with and without the fix is worse than no test. |
 | [`.cursor/rules/17-ripple-and-grep-callers.mdc`](.cursor/rules/17-ripple-and-grep-callers.mdc) | When you change a primitive, grep every caller. |
-| [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` + V2 model selection criteria. |
+| [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc) | Repo-specific: `ResearchOne PolicyOne` and model selection. |
 | [`.cursor/rules/21-billing-and-webhook-contracts.mdc`](.cursor/rules/21-billing-and-webhook-contracts.mdc) | Metadata key parity, UUID generation, Date overflow, dead-wiring prevention, **no mocks in app `src/` (CI)**. |
 | [`.cursor/rules/22-out-of-scope-discovery.mdc`](.cursor/rules/22-out-of-scope-discovery.mdc) | Out-of-scope findings must be addressed or scheduled, never dismissed. |
 | [`.cursor/rules/23-early-return-resource-cleanup.mdc`](.cursor/rules/23-early-return-resource-cleanup.mdc) | Early returns must clean up staged files, temp resources, locks. |
@@ -95,16 +94,16 @@ drove the rules is at
 | [`.cursor/rules/28-academic-formatting-engine.mdc`](.cursor/rules/28-academic-formatting-engine.mdc) | Academic formatting engine (Pandoc + CSL + LaTeX + evidence aliases). |
 | [`.cursor/rules/29-marketing-scope-doc-contracts.mdc`](.cursor/rules/29-marketing-scope-doc-contracts.mdc) | Contract-style marketing / a11y scope docs (conditional re-scan, cwd, Lighthouse gates, F-42 boundary). |
 | [`.cursor/rules/30-vercel-prerender-spa-routing.mdc`](.cursor/rules/30-vercel-prerender-spa-routing.mdc) | Vercel SPA catch-all must not shadow prerendered `dist/<segment>/`; sync exclusions with `public/sitemap.xml`. |
-| [`.cursor/rules/31-evidence-vs-source-vocabulary.mdc`](.cursor/rules/31-evidence-vs-source-vocabulary.mdc) | Marketing / public copy: evidence vs. sources vocabulary (Wave 4). |
-| [`.cursor/rules/32-dossier-canonical-read-path.mdc`](.cursor/rules/32-dossier-canonical-read-path.mdc) | Dossier reads must use `v_dossier` / dossierReadService (Wave 5.0). |
+| [`.cursor/rules/31-evidence-vs-source-vocabulary.mdc`](.cursor/rules/31-evidence-vs-source-vocabulary.mdc) | Marketing / public copy: evidence vs. sources vocabulary (the evidence-vocabulary pass). |
+| [`.cursor/rules/32-dossier-canonical-read-path.mdc`](.cursor/rules/32-dossier-canonical-read-path.mdc) | Dossier reads must use `v_dossier` / dossierReadService (the dossier data-model pass). |
 | [`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc) | All work ships via a PR branch by default unless user directs otherwise. |
-| [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (Wave 5.1). |
+| [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (the plan-confirmation pass). |
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
-| [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (Wave 5.4+). |
+| [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (the revision-spinoff pass+). |
 | [`.cursor/rules/36-two-audience-copy.mdc`](.cursor/rules/36-two-audience-copy.mdc) | Tier A plain language vs Tier B technical depth; CI banned-jargon grep. |
 | [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc) | Intent is the pipeline contract; hypothesis/falsification conditional on intent family; deliverable contract auditor. |
 | [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |
-| [`.cursor/rules/39-redesign-phase-checklist.mdc`](.cursor/rules/39-redesign-phase-checklist.mdc) | Every redesign-phase PR must update `docs/redesign-phase-status.md` and include the phase checklist in the PR description. |
+| [`.cursor/rules/39-redesign-phase-checklist.mdc`](.cursor/rules/39-redesign-phase-checklist.mdc) | Every redesign-phase PR must include the phase checklist in the PR description. |
 | [`.cursor/rules/40-corpus-competence-gate.mdc`](.cursor/rules/40-corpus-competence-gate.mdc) | Corpus is sealed by default; unlocks per topic partition on independence + density thresholds; self-referential source guard. |
 | [`.cursor/rules/42-deliverable-integrity.mdc`](.cursor/rules/42-deliverable-integrity.mdc) | Gates are never satisfied by stubs; degraded modes modify synthesis instead of replacing it; LLM-derived control values need deterministic fallbacks. |
 | [`.cursor/rules/25-pm2-and-bootstrap-secrets.mdc`](.cursor/rules/25-pm2-and-bootstrap-secrets.mdc) | Emma deploy: do not export bootstrap-only DB URLs before PM2; `ALTER DEFAULT PRIVILEGES FOR ROLE`. |
@@ -115,25 +114,22 @@ drove the rules is at
 1. [`ResearchOne PolicyOne`](ResearchOne%20PolicyOne) — **the binding
    epistemic policy.** Read first.
 2. [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md)
-   — V2 model rules and currently-approved primaries.
-3. [`docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md`](docs/V2_STATE_MACHINE_AND_PROVIDER_PLAN_2026-04-28.md)
-   — V2 state machine + provider-routing reasoning.
-4. [`docs/V2_RELIABILITY_PLAN_2026-04-26.md`](docs/V2_RELIABILITY_PLAN_2026-04-26.md)
-   — Earlier V2 reliability work. Historical but still in force.
-5. [`README.md`](README.md) — runtime topology.
-6. [`docs/revision-spinoff-dossier-timeline-scope.md`](docs/revision-spinoff-dossier-timeline-scope.md)
-   — gated work plan for revision URL fixes, research spinoffs, dossier timeline.
-7. [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](docs/WO-Z-REPORT-TYPE-FIDELITY.md)
-   — **OPEN work order.** Report-type fidelity: intent declaration parsing,
-   verifier rubric scoping, corpus competence gate, evidence-sufficiency
-   gate. Read before touching the classifier, verifier prompts, or retrieval.
+   — model rules. Challenge roles stay low-refusal. Layer 1 writing,
+   checking, and judging may use a closed-provider model with a fallback.
+3. [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc)
+   — preamble fence and the challenge-pass prefix.
+4. [`README.md`](README.md) — runtime topology.
+5. [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc)
+   — revision URLs, research spinoffs, dossier timeline.
+6. [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc)
+   — intent is the report contract. Read before touching the classifier,
+   verifier prompts, or retrieval.
 
 ## Autonomous agent entry point
 
 AI coding agents (Copilot, Cursor, Codex) bootstrap from
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md). It
-carries the active work-order table, the non-negotiable guardrails, and the
-definition of done. Keep it in sync when a work order opens or closes.
+carries the non-negotiable guardrails and the definition of done.
 
 ## Production application source — no test mocks (CI enforced)
 
@@ -181,8 +177,6 @@ ship on `main`.
   an artifact is model-generated or code-generated, and name the anti-pattern
   in the exit gate.
 
-Work order: [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](docs/WO-AA-DELIVERABLE-INTEGRITY.md).
-
 ## Recurring review themes (WO-Z — report-type fidelity, run `178fea66`)
 
 - **Normalize captured tokens before map lookup.** `resolveIntentAlias()`
@@ -218,8 +212,6 @@ Work order: [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](docs/WO-AA-DELIVERABLE-INTEG
   is imperfect" as failure. The `comparative` rubric passed the refusal on
   6 of 8 criteria.
 
-Work order: [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](docs/WO-Z-REPORT-TYPE-FIDELITY.md).
-
 ## Recurring review themes (private corpus / ResearchOne consent / supplemental site crawl)
 
 - **`corpusAccess` ≠ Pro nav:** `/app/ingest` and ingestion POST routes use `tierHasCorpusAccess` / `requirePrivateCorpus` (pro, team, byok, sovereign, admin). Atlas/corpus browse may still use broader `hasProAccess`.
@@ -249,7 +241,6 @@ Work order: [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](docs/WO-Z-REPORT-TYPE-FIDELITY
 - **Multipart axios:** Do not set `Content-Type` on `FormData` uploads — browser boundary must stay intact.
 - **Deploy script checks:** Prefer `[[ -f script.sh ]]` + `bash script.sh` over `[[ -x script.sh ]]` when the script is not executed directly.
 
-Retrospective: [`docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md`](docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md).
 ## Recurring review themes (Codex / Copilot, PR #168 — product gaps review)
 
 - **Third-party widget SDK contracts:** Read the **shipped** bundle or type defs before calling globals (SheerID v1: `window.sheerid.loadInlineIframe`, not `loadIncentive` / `setFormElement`). Grep the CDN file when docs drift.
@@ -263,8 +254,6 @@ Retrospective: [`docs/retrospectives/2026-06-04-pr169-ingestion-nginx-review.md`
 - **Object spread order:** In error/report payloads, put explicit fields (`message`, `route`, `runId`) **after** `...context` so they are not overwritten.
 - **Production webhooks without secrets:** Return **503** when required webhook secret env is unset in production — do not accept unsigned traffic.
 
-Retrospective: [`docs/retrospectives/2026-06-04-pr168-review-findings.md`](docs/retrospectives/2026-06-04-pr168-review-findings.md).
-
 ## Recurring review themes (Codex / Copilot, PR #166 — add-ons billing wiring)
 
 - **Wallet holds vs `creditCtx.type`:** `consumeHold` / `releaseHold` in `researchOrchestrator` must key off `holdId` + `userId`, not only `creditCtx.type === 'wallet'`. Subscription-quota runs with add-on wallet surcharges still place holds — grep `releaseHold` / `consumeHold` when changing credit paths.
@@ -272,8 +261,6 @@ Retrospective: [`docs/retrospectives/2026-06-04-pr168-review-findings.md`](docs/
 - **Charge-without-effect add-ons:** Run add-ons that bill must change pipeline behavior (`applyAdversarialTwinToSkepticMode` un-skips `challenge`, enables `skepticMode` gate; `buildRunAddonPipelineEffects` for retrieval/citations). Grep `agentsToSkip` / `hasRunAddon` when wiring new keys.
 - **Eligibility vs waiver:** `computeRunCost` / `creditEnforcement` — `eligibilityFeature` (who may purchase) can differ from `includedFeature` (plan waives surcharge). Example: `adversarial_twin` uses `deepResearchAccess` for eligibility, `adversarialTwinIncluded` for waiver — do not gate purchase on `provenanceLedgerIncluded` when the UI sells on Pro/deep.
 - **Monitor status vs Stripe subscription:** Token-based Living Reports use `report_monitors.status === 'active'` only for “already subscribed” UI — `paused` must not block re-activation. Stripe add-ons remain subscription-shaped; copy on `AddOnsPage` should say “monitor(s)” vs “subscription(s)” per product type.
-
-Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`](docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md).
 
 ## Recurring review themes (Codex / Copilot, PR #165 — Rule 36 Tier A copy)
 
@@ -353,7 +340,7 @@ Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`
 - **Graph API types:** `title` / `url` nullable in SQL row types;
   `graphGroupKeyFromUrl` accepts `null | undefined` (PR #137).
 
-## Recurring review themes (Codex / Copilot, PR #127 — Dossier / Wave 5 reads)
+## Recurring review themes (Codex / Copilot, PR #127 — Dossier / the dossier pass reads)
 
 - **`v_dossier` + RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) when it selects from RLS-protected tables so policies run as the querying role, not the migration owner.
 - **Refreshing `v_dossier`:** when extending the dossier contract, preserve the **single-plan** `LATERAL` join from migration 035 (run status gates which plan statuses qualify; prefer `confirmed` over `legacy`); a plain `LEFT JOIN research_plans … IN ('confirmed','legacy')` can duplicate rows per run.
@@ -388,7 +375,7 @@ Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`
 ## Recurring review themes (Wave 2.5 scope / a11y contract PRs)
 
 - **Conditional secondary verification:** Re-scan extra marketing routes only when shared shell or cross-route imports change; page-local `landing/*` fixes should not automatically trigger full-route axe matrices — declare the bucket in the implementation PR.
-- **Fenced command cwd:** Contract docs must state the assumed working directory (`frontend/` vs repo root) and use explicit `cd .. &&` for repo-root paths (`docs/`, `audit-snapshots/`).
+- **Fenced command cwd:** Contract docs must state the assumed working directory (`frontend/` vs repo root) and use explicit `cd .. &&` for repo-root paths (`docs/`, `local audit output/`).
 - **Lighthouse + axe together:** If the contract lists axe rule IDs *and* a Lighthouse Accessibility threshold, a flat score after fixes is a **Rule 22** signal, not an automatic merge.
 - **markdownlint on scope files:** When `markdownlint-cli2` is listed for a scope doc, run it before merge; root `.markdownlint-cli2.yaml` may define shared defaults.
 
@@ -405,7 +392,7 @@ Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`
   `invalidateQueries(filters, { cancelRefetch: false })` when the page
   mount may already be fetching the same queries.
 
-## Recurring review themes (Codex / Copilot, PR #128 — Wave 5 plan gate + `v_dossier`)
+## Recurring review themes (Codex / Copilot, PR #128 — the dossier pass plan gate + `v_dossier`)
 
 - **Late migration overwrites `CREATE OR REPLACE VIEW`:** Filename order can apply an older migration after a newer one and drop `security_invoker` / columns — add a **trailing repair migration** (see `038_v_dossier_reapply_after_late_035.sql`) and document in Rule 33 §7.
 - **`async` + deploy-skew `catch`:** Use **`return await queryOne(...)`** inside `try` so Postgres rejections hit `catch` (Rule 33 §9).
@@ -414,14 +401,15 @@ Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`
 
 ## Etiquette
 
-- Do not modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`
-  in `backend/src/constants/prompts.ts` without an explicit user request
-  to do so. Agent `SYSTEM_PROMPTS` (`openrouterService.ts`),
-  `modeOverlays.ts`, and `reasoningModelPolicy.ts` are outside that
+- Do not modify `REASONING_FIRST_PREAMBLE` or the body of `withPreamble`
+  in `backend/src/constants/prompts.ts`, or `CHALLENGE_PASS_SYSTEM_PREFIX`
+  in `backend/src/services/reasoning/reasoningModelPolicy.ts`, without an
+  explicit user request to do so. Agent `SYSTEM_PROMPTS`
+  (`openrouterService.ts`) and `modeOverlays.ts` are outside that
   fence — edit under normal policy + review, not a preamble gate.
-- Do not silently swap a V2 default to an RLHF refusal-aligned model —
-  the forbidden-defaults regression test will fail first, but the rule
-  exists upstream of the test for a reason.
+- Do not silently swap a challenge-role default to a refusal-aligned model.
+  Layer 1 writing, checking, and judging may use a closed-provider model
+  when it has a fallback on another provider.
 - When a code review surfaces a finding the agent missed, treat it as a
   data point: extend the relevant rule (or add a new one) so the
   pattern doesn't recur.
@@ -528,11 +516,11 @@ Retrospective: [`docs/retrospectives/2026-06-03-pr166-add-ons-billing-review.md`
   against the live resource and call update when they differ.
 - **Check deferred features before listing on public pages:** Before
   rendering a product or feature on a public-facing page (pricing,
-  landing), grep `docs/roadmap/phase-2-deferred-features.md`. Features
-  listed there must show a "Coming soon" placeholder (badge + mailto),
+  landing), confirm the feature is implemented. A feature with no
+  backend must show a "Coming soon" placeholder (badge + mailto),
   never a live price or CTA. PR #95 review (Codex) caught Provenance
-  Ledger being presented as a $29/mo add-on while the roadmap doc
-  explicitly reserved it as Phase 2 with no backend implementation.
+  Ledger being presented as a $29/mo add-on while it was reserved as
+  Phase 2 with no backend implementation.
 - **Tier/subscription loading-state safety:** When deriving UI state
   from an async tier/subscription query, never fall back to `free_demo`
   while the query is loading or errored — paid users see a flash of

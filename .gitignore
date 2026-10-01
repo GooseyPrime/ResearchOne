@@ -36,3 +36,6 @@ Thumbs.db
 # Temporary files
 /tmp/
 *.tmp
+
+# Local audit output. Writer: frontend/scripts/wave2-audit-snapshots.mjs
+audit-snapshots/
