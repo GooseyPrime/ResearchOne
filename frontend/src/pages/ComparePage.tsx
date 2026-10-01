@@ -17,7 +17,7 @@ export default function ComparePage() {
         </p>
         <p className="mt-3 text-r1-text-muted">
           The full capability matrix (Capability · ResearchOne · General-purpose deep research) lives on the homepage under
-          &quot;Built for defensible decisions&quot; — same row labels as the site audit §2.10 brief.
+          &quot;Built for defensible decisions&quot; — same row labels as the homepage comparison.
         </p>
         <p className="mt-6 text-r1-text-muted">
           For a side-by-side you can share, use the landing comparison table or open the{' '}

@@ -8,7 +8,7 @@ import {
 } from '../utils/planAutoConfirm';
 
 describe('planAutoConfirm', () => {
-  it('exposes streak constant for UI hint parity with Wave 5.4', () => {
+  it('exposes streak constant for UI hint parity with the revision-spinoff pass', () => {
     expect(PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT).toBe(5);
   });
 

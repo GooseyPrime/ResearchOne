@@ -37,7 +37,7 @@ type Props = {
 };
 
 /**
- * Collapsible skeptical cross-checks (annotate-mode); Wave 4 vocabulary — not
+ * Collapsible skeptical cross-checks (annotate-mode); the evidence-vocabulary pass vocabulary — not
  * "evidence" for retrieved text.
  *
  * Renders through `ReportMarkdown`, not a bare `ReactMarkdown`. This component

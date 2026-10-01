@@ -2,7 +2,7 @@
  * BugNote inbound webhook — Phase A stub.
  *
  * Signature header and digest scheme are **unverified** placeholders until
- * BugNote workspace docs are provided. See `docs/integrations/bugnote-scope.md`.
+ * BugNote workspace docs are provided. See `the BugNote webhook contract`.
  */
 
 import crypto from 'crypto';

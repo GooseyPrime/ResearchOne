@@ -1,6 +1,6 @@
 // Keep in sync with backend/src/services/formatting/templates/intentOutputTemplates.ts
 /**
- * Wave 5.2 — intent output template descriptors (section order + layout hints).
+ * the orchestration-profile pass — intent output template descriptors (section order + layout hints).
  * Consumed by dossier UI and echoed in report metadata; does not alter CSL export paths.
  */
 export interface IntentOutputTemplate {

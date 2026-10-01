@@ -1,5 +1,5 @@
 /**
- * Flat dossier timeline events (Wave 5.5+ Gate 5).
+ * Flat dossier timeline events (the dossier pass.5+ Gate 5).
  * Reads through v_dossier + related tables with RLS via security_invoker view.
  */
 import { query } from '../../db/pool';

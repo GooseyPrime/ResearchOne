@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Wave 4 — competitor quote DOM contract + tier display label (Rule 31).
+ * the evidence-vocabulary pass — competitor quote DOM contract + tier display label (Rule 31).
  */
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
@@ -18,7 +18,7 @@ const TIER_DISPLAY: Record<string, string> = {
   speculation: 'Speculation',
 };
 
-describe('Wave 4 — WhatCompetitorsActuallySay', () => {
+describe('evidence vocabulary — WhatCompetitorsActuallySay', () => {
   it('renders five blockquotes each with cite equal to canonical URLs', () => {
     const html = renderToString(
       <MemoryRouter>
@@ -32,14 +32,14 @@ describe('Wave 4 — WhatCompetitorsActuallySay', () => {
   });
 });
 
-describe('Wave 4 — strong_evidence display label', () => {
+describe('evidence vocabulary — strong_evidence display label', () => {
   it('maps strong_evidence to Strong corroboration (CorpusPage contract)', () => {
     expect(TIER_DISPLAY.strong_evidence).toBe('Strong corroboration');
   });
 });
 
-describe('Wave 4 — competitor URL live integrity', () => {
+describe('evidence vocabulary — competitor URL live integrity', () => {
   it.skip('Use repo script `node scripts/verify-wave4-competitor-quote-urls.mjs` for live HTML checks (non-CI).', () => {
-    expect.fail('Skipped — see Wave 4 PR-B Suite B.');
+    expect.fail('Skipped — live URL check is optional and not part of this suite.');
   });
 });

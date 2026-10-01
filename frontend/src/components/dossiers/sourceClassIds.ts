@@ -1,5 +1,5 @@
 /**
- * Canonical Wave 5.3 source-class ids (must stay aligned with backend `SOURCE_CLASS_IDS`).
+ * Canonical the source-class pass source-class ids (must stay aligned with backend `SOURCE_CLASS_IDS`).
  */
 export const SOURCE_CLASS_IDS = [
   'suppressed_and_recovered',

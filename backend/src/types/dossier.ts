@@ -1,4 +1,4 @@
-/** Wave 5.0 — Dossier read models (API + v_dossier). Intent expands in Wave 5.1. */
+/** the dossier data-model pass — Dossier read models (API + v_dossier). Intent expands in the plan-confirmation pass. */
 export type PlanStatus = 'legacy' | 'draft' | 'pending_confirmation' | 'confirmed' | 'superseded';
 export type DossierIntent = 'legacy';
 
@@ -43,7 +43,7 @@ export interface DossierStats {
   estimatedCostCents: number | null;
   actualCostCents: number | null;
   reportEvidenceTierSummary: Record<string, unknown> | null;
-  /** Wave 5.3 — counts of retrieved chunks by orthogonal source-class axis (JSON from DB). */
+  /** the source-class pass — counts of retrieved chunks by orthogonal source-class axis (JSON from DB). */
   sourceClassBreakdown: Record<string, unknown> | null;
   steelmanPassCount: number | null;
 }
@@ -96,7 +96,7 @@ export interface DossierListRow {
   reportTitle: string | null;
   sourcesCitedCount: number | null;
   totalDurationMs: number | null;
-  /** Wave 5.5+ — most recent activity (revision, run update, etc.). */
+  /** the dossier pass.5+ — most recent activity (revision, run update, etc.). */
   lastActivityAt: string | null;
   versionNumber: number | null;
   isSpinoff: boolean;

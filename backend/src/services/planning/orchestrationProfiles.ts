@@ -1,5 +1,5 @@
 /**
- * Wave 5.2 — canonical per-intent orchestration profiles (agents, skeptic mode, templates).
+ * the orchestration-profile pass — canonical per-intent orchestration profiles (agents, skeptic mode, templates).
  * Stage keys align with `researchOrchestrator` progress_stage values + internal gates.
  */
 import type { IntentId } from './intentTaxonomy';
@@ -54,7 +54,7 @@ export interface OrchestrationProfileDefinition {
   agentsToSkip: readonly PipelineStage[];
   skepticMode: ProfileSkepticMode;
   steelmanMode: SteelmanMode;
-  /** Stable id for report layout / dossier UI (Wave 5.2 templates). */
+  /** Stable id for report layout / dossier UI (the orchestration-profile pass templates). */
   outputTemplateId: string;
   expectedLengthRange: { minWords: number; maxWords: number };
 }
@@ -184,7 +184,7 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Literature review',
     agentsToRun: FULL,
     agentsToSkip: [],
-    /** Methodology-style cross-checks live in sidebar (Wave 5.2). */
+    /** Methodology-style cross-checks live in sidebar (the orchestration-profile pass). */
     skepticMode: 'annotate',
     steelmanMode: 'standard',
     outputTemplateId: 'intent_literature_review',

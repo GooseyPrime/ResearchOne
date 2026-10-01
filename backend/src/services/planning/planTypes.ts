@@ -3,7 +3,7 @@ import type { SkepticMode, SteelmanMode } from './orchestrationProfiles';
 import type { ResearchBrief } from './researchBrief';
 import type { CanonicalExecutionPlan } from './executionPlan';
 
-/** Structured plan persisted in `research_plans.plan_payload` (Wave 5.1). */
+/** Structured plan persisted in `research_plans.plan_payload` (the plan-confirmation pass). */
 export interface PlanPayload {
   requestedFormats?: string[];
   targetWordCount?: number;
@@ -34,7 +34,7 @@ export interface PlanPayload {
     outputTemplateId?: string;
     skepticMode?: SkepticMode;
     steelmanMode?: SteelmanMode;
-    /** Placeholder map until Wave 5.3 classifier. */
+    /** Placeholder map until the source-class pass classifier. */
     sourceClassWeights?: Record<string, number>;
     expectedLengthRange?: { minWords: number; maxWords: number };
     /** Canonical runtime plan consumed by both preview and worker (Phase D1). */

@@ -32,7 +32,7 @@ export interface FeatureCardProps {
 }
 
 /**
- * Strict-cap marketing card (site audit §2.1.3 / §3.4).
+ * Strict-cap marketing card.
  * Parent grid should use `auto-rows: 1fr` for equal row heights.
  */
 export default function FeatureCard({

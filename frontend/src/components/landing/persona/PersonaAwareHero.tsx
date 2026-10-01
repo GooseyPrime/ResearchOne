@@ -22,7 +22,7 @@ const PERSONA_HERO_DEPTH_LAYERS: CSSProperties = {
  * client-side persona switch.
  *
  * Default hero copy and CTAs are shared with `Hero.tsx` and the
- * `default` entry in `personaContent.ts` (Wave 2 site audit §2.10,
+ * `default` entry in `personaContent.ts`
  * founder-authorized Rule 26 I-3 override, 2026-05-12).
  *
  * Per Cursor rule 26 I-7: resolution is deterministic for a given

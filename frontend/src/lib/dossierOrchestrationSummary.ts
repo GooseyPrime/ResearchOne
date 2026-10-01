@@ -1,5 +1,5 @@
 /**
- * Wave 5.2 — parse dossier_statistics orchestration JSON and build UI copy.
+ * the orchestration-profile pass — parse dossier_statistics orchestration JSON and build UI copy.
  */
 import type { DossierStats } from '../utils/api';
 

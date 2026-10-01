@@ -1,5 +1,5 @@
 /**
- * Wave 5.4 — CRUD for saved_orchestration_profiles with tier gates.
+ * the revision-spinoff pass — CRUD for saved_orchestration_profiles with tier gates.
  */
 import { query, queryOne } from '../../db/pool';
 import type { TierName } from '../../config/tierRules';
@@ -23,7 +23,7 @@ export interface SavedOrchestrationProfileRow {
   updatedAt: string;
 }
 
-/** Wave 5.4: Free Demo and anonymous have no saved profiles; paid paths do. */
+/** the revision-spinoff pass: Free Demo and anonymous have no saved profiles; paid paths do. */
 function tierAllowsSavedProfiles(tier: TierName): boolean {
   return tier !== 'free_demo' && tier !== 'anonymous';
 }

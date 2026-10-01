@@ -16,7 +16,7 @@ export async function generatePlan(input: {
   intentConfidence: number;
   /** Phase B — full ResearchBrief from the classifier; threaded into plan payload. */
   researchBrief?: ResearchBrief;
-  /** Wave 5.4 — optional saved profile seed merged into the planner prompt. */
+  /** the revision-spinoff pass — optional saved profile seed merged into the planner prompt. */
   savedProfile?: { baseIntent: string; customizations: unknown; profileName?: string };
   llmOpts: {
     engineVersion?: string;

@@ -28,7 +28,7 @@ router.get('/me', (req, res) => {
   res.json({ userId, isAdmin });
 });
 
-// GET /api/auth/plan-preferences — Wave 5.4 plan auto-confirm settings + optional preview.
+// GET /api/auth/plan-preferences — the revision-spinoff pass plan auto-confirm settings + optional preview.
 router.get('/plan-preferences', async (req, res, next) => {
   try {
     const userId = req.auth?.userId;

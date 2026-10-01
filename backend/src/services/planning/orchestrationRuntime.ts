@@ -1,5 +1,5 @@
 /**
- * Wave 5.2 — resolve canonical orchestration profile for a running job
+ * the orchestration-profile pass — resolve canonical orchestration profile for a running job
  * and merge planner-visible plan fields from `orchestrationProfiles.ts`.
  */
 import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';

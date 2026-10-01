@@ -52,6 +52,7 @@ import {
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
 import { logger } from '../../utils/logger';
+import { acceptedFlagOverride, UnknownFlagError } from '../../services/eval/flagOverride';
 
 const router = Router();
 
@@ -241,6 +242,17 @@ async function handleStartResearchRun(
       const userId = req.auth?.userId;
       const orgId = req.auth?.orgId ?? null;
 
+      let flagOverride: Record<string, boolean> | null = null;
+      try {
+        flagOverride = acceptedFlagOverride(userId, req.body);
+      } catch (err) {
+        if (err instanceof UnknownFlagError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+
       let spinoffLineage: SpinoffLineage | undefined;
       if (spinoffFromReportId) {
         const parent = await resolveOwnedReportForSpinoff(spinoffFromReportId, {
@@ -361,6 +373,23 @@ async function handleStartResearchRun(
         buffer: f.buffer,
       }));
 
+      if (flagOverride) {
+        try {
+          const present = await query<{ present: string | null }>(`SELECT to_regclass('public.eval_run_overrides') AS present`);
+          if (!present[0]?.present) {
+            res.status(503).json({ error: 'The override table is not available yet. Retry after the deploy finishes.' });
+            return;
+          }
+        } catch (probeErr) {
+          const probeCode = (probeErr as { code?: string } | null)?.code;
+          if (probeCode === '42P01') {
+            res.status(503).json({ error: 'The override table is not available yet. Retry after the deploy finishes.' });
+            return;
+          }
+          throw probeErr;
+        }
+      }
+
       // The run row must exist before supplemental ingestion starts: every ingested
       // source is written with discovered_by_run_id = runId, a foreign key to
       // research_runs. Ingesting first made that insert fail for any upload that
@@ -434,6 +463,29 @@ async function handleStartResearchRun(
           // The ingested sources are already linked to the run; only the attachment
           // list on the run row is missing. Do not strand a queued run over it.
           logger.error('supplemental_attachments_not_recorded', { runId, err: attachErr });
+        }
+      }
+
+      const recordedOverride = flagOverride;
+      if (recordedOverride) {
+        try {
+          await query(
+            `INSERT INTO eval_run_overrides (run_id, flags) VALUES ($1, $2::jsonb)
+             ON CONFLICT (run_id) DO UPDATE SET flags = EXCLUDED.flags`,
+            [runId, JSON.stringify(recordedOverride)]
+          );
+        } catch (overrideErr) {
+          logger.error('harness flag override was not saved; run not queued', { runId, err: overrideErr });
+          try {
+            await query(
+              `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
+              ['flag override could not be saved', runId]
+            );
+          } catch (markErr) {
+            logger.error('could not mark run failed after override save failure', { runId, err: markErr });
+          }
+          res.status(500).json({ error: 'flag override could not be saved' });
+          return;
         }
       }
 

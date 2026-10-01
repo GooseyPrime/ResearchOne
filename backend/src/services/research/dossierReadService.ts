@@ -257,7 +257,7 @@ export async function getDossierById(dossierId: string, ctx: DossierAuthContext)
   }
 }
 
-/** Canonical dossier read keyed by `research_runs.id` (Wave 5.1 plan gate GET). */
+/** Canonical dossier read keyed by `research_runs.id` (the plan-confirmation pass plan gate GET). */
 export async function getDossierByRunId(runId: string, ctx: DossierAuthContext): Promise<Dossier | null> {
   if (!isUuid(runId)) return null;
   try {

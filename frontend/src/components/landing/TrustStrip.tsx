@@ -4,7 +4,7 @@ const PILLARS = [
   'Living, versioned reports',
 ] as const;
 
-/** Trust signals under the hero pipeline — compact row (Wave 4 layout polish). */
+/** Trust signals under the hero pipeline — compact row (the evidence-vocabulary pass layout polish). */
 export default function TrustStrip() {
   return (
     <div className="mx-auto w-full max-w-6xl border-t border-white/10 px-4 pt-8 sm:px-6">

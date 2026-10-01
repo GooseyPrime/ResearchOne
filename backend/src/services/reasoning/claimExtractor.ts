@@ -70,7 +70,7 @@ export async function extractAndPersistClaims(args: {
   wave53?: {
     /** Full classifier maps (chunk + canonical URL). */
     sourceClassMap?: SourceClassMap;
-    /** Alias for `sourceClassMap` (Wave 5.3 task naming). */
+    /** Alias for `sourceClassMap` (the source-class pass task naming). */
     sourceClassByChunkId?: SourceClassMap;
     steelmanByClaimText?: Map<string, string>;
   };

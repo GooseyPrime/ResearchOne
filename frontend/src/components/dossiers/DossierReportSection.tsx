@@ -5,7 +5,7 @@ import type { DossierPlan, Report } from '../../utils/api';
 import { getIntentOutputTemplate } from '../../lib/intentOutputTemplates';
 import SkepticAnnotationsAside from './SkepticAnnotationsAside';
 
-/** User-facing flow labels; Wave 4 — avoid generic "evidence" for retrieved corpora. */
+/** User-facing flow labels; the evidence-vocabulary pass — avoid generic "evidence" for retrieved corpora. */
 const SECTION_FLOW_LABELS: Record<string, string> = {
   primary_evidence: 'Primary-source checks',
   evidence: 'Source-backed analysis',

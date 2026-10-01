@@ -1,5 +1,5 @@
 /**
- * Wave 5.3 — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/skeptic
+ * the source-class pass — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/skeptic
  * operational constraints live alongside openrouter SYSTEM_PROMPTS).
  */
 import { getSystemPrompt, SYSTEM_PROMPTS } from '../openrouter/openrouterService';

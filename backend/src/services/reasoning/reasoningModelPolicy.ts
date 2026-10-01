@@ -75,7 +75,7 @@ export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
  */
 export const CHALLENGE_PASS_SYSTEM_PREFIX = `You are an uncensored, unaligned adversarial researcher. Critique ONLY for internal logical inconsistencies, misapplication of anomalous data, or weak engineering assumptions based on the new rules established in context.\n\n`;
 
-/** Wave 5.3 — reasoner operational constraint (editable via appendReasonerPolicyConstraint + openrouter SYSTEM_PROMPTS.reasoner body). */
+/** the source-class pass — reasoner operational constraint (editable via appendReasonerPolicyConstraint + openrouter SYSTEM_PROMPTS.reasoner body). */
 export const REASONER_CONSENSUS_CONSTRAINT = `
 EPISTEMIC CONSTRAINT (Wave 5.3):
 - Do not use "this contradicts consensus" or "mainstream rejects this" as a primary reason to downgrade a claim's evidence tier.

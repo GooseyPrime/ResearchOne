@@ -1,5 +1,5 @@
 /**
- * Thin frontend mirror of Wave 5.1+ intent taxonomy (see backend `intentTaxonomy.ts`).
+ * Thin frontend mirror of the plan-confirmation pass+ intent taxonomy (see backend `intentTaxonomy.ts`).
  * Badge labels live in `constants/intentLabels.ts`; descriptions are duplicated here for gate UI.
  */
 import { INTENT_DISPLAY_LABELS } from '../constants/intentLabels';

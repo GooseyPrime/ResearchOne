@@ -1,5 +1,5 @@
 /**
- * Wave 5.3 — orthogonal source-class dimension (not evidence tier identifiers).
+ * the source-class pass — orthogonal source-class dimension (not evidence tier identifiers).
  */
 
 export const SOURCE_CLASS_IDS = [

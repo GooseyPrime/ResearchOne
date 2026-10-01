@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import type { FeatureCardProps } from '../components/landing/FeatureCard';
 
-/** Site audit §2.10 — six small cards (caps enforced in FeatureCard). */
+/** Six small cards (caps enforced in FeatureCard). */
 export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
   {
     icon: Shield,
