@@ -22,11 +22,24 @@ const ROLE_NAME_PATTERN = REASONING_MODEL_ROLES.map((role) => role.split('_').jo
 const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\]`, 'gi');
 
 /**
- * Left exactly as written: fenced code, inline code, whole Markdown links
- * (text and destination), autolinks and bare URLs.
+ * Left exactly as written:
+ * - fenced code with any fence length (```, ````, ~~~ ...), closed by the same fence;
+ * - inline code spans with any number of backticks;
+ * - indented code: any line starting with four spaces or a tab (deeply nested
+ *   list text is skipped too, which is the safe direction);
+ * - whole Markdown links (text and destination), autolinks and bare URLs.
  */
-const PROTECTED_SEGMENT =
-  /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\[[^\]\n]*\]\([^)\s]*(?:\s+"[^"]*")?\)|<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+)/g;
+const PROTECTED_SEGMENT = new RegExp(
+  [
+    '(?:^|\\n)(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
+    '(?<ticks>`+)(?:(?!\\k<ticks>)[^\\n]|\\n(?!\\n))+?\\k<ticks>',
+    '(?:^|(?<=\\n))(?: {4,}|\\t)[^\\n]*',
+    '\\[[^\\]\\n]*\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)',
+    '<https?:\\/\\/[^>\\s]+>',
+    'https?:\\/\\/[^\\s)\\]>]+',
+  ].join('|'),
+  'g'
+);
 
 function cleanProse(text: string): string {
   return text
@@ -45,13 +58,17 @@ function cleanProse(text: string): string {
  * reader sees. Tier grades remain on stored findings for scoring and for an
  * optional evidence view; they are never part of the report prose. Chunk
  * references ("[Chunk 3]") are kept, because citation mapping reads them.
- * Code, links and URLs are never changed.
+ * Code in every Markdown form, links and URLs are never changed.
  */
 export function stripInternalLabelsFromReport(markdown: string): string {
-  return markdown
-    .split(PROTECTED_SEGMENT)
-    .map((segment, index) => (index % 2 === 1 ? segment : cleanProse(segment)))
-    .join('');
+  let out = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(PROTECTED_SEGMENT)) {
+    const start = match.index ?? 0;
+    out += cleanProse(markdown.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + cleanProse(markdown.slice(cursor));
 }
 
 interface ReaderFrontMatterLike {

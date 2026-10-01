@@ -46,6 +46,28 @@ describe('stripInternalLabelsFromReport', () => {
     expect(stripInternalLabelsFromReport(input)).toBe(input);
   });
 
+  it('never changes indented code, long fences or multi-backtick spans', () => {
+    const input = [
+      'Paragraph before.',
+      '',
+      '    const strong_evidence  = score; // [Quantitative_Quality_Auditor]',
+      '',
+      '````md',
+      '```',
+      '[Strong_Evidence - Chunk 3]',
+      '```',
+      '````',
+      '',
+      'Use ``a `strong_evidence` value`` here.',
+    ].join('\n');
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('still cleans prose that sits between protected code', () => {
+    const input = 'Before `x` the cost rose [Strong_Evidence - Chunk 3] and `y` after.';
+    expect(stripInternalLabelsFromReport(input)).toBe('Before `x` the cost rose [Chunk 3] and `y` after.');
+  });
+
   it('never changes whole links, URLs, or bracketed names that are not system roles', () => {
     const input = [
       'See [strong_evidence](https://example.org/x) and https://example.org/data/strong_evidence for the data.',
