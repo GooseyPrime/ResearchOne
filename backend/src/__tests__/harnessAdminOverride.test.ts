@@ -107,6 +107,7 @@ describe('admin harness override through the route', () => {
 
   it('does not queue the run when the override cannot be saved', async () => {
     mocks.queryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('to_regclass')) return [{ present: 'eval_run_overrides' }];
       if (String(sql).includes('eval_run_overrides')) throw new Error('save failed');
       return [];
     });
@@ -117,5 +118,19 @@ describe('admin harness override through the route', () => {
     expect(mocks.queueAddMock).not.toHaveBeenCalled();
     const failed = mocks.queryMock.mock.calls.find((call) => String(call[0]).includes("status='failed'"));
     expect(failed?.[1]).toEqual(['flag override could not be saved', expect.any(String)]);
+  });
+
+  it('refuses an admin override before creating a run when the override table is missing', async () => {
+    mocks.queryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('to_regclass')) return [{ present: null }];
+      return [];
+    });
+    const res = await request(testApp)
+      .post('/api/research')
+      .send({ query: 'What year was the treaty signed?', flagOverrides: { BASELINE_LAYER_ENABLED: true } });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/override table is not available yet/);
+    expect(mocks.insertRunMock).not.toHaveBeenCalled();
+    expect(mocks.queueAddMock).not.toHaveBeenCalled();
   });
 });

@@ -51,7 +51,7 @@ describe('harness runner', () => {
       async load() {
         return {
           reportMarkdown: 'The accounts disagree [E1]. never invoiced',
-          citations: [{ alias: 'E1', chunkQuote: 'change orders', chunkText: 'change orders', citationText: 'The accounts disagree', chunkId: 'chunk-1' }],
+          citations: [{ alias: 'E1', chunkQuote: 'change orders', chunkText: 'change orders', citationText: null, claimText: 'The accounts disagree', chunkId: 'chunk-1' }],
           contradictionLinks: [
             { documentA: 'challenge-rail-budget-side-a.txt', documentB: 'challenge-rail-budget-side-b.txt' },
           ],

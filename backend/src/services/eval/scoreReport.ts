@@ -4,6 +4,7 @@ export interface EvalCitation {
   chunkText: string;
   chunkId?: string | null;
   citationText?: string | null;
+  claimText?: string | null;
 }
 
 export interface ContradictionLink {
@@ -47,12 +48,16 @@ function normalize(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function aliasKey(value: string): string {
+  return value.replace(/[\[\]]/g, '').trim();
+}
+
 export function scoreCitationBound(report: string, citations: EvalCitation[], citationLock = false): number {
   if (citations.length === 0) return 0;
   if (citationLock) {
-    const aliases = aliasesIn(report);
+    const aliases = aliasesIn(report).map(aliasKey);
     if (aliases.length === 0) return 0;
-    const byAlias = new Map(citations.map((row) => [row.alias, row]));
+    const byAlias = new Map(citations.map((row) => [aliasKey(row.alias), row]));
     const bound = aliases.filter((alias) => {
       const row = byAlias.get(alias);
       return Boolean(row && row.chunkId && row.chunkQuote.trim().length > 0);

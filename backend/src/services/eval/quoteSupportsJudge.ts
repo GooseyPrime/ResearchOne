@@ -19,9 +19,10 @@ type JudgeCall = typeof callRoleModel;
 
 export function selectQuotePairs(pairs: QuotePair[]): { selected: QuotePair[]; skipped: number } {
   const usable = pairs.filter((pair) => pair.sentence.trim().length > 0 && pair.quote.trim().length > 0);
+  const selected = usable.slice(0, QUOTE_SUPPORTS_PAIR_CAP);
   return {
-    selected: usable.slice(0, QUOTE_SUPPORTS_PAIR_CAP),
-    skipped: pairs.length - usable.length,
+    selected,
+    skipped: pairs.length - selected.length,
   };
 }
 

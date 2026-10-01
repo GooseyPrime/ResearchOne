@@ -65,7 +65,7 @@ export async function runHarness(
     await transport.wait(started.runId);
     const stored = await transport.load(started.runId);
     const judged = await judgeQuoteSupports(
-      stored.citations.map((row) => ({ sentence: row.citationText ?? '', quote: row.chunkQuote }))
+      stored.citations.map((row) => ({ sentence: row.claimText ?? '', quote: row.chunkQuote }))
     );
     const scores = scoreStoredReport(buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides));
     await query(
@@ -93,6 +93,17 @@ function secondsBetween(startedAt: string | null, completedAt: string | null): n
   return Number.isFinite(seconds) ? seconds : null;
 }
 
+export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
+            rc.chunk_id AS "chunkId", rc.citation_text AS "citationText", cl.claim_text AS "claimText"
+     FROM report_citations rc
+     JOIN reports r ON r.id = rc.report_id
+     LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
+     LEFT JOIN chunks c ON c.id = rc.chunk_id
+     LEFT JOIN claims cl ON cl.id = rc.claim_id
+     LEFT JOIN report_sections s ON s.id = rc.section_id
+     WHERE r.run_id = $1
+     ORDER BY s.section_order NULLS LAST, rc.citation_order NULLS LAST, rc.id`;
+
 export async function loadStoredRun(runId: string): Promise<StoredRun> {
   const report = await query<{ content: string }>(
     `SELECT s.content FROM report_sections s
@@ -101,16 +112,7 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
      ORDER BY s.section_order`,
     [runId]
   );
-  const citations = await query<EvalCitation>(
-    `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
-            rc.chunk_id AS "chunkId", rc.citation_text AS "citationText"
-     FROM report_citations rc
-     JOIN reports r ON r.id = rc.report_id
-     LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
-     LEFT JOIN chunks c ON c.id = rc.chunk_id
-     WHERE r.run_id = $1`,
-    [runId]
-  );
+  const citations = await query<EvalCitation>(STORED_CITATION_SQL, [runId]);
   const links = await query<ContradictionLink>(
     `SELECT ia.file_name AS "documentA", ib.file_name AS "documentB"
      FROM contradictions x
@@ -142,6 +144,7 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
       chunkText: row.chunkText ?? '',
       chunkId: row.chunkId,
       citationText: row.citationText,
+      claimText: row.claimText,
     })),
     contradictionLinks: links,
     startedAt: timing[0]?.started_at ?? null,

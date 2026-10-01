@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { judgeQuoteSupports, parseSupports } from '../services/eval/quoteSupportsJudge';
-import { SignInRejectedError } from '../services/eval/runHarness';
-import { assertSpendConfirmed, selectHarnessTasks, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
+import { describe, expect, it, vi } from 'vitest';
+import { judgeQuoteSupports, parseSupports, selectQuotePairs } from '../services/eval/quoteSupportsJudge';
+import { SignInRejectedError, STORED_CITATION_SQL } from '../services/eval/runHarness';
+import { assertSpendConfirmed, followSubmittedRuns, selectHarnessTasks, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
 import { loadEvalTasks } from '../services/eval/taskSet';
 
 describe('harness command', () => {
@@ -113,6 +113,42 @@ describe('harness command', () => {
     });
     expect(outcome).toEqual({ status: 'aborted', reason: 'retry budget exhausted' });
   });
+
+  it('approves a later run as soon as it reaches the gate, timing out from its own submission', async () => {
+    const approvals: string[] = [];
+    const statuses: Record<string, string> = { first: 'running', second: 'plan_pending_confirmation' };
+    const outcomes = await followSubmittedRuns(
+      [
+        { task: { id: 'first' } as never, runId: 'first', reference: 'R1-first', submittedAt: 0 },
+        { task: { id: 'second' } as never, runId: 'second', reference: 'R1-second', submittedAt: 0 },
+      ],
+      {
+        readStatus: async (runId) => ({ status: statuses[runId], reason: null }),
+        approvePlan: async (runId) => {
+          approvals.push(runId);
+          statuses[runId] = 'running';
+        },
+        timeoutMs: 10,
+        sleep: async () => {
+          if (approvals.includes('second')) statuses.first = 'completed';
+          statuses.second = 'completed';
+        },
+        now: () => 0,
+      }
+    );
+    expect(approvals).toEqual(['second']);
+    expect(outcomes.map((row) => row.status).sort()).toEqual(['completed', 'completed']);
+    await expect(
+      waitForRunInDatabase({
+        runId: 'late',
+        readStatus: async () => ({ status: 'running', reason: null }),
+        timeoutMs: 5,
+        startedAt: 0,
+        now: () => 6,
+        sleep: async () => {},
+      })
+    ).rejects.toThrow('run late timed out');
+  });
 });
 
 describe('quote judge parsing', () => {
@@ -124,5 +160,44 @@ describe('quote judge parsing', () => {
     );
     expect(result.notJudged).toBe(1);
     expect(result.score).toBeNull();
+  });
+
+  it('counts pairs dropped by the cap as skipped', () => {
+    const pairs = Array.from({ length: 30 }, (_, index) => ({ sentence: `claim ${index}`, quote: `quote ${index}` }));
+    const selected = selectQuotePairs(pairs);
+    expect(selected.selected).toHaveLength(25);
+    expect(selected.skipped).toBe(5);
+    expect(selected.selected.length + selected.skipped).toBe(pairs.length);
+  });
+
+  it('judges a stored citation with no sentence against its linked claim and skips a citation with none', async () => {
+    const call = vi.fn().mockResolvedValue({
+      content: '{"supports": true}',
+      model: 'x',
+      role: 'verifier',
+      promptTokens: 1,
+      completionTokens: 1,
+      durationMs: 1,
+      usedFallback: false,
+      primaryModel: 'x',
+    });
+    const result = await judgeQuoteSupports(
+      [
+        { sentence: 'The FDA authorized Casgevy.', quote: 'FDA approved Casgevy' },
+        { sentence: '', quote: 'a quote with no claim' },
+      ],
+      call
+    );
+    expect(call).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ content: expect.stringContaining('The FDA authorized Casgevy.') }),
+        ]),
+      })
+    );
+    expect(result.skipped).toBe(1);
+    expect(result.judged).toBe(1);
+    expect(STORED_CITATION_SQL).toContain('cl.claim_text AS "claimText"');
+    expect(STORED_CITATION_SQL).toContain('ORDER BY s.section_order NULLS LAST, rc.citation_order NULLS LAST, rc.id');
   });
 });

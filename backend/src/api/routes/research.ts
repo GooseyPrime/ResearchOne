@@ -373,6 +373,23 @@ async function handleStartResearchRun(
         buffer: f.buffer,
       }));
 
+      if (flagOverride) {
+        try {
+          const present = await query<{ present: string | null }>(`SELECT to_regclass('public.eval_run_overrides') AS present`);
+          if (!present[0]?.present) {
+            res.status(503).json({ error: 'The override table is not available yet. Retry after the deploy finishes.' });
+            return;
+          }
+        } catch (probeErr) {
+          const probeCode = (probeErr as { code?: string } | null)?.code;
+          if (probeCode === '42P01') {
+            res.status(503).json({ error: 'The override table is not available yet. Retry after the deploy finishes.' });
+            return;
+          }
+          throw probeErr;
+        }
+      }
+
       const ingestSummary = await ingestSupplementalForRun({
         runId,
         urls: supplementalUrls,

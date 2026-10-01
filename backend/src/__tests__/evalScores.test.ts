@@ -12,6 +12,15 @@ describe('eval scorers', () => {
     expect(scores.citation_bound).toBeLessThan(1);
   });
 
+  it('matches a stored alias written with brackets when citation lock is on', () => {
+    const scores = scoreStoredReport({
+      reportMarkdown: 'The finding holds [E1].',
+      citations: [{ alias: '[E1]', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-1' }],
+      citationLock: true,
+    });
+    expect(scores.citation_bound).toBe(1);
+  });
+
   it('scores a stored report that has no alias markers from its citation rows', () => {
     const scores = scoreStoredReport({
       reportMarkdown: 'The FDA authorized Casgevy in 2023 for sickle cell disease.',

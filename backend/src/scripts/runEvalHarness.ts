@@ -66,6 +66,7 @@ export interface SubmittedTask {
   task: EvalTask;
   runId: string;
   reference: string;
+  submittedAt: number;
 }
 
 export async function submitSelectedTasks(args: {
@@ -73,7 +74,9 @@ export async function submitSelectedTasks(args: {
   submit: (task: EvalTask) => Promise<{ runId: string }>;
   lookupReference: (runId: string) => Promise<string | null>;
   print: (line: string) => void;
+  now?: () => number;
 }): Promise<SubmittedTask[]> {
+  const now = args.now ?? Date.now;
   const submitted: SubmittedTask[] = [];
   for (const task of args.tasks) {
     let started: { runId: string };
@@ -87,7 +90,7 @@ export async function submitSelectedTasks(args: {
     }
     const reference = (await args.lookupReference(started.runId)) ?? started.runId;
     args.print(`${task.id} reference=${reference} run=${started.runId}`);
-    submitted.push({ task, runId: started.runId, reference });
+    submitted.push({ task, runId: started.runId, reference, submittedAt: now() });
   }
   return submitted;
 }
@@ -102,12 +105,13 @@ export async function waitForRunInDatabase(args: {
   readStatus: (runId: string) => Promise<RunProgress>;
   approvePlan?: (runId: string) => Promise<void>;
   timeoutMs: number;
+  startedAt?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
 }): Promise<{ status: string; reason: string | null }> {
   const sleep = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = args.now ?? Date.now;
-  const started = now();
+  const started = args.startedAt ?? now();
   let approved = false;
   for (;;) {
     if (now() - started > args.timeoutMs) throw new Error(`run ${args.runId} timed out`);
@@ -126,6 +130,32 @@ export async function waitForRunInDatabase(args: {
     }
     await sleep(POLL_MS);
   }
+}
+
+export function followSubmittedRuns(
+  items: SubmittedTask[],
+  args: {
+    readStatus: (runId: string) => Promise<RunProgress>;
+    approvePlan?: (runId: string) => Promise<void>;
+    timeoutMs: number;
+    sleep?: (ms: number) => Promise<void>;
+    now?: () => number;
+  }
+): Promise<Array<{ runId: string; status: string; reason: string | null }>> {
+  return Promise.all(
+    items.map(async (item) => {
+      const outcome = await waitForRunInDatabase({
+        runId: item.runId,
+        readStatus: args.readStatus,
+        approvePlan: args.approvePlan,
+        timeoutMs: args.timeoutMs,
+        startedAt: item.submittedAt,
+        sleep: args.sleep,
+        now: args.now,
+      });
+      return { runId: item.runId, ...outcome };
+    })
+  );
 }
 
 async function lookupReference(runId: string): Promise<string | null> {
@@ -160,15 +190,15 @@ async function main(): Promise<void> {
     print: (line) => console.log(line),
   });
   const scored: SubmittedTask[] = [];
+  const outcomes = await followSubmittedRuns(submitted, {
+    readStatus,
+    approvePlan: approveGeneratedPlanAsOwner,
+    timeoutMs: RUN_TIMEOUT_MS,
+  });
   for (const item of submitted) {
-    const outcome = await waitForRunInDatabase({
-      runId: item.runId,
-      readStatus,
-      approvePlan: approveGeneratedPlanAsOwner,
-      timeoutMs: RUN_TIMEOUT_MS,
-    });
-    if (outcome.status !== 'completed') {
-      console.log(`${item.reference} not scored: ${outcome.status}. ${outcome.reason ?? 'no reason recorded'}`);
+    const outcome = outcomes.find((row) => row.runId === item.runId);
+    if (!outcome || outcome.status !== 'completed') {
+      console.log(`${item.reference} not scored: ${outcome?.status ?? 'missing'}. ${outcome?.reason ?? 'no reason recorded'}`);
       continue;
     }
     scored.push(item);
