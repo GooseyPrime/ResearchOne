@@ -5,13 +5,26 @@
  * read from the database this command already connects to. It refuses to
  * start a new run unless --confirm-spend is present.
  *
- * Start it detached from the login session, or a closed console kills it:
- *   systemd-run --unit researchone-eval --collect npm run eval:harness -- --confirm-spend --limit 3
- * Read the log afterwards:
+ * Start it detached from the login session, or a closed console kills it.
+ * systemd-run starts in / with none of the shell's environment, so the command
+ * has to set the working directory and pass the two submission variables.
+ * The sign-in token lasts about 60 seconds and is used only to submit tasks,
+ * so fetch it immediately before the command. --score-run needs neither
+ * variable: it does not sign in.
+ *
+ *   systemd-run --unit researchone-eval --collect \
+ *     --working-directory=/opt/researchone/backend \
+ *     --setenv=RESEARCHONE_API_BASE="$RESEARCHONE_API_BASE" \
+ *     --setenv=RESEARCHONE_ADMIN_AUTHORIZATION="$RESEARCHONE_ADMIN_AUTHORIZATION" \
+ *     /usr/bin/npm run eval:harness -- --confirm-spend --limit 3
  *   journalctl -u researchone-eval
  *
- * Score finished runs, including the 1 Oct pilot, without starting new ones:
- *   npm run eval:harness -- --score-run 81d18b09-1e5b-4f4c-998f-dc891f5f1742 --score-run 499bd50e-9b6c-4491-a2c0-e4de7a3c72a7 --score-run 5685875f-21bb-4d75-a27c-7f20c4a8a19a
+ * Score the 1 Oct pilot without signing in. Fetch nothing; the database env
+ * comes from the backend env file in the working directory:
+ *   systemd-run --unit researchone-eval-score --collect \
+ *     --working-directory=/opt/researchone/backend \
+ *     /usr/bin/npm run eval:harness -- --score-run 81d18b09-1e5b-4f4c-998f-dc891f5f1742 --score-run 499bd50e-9b6c-4491-a2c0-e4de7a3c72a7 --score-run 5685875f-21bb-4d75-a27c-7f20c4a8a19a
+ *   journalctl -u researchone-eval-score
  */
 import { loadEnv } from '../bootstrap/loadEnv';
 import { initDb, query } from '../db/pool';

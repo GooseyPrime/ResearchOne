@@ -333,6 +333,7 @@ function buildReaderFrontMatter(args: {
   independentDomainCount?: number;
   validationExperimentCount?: number;
   contractStatus?: string;
+  baselineLayer?: boolean;
 }): ReaderFrontMatter {
   const summary = (args.executiveSummary ?? '').trim().replace(/\s+/g, ' ');
   const conclusion = (args.conclusion ?? '').trim().replace(/\s+/g, ' ');
@@ -347,7 +348,9 @@ function buildReaderFrontMatter(args: {
   // pairs") shipped on opportunity, comparison, and how-to reports and read as
   // claim-adjudication boilerplate — including the degenerate
   // "evidence from 0 sources and 0 evidence chunks" (Rule 37 R-M).
-  const fallbackSummary = nonAdjudicativeIntent
+  const fallbackSummary = args.baselineLayer
+    ? ''
+    : nonAdjudicativeIntent
     ? 'This report presents the requested analysis, with confidence levels and assumptions stated alongside each finding.'
     : `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
   const fallbackConclusion = nonAdjudicativeIntent
@@ -441,11 +444,17 @@ function buildReaderFrontMatter(args: {
       ];
 
   return {
-    overall_summary: [summary.slice(0, 260) || fallbackSummary, conclusion.slice(0, 220) || fallbackConclusion]
+    overall_summary: [
+      summary.slice(0, 260) || fallbackSummary,
+      conclusion.slice(0, 220) || fallbackConclusion,
+      args.baselineLayer ? `About this report: ${args.sourceCount} sources and ${args.chunkCount} passages were read.` : '',
+    ]
       .filter(Boolean)
       .join(' '),
     conclusions_nutshell: conclusion.slice(0, 360) || fallbackConclusion,
-    metric_glosses: metricGlosses,
+    metric_glosses: args.baselineLayer
+      ? metricGlosses.filter((gloss) => gloss.label !== 'Falsification targets')
+      : metricGlosses,
   };
 }
 

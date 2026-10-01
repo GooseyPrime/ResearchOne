@@ -665,7 +665,7 @@ export const REPORT_WORD_COUNT_DEFAULT = 2200;
  * candidate string so "Recommendation Framework for X" still passes.
  */
 const STRUCTURAL_LABEL_PATTERN =
-  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography)$/i;
+  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography|framing|primary\s*evidence|contested\s*zones|unresolved)$/i;
 
 export function looksLikeStructuralLabel(candidate: string): boolean {
   return STRUCTURAL_LABEL_PATTERN.test(candidate.trim());
