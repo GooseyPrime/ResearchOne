@@ -48,6 +48,25 @@ describe('stripInternalLabelsFromReport', () => {
   });
 });
 
+describe('reports present information, not claims', () => {
+  // Brandon, 1 Oct 2026: a report presents information. Calling what sources
+  // say a "claim" is courtroom framing. The challenge intents, where testing a
+  // stated claim is the user's own request, are worded in the challenge slice.
+  const CHALLENGE_INTENTS = new Set(['adjudication', 'investigation', 'story_verification']);
+
+  it('ordinary report types never instruct the writer in terms of claims', () => {
+    for (const template of Object.values(INTENT_OUTPUT_TEMPLATES)) {
+      if (CHALLENGE_INTENTS.has(template.intentId)) continue;
+      const text = [template.verifierRubric, template.narrativeHint, ...template.requiredDeliverables]
+        .join('\n')
+        .split('\n')
+        .filter((line) => !line.includes('Does not frame what sources say as'))
+        .join('\n');
+      expect(text, template.id).not.toMatch(/\bclaims?\b/i);
+    }
+  });
+});
+
 describe('intent output templates', () => {
   it('no longer require evidence-tier tags in report text', () => {
     for (const template of Object.values(INTENT_OUTPUT_TEMPLATES)) {
