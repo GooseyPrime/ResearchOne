@@ -60,7 +60,7 @@ describe('harness command', () => {
         runId: 'run-1',
         readStatus: async (runId) => {
           reads.push(runId);
-          return 'queued';
+          return { status: 'queued', reason: null };
         },
         timeoutMs: 5,
         sleep: async () => {
@@ -73,7 +73,7 @@ describe('harness command', () => {
     let status = 'running';
     await waitForRunInDatabase({
       runId: 'run-2',
-      readStatus: async () => status,
+      readStatus: async () => ({ status, reason: null }),
       timeoutMs: 1000,
       sleep: async () => {
         status = 'completed';
@@ -81,6 +81,37 @@ describe('harness command', () => {
       now: () => 0,
     });
     expect(status).toBe('completed');
+  });
+
+  it('approves a paused plan once and then waits until the run completes', async () => {
+    let status = 'plan_pending_confirmation';
+    let approvals = 0;
+    const outcome = await waitForRunInDatabase({
+      runId: 'run-3',
+      readStatus: async () => ({ status, reason: null }),
+      approvePlan: async () => {
+        approvals += 1;
+        status = 'running';
+      },
+      timeoutMs: 1000,
+      sleep: async () => {
+        if (approvals > 0) status = 'completed';
+      },
+      now: () => 0,
+    });
+    expect(approvals).toBe(1);
+    expect(outcome).toEqual({ status: 'completed', reason: null });
+  });
+
+  it('ends the wait when a run is aborted and keeps the reason', async () => {
+    const outcome = await waitForRunInDatabase({
+      runId: 'run-4',
+      readStatus: async () => ({ status: 'aborted', reason: 'retry budget exhausted' }),
+      timeoutMs: 1000,
+      sleep: async () => {},
+      now: () => 0,
+    });
+    expect(outcome).toEqual({ status: 'aborted', reason: 'retry budget exhausted' });
   });
 });
 

@@ -9,6 +9,7 @@
  */
 import { loadEnv } from '../bootstrap/loadEnv';
 import { initDb, query } from '../db/pool';
+import { approveGeneratedPlanAsOwner } from '../services/planning/confirmGeneratedPlan';
 import {
   loadStoredRun,
   runHarness,
@@ -91,20 +92,38 @@ export async function submitSelectedTasks(args: {
   return submitted;
 }
 
+export interface RunProgress {
+  status: string | null;
+  reason: string | null;
+}
+
 export async function waitForRunInDatabase(args: {
   runId: string;
-  readStatus: (runId: string) => Promise<string | null>;
+  readStatus: (runId: string) => Promise<RunProgress>;
+  approvePlan?: (runId: string) => Promise<void>;
   timeoutMs: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-}): Promise<void> {
+}): Promise<{ status: string; reason: string | null }> {
   const sleep = args.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = args.now ?? Date.now;
   const started = now();
+  let approved = false;
   for (;;) {
     if (now() - started > args.timeoutMs) throw new Error(`run ${args.runId} timed out`);
-    const status = await args.readStatus(args.runId);
-    if (status === 'completed' || status === 'failed' || status === 'cancelled') return;
+    const progress = await args.readStatus(args.runId);
+    if (progress.status === 'plan_pending_confirmation' && !approved) {
+      approved = true;
+      await args.approvePlan?.(args.runId);
+    }
+    if (
+      progress.status === 'completed' ||
+      progress.status === 'failed' ||
+      progress.status === 'cancelled' ||
+      progress.status === 'aborted'
+    ) {
+      return { status: progress.status, reason: progress.reason };
+    }
     await sleep(POLL_MS);
   }
 }
@@ -114,9 +133,12 @@ async function lookupReference(runId: string): Promise<string | null> {
   return rows[0]?.run_ref ?? null;
 }
 
-async function readStatus(runId: string): Promise<string | null> {
-  const rows = await query<{ status: string }>(`SELECT status FROM research_runs WHERE id = $1`, [runId]);
-  return rows[0]?.status ?? null;
+async function readStatus(runId: string): Promise<RunProgress> {
+  const rows = await query<{ status: string; error_message: string | null }>(
+    `SELECT status::text AS status, error_message FROM research_runs WHERE id = $1`,
+    [runId]
+  );
+  return { status: rows[0]?.status ?? null, reason: rows[0]?.error_message ?? null };
 }
 
 async function main(): Promise<void> {
@@ -137,16 +159,30 @@ async function main(): Promise<void> {
     lookupReference,
     print: (line) => console.log(line),
   });
+  const scored: SubmittedTask[] = [];
+  for (const item of submitted) {
+    const outcome = await waitForRunInDatabase({
+      runId: item.runId,
+      readStatus,
+      approvePlan: approveGeneratedPlanAsOwner,
+      timeoutMs: RUN_TIMEOUT_MS,
+    });
+    if (outcome.status !== 'completed') {
+      console.log(`${item.reference} not scored: ${outcome.status}. ${outcome.reason ?? 'no reason recorded'}`);
+      continue;
+    }
+    scored.push(item);
+  }
   const transport: EvalTransport = {
     start: async (task) => {
-      const match = submitted.find((item) => item.task.id === task.id);
+      const match = scored.find((item) => item.task.id === task.id);
       if (!match) throw new Error(`missing submission for ${task.id}`);
       return { runId: match.runId };
     },
-    wait: (runId) => waitForRunInDatabase({ runId, readStatus, timeoutMs: RUN_TIMEOUT_MS }),
+    wait: async () => {},
     load: loadStoredRun,
   };
-  const rows = await runHarness(transport, submitted.map((item) => item.task), flagOverrides);
+  const rows = await runHarness(transport, scored.map((item) => item.task), flagOverrides);
   for (const row of rows) {
     console.log(
       `${row.taskId} run=${row.runId} tokens=${row.tokens ?? 'none'} recorded_cost_usd=${row.recordedCostUsd ?? 'none'} (floor; missing prices record as zero)`
