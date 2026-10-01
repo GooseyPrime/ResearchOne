@@ -8,7 +8,7 @@ description: Contract-style marketing / a11y scope docs (Wave 2.5 pattern)
 
 PR #119 review tightened how **scope-only** PRs lock the **implementation PR** so it cannot silently drift (conditional re-scans, numeric Lighthouse gates, cwd discipline, F-42 boundary).
 
-## When editing `Rule 29` or similar contract docs
+## When writing a marketing or accessibility scope contract
 
 1. **Conditional verification:** Do not require blanket secondary-page axe runs when fixes are page-local. Tie follow-up scans to **which shared shell files** changed (`Layout`, headers/footers, `marketingNav.ts`, global CSS, or cross-route imports), and require the implementing agent to **declare the bucket** in the implementation PR body.
 

@@ -22,12 +22,10 @@ globs:
 
 ## Why this rule exists
 
-The Master Brief (`ResearchOne — Market, Competitive, and GTM Master Brief (May 2026).md`)
-identifies four buyer tribes (OSINT / investigative journalism, UAP /
-paranormal disclosure, academic researchers, patent / IP) plus a
-default audience. The strategic doc (`Strategic Architectural and
-Go-To-Market Blueprint`) prescribes persona-adaptive landing copy and
-a lab-notebook visual aesthetic. Both surfaces are exposed-to-the-world
+The landing page serves four buyer tribes (OSINT / investigative
+journalism, UAP / paranormal disclosure, academic researchers, patent /
+IP) plus a default audience, with persona-adaptive landing copy and a
+lab-notebook visual aesthetic. Both surfaces are exposed-to-the-world
 brand decisions; mistakes here are visible publicly, undermine
 PolicyOne credibility (a tracking-heavy landing page contradicts the
 "reason over recall, no institutional surveillance" doctrine), and
@@ -124,11 +122,11 @@ not reduce effective contrast below 7:1 — operators tune the line
 opacity if a new color combination drops below that. Test page is
 `/landing-contrast-check.html` (dev only, hidden from prod nav).
 
-Font weights shift +100 in dark mode per the strategic doc:
-`font-weight: 500` for body, `600` for headings. Do not override
-this with arbitrary `font-weight: 300` or `400` "for elegance" —
-the dark-mode legibility research that motivated the shift is in
-`Rule 26`.
+Font weights shift +100 in dark mode: `font-weight: 500` for body,
+`600` for headings. Do not override this with arbitrary
+`font-weight: 300` or `400` "for elegance". Light text on a dark ground
+reads thinner than the same weight on white, so thin weights lose
+legibility in dark mode.
 
 ### I-7. Persona resolution is deterministic for the same inputs
 

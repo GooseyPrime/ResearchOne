@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Why this rule exists
 
-the plan-confirmation pass parks V2 runs in `plan_pending_confirmation` after intent classification and plan generation. Users confirm, refine, or cancel before retrieval and reasoning consume full pipeline cost. This state introduces new writers (plan rows, `resume_job_payload`, BullMQ resume jobs) and new readers (Research UI, `/api/runs/:runId/plan`, sockets). Without discipline, plan rows drift from `v_dossier`, or the orchestrator mutates plans ad hoc, producing contradictory UI and stuck runs.
+The plan-confirmation pass parks V2 runs in `plan_pending_confirmation` after intent classification and plan generation. Users confirm, refine, or cancel before retrieval and reasoning consume full pipeline cost. This state introduces new writers (plan rows, `resume_job_payload`, BullMQ resume jobs) and new readers (Research UI, `/api/runs/:runId/plan`, sockets). Without discipline, plan rows drift from `v_dossier`, or the orchestrator mutates plans ad hoc, producing contradictory UI and stuck runs.
 
 ## Rule
 

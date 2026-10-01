@@ -99,7 +99,7 @@ review are in this file.
 | [`.cursor/rules/32-pr-branch-workflow.mdc`](.cursor/rules/32-pr-branch-workflow.mdc) | All work ships via a PR branch by default unless user directs otherwise. |
 | [`.cursor/rules/33-plan-confirmation-gate.mdc`](.cursor/rules/33-plan-confirmation-gate.mdc) | Plan gate writes, sockets, parked `plan_pending_confirmation` state (the plan-confirmation pass). |
 | [`.cursor/rules/34-run-url-sync-and-live-polling.mdc`](.cursor/rules/34-run-url-sync-and-live-polling.mdc) | `?runId=` detach suppression, attach hydration, stable socket subs, layout polling backoff (PR #140). |
-| [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (the revision-spinoff pass+). |
+| [`.cursor/rules/35-revision-spinoff-dossier-timeline.mdc`](.cursor/rules/35-revision-spinoff-dossier-timeline.mdc) | In-place revision URLs, research spinoffs, dossier timeline (the revision-spinoff pass onward). |
 | [`.cursor/rules/36-two-audience-copy.mdc`](.cursor/rules/36-two-audience-copy.mdc) | Tier A plain language vs Tier B technical depth; CI banned-jargon grep. |
 | [`.cursor/rules/37-intent-driven-report-contracts.mdc`](.cursor/rules/37-intent-driven-report-contracts.mdc) | Intent is the pipeline contract; hypothesis/falsification conditional on intent family; deliverable contract auditor. |
 | [`.cursor/rules/38-ez-research-and-lab-mode.mdc`](.cursor/rules/38-ez-research-and-lab-mode.mdc) | EZ Research / Research Lab UX split; intake flow; plan preview; Research Lab preservation. |

@@ -26,12 +26,12 @@ discovered that is outside the current work order's scope:
      Do not add a new internal tracking document under `docs/`.
 
 3. **Never dismiss a valid finding with "not in scope."** Either
-   demonstrate it is already covered by a future WO, or handle it.
+   demonstrate it is already covered by a later change, or handle it.
 
 ## Pre-commit check
 
 If a code review surfaced a finding you deferred:
-- [ ] Did you grep all work order files to confirm it's scheduled?
-- [ ] If not scheduled, did you implement it or create a tracking item?
-- [ ] If you created a tracking item, does it reference the PR and
-  finding that surfaced it?
+- [ ] Is it already covered by a later change you can name? If so, did
+  you say which one in the PR description?
+- [ ] If not, did you implement it now or name it in the PR description?
+- [ ] Does the PR description reference the review finding that surfaced it?
