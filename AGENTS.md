@@ -115,7 +115,9 @@ review are in this file.
    epistemic policy.** Read first.
 2. [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md)
    — model rules. Challenge roles stay low-refusal. Layer 1 writing,
-   checking, and judging may use a closed-provider model with a fallback.
+   checking, and judging may use a closed-provider model with a fallback,
+   once a flagged slice moves that role and its test. Today every role
+   runs on the open-weights presets.
 3. [`.cursor/rules/20-research-policy-guardrails.mdc`](.cursor/rules/20-research-policy-guardrails.mdc)
    — preamble fence and the challenge-pass prefix.
 4. [`README.md`](README.md) — runtime topology.
@@ -409,7 +411,9 @@ ship on `main`.
   fence — edit under normal policy + review, not a preamble gate.
 - Do not silently swap a challenge-role default to a refusal-aligned model.
   Layer 1 writing, checking, and judging may use a closed-provider model
-  when it has a fallback on another provider.
+  when it has a fallback on another provider, but only through a flagged
+  slice that changes `V2_MODE_PRESETS` and the forbidden-defaults test
+  together. Today every role runs on the open-weights presets.
 - When a code review surfaces a finding the agent missed, treat it as a
   data point: extend the relevant rule (or add a new one) so the
   pattern doesn't recur.

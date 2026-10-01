@@ -88,8 +88,7 @@ configured ceiling (default 30 seconds for DOCX, 60 seconds for PDF).
 A timed-out export returns a structured error to the user; it never
 hangs the worker indefinitely.
 
-Per `the single-provider outage note in Rule 20`: a process without a
-timeout is a process that eventually wedges. The worker pool is small
+A process without a timeout is a process that eventually wedges. The worker pool is small
 and recovery from a wedged pandoc would require manual intervention
 in prod. Always set the timeout.
 

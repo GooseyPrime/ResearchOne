@@ -7,8 +7,7 @@ alwaysApply: true
 
 ## Why this rule exists
 
-ResearchOne's root-cause failure (documented in
-`the redesign specification`) is that
+ResearchOne's root-cause failure is that
 intent classification happens correctly but is then discarded: the
 final planner, synthesizer, verifier, section drafter, and coherence
 refiner all independently re-impose a universal hypothesis-and-
@@ -126,8 +125,12 @@ would pass an epistemic skeptic but fail a contract auditor instantly.
 
 ### R-8. Regression fixture
 
-The exact prompt from `the regression example` must be a fixture in
-the classifier and pipeline test suite. Tests must assert:
+This exact prompt, verbatim including its typos, must be a fixture in
+the classifier and pipeline test suite:
+
+> Research true whitespace for online webapps or microservices that can be built to production within 24 hours using an AI assistant with full access to my computer an resources - stripe, claude code, codex, web-hosting, databases, many AI api's, etc. Provide a list of 10 opportunities and the basic project needs along with the detailed prompts to guide the AI in achieving the no fail opportunity.
+
+Tests must assert:
 - Intent resolves to `opportunity_discovery` + `feasibility` +
   `implementation` (not `general_epistemic_research`).
 - Output contains ten opportunities.

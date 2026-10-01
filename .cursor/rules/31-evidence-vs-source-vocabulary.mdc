@@ -12,21 +12,45 @@ globs:
 
 ## Why this rule exists
 
-Marketing must not conflate **primary evidence** (artifacts attached to events) with **sources** (documented interpretations — what retrieval returns). The backend preambles already distinguish consensus, cited material, and primary checks; the evidence-vocabulary pass locks the same discipline on public surfaces. See `Rule 31`.
+Marketing must not conflate **primary evidence** (artifacts attached to events) with **sources** (documented interpretations — what retrieval returns). The backend preambles already distinguish consensus, cited material, and primary checks; the evidence-vocabulary pass locks the same discipline on public surfaces.
 
 ## Discipline
 
 1. Reserve **“evidence”** for **primary artifacts** directly attached to an event (FOIA returns, raw data, sensor traces, original documents, recordings). If the sentence is about papers, articles, or web text the model retrieved, use **“sources”** (or “source-corroboration tiers”, “source card”, etc.).
-2. Use **source-corroboration tiers** / **source card** / **citation-and-source chain** per the mapping table in the the evidence-vocabulary pass scope doc. Do not rename backend tier **identifiers** (`established_fact`, `strong_evidence`, `testimony`, `inference`, `speculation`) — Rule 28.
+2. Use **source-corroboration tiers** / **source card** / **citation-and-source chain** per the mapping table below. Do not rename backend tier **identifiers** (`established_fact`, `strong_evidence`, `testimony`, `inference`, `speculation`) — Rule 28.
 3. **Display label** for `strong_evidence` is **“Strong corroboration”** on user-facing JSX; CSS/Tailwind classes may remain `tier-strong_evidence`, `.badge-strong_evidence`, etc.
+
+Vocabulary mapping (public copy only):
+
+| Marketing term | Use instead | Backend identifier |
+| --- | --- | --- |
+| "evidence" (generic) | "sources" | n/a |
+| "evidence tiers" | "source-corroboration tiers" | tier enum names locked |
+| "evidence card" | "source card" | n/a |
+| "Strong evidence" (display label) | "Strong corroboration" | `strong_evidence` (unchanged) |
+| "evidence chain" | "citation-and-source chain" | n/a |
+| "counter-evidence" | "counter-sources" | n/a |
+| "Evidence state" (timeline) | "Corroboration state" | n/a |
+| "primary evidence" | "primary evidence" (reserved) | n/a |
+| "Reasoning over evidence..." (telemetry) | "Reasoning across sources..." | n/a (UI string only) |
+
+Display labels for tier identifiers:
+
+| Backend identifier | Display label |
+| --- | --- |
+| `established_fact` | Established fact |
+| `strong_evidence` | Strong corroboration |
+| `testimony` | Testimony |
+| `inference` | Inference |
+| `speculation` | Speculation |
 
 ## Competitor comparison content
 
-When citing competitors: **verbatim** quotes only, with URL and accessed date; no characterization beyond what the source says. If a URL later fails, preserve a snapshot (Wayback, archive, or `docs/snapshots/`) and update the doc — per the evidence-vocabulary pass scope doc.
+When citing competitors: **verbatim** quotes only, with URL and accessed date; no characterization beyond what the source says. If a URL later fails, preserve a snapshot (Wayback, archive, or `docs/snapshots/`) and update the page that cites it.
 
 ## Trigger
 
-Any PR that adds, removes, or changes **marketing prose**; adds a new **public-facing** surface; or adds **competitor-comparison** content must conform to this rule and stay within the the evidence-vocabulary pass scope inventory unless governance extends scope.
+Any PR that adds, removes, or changes **marketing prose**; adds a new **public-facing** surface; or adds **competitor-comparison** content must conform to this rule and follow the mapping table below unless governance extends scope.
 
 ## Fences (do not amend via this rule)
 

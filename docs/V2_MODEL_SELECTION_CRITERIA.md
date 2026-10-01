@@ -1,6 +1,6 @@
 # Research One — Model Selection Criteria
 
-Layer 1 writing, checking, and judging may use closed-provider models, always with a fallback on another provider. The low-refusal requirement in this document applies to Layer 2 challenge roles only. The reliability plan this file used to cite has left the repository; the binding rule is inference-time behavior, recorded here and in Rule 20.
+Policy: Layer 1 writing, checking, and judging may use closed-provider models, always with a fallback on another provider, and the low-refusal requirement in this document applies to Layer 2 challenge roles only. Enforcement has not moved yet: every role still runs on the open-weights `V2_MODE_PRESETS` below, and the forbidden-defaults test still rejects closed-provider slugs there. A Layer 1 role changes only in a flagged upgrade slice that brings measurement-harness evidence and updates the preset and the test together. Until then the rest of this document governs every role. The reliability plan this file used to cite has left the repository; the binding rule is inference-time behavior, recorded here and in Rule 20.
 
 ## Why this document exists
 

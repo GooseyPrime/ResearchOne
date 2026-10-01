@@ -23,8 +23,10 @@ at the repo root. Read it. The summary the agent must internalize:
    `CHALLENGE_PASS_SYSTEM_PREFIX` from
    `backend/src/services/reasoning/reasoningModelPolicy.ts`, applied by
    `applySystemAugmentations` in `openrouterService.ts` on every run
-   that calls those roles. It is not gated on an engine version. That
-   prefix is **immutable**.
+   that calls those roles, except calls made with
+   `callPurpose: 'contradiction_extraction'` (the contradiction
+   extractor calls the `skeptic` role without the prefix, on purpose).
+   It is not gated on an engine version. That prefix is **immutable**.
 
 ## Model selection
 
@@ -39,6 +41,15 @@ job, including closed-provider models (Anthropic, OpenAI, Google,
 Mistral closed), chosen by the measurement harness, always with a
 fallback on another provider. The low-refusal requirement applies to
 Layer 2 challenge roles only (`skeptic`, `internal_challenger`).
+
+**Today every role, Layer 1 included, runs on the open-weights
+`V2_MODE_PRESETS`, and `V2_FORBIDDEN_DEFAULT_MODELS` in
+`researchEnsemblePresets.test.ts` rejects closed-provider slugs in
+those presets.** That stays true until an upgrade slice moves a
+specific Layer 1 role behind a flag, with measurement-harness
+evidence, and changes the preset and that test in the same pull
+request. Until then, do not wire a closed-provider slug into
+`V2_MODE_PRESETS`.
 
 Models that pass the challenge-role behavioral test:
 

@@ -32,19 +32,19 @@ The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above
 ### 2026-05-14 — the dossier data-model pass + Rule 32 (dossier read path)
 
 - **Scope:** the dossier data-model pass dossier data model (`034_dossier_data_model.sql`), `/api/dossiers`, in-app `/app/dossiers` routes, Vercel redirects from `/app/reports` (list) to `/app/dossiers`, new **Rule 32** (always-apply).
-- **Migration numbering note:** Dossier DDL ships as **`034_*`** because **`033_research_run_citation_style.sql`** already occupied 033. Subsequent the dossier pass waves shift by one (e.g. plan gate migration is **`035_*`**, not `034_*`).
+- **Migration numbering note:** Dossier DDL ships as **`034_*`** because **`033_research_run_citation_style.sql`** already occupied 033. Later dossier-pass migrations shift by one (e.g. plan gate migration is **`035_*`**, not `034_*`).
 - **the source-class pass founder checkpoint (prompt fence):** Any change to skeptic/reasoner **system** text in `backend/src/constants/prompts.ts` remains **Rule 20**–fenced and requires an explicit founder authorization recorded here before merge. Default implementation path for the source-class pass is **`backend/src/services/planning/prompts.ts`** (and policy surfaces) unless governance is amended.
 
 ### 2026-05-15 — the evidence-vocabulary pass vocabulary + Rule 31 + Rule 26 layout (enumerated)
 
 - **Founder:** Michael Brandon Lane (authorization recorded in project chat, 2026-05-15).
-- **Scope:** the evidence-vocabulary pass “evidence vs. source” vocabulary repositioning; new Rule **31**; PR-B implementation per `Rule 31` and `Rule 31`.
+- **Scope:** the evidence-vocabulary pass “evidence vs. source” vocabulary repositioning; new Rule **31**; PR-B implementation per Rule 31.
 - **Approvals granted:**
   - Bless **Rule 31** (`.cursor/rules/31-evidence-vs-source-vocabulary.mdc`) as a new **always-apply** discipline rule for marketing and public-facing copy.
   - Confirm orchestrator **UI progress** string at `backend/src/services/reasoning/researchOrchestrator.ts` (telemetry line changing to “Reasoning across sources…”) is **outside** the Rule 20 immutability fence (not preamble, not model policy, not inference logic).
   - Confirm component rename **`EvidenceProvenancePanel.tsx` → `SourceProvenancePanel.tsx`** via `git mv` to preserve history.
   - Confirm **display-label** change for tier identifier `strong_evidence` from “Strong evidence” to **“Strong corroboration”**; backend identifier **unchanged** per Rule 28.
-  - **Rule 26 layout override (enumerated):** for the evidence-vocabulary pass delivery only, authorize **layout** changes to the marketing hero as needed: `PersonaAwareHero.tsx` (stack copy above pipeline), `PipelineSchematic.tsx` / hero region (larger animated schematic footprint), and `TrustStrip.tsx` / `LandingPage.tsx` (presentation of the three trust signals). **Persona default copy parity (Rule 26 I-3)** remains in force unless separately overridden; the evidence-vocabulary pass copy edits must keep default persona strings aligned with `Hero.tsx` where the scope doc requires character-for-character parity.
+  - **Rule 26 layout override (enumerated):** for the evidence-vocabulary pass delivery only, authorize **layout** changes to the marketing hero as needed: `PersonaAwareHero.tsx` (stack copy above pipeline), `PipelineSchematic.tsx` / hero region (larger animated schematic footprint), and `TrustStrip.tsx` / `LandingPage.tsx` (presentation of the three trust signals). **Persona default copy parity (Rule 26 I-3)** remains in force unless separately overridden; the evidence-vocabulary pass copy edits must keep default persona strings aligned with `Hero.tsx` character for character, as Rule 26 requires.
 - **Out of scope confirmations:** `backend/src/constants/prompts.ts` — **not** modified; Rule 28 tier identifier strings — **not** renamed; `pipelineSchematicData.ts` canonical stage names (marquee schematic) and `frontend/src/components/landing/visual/pipelineLayout.ts` (WO-W animated hero layout) — **not** modified; research inference paths — **not** modified.
 - **Rule text:** Original `.mdc` files are not amended by this entry; this is an episodic, enumerated override and scope contract.
 

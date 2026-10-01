@@ -89,4 +89,4 @@ full form parity.
 - [ ] Grep `spinoff_from` writers and readers — deploy-skew handled?
 - [ ] `v_dossier` migration preserves LATERAL + `security_invoker`?
 - [ ] Timeline/dossier SQL changes: grep test mocks for stale row shapes?
-- [ ] Read only the current gate section in scope doc before coding.
+- [ ] Read only the current gate section of this rule before coding.
