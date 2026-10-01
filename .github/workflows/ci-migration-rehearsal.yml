@@ -1,0 +1,61 @@
+name: CI – migration rehearsal
+
+on:
+  pull_request:
+    paths:
+      - 'backend/src/db/migrations/**'
+      - '.github/workflows/ci-migration-rehearsal.yml'
+
+jobs:
+  rehearse:
+    name: Apply migrations twice on Postgres 16
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: researchone
+          POSTGRES_PASSWORD: devpassword
+          POSTGRES_DB: researchone
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U researchone -d researchone"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply every migration
+        env:
+          DATABASE_URL: postgresql://researchone:devpassword@localhost:5432/researchone
+          NODE_ENV: development
+        run: npm run migrate
+      - name: Second apply must change nothing
+        env:
+          DATABASE_URL: postgresql://researchone:devpassword@localhost:5432/researchone
+          NODE_ENV: development
+        run: |
+          set -euo pipefail
+          before=$(psql "postgresql://researchone:devpassword@localhost:5432/researchone" -Atc "SELECT count(*) FROM schema_migrations")
+          npm run migrate | tee /tmp/migrate-second.log
+          after=$(psql "postgresql://researchone:devpassword@localhost:5432/researchone" -Atc "SELECT count(*) FROM schema_migrations")
+          if grep -q "Applying migration" /tmp/migrate-second.log; then
+            echo "second migrate applied a migration" >&2
+            exit 1
+          fi
+          if [ "$before" != "$after" ]; then
+            echo "schema_migrations grew on the second run ($before -> $after)" >&2
+            exit 1
+          fi

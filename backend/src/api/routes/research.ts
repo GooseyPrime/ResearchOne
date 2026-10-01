@@ -52,6 +52,7 @@ import {
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
 import { logger } from '../../utils/logger';
+import { acceptedFlagOverride } from '../../services/eval/flagOverride';
 
 const router = Router();
 
@@ -404,6 +405,19 @@ async function handleStartResearchRun(
         lineage: spinoffLineage,
         selectedAddonsJson,
       });
+
+      const flagOverride = acceptedFlagOverride(userId, req.body);
+      if (flagOverride) {
+        try {
+          await query(
+            `INSERT INTO eval_run_overrides (run_id, flags) VALUES ($1, $2::jsonb)
+             ON CONFLICT (run_id) DO UPDATE SET flags = EXCLUDED.flags`,
+            [runId, JSON.stringify(flagOverride)]
+          );
+        } catch (overrideErr) {
+          logger.warn('harness flag override not recorded', { runId, err: overrideErr });
+        }
+      }
 
       if (citationStyle || requestedFormats || requestedResearchObjective || requestedMethodology) {
         try {

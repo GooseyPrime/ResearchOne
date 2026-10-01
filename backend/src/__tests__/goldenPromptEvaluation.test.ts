@@ -4,9 +4,8 @@ import { evaluateGoldenPromptRun } from '../services/planning/goldenPromptEvalua
 import type { GoldenPromptCase } from '../services/planning/goldenPromptSuite';
 
 const CASE: GoldenPromptCase = {
-  id: 'opportunity_discovery:deep',
+  id: 'opportunity_discovery',
   intent: 'opportunity_discovery',
-  depth: 'deep',
   prompt: 'test prompt',
 };
 
