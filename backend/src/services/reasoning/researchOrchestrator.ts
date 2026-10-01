@@ -43,7 +43,7 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled } from '../../config';
-import { lookupNeedsDiscovery } from './baselineReport';
+import { corpusLookupIsEmpty, lookupNeedsDiscovery } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -1051,6 +1051,8 @@ async function runResearchJobInner(
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
       ? data.confirmedPlanPayload.sourceStrategy.weightedClasses
       : [];
+  const corpusChunkCount = data.confirmedPlanPayload?.corpusChunkCount;
+  const lookupCorpusEmpty = corpusLookupIsEmpty(orchProfile.intent, corpusChunkCount);
   const canonicalExecutionPlan =
     data.confirmedPlanPayload?.executionPlan ??
     data.confirmedPlanPayload?.orchestrationProfile?.executionPlan ??
@@ -1058,7 +1060,7 @@ async function runResearchJobInner(
       profile: orchProfile,
       researchBrief: confirmedResearchBrief,
       sourceClasses: sourceClassesFromPlan,
-      corpusEmpty: orchProfile.intent === 'reference_lookup' && ((data.confirmedPlanPayload as { corpusChunkCount?: number } | undefined)?.corpusChunkCount ?? 0) === 0,
+      corpusEmpty: lookupCorpusEmpty,
     });
   const specialistAgentIds = (() => {
     const fromPlan = data.confirmedPlanPayload?.orchestrationProfile?.agentsWillRun
@@ -1218,6 +1220,10 @@ async function runResearchJobInner(
           },
         });
 
+        const chunkCountRow = await queryOne<{ count: number }>(`SELECT COUNT(*)::int AS count FROM chunks`);
+        const corpusChunkCount = Number(chunkCountRow?.count ?? 0);
+        planPayload.corpusChunkCount = Number.isFinite(corpusChunkCount) ? corpusChunkCount : 0;
+
         const runScopeRow = await queryOne<{ user_id: string | null; org_id: string | null }>(
           `SELECT user_id, org_id FROM research_runs WHERE id = $1`,
           [runId]
@@ -1346,7 +1352,7 @@ async function runResearchJobInner(
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
     let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
-    if (shouldRunPipelineStage(orchProfile, 'discovery') || lookupNeedsDiscovery(orchProfile.intent === 'reference_lookup' && ((data.confirmedPlanPayload as { corpusChunkCount?: number } | undefined)?.corpusChunkCount ?? 0) === 0)) {
+    if (shouldRunPipelineStage(orchProfile, 'discovery') || lookupNeedsDiscovery(lookupCorpusEmpty)) {
       await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
 
       discoverySummary = await runDiscoveryOrchestrator({
@@ -2140,7 +2146,12 @@ async function runResearchJobInner(
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,
-        usedSources: Array.from(new Set(allChunks.map((chunk) => chunk.source_url).filter(Boolean))).map((url) => ({ title: url, url })),
+        usedSources: allChunks.map((chunk) => ({
+          title: chunk.source_title || chunk.source_url || 'Untitled source',
+          publisher: chunk.source_publisher ?? null,
+          date: chunk.source_published_at ? String(chunk.source_published_at).slice(0, 10) : null,
+          url: chunk.source_url || null,
+        })),
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {

@@ -1,24 +1,36 @@
 import { callRoleModel } from '../openrouter/openrouterService';
-import { REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT } from './reportQualityPrompt';
+import { QUALITY_POINTS, REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL, REPORT_QUALITY_PROMPT, type QualityPoint } from './reportQualityPrompt';
 
 type JudgeCall = typeof callRoleModel;
 
-export function parseQualityScore(content: string): number | null {
+export interface QualityJudgment {
+  mean: number;
+  subScores: Record<QualityPoint, number>;
+}
+
+export function parseQualityScore(content: string): QualityJudgment | null {
   const stripped = content.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
   try {
-    const parsed = JSON.parse(stripped) as { score?: unknown };
-    if (typeof parsed.score !== 'number' || parsed.score < 1 || parsed.score > 5) return null;
-    return parsed.score;
+    const parsed = JSON.parse(stripped) as Record<string, unknown>;
+    const subScores = {} as Record<QualityPoint, number>;
+    for (const point of QUALITY_POINTS) {
+      const value = parsed[point];
+      if (typeof value !== 'number' || value < 1 || value > 5) return null;
+      subScores[point] = value;
+    }
+    const mean = QUALITY_POINTS.reduce((sum, point) => sum + subScores[point], 0) / QUALITY_POINTS.length;
+    return { mean, subScores };
   } catch {
     return null;
   }
 }
 
-/** Blind: the report is the only text. A failed call is null and never stops scoring. */
-export async function judgeReportQuality(report: string, call: JudgeCall = callRoleModel): Promise<number | null> {
+/** Blind: the report is the only text. A null result fails the run gate. */
+export async function judgeReportQuality(report: string, call: JudgeCall = callRoleModel): Promise<QualityJudgment | null> {
   try {
     const result = await call({
       role: 'verifier',
+      baselineLayer: false,
       messages: [
         { role: 'system', content: REPORT_QUALITY_PROMPT },
         { role: 'user', content: report },

@@ -621,7 +621,10 @@ async function callModel(
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
   const prepared: ModelCallOptions = {
     ...options,
-    baselineLayer: options.baselineLayer === true || (baselineLayerEnabled() && options.isAdjudicative !== true),
+    baselineLayer:
+      options.baselineLayer === false
+        ? false
+        : options.baselineLayer === true || (baselineLayerEnabled() && options.isAdjudicative !== true),
   };
   const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(prepared);
   const fallbackModel = resolvedFallback;

@@ -50,6 +50,7 @@ export interface EvalScores {
   structure_complete: number;
   no_repetition: number;
   report_quality: number | null;
+  report_quality_subscores?: Record<string, number> | null;
 }
 
 function aliasesIn(report: string): string[] {
@@ -130,7 +131,16 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
     structure_complete: scoreStructureComplete(report),
     no_repetition: scoreNoRepetition([{ content: report }]),
     report_quality: input.reportQuality ?? null,
+    report_quality_subscores: null,
   };
+}
+
+/** A missing judge is a failed gate. It must not be stored as a silent pass. */
+export function applyJudgeGate(scores: EvalScores, judgment: { mean: number; subScores: Record<string, number> } | null): EvalScores {
+  if (judgment == null) {
+    return { ...scores, report_quality: null, report_quality_subscores: null, gate_status: 'verification_failed' };
+  }
+  return { ...scores, report_quality: judgment.mean, report_quality_subscores: judgment.subScores };
 }
 
 export function percentile(values: number[], p: number): number | null {

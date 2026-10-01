@@ -23,6 +23,8 @@ export interface RetrievedChunk {
   content: string;
   source_url: string;
   source_title: string;
+  source_publisher?: string | null;
+  source_published_at?: string | null;
   chunk_index: number;
   similarity: number;
   evidence_tier: string | null;
@@ -162,6 +164,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           c.chunk_index,
           s.url AS source_url,
           s.title AS source_title,
+          s.publication AS source_publisher,
+          s.published_at AS source_published_at,
           s.tags,
           s.imported_via,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
@@ -210,6 +214,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         chunk_index: number;
         source_url: string;
         source_title: string;
+        source_publisher: string | null;
+        source_published_at: string | null;
         tags: string[];
         owner_user_id: string | null;
         imported_via: string | null;
@@ -225,6 +231,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           content: row.content,
           source_url: row.source_url ?? '',
           source_title: row.source_title ?? '',
+          source_publisher: row.source_publisher ?? null,
+          source_published_at: row.source_published_at ?? null,
           chunk_index: row.chunk_index,
           similarity: row.similarity,
           evidence_tier: row.evidence_tier,
@@ -248,6 +256,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           c.chunk_index,
           s.url AS source_url,
           s.title AS source_title,
+          s.publication AS source_publisher,
+          s.published_at AS source_published_at,
           s.tags,
           s.imported_via,
           COALESCE(ij.user_id, NULLIF(s.metadata->>'ingested_by_user_id', '')) AS owner_user_id,
@@ -298,6 +308,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         chunk_index: number;
         source_url: string;
         source_title: string;
+        source_publisher: string | null;
+        source_published_at: string | null;
         tags: string[];
         owner_user_id: string | null;
         imported_via: string | null;
@@ -315,6 +327,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
             content: row.content,
             source_url: row.source_url ?? '',
             source_title: row.source_title ?? '',
+            source_publisher: row.source_publisher ?? null,
+            source_published_at: row.source_published_at ?? null,
             chunk_index: row.chunk_index,
             similarity: row.fts_rank * 0.5, // normalize FTS rank
             evidence_tier: row.evidence_tier,

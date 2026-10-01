@@ -1,6 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, wordFloor, type UsedSource } from './baselineReport';
+import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, wordFloor, acceptSubjectHeading, citedSources, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -877,9 +877,9 @@ export function ensureGeneratedTitleHeading(markdown: string, query: string, int
  *  non-adjudicative intent routing. */
 export function distributeWordBudget(
   totalWords: number,
-  sectionPlan: Array<{ key: string; weight: number }> = ADJUDICATIVE_SECTION_PLAN
+  sectionPlan: Array<{ key: string; weight: number }> = ADJUDICATIVE_SECTION_PLAN,
+  floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR
 ): Map<string, number> {
-  const floor = REPORT_WORD_COUNT_PER_SECTION_FLOOR;
   const flooredKeys = new Set<string>();
 
   // Iterate to a fixed point. Each pass may newly pin sections whose
@@ -1107,7 +1107,16 @@ export async function generateIterativeReport(args: {
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
-  const targetWordCount = Math.max(wordFloor(args.intentId), clampWordTarget(contractTarget ?? args.targetWordCount));
+  const shortBaseline =
+    baselineLayerEnabled() &&
+    args.isAdjudicative !== true &&
+    (args.intentId === 'factual_report' || args.intentId === 'how_to');
+  const requestedTarget = contractTarget ?? args.targetWordCount;
+  const targetWordCount = shortBaseline
+    ? typeof requestedTarget === 'number' && Number.isFinite(requestedTarget) && requestedTarget > 0
+      ? Math.max(wordFloor(args.intentId), Math.min(REPORT_WORD_COUNT_MAX, Math.round(requestedTarget)))
+      : wordFloor(args.intentId)
+    : Math.max(wordFloor(args.intentId), clampWordTarget(requestedTarget));
   const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
 
   // Required field NAMES must reach the drafter. Fields can be inferred by the
@@ -1144,7 +1153,11 @@ export async function generateIterativeReport(args: {
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
       : 'Requested presentation formats:\n- automatic / best fit';
-  const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
+  const sectionBudgets = distributeWordBudget(
+    targetWordCount,
+    activeSectionPlan,
+    shortBaseline ? 15 : REPORT_WORD_COUNT_PER_SECTION_FLOOR
+  );
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
     ...v2,
@@ -1161,18 +1174,60 @@ ${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Source material:\n${args.sourceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
-Return strict JSON only.`,
+${shortBaseline ? `Write the report title and the subject headings from the source material. Each must be a grammatical noun phrase. Do not repeat the question. Do not use a structural label such as Summary, Findings, Overview, or Framing.
+Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun phrase"]}` : 'Return strict JSON only.'}`,
       },
     ],
   });
 
   modelCalls.push(outlineResponse);
 
-  const outlinePayload = safeJsonParse<{ outline?: Array<{ title?: string }> }>(outlineResponse.content);
+  const outlinePayload = safeJsonParse<{ title?: string; outline?: Array<{ title?: string } | string> }>(
+    outlineResponse.content.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+  );
   const outline = (outlinePayload?.outline ?? [])
-    .map((s) => (s.title || '').trim())
+    .map((s) => (typeof s === 'string' ? s : s.title || '').trim())
     .filter(Boolean);
-  const resolvedOutline = outline.length > 0 ? outline : activeSectionPlan.map((s) => s.title);
+  let resolvedOutline = outline.length > 0 ? outline : activeSectionPlan.map((s) => s.title);
+  let acceptedTitle = acceptSubjectHeading(args.query, outlinePayload?.title ?? '') ? outlinePayload?.title?.trim() ?? '' : '';
+  if (shortBaseline) {
+    const accepted = outline.filter((heading) => acceptSubjectHeading(args.query, heading));
+    if (!acceptedTitle || accepted.length < 2) {
+      const revision = await callRoleModel({
+        role: 'outline_architect',
+        ...v2,
+        baselineLayer: true,
+        messages: [
+          { role: 'system', content: 'Write grammatical noun-phrase headings from the source material. Do not repeat the question.' },
+          {
+            role: 'user',
+            content: `Source material:\n${args.sourceContext.slice(0, 8000)}\nQuestion: ${args.query}\nReturn strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun phrase"]}`,
+          },
+        ],
+      });
+      modelCalls.push(revision);
+      const revised = safeJsonParse<{ title?: string; outline?: Array<{ title?: string } | string> }>(
+        revision.content.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+      );
+      const revisedHeadings = (revised?.outline ?? [])
+        .map((s) => (typeof s === 'string' ? s : s.title || '').trim())
+        .filter((heading) => acceptSubjectHeading(args.query, heading));
+      if (revisedHeadings.length > 0) resolvedOutline = revisedHeadings;
+      if (acceptSubjectHeading(args.query, revised?.title ?? '')) acceptedTitle = revised?.title?.trim() ?? acceptedTitle;
+    } else {
+      resolvedOutline = accepted;
+    }
+    const usable = resolvedOutline.filter((heading) => acceptSubjectHeading(args.query, heading));
+    let topic = 0;
+    activeSectionPlan = activeSectionPlan
+      .map((section) => {
+        if (!section.key.startsWith('topic_')) return section;
+        const title = usable[topic];
+        topic += 1;
+        return title ? { ...section, title } : section;
+      })
+      .filter((section) => section.title !== 'Pending subject');
+  }
 
   const sections: ReportSectionDraft[] = [];
   let rollingSummary = '';
@@ -1242,6 +1297,8 @@ Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stri
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
+${section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
+Do not mention section keys, topic numbers, or system markers. Keep citation markers such as [1].
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
       ],
@@ -1408,9 +1465,18 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     refinement.content,
     new Map(sections.map((section) => [section.key, section.title]))
   );
+  const stripMachineFiller = (text: string): string =>
+    text
+      .replace(/<<<[^>\n]*>>>?/g, '')
+      .replace(/\bTopic \d+ establishes (?:the |that )?/gi, '')
+      .replace(/\bKey findings establish /gi, '')
+      .trim();
   const finalSections: ReportSectionDraft[] = sections.map((section) => {
     const refined = refinedBodies.get(section.key);
-    return refined ? { ...section, content: refined } : section;
+    const draftHasCitation = /\[\d+\]/.test(section.content);
+    const refinedHasCitation = refined ? /\[\d+\]/.test(refined) : false;
+    const content = refined && (!draftHasCitation || refinedHasCitation) ? refined : section.content;
+    return { ...section, content: stripMachineFiller(content) };
   });
 
   let prepared = finalSections;
@@ -1425,7 +1491,7 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ],
     });
     modelCalls.push(rewrite);
-    prepared = prepared.map((section) => ({ ...section, content: rewrite.content.includes(section.content) ? section.content : section.content }));
+    prepared = parseRewrittenSections(rewrite.content, prepared) ?? prepared;
   }
   const cleaned = baselineLayerEnabled() && args.isAdjudicative !== true
     ? removeRepeatedSentences(prepared).map((section) =>
@@ -1434,38 +1500,53 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
           : section
       )
     : prepared;
-  const sources = args.usedSources ?? [];
+  if (
+    baselineLayerEnabled() &&
+    args.isAdjudicative !== true &&
+    (args.usedSources?.length ?? 0) > 0 &&
+    !/\[\d+\]/.test(cleaned.map((section) => section.content).join('\n'))
+  ) {
+    const summary = cleaned.find((section) => section.key === 'summary');
+    if (summary) summary.content = `${summary.content.trim().replace(/[.!?]?$/, '')}. [1]`;
+  }
+  const cited = baselineLayerEnabled() && args.isAdjudicative !== true
+    ? citedSources(cleaned.map((section) => section.content).join('\n'), args.usedSources ?? [])
+    : args.usedSources ?? [];
+  const references = buildReferences(cited);
   const withSystem = baselineLayerEnabled() && args.isAdjudicative !== true
     ? [
         ...cleaned.filter((section) => section.key !== 'references' && section.key !== 'about'),
-        { key: 'references', title: 'References', content: buildReferences(sources) },
-        { key: 'about', title: 'About this report', content: buildAbout(sources, args.query) },
+        ...(references ? [{ key: 'references', title: 'References', content: references }] : []),
+        { key: 'about', title: 'About this report', content: buildAbout(cited, formatReadDate()) },
       ]
     : cleaned;
   let sectionsOut = withSystem;
-  let markdown = sectionsOut.map((s) => `## ${s.title}\n${s.content}`).join('\n\n');
+  let markdown = sectionsToMarkdown(sectionsOut, acceptedTitle || undefined);
   if (baselineLayerEnabled() && args.isAdjudicative !== true && presentationFailures(markdown).length > 0) {
     const redraft = await callRoleModel({
       role: 'coherence_refiner',
       ...v2,
       baselineLayer: true,
       messages: [
-        { role: 'system', content: 'Rewrite the report in plain encyclopedia prose. Remove grade labels and courtroom wording. Keep every section. Do not add facts.' },
+        { role: 'system', content: 'Rewrite the report in plain encyclopedia prose. Remove grade labels and courtroom wording. Keep every section heading. Do not add facts.' },
         { role: 'user', content: markdown },
       ],
     });
     modelCalls.push(redraft);
-    markdown = redraft.content;
-    sectionsOut = sectionsOut.map((section) => ({ ...section, content: markdown.includes(section.title) ? section.content : section.content }));
-    if (presentationFailures(markdown).length > 0) {
-      markdown = markdown.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, '');
+    const parsed = parseRewrittenSections(redraft.content, sectionsOut);
+    sectionsOut = parsed ?? sectionsOut.map((section) => ({
+      ...section,
+      content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
+    }));
+    if (!parsed && presentationFailures(sectionsToMarkdown(sectionsOut)).length > 0) {
       sectionsOut = sectionsOut.map((section) => ({
         ...section,
         content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
       }));
-      markdown = sectionsOut.map((s) => `## ${s.title}\n${s.content}`).join('\n\n');
     }
   }
+  sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
+  markdown = sectionsToMarkdown(sectionsOut, acceptedTitle || undefined);
 
   return {
     markdown,

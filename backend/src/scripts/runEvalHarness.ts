@@ -36,6 +36,8 @@ import {
   submitTaskThroughAdminRoute,
   type EvalTransport,
 } from '../services/eval/runHarness';
+import { judgeReportQuality } from '../services/eval/reportQualityJudge';
+import { applyJudgeGate, scoreStoredReport } from '../services/eval/scoreReport';
 import { loadEvalTasks, type EvalTask } from '../services/eval/taskSet';
 
 export const PILOT_STARTING_POINT_RUNS = [
@@ -234,12 +236,25 @@ async function main(): Promise<void> {
         console.log(progressLine(runId, 'not_scored', 'no report'));
         continue;
       }
-      const gate = await query<{ gate_status: string | null; reason: string | null }>(
-        `SELECT failure_meta->>'gate_status' AS gate_status, error_message AS reason FROM research_runs WHERE id = $1`,
-        [runId]
+      const judgment = await judgeReportQuality(stored.reportMarkdown);
+      const scores = applyJudgeGate(
+        scoreStoredReport({ reportMarkdown: stored.reportMarkdown, citations: stored.citations, reportQuality: judgment?.mean ?? null }),
+        judgment
       );
-      console.log(progressLine(runId, gate[0]?.gate_status ?? 'report_present', gate[0]?.reason ?? null));
-      console.log(`${runId} ready to score. gate_status=${gate[0]?.gate_status ?? 'none'} degraded_reason=${gate[0]?.reason ?? 'none'}`);
+      await query(
+        `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
+        [runId, 'score-run', JSON.stringify(scores), process.env.GIT_SHA ?? null]
+      );
+      if (scores.gate_status === 'verification_failed') {
+        await query(
+          `UPDATE research_runs SET failure_meta = jsonb_set(COALESCE(failure_meta, '{}'::jsonb), '{gate_status}', '"verification_failed"') WHERE id = $1`,
+          [runId]
+        );
+        console.log(progressLine(runId, 'verification_failed', 'quality judge returned nothing'));
+        continue;
+      }
+      console.log(progressLine(runId, 'scored', null));
+      console.log(`${runId} report_quality=${scores.report_quality}`);
     }
     return;
   }

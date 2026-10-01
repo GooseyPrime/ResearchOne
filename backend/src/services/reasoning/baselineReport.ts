@@ -8,13 +8,25 @@ export interface UsedSource {
   url?: string | null;
 }
 
-export function topicHeadings(query: string): string[] {
-  const subject = query.replace(/[?]+$/g, '').replace(/^(what|when|why|how|who|where)\s+/i, '').trim();
-  const topic = subject || 'the question';
-  return [`How ${topic} is described`, `What the records show about ${topic}`];
+const STRUCTURAL_HEADING =
+  /^(overview|introduction|findings|analysis|conclusion|results|background|framing|recommendation|steps|comparison|summary|key findings|limits of this report|references|about this report|pending subject)$/i;
+
+/** A heading a reader would write: not the question, not a structural label, a noun phrase. */
+export function acceptSubjectHeading(query: string, heading: string): boolean {
+  const title = heading.replace(/^#+\s*/, '').trim();
+  if (title.length < 8 || /[?]/.test(title)) return false;
+  const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const headingNorm = norm(title);
+  const queryNorm = norm(query);
+  if (!headingNorm || headingNorm === queryNorm) return false;
+  if (queryNorm.includes(headingNorm) || headingNorm.includes(queryNorm)) return false;
+  if (/^(how|what|when|why|who|where)\b/.test(headingNorm)) return false;
+  if (/\b(is described|the records show)\b/.test(headingNorm)) return false;
+  if (STRUCTURAL_HEADING.test(title.trim())) return false;
+  return headingNorm.split(' ').length >= 2;
 }
 
-export function readerSections(intentId: string | undefined, query = ''): Array<{ key: string; title: string; weight: number; system?: boolean }> {
+export function readerSections(intentId: string | undefined, _query = ''): Array<{ key: string; title: string; weight: number; system?: boolean }> {
   const body =
     intentId === 'survey'
       ? [
@@ -26,7 +38,11 @@ export function readerSections(intentId: string | undefined, query = ''): Array<
         ? [{ key: 'steps', title: 'Steps', weight: 1 }]
         : intentId === 'comparative'
           ? [{ key: 'comparison', title: 'Comparison', weight: 1 }]
-          : topicHeadings(query).map((title, index) => ({ key: `topic_${index}`, title, weight: 1 }));
+          : [
+              { key: 'topic_0', title: 'Pending subject', weight: 1 },
+              { key: 'topic_1', title: 'Pending subject', weight: 1 },
+              { key: 'disagreement', title: 'Where sources disagree', weight: 1 },
+            ];
   return [
     { key: 'summary', title: 'Summary', weight: 1 },
     { key: 'key_findings', title: 'Key findings', weight: 1 },
@@ -88,14 +104,23 @@ function proseBlocks(content: string): string[] {
   return content.split(/\n{2,}/).filter((block) => !block.trim().startsWith('```') && !block.includes('|'));
 }
 
+/** A citation marker is not part of the sentence it follows. */
+export function sentenceKey(sentence: string): string {
+  return sentence
+    .replace(/\s*\[(?:E)?\d+\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 export function repeatedSentences(sections: Array<{ content: string }>): string[] {
   const seen = new Set<string>();
   const repeated: string[] = [];
   for (const section of sections) {
     for (const block of proseBlocks(section.content)) {
       for (const sentence of block.split(/(?<=[.!?])\s+/)) {
-        const key = sentence.trim().toLowerCase();
-        if (key.length < 40) continue;
+        const key = sentenceKey(sentence);
+        if (key.length < 40 || /^\[(?:e)?\d+\]$/.test(key)) continue;
         if (seen.has(key)) repeated.push(sentence.trim());
         seen.add(key);
       }
@@ -117,7 +142,8 @@ export function removeRepeatedSentences<T extends { content: string }>(sections:
       return block
         .split(/(?<=[.!?])\s+/)
         .filter((sentence) => {
-          const key = sentence.trim().toLowerCase();
+          const key = sentenceKey(sentence);
+          if (!key || /^\[(?:e)?\d+\]$/.test(key)) return false;
           if (key.length < 40) return true;
           if (seen.has(key)) return false;
           seen.add(key);
@@ -125,16 +151,12 @@ export function removeRepeatedSentences<T extends { content: string }>(sections:
         })
         .join(' ');
     });
-    return { ...section, content: next.join('\n\n') };
+    return { ...section, content: next.join('\n\n').trim() };
   });
 }
 
 export function readerTitle(query: string, proposed: string): string {
-  const title = proposed.trim();
-  if (!title || title.toLowerCase() === 'framing' || title.toLowerCase() === query.trim().toLowerCase()) {
-    return topicHeadings(query)[0] ?? 'Report';
-  }
-  return title;
+  return acceptSubjectHeading(query, proposed) ? proposed.trim() : 'Report';
 }
 
 export function wordFloor(intentId: string | undefined): number {
@@ -152,7 +174,13 @@ export function lookupNeedsDiscovery(corpusEmpty: boolean): boolean {
   return baselineLayerEnabled() && corpusEmpty;
 }
 
+/** One condition for a lookup against an empty corpus. A missing count is not empty. */
+export function corpusLookupIsEmpty(intent: string | undefined, chunkCount: number | null | undefined): boolean {
+  return intent === 'reference_lookup' && chunkCount === 0;
+}
+
 export function buildReferences(sources: UsedSource[]): string {
+  if (sources.length === 0) return '';
   return sources
     .map((source, index) => {
       const parts = [source.publisher, source.title, source.date].filter(Boolean);
@@ -161,6 +189,50 @@ export function buildReferences(sources: UsedSource[]): string {
     .join('\n');
 }
 
-export function buildAbout(sources: UsedSource[], searched: string): string {
-  return `About this report: ${searched}. ${sources.length} source${sources.length === 1 ? ' was' : 's were'} read.`;
+export function formatReadDate(date = new Date()): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/** Count and the date read. The section heading already names the note. */
+export function buildAbout(sources: UsedSource[], readOn: string): string {
+  if (sources.length === 0) return 'No sources were used.';
+  const verb = sources.length === 1 ? 'was' : 'were';
+  return `${sources.length} source${sources.length === 1 ? '' : 's'} ${verb} read on ${readOn}.`;
+}
+
+export function citedSources(text: string, sources: UsedSource[]): UsedSource[] {
+  const indexes = [...new Set([...text.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1])))]
+    .filter((index) => index >= 1 && index <= sources.length)
+    .sort((a, b) => a - b);
+  const seen = new Set<string>();
+  const cited: UsedSource[] = [];
+  for (const index of indexes) {
+    const source = sources[index - 1];
+    if (!source) continue;
+    const key = (source.url || source.title).trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    cited.push(source);
+  }
+  return cited;
+}
+
+export function parseRewrittenSections<T extends { title: string; content: string }>(markdown: string, originals: T[]): T[] | null {
+  const matches = [...markdown.matchAll(/^##\s+(.+)$/gm)];
+  if (matches.length === 0) return null;
+  const byTitle = new Map<string, string>();
+  for (let i = 0; i < matches.length; i += 1) {
+    const title = matches[i][1]?.trim() ?? '';
+    const start = (matches[i].index ?? 0) + matches[i][0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? markdown.length) : markdown.length;
+    byTitle.set(title.toLowerCase(), markdown.slice(start, end).trim());
+  }
+  if (originals.some((section) => !byTitle.has(section.title.toLowerCase()))) return null;
+  return originals.map((section) => ({ ...section, content: byTitle.get(section.title.toLowerCase()) ?? section.content }));
+}
+
+export function sectionsToMarkdown(sections: Array<{ title: string; content: string }>, title?: string): string {
+  const body = sections.map((section) => `## ${section.title}\n${section.content}`).join('\n\n');
+  return title ? `# ${title}\n\n${body}` : body;
 }

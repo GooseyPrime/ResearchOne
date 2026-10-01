@@ -57,7 +57,8 @@ describe('baseline writing messages', () => {
     expect(deriveGeneratedReportTitle('What year was it?', '# Framing\n\nThe FDA authorized Casgevy in 2023.')).toBe(
       'The FDA authorized Casgevy in 2023.'
     );
-    expect(readerTitle('What year was it?', 'What year was it?')).toBe('How year was it is described');
+    expect(readerTitle('What year was it?', 'What year was it?')).not.toBe('What year was it?');
+    expect(readerTitle('What year was it?', 'What year was it?')).not.toContain('is described');
   });
 
   it('uses the reader section order and a short summary', () => {
@@ -80,6 +81,21 @@ describe('baseline writing messages', () => {
       { key: 'b', title: 'Body', content: sentence },
     ]);
     expect(cleaned[1].content).not.toContain('Casgevy');
+  });
+
+  it('removes the posted sample sentence when a citation marker follows it', () => {
+    const sentence = 'The FDA authorization covered patients 12 and older with recurrent vaso-occlusive crises. [1]';
+    const attached = 'The FDA authorization covered patients 12 and older with recurrent vaso-occlusive crises [1].';
+    const cleaned = removeRepeatedSentences([
+      { key: 'topic_0', title: 'Casgevy authorization', content: sentence },
+      { key: 'topic_1', title: 'Eligible patient group', content: attached },
+      { key: 'limits', title: 'Limits of this report', content: sentence },
+    ]);
+    expect(cleaned[0].content).toContain('vaso-occlusive');
+    expect(cleaned[1].content).not.toContain('vaso-occlusive');
+    expect(cleaned[2].content).not.toContain('vaso-occlusive');
+    expect(cleaned[1].content.trim()).not.toBe('[1]');
+    expect(cleaned[2].content.trim()).not.toBe('[1]');
   });
 
   it('lowers the floor for a short factual request and routes a failed classifier to factual research', () => {

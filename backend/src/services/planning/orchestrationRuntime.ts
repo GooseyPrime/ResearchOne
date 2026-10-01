@@ -10,6 +10,7 @@ import {
   type OrchestrationProfileDefinition,
 } from './orchestrationProfiles';
 import { buildCanonicalExecutionPlan } from './executionPlan';
+import { corpusLookupIsEmpty } from '../reasoning/baselineReport';
 
 export function resolveOrchestrationProfileFromJob(data: ResearchJobData): OrchestrationProfileDefinition {
   const id = data.confirmedPlanPayload?.intent?.id as IntentId | undefined;
@@ -26,6 +27,7 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     sourceClasses: Array.isArray(plan.sourceStrategy?.weightedClasses)
       ? plan.sourceStrategy.weightedClasses
       : [],
+    corpusEmpty: corpusLookupIsEmpty(plan.intent.id, plan.corpusChunkCount),
   });
   const mergedAgents = Array.from(new Set([...executionPlan.coreAgentRoles, ...executionPlan.specialistAgents]));
   const skippedAgents = executionPlan.specialistAgents.filter(
