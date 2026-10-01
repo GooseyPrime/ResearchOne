@@ -340,7 +340,7 @@ ship on `main`.
 - **Graph API types:** `title` / `url` nullable in SQL row types;
   `graphGroupKeyFromUrl` accepts `null | undefined` (PR #137).
 
-## Recurring review themes (Codex / Copilot, PR #127 — Dossier / the dossier pass reads)
+## Recurring review themes (Codex / Copilot, PR #127 — Dossier / Wave 5 reads)
 
 - **`v_dossier` + RLS:** define the view with `WITH (security_invoker = true)` (Postgres 15+) when it selects from RLS-protected tables so policies run as the querying role, not the migration owner.
 - **Refreshing `v_dossier`:** when extending the dossier contract, preserve the **single-plan** `LATERAL` join from migration 035 (run status gates which plan statuses qualify; prefer `confirmed` over `legacy`); a plain `LEFT JOIN research_plans … IN ('confirmed','legacy')` can duplicate rows per run.
@@ -375,7 +375,7 @@ ship on `main`.
 ## Recurring review themes (Wave 2.5 scope / a11y contract PRs)
 
 - **Conditional secondary verification:** Re-scan extra marketing routes only when shared shell or cross-route imports change; page-local `landing/*` fixes should not automatically trigger full-route axe matrices — declare the bucket in the implementation PR.
-- **Fenced command cwd:** Contract docs must state the assumed working directory (`frontend/` vs repo root) and use explicit `cd .. &&` for repo-root paths (`docs/`, `local audit output/`).
+- **Fenced command cwd:** Contract docs must state the assumed working directory (`frontend/` vs repo root) and use explicit `cd .. &&` for repo-root paths (`docs/`, `audit-snapshots/`).
 - **Lighthouse + axe together:** If the contract lists axe rule IDs *and* a Lighthouse Accessibility threshold, a flat score after fixes is a **Rule 22** signal, not an automatic merge.
 - **markdownlint on scope files:** When `markdownlint-cli2` is listed for a scope doc, run it before merge; root `.markdownlint-cli2.yaml` may define shared defaults.
 
@@ -392,7 +392,7 @@ ship on `main`.
   `invalidateQueries(filters, { cancelRefetch: false })` when the page
   mount may already be fetching the same queries.
 
-## Recurring review themes (Codex / Copilot, PR #128 — the dossier pass plan gate + `v_dossier`)
+## Recurring review themes (Codex / Copilot, PR #128 — Wave 5 plan gate + `v_dossier`)
 
 - **Late migration overwrites `CREATE OR REPLACE VIEW`:** Filename order can apply an older migration after a newer one and drop `security_invoker` / columns — add a **trailing repair migration** (see `038_v_dossier_reapply_after_late_035.sql`) and document in Rule 33 §7.
 - **`async` + deploy-skew `catch`:** Use **`return await queryOne(...)`** inside `try` so Postgres rejections hit `catch` (Rule 33 §9).

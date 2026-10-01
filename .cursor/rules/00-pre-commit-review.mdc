@@ -28,8 +28,8 @@ alwaysApply: true
 
 This list exists because the agent shipped 22 reviewer-caught bugs across
 PRs #36–#40, and every single one was in a recurring class. Reading and
-walking through this list takes ~60 seconds per commit. The retrospective
-that drove this list is at `the PR #36–#40 review themes in this file`.
+walking through this list takes ~60 seconds per commit. The review
+themes from PRs #36–#40 are recorded in `AGENTS.md`.
 
 ## A. Before staging
 
@@ -280,6 +280,5 @@ F3-4. **Timeline / dossier SQL mocks.** When changing `v_dossier` or timeline
 
 ---
 
-If a finding from a code review surprises the agent, add it to
-`docs/retrospectives/` and (if it represents a class) extend the rule
+If a finding from a code review surprises the agent, extend the rule
 that covers it. The rules are first-class artifacts of this repo.
