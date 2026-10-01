@@ -89,15 +89,15 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     showPlainLanguageFooter: true,
     narrativeHint: 'Encyclopedic who/what/when/where/how/why; omit contested-claims lane.',
     verifierRubric: `PASS criteria for a Factual Report:
-- Every major claim has an evidence tier tag: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
-- No unsupported conclusions — claims without cited evidence must be labeled (inference) or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
+- No unsupported conclusions — a claim without a cited source is either removed or stated in words as the report's own inference.
 - Uncertainty and limits of knowledge are acknowledged where the corpus is thin.
 - The report stays focused on direct factual explanation rather than adjudicative claim-audit structure.
 - Citations exist for all nontrivial factual assertions.
 FAIL if: claims are asserted without evidence, uncertainty is papered over, the requested factual answer is withheld, or the report drifts into adversarial claim-audit structure instead of direct explanation.`,
     requiredDeliverables: [
       'Direct factual answer to the research question',
-      'Evidence-tagged supporting claims',
+      'Supporting claims with citations',
       'Source citations for all nontrivial assertions',
       'Acknowledgment of knowledge limits where applicable',
     ],
@@ -114,7 +114,7 @@ FAIL if: claims are asserted without evidence, uncertainty is papered over, the 
     verifierRubric: `PASS criteria for a Survey:
 - Covers the established, contested, and hypothesized layers of the topic.
 - Each layer is clearly distinguished and labeled.
-- Evidence tier tags are present on major claims.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Open questions are acknowledged rather than suppressed.
 - Citations support claims in all layers.
 FAIL if: all claims are treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
@@ -138,7 +138,7 @@ FAIL if: all claims are treated as equally certain, contested zones are not flag
 - The specific claim being adjudicated is clearly stated.
 - The strongest case FOR the claim is presented with cited evidence.
 - The strongest case AGAINST the claim is presented with cited evidence.
-- Major claim statements carry evidence tier tags: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - A verdict is rendered with explicit confidence and residual uncertainty.
 - Falsification criteria are named — what evidence would overturn the verdict.
 - Contradiction analysis is substantive (not "no contradictions found").
@@ -162,7 +162,8 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
     narrativeHint: 'Symmetric treatment of contested zones.',
     verifierRubric: `PASS criteria for an Investigation:
 - The contested zones are treated symmetrically — no side receives disproportionate evidential weight without justification.
-- Primary evidence is cited and tier-tagged with (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Primary evidence is cited.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Contested zones are explicitly named and analyzed.
 - Contradiction analysis is substantive and identifies concrete points of tension.
 - Unresolved questions are acknowledged.
@@ -171,7 +172,7 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
 FAIL if: contested zones are glossed over, evidence is asymmetrically weighted without explanation, or unresolved questions are suppressed.`,
     requiredDeliverables: [
       'Clear framing of what is being investigated',
-      'Primary evidence with tier tags',
+      'Primary evidence with citations',
       'Analysis of contested zones',
       'Unresolved questions',
     ],
@@ -189,7 +190,7 @@ FAIL if: contested zones are glossed over, evidence is asymmetrically weighted w
 - Coverage of the relevant literature is documented (scope, search strategy).
 - Methodology for source selection is stated.
 - Findings are synthesized across sources, not merely listed.
-- Major findings carry evidence tier tags: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Limitations of the evidence base are acknowledged.
 - Citations are present for all referenced works.
 - No unsupported inferences added beyond what the literature supports.
@@ -433,7 +434,8 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
 - Events are in chronological order.
 - Date precision is noted where uncertain (e.g., "circa", "reported").
 - Contested or disputed dates are flagged.
-- Each event carries a source reference and major historical claims carry an evidence tier tag.
+- Each event carries a source reference.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Sources are cited for each event.
 FAIL if: events are out of order, date precision is overstated, contested dates are presented as certain, or the report refuses to provide the timeline because sourcing is thin.`,
     requiredDeliverables: [

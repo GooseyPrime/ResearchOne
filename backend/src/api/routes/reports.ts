@@ -18,6 +18,7 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
+import { stripInternalLabelsFromReport } from '../../services/reasoning/reportGenerator';
 import {
   pandocAvailable,
   PandocError,
@@ -166,7 +167,7 @@ function reportToMarkdown(args: {
     lines.push(`**Research request:** ${requestLabel}`, '');
   }
   for (const s of args.sections) {
-    lines.push(`## ${s.title}`, '', s.content, '', '');
+    lines.push(`## ${s.title}`, '', stripInternalLabelsFromReport(s.content), '', '');
   }
   return lines.join('\n').trim() + '\n';
 }
@@ -477,9 +478,16 @@ router.get('/:id', async (req, res, next) => {
       return;
     }
 
-    const sections = await query(
+    const storedSections = await query<Record<string, unknown>>(
       `SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order`,
       [req.params.id]
+    );
+    // Reports saved before labels were removed at generation time still carry
+    // them; clean what the reader sees without rewriting stored rows.
+    const sections = storedSections.map((section) =>
+      typeof section.content === 'string'
+        ? { ...section, content: stripInternalLabelsFromReport(section.content) }
+        : section
     );
 
     let hasActiveLivingReport = false;

@@ -23,7 +23,7 @@ PASS criteria for an Adjudication:
 - The specific claim being adjudicated is clearly stated.
 - The strongest case FOR the claim is presented with cited evidence.
 - The strongest case AGAINST the claim is presented with cited evidence.
-- Major claim statements carry evidence tier tags: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - A verdict is rendered with explicit confidence and residual uncertainty.
 - Falsification criteria are named — what evidence would overturn the verdict.
 - Contradiction analysis is substantive (not "no contradictions found").

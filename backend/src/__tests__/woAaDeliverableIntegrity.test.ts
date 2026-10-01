@@ -100,10 +100,12 @@ describe('WO-AA fixture — verification rubric matches the speech act', () => {
     );
   });
 
-  it('still requires evidence tiers and falsification for adjudication', () => {
+  it('still requires falsification for adjudication, and forbids evidence-tier labels in the text', () => {
+    // Tier grades live on claim rows, never in report prose (1 Oct 2026).
     const prompt = buildVerifierPromptForIntent('adjudication', true);
-    expect(prompt).toMatch(/evidence tier/i);
     expect(prompt).toMatch(/falsification/i);
+    expect(prompt).toMatch(/No evidence-tier labels/i);
+    expect(prompt).not.toMatch(/carry evidence tier tags/i);
   });
 
   it('does not fail analysis for missing citations, only specific factual claims', () => {

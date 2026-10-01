@@ -24,6 +24,7 @@ import {
   deriveGeneratedReportTitle,
   ensureGeneratedTitleHeading,
   stripPromptEchoFromReport,
+  stripInternalLabelsFromReport,
 } from './reportGenerator';
 import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
 import {
@@ -3405,7 +3406,9 @@ async function saveReport(args: {
     wave52Metadata,
   } = args;
 
-  const sanitizedReportMarkdown = stripPromptEchoFromReport(synthesizerContent, researchQuery);
+  const sanitizedReportMarkdown = stripInternalLabelsFromReport(
+    stripPromptEchoFromReport(synthesizerContent, researchQuery)
+  );
   const reportTitle = deriveGeneratedReportTitle(researchQuery, sanitizedReportMarkdown);
 
   // Parse sections from synthesizer output
