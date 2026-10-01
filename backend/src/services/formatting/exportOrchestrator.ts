@@ -23,6 +23,7 @@ import { assignEvidenceAliases, aliasesToCslBibliography, rewriteAliasesForPando
 import { runPandoc, PandocError, type ExportFormat, type ExportStyle } from './pandocRunner';
 import { runScope } from '../telemetry';
 import { logger } from '../../utils/logger';
+import { stripInternalLabelsFromReport } from './reportPresentation';
 
 export interface ExportJobInput {
   reportId: string;
@@ -147,7 +148,9 @@ async function loadReportMarkdownForExport(
 
   let body: string;
   if (sectionRows.length > 0) {
-    body = sectionRows.map((s) => `## ${s.title}\n\n${s.content}`).join('\n\n');
+    body = sectionRows
+      .map((s) => `## ${s.title}\n\n${stripInternalLabelsFromReport(s.content)}`)
+      .join('\n\n');
   } else {
     const parts: string[] = [];
     if (meta.executive_summary?.trim()) {

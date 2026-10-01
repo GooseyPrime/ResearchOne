@@ -18,7 +18,7 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
-import { stripInternalLabelsFromReport } from '../../services/reasoning/reportGenerator';
+import { stripInternalLabelsFromReport } from '../../services/formatting/reportPresentation';
 import {
   pandocAvailable,
   PandocError,
