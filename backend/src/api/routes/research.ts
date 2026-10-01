@@ -361,13 +361,51 @@ async function handleStartResearchRun(
         buffer: f.buffer,
       }));
 
-      const ingestSummary = await ingestSupplementalForRun({
+      // The run row must exist before supplemental ingestion starts: every ingested
+      // source is written with discovered_by_run_id = runId, a foreign key to
+      // research_runs. Ingesting first made that insert fail for any upload that
+      // finished before the run row existed, and the run then went ahead without
+      // the user's attachments. Create the run, ingest, then record the attachments.
+      await insertQueuedResearchRunWithLineage({
         runId,
-        urls: supplementalUrls,
-        files: fileItems,
-        userId: userId ?? undefined,
-        urlCrawl: supplementalUrlCrawl,
+        title,
+        query: researchQuery,
+        supplemental: supplemental ?? '',
+        normalizedOverridesJson: JSON.stringify(normalizedOverrides),
+        attachmentsJson: '[]',
+        engineVersion: RESEARCH_ENGINE_VERSION,
+        researchObjective: researchObjective ?? null,
+        targetWordCount: targetWordCount ?? null,
+        requestedFormats: requestedFormats ?? null,
+        requestedResearchObjective: requestedResearchObjective ?? null,
+        requestedMethodology: requestedMethodology ?? null,
+        userId: userId ?? null,
+        orgId,
+        lineage: spinoffLineage,
+        selectedAddonsJson,
       });
+
+      let ingestSummary: Awaited<ReturnType<typeof ingestSupplementalForRun>>;
+      try {
+        ingestSummary = await ingestSupplementalForRun({
+          runId,
+          urls: supplementalUrls,
+          files: fileItems,
+          userId: userId ?? undefined,
+          urlCrawl: supplementalUrlCrawl,
+        });
+      } catch (ingestErr) {
+        // Do not leave a queued run behind that will never be picked up.
+        try {
+          await query(
+            `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
+            ['Attached sources could not be processed', runId]
+          );
+        } catch (markErr) {
+          logger.error('supplemental_ingest_failed_and_run_not_marked', { runId, err: markErr });
+        }
+        throw ingestErr;
+      }
 
       const attachments: Array<
         | { kind: 'url'; url: string; ingestion_job_id: string }
@@ -386,24 +424,18 @@ async function handleStartResearchRun(
         jobIdx += 1;
       }
 
-      await insertQueuedResearchRunWithLineage({
-        runId,
-        title,
-        query: researchQuery,
-        supplemental: supplemental ?? '',
-        normalizedOverridesJson: JSON.stringify(normalizedOverrides),
-        attachmentsJson: JSON.stringify(attachments),
-        engineVersion: RESEARCH_ENGINE_VERSION,
-        researchObjective: researchObjective ?? null,
-        targetWordCount: targetWordCount ?? null,
-        requestedFormats: requestedFormats ?? null,
-        requestedResearchObjective: requestedResearchObjective ?? null,
-        requestedMethodology: requestedMethodology ?? null,
-        userId: userId ?? null,
-        orgId,
-        lineage: spinoffLineage,
-        selectedAddonsJson,
-      });
+      if (attachments.length > 0) {
+        try {
+          await query(
+            `UPDATE research_runs SET supplemental_attachments=$1::jsonb WHERE id=$2`,
+            [JSON.stringify(attachments), runId]
+          );
+        } catch (attachErr) {
+          // The ingested sources are already linked to the run; only the attachment
+          // list on the run row is missing. Do not strand a queued run over it.
+          logger.error('supplemental_attachments_not_recorded', { runId, err: attachErr });
+        }
+      }
 
       if (citationStyle || requestedFormats || requestedResearchObjective || requestedMethodology) {
         try {
