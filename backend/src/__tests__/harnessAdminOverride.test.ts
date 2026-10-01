@@ -115,5 +115,7 @@ describe('admin harness override through the route', () => {
       .send({ query: 'What year was the treaty signed?', flagOverrides: { BASELINE_LAYER_ENABLED: true } });
     expect(res.status).toBe(500);
     expect(mocks.queueAddMock).not.toHaveBeenCalled();
+    const failed = mocks.queryMock.mock.calls.find((call) => String(call[0]).includes("status='failed'"));
+    expect(failed?.[1]).toEqual(['flag override could not be saved', expect.any(String)]);
   });
 });

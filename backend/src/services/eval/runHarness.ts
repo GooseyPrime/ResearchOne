@@ -10,10 +10,11 @@ export interface StoredRun {
   startedAt: string | null;
   completedAt: string | null;
   tokens: number | null;
+  recordedCostUsd: number | null;
 }
 
 export interface EvalTransport {
-  start(task: EvalTask, files: FixtureDocument[]): Promise<{ runId: string }>;
+  start(task: EvalTask, files: FixtureDocument[], flagOverrides: Record<string, boolean> | null): Promise<{ runId: string }>;
   wait(runId: string): Promise<void>;
   load(runId: string): Promise<StoredRun>;
 }
@@ -22,7 +23,13 @@ export function fixtureFiles(task: EvalTask): FixtureDocument[] {
   return task.fixtureDocuments ?? [];
 }
 
-export function buildScoreInput(task: EvalTask, stored: StoredRun, quoteSupports: number | null): EvalScoreInput {
+export function buildScoreInput(
+  task: EvalTask,
+  stored: StoredRun,
+  quoteSupports: number | null,
+  notJudged: number | null = null,
+  flagOverrides: Record<string, boolean> | null = null
+): EvalScoreInput {
   const sides = (task.fixtureDocuments ?? []).filter((doc) => doc.role === 'side_a' || doc.role === 'side_b');
   return {
     reportMarkdown: stored.reportMarkdown,
@@ -32,29 +39,39 @@ export function buildScoreInput(task: EvalTask, stored: StoredRun, quoteSupports
     fixtureSides: sides.length === 2 ? [sides[0].name, sides[1].name] : undefined,
     anomalyPhrase: task.anomalyPhrase,
     quoteSupports,
+    quoteSupportsNotJudged: notJudged,
+    citationLock: flagOverrides?.CITATION_LOCK_ENABLED === true,
     seconds: secondsBetween(stored.startedAt, stored.completedAt),
     tokens: stored.tokens,
   };
 }
 
-export async function runHarness(transport: EvalTransport, tasks: EvalTask[] = loadEvalTasks()): Promise<Array<{ taskId: string; runId: string; scores: EvalScores }>> {
+export async function runHarness(
+  transport: EvalTransport,
+  tasks: EvalTask[] = loadEvalTasks(),
+  flagOverrides: Record<string, boolean> | null = null
+): Promise<Array<{ taskId: string; runId: string; scores: EvalScores; tokens: number | null; recordedCostUsd: number | null }>> {
   const rows = [];
   for (const task of tasks) {
     const files = fixtureFiles(task);
-    const started = await transport.start(task, files);
+    const started = await transport.start(task, files, flagOverrides);
     await transport.wait(started.runId);
     const stored = await transport.load(started.runId);
-    const quoteSupports = await judgeQuoteSupports(
-      stored.citations
-        .filter((row) => row.chunkQuote.trim().length > 0 && row.sentence)
-        .map((row) => ({ sentence: row.sentence ?? '', quote: row.chunkQuote }))
+    const judged = await judgeQuoteSupports(
+      stored.citations.map((row) => ({ sentence: row.citationText ?? '', quote: row.chunkQuote }))
     );
-    const scores = scoreStoredReport(buildScoreInput(task, stored, quoteSupports));
+    const scores = scoreStoredReport(buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides));
     await query(
       `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
       [started.runId, task.id, JSON.stringify(scores), process.env.GIT_SHA ?? null]
     );
-    rows.push({ taskId: task.id, runId: started.runId, scores });
+    rows.push({
+      taskId: task.id,
+      runId: started.runId,
+      scores,
+      tokens: stored.tokens,
+      recordedCostUsd: stored.recordedCostUsd,
+    });
   }
   return rows;
 }
@@ -79,12 +96,11 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
   );
   const citations = await query<EvalCitation>(
     `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
-            left(s.content, 400) AS sentence
+            rc.chunk_id AS "chunkId", rc.citation_text AS "citationText"
      FROM report_citations rc
      JOIN reports r ON r.id = rc.report_id
      LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
      LEFT JOIN chunks c ON c.id = rc.chunk_id
-     LEFT JOIN report_sections s ON s.id = rc.section_id
      WHERE r.run_id = $1`,
     [runId]
   );
@@ -106,8 +122,9 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
     `SELECT started_at, completed_at FROM research_runs WHERE id = $1`,
     [runId]
   );
-  const usage = await query<{ tokens: string | null }>(
-    `SELECT SUM(total_tokens)::text AS tokens FROM agent_executions WHERE run_id = $1`,
+  const usage = await query<{ tokens: string | null; cost: string | null }>(
+    `SELECT SUM(total_tokens)::text AS tokens, SUM(calculated_cost_usd)::text AS cost
+     FROM agent_executions WHERE run_id = $1`,
     [runId]
   );
   return {
@@ -116,12 +133,14 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
       alias: row.alias ?? '',
       chunkQuote: row.chunkQuote ?? '',
       chunkText: row.chunkText ?? '',
-      sentence: row.sentence,
+      chunkId: row.chunkId,
+      citationText: row.citationText,
     })),
     contradictionLinks: links,
     startedAt: timing[0]?.started_at ?? null,
     completedAt: timing[0]?.completed_at ?? null,
     tokens: usage[0]?.tokens ? Number(usage[0].tokens) : null,
+    recordedCostUsd: usage[0]?.cost ? Number(usage[0].cost) : null,
   };
 }
 
@@ -129,10 +148,12 @@ export async function submitTaskThroughAdminRoute(
   apiBase: string,
   task: EvalTask,
   files: FixtureDocument[],
-  authHeader: string
+  authHeader: string,
+  flagOverrides: Record<string, boolean> | null = null
 ): Promise<{ runId: string }> {
   const form = new FormData();
   form.set('query', task.prompt);
+  if (flagOverrides) form.set('flagOverrides', JSON.stringify(flagOverrides));
   for (const file of files) {
     form.append('files', new Blob([file.text], { type: 'text/plain' }), file.name);
   }

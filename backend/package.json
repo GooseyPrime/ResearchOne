@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "probe:openrouter-models": "tsx scripts/probe-openrouter-models.ts",
     "billing:diagnostics": "tsx scripts/billing-diagnostics.ts",
-    "benchmark:adversarial-smoke": "tsx scripts/adversarial-research-smoke.ts"
+    "benchmark:adversarial-smoke": "tsx scripts/adversarial-research-smoke.ts",
+    "eval:harness": "tsx src/scripts/runEvalHarness.ts"
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",

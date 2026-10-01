@@ -39,6 +39,7 @@ export function summarizeScores(rows: Array<{ taskId: string; scores: EvalScores
     citation_bound: mean(rows.map((row) => row.scores.citation_bound)),
     quote_verbatim: mean(rows.map((row) => row.scores.quote_verbatim)),
     quote_supports: mean(rows.map((row) => row.scores.quote_supports)),
+    quote_supports_not_judged: mean(rows.map((row) => row.scores.quote_supports_not_judged)),
     authority_share: null,
     doi_resolution: null,
     contradiction_retention: mean(rows.map((row) => row.scores.contradiction_retention)),

@@ -3,12 +3,30 @@ import { scoreStoredReport } from '../services/eval/scoreReport';
 import { loadEvalTasks } from '../services/eval/taskSet';
 
 describe('eval scorers', () => {
-  it('scores a dangling alias below 1', () => {
+  it('scores a dangling alias below 1 when citation lock is on', () => {
     const scores = scoreStoredReport({
       reportMarkdown: 'The finding holds [E9].',
-      citations: [{ alias: 'E1', chunkQuote: 'a quote', chunkText: 'a quote in the chunk' }],
+      citations: [{ alias: 'E1', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-1' }],
+      citationLock: true,
     });
     expect(scores.citation_bound).toBeLessThan(1);
+  });
+
+  it('scores a stored report that has no alias markers from its citation rows', () => {
+    const scores = scoreStoredReport({
+      reportMarkdown: 'The FDA authorized Casgevy in 2023 for sickle cell disease.',
+      citations: [
+        {
+          alias: '',
+          chunkId: 'chunk-1',
+          chunkQuote: 'FDA approved Casgevy',
+          chunkText: 'The FDA approved Casgevy for sickle cell disease.',
+          citationText: 'The FDA authorized Casgevy in 2023.',
+        },
+      ],
+    });
+    expect(scores.citation_bound).toBe(1);
+    expect(scores.quote_verbatim).toBe(1);
   });
 
   it('scores a quote that is not in the chunk below 1', () => {

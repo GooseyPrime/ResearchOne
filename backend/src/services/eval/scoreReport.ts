@@ -2,7 +2,8 @@ export interface EvalCitation {
   alias: string;
   chunkQuote: string;
   chunkText: string;
-  sentence?: string;
+  chunkId?: string | null;
+  citationText?: string | null;
 }
 
 export interface ContradictionLink {
@@ -18,6 +19,8 @@ export interface EvalScoreInput {
   fixtureSides?: [string, string];
   anomalyPhrase?: string;
   quoteSupports?: number | null;
+  quoteSupportsNotJudged?: number | null;
+  citationLock?: boolean;
   seconds?: number | null;
   tokens?: number | null;
 }
@@ -27,6 +30,7 @@ export interface EvalScores {
   citation_bound: number;
   quote_verbatim: number;
   quote_supports: number | null;
+  quote_supports_not_judged: number | null;
   authority_share: null;
   doi_resolution: null;
   contradiction_retention: number | null;
@@ -43,16 +47,20 @@ function normalize(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-export function scoreCitationBound(report: string, citations: EvalCitation[]): number {
+export function scoreCitationBound(report: string, citations: EvalCitation[], citationLock = false): number {
   if (citations.length === 0) return 0;
-  const aliases = aliasesIn(report);
-  if (aliases.length === 0) return 0;
-  const byAlias = new Map(citations.map((row) => [row.alias, row]));
-  const bound = aliases.filter((alias) => {
-    const row = byAlias.get(alias);
-    return Boolean(row && row.chunkQuote.trim().length > 0);
-  }).length;
-  return bound / aliases.length;
+  if (citationLock) {
+    const aliases = aliasesIn(report);
+    if (aliases.length === 0) return 0;
+    const byAlias = new Map(citations.map((row) => [row.alias, row]));
+    const bound = aliases.filter((alias) => {
+      const row = byAlias.get(alias);
+      return Boolean(row && row.chunkId && row.chunkQuote.trim().length > 0);
+    }).length;
+    return bound / aliases.length;
+  }
+  const bound = citations.filter((row) => Boolean(row.chunkId) && row.chunkQuote.trim().length > 0).length;
+  return bound / citations.length;
 }
 
 export function scoreQuoteVerbatim(citations: EvalCitation[]): number {
@@ -84,9 +92,10 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
   const report = input.reportMarkdown;
   return {
     answer_correct: input.keyFacts ? scoreAnswerCorrect(report, input.keyFacts) : null,
-    citation_bound: scoreCitationBound(report, input.citations),
+    citation_bound: scoreCitationBound(report, input.citations, input.citationLock),
     quote_verbatim: scoreQuoteVerbatim(input.citations),
     quote_supports: input.quoteSupports ?? null,
+    quote_supports_not_judged: input.quoteSupportsNotJudged ?? null,
     authority_share: null,
     doi_resolution: null,
     contradiction_retention: input.fixtureSides

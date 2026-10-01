@@ -427,6 +427,14 @@ async function handleStartResearchRun(
           );
         } catch (overrideErr) {
           logger.error('harness flag override was not saved; run not queued', { runId, err: overrideErr });
+          try {
+            await query(
+              `UPDATE research_runs SET status='failed', error_message=$1, completed_at=NOW() WHERE id=$2`,
+              ['flag override could not be saved', runId]
+            );
+          } catch (markErr) {
+            logger.error('could not mark run failed after override save failure', { runId, err: markErr });
+          }
           res.status(500).json({ error: 'flag override could not be saved' });
           return;
         }

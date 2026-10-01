@@ -39,28 +39,32 @@ describe('harness runner', () => {
     };
     const started: EvalTask[] = [];
     const attached: string[][] = [];
+    let passedOverrides: Record<string, boolean> | null = null;
     const transport: EvalTransport = {
-      async start(next, files) {
+      async start(next, files, overrides) {
         started.push(next);
         attached.push(files.map((file) => file.name));
+        passedOverrides = overrides;
         return { runId: 'run-1' };
       },
       async wait() {},
       async load() {
         return {
           reportMarkdown: 'The accounts disagree [E1]. never invoiced',
-          citations: [{ alias: 'E1', chunkQuote: 'change orders', chunkText: 'change orders', sentence: 'The accounts disagree' }],
+          citations: [{ alias: 'E1', chunkQuote: 'change orders', chunkText: 'change orders', citationText: 'The accounts disagree', chunkId: 'chunk-1' }],
           contradictionLinks: [
             { documentA: 'challenge-rail-budget-side-a.txt', documentB: 'challenge-rail-budget-side-b.txt' },
           ],
           startedAt: '2026-10-01T00:00:00.000Z',
           completedAt: '2026-10-01T00:01:00.000Z',
           tokens: 1200,
+          recordedCostUsd: 0.42,
         };
       },
     };
-    const rows = await runHarness(transport, [task]);
+    const rows = await runHarness(transport, [task], { CITATION_LOCK_ENABLED: false });
     expect(started).toHaveLength(1);
+    expect(passedOverrides).toEqual({ CITATION_LOCK_ENABLED: false });
     expect(attached[0]).toEqual(fixtureFiles(task).map((file) => file.name));
     expect(rows[0].scores.contradiction_retention).toBe(1);
     expect(rows[0].scores.time_to_report).toBe(60);
@@ -78,8 +82,16 @@ describe('quote supports judge', () => {
   it('calls the committed prompt with the primary model and the other-provider fallback', async () => {
     const { judgeQuoteSupports } = await import('../services/eval/quoteSupportsJudge');
     const call = vi.fn().mockResolvedValue({ content: '{"supports": true}' });
-    const score = await judgeQuoteSupports([{ sentence: 'The audit blames change orders.', quote: 'change orders' }], call);
-    expect(score).toBe(1);
+    const score = await judgeQuoteSupports(
+      [
+        { sentence: 'The audit blames change orders.', quote: 'change orders' },
+        { sentence: '', quote: 'unused' },
+      ],
+      call
+    );
+    expect(score.score).toBe(1);
+    expect(score.skipped).toBe(1);
+    expect(score.notJudged).toBe(0);
     expect(call).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([{ role: 'system', content: QUOTE_SUPPORTS_PROMPT }]),
