@@ -23,22 +23,38 @@ const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\
 
 /**
  * Left exactly as written:
- * - fenced code with any fence length (```, ````, ~~~ ...), closed by the same fence;
+ * - fenced code with any fence length (```, ````, ~~~ ...), indented up to three
+ *   spaces, closed by the same fence;
  * - inline code spans with any number of backticks;
  * - indented code: any line starting with four spaces or a tab (deeply nested
  *   list text is skipped too, which is the safe direction);
- * - whole Markdown links (text and destination), autolinks and bare URLs.
+ * - whole Markdown links (text and destination), reference-style links
+ *   ("[text][ref]") and their definition lines ("[ref]: url"), autolinks and
+ *   bare URLs.
  */
+/**
+ * "[text][ref]" is a reference-style link unless it is really citation markers
+ * or labels side by side: the first bracket names a chunk, or the second
+ * bracket names a chunk or a tier. Link text that happens to be a tier word
+ * ("[Testimony][1]") is still a link.
+ */
+const CITATION_IN_BRACKET = '(?![^\\]\\n]*\\bchunk\\b)';
+const LABEL_OR_CITATION_IN_BRACKET = `(?![^\\]\\n]*\\bchunk\\b)(?!\\s*${TIER_WORD}\\s*\\])`;
+
 const PROTECTED_SEGMENT = new RegExp(
   [
-    '(?:^|\\n)(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
+    '(?:^|\\n) {0,3}(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n {0,3}\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
     '(?<ticks>`+)(?:(?!\\k<ticks>)[^\\n]|\\n(?!\\n))+?\\k<ticks>',
     '(?:^|(?<=\\n))(?: {4,}|\\t)[^\\n]*',
     '\\[[^\\]\\n]*\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)',
+    // A reference-style link, but never two citation markers side by side.
+    `\\[${CITATION_IN_BRACKET}[^\\]\\n]*\\]\\[${LABEL_OR_CITATION_IN_BRACKET}[^\\]\\n]*\\]`,
+    // A link definition line: "[ref]: https://..." (or a relative or anchor target).
+    '(?:^|(?<=\\n)) {0,3}\\[[^\\]\\n]+\\]:[ \\t]*<?(?:https?:\\/\\/|\\/|#)[^\\n]*',
     '<https?:\\/\\/[^>\\s]+>',
     'https?:\\/\\/[^\\s)\\]>]+',
   ].join('|'),
-  'g'
+  'gi'
 );
 
 function cleanProse(text: string): string {
@@ -110,4 +126,32 @@ export function cleanReaderMetadata<T>(metadata: T): T {
     };
   }
   return out as T;
+}
+
+function cleanContentFields(row: unknown): unknown {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+  const source = row as Record<string, unknown>;
+  return {
+    ...source,
+    ...(typeof source.before_content === 'string'
+      ? { before_content: stripInternalLabelsFromReport(source.before_content) }
+      : {}),
+    ...(typeof source.after_content === 'string'
+      ? { after_content: stripInternalLabelsFromReport(source.after_content) }
+      : {}),
+  };
+}
+
+/**
+ * Revision history shows earlier and later section text to the reader. Clean
+ * both sides of every revised section and diff the same way.
+ */
+export function cleanRevisionForReader<T>(revision: T): T {
+  if (!revision || typeof revision !== 'object' || Array.isArray(revision)) return revision;
+  const source = revision as Record<string, unknown>;
+  return {
+    ...source,
+    ...(Array.isArray(source.sections) ? { sections: source.sections.map(cleanContentFields) } : {}),
+    ...(Array.isArray(source.diffs) ? { diffs: source.diffs.map(cleanContentFields) } : {}),
+  } as T;
 }

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { stripInternalLabelsFromReport } from '../services/reasoning/reportGenerator';
-import { cleanReaderMetadata } from '../services/formatting/reportPresentation';
+import { cleanReaderMetadata, cleanRevisionForReader } from '../services/formatting/reportPresentation';
 import { INTENT_OUTPUT_TEMPLATES, CLAIM_CLASS_SOURCING_BURDEN } from '../services/formatting/templates/intentOutputTemplates';
 import { STANDARD_SYSTEM_PROMPTS, SYSTEM_PROMPTS } from '../services/openrouter/openrouterService';
 
@@ -61,6 +61,36 @@ describe('stripInternalLabelsFromReport', () => {
       'Use ``a `strong_evidence` value`` here.',
     ].join('\n');
     expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('never changes fences indented up to three spaces or reference-style links', () => {
+    const input = [
+      '   ```js',
+      '   const strong_evidence = 1;',
+      '   ```',
+      '',
+      'See the [Testimony][1] transcript.',
+      '',
+      '[1]: https://example.org/hearing',
+    ].join('\n');
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('still cleans citation markers or labels written side by side', () => {
+    expect(stripInternalLabelsFromReport('Costs rose [Strong_Evidence - Chunk 3][Testimony - Chunk 4].')).toBe(
+      'Costs rose [Chunk 3][Chunk 4].'
+    );
+    expect(stripInternalLabelsFromReport('Costs rose [Strong_Evidence][Testimony].')).toBe('Costs rose.');
+  });
+
+  it('cleans both sides of revision history', () => {
+    const cleaned = cleanRevisionForReader({
+      id: 'rev-1',
+      sections: [{ before_content: 'Old [Strong_Evidence - Chunk 3].', after_content: 'New (testimony).' }],
+      diffs: [{ before_content: 'x [Quantitative_Quality_Auditor].', after_content: 'y', diff_metadata: {} }],
+    });
+    expect(JSON.stringify(cleaned)).not.toMatch(/strong_evidence|\(testimony\)|Quantitative_Quality_Auditor/i);
+    expect(cleaned.sections[0]).toEqual({ before_content: 'Old [Chunk 3].', after_content: 'New.' });
   });
 
   it('still cleans prose that sits between protected code', () => {

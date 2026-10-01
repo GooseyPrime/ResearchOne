@@ -18,7 +18,11 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
-import { cleanReaderMetadata, stripInternalLabelsFromReport } from '../../services/formatting/reportPresentation';
+import {
+  cleanReaderMetadata,
+  cleanRevisionForReader,
+  stripInternalLabelsFromReport,
+} from '../../services/formatting/reportPresentation';
 import {
   pandocAvailable,
   PandocError,
@@ -688,7 +692,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       res.status(404).json({ error: 'Revision not found' });
       return;
     }
-    res.json(revision);
+    res.json(cleanRevisionForReader(revision));
   } catch (err) {
     next(err);
   }
