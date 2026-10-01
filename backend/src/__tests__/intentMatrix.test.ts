@@ -293,9 +293,10 @@ describe('opportunity_discovery template: adaptive contract (no mega-schema)', (
     expect(rubric).not.toContain('deployment prompt');
   });
 
-  it('verifierRubric explicitly fails claim-audit drift and refusal-to-rank', () => {
+  it('verifierRubric explicitly fails audit drift and refusal-to-rank', () => {
+    // Reworded 1 Oct 2026: reports present information, not "claims".
     const rubric = tpl!.verifierRubric.toLowerCase();
-    expect(rubric).toContain('claim-audit');
+    expect(rubric).toContain('audit or adversarial sections dominate');
     expect(rubric).toContain('refuses to rank');
     expect(rubric).toContain('fail');
   });

@@ -19,6 +19,11 @@ import { ingestSupplementalForRevision } from '../../services/research/reportRev
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
 import {
+  cleanReaderMetadata,
+  cleanRevisionForReader,
+  stripInternalLabelsFromReport,
+} from '../../services/formatting/reportPresentation';
+import {
   pandocAvailable,
   PandocError,
   type ExportFormat,
@@ -160,13 +165,13 @@ function reportToMarkdown(args: {
   // exported report. Keep a capped one-line request label so a standalone
   // export is still self-describing; the full prompt lives in run metadata and
   // the dossier Request tab.
-  const lines: string[] = [`# ${args.title}`, ''];
+  const lines: string[] = [`# ${stripInternalLabelsFromReport(args.title)}`, ''];
   const requestLabel = summarizeResearchRequest(args.query);
   if (requestLabel) {
     lines.push(`**Research request:** ${requestLabel}`, '');
   }
   for (const s of args.sections) {
-    lines.push(`## ${s.title}`, '', s.content, '', '');
+    lines.push(`## ${stripInternalLabelsFromReport(s.title)}`, '', stripInternalLabelsFromReport(s.content), '', '');
   }
   return lines.join('\n').trim() + '\n';
 }
@@ -477,10 +482,17 @@ router.get('/:id', async (req, res, next) => {
       return;
     }
 
-    const sections = await query(
+    const storedSections = await query<Record<string, unknown>>(
       `SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order`,
       [req.params.id]
     );
+    // Reports saved before labels were removed at generation time still carry
+    // them; clean what the reader sees without rewriting stored rows.
+    const sections = storedSections.map((section) => ({
+      ...section,
+      ...(typeof section.title === 'string' ? { title: stripInternalLabelsFromReport(section.title) } : {}),
+      ...(typeof section.content === 'string' ? { content: stripInternalLabelsFromReport(section.content) } : {}),
+    }));
 
     let hasActiveLivingReport = false;
     try {
@@ -493,7 +505,26 @@ router.get('/:id', async (req, res, next) => {
       // best-effort; report_monitors may not exist yet
     }
 
-    res.json({ ...(rows[0] as Record<string, unknown>), sections, has_active_living_report: hasActiveLivingReport });
+    // Summary fields and reader metadata are shown to readers too; clean them
+    // the same way, without rewriting stored rows.
+    const stored = rows[0] as Record<string, unknown>;
+    const report: Record<string, unknown> = {
+      ...stored,
+      title: typeof stored.title === 'string' ? stripInternalLabelsFromReport(stored.title) : stored.title,
+      executive_summary:
+        typeof stored.executive_summary === 'string'
+          ? stripInternalLabelsFromReport(stored.executive_summary)
+          : stored.executive_summary,
+      conclusion:
+        typeof stored.conclusion === 'string' ? stripInternalLabelsFromReport(stored.conclusion) : stored.conclusion,
+      falsification_criteria:
+        typeof stored.falsification_criteria === 'string'
+          ? stripInternalLabelsFromReport(stored.falsification_criteria)
+          : stored.falsification_criteria,
+      metadata: cleanReaderMetadata(stored.metadata),
+    };
+
+    res.json({ ...report, sections, has_active_living_report: hasActiveLivingReport });
   } catch (err) {
     next(err);
   }
@@ -666,7 +697,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       res.status(404).json({ error: 'Revision not found' });
       return;
     }
-    res.json(revision);
+    res.json(cleanRevisionForReader(revision));
   } catch (err) {
     next(err);
   }

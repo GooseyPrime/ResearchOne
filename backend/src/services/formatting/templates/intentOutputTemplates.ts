@@ -61,21 +61,21 @@ export interface IntentOutputTemplate {
  * Appended to non-adjudicative rubrics only. Adjudicative intents keep their
  * stricter, unmodified requirements (PolicyOne).
  */
-export const CLAIM_CLASS_SOURCING_BURDEN = `Sourcing requirements by claim class:
+export const CLAIM_CLASS_SOURCING_BURDEN = `Sourcing requirements by kind of statement:
 - Analysis, reasoning, structural comparisons, and well-established domain
   knowledge do NOT require a citation. Do not fail the report for lacking a
   source behind a judgement, a ranking rationale, or a category description.
-- Specific factual claims DO require support: named prices or commission rates,
+- Specific factual statements DO require support: named prices or commission rates,
   named vendors/programs/products presented as currently available, statistics,
   market sizes, dates, and regulatory specifics. Each needs either a cited
   source or an explicit marker such as "(unverified estimate)".
 - Modeled numbers must state their assumptions and be recalculable.
-- FAIL only for: specific factual claims presented as verified with neither a
+- FAIL only for: specific factual statements presented as verified with neither a
   source nor an unverified marker, or fabricated sources, figures, or URLs.
 
 Vocabulary: this report is an analysis built on sources and reasoning. Do not
 describe it as "evidence-based" or "evidence-driven", and do not frame it as
-adjudicating, verifying, or falsifying a claim — that is a different kind of
+adjudicating, verifying, or falsifying anything — that is a different kind of
 report. Say "sources", "signals", or "findings".`;
 
 export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
@@ -87,17 +87,18 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     sections: ['who_what_when', 'mechanism', 'sources', 'limits'],
     sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Encyclopedic who/what/when/where/how/why; omit contested-claims lane.',
+    narrativeHint: 'Encyclopedic who/what/when/where/how/why; plain informational prose.',
     verifierRubric: `PASS criteria for a Factual Report:
-- Every major claim has an evidence tier tag: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
-- No unsupported conclusions — claims without cited evidence must be labeled (inference) or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
+- No unsupported conclusions — a statement without a cited source is either removed or stated in words as the report's own inference.
+- Presents information as information. Does not frame what sources say as "claims", and does not use courtroom language (verdict, case for, case against, testimony).
 - Uncertainty and limits of knowledge are acknowledged where the corpus is thin.
-- The report stays focused on direct factual explanation rather than adjudicative claim-audit structure.
+- The report stays focused on direct factual explanation rather than an audit or adjudication structure.
 - Citations exist for all nontrivial factual assertions.
-FAIL if: claims are asserted without evidence, uncertainty is papered over, the requested factual answer is withheld, or the report drifts into adversarial claim-audit structure instead of direct explanation.`,
+FAIL if: statements are made without a source, uncertainty is papered over, the requested factual answer is withheld, or the report drifts into adversarial audit structure instead of direct explanation.`,
     requiredDeliverables: [
       'Direct factual answer to the research question',
-      'Evidence-tagged supporting claims',
+      'Supporting information with citations',
       'Source citations for all nontrivial assertions',
       'Acknowledgment of knowledge limits where applicable',
     ],
@@ -114,13 +115,13 @@ FAIL if: claims are asserted without evidence, uncertainty is papered over, the 
     verifierRubric: `PASS criteria for a Survey:
 - Covers the established, contested, and hypothesized layers of the topic.
 - Each layer is clearly distinguished and labeled.
-- Evidence tier tags are present on major claims.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Open questions are acknowledged rather than suppressed.
-- Citations support claims in all layers.
-FAIL if: all claims are treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
+- Citations support the information in all layers.
+FAIL if: all information is treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
     requiredDeliverables: [
       'Established-knowledge layer with cited evidence',
-      'Contested or debated claims layer',
+      'Contested or debated questions layer',
       'Hypothesized or emerging ideas layer',
       'Open questions or knowledge gaps',
     ],
@@ -138,7 +139,7 @@ FAIL if: all claims are treated as equally certain, contested zones are not flag
 - The specific claim being adjudicated is clearly stated.
 - The strongest case FOR the claim is presented with cited evidence.
 - The strongest case AGAINST the claim is presented with cited evidence.
-- Major claim statements carry evidence tier tags: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - A verdict is rendered with explicit confidence and residual uncertainty.
 - Falsification criteria are named — what evidence would overturn the verdict.
 - Contradiction analysis is substantive (not "no contradictions found").
@@ -162,7 +163,8 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
     narrativeHint: 'Symmetric treatment of contested zones.',
     verifierRubric: `PASS criteria for an Investigation:
 - The contested zones are treated symmetrically — no side receives disproportionate evidential weight without justification.
-- Primary evidence is cited and tier-tagged with (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Primary evidence is cited.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Contested zones are explicitly named and analyzed.
 - Contradiction analysis is substantive and identifies concrete points of tension.
 - Unresolved questions are acknowledged.
@@ -171,7 +173,7 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
 FAIL if: contested zones are glossed over, evidence is asymmetrically weighted without explanation, or unresolved questions are suppressed.`,
     requiredDeliverables: [
       'Clear framing of what is being investigated',
-      'Primary evidence with tier tags',
+      'Primary evidence with citations',
       'Analysis of contested zones',
       'Unresolved questions',
     ],
@@ -189,11 +191,11 @@ FAIL if: contested zones are glossed over, evidence is asymmetrically weighted w
 - Coverage of the relevant literature is documented (scope, search strategy).
 - Methodology for source selection is stated.
 - Findings are synthesized across sources, not merely listed.
-- Major findings carry evidence tier tags: (established_fact), (strong_evidence), (testimony), (inference), or (speculation).
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Limitations of the evidence base are acknowledged.
 - Citations are present for all referenced works.
 - No unsupported inferences added beyond what the literature supports.
-FAIL if: sources are listed without synthesis, search scope is unstated, the review introduces claims not found in the surveyed literature, or the report refuses to synthesize the literature because sourcing is thin.`,
+FAIL if: sources are listed without synthesis, search scope is unstated, the review introduces statements not found in the surveyed literature, or the report refuses to synthesize the literature because sourcing is thin.`,
     requiredDeliverables: [
       'Stated scope and search methodology',
       'Synthesized findings across sources',
@@ -283,7 +285,7 @@ FAIL if: recommendation is asserted without reasoning, constraints are unstated,
     verifierRubric: `PASS criteria for an Exploratory report:
 - The report surfaces interesting or non-obvious findings.
 - Editorial framing is honest about uncertainty.
-- Claims are anchored to source references or clearly labeled as tentative.
+- Information is anchored to source references or clearly described as tentative.
 - The report does not overstate conclusions — it explicitly marks open questions.
 FAIL if: the report asserts definitive conclusions where the findings are exploratory, uncertainty is hidden, or the report refuses to surface findings because sourcing is thin.`,
     requiredDeliverables: [
@@ -311,9 +313,9 @@ FAIL if: the report asserts definitive conclusions where the findings are explor
 - Unknown facts are labeled as unknown rather than fabricated or omitted.
 - User constraints (e.g., time/budget/tool limits) are respected.
 - The report does not critique the premise instead of delivering opportunities.
-- The report stays in ranked-opportunity mode rather than drifting into claim-audit or adversarial analysis structure.
+- The report stays in ranked-opportunity mode rather than drifting into an audit or adversarial analysis structure.
 - If the initial corpus was incomplete, the report shows that additional retrieval was attempted.
-FAIL if: the requested opportunity count is not met; the report delivers a comparative analysis or investigation instead of ranked opportunities; claim-audit or adversarial sections dominate; confirmed required fields are absent; or the report refuses to rank because sourcing is thin (uncertainty should be labeled, not used to abort the deliverable).`,
+FAIL if: the requested opportunity count is not met; the report delivers a comparative analysis or investigation instead of ranked opportunities; audit or adversarial sections dominate; confirmed required fields are absent; or the report refuses to rank because sourcing is thin (uncertainty should be labeled, not used to abort the deliverable).`,
     requiredDeliverables: [
       'Ranked opportunity list with the exact count requested (or maximum available if no count was stated)',
       'Each opportunity: title, description, and ranking rationale',
@@ -339,7 +341,7 @@ FAIL if: the requested opportunity count is not met; the report delivers a compa
 - A risk register or key risks section is present.
 - An explicit go/no-go or qualified recommendation is rendered.
 - Source references or clearly labeled assumptions support each dimension assessment.
-FAIL if: a dimension is omitted without explanation, the recommendation is absent, viability claims lack support, or the report refuses to assess feasibility because sourcing is thin.`,
+FAIL if: a dimension is omitted without explanation, the recommendation is absent, viability assessments lack support, or the report refuses to assess feasibility because sourcing is thin.`,
     requiredDeliverables: [
       'Viability dimensions assessment',
       'Enabling factors',
@@ -433,7 +435,8 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
 - Events are in chronological order.
 - Date precision is noted where uncertain (e.g., "circa", "reported").
 - Contested or disputed dates are flagged.
-- Each event carries a source reference and major historical claims carry an evidence tier tag.
+- Each event carries a source reference.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Sources are cited for each event.
 FAIL if: events are out of order, date precision is overstated, contested dates are presented as certain, or the report refuses to provide the timeline because sourcing is thin.`,
     requiredDeliverables: [
@@ -473,10 +476,10 @@ FAIL if: the direct answer is absent, sources are missing, the answer is padded 
     showPlainLanguageFooter: true,
     narrativeHint: 'Legacy runs without intent gate.',
     verifierRubric: `PASS criteria for a Standard Dossier (legacy):
-- Evidence is cited for major claims.
+- Sources are cited for major statements.
 - Analysis is grounded in the evidence.
 - Conclusions are not more confident than the evidence.
-FAIL if: claims are unsupported, uncertainty is hidden, or the conclusion contradicts the evidence.`,
+FAIL if: statements are unsupported, uncertainty is hidden, or the conclusion contradicts the evidence.`,
     requiredDeliverables: [
       'Executive summary',
       'Evidence section',

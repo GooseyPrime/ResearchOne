@@ -114,8 +114,9 @@ describe('vocabulary — adjudicative language stays out of non-adjudicative rep
     expect(template.verifierRubric).toMatch(/evidence/i);
   });
 
-  it('the claim-class block tells the model not to call the report evidence-based', () => {
-    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/Sourcing requirements by claim class/);
+  it('the sourcing block tells the model not to call the report evidence-based', () => {
+    // Reworded 1 Oct 2026: reports present information, not "claims".
+    expect(CLAIM_CLASS_SOURCING_BURDEN).toMatch(/Sourcing requirements by kind of statement/);
     // The directive wraps across lines, so normalise whitespace before matching.
     const flat = CLAIM_CLASS_SOURCING_BURDEN.replace(/\s+/g, ' ');
     expect(flat).toMatch(/do not\s+describe it as "evidence-based"/i);
