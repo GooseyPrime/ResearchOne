@@ -24,7 +24,7 @@ const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\
 /**
  * Left exactly as written:
  * - fenced code with any fence length (```, ````, ~~~ ...), indented up to three
- *   spaces, closed by the same fence;
+ *   spaces, closed by the same fence or running to the end of the text;
  * - inline code spans with any number of backticks;
  * - indented code: any line starting with four spaces or a tab (deeply nested
  *   list text is skipped too, which is the safe direction);
@@ -44,7 +44,7 @@ const LABEL_OR_CITATION_IN_BRACKET = `(?![^\\]\\n]*\\bchunk\\b)(?!\\s*${TIER_WOR
 const LINK_DEFINITION_SOURCE = String.raw`(?:^|(?<=\n)) {0,3}\[[^\]\n]+\]:[ \t]*(?:<[^>\n]*>|[^\s<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*(?=\n|$)`;
 
 const PROTECTED_SEGMENT_SOURCES: string[] = [
-  '(?:^|\\n) {0,3}(?<fence>`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n {0,3}\\k<fence>[`~]*[ \\t]*(?=\\n|$)',
+  '(?:^|\\n) {0,3}(?<fence>`{3,}|~{3,})[^\\n]*(?:\\n[\\s\\S]*?\\n {0,3}\\k<fence>[`~]*[ \\t]*(?=\\n|$)|[\\s\\S]*$)',
   '(?<ticks>`+)(?:(?!\\k<ticks>)[^\\n]|\\n(?!\\n))+?\\k<ticks>',
   '(?:^|(?<=\\n))(?: {4,}|\\t)[^\\n]*',
   '\\[[^\\]\\n]*\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)',
@@ -153,6 +153,9 @@ function cleanContentFields(row: unknown): unknown {
   const source = row as Record<string, unknown>;
   return {
     ...source,
+    ...(typeof source.section_title === 'string'
+      ? { section_title: stripInternalLabelsFromReport(source.section_title) }
+      : {}),
     ...(typeof source.before_content === 'string'
       ? { before_content: stripInternalLabelsFromReport(source.before_content) }
       : {}),

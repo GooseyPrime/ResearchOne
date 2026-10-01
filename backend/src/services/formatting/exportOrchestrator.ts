@@ -86,7 +86,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   // 4. Wrap the body in a minimal title-block so pandoc can produce
   //    a proper document.
   const titleBlock = title
-    ? `---\ntitle: ${JSON.stringify(title)}\n---\n\n`
+    ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n`
     : '';
 
   // 5. Build the CSL-JSON bibliography from the aliases.

@@ -4,7 +4,7 @@
  * below are taken from a production pilot report (1 Oct 2026).
  */
 import { describe, expect, it } from 'vitest';
-import { stripInternalLabelsFromReport } from '../services/reasoning/reportGenerator';
+import { formatLengthDirective, stripInternalLabelsFromReport } from '../services/reasoning/reportGenerator';
 import { cleanReaderMetadata, cleanRevisionForReader } from '../services/formatting/reportPresentation';
 import { INTENT_OUTPUT_TEMPLATES, CLAIM_CLASS_SOURCING_BURDEN } from '../services/formatting/templates/intentOutputTemplates';
 import { STANDARD_SYSTEM_PROMPTS, SYSTEM_PROMPTS } from '../services/openrouter/openrouterService';
@@ -85,6 +85,11 @@ describe('stripInternalLabelsFromReport', () => {
     expect(stripInternalLabelsFromReport(input)).toBe(input);
   });
 
+  it('never changes a code block left open at the end of the text', () => {
+    const input = 'Intro text.\n\n```ts\nconst strong_evidence = "[Quantitative_Quality_Auditor]";';
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
   it('cleans labels in section headings', () => {
     expect(stripInternalLabelsFromReport('Primary evidence [Strong_Evidence - Chunk 1]')).toBe('Primary evidence [Chunk 1]');
   });
@@ -104,6 +109,8 @@ describe('stripInternalLabelsFromReport', () => {
     });
     expect(JSON.stringify(cleaned)).not.toMatch(/strong_evidence|\(testimony\)|Quantitative_Quality_Auditor/i);
     expect(cleaned.sections[0]).toEqual({ before_content: 'Old [Chunk 3].', after_content: 'New.' });
+    const titled = cleanRevisionForReader({ sections: [{ section_title: 'Evidence [Strong_Evidence]', after_content: '' }] });
+    expect(titled.sections[0].section_title).toBe('Evidence');
   });
 
   it('still cleans prose that sits between protected code', () => {
@@ -183,6 +190,10 @@ describe('instructions sent to the report writer, checker and refiner', () => {
       expect(SYSTEM_PROMPTS[role], `SYSTEM_PROMPTS.${role}`).not.toMatch(NO_TAG_REQUIREMENT);
       expect(STANDARD_SYSTEM_PROMPTS[role], `STANDARD_SYSTEM_PROMPTS.${role}`).not.toMatch(NO_TAG_REQUIREMENT);
     }
+  });
+
+  it('length guidance given to every section never speaks of claims', () => {
+    expect(formatLengthDirective(2000, 400, 'How the costs grew')).not.toMatch(/\bclaims?\b/i);
   });
 
   it('never frame ordinary reports in terms of claims', () => {

@@ -920,7 +920,7 @@ export function distributeWordBudget(
   return budgets;
 }
 
-function formatLengthDirective(target: number, sectionTarget: number, sectionTitle: string): string {
+export function formatLengthDirective(target: number, sectionTarget: number, sectionTitle: string): string {
   return [
     '',
     'LENGTH GUIDANCE — strict but substantive:',
@@ -928,8 +928,8 @@ function formatLengthDirective(target: number, sectionTarget: number, sectionTit
     `- This section ("${sectionTitle}") target: ~${sectionTarget} words (±15%).`,
     '- Use the budget on substance, not filler. Each paragraph must add a new fact, evidence chain, contradiction, or synthesis step.',
     '- If you run out of substantive material, STOP early — do not pad with restatements, generic caveats, or marketing language.',
-    '- Cite specific evidence chunks and sources by their numbers/titles wherever you assert a claim.',
-    '- Maintain epistemic precision: do not weaken claims with hedging that the evidence does not require, and do not overstate claims to fill space.',
+    '- Cite the specific sources behind every factual statement.',
+    '- Be precise: do not hedge statements more than the sources require, and do not overstate them to fill space.',
   ].join('\n');
 }
 
@@ -1386,7 +1386,7 @@ DRAFT SECTIONS:\n${formatSectionsForRefiner(sections).join('\n\n')}
 
 ${requestedFormatsBlock}
 
-LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings, claims, or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.`,
+LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.`,
       },
     ],
   });

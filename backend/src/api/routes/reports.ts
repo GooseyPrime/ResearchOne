@@ -165,7 +165,7 @@ function reportToMarkdown(args: {
   // exported report. Keep a capped one-line request label so a standalone
   // export is still self-describing; the full prompt lives in run metadata and
   // the dossier Request tab.
-  const lines: string[] = [`# ${args.title}`, ''];
+  const lines: string[] = [`# ${stripInternalLabelsFromReport(args.title)}`, ''];
   const requestLabel = summarizeResearchRequest(args.query);
   if (requestLabel) {
     lines.push(`**Research request:** ${requestLabel}`, '');

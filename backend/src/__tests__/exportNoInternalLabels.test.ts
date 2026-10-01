@@ -33,7 +33,9 @@ beforeEach(() => {
   mocks.adminQueryMock.mockReset();
   mocks.runPandocMock.mockReset();
   mocks.adminQueryMock
-    .mockResolvedValueOnce([{ title: 'Why rail projects run over budget', executive_summary: null, conclusion: null }])
+    .mockResolvedValueOnce([
+      { title: 'Why rail projects run over budget [Quantitative_Quality_Auditor]', executive_summary: null, conclusion: null },
+    ])
     .mockResolvedValueOnce([
       {
         title: 'How the costs grew [Quantitative_Quality_Auditor]',
@@ -69,6 +71,7 @@ describe('report export', () => {
     await exportReport({ reportId: 'report-1', format: 'pdf', style: 'apa' } as Parameters<typeof exportReport>[0]);
 
     const markdown = mocks.runPandocMock.mock.calls[0]?.[0]?.markdown as string;
+    expect(markdown).toContain('title: "Why rail projects run over budget"');
     expect(markdown).toContain('## How the costs grew\n');
     expect(markdown).toContain('Costs reached $5.2 billion by 2012 [Chunk 3]');
     expect(markdown).not.toMatch(/strong_evidence|testimony -|Quantitative_Quality_Auditor/i);
