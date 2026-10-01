@@ -29,35 +29,12 @@ Read it fully before acting.
    — master pre-commit checklist; it links every topic rule.
 3. Read [`ResearchOne PolicyOne`](../ResearchOne%20PolicyOne) — the binding
    epistemic policy.
-4. Check for an **active work order** in the table below. If one is `OPEN`,
-   it is your task list. Execute it phase by phase until every exit gate
-   passes.
+4. Read [`.cursor/rules/20-research-policy-guardrails.mdc`](../.cursor/rules/20-research-policy-guardrails.mdc)
+   before changing a preamble or a default model.
 
-## 1. Active work orders
+## 1. Standing invariants
 
-| ID | Status | Document | One-line scope |
-| --- | --- | --- | --- |
-| WO-Z | CLOSED | [`docs/WO-Z-REPORT-TYPE-FIDELITY.md`](../docs/WO-Z-REPORT-TYPE-FIDELITY.md) | Report-type fidelity. Shipped in PR #200. Phase 5 was implemented incorrectly — superseded by WO-AA. |
-| WO-AA | CLOSED | [`docs/WO-AA-DELIVERABLE-INTEGRITY.md`](../docs/WO-AA-DELIVERABLE-INTEGRITY.md) | Deliverable integrity. All 8 phases complete (PRs #202, #203). |
-| WO-AC | CLOSED | [`docs/HANDOFF-WO-AC.md`](../docs/HANDOFF-WO-AC.md) | Contract-driven outline, budget, and targeted repair. Shipped across PRs #205, #207, #208, #209. |
-
-No work order is currently OPEN. The remaining backlog, in priority order:
-
-1. **Parallel item-section drafting** — in progress on
-   `cursor/parallel-section-drafting`.
-2. **Run-level tracking identifier + admin lookup** — human-readable ID assigned
-   to every run *including failures*, on `research_runs` (not `reports`), with an
-   admin console lookup.
-3. **Tier-governed concurrency** — queue-only for now; paid tiers deferred.
-4. **Report/run status disagreement** — a green badge can appear on a
-   `contract_failed` run.
-5. **Discovery ingest barrier tuning.**
-6. **Remove the unused `@langchain/*` packages.**
-7. **Rule 42 R42-11** — fixtures must be built from the production interface. A
-   fixture that invented `RequestedArtifact.type` hid a bug where every real
-   brief produced "Item N" headings and a fully delivered report scored ZERO.
-
-Structural invariants established by #209 that later work must not regress:
+Structural invariants that later work must not regress:
 
 - **Headings are composed by code, never authored by a model.** The plan carries
   `itemOrdinal` as data; the drafter supplies only the item's name on an
@@ -68,12 +45,7 @@ Structural invariants established by #209 that later work must not regress:
   report type (`intentOutputTemplates.itemLabel`), never from parsing the brief's
   prose. Corpus partition defaults name a kind of work, never a subject.
 
-**If a work order is `OPEN`, and the user's prompt does not name a different
-task, execute it autonomously through every remaining phase without stopping
-to ask for confirmation between phases.** Start at the first phase whose
-Progress Log row is not `DONE`. Stop only at a declared BLOCKED condition (§5).
-
-**Before implementing any phase, read [`.cursor/rules/42-deliverable-integrity.mdc`](../.cursor/rules/42-deliverable-integrity.mdc).**
+**Before implementing report or deliverable work, read [`.cursor/rules/42-deliverable-integrity.mdc`](../.cursor/rules/42-deliverable-integrity.mdc).**
 It exists because a previous phase satisfied its exit gate with generated
 filler: twenty identical placeholder blocks that passed a deliverable-count
 check while delivering nothing. A green metric is not a completed phase.
@@ -89,10 +61,12 @@ work order appears to ask you to.
   If direct-main is explicitly authorized, include `[direct-main]` in
   every commit message on `main`. If ref creation is blocked (GH013),
   stop and report `BLOCKED_GITHUB_REF_CREATION` — do not retry in a loop.
-- **Never modify `REASONING_FIRST_PREAMBLE` or `RED_TEAM_V2_SYSTEM_PREFIX`**
-  in `backend/src/constants/prompts.ts` without explicit user request in the
-  same message. Changing *which roles receive* a preamble is routing and is
-  permitted; changing the *text* of those two constants is fenced.
+- **Never modify `REASONING_FIRST_PREAMBLE` or the body of `withPreamble`**
+  in `backend/src/constants/prompts.ts`, or `CHALLENGE_PASS_SYSTEM_PREFIX`
+  in `backend/src/services/reasoning/reasoningModelPolicy.ts`, without an
+  explicit user request in the same message. Changing *which roles receive*
+  a preamble is routing and is permitted; changing the *text* of those
+  constants is fenced.
 - **PolicyOne is preserved.** Work that scopes epistemic behavior to the
   intents that need it must not weaken, delete, or dilute PolicyOne for
   `adjudication`, `investigation`, `story_verification`, or any run whose
@@ -114,8 +88,8 @@ work order appears to ask you to.
 - **Any LLM-derived value that controls whether a stage runs needs a
   deterministic fallback** that logs, persists, and emits progress (Rule 42
   R42-3). "Completed with zero sources" must never be a quiet success.
-- **Out-of-scope findings are addressed or scheduled, never dismissed**
-  (Rule 22). Record them in the work order's Findings Log.
+- **Out-of-scope findings are addressed or named in the PR, never dismissed**
+  (Rule 22).
 
 ## 3. Definition of done
 
@@ -136,12 +110,9 @@ Frontend lint runs `--max-warnings 0`; do not introduce new warnings.
 
 ## 4. Working style
 
-- **Do not ask permission to start routine work.** Read the work order and
-  begin.
+- **Do not ask permission to start routine work.** Read the rules and begin.
 - Make small, focused commits with meaningful messages. One logical change
   per commit.
-- Update the work order's **Progress Log** as you complete each phase —
-  this is how state survives across sessions.
 - When a review comment or CI failure reveals a pattern the rules do not
   cover, extend the relevant `.cursor/rules/*.mdc` file in the same PR.
 - Keep doc and code in parity (Rule 15). If you change behavior described
@@ -176,7 +147,7 @@ Use the escalation block format in
     `getSystemPrompt`, `buildVerifierPromptForIntent`.
   - `constants/prompts.ts` — shared preambles (partly fenced, see §2).
 - `frontend/` — Vite + React app.
-- `docs/` — scope docs, work orders, runbooks, retrospectives.
+- `docs/` — kept runbooks, model criteria, and the marketing jargon gate.
 - `.cursor/rules/` — binding topic rules; `00-` is the master index.
 
 Local dev startup, env files, and known gotchas are documented at the end of

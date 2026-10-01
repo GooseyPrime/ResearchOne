@@ -242,7 +242,9 @@ same commit that claimed to satisfy it.
 This is the most dangerous theme in the list, because a reviewer reading only
 the diff sees a plausible tuning change. Only the brief makes it a defect.
 
-**Check:** re-read the work order's own words for the section you touched
+**Check:** re-read the instruction you are working from (the task brief you
+were given, or the requirement stated in the PR description) in its own words
+for the section you touched
 *after* writing the change, not before. Quote the constraint in the PR body and
 say how the diff satisfies it. If you believe a stated constraint is wrong,
 say so in the PR and leave the code alone — do not silently overrule it.
@@ -390,8 +392,9 @@ Then, in your own words, on the diff:
    prevented?
 5. **T5** — Does any guard I wrote have two reasons to fire behind one
    condition?
-6. **T6** — What does the work order say, in its own words, about the thing I
-   changed? Does the diff do that, or the opposite of it?
+6. **T6** — What does the instruction I am working from (the task brief, or
+   the requirement stated in the PR description) say, in its own words, about
+   the thing I changed? Does the diff do that, or the opposite of it?
 7. **T7** — Did I recreate any shared object (view, type, schema, config)? Did
    I diff its old and new definitions mechanically?
 8. **T8** — For each background job: what does it log on a non-2xx, and what

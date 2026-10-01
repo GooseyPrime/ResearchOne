@@ -14,5 +14,3 @@ Companion to [`AGENTS.md`](../AGENTS.md) and [`HOW_RESEARCHONE_RESEARCHES.md`](H
 8. **The user can change the resolved type at plan review** — intent, confidence, and posture are shown at the plan gate and are user-overridable before retrieval begins. Classification is a proposal, not a verdict.
 9. **Corpus is sealed by default** — retrieval serves citable evidence only from topic partitions that have cleared independence and density thresholds; everything else is non-citable background and live discovery carries the run. See Rule 40.
 10. **Report type never justifies non-delivery** — for non-adjudicative intents, imperfect evidence is labeled, not used to abort the deliverable. PolicyOne remains at full strength for adjudication, investigation, story_verification, and position_brief.
-
-**Active work order:** [`WO-Z-REPORT-TYPE-FIDELITY.md`](WO-Z-REPORT-TYPE-FIDELITY.md) (OPEN).

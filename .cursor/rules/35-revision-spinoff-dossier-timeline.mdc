@@ -1,5 +1,5 @@
 ---
-description: Revision supplemental URLs, research spinoffs, dossier timeline (Wave 5.4+)
+description: Revision supplemental URLs, research spinoffs, dossier timeline (the revision-spinoff pass onward)
 alwaysApply: true
 ---
 
@@ -12,7 +12,7 @@ appear as new dossier rows (by design for in-place revision), and there was no
 path to launch **full research** from a past report with lineage. A prior agent
 shipped frontend-only work on branch `cursor/revision-spinoff-dossier-timeline-fa53`
 calling seven backend endpoints that did not exist. Scope and gates live in
-`docs/revision-spinoff-dossier-timeline-scope.md`.
+`Rule 35`.
 
 ## Two-path product model
 
@@ -89,4 +89,4 @@ full form parity.
 - [ ] Grep `spinoff_from` writers and readers — deploy-skew handled?
 - [ ] `v_dossier` migration preserves LATERAL + `security_invoker`?
 - [ ] Timeline/dossier SQL changes: grep test mocks for stale row shapes?
-- [ ] Read only the current gate section in scope doc before coding.
+- [ ] Read only the current gate section of this rule before coding.

@@ -22,8 +22,7 @@ profile, model ensemble, add-ons, crawl depth, supplemental files) as
 the default entry point. These are valuable for expert users (Research
 Lab) but prevent general users from submitting research requests at all.
 
-`ResearchOne_All_Purpose_Deep_Research_Redesign_Report.md` section 8
-prescribes a two-layer interface:
+The redesign plan prescribed a two-layer interface:
 
 1. **EZ Research** (default) — an AI-guided intake that determines
    intent, deliverables, depth, agents, and output format. Most

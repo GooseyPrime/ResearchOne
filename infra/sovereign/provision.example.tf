@@ -1,7 +1,6 @@
 # Sovereign Customer Provisioning — Terraform Template
 #
-# This is a template, NOT auto-applied. See docs/sovereign/PROVISIONING.md
-# for the manual provisioning checklist.
+# This is a template, NOT auto-applied. Provision manually.
 
 variable "customer_name" {
   description = "Short identifier for the sovereign customer (e.g. 'acme')"

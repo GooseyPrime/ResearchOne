@@ -140,14 +140,14 @@ Key tables:
 - `report_revision_diffs` — structured diff records
 - `report_revision_comments` / `report_revision_citations` — optional review and citation annotations
 
-*Dossiers / planning (Wave 5)*
+*Dossiers / planning (the dossier pass)*
 - `research_plans` + `plan_revisions` — structured plan intent and revision history
 - `dossier_statistics` — epistemic rollup stats per dossier
 - `v_dossier` — security-invoker view joining runs + plans + stats (canonical dossier read path)
 - `account_preferences` — per-user account-level settings
 - `saved_orchestration_profiles` — user/org-scoped saved orchestration profile presets
 
-*Academic formatting (Work Order X)*
+*Academic formatting (the formatting-engine pass)*
 - `evidence_aliases` — stable `[E1]`-style citation aliases per report/citation pair
 - `report_exports` — export job records (format, citation style, status)
 
@@ -165,7 +165,7 @@ Key tables:
 - `billing_events` — structured billing audit log
 
 *Telemetry / cost*
-- `agent_executions` + `model_pricing` — per-LLM-call cost telemetry sidecar (see `docs/COST_SIDECAR_DESIGN.md`)
+- `agent_executions` + `model_pricing` — per-LLM-call cost telemetry sidecar (see `Rule 25`)
 - `landing_persona_events` — anonymous persona analytics (no user ID)
 
 *Admin / compliance*
@@ -534,7 +534,7 @@ ResearchOne/
 │   │       ├── monitoring/         # Living Reports / report monitors
 │   │       ├── notifications/      # In-app notification feed
 │   │       ├── openrouter/         # Model routing + prompts (all roles w/ fallbacks)
-│   │       ├── planning/           # Dossier plan orchestration (Wave 5)
+│   │       ├── planning/           # Dossier plan orchestration (the dossier pass)
 │   │       ├── reasoning/          # Research orchestrator + epistemic persistence
 │   │       │   ├── researchOrchestrator.ts
 │   │       │   ├── claimExtractor.ts
