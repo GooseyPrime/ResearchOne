@@ -38,6 +38,11 @@ export interface EvalScores {
   anomaly_retained: number | null;
   time_to_report: number | null;
   tokens: number | null;
+  gate_status?: string | null;
+  degraded_reason?: string | null;
+  pairwise_vs_reference?: number | null;
+  pairwise_chatgpt?: number | null;
+  pairwise_perplexity?: number | null;
 }
 
 function aliasesIn(report: string): string[] {

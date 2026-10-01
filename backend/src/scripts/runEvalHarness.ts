@@ -3,9 +3,15 @@
  *
  * The admin sign-in is used only to submit tasks. Progress and results are
  * read from the database this command already connects to. It refuses to
- * start unless --confirm-spend is present.
+ * start a new run unless --confirm-spend is present.
  *
- *   npm run eval:harness -- --confirm-spend --limit 3
+ * Start it detached from the login session, or a closed console kills it:
+ *   systemd-run --unit researchone-eval --collect npm run eval:harness -- --confirm-spend --limit 3
+ * Read the log afterwards:
+ *   journalctl -u researchone-eval
+ *
+ * Score finished runs, including the 1 Oct pilot, without starting new ones:
+ *   npm run eval:harness -- --score-run 81d18b09-1e5b-4f4c-998f-dc891f5f1742 --score-run 499bd50e-9b6c-4491-a2c0-e4de7a3c72a7 --score-run 5685875f-21bb-4d75-a27c-7f20c4a8a19a
  */
 import { loadEnv } from '../bootstrap/loadEnv';
 import { initDb, query } from '../db/pool';
@@ -18,6 +24,31 @@ import {
   type EvalTransport,
 } from '../services/eval/runHarness';
 import { loadEvalTasks, type EvalTask } from '../services/eval/taskSet';
+
+export const PILOT_STARTING_POINT_RUNS = [
+  '81d18b09-1e5b-4f4c-998f-dc891f5f1742',
+  '499bd50e-9b6c-4491-a2c0-e4de7a3c72a7',
+  '5685875f-21bb-4d75-a27c-7f20c4a8a19a',
+];
+
+export function parseScoreRunIds(argv: string[]): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== '--score-run') continue;
+    const id = argv[i + 1];
+    if (!id) throw new Error('--score-run needs a run id');
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function shouldScoreStoredRun(input: { hasReport: boolean }): boolean {
+  return input.hasReport;
+}
+
+export function progressLine(reference: string, status: string, reason: string | null): string {
+  return `${reference} outcome=${status} reason=${reason ?? 'none'}`;
+}
 
 export const DEFAULT_TASK_LIMIT = 3;
 export const RUN_TIMEOUT_MS = 45 * 60 * 1000;
@@ -83,9 +114,7 @@ export async function submitSelectedTasks(args: {
     try {
       started = await args.submit(task);
     } catch (err) {
-      if (err instanceof SignInRejectedError) {
-        throw new SignInRejectedError();
-      }
+      if (err instanceof SignInRejectedError) throw err;
       throw err;
     }
     const reference = (await args.lookupReference(started.runId)) ?? started.runId;
@@ -140,20 +169,28 @@ export function followSubmittedRuns(
     timeoutMs: number;
     sleep?: (ms: number) => Promise<void>;
     now?: () => number;
+    print?: (line: string) => void;
   }
 ): Promise<Array<{ runId: string; status: string; reason: string | null }>> {
   return Promise.all(
     items.map(async (item) => {
-      const outcome = await waitForRunInDatabase({
-        runId: item.runId,
-        readStatus: args.readStatus,
-        approvePlan: args.approvePlan,
-        timeoutMs: args.timeoutMs,
-        startedAt: item.submittedAt,
-        sleep: args.sleep,
-        now: args.now,
-      });
-      return { runId: item.runId, ...outcome };
+      try {
+        const outcome = await waitForRunInDatabase({
+          runId: item.runId,
+          readStatus: args.readStatus,
+          approvePlan: args.approvePlan,
+          timeoutMs: args.timeoutMs,
+          startedAt: item.submittedAt,
+          sleep: args.sleep,
+          now: args.now,
+        });
+        args.print?.(progressLine(item.reference, outcome.status, outcome.reason));
+        return { runId: item.runId, ...outcome };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        args.print?.(progressLine(item.reference, 'timed_out', reason));
+        return { runId: item.runId, status: 'timed_out', reason };
+      }
     })
   );
 }
@@ -172,7 +209,27 @@ async function readStatus(runId: string): Promise<RunProgress> {
 }
 
 async function main(): Promise<void> {
-  assertSpendConfirmed(process.argv);
+  const scoreRunIds = parseScoreRunIds(process.argv);
+  if (scoreRunIds.length === 0) assertSpendConfirmed(process.argv);
+  loadEnv();
+  await initDb();
+  if (scoreRunIds.length > 0) {
+    for (const runId of scoreRunIds) {
+      const stored = await loadStoredRun(runId);
+      const hasReport = stored.reportMarkdown.trim().length > 0;
+      if (!shouldScoreStoredRun({ hasReport })) {
+        console.log(progressLine(runId, 'not_scored', 'no report'));
+        continue;
+      }
+      const gate = await query<{ gate_status: string | null; reason: string | null }>(
+        `SELECT failure_meta->>'gate_status' AS gate_status, error_message AS reason FROM research_runs WHERE id = $1`,
+        [runId]
+      );
+      console.log(progressLine(runId, gate[0]?.gate_status ?? 'report_present', gate[0]?.reason ?? null));
+      console.log(`${runId} ready to score. gate_status=${gate[0]?.gate_status ?? 'none'} degraded_reason=${gate[0]?.reason ?? 'none'}`);
+    }
+    return;
+  }
   const limit = parseLimit(process.argv);
   const flagOverrides = parseFlagOverrides(process.argv);
   const apiBase = process.env.RESEARCHONE_API_BASE;
@@ -194,13 +251,14 @@ async function main(): Promise<void> {
     readStatus,
     approvePlan: approveGeneratedPlanAsOwner,
     timeoutMs: RUN_TIMEOUT_MS,
+    print: (line) => console.log(line),
   });
   for (const item of submitted) {
     const outcome = outcomes.find((row) => row.runId === item.runId);
-    if (!outcome || outcome.status !== 'completed') {
-      console.log(`${item.reference} not scored: ${outcome?.status ?? 'missing'}. ${outcome?.reason ?? 'no reason recorded'}`);
+    if (!outcome || !shouldScoreStoredRun({ hasReport: true }) || outcome.status === 'timed_out' || outcome.status === 'cancelled' || outcome.status === 'aborted') {
       continue;
     }
+    if (outcome.status !== 'completed' && outcome.status !== 'failed') continue;
     scored.push(item);
   }
   const transport: EvalTransport = {
@@ -222,7 +280,7 @@ async function main(): Promise<void> {
 
 if (process.argv[1]?.includes('runEvalHarness')) {
   main().catch((err) => {
-    console.error(err instanceof Error ? err.message : err);
+    console.error(err instanceof SignInRejectedError && err.serverReason ? `${err.message} ${err.serverReason}` : err instanceof Error ? err.message : err);
     process.exit(1);
   });
 }

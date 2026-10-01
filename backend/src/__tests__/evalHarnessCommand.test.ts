@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { judgeQuoteSupports, parseSupports, selectQuotePairs } from '../services/eval/quoteSupportsJudge';
 import { SignInRejectedError, STORED_CITATION_SQL } from '../services/eval/runHarness';
-import { assertSpendConfirmed, followSubmittedRuns, selectHarnessTasks, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
+import { assertSpendConfirmed, followSubmittedRuns, parseScoreRunIds, PILOT_STARTING_POINT_RUNS, progressLine, selectHarnessTasks, shouldScoreStoredRun, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
+import { pairwiseScore } from '../services/eval/pairwiseReference';
 import { loadEvalTasks } from '../services/eval/taskSet';
 
 describe('harness command', () => {
@@ -138,16 +139,46 @@ describe('harness command', () => {
     );
     expect(approvals).toEqual(['second']);
     expect(outcomes.map((row) => row.status).sort()).toEqual(['completed', 'completed']);
-    await expect(
-      waitForRunInDatabase({
-        runId: 'late',
-        readStatus: async () => ({ status: 'running', reason: null }),
+  });
+
+  it('scores the other run when one times out, and prints each outcome as soon as it is known', async () => {
+    const lines: string[] = [];
+    let clock = 0;
+    const outcomes = await followSubmittedRuns(
+      [
+        { task: { id: 'late' } as never, runId: 'late', reference: 'R1-late', submittedAt: 0 },
+        { task: { id: 'done' } as never, runId: 'done', reference: 'R1-done', submittedAt: 0 },
+      ],
+      {
+        readStatus: async (runId) => ({ status: runId === 'done' ? 'completed' : 'running', reason: null }),
         timeoutMs: 5,
-        startedAt: 0,
-        now: () => 6,
-        sleep: async () => {},
-      })
-    ).rejects.toThrow('run late timed out');
+        sleep: async () => {
+          clock = 6;
+        },
+        now: () => clock,
+        print: (line) => lines.push(line),
+      }
+    );
+    expect(outcomes.find((row) => row.runId === 'done')?.status).toBe('completed');
+    expect(outcomes.find((row) => row.runId === 'late')?.status).toBe('timed_out');
+    expect(lines).toContain(progressLine('R1-done', 'completed', null));
+  });
+
+  it('scores a degraded report and skips a run with no report', () => {
+    expect(shouldScoreStoredRun({ hasReport: true })).toBe(true);
+    expect(shouldScoreStoredRun({ hasReport: false })).toBe(false);
+    expect(parseScoreRunIds(['--score-run', PILOT_STARTING_POINT_RUNS[0], '--score-run', PILOT_STARTING_POINT_RUNS[1]])).toEqual(
+      PILOT_STARTING_POINT_RUNS.slice(0, 2)
+    );
+  });
+
+  it('uses the lower competitor score and leaves a missing reference null', () => {
+    expect(pairwiseScore({ chatgpt: [0.4, 0.6], perplexity: [0.8, 0.8] })).toEqual({
+      chatgpt: 0.5,
+      perplexity: 0.8,
+      pairwise_vs_reference: 0.5,
+    });
+    expect(pairwiseScore({ chatgpt: null, perplexity: [0.7, 0.9] }).chatgpt).toBeNull();
   });
 });
 

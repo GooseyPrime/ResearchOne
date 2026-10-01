@@ -4,9 +4,11 @@ import { scoreStoredReport, type ContradictionLink, type EvalCitation, type Eval
 import { loadEvalTasks, type EvalTask, type FixtureDocument } from './taskSet';
 
 export class SignInRejectedError extends Error {
-  constructor() {
+  readonly serverReason: string | null;
+  constructor(serverReason: string | null = null) {
     super('The sign-in was rejected or expired.');
     this.name = 'SignInRejectedError';
+    this.serverReason = serverReason;
   }
 }
 
@@ -173,7 +175,8 @@ export async function submitTaskThroughAdminRoute(
     body: form,
   });
   if (response.status === 401 || response.status === 403) {
-    throw new SignInRejectedError();
+    const serverReason = await response.text().catch(() => '');
+    throw new SignInRejectedError(serverReason.trim() || null);
   }
   if (!response.ok) throw new Error(`admin start failed: ${response.status}`);
   const body = (await response.json()) as { runId: string };
