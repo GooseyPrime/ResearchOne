@@ -52,7 +52,7 @@ import {
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
 import { logger } from '../../utils/logger';
-import { acceptedFlagOverride } from '../../services/eval/flagOverride';
+import { acceptedFlagOverride, UnknownFlagError } from '../../services/eval/flagOverride';
 
 const router = Router();
 
@@ -242,6 +242,17 @@ async function handleStartResearchRun(
       const userId = req.auth?.userId;
       const orgId = req.auth?.orgId ?? null;
 
+      let flagOverride: Record<string, boolean> | null = null;
+      try {
+        flagOverride = acceptedFlagOverride(userId, req.body);
+      } catch (err) {
+        if (err instanceof UnknownFlagError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+
       let spinoffLineage: SpinoffLineage | undefined;
       if (spinoffFromReportId) {
         const parent = await resolveOwnedReportForSpinoff(spinoffFromReportId, {
@@ -406,16 +417,18 @@ async function handleStartResearchRun(
         selectedAddonsJson,
       });
 
-      const flagOverride = acceptedFlagOverride(userId, req.body);
-      if (flagOverride) {
+      const recordedOverride = flagOverride;
+      if (recordedOverride) {
         try {
           await query(
             `INSERT INTO eval_run_overrides (run_id, flags) VALUES ($1, $2::jsonb)
              ON CONFLICT (run_id) DO UPDATE SET flags = EXCLUDED.flags`,
-            [runId, JSON.stringify(flagOverride)]
+            [runId, JSON.stringify(recordedOverride)]
           );
         } catch (overrideErr) {
-          logger.warn('harness flag override not recorded', { runId, err: overrideErr });
+          logger.error('harness flag override was not saved; run not queued', { runId, err: overrideErr });
+          res.status(500).json({ error: 'flag override could not be saved' });
+          return;
         }
       }
 

@@ -1,6 +1,12 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import type { EvalScores } from './scoreReport';
+import { percentile, type EvalScores } from './scoreReport';
+
+export interface FixtureDocument {
+  name: string;
+  role: 'side_a' | 'side_b' | 'anomaly';
+  text: string;
+}
 
 export interface EvalTask {
   id: string;
@@ -11,6 +17,7 @@ export interface EvalTask {
   primarySource?: string;
   fixtureConflict?: string;
   anomalyPhrase?: string;
+  fixtureDocuments?: FixtureDocument[];
 }
 
 export function loadEvalTasks(): EvalTask[] {
@@ -25,13 +32,19 @@ export function summarizeScores(rows: Array<{ taskId: string; scores: EvalScores
     if (present.length === 0) return null;
     return present.reduce((sum, value) => sum + value, 0) / present.length;
   };
+  const times = rows.map((row) => row.scores.time_to_report).filter((value): value is number => value !== null);
+  const tokens = rows.map((row) => row.scores.tokens).filter((value): value is number => value !== null);
   return {
     answer_correct: mean(rows.map((row) => row.scores.answer_correct)),
     citation_bound: mean(rows.map((row) => row.scores.citation_bound)),
     quote_verbatim: mean(rows.map((row) => row.scores.quote_verbatim)),
+    quote_supports: mean(rows.map((row) => row.scores.quote_supports)),
     authority_share: null,
-    doi_resolution: mean(rows.map((row) => row.scores.doi_resolution)),
+    doi_resolution: null,
     contradiction_retention: mean(rows.map((row) => row.scores.contradiction_retention)),
     anomaly_retained: mean(rows.map((row) => row.scores.anomaly_retained)),
+    time_to_report_p50: percentile(times, 50),
+    time_to_report_p90: percentile(times, 90),
+    tokens_p50: percentile(tokens, 50),
   };
 }

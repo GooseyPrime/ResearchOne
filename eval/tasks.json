@@ -1,35 +1,413 @@
 {
   "version": 1,
   "tasks": [
-    {"id": "factual-crispr-fda", "kind": "factual", "intent": "factual_report", "prompt": "What year did the FDA authorize the first CRISPR-based therapy?", "keyFacts": ["2023", "Casgevy", "sickle cell", "exa-cel"], "primarySource": "U.S. Food and Drug Administration"},
-    {"id": "factual-covid-vaccine", "kind": "factual", "intent": "factual_report", "prompt": "When did the FDA grant the first emergency use authorization for a COVID-19 vaccine?", "keyFacts": ["December 2020", "Pfizer", "BioNTech", "emergency use"], "primarySource": "U.S. Food and Drug Administration"},
-    {"id": "factual-ww2-end", "kind": "factual", "intent": "factual_report", "prompt": "On what date did Japan sign the instrument of surrender ending World War II?", "keyFacts": ["September 2, 1945", "USS Missouri", "Tokyo Bay"], "primarySource": "U.S. National Archives"},
-    {"id": "factual-moon-landing", "kind": "factual", "intent": "factual_report", "prompt": "When did Apollo 11 land on the Moon, and who stepped out first?", "keyFacts": ["July 20, 1969", "Neil Armstrong", "Tranquility"], "primarySource": "NASA"},
-    {"id": "factual-dna-structure", "kind": "factual", "intent": "factual_report", "prompt": "Who published the double-helix structure of DNA, and in what year?", "keyFacts": ["1953", "Watson", "Crick", "Nature"], "primarySource": "Nature"},
-    {"id": "factual-paris-agreement", "kind": "factual", "intent": "factual_report", "prompt": "When was the Paris Agreement adopted, and what temperature goal does it name?", "keyFacts": ["2015", "1.5", "UNFCCC", "well below 2"], "primarySource": "United Nations Framework Convention on Climate Change"},
-    {"id": "factual-gdp-deflator", "kind": "factual", "intent": "factual_report", "prompt": "Which U.S. agency publishes the official gross domestic product estimate?", "keyFacts": ["Bureau of Economic Analysis", "Department of Commerce", "quarterly"], "primarySource": "U.S. Bureau of Economic Analysis"},
-    {"id": "factual-smallpox", "kind": "factual", "intent": "factual_report", "prompt": "When did the World Health Organization declare smallpox eradicated?", "keyFacts": ["1980", "World Health Organization", "eradicated"], "primarySource": "World Health Organization"},
-    {"id": "factual-gps", "kind": "factual", "intent": "factual_report", "prompt": "Which U.S. organization operates the Global Positioning System?", "keyFacts": ["U.S. Space Force", "Department of Defense", "satellite"], "primarySource": "U.S. Space Force"},
-    {"id": "factual-higgs", "kind": "factual", "intent": "factual_report", "prompt": "In what year did CERN announce the observation of a particle consistent with the Higgs boson?", "keyFacts": ["2012", "ATLAS", "CMS", "CERN"], "primarySource": "CERN"},
-    {"id": "factual-ipv6", "kind": "factual", "intent": "factual_report", "prompt": "Which standards body published the IPv6 specification, and what is the RFC number?", "keyFacts": ["IETF", "RFC 8200", "Internet Protocol"], "primarySource": "Internet Engineering Task Force"},
-    {"id": "factual-metric-treaty", "kind": "factual", "intent": "factual_report", "prompt": "What treaty established the International Bureau of Weights and Measures?", "keyFacts": ["Metre Convention", "1875", "BIPM"], "primarySource": "International Bureau of Weights and Measures"},
-    {"id": "factual-penicillin", "kind": "factual", "intent": "factual_report", "prompt": "Who first observed penicillin, and in what year was that observation published?", "keyFacts": ["Alexander Fleming", "1929", "British Journal of Experimental Pathology"], "primarySource": "British Journal of Experimental Pathology"},
-    {"id": "factual-census", "kind": "factual", "intent": "factual_report", "prompt": "Which U.S. agency conducts the decennial census?", "keyFacts": ["Census Bureau", "Department of Commerce", "decennial"], "primarySource": "U.S. Census Bureau"},
-    {"id": "factual-ozone", "kind": "factual", "intent": "factual_report", "prompt": "What agreement phased out ozone-depleting substances, and in what year was it signed?", "keyFacts": ["Montreal Protocol", "1987", "ozone"], "primarySource": "United Nations Environment Programme"},
-    {"id": "survey-mrna", "kind": "survey", "intent": "literature_review", "prompt": "Survey the clinical evidence for mRNA vaccines against respiratory viruses."},
-    {"id": "survey-coding-evals", "kind": "survey", "intent": "survey", "prompt": "Survey how AI coding assistants are evaluated."},
-    {"id": "survey-long-covid", "kind": "survey", "intent": "literature_review", "prompt": "Literature review of biomarkers linked to long-COVID recovery."},
-    {"id": "survey-synthetic-monitoring", "kind": "survey", "intent": "comparative", "prompt": "Compare approaches to synthetic monitoring for SaaS reliability."},
-    {"id": "survey-chip-timeline", "kind": "survey", "intent": "timeline", "prompt": "Timeline of major chip supply disruptions since 2019."},
-    {"id": "survey-sbom", "kind": "survey", "intent": "position_brief", "prompt": "Position brief on software bills of materials for critical infrastructure."},
-    {"id": "survey-sensors", "kind": "survey", "intent": "exploratory", "prompt": "Survey public-health uses of low-cost environmental sensors."},
-    {"id": "survey-identity", "kind": "survey", "intent": "survey", "prompt": "Survey implementation trade-offs in decentralized identity wallets."},
-    {"id": "challenge-rail-budget", "kind": "challenge", "intent": "investigation", "prompt": "Investigate why a city rail modernization went over budget.", "fixtureConflict": "the audit says the overrun was change orders; the agency says it was steel prices", "anomalyPhrase": "the night-shift concrete pour was never invoiced"},
-    {"id": "challenge-battery-memo", "kind": "challenge", "intent": "story_verification", "prompt": "Verify whether the leaked battery-fire memo was authentic.", "fixtureConflict": "the lab notebook dates the test before the memo; the email header dates it after", "anomalyPhrase": "the serial on the pack does not match the lot sheet"},
-    {"id": "challenge-remote-work", "kind": "challenge", "intent": "adjudication", "prompt": "Does remote work always decrease software delivery speed?", "fixtureConflict": "the company dashboard shows slower merges; the version-control log shows the same lead time", "anomalyPhrase": "the slow week coincides with the outage, not the policy"},
-    {"id": "challenge-water-report", "kind": "challenge", "intent": "investigation", "prompt": "Investigate the claim that the plant's discharge exceeded the permit.", "fixtureConflict": "the regulator's grab sample exceeds the limit; the plant's continuous monitor does not", "anomalyPhrase": "the sampler was stored in a hot truck"},
-    {"id": "challenge-election-count", "kind": "challenge", "intent": "story_verification", "prompt": "Verify the claim that a precinct's tally changed after certification.", "fixtureConflict": "the canvass sheet matches the certified total; a later spreadsheet does not", "anomalyPhrase": "the spreadsheet was edited after the seal log closed"},
-    {"id": "challenge-trial-endpoint", "kind": "challenge", "intent": "adjudication", "prompt": "Did the trial meet its pre-registered primary endpoint?", "fixtureConflict": "the registry lists symptom score; the paper leads with a biomarker", "anomalyPhrase": "the protocol amendment is dated after the last visit"},
-    {"id": "challenge-bridge-crack", "kind": "challenge", "intent": "investigation", "prompt": "Investigate the report of a crack in the bridge girder.", "fixtureConflict": "the inspection photo shows a crack; the load test says the girder is within spec", "anomalyPhrase": "the photo's shadow matches a cable, not a fracture"}
+    {
+      "id": "factual-crispr-fda",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "What year did the FDA authorize the first CRISPR-based therapy?",
+      "keyFacts": [
+        "2023",
+        "Casgevy",
+        "sickle cell",
+        "exa-cel"
+      ],
+      "primarySource": "U.S. Food and Drug Administration"
+    },
+    {
+      "id": "factual-covid-vaccine",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "When did the FDA grant the first emergency use authorization for a COVID-19 vaccine?",
+      "keyFacts": [
+        "December 2020",
+        "Pfizer",
+        "BioNTech",
+        "emergency use"
+      ],
+      "primarySource": "U.S. Food and Drug Administration"
+    },
+    {
+      "id": "factual-ww2-end",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "On what date did Japan sign the instrument of surrender ending World War II?",
+      "keyFacts": [
+        "September 2, 1945",
+        "USS Missouri",
+        "Tokyo Bay"
+      ],
+      "primarySource": "U.S. National Archives"
+    },
+    {
+      "id": "factual-moon-landing",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "When did Apollo 11 land on the Moon, and who stepped out first?",
+      "keyFacts": [
+        "July 20, 1969",
+        "Neil Armstrong",
+        "Tranquility"
+      ],
+      "primarySource": "NASA"
+    },
+    {
+      "id": "factual-dna-structure",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Who published the double-helix structure of DNA, and in what year?",
+      "keyFacts": [
+        "1953",
+        "Watson",
+        "Crick",
+        "Nature"
+      ],
+      "primarySource": "Nature"
+    },
+    {
+      "id": "factual-paris-agreement",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "When was the Paris Agreement adopted, and what temperature goal does it name?",
+      "keyFacts": [
+        "2015",
+        "1.5",
+        "UNFCCC",
+        "well below 2"
+      ],
+      "primarySource": "United Nations Framework Convention on Climate Change"
+    },
+    {
+      "id": "factual-gdp-deflator",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Which U.S. agency publishes the official gross domestic product estimate?",
+      "keyFacts": [
+        "Bureau of Economic Analysis",
+        "Department of Commerce",
+        "quarterly"
+      ],
+      "primarySource": "U.S. Bureau of Economic Analysis"
+    },
+    {
+      "id": "factual-smallpox",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "When did the World Health Organization declare smallpox eradicated?",
+      "keyFacts": [
+        "1980",
+        "World Health Organization",
+        "eradicated"
+      ],
+      "primarySource": "World Health Organization"
+    },
+    {
+      "id": "factual-gps",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Which U.S. organization operates the Global Positioning System?",
+      "keyFacts": [
+        "U.S. Space Force",
+        "Department of Defense",
+        "satellite"
+      ],
+      "primarySource": "U.S. Space Force"
+    },
+    {
+      "id": "factual-higgs",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "In what year did CERN announce the observation of a particle consistent with the Higgs boson?",
+      "keyFacts": [
+        "2012",
+        "ATLAS",
+        "CMS",
+        "CERN"
+      ],
+      "primarySource": "CERN"
+    },
+    {
+      "id": "factual-ipv6",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Which standards body published the IPv6 specification, and what is the RFC number?",
+      "keyFacts": [
+        "IETF",
+        "RFC 8200",
+        "Internet Protocol"
+      ],
+      "primarySource": "Internet Engineering Task Force"
+    },
+    {
+      "id": "factual-metric-treaty",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "What treaty established the International Bureau of Weights and Measures?",
+      "keyFacts": [
+        "Metre Convention",
+        "1875",
+        "BIPM"
+      ],
+      "primarySource": "International Bureau of Weights and Measures"
+    },
+    {
+      "id": "factual-penicillin",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Who first observed penicillin, and in what year was that observation published?",
+      "keyFacts": [
+        "Alexander Fleming",
+        "1929",
+        "British Journal of Experimental Pathology"
+      ],
+      "primarySource": "British Journal of Experimental Pathology"
+    },
+    {
+      "id": "factual-census",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "Which U.S. agency conducts the decennial census?",
+      "keyFacts": [
+        "Census Bureau",
+        "Department of Commerce",
+        "decennial"
+      ],
+      "primarySource": "U.S. Census Bureau"
+    },
+    {
+      "id": "factual-ozone",
+      "kind": "factual",
+      "intent": "factual_report",
+      "prompt": "What agreement phased out ozone-depleting substances, and in what year was it signed?",
+      "keyFacts": [
+        "Montreal Protocol",
+        "1987",
+        "ozone"
+      ],
+      "primarySource": "United Nations Environment Programme"
+    },
+    {
+      "id": "survey-mrna",
+      "kind": "survey",
+      "intent": "literature_review",
+      "prompt": "Survey the clinical evidence for mRNA vaccines against respiratory viruses."
+    },
+    {
+      "id": "survey-coding-evals",
+      "kind": "survey",
+      "intent": "survey",
+      "prompt": "Survey how AI coding assistants are evaluated."
+    },
+    {
+      "id": "survey-long-covid",
+      "kind": "survey",
+      "intent": "literature_review",
+      "prompt": "Literature review of biomarkers linked to long-COVID recovery."
+    },
+    {
+      "id": "survey-synthetic-monitoring",
+      "kind": "survey",
+      "intent": "comparative",
+      "prompt": "Compare approaches to synthetic monitoring for SaaS reliability."
+    },
+    {
+      "id": "survey-chip-timeline",
+      "kind": "survey",
+      "intent": "timeline",
+      "prompt": "Timeline of major chip supply disruptions since 2019."
+    },
+    {
+      "id": "survey-sbom",
+      "kind": "survey",
+      "intent": "position_brief",
+      "prompt": "Position brief on software bills of materials for critical infrastructure."
+    },
+    {
+      "id": "survey-sensors",
+      "kind": "survey",
+      "intent": "exploratory",
+      "prompt": "Survey public-health uses of low-cost environmental sensors."
+    },
+    {
+      "id": "survey-identity",
+      "kind": "survey",
+      "intent": "survey",
+      "prompt": "Survey implementation trade-offs in decentralized identity wallets."
+    },
+    {
+      "id": "challenge-rail-budget",
+      "kind": "challenge",
+      "intent": "investigation",
+      "prompt": "Investigate why a city rail modernization went over budget.",
+      "fixtureConflict": "the audit says the overrun was change orders; the agency says it was steel prices",
+      "anomalyPhrase": "the night-shift concrete pour was never invoiced",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-rail-budget-side-a.txt",
+          "role": "side_a",
+          "text": "The city audit attributes the overrun to change orders signed after the bid."
+        },
+        {
+          "name": "challenge-rail-budget-side-b.txt",
+          "role": "side_b",
+          "text": "The agency report attributes the overrun to steel prices, not change orders."
+        },
+        {
+          "name": "challenge-rail-budget-anomaly.txt",
+          "role": "anomaly",
+          "text": "The night-shift concrete pour was never invoiced."
+        }
+      ]
+    },
+    {
+      "id": "challenge-battery-memo",
+      "kind": "challenge",
+      "intent": "story_verification",
+      "prompt": "Verify whether the leaked battery-fire memo was authentic.",
+      "fixtureConflict": "the lab notebook dates the test before the memo; the email header dates it after",
+      "anomalyPhrase": "the serial on the pack does not match the lot sheet",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-battery-memo-side-a.txt",
+          "role": "side_a",
+          "text": "The lab notebook dates the fire test before the memo was written."
+        },
+        {
+          "name": "challenge-battery-memo-side-b.txt",
+          "role": "side_b",
+          "text": "The email header dates the memo before the fire test."
+        },
+        {
+          "name": "challenge-battery-memo-anomaly.txt",
+          "role": "anomaly",
+          "text": "The serial on the pack does not match the lot sheet."
+        }
+      ]
+    },
+    {
+      "id": "challenge-remote-work",
+      "kind": "challenge",
+      "intent": "adjudication",
+      "prompt": "Does remote work always decrease software delivery speed?",
+      "fixtureConflict": "the company dashboard shows slower merges; the version-control log shows the same lead time",
+      "anomalyPhrase": "the slow week coincides with the outage, not the policy",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-remote-work-side-a.txt",
+          "role": "side_a",
+          "text": "The company dashboard shows slower merges after the remote policy."
+        },
+        {
+          "name": "challenge-remote-work-side-b.txt",
+          "role": "side_b",
+          "text": "The version-control log shows the same lead time before and after the policy."
+        },
+        {
+          "name": "challenge-remote-work-anomaly.txt",
+          "role": "anomaly",
+          "text": "The slow week coincides with the outage, not the policy."
+        }
+      ]
+    },
+    {
+      "id": "challenge-water-report",
+      "kind": "challenge",
+      "intent": "investigation",
+      "prompt": "Investigate the claim that the plant's discharge exceeded the permit.",
+      "fixtureConflict": "the regulator's grab sample exceeds the limit; the plant's continuous monitor does not",
+      "anomalyPhrase": "the sampler was stored in a hot truck",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-water-report-side-a.txt",
+          "role": "side_a",
+          "text": "The regulator grab sample exceeds the permit limit."
+        },
+        {
+          "name": "challenge-water-report-side-b.txt",
+          "role": "side_b",
+          "text": "The plant continuous monitor stays under the permit limit."
+        },
+        {
+          "name": "challenge-water-report-anomaly.txt",
+          "role": "anomaly",
+          "text": "The sampler was stored in a hot truck."
+        }
+      ]
+    },
+    {
+      "id": "challenge-election-count",
+      "kind": "challenge",
+      "intent": "story_verification",
+      "prompt": "Verify the claim that a precinct's tally changed after certification.",
+      "fixtureConflict": "the canvass sheet matches the certified total; a later spreadsheet does not",
+      "anomalyPhrase": "the spreadsheet was edited after the seal log closed",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-election-count-side-a.txt",
+          "role": "side_a",
+          "text": "The canvass sheet matches the certified total."
+        },
+        {
+          "name": "challenge-election-count-side-b.txt",
+          "role": "side_b",
+          "text": "A later spreadsheet does not match the certified total."
+        },
+        {
+          "name": "challenge-election-count-anomaly.txt",
+          "role": "anomaly",
+          "text": "The spreadsheet was edited after the seal log closed."
+        }
+      ]
+    },
+    {
+      "id": "challenge-trial-endpoint",
+      "kind": "challenge",
+      "intent": "adjudication",
+      "prompt": "Did the trial meet its pre-registered primary endpoint?",
+      "fixtureConflict": "the registry lists symptom score; the paper leads with a biomarker",
+      "anomalyPhrase": "the protocol amendment is dated after the last visit",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-trial-endpoint-side-a.txt",
+          "role": "side_a",
+          "text": "The registry lists symptom score as the primary endpoint."
+        },
+        {
+          "name": "challenge-trial-endpoint-side-b.txt",
+          "role": "side_b",
+          "text": "The paper leads with a biomarker that was not the registered endpoint."
+        },
+        {
+          "name": "challenge-trial-endpoint-anomaly.txt",
+          "role": "anomaly",
+          "text": "The protocol amendment is dated after the last visit."
+        }
+      ]
+    },
+    {
+      "id": "challenge-bridge-crack",
+      "kind": "challenge",
+      "intent": "investigation",
+      "prompt": "Investigate the report of a crack in the bridge girder.",
+      "fixtureConflict": "the inspection photo shows a crack; the load test says the girder is within spec",
+      "anomalyPhrase": "the photo's shadow matches a cable, not a fracture",
+      "fixtureDocuments": [
+        {
+          "name": "challenge-bridge-crack-side-a.txt",
+          "role": "side_a",
+          "text": "The inspection photo shows a crack in the girder."
+        },
+        {
+          "name": "challenge-bridge-crack-side-b.txt",
+          "role": "side_b",
+          "text": "The load test says the girder is within specification."
+        },
+        {
+          "name": "challenge-bridge-crack-anomaly.txt",
+          "role": "anomaly",
+          "text": "The photo's shadow matches a cable, not a fracture."
+        }
+      ]
+    }
   ]
 }

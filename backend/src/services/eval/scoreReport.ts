@@ -2,27 +2,37 @@ export interface EvalCitation {
   alias: string;
   chunkQuote: string;
   chunkText: string;
-  doi?: string;
-  resolveStatus?: string | null;
+  sentence?: string;
+}
+
+export interface ContradictionLink {
+  documentA: string;
+  documentB: string;
 }
 
 export interface EvalScoreInput {
   reportMarkdown: string;
   citations: EvalCitation[];
   keyFacts?: string[];
-  contradictions?: string[];
-  fixtureConflict?: string;
+  contradictionLinks?: ContradictionLink[];
+  fixtureSides?: [string, string];
   anomalyPhrase?: string;
+  quoteSupports?: number | null;
+  seconds?: number | null;
+  tokens?: number | null;
 }
 
 export interface EvalScores {
   answer_correct: number | null;
   citation_bound: number;
   quote_verbatim: number;
+  quote_supports: number | null;
   authority_share: null;
-  doi_resolution: number;
+  doi_resolution: null;
   contradiction_retention: number | null;
   anomaly_retained: number | null;
+  time_to_report: number | null;
+  tokens: number | null;
 }
 
 function aliasesIn(report: string): string[] {
@@ -34,8 +44,9 @@ function normalize(value: string): string {
 }
 
 export function scoreCitationBound(report: string, citations: EvalCitation[]): number {
+  if (citations.length === 0) return 0;
   const aliases = aliasesIn(report);
-  if (aliases.length === 0) return 1;
+  if (aliases.length === 0) return 0;
   const byAlias = new Map(citations.map((row) => [row.alias, row]));
   const bound = aliases.filter((alias) => {
     const row = byAlias.get(alias);
@@ -45,8 +56,9 @@ export function scoreCitationBound(report: string, citations: EvalCitation[]): n
 }
 
 export function scoreQuoteVerbatim(citations: EvalCitation[]): number {
+  if (citations.length === 0) return 0;
   const quoted = citations.filter((row) => row.chunkQuote.trim().length > 0);
-  if (quoted.length === 0) return 1;
+  if (quoted.length === 0) return 0;
   const verbatim = quoted.filter((row) => normalize(row.chunkText).includes(normalize(row.chunkQuote))).length;
   return verbatim / quoted.length;
 }
@@ -58,11 +70,14 @@ export function scoreAnswerCorrect(report: string, keyFacts: string[]): number {
   return present / keyFacts.length;
 }
 
-export function scoreDoiResolution(citations: EvalCitation[]): number {
-  const withDoi = citations.filter((row) => row.doi && row.doi.trim().length > 0);
-  if (withDoi.length === 0) return 1;
-  const resolved = withDoi.filter((row) => row.resolveStatus === 'resolved').length;
-  return resolved / withDoi.length;
+export function scoreContradictionRetention(links: ContradictionLink[], sides: [string, string]): number {
+  const wanted = new Set(sides.map(normalize));
+  return links.some((link) => {
+    const pair = new Set([normalize(link.documentA), normalize(link.documentB)]);
+    return pair.size === 2 && [...wanted].every((side) => pair.has(side));
+  })
+    ? 1
+    : 0;
 }
 
 export function scoreStoredReport(input: EvalScoreInput): EvalScores {
@@ -71,12 +86,11 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
     answer_correct: input.keyFacts ? scoreAnswerCorrect(report, input.keyFacts) : null,
     citation_bound: scoreCitationBound(report, input.citations),
     quote_verbatim: scoreQuoteVerbatim(input.citations),
+    quote_supports: input.quoteSupports ?? null,
     authority_share: null,
-    doi_resolution: scoreDoiResolution(input.citations),
-    contradiction_retention: input.fixtureConflict
-      ? (input.contradictions ?? []).some((row) => normalize(row).includes(normalize(input.fixtureConflict ?? '')))
-        ? 1
-        : 0
+    doi_resolution: null,
+    contradiction_retention: input.fixtureSides
+      ? scoreContradictionRetention(input.contradictionLinks ?? [], input.fixtureSides)
       : null,
     anomaly_retained: input.anomalyPhrase
       ? normalize(report).includes(normalize(input.anomalyPhrase)) ||
@@ -84,5 +98,14 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
         ? 1
         : 0
       : null,
+    time_to_report: input.seconds ?? null,
+    tokens: input.tokens ?? null,
   };
+}
+
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[Math.max(0, index)];
 }
