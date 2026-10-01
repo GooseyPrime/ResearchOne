@@ -16,8 +16,10 @@ import {
 import {
   appendPlanRevision,
   cancelRunAtPlanGate,
+  confirmGatePlan,
   getGatePlanRowForRun,
   listPlanRevisionsForRun,
+  markRunRunningAfterPlanConfirm,
 } from '../../services/planning/planWriteService';
 import { refinePlan } from '../../services/planning/planRefinementService';
 import type { PlanPayload } from '../../services/planning/planTypes';
@@ -26,9 +28,9 @@ import { allowFallbackByRoleFromOverrides } from '../../services/reasoning/v2Fal
 import { normalizeRunOverrides } from '../../services/reasoning/researchOrchestratorNormalize';
 import { researchQueue } from '../../queue/queues';
 import { researchResumeJobId } from '../../queue/researchQueueJobs';
+import { enqueueResearchResumeAfterPlan } from '../../utils/researchResumeQueueing';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { logger } from '../../utils/logger';
-import { resumeConfirmedPlan } from '../../services/planning/confirmGeneratedPlan';
 import { paidForLegacyChallengeUpgrade, readRawRunAddons } from '../../services/reasoning/runAddons';
 
 const router = Router();
@@ -241,20 +243,7 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
     // BullMQ retries cover the small window before confirm completes (PR #128 Codex).
     const resumeJid = researchResumeJobId(runId);
     try {
-      const confirmed = await resumeConfirmedPlan(runId, effectivePlanId);
-      if (!confirmed.ok) {
-        res.status(409).json({ error: 'Plan could not be confirmed (wrong state or plan id)' });
-        return;
-      }
-      try {
-        if (confirmed.newlyConfirmed && pendingMeta && pendingMeta.refinement_rounds === 0) {
-          await bumpPlanConfirmationStreakIfCleanConfirm(ctx.userId);
-        } else if (confirmed.newlyConfirmed && pendingMeta) {
-          await resetPlanConfirmationStreak(ctx.userId);
-        }
-      } catch (streakErr) {
-        logger.warn('plan_confirm_streak_update_failed', { runId, err: streakErr });
-      }
+      await enqueueResearchResumeAfterPlan(researchQueue, runId, effectivePlanId);
     } catch (queueErr) {
       const queueErrMsg = queueErr instanceof Error ? queueErr.message : String(queueErr);
       const staleMeta =
@@ -278,6 +267,40 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
         planId: effectivePlanId,
       });
       return;
+    }
+
+    const confirmed = await confirmGatePlan({ planId: effectivePlanId, runId });
+    if (!confirmed) {
+      const already = await queryOne<{ id: string }>(
+        `SELECT id FROM research_plans WHERE id = $1::uuid AND run_id = $2::uuid AND status = 'confirmed'`,
+        [effectivePlanId, runId]
+      );
+      if (!already) {
+        try {
+          const j = await researchQueue.getJob(resumeJid);
+          if (j) await j.remove();
+        } catch (removeErr) {
+          logger.warn('plan_confirm_rollback_job_remove', { runId, err: removeErr });
+        }
+        res.status(409).json({ error: 'Plan could not be confirmed (wrong state or plan id)' });
+        return;
+      }
+    }
+
+    try {
+      await markRunRunningAfterPlanConfirm(runId);
+    } catch (markErr) {
+      logger.error('plan_confirm_mark_running_failed', { runId, err: markErr });
+    }
+
+    try {
+      if (confirmed && pendingMeta && pendingMeta.refinement_rounds === 0) {
+        await bumpPlanConfirmationStreakIfCleanConfirm(ctx.userId);
+      } else if (confirmed && pendingMeta) {
+        await resetPlanConfirmationStreak(ctx.userId);
+      }
+    } catch (streakErr) {
+      logger.warn('plan_confirm_streak_update_failed', { runId, err: streakErr });
     }
 
     const io = req.app.get('io') as SocketIOServer | undefined;
