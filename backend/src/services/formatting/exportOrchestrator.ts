@@ -154,10 +154,10 @@ async function loadReportMarkdownForExport(
   } else {
     const parts: string[] = [];
     if (meta.executive_summary?.trim()) {
-      parts.push(`## Executive summary\n\n${meta.executive_summary}`);
+      parts.push(`## Executive summary\n\n${stripInternalLabelsFromReport(meta.executive_summary)}`);
     }
     if (meta.conclusion?.trim()) {
-      parts.push(`## Conclusion\n\n${meta.conclusion}`);
+      parts.push(`## Conclusion\n\n${stripInternalLabelsFromReport(meta.conclusion)}`);
     }
     body = parts.join('\n\n');
   }

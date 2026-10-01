@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { stripInternalLabelsFromReport } from '../services/reasoning/reportGenerator';
+import { cleanReaderMetadata } from '../services/formatting/reportPresentation';
 import { INTENT_OUTPUT_TEMPLATES, CLAIM_CLASS_SOURCING_BURDEN } from '../services/formatting/templates/intentOutputTemplates';
 import { STANDARD_SYSTEM_PROMPTS, SYSTEM_PROMPTS } from '../services/openrouter/openrouterService';
 
@@ -43,6 +44,35 @@ describe('stripInternalLabelsFromReport', () => {
       '```',
     ].join('\n');
     expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('never changes whole links, URLs, or bracketed names that are not system roles', () => {
+    const input = [
+      'See [strong_evidence](https://example.org/x) and https://example.org/data/strong_evidence for the data.',
+      'Reported by [New_York_Times] and <https://example.org/testimony>.',
+    ].join('\n');
+    expect(stripInternalLabelsFromReport(input)).toBe(input);
+  });
+
+  it('removes bracketed system role names in any case or spacing', () => {
+    expect(stripInternalLabelsFromReport('Figures differ [section drafter] widely [DATA_ANALYSIS_SPECIALIST].')).toBe(
+      'Figures differ widely.'
+    );
+  });
+
+  it('cleans the plain-language version and the front-matter cards', () => {
+    const cleaned = cleanReaderMetadata({
+      plain_language_markdown: 'Costs rose [Strong_Evidence - Chunk 3].',
+      reader_front_matter: {
+        overall_summary: 'Costs rose (strong_evidence).',
+        conclusions_nutshell: 'Unclear [Quantitative_Quality_Auditor].',
+        metric_glosses: [{ label: 'Sources', narrative: 'Three sources (testimony).' }],
+      },
+      verification: { overall: 'PASS' },
+    });
+    expect(JSON.stringify(cleaned)).not.toMatch(/strong_evidence|testimony\)|Quantitative_Quality_Auditor/i);
+    expect(cleaned.plain_language_markdown).toBe('Costs rose [Chunk 3].');
+    expect(cleaned.verification).toEqual({ overall: 'PASS' });
   });
 
   it('leaves ordinary prose, chunk references, lists and tables alone', () => {

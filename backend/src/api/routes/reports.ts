@@ -18,7 +18,7 @@ import {
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
-import { stripInternalLabelsFromReport } from '../../services/formatting/reportPresentation';
+import { cleanReaderMetadata, stripInternalLabelsFromReport } from '../../services/formatting/reportPresentation';
 import {
   pandocAvailable,
   PandocError,
@@ -501,7 +501,21 @@ router.get('/:id', async (req, res, next) => {
       // best-effort; report_monitors may not exist yet
     }
 
-    res.json({ ...(rows[0] as Record<string, unknown>), sections, has_active_living_report: hasActiveLivingReport });
+    // Summary fields and reader metadata are shown to readers too; clean them
+    // the same way, without rewriting stored rows.
+    const stored = rows[0] as Record<string, unknown>;
+    const report: Record<string, unknown> = {
+      ...stored,
+      executive_summary:
+        typeof stored.executive_summary === 'string'
+          ? stripInternalLabelsFromReport(stored.executive_summary)
+          : stored.executive_summary,
+      conclusion:
+        typeof stored.conclusion === 'string' ? stripInternalLabelsFromReport(stored.conclusion) : stored.conclusion,
+      metadata: cleanReaderMetadata(stored.metadata),
+    };
+
+    res.json({ ...report, sections, has_active_living_report: hasActiveLivingReport });
   } catch (err) {
     next(err);
   }

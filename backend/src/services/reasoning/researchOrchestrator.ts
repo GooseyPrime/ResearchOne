@@ -26,6 +26,7 @@ import {
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
 } from './reportGenerator';
+import { cleanReaderMetadata } from '../formatting/reportPresentation';
 import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
 import {
   TRACE_DETAIL_MAX_CHARS,
@@ -3521,10 +3522,13 @@ async function saveReport(args: {
             supplemental: supplementalText,
             supplemental_attachments: supplementalAttachments,
           },
-          ...(plainLanguageMarkdown && plainLanguageMarkdown.length > 0
-            ? { plain_language_markdown: plainLanguageMarkdown }
-            : {}),
-          ...(readerFrontMatter ? { reader_front_matter: readerFrontMatter } : {}),
+          // Reader-facing variants get the same clean-up as the report body.
+          ...cleanReaderMetadata({
+            ...(plainLanguageMarkdown && plainLanguageMarkdown.length > 0
+              ? { plain_language_markdown: plainLanguageMarkdown }
+              : {}),
+            ...(readerFrontMatter ? { reader_front_matter: readerFrontMatter } : {}),
+          }),
           ...(modelEnsemble ? { model_ensemble: modelEnsemble } : {}),
           ...(wave52Metadata && Object.keys(wave52Metadata).length > 0 ? wave52Metadata : {}),
         }),
