@@ -8,8 +8,13 @@ import { describe, expect, it } from 'vitest';
  * The telemetry insert used $15 once bare, for a BIGINT column, and once cast
  * to double precision, so every insert failed and no model call was recorded.
  */
-describe('agent_executions insert', () => {
-  const source = readFileSync(path.join(__dirname, '../services/telemetry/costSidecar.ts'), 'utf8');
+const STATEMENTS = [
+  { name: 'runtime insert', file: '../services/telemetry/costSidecar.ts', expected: '$15::bigint, to_timestamp($15::bigint / 1000.0)' },
+  { name: 'backfill insert', file: '../../scripts/backfill-cost-from-model-log.ts', expected: '$13::bigint, to_timestamp($13::bigint / 1000.0)' },
+];
+
+describe.each(STATEMENTS)('agent_executions $name', ({ file, expected }) => {
+  const source = readFileSync(path.join(__dirname, file), 'utf8');
   const start = source.indexOf('INSERT INTO agent_executions');
   const statement = source.slice(start, source.indexOf('ON CONFLICT (idempotency_key)', start));
 
@@ -27,6 +32,6 @@ describe('agent_executions insert', () => {
   });
 
   it('writes the start time from the same integer it stores', () => {
-    expect(statement).toContain('$15::bigint, to_timestamp($15::bigint / 1000.0)');
+    expect(statement).toContain(expected);
   });
 });
