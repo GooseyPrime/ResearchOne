@@ -613,7 +613,7 @@ Return revised section body only.`,
   if (lockedBase) {
     // A heading can carry a citation, and the first save binds it. Heading and
     // body are read together here so that citation is carried or removed with the rest.
-    const whole = (section: { title: string; content: string }): string => `${section.title}\n${section.content}`;
+    const whole = (section: { title: string; content: string }): string => `${section.title}\n\n${section.content}`;
     const rebound = rebindRevisedCitations(
       baseSections.map((section) => ({ key: section.id, content: whole(section) })),
       baseCitations
@@ -622,8 +622,8 @@ Return revised section body only.`,
       revisedSections.map((section) => ({ key: section.id, content: whole(section) }))
     );
     const reboundParts = rebound.contents.map((text) => {
-      const cut = text.indexOf('\n');
-      return cut < 0 ? { title: text, content: '' } : { title: text.slice(0, cut), content: text.slice(cut + 1) };
+      const cut = text.indexOf('\n\n');
+      return cut < 0 ? { title: text, content: '' } : { title: text.slice(0, cut), content: text.slice(cut + 2) };
     });
     // Sources are numbered again in the order the revised report first cites them,
     // and the reference list keeps only the ones it still cites.

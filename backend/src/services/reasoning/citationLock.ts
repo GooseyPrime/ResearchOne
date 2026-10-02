@@ -181,12 +181,34 @@ function readable(text: string): string {
 function sentencePieces(text: string): Array<{ start: number; text: string }> {
   const out: Array<{ start: number; text: string }> = [];
   let start = 0;
-  for (const piece of text.split(/((?<=[.!?])\s+|\n+)/)) {
+  for (const piece of text.split(SENTENCE_BREAK)) {
     out.push({ start, text: piece });
     start += piece.length;
   }
   return out;
 }
+
+/**
+ * Where one statement ends and the next begins. A line break inside a paragraph
+ * is only a wrap, and a full stop after an initial or a common abbreviation
+ * ("U.S.", "Dr.") does not end a sentence; splitting there would tie a citation
+ * to half its claim and let the other half be rewritten unnoticed. Erring the
+ * other way only makes a statement longer, which is the safe direction.
+ */
+const SENTENCE_BREAK = new RegExp(
+  '(' +
+    [
+      // A blank line: a new paragraph.
+      String.raw`\n[ \t]*\n+`,
+      // The line after a heading, and the start of a heading or list item.
+      String.raw`(?<=^[ \t]*#{1,6}[ \t][^\n]*)\n`,
+      String.raw`\n(?=[ \t]*(?:[-*+]|\d+[.)]|#{1,6})[ \t])`,
+      // Sentence punctuation followed by space, except after an initial or abbreviation.
+      String.raw`(?<=[.!?])(?<!\b[A-Z]\.)(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|St|vs|etc|Inc|Ltd|Co|No|Fig|approx|e\.g|i\.e)\.)\s+`,
+    ].join('|') +
+    ')',
+  'm'
+);
 
 /** The prose citations inside one piece, read from the position-preserving prose view. */
 function proseMarkersAt(view: string, piece: { start: number; text: string }): string[] {

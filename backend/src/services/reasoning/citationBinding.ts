@@ -40,13 +40,19 @@ export async function writeBoundCitations(
     if (!sourceIdByChunk.has(row.chunkId)) {
       throw new Error(`Cited passage ${row.chunkId} is no longer stored; citation ${row.order} cannot be saved`);
     }
+    // Every citation sits in a saved section. One that cannot be placed would be
+    // a number in the text that no section can look up, so it fails the save too.
+    const sectionId = row.sectionOrder == null ? undefined : sectionIdByOrder.get(row.sectionOrder);
+    if (!sectionId) {
+      throw new Error(`Citation ${row.order} has no saved section; it cannot be saved`);
+    }
     await client.query(
       `INSERT INTO report_citations (
          report_id, section_id, chunk_id, source_id, chunk_quote, citation_order, citation_text
        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         reportId,
-        row.sectionOrder == null ? null : sectionIdByOrder.get(row.sectionOrder) ?? null,
+        sectionId,
         row.chunkId,
         sourceIdByChunk.get(row.chunkId) ?? null,
         row.quote,

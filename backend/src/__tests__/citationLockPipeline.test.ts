@@ -634,14 +634,14 @@ describe('code, links and stale reference lists', () => {
 
   it('carries and renumbers a citation that sits in a heading', () => {
     const rebound = rebindRevisedCitations(
-      [{ key: 'a', content: 'The 1932 opening [2]\nIt cost four million [1].' }],
+      [{ key: 'a', content: 'The 1932 opening [2]\n\nIt cost four million [1].' }],
       [
         { sectionKey: 'a', citationText: '[2]', row: 'row-title' },
         { sectionKey: 'a', citationText: '[1]', row: 'row-body' },
       ],
-      [{ key: 'a', content: 'The 1932 opening [2]\nIt cost five million [1].' }]
+      [{ key: 'a', content: 'The 1932 opening [2]\n\nIt cost five million [1].' }]
     );
-    expect(rebound.contents).toEqual(['The 1932 opening [2]\nIt cost five million.']);
+    expect(rebound.contents).toEqual(['The 1932 opening [2]\n\nIt cost five million.']);
     expect(rebound.kept).toEqual([{ sectionIndex: 0, row: 'row-title' }]);
     const out = renumberAfterRevision([{ title: 'The 1932 opening [2]', content: 'It cost five million.' }], ['[2]']);
     expect(out.titles).toEqual(['The 1932 opening [1]']);
@@ -664,6 +664,16 @@ describe('code, links and stale reference lists', () => {
     const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. A stray one [1].\n\n[1]: https://example.org', shown(), '2 Oct 2026');
     expect(finalized.markdown).toContain('It opened in 1932 [1]. A stray one.');
     expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('does not cut a cited sentence at a line wrap or an abbreviation', () => {
+    const keep = { allowRemoval: false };
+    const wrapped = 'Costs increased substantially\nand reached five billion [P1].';
+    expect(markersPreserved(wrapped, 'Costs increased substantially and reached five billion [P1].', keep)).toBe(true);
+    expect(markersPreserved(wrapped, 'Costs decreased substantially\nand reached five billion [P1].', keep)).toBe(false);
+    const abbreviated = 'The U.S. FDA authorized it in 2023 [P1].';
+    expect(markersPreserved(abbreviated, 'The E.U. FDA authorized it in 2023 [P1].', keep)).toBe(false);
+    expect(markersPreserved(abbreviated, abbreviated, keep)).toBe(true);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

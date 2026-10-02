@@ -36,7 +36,7 @@ describe('saving bound citations', () => {
       bound: [
         { number: 1, chunkId: 'chunk-a', quote: 'Quote A.', sectionOrder: 1, order: 1 },
         { number: 2, chunkId: 'chunk-b', quote: 'Quote B.', sectionOrder: 2, order: 2 },
-        { number: 1, chunkId: 'chunk-a', quote: 'Quote A again.', sectionOrder: null, order: 3 },
+        { number: 1, chunkId: 'chunk-a', quote: 'Quote A again.', sectionOrder: 2, order: 3 },
       ],
     });
     expect(written).toBe(3);
@@ -45,7 +45,7 @@ describe('saving bound citations', () => {
     expect(inserts).toEqual([
       ['report', 'section-1', 'chunk-a', 'source-1', 'Quote A.', 1, '[1]'],
       ['report', 'section-2', 'chunk-b', 'source-2', 'Quote B.', 2, '[2]'],
-      ['report', null, 'chunk-a', 'source-1', 'Quote A again.', 3, '[1]'],
+      ['report', 'section-2', 'chunk-a', 'source-1', 'Quote A again.', 3, '[1]'],
     ]);
   });
 
@@ -70,6 +70,23 @@ describe('saving bound citations', () => {
     });
     expect(written).toBe(1);
     expect(inserts).toEqual([['report', 'section-2', 'chunk-a', 'source-1', 'Quote A.', 1, '[1]']]);
+  });
+
+  it('fails the save when a citation has no saved section', async () => {
+    await expect(
+      persistBoundCitations({
+        runId: 'run',
+        reportId: 'report',
+        bound: [{ number: 1, chunkId: 'chunk-a', quote: 'Quote A.', sectionOrder: null, order: 1 }],
+      })
+    ).rejects.toThrow('no saved section');
+    await expect(
+      persistBoundCitations({
+        runId: 'run',
+        reportId: 'report',
+        bound: [{ number: 1, chunkId: 'chunk-a', quote: 'Quote A.', sectionOrder: 9, order: 1 }],
+      })
+    ).rejects.toThrow('no saved section');
   });
 
   it('does nothing for a report with no citations', async () => {
