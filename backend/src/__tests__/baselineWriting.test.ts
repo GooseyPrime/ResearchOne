@@ -14,7 +14,6 @@ import {
   scoreStructureComplete,
   stripGradeLines,
   trimSummaryAtSentence,
-  wordFloor,
 } from '../services/reasoning/baselineReport';
 import { buildCanonicalExecutionPlan } from '../services/planning/executionPlan';
 import { getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
@@ -98,9 +97,8 @@ describe('baseline writing messages', () => {
     expect(cleaned[2].content.trim()).not.toBe('[1]');
   });
 
-  it('lowers the floor for a short factual request and routes a failed classifier to factual research', () => {
+  it('routes a failed classifier to factual research', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
-    expect(wordFloor('factual_report')).toBe(120);
     expect(plainQuestionIntent(true, false)).toBe('factual_report');
     const plan = buildCanonicalExecutionPlan({
       profile: getOrchestrationProfileForIntent('reference_lookup'),

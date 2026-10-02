@@ -21,7 +21,9 @@ vi.mock('../services/openrouter/openrouterService', () => ({
         ? '- Casgevy edits a patient\'s own blood stem cells. [1]\n- The authorization was for sickle cell disease. [1]'
         : asked.includes('Where sources disagree')
           ? 'The sources do not disagree.'
-          : asked.includes('Casgevy authorization')
+          : asked.includes('Comparison table')
+            ? '| Option | Note |\n| --- | --- |\n| Casgevy | First CRISPR therapy authorized in December 2023. [1] |'
+            : asked.includes('Casgevy authorization')
             ? 'The FDA authorization covered patients 12 and older with recurrent vaso-occlusive crises. [1]'
             : 'The decision applied to sickle cell disease with recurrent crises. [1]';
     return { content, model: 'test', role: 'section_drafter', promptTokens: 1, completionTokens: 1, durationMs: 1, usedFallback: false, primaryModel: 'test' };
@@ -41,7 +43,7 @@ describe('baseline report pipeline', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
   });
 
-  it('writes a switched-on report through the generator near the short floor', async () => {
+  it('writes a switched-on report through the generator at the standard length', async () => {
     const report = await generateIterativeReport({
       query: 'When did the FDA authorize the first CRISPR therapy?',
       plan: {},
@@ -71,7 +73,7 @@ describe('baseline report pipeline', () => {
     expect(scoreNoRepetition(report.sections)).toBe(1);
     const body = report.sections.map((section) => `## ${section.title}\n${section.content}`).join('\n\n');
     expect(report.markdown.endsWith(body)).toBe(true);
-    expect(report.targetWordCount).toBe(120);
+    expect(report.targetWordCount).toBe(2200);
     const judgment = await judgeReportQuality(report.markdown, async () => ({
       content: '{"answer_first":4,"readable_structure":4,"plain_neutral_prose":4,"citation_clarity":4,"honest_disagreement":4,"appropriate_length":4}',
       model: 'test',
@@ -94,5 +96,38 @@ describe('baseline report pipeline', () => {
       corpusEmpty: true,
     });
     expect(plan.skipReasons.discovery).toBeUndefined();
+  });
+
+  it.each([
+    ['ranked_options', 'Ranked options'],
+    ['narrative_briefing', 'Narrative briefing'],
+    ['step_by_step_guide', 'Steps'],
+    ['comparison_table', 'Comparison table'],
+    ['structured_report', 'Structured report'],
+  ] as const)('keeps the requested %s structure when the switch is on', async (format, heading) => {
+    const report = await generateIterativeReport({
+      query: 'When did the FDA authorize the first CRISPR therapy?',
+      plan: {},
+      sourceContext: 'The FDA authorized Casgevy in December 2023.',
+      retrieverAnalysis: '',
+      reasoningChains: '',
+      challenges: '',
+      intentId: 'factual_report',
+      outputTemplateId: 'intent_factual_report',
+      requestedFormats: [format],
+      targetWordCount: 4000,
+      skipChallenger: true,
+      usedSources: [{ title: 'FDA Casgevy authorization', publisher: 'US Food and Drug Administration', date: 'December 2023', url: 'https://www.fda.gov/casgevy' }],
+    });
+    expect(report.markdown).toContain(`## ${heading}`);
+    expect(report.markdown).toContain('## Who What When');
+    expect(report.markdown).toContain('## Mechanism');
+    expect(report.markdown).toContain('## Summary');
+    expect(report.markdown).toContain('## References');
+    expect(report.markdown).toContain('## About this report');
+    expect(report.targetWordCount).toBe(4000);
+    const summary = report.sections.find((section) => section.key === 'summary')?.content ?? '';
+    expect(summary.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(150);
+    if (format === 'comparison_table') expect(report.markdown).toContain('| Option | Note |');
   });
 });

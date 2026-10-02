@@ -159,11 +159,6 @@ export function readerTitle(query: string, proposed: string): string {
   return acceptSubjectHeading(query, proposed) ? proposed.trim() : 'Report';
 }
 
-export function wordFloor(intentId: string | undefined): number {
-  if (baselineLayerEnabled() && (intentId === 'factual_report' || intentId === 'how_to')) return 120;
-  return 400;
-}
-
 export function plainQuestionIntent(classifierFailed: boolean, unsure: boolean): 'factual_report' | null {
   if (!baselineLayerEnabled()) return null;
   if (classifierFailed || unsure) return 'factual_report';

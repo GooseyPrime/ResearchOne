@@ -1,6 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, wordFloor, acceptSubjectHeading, citedSources, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, citedSources, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -968,6 +968,30 @@ function sectionPlanFromTemplate(templateId: string): RuntimeSectionPlanEntry[] 
   }));
 }
 
+const REQUESTED_FORMAT_SECTIONS: Record<string, { key: string; title: string }> = {
+  ranked_options: { key: 'ranked_options', title: 'Ranked options' },
+  narrative_briefing: { key: 'narrative_briefing', title: 'Narrative briefing' },
+  step_by_step_guide: { key: 'step_by_step_guide', title: 'Steps' },
+  comparison_table: { key: 'comparison_table', title: 'Comparison table' },
+  structured_report: { key: 'structured_report', title: 'Structured report' },
+};
+
+/** Keep the intent plan and add the structure the form asked for, if it is not already there. */
+function appendRequestedFormatSections(
+  plan: RuntimeSectionPlanEntry[],
+  formats: string[]
+): RuntimeSectionPlanEntry[] {
+  const next = plan.some((section) => section.key === 'summary')
+    ? [...plan]
+    : [{ key: 'summary', title: 'Summary', weight: 1 }, ...plan];
+  for (const format of formats) {
+    const slot = REQUESTED_FORMAT_SECTIONS[format];
+    if (!slot || next.some((section) => section.key === slot.key)) continue;
+    next.push({ ...slot, weight: 1 });
+  }
+  return next;
+}
+
 export async function generateIterativeReport(args: {
   query: string;
   plan: unknown;
@@ -1034,6 +1058,8 @@ export async function generateIterativeReport(args: {
   let templateNarrativeHint = '';
   let templateVerifierRubric = '';
   let templateRequiredDeliverables: readonly string[] = [];
+  const chosenFormats = (args.requestedFormats ?? []).filter((format) => format && format !== 'automatic');
+  const useReaderHeadings = baselineLayerEnabled() && args.isAdjudicative !== true && chosenFormats.length === 0;
   if (args.outputTemplateId) {
     const template = getIntentOutputTemplate(args.outputTemplateId);
     if (args.intentId && template.intentId !== args.intentId) {
@@ -1042,8 +1068,10 @@ export async function generateIterativeReport(args: {
       );
     }
     activeSectionPlan = sectionPlanFromTemplate(args.outputTemplateId);
-    if (baselineLayerEnabled() && args.isAdjudicative !== true) {
+    if (baselineLayerEnabled() && args.isAdjudicative !== true && chosenFormats.length === 0) {
       activeSectionPlan = draftedSections(args.intentId, args.query);
+    } else if (baselineLayerEnabled() && args.isAdjudicative !== true) {
+      activeSectionPlan = appendRequestedFormatSections(activeSectionPlan, chosenFormats);
     }
     templateNarrativeHint = template.narrativeHint;
     templateVerifierRubric = template.verifierRubric;
@@ -1107,16 +1135,7 @@ export async function generateIterativeReport(args: {
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
-  const shortBaseline =
-    baselineLayerEnabled() &&
-    args.isAdjudicative !== true &&
-    (args.intentId === 'factual_report' || args.intentId === 'how_to');
-  const requestedTarget = contractTarget ?? args.targetWordCount;
-  const targetWordCount = shortBaseline
-    ? typeof requestedTarget === 'number' && Number.isFinite(requestedTarget) && requestedTarget > 0
-      ? Math.max(wordFloor(args.intentId), Math.min(REPORT_WORD_COUNT_MAX, Math.round(requestedTarget)))
-      : wordFloor(args.intentId)
-    : Math.max(wordFloor(args.intentId), clampWordTarget(requestedTarget));
+  const targetWordCount = clampWordTarget(contractTarget ?? args.targetWordCount);
   const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
 
   // Required field NAMES must reach the drafter. Fields can be inferred by the
@@ -1153,11 +1172,7 @@ export async function generateIterativeReport(args: {
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
       : 'Requested presentation formats:\n- automatic / best fit';
-  const sectionBudgets = distributeWordBudget(
-    targetWordCount,
-    activeSectionPlan,
-    shortBaseline ? 15 : REPORT_WORD_COUNT_PER_SECTION_FLOOR
-  );
+  const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
     ...v2,
@@ -1174,7 +1189,7 @@ ${requestedFormatsBlock}
 Plan:\n${JSON.stringify(args.plan, null, 2)}
 Source material:\n${args.sourceContext.slice(0, 8000)}
 Specialist findings:\n${(args.specialistFindings ?? 'none').slice(0, MAX_SPECIALIST_FINDINGS_CHARS)}
-${shortBaseline ? `Write the report title and the subject headings from the source material. Each must be a grammatical noun phrase. Do not repeat the question. Do not use a structural label such as Summary, Findings, Overview, or Framing.
+${useReaderHeadings ? `Write the report title and the subject headings from the source material. Each must be a grammatical noun phrase. Do not repeat the question. Do not use a structural label such as Summary, Findings, Overview, or Framing.
 Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun phrase"]}` : 'Return strict JSON only.'}`,
       },
     ],
@@ -1190,7 +1205,7 @@ Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun p
     .filter(Boolean);
   let resolvedOutline = outline.length > 0 ? outline : activeSectionPlan.map((s) => s.title);
   let acceptedTitle = acceptSubjectHeading(args.query, outlinePayload?.title ?? '') ? outlinePayload?.title?.trim() ?? '' : '';
-  if (shortBaseline) {
+  if (useReaderHeadings) {
     const accepted = outline.filter((heading) => acceptSubjectHeading(args.query, heading));
     if (!acceptedTitle || accepted.length < 2) {
       const revision = await callRoleModel({
