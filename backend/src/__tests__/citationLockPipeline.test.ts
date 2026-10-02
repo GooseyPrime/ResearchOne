@@ -693,6 +693,17 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.occurrences).toHaveLength(1);
   });
 
+  it('reads nested list prose by where it sits, whatever its shape', () => {
+    const finalized = finalizeLockedCitations(
+      '## Summary\n- A point.\n    - Detail [Chunk 4].\n\n    Confirmed [P1].\n\n        rows[P1] = 1',
+      passages(),
+      '2 Oct 2026'
+    );
+    expect(finalized.markdown).toContain('    - Detail.');
+    expect(finalized.markdown).toContain('    Confirmed [1].');
+    expect(finalized.markdown).toContain('        rows[P1] = 1');
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);

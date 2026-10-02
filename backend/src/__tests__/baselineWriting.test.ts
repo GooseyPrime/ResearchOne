@@ -77,6 +77,9 @@ describe('baseline writing messages', () => {
     // A link's label is read by the reader; its destination and code are not.
     expect(presentationFailures('See [Chunk 4](https://example.org) for more.')).toContain('chunk marker');
     expect(presentationFailures('It holds [established_fact](https://example.org).')).toContain('grade label');
+    // A nested list item is prose, not code.
+    expect(presentationFailures('- A point.\n    - Detail [Chunk 4].')).toContain('chunk marker');
+    expect(presentationFailures('A paragraph.\n\n    print("[Chunk 4]")')).not.toContain('chunk marker');
     // A phrase split by a link is still the phrase the reader sees.
     expect(presentationFailures('This [report](https://example.org) synthesizes evidence from two sources.')).toContain('boilerplate');
     expect(presentationFailures('The [case](https://example.org) for reform is strong.')).toContain('courtroom');
