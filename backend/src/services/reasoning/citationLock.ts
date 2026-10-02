@@ -31,12 +31,33 @@ export interface CitationOccurrence {
 }
 
 // A model may write the marker in either case; `[p3]` is the same citation as `[P3]`.
-const MARKER_GROUP = /\[\s*(P\d+(?:\s*[,;]\s*P\d+)*)\s*\]/gi;
-const SINGLE_MARKER = /P\d+/gi;
+// A model also groups them in ways it was not asked to: "[P1/P2]", "[P1 and P2]",
+// "[P1, 2]", "[P1–P3]". Every such bracket is read, so none reaches a reader raw.
+const MARKER_GROUP = /\[\s*(P\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*)\s*\]/gi;
+const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
+/** Any bracket that opens with a passage marker, whatever follows it. */
+const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
+/** A range wider than this is not expanded; its two ends are kept. */
+const RANGE_LIMIT = 12;
 
 /** The markers inside one bracket, in the upper-case form passages are issued under. */
 function markersOf(inner: string): string[] {
-  return (inner.match(SINGLE_MARKER) ?? []).map((marker) => marker.toUpperCase());
+  const out: string[] = [];
+  let rangeFrom: number | null = null;
+  for (const token of inner.matchAll(MARKER_TOKEN)) {
+    if (token[2]) {
+      const last = out[out.length - 1];
+      rangeFrom = last ? Number(last.slice(1)) : null;
+      continue;
+    }
+    const n = Number(token[1]);
+    if (rangeFrom !== null && n > rangeFrom + 1 && n - rangeFrom <= RANGE_LIMIT) {
+      for (let between = rangeFrom + 1; between < n; between += 1) out.push(`P${between}`);
+    }
+    rangeFrom = null;
+    out.push(`P${n}`);
+  }
+  return out;
 }
 
 export function issuePassages(chunks: Array<{ id: string; content: string }>, sources: UsedSource[]): LockedPassage[] {
@@ -364,7 +385,10 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
       }
       return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '\uE002';
     });
-    return tidyAfterRemoval(rewritten.replace(/[ \t]*\uE002/g, ''));
+    // Anything still shaped like a passage marker was not a citation the lock could read.
+    const leftover = rewritten.match(PASSAGE_LOOKING) ?? [];
+    removed += leftover.length;
+    return tidyAfterRemoval(rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, ''));
   });
   const references = buildReferences(cited);
   const readCount = distinctSourceCount(passages.map((passage) => passage.source));

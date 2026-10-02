@@ -362,6 +362,22 @@ describe('markers in either case and numbers that are not citations', () => {
     expect(readerFacingLabelHits('It opened in 1932 [p1].')).toContain('passage marker');
   });
 
+  it('reads grouped markers in the forms a model writes, and removes what it cannot read', () => {
+    expect(markersIn('A [P1/P2]. B [P1 and P3]. C [P2, 4]. D [P1\u2013P3]. E [p5-p6].')).toEqual([
+      'P1', 'P2', 'P1', 'P3', 'P2', 'P4', 'P1', 'P2', 'P3', 'P5', 'P6',
+    ]);
+    const shown = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }, { id: 'chunk-b', content: 'It cost four million.' }],
+      [{ title: 'Bridge history', url: 'https://example.org/a' }, { title: 'Bridge costs', url: 'https://example.org/b' }]
+    );
+    expect(unknownMarkers('It opened [P1\u2013P3].', shown)).toEqual(['P3']);
+    const finalized = finalizeLockedCitations('## Summary\nIt opened and was paid for [P1/P2]. It still stands [P1 see also the archive].', shown, '2 Oct 2026');
+    expect(finalized.markdown).toContain('paid for [1][2]. It still stands.');
+    expect(finalized.markdown).not.toMatch(/\[P\d/i);
+    expect(finalized.removed).toBe(1);
+    expect(readerFacingLabelHits('It opened [P1\u2013P3].')).toContain('passage marker');
+  });
+
   it('does not count a number in code or a link label as a citation', () => {
     const occurrences = [
       { number: 1, chunkId: 'chunk-a', quote: 'A.' },

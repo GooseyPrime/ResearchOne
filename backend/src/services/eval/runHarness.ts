@@ -1,3 +1,4 @@
+import { citationLockEnabled, runWithFlags } from '../../config';
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
 import { judgeReportQuality } from './reportQualityJudge';
@@ -50,7 +51,9 @@ export function buildScoreInput(
     anomalyPhrase: task.anomalyPhrase,
     quoteSupports,
     quoteSupportsNotJudged: notJudged,
-    citationLock: flagOverrides?.CITATION_LOCK_ENABLED === true,
+    // Score as locked only when the run was locked: the lock needs both switches,
+    // read the same way the worker reads them for this run.
+    citationLock: runWithFlags(flagOverrides ?? null, () => citationLockEnabled()),
     seconds: secondsBetween(stored.startedAt, stored.completedAt),
     tokens: stored.tokens,
   };

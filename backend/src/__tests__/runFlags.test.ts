@@ -34,6 +34,12 @@ describe('switches recorded for one run', () => {
     expect(baselineLayerEnabled()).toBe(false);
   });
 
+  it('does not treat a run as locked when only the lock switch was set for it', () => {
+    delete process.env[NAME];
+    delete process.env.BASELINE_LAYER_ENABLED;
+    expect(runWithFlags({ [NAME]: true }, () => citationLockEnabled())).toBe(false);
+  });
+
   it('lets a run turn off a switch the process has on', () => {
     process.env[NAME] = 'true';
     expect(runWithFlags({ [NAME]: false }, () => switchEnabled(NAME))).toBe(false);
