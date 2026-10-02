@@ -1,5 +1,7 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
+import type { IssuedAlias } from './citationLock';
+import { sectionAliasContext, unknownAliases } from './citationLock';
 import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
@@ -1085,6 +1087,8 @@ export async function generateIterativeReport(args: {
   skipChallenger?: boolean;
   isAdjudicative?: boolean;
   usedSources?: UsedSource[];
+  /** Issued [E#] aliases. Present only when the citation lock is on. */
+  citationAliases?: IssuedAlias[];
 }): Promise<{
   markdown: string;
   sections: ReportSectionDraft[];
@@ -1367,23 +1371,41 @@ Required deliverables for this intent:\n${templateRequiredDeliverables.length > 
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 ${itemNameDirectiveFor(section)}
-Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
+Source material: ${args.citationAliases ? sectionAliasContext(args.citationAliases) : baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
-${layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
+${args.citationAliases ? 'Cite only the [E#] aliases above. An alias you were not given is not a source. Do not write [Chunk N].' : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
       ],
     });
 
     modelCalls.push(sectionResult);
+    let draftedContent = sectionResult.content;
+    if (args.citationAliases && unknownAliases(draftedContent, args.citationAliases).length > 0) {
+      const retry = await callRoleModel({
+        role: 'section_drafter',
+        engineVersion: args.engineVersion,
+        researchObjective: args.researchObjective,
+        allowFallbackByRole: args.allowFallbackByRole,
+        byokApiKeyOverride: args.byokApiKeyOverride,
+        baselineLayer: layer1,
+        messages: [
+          { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative === true) },
+          { role: 'user', content: `Rewrite the section using only these aliases: ${args.citationAliases.map((alias) => alias.alias).join(', ')}. Drop any other marker.\n\n${draftedContent}` },
+        ],
+      });
+      modelCalls.push(retry);
+      if (unknownAliases(retry.content, args.citationAliases).length === 0) draftedContent = retry.content;
+      else draftedContent = 'This section could not be cited from the passages it was given.';
+    }
 
     // Headings are composed here, from the plan's ordinal, the report type's
     // label, and the drafter's declared item name. The model never authors one,
     // so the contract auditor matches exactly rather than pattern-matching prose.
-    const { itemName, content: sectionText } = extractItemName(sectionResult.content.trim());
+    const { itemName, content: sectionText } = extractItemName(draftedContent.trim());
     const finalTitle =
       typeof section.itemOrdinal === 'number'
         ? composeItemHeading({

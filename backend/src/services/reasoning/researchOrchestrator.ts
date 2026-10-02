@@ -15,6 +15,8 @@ import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBar
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
+import { issueAliases, renderReaderCitations, sectionAliasContext, citationRows, sourceCountSetsStatus } from './citationLock';
+import { citationLockEnabled } from '../../config';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
@@ -2289,6 +2291,7 @@ async function runResearchJobInner(
           date: isoDay(chunk.source_published_at),
           url: chunk.source_url || null,
         })),
+        citationAliases: citationLockEnabled() && !isAdjudicative ? issueAliases(allChunks) : undefined,
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
@@ -2343,7 +2346,7 @@ async function runResearchJobInner(
               // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
               `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
               `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
-              `Source material:\n${sourceContext.slice(0, 60000)}`,
+              `Source material:\n${citationLockEnabled() && !isAdjudicative ? sectionAliasContext(issueAliases(allChunks)) : sourceContext.slice(0, 60000)}`,
           },
         ],
       });
@@ -2594,9 +2597,9 @@ ${generatedReport.markdown}`,
         nextStatus = 'contract_failed';
       } else if (verifierFailed) {
         nextStatus = 'verification_failed';
-      } else if (sourceShortfallDegradesStatus(sourceFailureReason)) {
+      } else if (sourceShortfallDegradesStatus(sourceFailureReason) && !layer1CountIsMetadataOnly) {
         nextStatus = 'completed_degraded';
-      } else if (sourceCoverageShortfall) {
+      } else if (sourceCoverageShortfall && !layer1CountIsMetadataOnly) {
         nextStatus = 'completed_degraded';
         contractAuditResult = {
           pass: false,
@@ -2626,6 +2629,7 @@ ${generatedReport.markdown}`,
       Number.isFinite(minimumUsableSources) &&
       minimumUsableSources > 0 &&
       usableSourcesObserved < minimumUsableSources;
+    const layer1CountIsMetadataOnly = !sourceCountSetsStatus(baselineLayerEnabled(), isAdjudicative);
     let reportStatus: ReportGateStatus = recomputeReportStatus();
 
     // The repair loop is no longer skipped on evidence grounds. Repair cannot
@@ -2869,6 +2873,23 @@ ${generatedReport.markdown}`,
         report_gate_status: reportStatus,
       },
     });
+    if (citationLockEnabled() && !isAdjudicative) {
+      const aliases = issueAliases(allChunks);
+      const bound = citationRows(reportMarkdown, aliases);
+      for (const row of bound) {
+        await query(
+          `INSERT INTO report_citations (report_id, chunk_id, chunk_quote, citation_order, citation_text)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [reportId, row.chunkId, row.quote, row.order, row.alias]
+        );
+      }
+      const rendered = renderReaderCitations(reportMarkdown, aliases, citationStyle || 'numeric');
+      if (bound.length === 0 && /\[E\d+\]/.test(reportMarkdown)) {
+        logger.warn(`[${runId}] Citation binding failed; markers were not published`);
+      } else if (rendered.references) {
+        await query(`UPDATE reports SET conclusion = $2 WHERE id = $1`, [reportId, rendered.references]);
+      }
+    }
     await saveRunCheckpoint({
       runId,
       stage: 'saving',

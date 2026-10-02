@@ -565,5 +565,12 @@ export { config };
 export function baselineLayerEnabled(): boolean {
   return process.env.BASELINE_LAYER_ENABLED === 'true';
 }
+/** Slice 4. Unset is off. An unrecognized value is off. */
+export function citationLockEnabled(): boolean {
+  return process.env.CITATION_LOCK_ENABLED === 'true';
+}
+export function doiResolveEnabled(): boolean {
+  return process.env.DOI_RESOLVE_ENABLED === 'true';
+}
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';

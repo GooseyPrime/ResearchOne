@@ -11,6 +11,8 @@ const TIER_INSIDE_BRACKET = new RegExp(`\\[\\s*${TIER_WORD}\\s*[-–—:|,]\\s*(
 const TIER_ONLY_BRACKET = new RegExp(`\\s?(?:\\[\\s*${TIER_WORD}\\s*\\]|\\(\\s*${TIER_WORD}\\s*\\))`, 'gi');
 /** Snake-case tier tokens used as labels in running text: "STRONG_EVIDENCE:", "established_fact". */
 const SNAKE_TIER_TOKEN = /\b(?:established_fact|strong_evidence)\b:?[ \t]*/gi;
+/** Chunk markers the writer used to emit. They are not reader citations. */
+const CHUNK_MARKER = /\s?\[chunks?\s+\d+(?:\s*,\s*\d+)*\]|\bCHUNK\s+\d+\b/gi;
 
 /**
  * Bracketed names of the system's own roles, in any case, with underscores or
@@ -94,6 +96,8 @@ function protectedSegmentFor(markdown: string): RegExp {
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');
+  if (CHUNK_MARKER.test(text)) hits.push('chunk marker');
+  CHUNK_MARKER.lastIndex = 0;
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
   if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
   if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
@@ -109,6 +113,7 @@ function cleanProse(text: string): string {
       .replace(TIER_INSIDE_BRACKET, '[')
       .replace(TIER_ONLY_BRACKET, REMOVED)
       .replace(SNAKE_TIER_TOKEN, REMOVED)
+      .replace(CHUNK_MARKER, REMOVED)
       .replace(INTERNAL_STEP_NAME, REMOVED)
       // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
       .replace(/[ \t]*\uE000+[ \t]*(?=[.,;:!?)\]])/g, '')
@@ -123,8 +128,8 @@ function cleanProse(text: string): string {
  * Removes evidence-tier labels and internal step names from report text a
  * reader sees. Tier grades remain on stored findings for scoring and for an
  * optional evidence view; they are never part of the report prose. Chunk
- * references ("[Chunk 3]") are kept, because citation mapping reads them.
- * Code in every Markdown form, links and URLs are never changed.
+ * markers are removed here: they are not a reader citation, and the citation
+ * mapper reads the unsanitized section text. Code, links and URLs are never changed.
  */
 export function stripInternalLabelsFromReport(markdown: string): string {
   let out = '';

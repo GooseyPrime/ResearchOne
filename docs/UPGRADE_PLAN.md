@@ -21,7 +21,7 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 2. Measurement harness | Done | PR #239. |
 | Fixes outside the slices | Done | PRs #240, #241, #242, #245. |
 | Slice 3. Baseline report: writing | Done | PR #243. Behind `BASELINE_LAYER_ENABLED`, unset by default. See "As built" under slice 3. |
-| **Slice 4. Citations and references** | **Next** | Start only when Brandon tells you to. |
+| **Slice 4. Citations and references** | **In review** | PR for this branch. Behind `CITATION_LOCK_ENABLED` and `DOI_RESOLVE_ENABLED`, both unset. See "As built" under slice 4. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
@@ -189,6 +189,7 @@ Use these. They correct errors in the earlier spec.
 | Layer 1 opt-in (rev 6) | Layer 1 prompt handling applies only when the caller passes `baselineLayer: true`, the switch is on and the run is not adjudicative (`resolveBaselineLayer` in `openrouterService.ts`). It is never inferred from a missing `isAdjudicative`. Only the report writer in `reportGenerator.ts` opts in. |
 | Baseline helpers (rev 6) | `reasoning/baselineReport.ts` holds the reader section plan, heading acceptance, repetition removal, `renumberCitations`, `buildReferences`, `buildAbout`, `distinctSourceCount`, `isoDay` and the reader scores. |
 | Citation markers (rev 6) | With the switch on, the section writer is told that a sentence drawn from `CHUNK n` ends with `[n]`. `renumberCitations` gives each cited source one number, rewrites the markers and removes any marker with no source behind it. Nothing is bound to `report_citations` yet; slice 4 does that. |
+| Citation lock (slice 4) | With `CITATION_LOCK_ENABLED`, the writer may emit only `[E#]` aliases issued for the passages it was given. Those bind to `report_citations.chunk_id` and `chunk_quote`. Reader numbers are assigned at render. Unset, the rev 6 scheme remains. |
 | Report length (rev 6) | `resolveReportWordTarget`: a length the user chose is used as chosen; otherwise the confirmed plan's `outputShape.estimatedLength` sets it; otherwise the standard default, logged. A planner or default length is not a user choice for contract growth (`userChosenWordTarget`). Under 300 words the report is the summary, references and closing note. |
 | Material check (rev 6) | `reasoning/materialSufficiency.ts`. With the switch on and a non-adjudicative run, a model judges after retrieval and before reasoning whether the material can answer the request. Insufficient and discovery enabled on the server: one extra search, wait for ingest, re-run retriever analysis and specialists, judge again. Still insufficient: the run ends with a plain reader message, no report row, hold released. Judge unreadable on both models: `assessSourceSufficiency` decides and that is logged. |
 | Outside search control (rev 6) | There is no per-request control by which a user turns outside search off. Availability is `config.discovery.enabled`. |
@@ -399,7 +400,13 @@ Acceptance:
   - `answer_correct` improves and `time_to_report` does not get worse.
 - On challenge tasks, `presentation_clean` is 1.0 and the other challenge scores are unchanged.
 
-### Slice 4. Citations and references (next)
+### Slice 4. Citations and references (in review)
+
+**As built.** The lock is behind `CITATION_LOCK_ENABLED` (unset). DOI resolution is behind `DOI_RESOLVE_ENABLED` (unset). With the lock off, the writer still cites `[n]` and the old mapper still runs. With it on, the drafter is given only issued `[E#]` quotes, an unknown alias retries once, and bound rows are written on both the iterative path and the light path. Reader numbers are one per source, in first-citation order, and each marker carries its passage id. The reference line follows the style stored on the run; numeric is the default. A failed binding does not publish an empty list.
+
+A1 and A2 are recorded at the top of the pull request. The presentation check now fails on `[Chunk N]`, `[Chunks N, M]`, `CHUNK N` and bracketed grade words, and the save-time safety net removes them. That net already ran on every saved report; keeping chunk markers was the hole. A switched-on non-adjudicative run records a source-count shortfall in metadata and does not fail or degrade on it. Adjudicative runs and switch-off runs still do. The quality judge prompt now tells the model to score a clean cited report above the same report with grade labels, chunk markers, a repeated fact, or no citations. `report_quality` is still not a gate.
+
+**Original instructions.**
 
 **Starting point (rev 6).** Slice 3 left an interim scheme: the writer cites `[n]` for `CHUNK n`, `renumberCitations` renumbers by source, and nothing is bound to `report_citations`. This slice replaces the interim scheme with the citation lock below and keeps its two guarantees: one number per source in first-citation order, and no marker without a source. Everything new is gated as invariants 13 and 14 require.
 
