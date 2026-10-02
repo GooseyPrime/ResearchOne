@@ -18,6 +18,8 @@ export interface LockedPassage {
   /** `P1`, `P2`, … in the order the passages were retrieved. */
   marker: string;
   chunkId: string;
+  /** The stored source the passage belongs to, when known. */
+  sourceId?: string | null;
   text: string;
   source: UsedSource;
 }
@@ -38,7 +40,7 @@ const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 /** Any bracket that opens with a passage marker, whatever follows it. */
 const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
 /** The pre-lock citation form, in brackets or parentheses. */
-const CHUNK_MARKER = /[ \t]*[[(]\s*chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]/gi;
+const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]|[ \t]*\b(?:(?:see|in|from|per)\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\b/gi;
 /** A range wider than this is not expanded; its two ends are kept. */
 const RANGE_LIMIT = 12;
 
@@ -62,10 +64,15 @@ function markersOf(inner: string): string[] {
   return out;
 }
 
-export function issuePassages(chunks: Array<{ id: string; content: string }>, sources: UsedSource[]): LockedPassage[] {
+export function issuePassages(
+  chunks: Array<{ id: string; content: string }>,
+  sources: UsedSource[],
+  sourceIdByChunk: ReadonlyMap<string, string | null> = new Map()
+): LockedPassage[] {
   return chunks.map((chunk, index) => ({
     marker: `P${index + 1}`,
     chunkId: chunk.id,
+    sourceId: sourceIdByChunk.get(chunk.id) ?? null,
     text: chunk.content,
     source: sources[index] ?? { title: 'Untitled source' },
   }));
@@ -327,12 +334,23 @@ export function dropSystemSections(markdown: string): string {
   const lines = markdown.split('\n');
   const kept: string[] = [];
   let skippingLevel = 0;
+  let fence: { mark: string; length: number } | null = null;
   for (const line of lines) {
-    const heading = /^(#{1,6})\s+/.exec(line);
-    if (heading) {
-      const level = heading[1].length;
-      if (skippingLevel === 0 || level <= skippingLevel) {
-        skippingLevel = SYSTEM_SECTION.test(line) ? level : 0;
+    // A heading inside a code fence is code. Indented code never matches the
+    // heading pattern, which allows no leading spaces.
+    const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceLine) {
+      const mark = fenceLine[1][0];
+      const length = fenceLine[1].length;
+      if (!fence) fence = { mark, length };
+      else if (mark === fence.mark && length >= fence.length && /^ {0,3}[`~]+\s*$/.test(line)) fence = null;
+    } else if (!fence) {
+      const heading = /^(#{1,6})\s+/.exec(line);
+      if (heading) {
+        const level = heading[1].length;
+        if (skippingLevel === 0 || level <= skippingLevel) {
+          skippingLevel = SYSTEM_SECTION.test(line) ? level : 0;
+        }
       }
     }
     if (skippingLevel === 0) kept.push(line);
@@ -380,7 +398,9 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
       const numbers: number[] = [];
       for (const marker of markersOf(inner)) {
         const passage = byMarker.get(marker);
-        const key = passage ? sourceKey(passage.source) || passage.chunkId : '';
+        // The stored source is the identity. Title and link are a fallback: two
+        // uploads can share a title and have no link, and are still two sources.
+        const key = passage ? passage.sourceId || sourceKey(passage.source) || passage.chunkId : '';
         if (!passage || !key) {
           removed += 1;
           continue;

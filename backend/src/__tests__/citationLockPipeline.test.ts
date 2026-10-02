@@ -465,6 +465,31 @@ describe('code, links and stale reference lists', () => {
     expect(readerFacingLabelHits('It opened [P1].')).toContain('passage marker');
   });
 
+  it('leaves a code sample that contains a References heading alone', () => {
+    const body = '## Summary\nIt opened in 1932 [P1].\n\n```md\n## References\nexample\n```\n\nStill here.';
+    const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('```md\n## References\nexample\n```');
+    expect(finalized.markdown).toContain('Still here.');
+  });
+
+  it('removes a bare chunk marker a repair wrote', () => {
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. The cost is given in CHUNK 4.', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('The cost is given.');
+    expect(readerFacingLabelHits(finalized.markdown)).not.toContain('chunk marker');
+  });
+
+  it('numbers two stored sources apart even when they share a title and have no link', () => {
+    const same = { title: 'Notes' };
+    const passages = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }, { id: 'chunk-b', content: 'It cost four million.' }],
+      [same, same],
+      new Map([['chunk-a', 'source-1'], ['chunk-b', 'source-2']])
+    );
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. It cost four million [P2].', passages, '2 Oct 2026');
+    expect(finalized.occurrences.map((occurrence) => occurrence.number)).toEqual([1, 2]);
+    expect(finalized.cited).toHaveLength(2);
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

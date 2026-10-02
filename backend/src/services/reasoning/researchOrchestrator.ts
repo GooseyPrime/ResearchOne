@@ -2300,7 +2300,16 @@ async function runResearchJobInner(
         url: chunk.source_url || null,
       }));
       // Citation lock: the writer cites by marker, and only passages it was shown.
-      lockedPassages = citationLockEnabled() && layer1Run && allChunks.length > 0 ? issuePassages(allChunks, usedSources) : null;
+      if (citationLockEnabled() && layer1Run && allChunks.length > 0) {
+        // One reader number per stored source, so look the sources up by passage.
+        const sourceRows = await query<{ id: string; source_id: string | null }>(
+          `SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`,
+          [allChunks.map((chunk) => chunk.id)]
+        );
+        lockedPassages = issuePassages(allChunks, usedSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+      } else {
+        lockedPassages = null;
+      }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,
         plan,
