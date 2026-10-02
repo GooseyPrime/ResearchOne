@@ -585,6 +585,8 @@ export function countShortfallSetsStatus(layer1Run: boolean): boolean {
 }
 
 const READER_NUMBER = /\[\d+\](?!\()/g;
+/** Two or more numbers in one bracket: "[1, 2]", "[1 and 2]", "[1-3]". */
+const GROUPED_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)+\s*\](?!\()/g;
 
 /**
  * Carry a locked report's citations into a revision of it.
@@ -639,9 +641,15 @@ export function rebindRevisedCitations<T>(
       baseNumbers.length === sectionRows.length && baseNumbers.every((entry, k) => entry.number === sectionRows[k].citationText.trim());
     const pool = paired ? baseNumbers.map((entry, k) => ({ ...entry, row: sectionRows[k].row, used: false })) : [];
 
-    const view = proseOf(section.content);
+    // A rewrite may merge numbers into one bracket ("[1, 2]"). Such a bracket is
+    // on a rewritten sentence by definition, so it carries nothing and is removed.
+    const content = mapProse(section.content, (prose) => {
+      removed += (prose.match(GROUPED_NUMBERS) ?? []).length;
+      return prose.replace(GROUPED_NUMBERS, '\uE002');
+    });
+    const view = proseOf(content);
     let previous = '';
-    const rewritten = sentencePieces(section.content)
+    const rewritten = sentencePieces(content)
       .map((piece) => {
         if (/^\s*$/.test(piece.text)) return piece.text;
         const prose = readable(piece.text).replace(READER_NUMBER, ' ').trim();

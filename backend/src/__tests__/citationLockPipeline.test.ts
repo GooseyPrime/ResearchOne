@@ -693,6 +693,24 @@ describe('code, links and stale reference lists', () => {
     expect(readerFacingLabelHits('The claim holds (inference).')).toContain('grade label');
   });
 
+  it('removes numbers a revision merged into one bracket', () => {
+    const rebound = rebindRevisedCitations(
+      [{ key: 'a', content: 'It opened in 1932 [1][2]. It closed in 1990 [3].' }],
+      [
+        { sectionKey: 'a', citationText: '[1]', row: 'r1' },
+        { sectionKey: 'a', citationText: '[2]', row: 'r2' },
+        { sectionKey: 'a', citationText: '[3]', row: 'r3' },
+      ],
+      [{ key: 'a', content: 'It opened in 1932 [1, 2]. It closed in 1990 [3].' }]
+    );
+    expect(rebound.contents).toEqual(['It opened in 1932. It closed in 1990 [3].']);
+    expect(rebound.kept).toEqual([{ sectionIndex: 0, row: 'r3' }]);
+  });
+
+  it('does not join text across a code span into a false marker', () => {
+    expect(readerFacingLabelHits('CH`x`UNK 1 is not a marker.')).toEqual([]);
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

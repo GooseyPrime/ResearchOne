@@ -149,9 +149,10 @@ export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   // Only prose is checked: a code sample or a link that happens to contain a
   // label is not a leak, and the clean-up that removes labels never touches it.
+  // Fragments are kept apart, so text on either side of a code span cannot join into a false match.
   let prose = '';
   mapCitationProse(text, (part) => {
-    prose += part;
+    prose += `${part}\uE004`;
     return part;
   });
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
