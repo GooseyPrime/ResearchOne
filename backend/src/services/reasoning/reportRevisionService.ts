@@ -17,7 +17,7 @@ import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
 import { rebindRevisedCitations, renumberAfterRevision } from './citationLock';
 
-interface BaseCitationRow {
+export interface BaseCitationRow {
   section_id: string | null;
   chunk_id: string | null;
   claim_id: string | null;
@@ -185,6 +185,73 @@ export function basicConsistencyChecks(sections: ReportSectionRow[], intentId?: 
  * `metadata`/`supplemental_attachments` columns are not yet present the
  * INSERT falls back to the legacy column set (Postgres SQLSTATE 42703).
  */
+/**
+ * Decide which of a base report's citations a revision keeps, and on which
+ * revised section each one sits. No database or model call.
+ *
+ * A locked base report keeps a citation only where its sentence is unchanged;
+ * its sources are then numbered again in the revised reading order. Any other
+ * report keeps its rows on the sections they came from.
+ */
+export function carryCitationsIntoRevision<S extends { id: string; title: string; content: string }>(args: {
+  baseSections: Array<{ id: string; title: string; content: string }>;
+  baseCitations: BaseCitationRow[];
+  revisedSections: S[];
+  /** The run recorded that the base report was written with the citation lock. */
+  lockRecorded: boolean;
+}): { sections: S[]; citations: Array<{ sectionKey: string; row: BaseCitationRow }>; removed: number; locked: boolean } {
+  const { baseSections, baseCitations, revisedSections, lockRecorded } = args;
+  const lockedBase =
+    lockRecorded ||
+    (baseCitations.length > 0 &&
+      baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim())));
+  if (!lockedBase) {
+    return {
+      sections: revisedSections,
+      citations: baseCitations.filter((row) => row.section_id != null).map((row) => ({ sectionKey: row.section_id as string, row })),
+      removed: 0,
+      locked: false,
+    };
+  }
+  // A heading can carry a citation, and the first save binds it. Heading and
+  // body are read together here so that citation is carried or removed with the rest.
+  const whole = (section: { title: string; content: string }): string => `${section.title}\n\n${section.content}`;
+  const rebound = rebindRevisedCitations(
+    baseSections.map((section) => ({ key: section.id, content: whole(section) })),
+    baseCitations
+      .filter((row) => row.section_id != null)
+      .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
+    revisedSections.map((section) => ({ key: section.id, content: whole(section) })),
+    // Retention can delete a passage after its report was written. A citation
+    // with no passage left is not carried into the new report.
+    (row) => row.chunk_id != null
+  );
+  const reboundParts = rebound.contents.map((text) => {
+    const cut = text.indexOf('\n\n');
+    return cut < 0 ? { title: text, content: '' } : { title: text.slice(0, cut), content: text.slice(cut + 2) };
+  });
+  // Sources are numbered again in the order the revised report first cites them,
+  // and the reference list keeps only the ones it still cites.
+  const renumbered = renumberAfterRevision(
+    reboundParts,
+    rebound.kept.map((entry) => entry.row.citation_text ?? '')
+  );
+  const sections = revisedSections.map((section, index) => ({
+    ...section,
+    title: renumbered.titles[index],
+    content: renumbered.contents[index],
+  }));
+  return {
+    sections,
+    citations: rebound.kept.map((entry, index) => ({
+      sectionKey: sections[entry.sectionIndex].id,
+      row: { ...entry.row, citation_order: index + 1, citation_text: renumbered.citationTexts[index] },
+    })),
+    removed: rebound.removed,
+    locked: true,
+  };
+}
+
 export async function createRevisionRequest(args: {
   reportId: string;
   requestText: string;
@@ -605,51 +672,16 @@ Return revised section body only.`,
      WHERE r.id = $1`,
     [baseReport.id]
   );
-  const lockedBase =
-    lockRecord[0]?.citation_lock === 'true' ||
-    (baseCitations.length > 0 &&
-      baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim())));
-  let carriedCitations: Array<{ sectionKey: string; row: BaseCitationRow }>;
-  if (lockedBase) {
-    // A heading can carry a citation, and the first save binds it. Heading and
-    // body are read together here so that citation is carried or removed with the rest.
-    const whole = (section: { title: string; content: string }): string => `${section.title}\n\n${section.content}`;
-    const rebound = rebindRevisedCitations(
-      baseSections.map((section) => ({ key: section.id, content: whole(section) })),
-      baseCitations
-        .filter((row) => row.section_id != null)
-        .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
-      revisedSections.map((section) => ({ key: section.id, content: whole(section) })),
-      // Retention can delete a passage after its report was written. A citation
-      // with no passage left is not carried into the new report.
-      (row) => row.chunk_id != null
-    );
-    const reboundParts = rebound.contents.map((text) => {
-      const cut = text.indexOf('\n\n');
-      return cut < 0 ? { title: text, content: '' } : { title: text.slice(0, cut), content: text.slice(cut + 2) };
-    });
-    // Sources are numbered again in the order the revised report first cites them,
-    // and the reference list keeps only the ones it still cites.
-    const renumbered = renumberAfterRevision(
-      reboundParts,
-      rebound.kept.map((entry) => entry.row.citation_text ?? '')
-    );
-    revisedSections = revisedSections.map((section, index) => ({
-      ...section,
-      title: renumbered.titles[index],
-      content: renumbered.contents[index],
-    }));
-    carriedCitations = rebound.kept.map((entry, index) => ({
-      sectionKey: revisedSections[entry.sectionIndex].id,
-      row: { ...entry.row, citation_order: index + 1, citation_text: renumbered.citationTexts[index] },
-    }));
-    if (rebound.removed > 0) {
-      logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: rebound.removed });
-    }
-  } else {
-    carriedCitations = baseCitations
-      .filter((row) => row.section_id != null)
-      .map((row) => ({ sectionKey: row.section_id as string, row }));
+  const carried = carryCitationsIntoRevision({
+    baseSections,
+    baseCitations,
+    revisedSections,
+    lockRecorded: lockRecord[0]?.citation_lock === 'true',
+  });
+  revisedSections = carried.sections;
+  const carriedCitations = carried.citations;
+  if (carried.removed > 0) {
+    logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: carried.removed });
   }
 
   emit('citation_integrity', 70, 'Running citation integrity checks');

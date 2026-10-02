@@ -151,6 +151,27 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
   return out + change(markdown.slice(cursor));
 }
 
+/** An inline link, with its label captured. */
+const INLINE_LINK = /\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
+/** A link whose whole label is a small number: a model's way of writing a citation as a link. */
+const NUMBER_AS_LINK = /\[\s*(\d{1,3})\s*\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
+
+/**
+ * Turn "[1](url)" into "[1]" outside code, so a number written as a link is
+ * read as the citation the reader takes it for. A longer number ("[2023](url)")
+ * is an ordinary link and is left alone.
+ */
+export function unwrapNumberLinks(markdown: string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(CODE_ONLY)) {
+    const start = match.index ?? 0;
+    out += markdown.slice(cursor, start).replace(NUMBER_AS_LINK, '[$1]') + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + markdown.slice(cursor).replace(NUMBER_AS_LINK, '[$1]');
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   // Only prose is checked: a code sample or a link that happens to contain a
@@ -161,6 +182,9 @@ export function readerFacingLabelHits(text: string): string[] {
     prose += `${part}\uE004`;
     return part;
   });
+  // The label of a link is read by the reader too; its destination is not.
+  const outsideCode = text.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' '));
+  for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
   // Passage markers are how the writer and the pipeline refer to retrieved text.

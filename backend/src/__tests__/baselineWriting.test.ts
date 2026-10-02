@@ -74,6 +74,10 @@ describe('baseline writing messages', () => {
     expect(presentationFailures(sample)).not.toContain('courtroom');
     expect(presentationFailures(sample)).not.toContain('boilerplate');
     expect(presentationFailures('This report synthesizes evidence from two sources.')).toContain('boilerplate');
+    // A link's label is read by the reader; its destination and code are not.
+    expect(presentationFailures('See [Chunk 4](https://example.org) for more.')).toContain('chunk marker');
+    expect(presentationFailures('It holds [established_fact](https://example.org).')).toContain('grade label');
+    expect(presentationFailures('See [the study](https://example.org/chunk-4) and `[Chunk 4](x)`.')).not.toContain('chunk marker');
   });
 
   it('removes a repeated sentence after one redraft still repeats', () => {

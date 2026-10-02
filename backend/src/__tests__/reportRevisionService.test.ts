@@ -108,3 +108,86 @@ describe('report revision history queries', () => {
     expect(queryMock).toHaveBeenCalled();
   });
 });
+
+describe('citations carried into a revision', () => {
+  const row = (over: Record<string, unknown>) => ({
+    section_id: 's1',
+    chunk_id: 'chunk-1',
+    claim_id: null,
+    source_id: 'source-1',
+    citation_text: '[1]',
+    chunk_quote: 'a quote',
+    citation_order: 1,
+    evidence_tier: 'inference',
+    stance: 'supports',
+    ...over,
+  });
+  const baseSections = [
+    { id: 's1', section_type: 'body', title: 'History', content: 'The bridge opened in 1932 [1]. It was repainted in 1950 [2].' },
+    { id: 's2', section_type: 'body', title: 'Use', content: 'Traffic doubled by 1960 [1].' },
+    {
+      id: 's3',
+      section_type: 'body',
+      title: 'References',
+      content: '1. City archive. Bridge records.\n2. Works department. Paint log.',
+    },
+  ];
+  const baseCitations = [
+    row({ section_id: 's1', citation_text: '[1]', citation_order: 1, chunk_id: 'chunk-1', source_id: 'source-1', chunk_quote: 'opened in 1932' }),
+    row({ section_id: 's1', citation_text: '[2]', citation_order: 2, chunk_id: 'chunk-2', source_id: 'source-2', chunk_quote: 'repainted in 1950' }),
+    row({ section_id: 's2', citation_text: '[1]', citation_order: 3, chunk_id: 'chunk-3', source_id: 'source-1', chunk_quote: 'traffic doubled' }),
+  ];
+
+  it('keeps a locked citation only on an unchanged sentence, on its own section, renumbered in reading order', async () => {
+    const { carryCitationsIntoRevision } = await import('../services/reasoning/reportRevisionService');
+    const revised = [
+      { ...baseSections[0], content: 'The bridge was finished early [1]. It was repainted in 1950 [2].' },
+      baseSections[1],
+      baseSections[2],
+    ];
+    const out = carryCitationsIntoRevision({ baseSections, baseCitations, revisedSections: revised, lockRecorded: true });
+    expect(out.locked).toBe(true);
+    expect(out.removed).toBe(1);
+    // The rewritten sentence loses its number; the paint log is now the first source cited.
+    expect(out.sections[0].content).toBe('The bridge was finished early. It was repainted in 1950 [1].');
+    expect(out.sections[1].content).toBe('Traffic doubled by 1960 [2].');
+    expect(out.sections[0].section_type).toBe('body');
+    expect(out.citations.map((entry) => [entry.sectionKey, entry.row.citation_text, entry.row.citation_order, entry.row.chunk_id, entry.row.chunk_quote])).toEqual([
+      ['s1', '[1]', 1, 'chunk-2', 'repainted in 1950'],
+      ['s2', '[2]', 2, 'chunk-3', 'traffic doubled'],
+    ]);
+  });
+
+  it('does not carry a locked citation whose passage is no longer stored', async () => {
+    const { carryCitationsIntoRevision } = await import('../services/reasoning/reportRevisionService');
+    const citations = [baseCitations[0], row({ ...baseCitations[1], chunk_id: null }), baseCitations[2]];
+    const out = carryCitationsIntoRevision({ baseSections, baseCitations: citations, revisedSections: baseSections, lockRecorded: true });
+    expect(out.citations.map((entry) => entry.row.chunk_id)).toEqual(['chunk-1', 'chunk-3']);
+    expect(out.sections[0].content).toBe('The bridge opened in 1932 [1]. It was repainted in 1950.');
+  });
+
+  it('treats a report as locked from its record even when it cites nothing', async () => {
+    const { carryCitationsIntoRevision } = await import('../services/reasoning/reportRevisionService');
+    const plain = [{ id: 's1', section_type: 'body', title: 'History', content: 'Nothing was cited.' }];
+    const revised = [{ ...plain[0], content: 'Now it claims a source [1].' }];
+    const locked = carryCitationsIntoRevision({ baseSections: plain, baseCitations: [], revisedSections: revised, lockRecorded: true });
+    expect(locked.sections[0].content).toBe('Now it claims a source.');
+    const open = carryCitationsIntoRevision({ baseSections: plain, baseCitations: [], revisedSections: revised, lockRecorded: false });
+    expect(open.locked).toBe(false);
+    expect(open.sections[0].content).toBe('Now it claims a source [1].');
+  });
+
+  it('leaves the rows of a report written without the lock on the sections they came from', async () => {
+    const { carryCitationsIntoRevision } = await import('../services/reasoning/reportRevisionService');
+    const loose = [
+      row({ section_id: 's1', citation_text: 'A claim about the bridge.', citation_order: null }),
+      row({ section_id: 's2', citation_text: 'A claim about traffic.', citation_order: null }),
+      row({ section_id: null, citation_text: 'Unplaced.', citation_order: null }),
+    ];
+    const revised = [{ ...baseSections[0], content: 'Rewritten [Chunk 1].' }, baseSections[1]];
+    const out = carryCitationsIntoRevision({ baseSections, baseCitations: loose, revisedSections: revised, lockRecorded: false });
+    expect(out.locked).toBe(false);
+    expect(out.sections).toBe(revised);
+    expect(out.citations.map((entry) => entry.sectionKey)).toEqual(['s1', 's2']);
+  });
+});

@@ -11,7 +11,7 @@
  * It is distinct from the `[E#]` aliases the export engine assigns to saved
  * citations (`formatting/evidenceAliaser.ts`).
  */
-import { mapCitationProse } from '../formatting/reportPresentation';
+import { mapCitationProse, unwrapNumberLinks } from '../formatting/reportPresentation';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 
 export interface LockedPassage {
@@ -659,9 +659,11 @@ export function rebindRevisedCitations<T>(
 
     // A rewrite may merge numbers into one bracket ("[1, 2]"). Such a bracket is
     // on a rewritten sentence by definition, so it carries nothing and is removed.
-    const content = mapProse(section.content, (prose) => {
+    // A number written as a link ("[1](url)") or with spaces ("[ 1 ]") is still
+    // a number the reader sees; read it as one, so it is carried or removed.
+    const content = mapProse(unwrapNumberLinks(section.content), (prose) => {
       removed += (prose.match(GROUPED_NUMBERS) ?? []).length;
-      return prose.replace(GROUPED_NUMBERS, '\uE002');
+      return prose.replace(GROUPED_NUMBERS, '\uE002').replace(/\[\s*(\d+)\s*\](?!\()/g, '[$1]');
     });
     const view = proseOf(content);
     let previous = '';

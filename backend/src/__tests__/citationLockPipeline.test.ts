@@ -608,6 +608,26 @@ describe('code, links and stale reference lists', () => {
     expect(rebound.kept).toEqual([]);
   });
 
+  it('reads a number written with spaces or as a link as the citation it is', () => {
+    const base = [{ key: 'a', content: 'The bridge opened in 1932 [1]. It was repainted later [2].' }];
+    const rows = [
+      { sectionKey: 'a', citationText: '[1]', row: 'first' },
+      { sectionKey: 'a', citationText: '[2]', row: 'second' },
+    ];
+    const kept = rebindRevisedCitations(base, rows, [
+      { key: 'a', content: 'The bridge opened in 1932 [ 1 ]. It was repainted later [2](https://example.org/x). A new line.' },
+    ]);
+    expect(kept.contents).toEqual(['The bridge opened in 1932 [1]. It was repainted later [2]. A new line.']);
+    expect(kept.kept.map((entry) => entry.row)).toEqual(['first', 'second']);
+
+    const dropped = rebindRevisedCitations(base, rows, [
+      { key: 'a', content: 'The bridge was finished early [ 1 ]. Paint came much later [2](https://example.org/x). See [2023](https://example.org/y) and `[1](z)`.' },
+    ]);
+    expect(dropped.contents).toEqual(['The bridge was finished early. Paint came much later. See [2023](https://example.org/y) and `[1](z)`.']);
+    expect(dropped.kept).toEqual([]);
+    expect(dropped.removed).toBe(2);
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
