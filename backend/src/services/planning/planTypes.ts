@@ -66,11 +66,6 @@ export interface PlanPayload {
    * Optional for backward compatibility with legacy plans.
    */
   executionPlan?: CanonicalExecutionPlan;
-  /**
-   * Chunks already in the corpus when this plan was built.
-   * A lookup uses this count to decide whether discovery has to run.
-   */
-  corpusChunkCount?: number;
 }
 
 export function planSummaryFromPayload(plan: PlanPayload): string {

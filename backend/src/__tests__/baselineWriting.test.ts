@@ -3,7 +3,6 @@ import { RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK } from '../constants/prompts';
 import { applySystemAugmentations } from '../services/openrouter/openrouterService';
 import { deriveGeneratedReportTitle } from '../services/reasoning/reportGenerator';
 import {
-  lookupNeedsDiscovery,
   plainQuestionIntent,
   presentationFailures,
   readerSections,
@@ -15,8 +14,6 @@ import {
   stripGradeLines,
   trimSummaryAtSentence,
 } from '../services/reasoning/baselineReport';
-import { buildCanonicalExecutionPlan } from '../services/planning/executionPlan';
-import { getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
 
 const SAMPLE = `# What the FDA authorized
 ## Summary
@@ -100,13 +97,6 @@ describe('baseline writing messages', () => {
   it('routes a failed classifier to factual research', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
     expect(plainQuestionIntent(true, false)).toBe('factual_report');
-    const plan = buildCanonicalExecutionPlan({
-      profile: getOrchestrationProfileForIntent('reference_lookup'),
-      corpusEmpty: true,
-    });
-    expect(plan.skipReasons.discovery).toBeUndefined();
-    expect(plan.corePipelineStages).toContain('discovery');
-    expect(lookupNeedsDiscovery(true)).toBe(true);
     delete process.env.BASELINE_LAYER_ENABLED;
   });
 });

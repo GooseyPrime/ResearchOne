@@ -165,15 +165,6 @@ export function plainQuestionIntent(classifierFailed: boolean, unsure: boolean):
   return null;
 }
 
-export function lookupNeedsDiscovery(corpusEmpty: boolean): boolean {
-  return baselineLayerEnabled() && corpusEmpty;
-}
-
-/** One condition for a lookup against an empty corpus. A missing count is not empty. */
-export function corpusLookupIsEmpty(intent: string | undefined, chunkCount: number | null | undefined): boolean {
-  return intent === 'reference_lookup' && chunkCount === 0;
-}
-
 export function buildReferences(sources: UsedSource[]): string {
   if (sources.length === 0) return '';
   return sources

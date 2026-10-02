@@ -19,10 +19,11 @@ import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
 import {
-  generateIterativeReport,
   ADJUDICATIVE_SECTION_INTENTS,
   deriveGeneratedReportTitle,
   ensureGeneratedTitleHeading,
+  generateIterativeReport,
+  resolveReportWordTarget,
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
 } from './reportGenerator';
@@ -43,7 +44,7 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled } from '../../config';
-import { corpusLookupIsEmpty, lookupNeedsDiscovery } from './baselineReport';
+import { gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -1051,8 +1052,6 @@ async function runResearchJobInner(
     data.confirmedPlanPayload?.sourceStrategy?.weightedClasses && Array.isArray(data.confirmedPlanPayload.sourceStrategy.weightedClasses)
       ? data.confirmedPlanPayload.sourceStrategy.weightedClasses
       : [];
-  const corpusChunkCount = data.confirmedPlanPayload?.corpusChunkCount;
-  const lookupCorpusEmpty = corpusLookupIsEmpty(orchProfile.intent, corpusChunkCount);
   const canonicalExecutionPlan =
     data.confirmedPlanPayload?.executionPlan ??
     data.confirmedPlanPayload?.orchestrationProfile?.executionPlan ??
@@ -1060,7 +1059,6 @@ async function runResearchJobInner(
       profile: orchProfile,
       researchBrief: confirmedResearchBrief,
       sourceClasses: sourceClassesFromPlan,
-      corpusEmpty: lookupCorpusEmpty,
     });
   const specialistAgentIds = (() => {
     const fromPlan = data.confirmedPlanPayload?.orchestrationProfile?.agentsWillRun
@@ -1220,10 +1218,6 @@ async function runResearchJobInner(
           },
         });
 
-        const chunkCountRow = await queryOne<{ count: number }>(`SELECT COUNT(*)::int AS count FROM chunks`);
-        const corpusChunkCount = Number(chunkCountRow?.count ?? 0);
-        planPayload.corpusChunkCount = Number.isFinite(corpusChunkCount) ? corpusChunkCount : 0;
-
         const runScopeRow = await queryOne<{ user_id: string | null; org_id: string | null }>(
           `SELECT user_id, org_id FROM research_runs WHERE id = $1`,
           [runId]
@@ -1352,7 +1346,7 @@ async function runResearchJobInner(
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
     let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
-    if (shouldRunPipelineStage(orchProfile, 'discovery') || lookupNeedsDiscovery(lookupCorpusEmpty)) {
+    if (shouldRunPipelineStage(orchProfile, 'discovery')) {
       await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
 
       discoverySummary = await runDiscoveryOrchestrator({
@@ -2109,6 +2103,115 @@ async function runResearchJobInner(
     const outputTemplateId =
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
+    const lengthDecision = resolveReportWordTarget({
+      userTarget: targetWordCount,
+      estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
+    });
+    if (lengthDecision.source === 'default') {
+      logger.warn('report_length_defaulted', { runId, target: lengthDecision.target, reason: 'plan_missing_estimated_length' });
+    }
+    await query(
+      `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+      [JSON.stringify({ reportLength: lengthDecision }), runId]
+    );
+    const resolvedWordTarget = lengthDecision.target;
+    let materialBlocksReport = false;
+    let materialReaderMessage = '';
+    if (baselineLayerEnabled() && !isAdjudicative) {
+      const discoveryAvailable = config.discovery.enabled && shouldRunPipelineStage(orchProfile, 'discovery');
+      const sealed = corpusGateSealedByDesign(corpusGateDecisions);
+      let extraPassUsed = false;
+      let judged = await judgeRetrievedMaterial({
+        request: researchQuery,
+        plan,
+        material: sourceContext,
+        engineVersion,
+        allowFallbackByRole,
+        byokApiKeyOverride,
+      });
+      let step = materialStep({
+        judgement: judged.judgement,
+        judgeFailed: judged.failed,
+        discoveryAvailable,
+        extraPassUsed,
+        corpusSealedByDesign: sealed,
+      });
+      if (step === 'use_gate') {
+        logGateFallback(runId, sourceAssessment);
+        await progress('reasoning', 49, 'Material check could not be read; using the existing evidence check.', {
+          substep: 'material_judgement_fallback',
+          detail: sourceAssessment.reason,
+        });
+        step = gateFallbackStep(sourceAssessment.action, discoveryAvailable, extraPassUsed);
+      }
+      if (step === 'discover_once') {
+        extraPassUsed = true;
+        await progress('discovery', 18, 'Looking for sources that can answer the request.', { substep: 'material_discovery' });
+        await runDiscoveryOrchestrator({
+          runId,
+          researchQuery,
+          plan: plan as unknown as Record<string, unknown>,
+          filterTags,
+          engineVersion,
+          researchObjective,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+          userId: creditCtx?.userId,
+          specialistAgentIds,
+          maxIngestCapOverride: resolveSourceIngestBudget({
+            configuredCap: config.discovery.maxIngestPerRun,
+            targetWordCount: resolvedWordTarget,
+            requestedArtifactCount,
+            addonCapOverride: addonEffects.maxIngestCapOverride,
+          }),
+          maxCoverageRounds: 1,
+        });
+        const followup = await retrieveChunksWithAudit({
+          query: researchQuery,
+          topK: addonEffects.retrievalTopK,
+          filterTags,
+          hybridSearch: true,
+          intentId: orchProfile.intent,
+          userId: creditCtx?.userId,
+          runId,
+        });
+        for (const chunk of followup.citableChunks) {
+          if (!allChunks.some((existing) => existing.id === chunk.id)) allChunks.push(chunk);
+        }
+        sourceContext = formatSourceContext(allChunks);
+        judged = await judgeRetrievedMaterial({
+          request: researchQuery,
+          plan,
+          material: sourceContext,
+          engineVersion,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+        });
+        step = materialStep({
+          judgement: judged.judgement,
+          judgeFailed: judged.failed,
+          discoveryAvailable,
+          extraPassUsed,
+          corpusSealedByDesign: sealed,
+        });
+        if (step === 'use_gate') {
+          logGateFallback(runId, sourceAssessment);
+          await progress('reasoning', 49, 'Material check could not be read; using the existing evidence check.', {
+            substep: 'material_judgement_fallback',
+            detail: sourceAssessment.reason,
+          });
+          step = gateFallbackStep(sourceAssessment.action, discoveryAvailable, extraPassUsed);
+        }
+      }
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ materialJudgement: judged.judgement, materialJudgeFailed: judged.failed, materialStep: step }), runId]
+      );
+      if (step === 'stop') {
+        materialBlocksReport = true;
+        materialReaderMessage = readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, discoveryAvailable || extraPassUsed);
+      }
+    }
     // Item-section titles R1 expansion planned, so the contract auditor can
     // recognise delivered items by what was actually planned rather than by a
     // label pattern the drafter never agreed to follow (run c50162a9).
@@ -2122,7 +2225,9 @@ async function runResearchJobInner(
         'Rerun with a broader corpus or supply supplemental sources.'
       );
     }
-    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    if (materialBlocksReport) {
+      generatedReport = { markdown: materialReaderMessage };
+    } else if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       const iterativeReport = await generateIterativeReport({
@@ -2142,7 +2247,8 @@ async function runResearchJobInner(
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
-        targetWordCount,
+        targetWordCount: resolvedWordTarget,
+        lengthSource: lengthDecision.source,
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,

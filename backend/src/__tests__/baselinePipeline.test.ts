@@ -93,9 +93,29 @@ describe('baseline report pipeline', () => {
     expect(stripGradeLines('Congressional testimony said the vote was public.\nStatistical inference was not required.')).toContain('Congressional testimony');
     const plan = buildCanonicalExecutionPlan({
       profile: getOrchestrationProfileForIntent('reference_lookup'),
-      corpusEmpty: true,
     });
-    expect(plan.skipReasons.discovery).toBeUndefined();
+    expect(plan.skipReasons.discovery).toBe('Skipped by canonical intent profile.');
+  });
+
+  it('writes only the short answer when the plan fits a single fact', async () => {
+    const report = await generateIterativeReport({
+      query: 'When did the FDA authorize the first CRISPR therapy?',
+      plan: {},
+      sourceContext: 'The FDA authorized Casgevy in December 2023.',
+      retrieverAnalysis: '',
+      reasoningChains: '',
+      challenges: '',
+      intentId: 'factual_report',
+      outputTemplateId: 'intent_factual_report',
+      targetWordCount: 105,
+      lengthSource: 'planner',
+      skipChallenger: true,
+      usedSources: [{ title: 'FDA Casgevy authorization', publisher: 'US Food and Drug Administration', date: 'December 2023', url: 'https://www.fda.gov/casgevy' }],
+    });
+    expect(report.targetWordCount).toBe(105);
+    expect(report.sections.map((section) => section.title)).toEqual(['Summary', 'References', 'About this report']);
+    const words = report.markdown.split(/\s+/).filter(Boolean).length;
+    expect(words).toBeLessThan(200);
   });
 
   it.each([

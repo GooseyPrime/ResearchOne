@@ -62,7 +62,7 @@ export default function ReportSpinoffPage() {
   const [filterTags, setFilterTags] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
-  const [reportLengthPreset, setReportLengthPreset] = useState<'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('standard');
+  const [reportLengthPreset, setReportLengthPreset] = useState<'automatic' | 'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('automatic');
   const [reportLengthCustom, setReportLengthCustom] = useState('2200');
   const [showModels, setShowModels] = useState(false);
   const [modelRows, setModelRows] = useState<
@@ -146,6 +146,8 @@ export default function ReportSpinoffPage() {
 
   const resolvedTargetWordCount = useMemo(() => {
     switch (reportLengthPreset) {
+      case 'automatic':
+        return undefined;
       case 'short':
         return 1200;
       case 'standard':
@@ -312,6 +314,7 @@ export default function ReportSpinoffPage() {
                   }
                   disabled={mutation.isPending}
                 >
+                  <option value="automatic">Automatic (fit the question)</option>
                   <option value="short">Short (~1,200 words)</option>
                   <option value="standard">Standard (~2,200 words)</option>
                   <option value="long">Long (~4,000 words)</option>

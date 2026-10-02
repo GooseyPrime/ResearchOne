@@ -719,6 +719,30 @@ export function clampWordTarget(n: number | undefined): number {
   return Math.max(REPORT_WORD_COUNT_MIN, Math.min(REPORT_WORD_COUNT_MAX, Math.round(n)));
 }
 
+const PLANNER_WORD_FLOOR = 60;
+
+/** A chosen length is clamped as the form already clamps it. An unchosen length comes from the plan. */
+export function resolveReportWordTarget(args: {
+  userTarget?: number;
+  estimatedLength?: { minWords?: number; maxWords?: number };
+}): { target: number; source: 'user' | 'planner' | 'default' } {
+  if (typeof args.userTarget === 'number' && Number.isFinite(args.userTarget) && args.userTarget > 0) {
+    return { target: clampWordTarget(args.userTarget), source: 'user' };
+  }
+  const min = args.estimatedLength?.minWords;
+  const max = args.estimatedLength?.maxWords;
+  const usableMin = typeof min === 'number' && Number.isFinite(min) && min > 0 ? min : null;
+  const usableMax = typeof max === 'number' && Number.isFinite(max) && max > 0 ? max : null;
+  if (usableMin == null && usableMax == null) {
+    return { target: REPORT_WORD_COUNT_DEFAULT, source: 'default' };
+  }
+  const derived = usableMin != null && usableMax != null ? (usableMin + usableMax) / 2 : (usableMin ?? usableMax ?? REPORT_WORD_COUNT_DEFAULT);
+  return {
+    target: Math.max(PLANNER_WORD_FLOOR, Math.min(REPORT_WORD_COUNT_MAX, Math.round(derived))),
+    source: 'planner',
+  };
+}
+
 export function deriveGeneratedReportTitle(query: string, markdown: string, intentId?: string): string {
   const headingMatch = markdown.match(/^\s*#\s+(.+?)\s*$/m);
   // Decoration is stripped before the checks AND kept stripped in the result:
@@ -1023,6 +1047,8 @@ export async function generateIterativeReport(args: {
    *  [REPORT_WORD_COUNT_MIN, REPORT_WORD_COUNT_MAX]. Falls back to
    *  REPORT_WORD_COUNT_DEFAULT if not provided. */
   targetWordCount?: number;
+  /** A planner-sized target may be under the form minimum. A user choice is not. */
+  lengthSource?: 'user' | 'planner' | 'default';
   byokApiKeyOverride?: string;
   /** Intent ID from the orchestration profile. `undefined` (legacy runs)
    *  defaults to the full adjudicative section plan for backward
@@ -1135,7 +1161,12 @@ export async function generateIterativeReport(args: {
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
-  const targetWordCount = clampWordTarget(contractTarget ?? args.targetWordCount);
+  const targetWordCount = args.lengthSource === 'planner'
+    ? Math.max(60, Math.min(REPORT_WORD_COUNT_MAX, Math.round(args.targetWordCount ?? 60)))
+    : clampWordTarget(contractTarget ?? args.targetWordCount);
+  if (baselineLayerEnabled() && args.isAdjudicative !== true && targetWordCount < 300) {
+    activeSectionPlan = [{ key: 'summary', title: 'Summary', weight: 1 }];
+  }
   const contractWantsTable = contractRequestsTable(args.contractArtifacts, args.requestedFormats);
 
   // Required field NAMES must reach the drafter. Fields can be inferred by the

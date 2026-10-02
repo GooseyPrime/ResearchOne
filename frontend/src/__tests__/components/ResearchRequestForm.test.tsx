@@ -202,7 +202,7 @@ describe('ResearchRequestForm — output preferences (from EZ)', () => {
   it('sends the length the user picked', async () => {
     renderForm();
     fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
-    fireEvent.change(screen.getByDisplayValue('Standard (~2,200 words)'), {
+    fireEvent.change(screen.getByDisplayValue('Automatic (fit the question)'), {
       target: { value: 'long' },
     });
     const call = await submitWith('Compare two suppliers');
@@ -212,7 +212,7 @@ describe('ResearchRequestForm — output preferences (from EZ)', () => {
   it('sends a custom word count', async () => {
     renderForm();
     fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
-    fireEvent.change(screen.getByDisplayValue('Standard (~2,200 words)'), {
+    fireEvent.change(screen.getByDisplayValue('Automatic (fit the question)'), {
       target: { value: 'custom' },
     });
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '5000' } });

@@ -7,7 +7,6 @@ import {
   type AgentRoleId,
   type SpecialistAgentId,
 } from '../reasoning/agentCapabilityRegistry';
-import { lookupNeedsDiscovery } from '../reasoning/baselineReport';
 
 export type SpecialistExecutionStatus =
   | 'planned'
@@ -47,7 +46,6 @@ export function buildCanonicalExecutionPlan(input: {
   researchBrief?: ResearchBrief;
   sourceClasses?: string[];
   runtimeAvailability?: RuntimeAvailability;
-  corpusEmpty?: boolean;
 }): CanonicalExecutionPlan {
   const { profile, researchBrief } = input;
   const selected = selectAgentsForBrief(
@@ -65,9 +63,6 @@ export function buildCanonicalExecutionPlan(input: {
   const skipReasons: Partial<Record<PipelineStage | SpecialistAgentId, string>> = {};
   for (const s of profile.agentsToSkip) {
     skipReasons[s] = 'Skipped by canonical intent profile.';
-  }
-  if (lookupNeedsDiscovery(input.corpusEmpty === true)) {
-    delete skipReasons.discovery;
   }
   for (const specialist of specialists) {
     if (unavailable[specialist]) {
@@ -103,9 +98,7 @@ export function buildCanonicalExecutionPlan(input: {
     version: 1,
     intent: profile.intent,
     secondaryIntent: researchBrief?.secondaryIntent,
-    corePipelineStages: lookupNeedsDiscovery(input.corpusEmpty === true) && !profile.agentsToRun.includes('discovery')
-      ? [...profile.agentsToRun, 'discovery']
-      : [...profile.agentsToRun],
+    corePipelineStages: [...profile.agentsToRun],
     coreAgentRoles: [...CORE_AGENT_IDS],
     specialistAgents: specialists,
     sourceClasses: input.sourceClasses ?? [],

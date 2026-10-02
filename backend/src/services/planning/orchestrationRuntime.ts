@@ -10,7 +10,6 @@ import {
   type OrchestrationProfileDefinition,
 } from './orchestrationProfiles';
 import { buildCanonicalExecutionPlan } from './executionPlan';
-import { corpusLookupIsEmpty } from '../reasoning/baselineReport';
 
 export function resolveOrchestrationProfileFromJob(data: ResearchJobData): OrchestrationProfileDefinition {
   const id = data.confirmedPlanPayload?.intent?.id as IntentId | undefined;
@@ -27,7 +26,6 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     sourceClasses: Array.isArray(plan.sourceStrategy?.weightedClasses)
       ? plan.sourceStrategy.weightedClasses
       : [],
-    corpusEmpty: corpusLookupIsEmpty(plan.intent.id, plan.corpusChunkCount),
   });
   const mergedAgents = Array.from(new Set([...executionPlan.coreAgentRoles, ...executionPlan.specialistAgents]));
   const skippedAgents = executionPlan.specialistAgents.filter(
@@ -43,10 +41,10 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     requestedFormats: plan.requestedFormats ?? plan.researchBrief?.requestedFormats,
     outputShape: {
       ...plan.outputShape,
-      estimatedLength: {
-        minWords: canon.expectedLengthRange.minWords,
-        maxWords: canon.expectedLengthRange.maxWords,
-      },
+      estimatedLength:
+        plan.outputShape?.estimatedLength?.minWords > 0 && plan.outputShape?.estimatedLength?.maxWords > 0
+          ? plan.outputShape.estimatedLength
+          : { minWords: canon.expectedLengthRange.minWords, maxWords: canon.expectedLengthRange.maxWords },
     },
     orchestrationProfile: {
       ...plan.orchestrationProfile,

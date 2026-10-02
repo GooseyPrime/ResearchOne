@@ -146,7 +146,7 @@ export default function ResearchRequestForm() {
   // ── How the answer should come out ──────────────────────────────────────
   const [objective, setObjective] = useState<ObjectiveChoice>('AUTO');
   const [reportFormats, setReportFormats] = useState<string[]>(['automatic']);
-  const [reportLengthPreset, setReportLengthPreset] = useState<ReportLengthPreset>('standard');
+  const [reportLengthPreset, setReportLengthPreset] = useState<ReportLengthPreset>('automatic');
   const [reportLengthCustom, setReportLengthCustom] = useState(2200);
   const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
 
@@ -245,10 +245,7 @@ export default function ResearchRequestForm() {
   const requestedFormats = resolvedFormats.includes('automatic') ? undefined : resolvedFormats;
   // Only send a word target when the user actually chose one; otherwise the
   // planner decides length from the request like everything else.
-  const targetWordCount =
-    reportLengthPreset === 'standard'
-      ? undefined
-      : resolveTargetWordCount(reportLengthPreset, reportLengthCustom);
+  const targetWordCount = resolveTargetWordCount(reportLengthPreset, reportLengthCustom);
 
   const modelOverrides = useMemo(() => {
     const out: Record<string, { primary?: string; fallback?: string }> = {};
