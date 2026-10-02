@@ -63,7 +63,7 @@ vi.mock('../services/retention/retentionService', () => ({
   markRunTerminalRetention: vi.fn(async () => undefined),
 }));
 
-import { saveReport } from '../services/reasoning/researchOrchestrator';
+import { countObservedSources, saveReport } from '../services/reasoning/researchOrchestrator';
 
 const REPORT = '# Bridges\n\n## History\nThe bridge opened in 1932 [1].\n\n## Use\nTraffic doubled by 1960 [2].';
 
@@ -151,5 +151,17 @@ describe('saving a locked report', () => {
     await save([]);
     expect(matching(/DELETE FROM report_citations/)).toHaveLength(1);
     expect(matching(/INSERT INTO report_citations/)).toHaveLength(0);
+  });
+});
+
+describe('sources a Layer 1 run records as read', () => {
+  it('counts stored sources, so an uploaded file with no link is counted', () => {
+    // Three uploads and one web page: one distinct link, four stored sources.
+    expect(countObservedSources(['s1', 's2', 's3', 's4'], 1)).toBe(4);
+    expect(countObservedSources(['s1', 's1', 's2'], 2)).toBe(2);
+  });
+
+  it('falls back to the link count when no stored source is known', () => {
+    expect(countObservedSources([], 3)).toBe(3);
   });
 });

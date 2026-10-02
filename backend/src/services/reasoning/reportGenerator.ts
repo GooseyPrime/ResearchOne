@@ -912,24 +912,36 @@ export function stripPromptEchoFromReport(markdown: string, query: string): stri
 export { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 
 /**
- * Take grade labels, courtroom words and the stock opening out of the prose of a
- * section, link labels included. Code in every Markdown form and link
+ * Replace courtroom words and the stock opening in the prose of a section with
+ * plain wording, and take grade labels out; link labels included. Code in every Markdown form and link
  * destinations are not read and not changed.
  */
 export function removeBannedWording(content: string): string {
+  // Each word is swapped for a plain one that fits the same place in the
+  // sentence, so the sentence still reads. A grade token is a label, not a
+  // word of the sentence, and is taken out.
+  const plain: Record<string, string> = {
+    verdict: 'finding',
+    verdicts: 'findings',
+    adjudicate: 'assess',
+    adjudicated: 'assessed',
+    adjudicates: 'assesses',
+    adjudicating: 'assessing',
+    falsified: 'disproved',
+  };
   const clean = (text: string): string =>
     text
+      // In brackets first, so no empty pair is left behind.
+      .replace(/[ \t]*[[(]\s*(?:established[_ ]fact|strong[_ ]evidence)\s*[\])]/gi, '')
       .replace(/[ \t]*\b(?:established_fact|strong_evidence)\b/gi, '')
-      .replace(/[ \t]*\b(?:verdict|adjudicate|adjudicated|adjudicates|falsified)\b/gi, '')
+      .replace(/\b(?:verdicts?|adjudicat(?:e|ed|es|ing)|falsified)\b/gi, (word) => {
+        const swap = plain[word.toLowerCase()] ?? word;
+        return word[0] === word[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap;
+      })
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
       .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence');
-  // A link's label is prose the reader sees; its destination is not. A label
-  // that would be left empty is kept, so the link still has something to click.
-  const labels = mapLinkLabels(content, (label) => {
-    const cleaned = clean(label).trim();
-    return cleaned.length > 0 ? cleaned : label;
-  });
-  return mapCitationProse(labels, clean);
+  // A link's label is prose the reader sees; its destination is not.
+  return mapCitationProse(mapLinkLabels(content, clean), clean);
 }
 
 export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {

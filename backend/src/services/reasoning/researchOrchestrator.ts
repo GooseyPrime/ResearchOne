@@ -2713,9 +2713,26 @@ ${reportForGates(generatedReport.markdown)}`,
     let reportStatus: ReportGateStatus = recomputeReportStatus();
     if (layer1Run && typeof minimumUsableSources === 'number' && Number.isFinite(minimumUsableSources) && minimumUsableSources > 0) {
       // Grant I: the count is kept for the record on every run, met or not, and does not decide the outcome.
+      // Counted by stored source, the identity the reader numbers use. An uploaded
+      // file has no link, so counting links would leave it out and record a
+      // shortfall that is not there. The link count is the fallback if the
+      // lookup fails; a record is still written.
+      let observedSources = usableSourcesObserved;
+      try {
+        const stored = await query<{ source_id: string }>(
+          `SELECT DISTINCT source_id FROM chunks WHERE id = ANY($1::uuid[]) AND source_id IS NOT NULL`,
+          [allChunks.map((chunk) => chunk.id)]
+        );
+        observedSources = countObservedSources(stored.map((row) => row.source_id), usableSourcesObserved);
+      } catch (countErr) {
+        logger.warn('layer1_source_count_lookup_failed', {
+          runId,
+          message: countErr instanceof Error ? countErr.message : String(countErr),
+        });
+      }
       await query(
         `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-        [JSON.stringify({ sourceCount: { observed: usableSourcesObserved, planned: minimumUsableSources } }), runId]
+        [JSON.stringify({ sourceCount: { observed: observedSources, planned: minimumUsableSources } }), runId]
       );
     }
 
@@ -3656,6 +3673,16 @@ function formatSourceContext(chunks: RetrievedChunk[]): string {
       '---',
     ].filter(Boolean).join('\n'))
     .join('\n\n');
+}
+
+/**
+ * How many sources a Layer 1 run read, for the record. Stored sources are the
+ * count when any are known; the count of distinct links is used only when none
+ * is, so a run is never recorded as having read fewer than either shows.
+ */
+export function countObservedSources(storedSourceIds: string[], distinctLinks: number): number {
+  const stored = new Set(storedSourceIds.filter((id) => typeof id === 'string' && id.length > 0)).size;
+  return Math.max(stored, distinctLinks);
 }
 
 /** Exported for the save-path test; the research job is its only caller. */

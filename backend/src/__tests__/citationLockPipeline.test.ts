@@ -249,6 +249,7 @@ describe('citation lock on the report path', () => {
     expect(calls.some((call) => call.text.includes('Rewrite the report in plain encyclopedia prose'))).toBe(true);
     // The redraft moved the citation, so its version of the section was refused; the wording is fixed without it.
     expect(report.markdown).not.toMatch(/verdict/i);
+    expect(report.markdown).toContain('The finding of the agency was to authorize Casgevy');
     expect(report.markdown).toContain('8 December 2023 [P1].');
     expect(report.markdown).not.toContain('8 December 2023 [P2]');
   });
@@ -833,16 +834,17 @@ describe('code, links and stale reference lists', () => {
     const section =
       'The verdict was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report synthesizes evidence, and `verdict` is a variable.';
     expect(removeBannedWording(section)).toBe(
-      'The was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report draws on evidence, and `verdict` is a variable.'
+      'The finding was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report draws on evidence, and `verdict` is a variable.'
     );
   });
 
   it('takes banned wording out of a link label and keeps the destination', () => {
     expect(removeBannedWording('See [the final verdict](https://example.org/verdict) and [the verdict text][verdict].\n\n[verdict]: https://example.org')).toBe(
-      'See [the final](https://example.org/verdict) and [the text][verdict].\n\n[verdict]: https://example.org'
+      'See [the final finding](https://example.org/verdict) and [the finding text][verdict].\n\n[verdict]: https://example.org'
     );
-    // A label that is only the banned word is kept, so the link is not left empty.
-    expect(removeBannedWording('See [verdict](https://example.org).')).toBe('See [verdict](https://example.org).');
+    expect(removeBannedWording('See [Verdict](https://example.org). It was adjudicated and falsified [established_fact].')).toBe(
+      'See [Finding](https://example.org). It was assessed and disproved.'
+    );
   });
 
   it('removes a level-1 reference list that follows other content, with no title above it', () => {
