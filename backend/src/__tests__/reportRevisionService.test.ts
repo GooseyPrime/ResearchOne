@@ -166,6 +166,28 @@ describe('citations carried into a revision', () => {
     expect(out.sections[0].content).toBe('The bridge opened in 1932 [1]. It was repainted in 1950.');
   });
 
+  it('drops a citation whose passage was deleted while the revision was running', async () => {
+    const { carryCitationsIntoRevision, withoutDeletedPassages } = await import('../services/reasoning/reportRevisionService');
+    // chunk-2 was there when the citations were read and is gone at save time.
+    const rows = withoutDeletedPassages(baseCitations, new Set(['chunk-1', 'chunk-3']));
+    expect(rows.map((entry) => entry.chunk_id)).toEqual(['chunk-1', null, 'chunk-3']);
+    expect(baseCitations[1].chunk_id).toBe('chunk-2');
+    const out = carryCitationsIntoRevision({ baseSections, baseCitations: rows, revisedSections: baseSections, lockRecorded: true });
+    expect(out.citations.map((entry) => entry.row.chunk_id)).toEqual(['chunk-1', 'chunk-3']);
+    expect(out.citations.map((entry) => entry.row.citation_order)).toEqual([1, 2]);
+    expect(out.sections[0].content).toBe('The bridge opened in 1932 [1]. It was repainted in 1950.');
+  });
+
+  it('re-reads the cited passages inside the save and holds them until it commits', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('src/services/reasoning/reportRevisionService.ts', 'utf8');
+    const save = source.slice(source.indexOf('await withTransaction(async (client) => {'));
+    const check = save.indexOf('SELECT id FROM chunks WHERE id = ANY($1::uuid[]) FOR SHARE');
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(save.indexOf('INSERT INTO report_sections'));
+    expect(save.slice(check, save.indexOf('INSERT INTO report_sections'))).toMatch(/withoutDeletedPassages\(baseCitations, present\)/);
+  });
+
   it('treats a report as locked from its record even when it cites nothing', async () => {
     const { carryCitationsIntoRevision } = await import('../services/reasoning/reportRevisionService');
     const plain = [{ id: 's1', section_type: 'body', title: 'History', content: 'Nothing was cited.' }];

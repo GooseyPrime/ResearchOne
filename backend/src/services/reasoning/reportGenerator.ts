@@ -1208,6 +1208,14 @@ export async function generateIterativeReport(args: {
     'structured_report',
     'contradiction_analysis',
     'unresolved_questions',
+    // Whole-report sections of the intent templates (literature review, framing and the like).
+    'findings',
+    'discussion',
+    'limitations',
+    'weaknesses',
+    'framing',
+    'unresolved',
+    'contested_zones',
   ]);
   const citationIssues: Array<{ section: string; markers: string[] }> = [];
 

@@ -185,6 +185,11 @@ export function basicConsistencyChecks(sections: ReportSectionRow[], intentId?: 
  * `metadata`/`supplemental_attachments` columns are not yet present the
  * INSERT falls back to the legacy column set (Postgres SQLSTATE 42703).
  */
+/** The same rows, with the passage cleared on any whose passage is not among those still stored. */
+export function withoutDeletedPassages(rows: BaseCitationRow[], stillStored: ReadonlySet<string>): BaseCitationRow[] {
+  return rows.map((row) => (row.chunk_id && !stillStored.has(row.chunk_id) ? { ...row, chunk_id: null } : row));
+}
+
 /**
  * Decide which of a base report's citations a revision keeps, and on which
  * revised section each one sits. No database or model call.
@@ -672,14 +677,13 @@ Return revised section body only.`,
      WHERE r.id = $1`,
     [baseReport.id]
   );
-  const carried = carryCitationsIntoRevision({
-    baseSections,
-    baseCitations,
-    revisedSections,
-    lockRecorded: lockRecord[0]?.citation_lock === 'true',
-  });
+  const lockRecorded = lockRecord[0]?.citation_lock === 'true';
+  // Kept as written by the revision, so the citations can be worked out again at
+  // save time if a passage is deleted while the checks below are running.
+  const sectionsBeforeCarry = revisedSections;
+  const carried = carryCitationsIntoRevision({ baseSections, baseCitations, revisedSections, lockRecorded });
   revisedSections = carried.sections;
-  const carriedCitations = carried.citations;
+  let carriedCitations = carried.citations;
   if (carried.removed > 0) {
     logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: carried.removed });
   }
@@ -754,6 +758,31 @@ Return strict JSON.`,
   let revisionId = '';
   let revisedReportId = '';
   await withTransaction(async (client) => {
+    // The citations were read before the model checks above, which take a while.
+    // Retention can delete a cited passage in that time. The passages are read
+    // again here and held until the save commits; a citation whose passage has
+    // gone is dropped the same way as one that was already gone, and the numbers
+    // are worked out again, so the save never fails on a passage that no longer exists.
+    const citedChunkIds = [...new Set(carriedCitations.map((entry) => entry.row.chunk_id).filter((id): id is string => Boolean(id)))];
+    if (citedChunkIds.length > 0) {
+      const stored = await client.query<{ id: string }>(`SELECT id FROM chunks WHERE id = ANY($1::uuid[]) FOR SHARE`, [citedChunkIds]);
+      const present = new Set(stored.rows.map((row) => row.id));
+      if (present.size < citedChunkIds.length) {
+        const again = carryCitationsIntoRevision({
+          baseSections,
+          baseCitations: withoutDeletedPassages(baseCitations, present),
+          revisedSections: sectionsBeforeCarry,
+          lockRecorded,
+        });
+        revisedSections = again.sections;
+        carriedCitations = again.citations;
+        logger.info('Revision dropped citations whose passages were deleted during the run', {
+          reportId: args.reportId,
+          missing: citedChunkIds.length - present.size,
+        });
+      }
+    }
+
     const currentVersion = baseReport.version_number ?? 1;
     const rootReportId = baseReport.root_report_id ?? baseReport.id;
     const newVersion = currentVersion + 1;
