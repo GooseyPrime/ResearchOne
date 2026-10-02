@@ -40,7 +40,9 @@ const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 /** Any bracket that opens with a passage marker, whatever follows it. */
 // A bracket the model never closed ("Claim [P1") is still a marker a reader
 // would see. Only the opening token is taken, not the words after it.
-const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b(?:[^\]\n]*\]|(?![^\]\n]*\]))/gi;
+// Neither form reaches past the next "[", so a broken marker cannot swallow
+// the sentence after it or the valid marker that follows.
+const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b(?:[^[\]\n]*\]|(?![^[\]\n]*\]))/gi;
 /** The pre-lock citation form, in brackets or parentheses. */
 const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]|[ \t]*\b(?:(?:see|in|from|per)\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\b/gi;
 /** The export engine's alias form. It is assigned after a report is saved; a writer that emits it has cited nothing. */
@@ -446,7 +448,8 @@ function sentenceBefore(text: string, index: number): string {
 
 // The report's own title (a level-1 heading that opens the report) is never a
 // system section, whatever it says. A later level-1 "References" is one.
-const SYSTEM_SECTION = /^#{1,6}\s+(?:References|About this report)\s*$/i;
+// A heading may close with hashes of its own ("## References ##").
+const SYSTEM_SECTION = /^#{1,6}\s+(?:References|About this report)(?:\s+#+)?\s*$/i;
 
 /**
  * The report without its reference list and closing note. A system section runs

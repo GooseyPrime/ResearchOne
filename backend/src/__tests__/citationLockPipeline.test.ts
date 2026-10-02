@@ -742,6 +742,18 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.markdown).toContain('A fact [1].');
   });
 
+  it('does not let a broken marker swallow the sentence and the citation after it', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA claim [P1 broken text. A fact [P2].', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('A claim broken text. A fact [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('removes a model-written reference list whose heading closes with hashes', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P1].\n\n## References ##\n1. Stale entry', passages(), '2 Oct 2026');
+    expect(finalized.markdown).not.toContain('Stale entry');
+    expect(finalized.markdown.match(/^#+ References\b/gm)).toHaveLength(1);
+  });
+
   it('removes a marker the model never closed', () => {
     const finalized = finalizeLockedCitations('## Summary\nA claim [P1\nA fact [P1]. Another claim [P2 and more words.', passages(), '2 Oct 2026');
     expect(finalized.markdown).toContain('A claim\nA fact [1]. Another claim and more words.');
