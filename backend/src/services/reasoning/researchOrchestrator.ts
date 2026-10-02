@@ -2282,6 +2282,18 @@ async function runResearchJobInner(
     let plannedItemTitles: ReadonlySet<string> = new Set<string>();
     let generatedReport: { markdown: string };
     let lockedPassages: LockedPassage[] | null = null;
+    /**
+     * The text the gates judge. With the citation lock on, the working draft
+     * still carries the writer's markers and has no reference list or closing
+     * note; those are added when it is finalized. The verifier and the contract
+     * audit read the report as it will be saved, so a contract that asks for a
+     * reference list is not failed for one that is about to be added. Repairs
+     * still work on the marker draft.
+     */
+    const reportForGates = (markdown: string): string =>
+      lockedPassages
+        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages).markdown
+        : markdown;
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -2451,7 +2463,7 @@ async function runResearchJobInner(
           { role: 'system', content: intentVerifierPrompt },
           {
             role: 'user',
-            content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+            content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
           },
         ],
       });
@@ -2470,7 +2482,7 @@ async function runResearchJobInner(
               role: 'user',
               content: `Return ONLY valid JSON matching the VerificationResult schema for this report. Do not include markdown fences or commentary. REPORT:
 
-${generatedReport.markdown}`,
+${reportForGates(generatedReport.markdown)}`,
             },
           ],
         });
@@ -2647,7 +2659,7 @@ ${generatedReport.markdown}`,
         };
       }
     };
-    await runContractAudit(generatedReport.markdown);
+    await runContractAudit(reportForGates(generatedReport.markdown));
 
     const recomputeReportStatus = (): ReportGateStatus => {
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
@@ -2790,7 +2802,7 @@ ${generatedReport.markdown}`,
               { role: 'system', content: intentVerifierPrompt },
               {
                 role: 'user',
-                content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+                content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
               },
             ],
           });
@@ -2809,7 +2821,7 @@ ${generatedReport.markdown}`,
                   role: 'user',
                   content: `Return ONLY valid JSON matching the VerificationResult schema for this revised report. Do not include markdown fences or commentary. REPORT:
 
-${generatedReport.markdown}`,
+${reportForGates(generatedReport.markdown)}`,
                 },
               ],
             });
@@ -2820,7 +2832,7 @@ ${generatedReport.markdown}`,
           verificationUnavailable = verification.overall === 'PARSE_FAILED';
         }
 
-        await runContractAudit(generatedReport.markdown);
+        await runContractAudit(reportForGates(generatedReport.markdown));
         reportStatus = recomputeReportStatus();
       }
     }

@@ -128,6 +128,17 @@ describe('locked citations in the research job', () => {
     expect(source).not.toMatch(/persistBoundCitations/);
   });
 
+  it('has the verifier and the contract audit read the report as it will be saved', () => {
+    // Every gate reads through reportForGates; none reads the marker draft directly.
+    expect(source).toMatch(/const reportForGates = \(markdown: string\): string =>\s+lockedPassages\s+\? finalizeLockedCitations\(/);
+    expect(source.match(/Verify this research report meets epistemic standards:\\n\\n\$\{reportForGates\(generatedReport\.markdown\)\}/g)).toHaveLength(2);
+    expect(source.match(/REPORT:\n\n\$\{reportForGates\(generatedReport\.markdown\)\}/g)).toHaveLength(2);
+    expect(source.match(/await runContractAudit\(reportForGates\(generatedReport\.markdown\)\);/g)).toHaveLength(2);
+    expect(source).not.toMatch(/runContractAudit\(generatedReport\.markdown\)/);
+    // Repairs keep working on the marker draft.
+    expect(source).toMatch(/markdown: applyTargetedRepair\(generatedReport\.markdown,/);
+  });
+
   it('leaves the citations unset when the lock is off', () => {
     expect(source).toMatch(/let lockedOccurrences: CitationOccurrence\[\] \| null = null;/);
     const assignments = [...source.matchAll(/\blockedOccurrences = /g)];
