@@ -628,6 +628,46 @@ describe('code, links and stale reference lists', () => {
     expect(dropped.removed).toBe(2);
   });
 
+  it('removes every other citation form a revision writes into a locked report', () => {
+    const base = [{ key: 'a', content: 'The bridge opened in 1932 [1].' }];
+    const rows = [{ sectionKey: 'a', citationText: '[1]', row: 'first' }];
+    const rebound = rebindRevisedCitations(base, rows, [
+      {
+        key: 'a',
+        content:
+          'The bridge opened in 1932 [1]. It was widened [P1]. Tolls ended [Chunk 4](https://example.org). Lanes were added [E1][src]. A code sample `rows[P1]` stays.\n\n[src]: https://example.org',
+      },
+    ]);
+    expect(rebound.contents).toEqual([
+      'The bridge opened in 1932 [1]. It was widened. Tolls ended. Lanes were added. A code sample `rows[P1]` stays.\n\n[src]: https://example.org',
+    ]);
+    expect(rebound.kept.map((entry) => entry.row)).toEqual(['first']);
+    expect(rebound.removed).toBe(3);
+  });
+
+  it('shows the writer a marker-shaped token from a source in a form it cannot cite', () => {
+    const shown = passages();
+    shown[0] = { ...shown[0], text: 'As noted earlier [P2], the bridge opened in 1932.' };
+    const context = formatLockedContext(shown);
+    expect(context).toContain('As noted earlier (P2), the bridge opened in 1932.');
+    expect(context.match(/\[P2\]/g)).toHaveLength(1);
+    expect(shown[0].text).toContain('[P2]');
+  });
+
+  it('does not let a link definition hide a spaced number the lock did not issue', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P1]. A stray one [ 7 ].\n\n[7]: https://example.org', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('A fact [1]. A stray one.');
+    expect(finalized.markdown).not.toContain('[ 7 ]');
+  });
+
+  it('reads an indented sentence as prose only under a list item', () => {
+    const nested = finalizeLockedCitations('## Summary\n- A point.\n\n    The bridge opened in 1932 [P1].', passages(), '2 Oct 2026');
+    expect(nested.markdown).toContain('    The bridge opened in 1932 [1].');
+    const code = finalizeLockedCitations('## Summary\nAn output sample:\n\n    the row printed was [P1]\n\nA fact [P1].', passages(), '2 Oct 2026');
+    expect(code.markdown).toContain('    the row printed was [P1]');
+    expect(code.markdown).toContain('A fact [1].');
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);

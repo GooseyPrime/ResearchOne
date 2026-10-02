@@ -109,11 +109,35 @@ const INDENTED_SENTENCE_WITH_MARKER =
 const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
 /**
  * So is one that a link definition ("[P1]: url") turns into a shortcut or
- * collapsed reference link. The definition line itself stays protected.
+ * collapsed reference link. The definition line itself stays protected. The
+ * older citation forms ("[E1]", "[Chunk 4]") are released the same way, so a
+ * definition cannot hide one from the checks and clean-ups that read prose.
  */
-const MARKER_AS_REFERENCE_LINK = /^\[\s*P\d+[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
-/** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link. */
-const NUMBER_AS_REFERENCE_LINK = /^\[\d+\](?:\[\])?$/;
+const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
+/** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
+const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
+
+const LIST_ITEM_LINE = /^[ \t]*(?:[-*+]|\d+[.)])\s/;
+
+/**
+ * Whether an indented line continues a list item. Markdown reads an indented
+ * line as code unless it sits under a list item; word shape alone cannot tell
+ * the two apart. Looking back past blank and indented lines, the first line
+ * that is neither decides: a list item means nested prose, anything else code.
+ */
+function continuesList(markdown: string, at: number): boolean {
+  const before = markdown.slice(0, at).split('\n');
+  // A segment can begin with the line break before its line.
+  if (!markdown.startsWith('\n', at)) before.pop();
+  for (let index = before.length - 1; index >= 0; index -= 1) {
+    const line = before[index];
+    if (/^\s*$/.test(line)) continue;
+    if (LIST_ITEM_LINE.test(line)) return true;
+    if (/^(?: {4,}|\t)/.test(line)) continue;
+    return false;
+  }
+  return false;
+}
 
 /**
  * Apply a change to the prose of a report and to nothing else. Code in every
@@ -125,7 +149,10 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
     const segment = match[0];
-    if (INDENTED_LIST_ITEM_WITH_MARKER.test(segment) || INDENTED_SENTENCE_WITH_MARKER.test(segment)) {
+    if (
+      INDENTED_LIST_ITEM_WITH_MARKER.test(segment) ||
+      (INDENTED_SENTENCE_WITH_MARKER.test(segment) && continuesList(markdown, match.index ?? 0))
+    ) {
       // Nested prose: read the line itself, so code and links inside it stay protected.
       const start = match.index ?? 0;
       const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
@@ -153,23 +180,28 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
 
 /** An inline link, with its label captured. */
 const INLINE_LINK = /\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
-/** A link whose whole label is a small number: a model's way of writing a citation as a link. */
-const NUMBER_AS_LINK = /\[\s*(\d{1,3})\s*\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
+/**
+ * A link whose whole label is a citation: a small number, a passage marker, an
+ * export alias or a chunk marker, written as an inline link or as a reference
+ * link with a label of its own.
+ */
+const CITATION_AS_LINK =
+  /\[(\s*(?:\d{1,3}|P\d+\b[^\]\n]*|E\d+|(?:see\s+)?chunks?\s+\d+[^\]\n]*)\s*)\](?:\([^)\s]*(?:\s+"[^"]*")?\)|\[(?!\s*(?:P?\d+|E\d+)\s*[\],;])[^\]\n]+\])/gi;
 
 /**
- * Turn "[1](url)" into "[1]" outside code, so a number written as a link is
+ * Turn "[1](url)" into "[1]" outside code, so a citation written as a link is
  * read as the citation the reader takes it for. A longer number ("[2023](url)")
  * is an ordinary link and is left alone.
  */
-export function unwrapNumberLinks(markdown: string): string {
+export function unwrapCitationLinks(markdown: string): string {
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(CODE_ONLY)) {
     const start = match.index ?? 0;
-    out += markdown.slice(cursor, start).replace(NUMBER_AS_LINK, '[$1]') + match[0];
+    out += markdown.slice(cursor, start).replace(CITATION_AS_LINK, '[$1]') + match[0];
     cursor = start + match[0].length;
   }
-  return out + markdown.slice(cursor).replace(NUMBER_AS_LINK, '[$1]');
+  return out + markdown.slice(cursor).replace(CITATION_AS_LINK, '[$1]');
 }
 
 export function readerFacingLabelHits(text: string): string[] {

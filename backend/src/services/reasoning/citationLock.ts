@@ -11,7 +11,7 @@
  * It is distinct from the `[E#]` aliases the export engine assigns to saved
  * citations (`formatting/evidenceAliaser.ts`).
  */
-import { mapCitationProse, unwrapNumberLinks } from '../formatting/reportPresentation';
+import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPresentation';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 
 export interface LockedPassage {
@@ -141,7 +141,12 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
   return passages
     .map((passage) => {
       const from = [passage.source.publisher, passage.source.title].filter(Boolean).join(', ');
-      return `[${passage.marker}] ${from}\n${cleanText(passage.text).trim()}`;
+      // A source can contain "[P2]" of its own (a footnote, say). Shown as written
+      // it would look like a marker the writer may cite. Round brackets keep the
+      // text readable and cannot be read as a marker; the stored passage, which
+      // quotes are copied from, is untouched.
+      const body = cleanText(passage.text).trim().replace(/\[(\s*P\d+\b[^\]\n]*)\]/gi, '($1)');
+      return `[${passage.marker}] ${from}\n${body}`;
     })
     .join('\n\n---\n\n');
 }
@@ -661,9 +666,14 @@ export function rebindRevisedCitations<T>(
     // on a rewritten sentence by definition, so it carries nothing and is removed.
     // A number written as a link ("[1](url)") or with spaces ("[ 1 ]") is still
     // a number the reader sees; read it as one, so it is carried or removed.
-    const content = mapProse(unwrapNumberLinks(section.content), (prose) => {
-      removed += (prose.match(GROUPED_NUMBERS) ?? []).length;
-      return prose.replace(GROUPED_NUMBERS, '\uE002').replace(/\[\s*(\d+)\s*\](?!\()/g, '[$1]');
+    // A rewriter that never saw the passages can also write a passage marker, a
+    // chunk marker or an export alias. None has a saved row; all are removed.
+    const content = mapProse(unwrapCitationLinks(section.content), (prose) => {
+      for (const form of [GROUPED_NUMBERS, PASSAGE_LOOKING, CHUNK_MARKER, EXPORT_ALIAS]) {
+        removed += (prose.match(form) ?? []).length;
+        prose = prose.replace(form, '\uE002');
+      }
+      return prose.replace(/\[\s*(\d+)\s*\](?!\()/g, '[$1]');
     });
     const view = proseOf(content);
     let previous = '';
