@@ -61,6 +61,7 @@ import {
   markersPreserved,
   unknownMarkers,
   stripReaderNumbers,
+  stripUnknownMarkers,
   stripUnsupportedMarkers,
   passagesForSection,
   type LockedPassage,
@@ -488,6 +489,20 @@ describe('code, links and stale reference lists', () => {
     const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. It cost four million [P2].', passages, '2 Oct 2026');
     expect(finalized.occurrences.map((occurrence) => occurrence.number)).toEqual([1, 2]);
     expect(finalized.cited).toHaveLength(2);
+  });
+
+  it('does not read marker-shaped code as a citation, and never edits it', () => {
+    const draft = 'It opened in 1932 [P1]. A stray one [P9].\n\n```\nrows[P9] = 1\n```\n\nInline `cells[P9]` too.';
+    expect(markersIn(draft)).toEqual(['P1', 'P9']);
+    expect(unknownMarkers('Only code here: `rows[P9]`.', shown())).toEqual([]);
+    const stripped = stripUnknownMarkers(draft, shown());
+    expect(stripped).toContain('A stray one.');
+    expect(stripped).toContain('rows[P9] = 1');
+    expect(stripped).toContain('`cells[P9]`');
+    const repaired = stripUnsupportedMarkers('It opened in 1932 [P1].', 'It opened in 1932 [P1]. New claim [P1].\n\n```\nrows[P1]\n```');
+    expect(repaired.markdown).toContain('New claim.');
+    expect(repaired.markdown).toContain('rows[P1]');
+    expect(repaired.removed).toBe(1);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

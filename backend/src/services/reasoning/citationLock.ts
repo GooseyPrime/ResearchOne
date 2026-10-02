@@ -144,9 +144,22 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
 export const LOCK_INSTRUCTION =
   'Cite with the markers shown above and no others. A sentence drawn from a passage ends with that passage\'s marker before the full stop, for example "… in 2023 [P3]." A marker you were not shown is not a source. Do not write [Chunk N], a bare number in brackets, or a source name in brackets. The notes from earlier stages may mention material you were not shown; state only what the shown passages support.';
 
+/** Code and links blanked out, so a marker-shaped piece of code is never read as a citation. */
+function proseOf(text: string): string {
+  let out = '';
+  let cursor = 0;
+  mapProse(text, (prose) => {
+    const at = text.indexOf(prose, cursor);
+    out += ' '.repeat(Math.max(0, at - cursor)) + prose;
+    cursor = at + prose.length;
+    return prose;
+  });
+  return out;
+}
+
 export function markersIn(text: string): string[] {
   const found: string[] = [];
-  for (const group of text.matchAll(MARKER_GROUP)) {
+  for (const group of proseOf(text).matchAll(MARKER_GROUP)) {
     found.push(...markersOf(group[1]));
   }
   return found;
@@ -161,7 +174,7 @@ function statementKey(text: string): string {
 function citedSentences(text: string): Array<{ marker: string; statement: string }> {
   const out: Array<{ marker: string; statement: string }> = [];
   let previous = '';
-  for (const sentence of verbatimSentences(text)) {
+  for (const sentence of verbatimSentences(proseOf(text))) {
     const markers = markersIn(sentence);
     const prose = sentence.replace(MARKER_GROUP, ' ').trim();
     const basis = prose.length > 0 ? prose : previous;
@@ -228,8 +241,7 @@ export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdo
   const pool = citedSentences(originalMarkdown).map((entry) => ({ ...entry, used: false }));
   let removed = 0;
   let previous = '';
-  const pieces = repairedMarkdown.split(/((?<=[.!?])\s+|\n+)/);
-  const out = pieces.map((piece) => {
+  const out = mapProse(repairedMarkdown, (proseText) => proseText.split(/((?<=[.!?])\s+|\n+)/).map((piece) => {
     if (/^\s*$/.test(piece)) return piece;
     const prose = piece.replace(MARKER_GROUP, ' ').trim();
     const basis = statementKey(prose.length > 0 ? prose : previous);
@@ -247,8 +259,8 @@ export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdo
       }
       return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
     });
-  });
-  return { markdown: tidyAfterRemoval(out.join('').replace(/[ \t]*\uE002/g, '')), removed };
+  }).join(''));
+  return { markdown: mapProse(out, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, ''))), removed };
 }
 
 /** Apply a change to prose only. Code in every Markdown form, links and URLs are returned untouched. */
@@ -282,11 +294,17 @@ function tidyAfterRemoval(text: string): string {
 /** Remove markers the section was not shown. The sentence stays; the false citation does not. */
 export function stripUnknownMarkers(text: string, shown: LockedPassage[]): string {
   const allowed = new Set(shown.map((passage) => passage.marker));
-  const stripped = text.replace(MARKER_GROUP, (_full, inner: string) => {
-    const kept = markersOf(inner).filter((marker) => allowed.has(marker));
-    return kept.length > 0 ? `[${kept.join(', ')}]` : '';
-  });
-  return tidyAfterRemoval(stripped.replace(/[ \t]*/g, ''));
+  // Prose only: a marker-shaped piece of code is not a citation and is never edited.
+  return mapProse(text, (prose) =>
+    tidyAfterRemoval(
+      prose
+        .replace(MARKER_GROUP, (_full, inner: string) => {
+          const kept = markersOf(inner).filter((marker) => allowed.has(marker));
+          return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
+        })
+        .replace(/[ \t]*\uE002/g, '')
+    )
+  );
 }
 
 /** Split into sentences, keeping each one exactly as it appears in the source text. */

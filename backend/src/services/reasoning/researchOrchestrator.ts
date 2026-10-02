@@ -2307,6 +2307,12 @@ async function runResearchJobInner(
           [allChunks.map((chunk) => chunk.id)]
         );
         lockedPassages = issuePassages(allChunks, usedSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+        // Recorded on the run, so anything that scores it later knows how it was
+        // written without having to guess from its own settings.
+        await query(
+          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+          [JSON.stringify({ citationLock: true }), runId]
+        );
       } else {
         lockedPassages = null;
       }
