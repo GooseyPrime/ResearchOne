@@ -31,7 +31,8 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport } from '../services/reasoning/reportGenerator';
+import { generateIterativeReport, resolveReportWordTarget } from '../services/reasoning/reportGenerator';
+import { callRoleModel } from '../services/openrouter/openrouterService';
 import { scoreStoredReport, applyJudgeGate } from '../services/eval/scoreReport';
 import { judgeReportQuality } from '../services/eval/reportQualityJudge';
 import { buildCanonicalExecutionPlan } from '../services/planning/executionPlan';
@@ -149,5 +150,29 @@ describe('baseline report pipeline', () => {
     const summary = report.sections.find((section) => section.key === 'summary')?.content ?? '';
     expect(summary.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(150);
     if (format === 'comparison_table') expect(report.markdown).toContain('| Option | Note |');
+  });
+
+  it('matches the unset-flag report path and keeps the standard length', async () => {
+    delete process.env.BASELINE_LAYER_ENABLED;
+    vi.mocked(callRoleModel).mockClear();
+    const report = await generateIterativeReport({
+      query: 'When did the FDA authorize the first CRISPR therapy?',
+      plan: {},
+      sourceContext: 'The FDA authorized Casgevy in December 2023.',
+      retrieverAnalysis: '',
+      reasoningChains: '',
+      challenges: '',
+      intentId: 'factual_report',
+      outputTemplateId: 'intent_factual_report',
+      skipChallenger: true,
+    });
+    const outline = vi.mocked(callRoleModel).mock.calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Generate a report outline'));
+    const draft = vi.mocked(callRoleModel).mock.calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Section to draft'));
+    expect(String(outline?.[0]?.messages?.[1]?.content)).not.toContain('grammatical noun phrase');
+    expect(String(draft?.[0]?.messages?.[1]?.content)).not.toContain('Do not mention section keys');
+    expect(String(draft?.[0]?.messages?.[1]?.content)).not.toContain('CHUNK n');
+    expect(report.markdown.startsWith('# ')).toBe(false);
+    expect(report.targetWordCount).toBe(2200);
+    expect(resolveReportWordTarget({ estimatedLength: { minWords: 60, maxWords: 150 } }).target).toBeLessThan(200);
   });
 });

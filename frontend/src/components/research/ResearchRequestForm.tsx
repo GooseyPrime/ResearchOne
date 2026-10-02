@@ -217,7 +217,7 @@ export default function ResearchRequestForm() {
       setReportLengthPreset('custom');
       setReportLengthCustom(slice.targetWordCount);
     } else {
-      setReportLengthPreset('standard');
+      setReportLengthPreset('automatic');
       setReportLengthCustom(2200);
     }
 

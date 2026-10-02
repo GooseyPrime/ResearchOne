@@ -133,25 +133,47 @@ export function scoreNoRepetition(sections: Array<{ content: string }>): number 
   return repeatedSentences(sections).length === 0 ? 1 : 0;
 }
 
+function isListBlock(block: string): boolean {
+  const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => /^([-*+]|\d+[.)])\s+/.test(line));
+}
+
 export function removeRepeatedSentences<T extends { content: string }>(sections: T[]): T[] {
   const seen = new Set<string>();
   return sections.map((section) => {
-    const blocks = section.content.split(/\n{2,}/);
-    const next = blocks.map((block) => {
-      if (block.trim().startsWith('```') || block.includes('|')) return block;
-      return block
-        .split(/(?<=[.!?])\s+/)
-        .filter((sentence) => {
-          const key = sentenceKey(sentence);
-          if (!key || /^\[(?:e)?\d+\]$/.test(key)) return false;
-          if (key.length < 40) return true;
+    const parts = section.content.split(/(\n{2,})/);
+    const next = parts.map((part) => {
+      if (/^\n{2,}$/.test(part)) return part;
+      if (part.trim().startsWith('```') || part.includes('|')) return part;
+      if (isListBlock(part)) {
+        const lines = part.split('\n').filter((line) => {
+          const key = sentenceKey(line);
+          if (!key || key.length < 40) return true;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
-        })
-        .join(' ');
+        });
+        return lines.join('\n');
+      }
+      const sentences = part.split(/(?<=[.!?])\s+/);
+      const kept: string[] = [];
+      for (const sentence of sentences) {
+        const key = sentenceKey(sentence);
+        if (!key || /^\[(?:e)?\d+\]$/.test(key)) {
+          if (kept.length > 0) kept[kept.length - 1] = `${kept[kept.length - 1]} ${sentence.trim()}`;
+          continue;
+        }
+        if (key.length < 40) {
+          kept.push(sentence);
+          continue;
+        }
+        if (seen.has(key)) continue;
+        seen.add(key);
+        kept.push(sentence);
+      }
+      return kept.join(' ');
     });
-    return { ...section, content: next.join('\n\n').trim() };
+    return { ...section, content: next.join('').trim() };
   });
 }
 
@@ -181,10 +203,38 @@ export function formatReadDate(date = new Date()): string {
 }
 
 /** Count and the date read. The section heading already names the note. */
-export function buildAbout(sources: UsedSource[], readOn: string): string {
-  if (sources.length === 0) return 'No sources were used.';
-  const verb = sources.length === 1 ? 'was' : 'were';
-  return `${sources.length} source${sources.length === 1 ? '' : 's'} ${verb} read on ${readOn}.`;
+export function buildAbout(readCount: number, readOn: string): string {
+  if (readCount <= 0) return 'No sources were used.';
+  const verb = readCount === 1 ? 'was' : 'were';
+  return `${readCount} source${readCount === 1 ? '' : 's'} ${verb} read on ${readOn}.`;
+}
+
+export function sourceKey(source: UsedSource): string {
+  return (source.url || source.title).trim().toLowerCase();
+}
+
+export function distinctSourceCount(sources: UsedSource[]): number {
+  return new Set(sources.map(sourceKey).filter(Boolean)).size;
+}
+
+/** One number per cited source. Markers in the text are rewritten to match. */
+export function renumberCitations<T extends { content: string }>(sections: T[], sources: UsedSource[]): { sections: T[]; cited: UsedSource[] } {
+  const assigned = new Map<string, { source: UsedSource; number: number }>();
+  const cited: UsedSource[] = [];
+  const rewrite = (text: string) => text.replace(/\[(\d+)\]/g, (full, raw) => {
+    const source = sources[Number(raw) - 1];
+    if (!source) return full;
+    const key = sourceKey(source);
+    if (!key) return full;
+    let entry = assigned.get(key);
+    if (!entry) {
+      entry = { source, number: cited.length + 1 };
+      assigned.set(key, entry);
+      cited.push(source);
+    }
+    return `[${entry.number}]`;
+  });
+  return { sections: sections.map((section) => ({ ...section, content: rewrite(section.content) })), cited };
 }
 
 export function citedSources(text: string, sources: UsedSource[]): UsedSource[] {

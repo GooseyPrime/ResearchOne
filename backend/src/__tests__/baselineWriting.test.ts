@@ -7,6 +7,7 @@ import {
   presentationFailures,
   readerSections,
   readerTitle,
+  renumberCitations,
   removeRepeatedSentences,
   scoreNoRepetition,
   scorePresentationClean,
@@ -50,6 +51,7 @@ describe('baseline writing messages', () => {
   });
 
   it('does not title a report Framing or the raw request', () => {
+    process.env.BASELINE_LAYER_ENABLED = 'true';
     expect(deriveGeneratedReportTitle('What year was it?', '# Framing\n\nThe FDA authorized Casgevy in 2023.')).toBe(
       'The FDA authorized Casgevy in 2023.'
     );
@@ -92,6 +94,37 @@ describe('baseline writing messages', () => {
     expect(cleaned[2].content).not.toContain('vaso-occlusive');
     expect(cleaned[1].content.trim()).not.toBe('[1]');
     expect(cleaned[2].content.trim()).not.toBe('[1]');
+  });
+
+  it('keeps list lines and a trailing citation marker', () => {
+    const bullets = removeRepeatedSentences([{ key: 'a', title: 'A', content: '- a.\n- b.' }]);
+    expect(bullets[0].content).toBe('- a.\n- b.');
+    const numbered = removeRepeatedSentences([{ key: 'a', title: 'A', content: '1. First.\n2. Second.' }]);
+    expect(numbered[0].content).toBe('1. First.\n2. Second.');
+    const marked = removeRepeatedSentences([{ key: 'a', title: 'A', content: 'Patients 12 and older were covered. [7]' }]);
+    expect(marked[0].content).toContain('[7]');
+    expect(marked[0].content).toContain('older');
+  });
+
+  it('renumbers markers to one number per source', () => {
+    const sources = [
+      { title: 'A', url: 'https://a.example' },
+      { title: 'B', url: 'https://b.example' },
+      { title: 'C', url: 'https://c.example' },
+      { title: 'D', url: 'https://d.example' },
+      { title: 'E', url: 'https://e.example' },
+      { title: 'F', url: 'https://f.example' },
+      { title: 'G', url: 'https://g.example' },
+    ];
+    const different = renumberCitations([{ content: 'One claim. [3] Another claim. [7]' }], sources);
+    expect(different.sections[0].content).toContain('[1]');
+    expect(different.sections[0].content).toContain('[2]');
+    expect(different.cited).toHaveLength(2);
+    const same = renumberCitations([{ content: 'One claim. [3] Same source again. [7]' }], [
+      sources[0], sources[1], { title: 'Shared', url: 'https://shared.example' }, sources[3], sources[4], sources[5], { title: 'Shared', url: 'https://shared.example' },
+    ]);
+    expect(same.sections[0].content).toBe('One claim. [1] Same source again. [1]');
+    expect(same.cited).toHaveLength(1);
   });
 
   it('routes a failed classifier to factual research', () => {

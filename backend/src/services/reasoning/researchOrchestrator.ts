@@ -20,6 +20,7 @@ import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
 import {
   ADJUDICATIVE_SECTION_INTENTS,
+  clampWordTarget,
   deriveGeneratedReportTitle,
   ensureGeneratedTitleHeading,
   generateIterativeReport,
@@ -44,7 +45,8 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled } from '../../config';
-import { gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
+import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
+import { distinctSourceCount } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -2103,10 +2105,12 @@ async function runResearchJobInner(
     const outputTemplateId =
       (data.confirmedPlanPayload?.orchestrationProfile?.outputTemplateId as string | undefined) ??
       orchProfile.outputTemplateId;
-    const lengthDecision = resolveReportWordTarget({
-      userTarget: targetWordCount,
-      estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
-    });
+    const lengthDecision = baselineLayerEnabled() && !isAdjudicative
+      ? resolveReportWordTarget({
+          userTarget: targetWordCount,
+          estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
+        })
+      : { target: clampWordTarget(targetWordCount), source: 'user' as const };
     if (lengthDecision.source === 'default') {
       logger.warn('report_length_defaulted', { runId, target: lengthDecision.target, reason: 'plan_missing_estimated_length' });
     }
@@ -2115,16 +2119,14 @@ async function runResearchJobInner(
       [JSON.stringify({ reportLength: lengthDecision }), runId]
     );
     const resolvedWordTarget = lengthDecision.target;
-    let materialBlocksReport = false;
-    let materialReaderMessage = '';
     if (baselineLayerEnabled() && !isAdjudicative) {
-      const discoveryAvailable = config.discovery.enabled && shouldRunPipelineStage(orchProfile, 'discovery');
-      const sealed = corpusGateSealedByDesign(corpusGateDecisions);
+      const discoveryAvailable = config.discovery.enabled;
+      const material = digestRetrievedMaterial(allChunks.map((chunk) => ({ label: chunk.source_title || chunk.source_url || 'Source', text: chunk.content })));
       let extraPassUsed = false;
       let judged = await judgeRetrievedMaterial({
         request: researchQuery,
         plan,
-        material: sourceContext,
+        material,
         engineVersion,
         allowFallbackByRole,
         byokApiKeyOverride,
@@ -2134,7 +2136,6 @@ async function runResearchJobInner(
         judgeFailed: judged.failed,
         discoveryAvailable,
         extraPassUsed,
-        corpusSealedByDesign: sealed,
       });
       if (step === 'use_gate') {
         logGateFallback(runId, sourceAssessment);
@@ -2182,7 +2183,7 @@ async function runResearchJobInner(
         judged = await judgeRetrievedMaterial({
           request: researchQuery,
           plan,
-          material: sourceContext,
+          material: digestRetrievedMaterial(allChunks.map((chunk) => ({ label: chunk.source_title || chunk.source_url || 'Source', text: chunk.content }))),
           engineVersion,
           allowFallbackByRole,
           byokApiKeyOverride,
@@ -2192,7 +2193,6 @@ async function runResearchJobInner(
           judgeFailed: judged.failed,
           discoveryAvailable,
           extraPassUsed,
-          corpusSealedByDesign: sealed,
         });
         if (step === 'use_gate') {
           logGateFallback(runId, sourceAssessment);
@@ -2208,8 +2208,8 @@ async function runResearchJobInner(
         [JSON.stringify({ materialJudgement: judged.judgement, materialJudgeFailed: judged.failed, materialStep: step }), runId]
       );
       if (step === 'stop') {
-        materialBlocksReport = true;
-        materialReaderMessage = readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, discoveryAvailable || extraPassUsed);
+        const situation = extraPassUsed ? 'search_ran' : 'search_unavailable';
+        throw new Error(readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, situation));
       }
     }
     // Item-section titles R1 expansion planned, so the contract auditor can
@@ -2225,9 +2225,7 @@ async function runResearchJobInner(
         'Rerun with a broader corpus or supply supplemental sources.'
       );
     }
-    if (materialBlocksReport) {
-      generatedReport = { markdown: materialReaderMessage };
-    } else if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       const iterativeReport = await generateIterativeReport({
@@ -2775,7 +2773,7 @@ ${generatedReport.markdown}`,
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
       conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
       contradictionCount: 0,
-      sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+      sourceCount: distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null }))),
       chunkCount: allChunks.length,
       falsificationCriteria: plan.falsification_criteria,
       requestedOpportunityCount,
@@ -2787,6 +2785,7 @@ ${generatedReport.markdown}`,
       independentDomainCount,
       validationExperimentCount: opportunityObjects.filter((item) => /validation/i.test(item.body)).length,
       contractStatus: reportStatus,
+      baselineLayer: baselineLayerEnabled() && !isAdjudicative,
     });
     const prov = await queryOne<{
       supplemental: string;

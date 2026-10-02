@@ -98,6 +98,8 @@ export default function ReportSpinoffPage() {
     if (typeof prefill.targetWordCount === 'number') {
       setReportLengthPreset('custom');
       setReportLengthCustom(String(prefill.targetWordCount));
+    } else {
+      setReportLengthPreset('automatic');
     }
   }, [prefill]);
 

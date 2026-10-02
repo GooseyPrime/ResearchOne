@@ -13,17 +13,17 @@
  * variable: it does not sign in.
  *
  *   systemd-run --unit researchone-eval --collect \
- *     --working-directory=/opt/researchone/backend \
+ *     --working-directory=/path/to/backend \
  *     --setenv=RESEARCHONE_API_BASE="$RESEARCHONE_API_BASE" \
  *     --setenv=RESEARCHONE_ADMIN_AUTHORIZATION="$RESEARCHONE_ADMIN_AUTHORIZATION" \
  *     /usr/bin/npm run eval:harness -- --confirm-spend --limit 3
  *   journalctl -u researchone-eval
  *
- * Score the 1 Oct pilot without signing in. Fetch nothing; the database env
+ * Score stored runs without signing in. Fetch nothing; the database env
  * comes from the backend env file in the working directory:
  *   systemd-run --unit researchone-eval-score --collect \
- *     --working-directory=/opt/researchone/backend \
- *     /usr/bin/npm run eval:harness -- --score-run 81d18b09-1e5b-4f4c-998f-dc891f5f1742 --score-run 499bd50e-9b6c-4491-a2c0-e4de7a3c72a7 --score-run 5685875f-21bb-4d75-a27c-7f20c4a8a19a
+ *     --working-directory=/path/to/backend \
+ *     /usr/bin/npm run eval:harness -- --score-run <run-id>
  *   journalctl -u researchone-eval-score
  */
 import { loadEnv } from '../bootstrap/loadEnv';
@@ -39,12 +39,6 @@ import {
 import { judgeReportQuality } from '../services/eval/reportQualityJudge';
 import { applyJudgeGate, scoreStoredReport } from '../services/eval/scoreReport';
 import { loadEvalTasks, type EvalTask } from '../services/eval/taskSet';
-
-export const PILOT_STARTING_POINT_RUNS = [
-  '81d18b09-1e5b-4f4c-998f-dc891f5f1742',
-  '499bd50e-9b6c-4491-a2c0-e4de7a3c72a7',
-  '5685875f-21bb-4d75-a27c-7f20c4a8a19a',
-];
 
 export function parseScoreRunIds(argv: string[]): string[] {
   const ids: string[] = [];
@@ -246,10 +240,6 @@ async function main(): Promise<void> {
         [runId, 'score-run', JSON.stringify(scores), process.env.GIT_SHA ?? null]
       );
       if (scores.gate_status === 'verification_failed') {
-        await query(
-          `UPDATE research_runs SET failure_meta = jsonb_set(COALESCE(failure_meta, '{}'::jsonb), '{gate_status}', '"verification_failed"') WHERE id = $1`,
-          [runId]
-        );
         console.log(progressLine(runId, 'verification_failed', 'quality judge returned nothing'));
         continue;
       }

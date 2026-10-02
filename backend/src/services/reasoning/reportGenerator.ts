@@ -1,6 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, citedSources, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -667,10 +667,12 @@ export const REPORT_WORD_COUNT_DEFAULT = 2200;
  * candidate string so "Recommendation Framework for X" still passes.
  */
 const STRUCTURAL_LABEL_PATTERN =
-  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography|framing|primary\s*evidence|contested\s*zones|unresolved)$/i;
+  /^(dimensions?\s*table|comparison\s*table|ranking\s*table|summary\s*table|data\s*table|recommendation|overview|introduction|findings|analysis|conclusion|results|executive\s*summary|methodology|background|appendix|references|bibliography)$/i;
+const BASELINE_STRUCTURAL_LABEL_PATTERN = /^(framing|primary\s*evidence|contested\s*zones|unresolved)$/i;
 
 export function looksLikeStructuralLabel(candidate: string): boolean {
-  return STRUCTURAL_LABEL_PATTERN.test(candidate.trim());
+  const value = candidate.trim();
+  return STRUCTURAL_LABEL_PATTERN.test(value) || (baselineLayerEnabled() && BASELINE_STRUCTURAL_LABEL_PATTERN.test(value));
 }
 
 /**
@@ -1228,8 +1230,9 @@ Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun p
 
   modelCalls.push(outlineResponse);
 
+  const layer1 = baselineLayerEnabled() && args.isAdjudicative !== true;
   const outlinePayload = safeJsonParse<{ title?: string; outline?: Array<{ title?: string } | string> }>(
-    outlineResponse.content.replace(/```(?:json)?/gi, '').replace(/```/g, '')
+    layer1 ? outlineResponse.content.replace(/```(?:json)?/gi, '').replace(/```/g, '') : outlineResponse.content
   );
   const outline = (outlinePayload?.outline ?? [])
     .map((s) => (typeof s === 'string' ? s : s.title || '').trim())
@@ -1342,9 +1345,9 @@ ${itemNameDirectiveFor(section)}
 Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
-${section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
-${section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
-Do not mention section keys, topic numbers, or system markers. Keep citation markers such as [1].
+${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
+${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
+${layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
       ],
@@ -1521,8 +1524,8 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     const refined = refinedBodies.get(section.key);
     const draftHasCitation = /\[\d+\]/.test(section.content);
     const refinedHasCitation = refined ? /\[\d+\]/.test(refined) : false;
-    const content = refined && (!draftHasCitation || refinedHasCitation) ? refined : section.content;
-    return { ...section, content: stripMachineFiller(content) };
+    const content = layer1 && refined && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
+    return { ...section, content: layer1 ? stripMachineFiller(content) : content };
   });
 
   let prepared = finalSections;
@@ -1539,35 +1542,26 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     modelCalls.push(rewrite);
     prepared = parseRewrittenSections(rewrite.content, prepared) ?? prepared;
   }
-  const cleaned = baselineLayerEnabled() && args.isAdjudicative !== true
+  const cleaned = layer1
     ? removeRepeatedSentences(prepared).map((section) =>
         section.key === 'summary' && section.content.trim().split(/\s+/).length > 150
           ? { ...section, content: trimSummaryAtSentence(section.content) }
           : section
       )
     : prepared;
-  if (
-    baselineLayerEnabled() &&
-    args.isAdjudicative !== true &&
-    (args.usedSources?.length ?? 0) > 0 &&
-    !/\[\d+\]/.test(cleaned.map((section) => section.content).join('\n'))
-  ) {
-    const summary = cleaned.find((section) => section.key === 'summary');
-    if (summary) summary.content = `${summary.content.trim().replace(/[.!?]?$/, '')}. [1]`;
-  }
-  const cited = baselineLayerEnabled() && args.isAdjudicative !== true
-    ? citedSources(cleaned.map((section) => section.content).join('\n'), args.usedSources ?? [])
-    : args.usedSources ?? [];
+  const numbered = layer1 ? renumberCitations(cleaned, args.usedSources ?? []) : { sections: cleaned, cited: [] as UsedSource[] };
+  const cited = numbered.cited;
   const references = buildReferences(cited);
-  const withSystem = baselineLayerEnabled() && args.isAdjudicative !== true
+  const readCount = distinctSourceCount(args.usedSources ?? []);
+  const withSystem = layer1
     ? [
-        ...cleaned.filter((section) => section.key !== 'references' && section.key !== 'about'),
+        ...numbered.sections.filter((section) => section.key !== 'references' && section.key !== 'about'),
         ...(references ? [{ key: 'references', title: 'References', content: references }] : []),
-        { key: 'about', title: 'About this report', content: buildAbout(cited, formatReadDate()) },
+        { key: 'about', title: 'About this report', content: buildAbout(cited.length === 0 ? 0 : readCount, formatReadDate()) },
       ]
     : cleaned;
   let sectionsOut = withSystem;
-  let markdown = sectionsToMarkdown(sectionsOut, acceptedTitle || undefined);
+  let markdown = sectionsToMarkdown(sectionsOut, layer1 ? acceptedTitle || undefined : undefined);
   if (baselineLayerEnabled() && args.isAdjudicative !== true && presentationFailures(markdown).length > 0) {
     const redraft = await callRoleModel({
       role: 'coherence_refiner',
@@ -1591,8 +1585,10 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       }));
     }
   }
-  sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
-  markdown = sectionsToMarkdown(sectionsOut, acceptedTitle || undefined);
+  if (layer1) {
+    sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
+    markdown = sectionsToMarkdown(sectionsOut, acceptedTitle || undefined);
+  }
 
   return {
     markdown,

@@ -4,7 +4,9 @@ import type { IntentId } from './intentTaxonomy';
 import { getIntentById } from './intentTaxonomy';
 import { ORCHESTRATION_PROFILES } from './orchestrationProfiles';
 import type { PlanPayload } from './planTypes';
-import { PLAN_GENERATOR_PROMPT } from './prompts';
+import { PLAN_GENERATOR_PROMPT, PLAN_LENGTH_FIT_INSTRUCTION } from './prompts';
+import { baselineLayerEnabled } from '../../config';
+import { ADJUDICATIVE_SECTION_INTENTS } from '../reasoning/reportGenerator';
 import { parsePlanGeneratorJson } from './planJson';
 import type { ResearchBrief } from './researchBrief';
 import { formatBriefForPrompt } from './researchBrief';
@@ -61,7 +63,7 @@ export async function generatePlan(input: {
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: input.llmOpts.byokApiKeyOverride,
     messages: [
-      { role: 'system', content: PLAN_GENERATOR_PROMPT },
+      { role: 'system', content: baselineLayerEnabled() && !ADJUDICATIVE_SECTION_INTENTS.has(input.intent) ? `${PLAN_GENERATOR_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION}` : PLAN_GENERATOR_PROMPT },
       { role: 'user', content: userBlock },
     ],
   });

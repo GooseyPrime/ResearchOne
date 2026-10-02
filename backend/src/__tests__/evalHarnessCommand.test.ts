@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { judgeQuoteSupports, parseSupports, selectQuotePairs } from '../services/eval/quoteSupportsJudge';
 import { SignInRejectedError, STORED_CITATION_SQL } from '../services/eval/runHarness';
-import { assertSpendConfirmed, followSubmittedRuns, parseScoreRunIds, PILOT_STARTING_POINT_RUNS, progressLine, selectHarnessTasks, shouldScoreStoredRun, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
+import { assertSpendConfirmed, followSubmittedRuns, parseScoreRunIds, progressLine, selectHarnessTasks, shouldScoreStoredRun, submitSelectedTasks, waitForRunInDatabase } from '../scripts/runEvalHarness';
 import { pairwiseScore } from '../services/eval/pairwiseReference';
 import { loadEvalTasks } from '../services/eval/taskSet';
 
@@ -167,9 +167,7 @@ describe('harness command', () => {
   it('scores a degraded report and skips a run with no report', () => {
     expect(shouldScoreStoredRun({ hasReport: true })).toBe(true);
     expect(shouldScoreStoredRun({ hasReport: false })).toBe(false);
-    expect(parseScoreRunIds(['--score-run', PILOT_STARTING_POINT_RUNS[0], '--score-run', PILOT_STARTING_POINT_RUNS[1]])).toEqual(
-      PILOT_STARTING_POINT_RUNS.slice(0, 2)
-    );
+    expect(parseScoreRunIds(['--score-run', 'run-a', '--score-run', 'run-b'])).toEqual(['run-a', 'run-b']);
   });
 
   it('uses the lower competitor score and leaves a missing reference null', () => {

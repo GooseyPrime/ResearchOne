@@ -236,7 +236,7 @@ describe('ResearchRequestForm — the Lab controls survived the merge', () => {
   it('sends an objective the user did choose', async () => {
     renderForm();
     fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
-    fireEvent.change(screen.getByDisplayValue(/Automatic/), {
+    fireEvent.change(screen.getByDisplayValue('Automatic — ResearchOne selects from the request'), {
       target: { value: 'PATENT_GAP_ANALYSIS' },
     });
     const call = await submitWith('Patent whitespace in solid-state electrolytes');
@@ -389,7 +389,7 @@ describe('ResearchRequestForm — a failed plan lookup is unknown, not free', ()
     // Permissive while unknown: every objective is still offered rather than
     // the free tier's single one.
     fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
-    const objectiveSelect = screen.getByDisplayValue(/Automatic/);
+    const objectiveSelect = screen.getByDisplayValue('Automatic — ResearchOne selects from the request');
     expect(objectiveSelect.querySelectorAll('option').length).toBeGreaterThan(2);
   });
 

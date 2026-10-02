@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { stripGradeLines } from './baselineReport';
 import type { EvidenceSufficiencyResult } from './sourceSufficiencyGate';
+import { REPORT_QUALITY_FALLBACK, REPORT_QUALITY_MODEL } from '../eval/reportQualityPrompt';
 
 export interface MaterialJudgement {
   sufficient: boolean;
@@ -27,16 +28,21 @@ export function parseMaterialJudgement(raw: string): MaterialJudgement | null {
   }
 }
 
-export function readerInsufficientMessage(missing: string[], discoveryWasPartOfRun: boolean): string {
+export type ReaderSearchSituation = 'search_ran' | 'search_unavailable' | 'search_off_by_request';
+
+export function readerInsufficientMessage(missing: string[], situation: ReaderSearchSituation): string {
   const gaps = missing
     .map((item) => item.replace(/\s+/g, ' ').trim().replace(/[.]+$/, ''))
     .filter(Boolean)
     .map((item) => `${item.charAt(0).toUpperCase()}${item.slice(1)}.`);
   const gapText = gaps.length > 0 ? ` ${gaps.join(' ')}` : '';
-  const searchLine = discoveryWasPartOfRun
-    ? 'Run it again with outside search so the right sources can be found.'
-    : 'Outside search was not part of this run. Run it again with outside search so the right sources can be found.';
-  return `The supplied information is not enough to properly fulfil this request.${gapText} ${searchLine}`;
+  if (situation === 'search_ran') {
+    return `The supplied information is not enough to properly fulfil this request.${gapText} Outside search ran and did not find enough. Add sources, or narrow the request.`;
+  }
+  if (situation === 'search_off_by_request') {
+    return `The supplied information is not enough to properly fulfil this request.${gapText} Outside search was not used for this request. Add sources, or run it again with outside search.`;
+  }
+  return `The supplied information is not enough to properly fulfil this request.${gapText} Add sources that cover what is missing.`;
 }
 
 /**
@@ -49,9 +55,7 @@ export function materialStep(args: {
   judgeFailed: boolean;
   discoveryAvailable: boolean;
   extraPassUsed: boolean;
-  corpusSealedByDesign: boolean;
 }): MaterialStep {
-  if (args.corpusSealedByDesign && !args.judgeFailed) return 'proceed';
   if (args.judgeFailed || !args.judgement) return 'use_gate';
   if (args.judgement.sufficient) return 'proceed';
   if (args.discoveryAvailable && !args.extraPassUsed) return 'discover_once';
@@ -64,6 +68,12 @@ export function gateFallbackStep(action: string, discoveryAvailable: boolean, ex
   return 'stop';
 }
 
+export function digestRetrievedMaterial(chunks: Array<{ label: string; text: string }>): string {
+  return chunks
+    .map((chunk, index) => `[CHUNK ${index + 1}] ${chunk.label}\n${stripGradeLines(chunk.text).slice(0, 500)}`)
+    .join('\n\n');
+}
+
 export async function judgeRetrievedMaterial(args: {
   request: string;
   plan: unknown;
@@ -74,30 +84,34 @@ export async function judgeRetrievedMaterial(args: {
   callModel?: typeof callRoleModel;
 }): Promise<{ judgement: MaterialJudgement | null; failed: boolean; attempts: number }> {
   const caller = args.callModel ?? callRoleModel;
-  const material = stripGradeLines(args.material).slice(0, 8000);
-  const prompt = `Request:\n${args.request}\n\nPlan:\n${JSON.stringify(args.plan).slice(0, 2000)}\n\nRetrieved material:\n${material}\n\nIs this material of suitable quality and content to answer the request? A corpus sealed by design is a designed state, not a lack of material. Return strict JSON only: {"sufficient":boolean,"reason":string,"missing":string[]}`;
-  const roles = ['verifier', 'internal_challenger'] as const;
-  for (const role of roles) {
+  const material = stripGradeLines(args.material);
+  const prompt = `Request:\n${args.request}\n\nPlan:\n${JSON.stringify(args.plan).slice(0, 2000)}\n\nRetrieved material:\n${material}\n\nA sealed shared corpus is not missing material. Judge only the material above. Is it of suitable quality and content to answer the request? Return strict JSON only: {"sufficient":boolean,"reason":string,"missing":string[]}`;
+  const attempts = [
+    { primary: REPORT_QUALITY_MODEL, fallback: REPORT_QUALITY_FALLBACK },
+    { primary: REPORT_QUALITY_FALLBACK, fallback: REPORT_QUALITY_MODEL },
+  ];
+  for (const [index, overrides] of attempts.entries()) {
     try {
       const result = await caller({
-        role,
+        role: 'verifier',
         engineVersion: args.engineVersion,
         allowFallbackByRole: args.allowFallbackByRole,
         byokApiKeyOverride: args.byokApiKeyOverride,
         baselineLayer: false,
+        runtimeOverrides: overrides,
         messages: [
           { role: 'system', content: 'Judge whether the retrieved material can answer the request. Return JSON only.' },
           { role: 'user', content: prompt },
         ],
       });
       const judgement = parseMaterialJudgement(result.content);
-      if (judgement) return { judgement, failed: false, attempts: roles.indexOf(role) + 1 };
-      logger.warn('material_judgement_unparseable', { role });
+      if (judgement) return { judgement, failed: false, attempts: index + 1 };
+      logger.warn('material_judgement_unparseable', { attempt: index + 1 });
     } catch (err) {
-      logger.warn('material_judgement_failed', { role, message: err instanceof Error ? err.message : String(err) });
+      logger.warn('material_judgement_failed', { attempt: index + 1, message: err instanceof Error ? err.message : String(err) });
     }
   }
-  return { judgement: null, failed: true, attempts: roles.length };
+  return { judgement: null, failed: true, attempts: attempts.length };
 }
 
 export function logGateFallback(runId: string, gate: Pick<EvidenceSufficiencyResult, 'action' | 'reason'>): void {

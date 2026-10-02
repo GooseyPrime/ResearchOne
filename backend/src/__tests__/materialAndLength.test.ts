@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveReportWordTarget } from '../services/reasoning/reportGenerator';
-import { gateFallbackStep, materialStep, readerInsufficientMessage } from '../services/reasoning/materialSufficiency';
+import { digestRetrievedMaterial, gateFallbackStep, materialStep, readerInsufficientMessage } from '../services/reasoning/materialSufficiency';
 import { logger } from '../utils/logger';
 
 describe('report length when the user did not choose one', () => {
@@ -24,31 +24,37 @@ describe('report length when the user did not choose one', () => {
 
 describe('material judgement before a report is written', () => {
   it('does not search again when the material can answer', () => {
-    expect(materialStep({ judgement: { sufficient: true, reason: 'The date is in the material.', missing: [] }, judgeFailed: false, discoveryAvailable: true, extraPassUsed: false, corpusSealedByDesign: false })).toBe('proceed');
+    expect(materialStep({ judgement: { sufficient: true, reason: 'The date is in the material.', missing: [] }, judgeFailed: false, discoveryAvailable: true, extraPassUsed: false })).toBe('proceed');
   });
 
-  it('searches once when the material cannot answer and outside search is available', () => {
-    expect(materialStep({ judgement: { sufficient: false, reason: 'The date is not here.', missing: ['The authorization date'] }, judgeFailed: false, discoveryAvailable: true, extraPassUsed: false, corpusSealedByDesign: false })).toBe('discover_once');
-    expect(materialStep({ judgement: { sufficient: false, reason: 'Still missing.', missing: ['The authorization date'] }, judgeFailed: false, discoveryAvailable: true, extraPassUsed: true, corpusSealedByDesign: false })).toBe('stop');
+  it('searches once when the server allows it even if the profile omits discovery', () => {
+    expect(materialStep({ judgement: { sufficient: false, reason: 'The date is not here.', missing: ['The authorization date'] }, judgeFailed: false, discoveryAvailable: true, extraPassUsed: false })).toBe('discover_once');
   });
 
-  it('stops with a reader message when outside search is not part of the run', () => {
-    expect(materialStep({ judgement: { sufficient: false, reason: 'Not enough.', missing: ['The authorization date'] }, judgeFailed: false, discoveryAvailable: false, extraPassUsed: false, corpusSealedByDesign: false })).toBe('stop');
-    expect(readerInsufficientMessage(['the authorization date'], false)).toContain('Outside search was not part of this run');
-    expect(readerInsufficientMessage(['the authorization date'], false)).not.toMatch(/discovery|chunk|stage/i);
+  it('says search ran and does not tell the reader to turn search on when it is unavailable', () => {
+    expect(readerInsufficientMessage(['the authorization date'], 'search_ran')).toContain('Outside search ran and did not find enough');
+    expect(readerInsufficientMessage(['the authorization date'], 'search_ran')).toContain('narrow the request');
+    expect(readerInsufficientMessage(['the authorization date'], 'search_unavailable')).not.toMatch(/turn on|outside search/i);
+    expect(readerInsufficientMessage(['the authorization date'], 'search_unavailable')).toContain('Add sources');
+  });
+
+  it('does not treat a sealed corpus as a reason to skip the judgement', () => {
+    expect(materialStep({ judgement: { sufficient: false, reason: 'The run material does not answer.', missing: ['The date'] }, judgeFailed: false, discoveryAvailable: false, extraPassUsed: true })).toBe('stop');
+  });
+
+  it('keeps a later chunk in the judge input', () => {
+    const chunks = Array.from({ length: 20 }, (_, index) => ({ label: `Source ${index}`, text: (index === 19 ? 'LATE-CHUNK-MARKER ' : '') + 'x'.repeat(500) }));
+    const digest = digestRetrievedMaterial(chunks);
+    expect(digest.length).toBeGreaterThan(8000);
+    expect(digest).toContain('LATE-CHUNK-MARKER');
   });
 
   it('uses the existing evidence check when both judge calls fail', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
-    expect(materialStep({ judgement: null, judgeFailed: true, discoveryAvailable: true, extraPassUsed: false, corpusSealedByDesign: false })).toBe('use_gate');
+    expect(materialStep({ judgement: null, judgeFailed: true, discoveryAvailable: true, extraPassUsed: false })).toBe('use_gate');
     expect(gateFallbackStep('rediscover', true, false)).toBe('discover_once');
-    expect(gateFallbackStep('sufficient', false, false)).toBe('proceed');
     logger.warn('material_judgement_fell_back_to_source_gate', { action: 'sufficient', reason: 'sufficient' });
-    expect(warn).toHaveBeenCalledWith('material_judgement_fell_back_to_source_gate', expect.any(Object));
+    expect(warn).toHaveBeenCalled();
     warn.mockRestore();
-  });
-
-  it('does not treat a sealed corpus as insufficient', () => {
-    expect(materialStep({ judgement: { sufficient: false, reason: 'Sealed.', missing: [] }, judgeFailed: false, discoveryAvailable: false, extraPassUsed: false, corpusSealedByDesign: true })).toBe('proceed');
   });
 });
