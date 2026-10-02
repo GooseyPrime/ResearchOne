@@ -128,6 +128,7 @@ import {
   mapGateStatusToRunStatus,
   shouldRunPipelineBFromGateStatus,
   type ReportGateStatus,
+  decideReportGateStatus,
 } from './reportGateStatus';
 
 export type {
@@ -2649,7 +2650,6 @@ ${generatedReport.markdown}`,
     await runContractAudit(generatedReport.markdown);
 
     const recomputeReportStatus = (): ReportGateStatus => {
-      let nextStatus: ReportGateStatus = 'completed';
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
       const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
       // Deliverable-contract and verifier failures are evaluated BEFORE the
@@ -2659,18 +2659,17 @@ ${generatedReport.markdown}`,
       // evidence grounds used to hide those failures and skip repair entirely,
       // shipping an incomplete deliverable with a green-ish status
       // (Codex P1 review, PR #202).
-      if (contractFailed && verifierFailed) {
-        nextStatus = 'contract_failed';
-      } else if (contractFailed) {
-        nextStatus = 'contract_failed';
-      } else if (verifierFailed) {
-        nextStatus = 'verification_failed';
-      } else if (!materialJudgedSufficient && sourceShortfallDegradesStatus(sourceFailureReason)) {
-        // The count-based source check still downgrades the run, except where
-        // the material judge read the passages and found them sufficient (grant I).
-        nextStatus = 'completed_degraded';
-      } else if (countShortfallSetsStatus(layer1Run) && sourceCoverageShortfall) {
-        nextStatus = 'completed_degraded';
+      // The count-based source check still downgrades the run, except where
+      // the material judge read the passages and found them sufficient (grant I).
+      const decided = decideReportGateStatus({
+        contractFailed,
+        verifierFailed,
+        evidenceShortfallDegrades: !materialJudgedSufficient && sourceShortfallDegradesStatus(sourceFailureReason),
+        sourceCoverageShortfall,
+        countSetsStatus: countShortfallSetsStatus(layer1Run),
+      });
+      const nextStatus: ReportGateStatus = decided.status;
+      if (decided.countShortfallApplied) {
         contractAuditResult = {
           pass: false,
           missing_requirements: [
@@ -3647,7 +3646,8 @@ function formatSourceContext(chunks: RetrievedChunk[]): string {
     .join('\n\n');
 }
 
-async function saveReport(args: {
+/** Exported for the save-path test; the research job is its only caller. */
+export async function saveReport(args: {
   runId: string;
   query: string;
   plan: ResearchPlan;

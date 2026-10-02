@@ -210,6 +210,8 @@ function readerVisibleText(text: string): string {
   return text
     .replace(CODE_ONLY, '\uE004')
     .replace(INLINE_LINK, '$1')
+    // A reference-style link shows its label; the identifier after it is never seen.
+    .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
     .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
     .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
 }

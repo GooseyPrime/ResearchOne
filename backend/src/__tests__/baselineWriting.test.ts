@@ -80,6 +80,9 @@ describe('baseline writing messages', () => {
     // A nested list item is prose, not code.
     expect(presentationFailures('- A point.\n    - Detail [Chunk 4].')).toContain('chunk marker');
     expect(presentationFailures('A paragraph.\n\n    print("[Chunk 4]")')).not.toContain('chunk marker');
+    // A reference-style link shows its label and never its identifier.
+    expect(presentationFailures('This [report][r] synthesizes evidence from two sources.\n\n[r]: https://example.org')).toContain('boilerplate');
+    expect(presentationFailures('See [the ruling][verdict].\n\n[verdict]: https://example.org')).not.toContain('courtroom');
     // A phrase split by a link is still the phrase the reader sees.
     expect(presentationFailures('This [report](https://example.org) synthesizes evidence from two sources.')).toContain('boilerplate');
     expect(presentationFailures('The [case](https://example.org) for reform is strong.')).toContain('courtroom');
