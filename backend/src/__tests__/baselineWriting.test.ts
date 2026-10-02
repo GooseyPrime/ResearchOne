@@ -81,6 +81,8 @@ describe('baseline writing messages', () => {
     expect(presentationFailures('- A point.\n    - Detail [Chunk 4].')).toContain('chunk marker');
     expect(presentationFailures('A paragraph.\n\n    print("[Chunk 4]")')).not.toContain('chunk marker');
     // A reference-style link shows its label and never its identifier.
+    expect(presentationFailures('It holds [inference][source].\n\n[source]: https://example.org')).toContain('grade label');
+    expect(presentationFailures('See [Chunk 4][source].\n\n[source]: https://example.org')).toContain('chunk marker');
     expect(presentationFailures('This [report][r] synthesizes evidence from two sources.\n\n[r]: https://example.org')).toContain('boilerplate');
     expect(presentationFailures('See [the ruling][verdict].\n\n[verdict]: https://example.org')).not.toContain('courtroom');
     // A phrase split by a link is still the phrase the reader sees.

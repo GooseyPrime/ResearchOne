@@ -67,13 +67,13 @@ import { saveReport } from '../services/reasoning/researchOrchestrator';
 
 const REPORT = '# Bridges\n\n## History\nThe bridge opened in 1932 [1].\n\n## Use\nTraffic doubled by 1960 [2].';
 
-function save(lockedOccurrences: Array<{ number: number; chunkId: string; quote: string }> | null) {
+function save(lockedOccurrences: Array<{ number: number; chunkId: string; quote: string }> | null, markdown = REPORT) {
   return saveReport({
     runId: 'run-1',
     query: 'How did the bridge come to be built?',
     plan: {} as never,
     allChunks: [],
-    synthesizerContent: REPORT,
+    synthesizerContent: markdown,
     lockedOccurrences,
     verification: { passed: true, overall: 'PASS' } as never,
     supplementalText: '',
@@ -127,6 +127,18 @@ describe('saving a locked report', () => {
     // The report and section inserts were issued on the transaction that rolled back, and on no other.
     expect(matching(/INSERT INTO reports/).map((statement) => statement.client)).toEqual([1]);
     expect(state.clients).toBe(1);
+  });
+
+  it('saves a citation that follows a code sample containing a heading', async () => {
+    const withSample =
+      '# Bridges\n\n## History\nA sample of a report:\n\n```markdown\n## References\n1. An entry [9]\n```\n\nThe bridge opened in 1932 [1].';
+    await save([{ number: 1, chunkId: 'chunk-1', quote: 'opened in 1932' }], withSample);
+    expect(state.commits).toBe(1);
+    // The sample did not split the section: one History section holds the sample and the cited sentence.
+    const sections = matching(/INSERT INTO report_sections/);
+    expect(sections.map((statement) => statement.params[2])).toEqual(['Bridges', 'History']);
+    expect(String(sections[1].params[3])).toContain('## References');
+    expect(matching(/INSERT INTO report_citations/)).toHaveLength(1);
   });
 
   it('writes no citation rows for a report saved without the lock', async () => {

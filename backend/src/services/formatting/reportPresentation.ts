@@ -229,6 +229,8 @@ export function readerFacingLabelHits(text: string): string[] {
   // The label of a link is read by the reader too; its destination is not.
   const outsideCode = text.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' '));
   for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+  // Likewise the label of a reference-style link ("[label][ref]").
+  for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
   // Passage markers are how the writer and the pipeline refer to retrieved text.

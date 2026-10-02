@@ -3882,8 +3882,19 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
   let currentType = 'body';
   let currentLines: string[] = [];
 
+  // A heading inside a fenced code sample is code, not a section break. Splitting
+  // there would cut the sample in two and, for "## References" in a sample, hide
+  // the prose after it from citation binding.
+  let fence: { mark: string; length: number } | null = null;
   for (const line of lines) {
-    if (headerRegex.test(line)) {
+    const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceLine) {
+      const mark = fenceLine[1][0];
+      const length = fenceLine[1].length;
+      if (!fence) fence = { mark, length };
+      else if (mark === fence.mark && length >= fence.length && /^ {0,3}[`~]+\s*$/.test(line)) fence = null;
+    }
+    if (!fence && !fenceLine && headerRegex.test(line)) {
       if (currentLines.length > 0) {
         sections.push({
           type: currentType,
