@@ -37,6 +37,8 @@ const MARKER_GROUP = /\[\s*(P\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*)
 const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 /** Any bracket that opens with a passage marker, whatever follows it. */
 const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
+/** The pre-lock citation form, in brackets or parentheses. */
+const CHUNK_MARKER = /[ \t]*[[(]\s*chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]/gi;
 /** A range wider than this is not expanded; its two ends are kept. */
 const RANGE_LIMIT = 12;
 
@@ -364,7 +366,16 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     // read as a citation with no reference behind it and could be mistaken for
     // one of the numbers assigned below. Code is never touched.
     removed += (prose.match(/\[\d+\](?!\()/g) ?? []).length;
-    const body = tidyAfterRemoval(prose.replace(/[ \t]*\[\d+\](?!\()/g, ''));
+    // A locked report has no chunk markers: a later repair that writes
+    // "[Chunk 4]" has cited nothing the lock can save.
+    removed += (prose.match(CHUNK_MARKER) ?? []).length;
+    const body = tidyAfterRemoval(
+      prose
+        .replace(/[ \t]*\[\d+\](?!\()/g, '')
+        .replace(CHUNK_MARKER, '')
+        // A marker written as link text is a citation; the link around it is dropped.
+        .replace(/(\[\s*P\d+[^\]\n]*\])\([^)\s]*(?:\s+"[^"]*")?\)/gi, '$1')
+    );
     const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
       const numbers: number[] = [];
       for (const marker of markersOf(inner)) {

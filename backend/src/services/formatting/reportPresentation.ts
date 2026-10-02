@@ -93,8 +93,15 @@ function protectedSegmentFor(markdown: string): RegExp {
 
 /** Two or more citation brackets side by side ("[1][2]", "[P1][P2]") are citations, not a reference link. */
 const CITATION_RUN = /^(?:\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]){2,}$/i;
-/** An indented line that carries a passage marker is nested prose, not code. */
-const INDENTED_WITH_MARKER = /^(?: {4,}|\t)[^\n]*(?:^|\s)\[\s*P\d+/i;
+/**
+ * An indented line is nested prose, not code, when it is a list item that
+ * carries a passage marker, or when the marker closes a sentence. An indented
+ * line such as "    result = [P1]" stays code.
+ */
+const INDENTED_LIST_ITEM_WITH_MARKER = /^(?: {4,}|\t)\s*(?:[-*+]|\d+[.)])\s[^\n]*\[\s*P\d+/i;
+const INDENTED_SENTENCE_WITH_MARKER = /^(?: {4,}|\t)[^\n=]*\s\[\s*P\d+[^\]\n]*\][.,;:!?]/i;
+/** A passage marker written as the text of a link is still a citation. */
+const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
 
 /**
  * Apply a change to the prose of a report and to nothing else. Code in every
@@ -105,7 +112,15 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
-    if (CITATION_RUN.test(match[0]) || INDENTED_WITH_MARKER.test(match[0])) continue;
+    const segment = match[0];
+    if (
+      CITATION_RUN.test(segment) ||
+      INDENTED_LIST_ITEM_WITH_MARKER.test(segment) ||
+      INDENTED_SENTENCE_WITH_MARKER.test(segment) ||
+      MARKER_AS_LINK_TEXT.test(segment)
+    ) {
+      continue;
+    }
     const start = match.index ?? 0;
     out += change(markdown.slice(cursor, start)) + match[0];
     cursor = start + match[0].length;
@@ -119,8 +134,14 @@ export function readerFacingLabelHits(text: string): string[] {
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
   // Passage markers are how the writer and the pipeline refer to retrieved text.
   // A reader's citation is a number with a reference behind it.
-  if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(text)) hits.push('chunk marker');
-  if (/\[\s*P\d+\b[^\]\n]*\]/i.test(text)) hits.push('passage marker');
+  // Only prose is checked: a code sample or a link that happens to contain one is not a leak.
+  let prose = '';
+  mapCitationProse(text, (part) => {
+    prose += part;
+    return part;
+  });
+  if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
+  if (/\[\s*P\d+\b[^\]\n]*\]/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(text)) hits.push('grade label');
   if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
   if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');

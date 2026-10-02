@@ -451,6 +451,20 @@ describe('code, links and stale reference lists', () => {
     expect(stripInternalLabelsFromReport(finalized.markdown)).toBe(finalized.markdown);
   });
 
+  it('keeps indented code that holds a marker, and binds a marker written as link text', () => {
+    const body = '## Summary\nIt opened in 1932 [P1](https://example.org/x).\n\n    result = [P1]\n\nA repair wrote this [Chunk 4].';
+    const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(finalized.markdown).toContain('    result = [P1]');
+    expect(finalized.markdown).toContain('A repair wrote this.');
+    expect(finalized.occurrences).toHaveLength(1);
+    const bound = assignOccurrencesToSections([{ title: 'Summary', content: finalized.markdown }], finalized.occurrences);
+    expect(bound[0].sectionOrder).toBe(1);
+    // Code that contains a marker is not a leak; the same marker in prose is.
+    expect(readerFacingLabelHits('Example:\n\n    result = [P1]\n\n```\nCHUNK 1\n```')).toEqual([]);
+    expect(readerFacingLabelHits('It opened [P1].')).toContain('passage marker');
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
