@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const inserts: unknown[][] = [];
@@ -91,5 +93,44 @@ describe('saving bound citations', () => {
 
   it('does nothing for a report with no citations', async () => {
     expect(await persistBoundCitations({ runId: 'run', reportId: 'report', bound: [] })).toBe(0);
+  });
+});
+
+/**
+ * The save of a locked report sits deep inside the research job, which needs a
+ * database, a queue and live models to run. Its wiring is guarded at the source
+ * level, as the other orchestrator guards are.
+ */
+describe('locked citations in the research job', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
+
+  it('hands the finalized citations to the report save', () => {
+    expect(source).toMatch(/lockedOccurrences = finalized\.occurrences;/);
+    const call = source.slice(source.indexOf('await saveReport({'));
+    expect(call.slice(0, call.indexOf('});'))).toMatch(/\blockedOccurrences,/);
+  });
+
+  it('saves them inside the transaction that saves the report', () => {
+    const save = source.slice(source.indexOf('async function saveReport('));
+    const next = save.indexOf('\nasync function ', 10);
+    const body = next > 0 ? save.slice(0, next) : save;
+    const transaction = body.indexOf('withTransaction(');
+    const write = body.indexOf('await writeBoundCitations(client as unknown as CitationWriter');
+    expect(transaction).toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(transaction);
+    expect(body).not.toMatch(/persistBoundCitations\(/);
+  });
+
+  it('runs the model-based mapper only for a report that is not locked', () => {
+    const calls = [...source.matchAll(/await mapAndPersistCitations\(/g)];
+    expect(calls).toHaveLength(1);
+    expect(source).toMatch(/if \(lockedOccurrences === null\) await mapAndPersistCitations\(/);
+    expect(source).not.toMatch(/persistBoundCitations/);
+  });
+
+  it('leaves the citations unset when the lock is off', () => {
+    expect(source).toMatch(/let lockedOccurrences: CitationOccurrence\[\] \| null = null;/);
+    const assignments = [...source.matchAll(/\blockedOccurrences = /g)];
+    expect(assignments).toHaveLength(1);
   });
 });

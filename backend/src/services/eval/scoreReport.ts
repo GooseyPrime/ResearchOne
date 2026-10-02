@@ -54,33 +54,15 @@ export interface EvalScores {
   report_quality_subscores?: Record<string, number> | null;
 }
 
-function aliasesIn(report: string): string[] {
-  return [...report.matchAll(/\[(E\d+)\]/g)].map((match) => match[1]);
-}
-
 function normalize(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-function aliasKey(value: string): string {
-  return value.replace(/[\[\]]/g, '').trim();
-}
-
 export function scoreCitationBound(report: string, citations: EvalCitation[], citationLock = false): number {
   if (citations.length === 0) return 0;
-  if (citationLock) {
-    // A locked report cites with reader numbers. Aliases are read only when it
-    // has none, so an "[E1]" inside a code sample does not change how it is scored.
-    if (readerNumbersIn(dropSystemSections(report)).length > 0) return scoreReaderNumbersBound(report, citations);
-    const aliases = aliasesIn(report).map(aliasKey);
-    if (aliases.length === 0) return 0;
-    const byAlias = new Map(citations.map((row) => [aliasKey(row.alias), row]));
-    const bound = aliases.filter((alias) => {
-      const row = byAlias.get(alias);
-      return Boolean(row && row.chunkId && row.chunkQuote.trim().length > 0);
-    }).length;
-    return bound / aliases.length;
-  }
+  // A locked report cites with reader numbers and nothing else. An export
+  // alias left in one is a fault, so it is never a second way to score.
+  if (citationLock) return scoreReaderNumbersBound(report, citations);
   const bound = citations.filter((row) => Boolean(row.chunkId) && row.chunkQuote.trim().length > 0).length;
   return bound / citations.length;
 }
@@ -89,16 +71,17 @@ export function scoreCitationBound(report: string, citations: EvalCitation[], ci
  * A locked report cites with reader numbers. The k-th number in the prose is
  * backed by the k-th saved citation: it must carry the same number, a passage
  * and a quote. Numbers in code, in links and in the reference list do not count.
+ * Every saved row counts: a row with no number, or a row beyond the last number
+ * in the prose, is a citation the report does not show and lowers the score.
  */
 function scoreReaderNumbersBound(report: string, citations: EvalCitation[]): number {
   const markers = readerNumbersIn(dropSystemSections(report));
   if (markers.length === 0) return 0;
-  const rows = citations.filter((row) => /^\[\d+\]$/.test((row.citationText ?? '').trim()));
   const bound = markers.filter((marker, index) => {
-    const row = rows[index];
+    const row = citations[index];
     return Boolean(row && (row.citationText ?? '').trim() === marker && row.chunkId && row.chunkQuote.trim().length > 0);
   }).length;
-  return bound / markers.length;
+  return bound / Math.max(markers.length, citations.length);
 }
 
 export function scoreQuoteVerbatim(citations: EvalCitation[]): number {
