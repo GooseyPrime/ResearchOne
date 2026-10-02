@@ -431,7 +431,7 @@ function sentenceBefore(text: string, index: number): string {
 
 // The report's own title (a level-1 heading that opens the report) is never a
 // system section, whatever it says. A later level-1 "References" is one.
-const SYSTEM_SECTION = /^#{1,3}\s+(?:References|About this report)\s*$/i;
+const SYSTEM_SECTION = /^#{1,6}\s+(?:References|About this report)\s*$/i;
 
 /**
  * The report without its reference list and closing note. A system section runs
@@ -489,7 +489,9 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
   const cited: UsedSource[] = [];
   const occurrences: CitationOccurrence[] = [];
   let removed = 0;
-  const withoutSystem = dropSystemSections(markdown);
+  // A citation written as a link ("[1](url)", "[Chunk 4](url)") is read as the
+  // citation the reader takes it for, so it is bound or removed like any other.
+  const withoutSystem = unwrapCitationLinks(dropSystemSections(markdown));
   // The sentence each citation closes, read from the whole text so a link inside
   // the sentence does not cut it short. One entry per marker group, in order.
   const citing: string[] = [];

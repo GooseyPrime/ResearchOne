@@ -676,6 +676,23 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.markdown).toContain('A fact [1].');
   });
 
+  it('removes a model-written reference list at any heading depth', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P1].\n\n#### References\n1. Stale entry\n\n#### About this report\nStale note.', passages(), '2 Oct 2026');
+    expect(finalized.markdown).not.toContain('Stale');
+    expect(finalized.markdown.match(/^#+ References$/gm)).toHaveLength(1);
+    expect(finalized.markdown.match(/^#+ About this report$/gm)).toHaveLength(1);
+  });
+
+  it('reads a citation written as a link when numbering', () => {
+    const finalized = finalizeLockedCitations(
+      '## Summary\nA fact [P1](https://example.org/a). A stray one [7](https://example.org/b). An old form [Chunk 4](https://example.org/c). See [2023](https://example.org/d).',
+      passages(),
+      '2 Oct 2026'
+    );
+    expect(finalized.markdown).toContain('A fact [1]. A stray one. An old form. See [2023](https://example.org/d).');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
