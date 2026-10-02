@@ -2372,6 +2372,12 @@ async function runResearchJobInner(
           `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
           [JSON.stringify({ citationIssues: iterativeReport.citationIssues }), runId]
         );
+      } else {
+        // A clean attempt after an earlier one that had issues: the record describes this attempt.
+        await query(
+          `UPDATE research_runs SET corpus_after = corpus_after - 'citationIssues' WHERE id=$1 AND corpus_after ? 'citationIssues'`,
+          [runId]
+        );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {

@@ -41,6 +41,8 @@ const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
 /** The pre-lock citation form, in brackets or parentheses. */
 const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]|[ \t]*\b(?:(?:see|in|from|per)\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\b/gi;
+/** The export engine's alias form. It is assigned after a report is saved; a writer that emits it has cited nothing. */
+const EXPORT_ALIAS = /[ \t]*\[\s*E\d+(?:\s*[,;]\s*E\d+)*\s*\]/gi;
 /** A range wider than this is not expanded; its two ends are kept. */
 const RANGE_LIMIT = 12;
 
@@ -325,7 +327,9 @@ export function unknownMarkers(text: string, shown: LockedPassage[]): string[] {
 }
 
 function tidyAfterRemoval(text: string): string {
-  return text.replace(/[ \t]+([.,;:!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
+  // Runs of spaces inside a line are closed up; indentation at the start of a
+  // line is structure (a nested list) and is left alone.
+  return text.replace(/[ \t]+([.,;:!?])/g, '$1').replace(/(\S)[ \t]{2,}/g, '$1 ');
 }
 
 /** Remove markers the section was not shown. The sentence stays; the false citation does not. */
@@ -460,11 +464,12 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     removed += (prose.match(/\[\d+\](?!\()/g) ?? []).length;
     // A locked report has no chunk markers: a later repair that writes
     // "[Chunk 4]" has cited nothing the lock can save.
-    removed += (prose.match(CHUNK_MARKER) ?? []).length;
+    removed += (prose.match(CHUNK_MARKER) ?? []).length + (prose.match(EXPORT_ALIAS) ?? []).length;
     const body = tidyAfterRemoval(
       prose
         .replace(/[ \t]*\[\d+\](?!\()/g, '')
         .replace(CHUNK_MARKER, '')
+        .replace(EXPORT_ALIAS, '')
         // A marker written as link text is a citation; the link around it is dropped.
         .replace(/(\[\s*P\d+[^\]\n]*\])\([^)\s]*(?:\s+"[^"]*")?\)/gi, '$1')
         // Likewise the empty second bracket of a collapsed reference link.

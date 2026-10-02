@@ -444,7 +444,8 @@ describe('code, links and stale reference lists', () => {
     );
     const finalized = finalizeLockedCitations('## Summary\nIt opened and was paid for [P1][P2].\n\n- Point\n    - Nested point [P2].', two, '2 Oct 2026');
     expect(finalized.markdown).toContain('paid for [1][2].');
-    expect(finalized.markdown).toContain('Nested point [2].');
+    // The nested item keeps its indentation and is still read as a citation.
+    expect(finalized.markdown).toContain('\n    - Nested point [2].');
     expect(finalized.occurrences.map((occurrence) => occurrence.number)).toEqual([1, 2, 2]);
     const bound = assignOccurrencesToSections([{ title: 'Summary', content: finalized.markdown }], finalized.occurrences);
     expect(bound.every((row) => row.sectionOrder === 1)).toBe(true);
@@ -610,6 +611,13 @@ describe('code, links and stale reference lists', () => {
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
     expect(sentenceKey('It opened in 1932 [P1 and P2].')).toBe(plain);
     expect(sentenceKey('It opened in 1932 [P1\u2013P3].')).toBe(plain);
+  });
+
+  it('removes an export-style alias the writer emitted', () => {
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. It cost a lot [E1].\n\n`rows[E1]`', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1]. It cost a lot.');
+    expect(finalized.markdown).toContain('`rows[E1]`');
+    expect(finalized.removed).toBe(1);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {
