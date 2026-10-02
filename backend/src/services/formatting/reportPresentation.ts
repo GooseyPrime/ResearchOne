@@ -139,6 +139,9 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
       MARKER_AS_REFERENCE_LINK.test(segment) ||
       NUMBER_AS_REFERENCE_LINK.test(segment)
     ) {
+      // Released, not protected: the cursor stays put, so the segment is handed
+      // to `change` once, inside the next prose span, joined to the words around
+      // it. Passing it alone would cut the sentence it cites in two.
       continue;
     }
     const start = match.index ?? 0;
