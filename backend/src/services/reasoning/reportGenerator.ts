@@ -431,6 +431,21 @@ row is read as belonging to a different schema.`;
 type RuntimeSectionPlanEntry = SectionPlanEntry;
 
 /**
+ * Whether a section is about one subject, not the whole report. Only two kinds
+ * are: a subject heading the outline step named ("topic_…"), and one item of a
+ * repeated deliverable. Every other section of every template (summary, direct
+ * answer, sources, findings, limits, recommendation, conclusion and the rest)
+ * speaks for the whole report. Under the citation lock a subject section is
+ * narrowed to the passages closest to it when they do not all fit; a
+ * whole-report section sees every passage that fits. Naming the two narrow
+ * kinds, not listing the broad ones, means a new template key is never
+ * narrowed by oversight.
+ */
+export function isSubjectSection(section: { key: string; itemOrdinal?: number }): boolean {
+  return section.key.startsWith('topic_') || typeof section.itemOrdinal === 'number';
+}
+
+/**
  * How many item sections may be drafted at once.
  *
  * Synthesis was 13m54s of a 44-minute run, drafted strictly one section at a
@@ -1188,35 +1203,6 @@ export async function generateIterativeReport(args: {
     baselineLayerEnabled() && args.isAdjudicative !== true && args.lockedPassages
       ? args.lockedPassages
       : null;
-  /** Sections that speak for the whole report see every passage that fits. */
-  const BROAD_SECTION_KEYS = new Set([
-    'summary',
-    'key_findings',
-    'disagreement',
-    'limits',
-    'established',
-    'contested',
-    'open_questions',
-    // The same kind of section under the names an explicit format or an older plan gives it.
-    'executive_summary',
-    'abstract',
-    'overview',
-    'conclusion',
-    'conclusions',
-    'synthesis_conclusions',
-    'narrative_briefing',
-    'structured_report',
-    'contradiction_analysis',
-    'unresolved_questions',
-    // Whole-report sections of the intent templates (literature review, framing and the like).
-    'findings',
-    'discussion',
-    'limitations',
-    'weaknesses',
-    'framing',
-    'unresolved',
-    'contested_zones',
-  ]);
   const citationIssues: Array<{ section: string; markers: string[] }> = [];
 
   // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable
@@ -1384,7 +1370,7 @@ Write the section body starting on the following line.`;
     const rollingSummary = contextSummary;
 
     const shownPassages = lockedPassages
-      ? passagesForSection(lockedPassages, [section.title, args.query], { broad: BROAD_SECTION_KEYS.has(section.key) })
+      ? passagesForSection(lockedPassages, [section.title, args.query], { broad: !isSubjectSection(section) })
       : null;
     const drafterMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? false) },

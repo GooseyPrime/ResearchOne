@@ -55,7 +55,8 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport } from '../services/reasoning/reportGenerator';
+import { generateIterativeReport, isSubjectSection } from '../services/reasoning/reportGenerator';
+import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 import { sentenceKey } from '../services/reasoning/baselineReport';
 import {
   assignOccurrencesToSections,
@@ -795,6 +796,16 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.markdown).toContain('    Still the step [1].');
     expect(finalized.markdown).toContain('       code under the step [P2]');
     expect(finalized.occurrences).toHaveLength(2);
+  });
+
+  it('narrows only subject and item sections; every template section sees the whole report', () => {
+    expect(isSubjectSection({ key: 'topic_1' })).toBe(true);
+    expect(isSubjectSection({ key: 'opportunities_3', itemOrdinal: 3 })).toBe(true);
+    const keys = Object.values(INTENT_OUTPUT_TEMPLATES).flatMap((template) => [...template.sections]);
+    expect(keys.length).toBeGreaterThan(20);
+    for (const key of [...keys, 'summary', 'key_findings', 'direct_answer', 'sources', 'confidence', 'recommendation', 'recommendations', 'caveats']) {
+      expect(isSubjectSection({ key })).toBe(false);
+    }
   });
 
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
