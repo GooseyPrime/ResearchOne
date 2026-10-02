@@ -722,7 +722,10 @@ export function renumberAfterRevision(
         .map((old) => `${(renumbered.get(old) as string).slice(1, -1)}. ${lines.get(old)}`)
         .join('\n');
     }
-    if (isSystem(section.title)) return section.content;
+    // The closing note says how many sources were read, which a revision does not
+    // change. The one case it must follow is a report left citing nothing, where
+    // the first save would have said so.
+    if (isSystem(section.title)) return order.length === 0 ? buildAbout(0, '') : section.content;
     return mapProse(section.content, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full));
   });
   const titles = sections.map((section) =>

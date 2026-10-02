@@ -746,6 +746,17 @@ describe('code, links and stale reference lists', () => {
     expect(rebound.kept).toEqual([{ sectionIndex: 0, row: { chunk: 'c2' } }]);
   });
 
+  it('says no sources were used when a revision leaves nothing cited', () => {
+    const out = renumberAfterRevision(
+      [
+        { title: 'Summary', content: 'Nothing is cited now.' },
+        { title: 'About this report', content: '3 sources were read on 2 Oct 2026.' },
+      ],
+      []
+    );
+    expect(out.contents[1]).toBe('No sources were used.');
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
