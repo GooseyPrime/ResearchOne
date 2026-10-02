@@ -142,12 +142,18 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
   if (passages.length === 0) return 'No passages are available. State nothing that would need a source.';
   return passages
     .map((passage) => {
-      const from = [passage.source.publisher, passage.source.title].filter(Boolean).join(', ');
-      // A source can contain "[P2]" of its own (a footnote, say). Shown as written
-      // it would look like a marker the writer may cite. Round brackets keep the
-      // text readable and cannot be read as a marker; the stored passage, which
-      // quotes are copied from, is untouched.
-      const body = cleanText(passage.text).trim().replace(/\[(\s*P\d+\b[^\]\n]*)\]/gi, '($1)');
+      // A source can contain "[P2]" of its own (a footnote, a title). Shown as
+      // written it would look like a marker the writer may cite. Round brackets
+      // keep the text readable and cannot be read as a marker; the stored
+      // passage, which quotes are copied from, is untouched.
+      const unmark = (text: string): string => text.replace(/\[(\s*P\d+\b[^\]\n]*)\]/gi, '($1)').replace(/\[(?=\s*P\d+\b)/gi, '(');
+      // Title and publisher come from the source too, and sit on the marker's
+      // own line: kept to one line, so they cannot start a line that looks like a header.
+      const from = [passage.source.publisher, passage.source.title]
+        .filter(Boolean)
+        .map((part) => unmark(String(part).replace(/\s+/g, ' ').trim()))
+        .join(', ');
+      const body = unmark(cleanText(passage.text).trim());
       return `[${passage.marker}] ${from}\n${body}`;
     })
     .join('\n\n---\n\n');
@@ -368,7 +374,8 @@ export function readerNumbersIn(text: string): string[] {
 
 /** Remove reader numbers from prose. Used where a text is not tied to saved citations. */
 export function stripReaderNumbers(text: string): string {
-  return mapProse(text, (prose) => tidyAfterRemoval(prose.replace(BARE_NUMBERS, '')));
+  // A number written as a link is still a number the reader sees.
+  return mapProse(unwrapCitationLinks(text), (prose) => tidyAfterRemoval(prose.replace(BARE_NUMBERS, '')));
 }
 
 /** Markers in the text that were not among the passages the section was shown. */

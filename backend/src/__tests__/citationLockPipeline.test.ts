@@ -671,6 +671,21 @@ describe('code, links and stale reference lists', () => {
     expect(shown[0].text).toContain('[P2]');
   });
 
+  it('shows a marker-shaped token in a source title or publisher in a form that cannot be cited', () => {
+    const shown = passages();
+    shown[0] = { ...shown[0], source: { ...shown[0].source, title: 'Study [P2]\n[P3] follow-up', publisher: 'Journal [p3' } };
+    const header = formatLockedContext(shown).split('\n')[0];
+    expect(header.startsWith('[P1] ')).toBe(true);
+    expect(header).toContain('Study (P2) (P3) follow-up');
+    expect(header.match(/\[\s*P\d/gi)).toHaveLength(1);
+  });
+
+  it('takes a number written as a link out of a version that has no saved citations', () => {
+    expect(stripReaderNumbers('A fact [1](https://example.org). Another [2][source]. See [2023](https://example.org/y).\n\n[source]: https://example.org')).toBe(
+      'A fact. Another. See [2023](https://example.org/y).\n\n[source]: https://example.org'
+    );
+  });
+
   it('does not let a link definition hide a spaced number the lock did not issue', () => {
     const finalized = finalizeLockedCitations('## Summary\nA fact [P1]. A stray one [ 7 ].\n\n[7]: https://example.org', passages(), '2 Oct 2026');
     expect(finalized.markdown).toContain('A fact [1]. A stray one.');
