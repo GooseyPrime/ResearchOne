@@ -3,7 +3,7 @@ import { CITATION_STYLE_OPTIONS, type CitationStyleSlug } from '@/utils/api';
 import clsx from 'clsx';
 
 export type ResearchOutputObjectiveValue = 'AUTO' | (typeof RESEARCH_OBJECTIVE_OPTIONS)[number]['value'];
-export type ReportLengthPreset = 'short' | 'standard' | 'long' | 'extra_long' | 'custom';
+export type ReportLengthPreset = 'automatic' | 'short' | 'standard' | 'long' | 'extra_long' | 'custom';
 
 const REPORT_FORMAT_OPTIONS = [
   { value: 'automatic', label: 'Automatic / Best fit' },
@@ -15,6 +15,7 @@ const REPORT_FORMAT_OPTIONS = [
 ] as const;
 
 const LENGTH_OPTIONS: Array<{ value: ReportLengthPreset; label: string }> = [
+  { value: 'automatic', label: 'Automatic (fit the question)' },
   { value: 'short', label: 'Short (~1,200 words)' },
   { value: 'standard', label: 'Standard (~2,200 words)' },
   { value: 'long', label: 'Long (~4,000 words)' },
@@ -46,13 +47,14 @@ export interface ResearchOutputControlsProps {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function resolveTargetWordCount(preset: string, custom: number): number {
+export function resolveTargetWordCount(preset: string, custom: number): number | undefined {
+  if (preset === 'automatic') return undefined;
   if (preset === 'short') return 1200;
   if (preset === 'standard') return 2200;
   if (preset === 'long') return 4000;
   if (preset === 'extra_long') return 7000;
   if (preset === 'custom') return Math.max(800, Math.min(12000, custom));
-  return 2200;
+  return undefined;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -166,7 +168,13 @@ export default function ResearchOutputControls({
             />
           ) : null}
           <span className="text-xs text-slate-500">
-            Target: <span className="font-mono text-slate-300">{targetWordCount.toLocaleString()}</span> words
+            {targetWordCount == null ? (
+              'Automatic'
+            ) : (
+              <>
+                Target: <span className="font-mono text-slate-300">{targetWordCount.toLocaleString()}</span> words
+              </>
+            )}
           </span>
         </div>
       </div>

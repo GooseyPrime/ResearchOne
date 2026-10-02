@@ -562,5 +562,8 @@ validateEnsemblePresetsAgainstAllowlist();
 validateV2ModePresetsAgainstAllowlist();
 
 export { config };
+export function baselineLayerEnabled(): boolean {
+  return process.env.BASELINE_LAYER_ENABLED === 'true';
+}
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';

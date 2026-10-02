@@ -1,12 +1,15 @@
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
-import { scoreStoredReport, type ContradictionLink, type EvalCitation, type EvalScoreInput, type EvalScores } from './scoreReport';
+import { judgeReportQuality } from './reportQualityJudge';
+import { scoreStoredReport, applyJudgeGate, type ContradictionLink, type EvalCitation, type EvalScoreInput, type EvalScores } from './scoreReport';
 import { loadEvalTasks, type EvalTask, type FixtureDocument } from './taskSet';
 
 export class SignInRejectedError extends Error {
-  constructor() {
+  readonly serverReason: string | null;
+  constructor(serverReason: string | null = null) {
     super('The sign-in was rejected or expired.');
     this.name = 'SignInRejectedError';
+    this.serverReason = serverReason;
   }
 }
 
@@ -67,7 +70,14 @@ export async function runHarness(
     const judged = await judgeQuoteSupports(
       stored.citations.map((row) => ({ sentence: row.claimText ?? '', quote: row.chunkQuote }))
     );
-    const scores = scoreStoredReport(buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides));
+    const reportQuality = await judgeReportQuality(stored.reportMarkdown);
+    const scores = applyJudgeGate(
+      scoreStoredReport({
+        ...buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides),
+        reportQuality: reportQuality?.mean ?? null,
+      }),
+      reportQuality
+    );
     await query(
       `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
       [started.runId, task.id, JSON.stringify(scores), process.env.GIT_SHA ?? null]
@@ -104,9 +114,21 @@ export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuo
      WHERE r.run_id = $1
      ORDER BY s.section_order NULLS LAST, rc.citation_order NULLS LAST, rc.id`;
 
+/** Stored sections keep their heading apart from their body; the scores read headings. */
+export function storedSectionsToMarkdown(rows: Array<{ title: string | null; content: string }>): string {
+  return rows
+    .map((row) => {
+      const title = (row.title ?? '').trim();
+      return title && !new RegExp(`^#+\\s*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(row.content)
+        ? `## ${title}\n${row.content}`
+        : row.content;
+    })
+    .join('\n\n');
+}
+
 export async function loadStoredRun(runId: string): Promise<StoredRun> {
-  const report = await query<{ content: string }>(
-    `SELECT s.content FROM report_sections s
+  const report = await query<{ title: string | null; content: string }>(
+    `SELECT s.title, s.content FROM report_sections s
      JOIN reports r ON r.id = s.report_id
      WHERE r.run_id = $1
      ORDER BY s.section_order`,
@@ -137,7 +159,7 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
     [runId]
   );
   return {
-    reportMarkdown: report.map((row) => row.content).join('\n'),
+    reportMarkdown: storedSectionsToMarkdown(report),
     citations: citations.map((row) => ({
       alias: row.alias ?? '',
       chunkQuote: row.chunkQuote ?? '',
@@ -173,7 +195,8 @@ export async function submitTaskThroughAdminRoute(
     body: form,
   });
   if (response.status === 401 || response.status === 403) {
-    throw new SignInRejectedError();
+    const serverReason = await response.text().catch(() => '');
+    throw new SignInRejectedError(serverReason.trim() || null);
   }
   if (!response.ok) throw new Error(`admin start failed: ${response.status}`);
   const body = (await response.json()) as { runId: string };

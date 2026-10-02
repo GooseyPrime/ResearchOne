@@ -33,6 +33,20 @@ export function withStandardPreamble(prompt: string): string {
   return `${STANDARD_RESEARCH_PREAMBLE}\n\n${RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK}\n\n${prompt}`;
 }
 
+export const LAYER_1_SOURCE_HANDLING = `LAYER 1 SOURCE HANDLING:
+- Report what the sources say.
+- When sources conflict, prefer primary and official records and peer-reviewed work, judged from what each source is, and say so.
+- State disagreement between good sources plainly.
+- Mark uncertainty in ordinary words.
+- Do not speculate about sources' motives.
+- Do not add facts from model recall.
+- Write as a neutral encyclopedia or review article.
+- Present information, not claims.`;
+
+export function withLayer1Preamble(prompt: string): string {
+  return `${STANDARD_RESEARCH_PREAMBLE}\n\n${LAYER_1_SOURCE_HANDLING}\n\n${prompt}`;
+}
+
 export function withPolicyOnePreamble(prompt: string): string {
   return withPreamble(prompt);
 }

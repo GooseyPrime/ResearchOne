@@ -14,7 +14,7 @@ describe('ResearchOutputControls', () => {
         onObjectiveChange={vi.fn()}
         reportFormats={['automatic']}
         onReportFormatsChange={vi.fn()}
-        reportLengthPreset="standard"
+        reportLengthPreset="automatic"
         onReportLengthPresetChange={vi.fn()}
         reportLengthCustom={2200}
         onReportLengthCustomChange={vi.fn()}
@@ -28,6 +28,7 @@ describe('ResearchOutputControls', () => {
     expect(screen.getByText('Report Format')).toBeInTheDocument();
     expect(screen.getByText('Report Length')).toBeInTheDocument();
     expect(screen.getByText('Citation Style')).toBeInTheDocument();
+    expect(screen.getByText('Automatic')).toBeInTheDocument();
   });
 
   it('makes automatic format mutually exclusive', () => {
@@ -38,7 +39,7 @@ describe('ResearchOutputControls', () => {
         onObjectiveChange={vi.fn()}
         reportFormats={['automatic']}
         onReportFormatsChange={onChange}
-        reportLengthPreset="standard"
+        reportLengthPreset="automatic"
         onReportLengthPresetChange={vi.fn()}
         reportLengthCustom={2200}
         onReportLengthCustomChange={vi.fn()}
@@ -64,6 +65,8 @@ describe('ResearchOutputControls', () => {
     );
 
     expect(within(container).getByRole('spinbutton')).toBeInTheDocument();
+    expect(resolveTargetWordCount('standard', 2200)).toBe(2200);
+    expect(resolveTargetWordCount('automatic', 2200)).toBeUndefined();
     expect(resolveTargetWordCount('custom', 15000)).toBe(12000);
     expect(resolveTargetWordCount('custom', 700)).toBe(800);
     expect(normalizeReportFormats(['automatic', 'comparison_table'])).toEqual(['automatic']);
@@ -77,7 +80,7 @@ describe('ResearchOutputControls', () => {
         showObjective={false}
         reportFormats={['automatic']}
         onReportFormatsChange={vi.fn()}
-        reportLengthPreset="standard"
+        reportLengthPreset="automatic"
         onReportLengthPresetChange={vi.fn()}
         reportLengthCustom={2200}
         onReportLengthCustomChange={vi.fn()}

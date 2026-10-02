@@ -91,6 +91,15 @@ function protectedSegmentFor(markdown: string): RegExp {
   );
 }
 
+export function readerFacingLabelHits(text: string): string[] {
+  const hits: string[] = [];
+  if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');
+  if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
+  if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
+  return hits;
+}
+
 /** Marks where a label was removed, so spacing is tidied only there. */
 const REMOVED = '\uE000';
 

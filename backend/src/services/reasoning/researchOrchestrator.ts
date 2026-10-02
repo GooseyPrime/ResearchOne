@@ -19,10 +19,13 @@ import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
 import {
-  generateIterativeReport,
   ADJUDICATIVE_SECTION_INTENTS,
+  clampWordTarget,
   deriveGeneratedReportTitle,
   ensureGeneratedTitleHeading,
+  generateIterativeReport,
+  resolveReportWordTarget,
+  synthesisLengthArgs,
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
 } from './reportGenerator';
@@ -42,7 +45,9 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config } from '../../config';
+import { config, baselineLayerEnabled } from '../../config';
+import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
+import { distinctSourceCount, isoDay } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -333,6 +338,7 @@ function buildReaderFrontMatter(args: {
   independentDomainCount?: number;
   validationExperimentCount?: number;
   contractStatus?: string;
+  baselineLayer?: boolean;
 }): ReaderFrontMatter {
   const summary = (args.executiveSummary ?? '').trim().replace(/\s+/g, ' ');
   const conclusion = (args.conclusion ?? '').trim().replace(/\s+/g, ' ');
@@ -347,7 +353,9 @@ function buildReaderFrontMatter(args: {
   // pairs") shipped on opportunity, comparison, and how-to reports and read as
   // claim-adjudication boilerplate — including the degenerate
   // "evidence from 0 sources and 0 evidence chunks" (Rule 37 R-M).
-  const fallbackSummary = nonAdjudicativeIntent
+  const fallbackSummary = args.baselineLayer
+    ? ''
+    : nonAdjudicativeIntent
     ? 'This report presents the requested analysis, with confidence levels and assumptions stated alongside each finding.'
     : `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
   const fallbackConclusion = nonAdjudicativeIntent
@@ -441,11 +449,17 @@ function buildReaderFrontMatter(args: {
       ];
 
   return {
-    overall_summary: [summary.slice(0, 260) || fallbackSummary, conclusion.slice(0, 220) || fallbackConclusion]
+    overall_summary: [
+      summary.slice(0, 260) || fallbackSummary,
+      conclusion.slice(0, 220) || fallbackConclusion,
+      args.baselineLayer ? `About this report: ${args.sourceCount} sources and ${args.chunkCount} passages were read.` : '',
+    ]
       .filter(Boolean)
       .join(' '),
     conclusions_nutshell: conclusion.slice(0, 360) || fallbackConclusion,
-    metric_glosses: metricGlosses,
+    metric_glosses: args.baselineLayer
+      ? metricGlosses.filter((gloss) => gloss.label !== 'Falsification targets')
+      : metricGlosses,
   };
 }
 
@@ -1911,6 +1925,146 @@ async function runResearchJobInner(
       });
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Report length and the Layer 1 material check.
+    //
+    // The check runs here, before reasoning, so that anything one extra
+    // outside search adds is analysed by the same stages as the rest of the
+    // material instead of reaching synthesis beside stale analysis.
+    // ────────────────────────────────────────────────────────────────
+    const layer1Run = baselineLayerEnabled() && !isAdjudicative;
+    const lengthDecision = layer1Run
+      ? resolveReportWordTarget({
+          userTarget: targetWordCount,
+          estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
+        })
+      : { target: clampWordTarget(targetWordCount), source: 'user' as const };
+    if (lengthDecision.source === 'default') {
+      logger.warn('report_length_defaulted', { runId, target: lengthDecision.target, reason: 'plan_missing_estimated_length' });
+    }
+    if (layer1Run) {
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ reportLength: lengthDecision }), runId]
+      );
+    }
+    const resolvedWordTarget = lengthDecision.target;
+    if (layer1Run) {
+      const discoveryAvailable = config.discovery.enabled;
+      const digestOf = () =>
+        digestRetrievedMaterial(allChunks.map((chunk) => ({ label: chunk.source_title || chunk.source_url || 'Source', text: chunk.content })));
+      const judgeNow = () =>
+        judgeRetrievedMaterial({
+          request: researchQuery,
+          plan,
+          material: digestOf(),
+          engineVersion,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+        });
+      const decide = async (judged: Awaited<ReturnType<typeof judgeRetrievedMaterial>>, extraPassUsed: boolean) => {
+        const step = materialStep({
+          judgement: judged.judgement,
+          judgeFailed: judged.failed,
+          discoveryAvailable,
+          extraPassUsed,
+        });
+        if (step !== 'use_gate') return step;
+        logGateFallback(runId, sourceAssessment);
+        await progress('reasoning', 49, 'Material check could not be read; using the existing evidence check.', {
+          substep: 'material_judgement_fallback',
+          detail: sourceAssessment.reason,
+        });
+        return gateFallbackStep(sourceAssessment.action, discoveryAvailable, extraPassUsed);
+      };
+      let extraPassUsed = false;
+      let judged = await judgeNow();
+      let step = await decide(judged, extraPassUsed);
+      if (step === 'discover_once') {
+        extraPassUsed = true;
+        await progress('discovery', 18, 'Looking for sources that can answer the request.', { substep: 'material_discovery' });
+        const materialDiscoverySummary = await runDiscoveryOrchestrator({
+          runId,
+          researchQuery,
+          plan: plan as unknown as Record<string, unknown>,
+          filterTags,
+          engineVersion,
+          researchObjective,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+          userId: creditCtx?.userId,
+          specialistAgentIds,
+          maxIngestCapOverride: resolveSourceIngestBudget({
+            configuredCap: config.discovery.maxIngestPerRun,
+            targetWordCount: resolvedWordTarget,
+            requestedArtifactCount,
+            addonCapOverride: addonEffects.maxIngestCapOverride,
+          }),
+          maxCoverageRounds: 1,
+        });
+        // Discovery only queues ingestion. Wait until what it found can be
+        // retrieved, or the second judgement re-reads the same material.
+        const materialDiscoveryBarrier = await waitForDiscoveryIngestReadiness({
+          sources: Array.isArray(materialDiscoverySummary.sources) ? materialDiscoverySummary.sources : [],
+          timeoutMs: config.discovery.queryableWaitTimeoutMs,
+        });
+        const followup = await retrieveChunksWithAudit({
+          query: researchQuery,
+          topK: addonEffects.retrievalTopK,
+          filterTags,
+          hybridSearch: true,
+          intentId: orchProfile.intent as never,
+          userId: creditCtx?.userId,
+          runId,
+        });
+        corpusGateDecisions.push({ query: `${researchQuery} [material check]`, ...followup.corpusGate });
+        const knownIds = new Set(allChunks.map((chunk) => chunk.id));
+        for (const chunk of followup.citableChunks) {
+          if (!knownIds.has(chunk.id)) {
+            knownIds.add(chunk.id);
+            allChunks.push(chunk);
+          }
+        }
+        await query(
+          `UPDATE research_runs
+              SET retrieval_ids=$1,
+                  corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $2::jsonb
+            WHERE id=$3`,
+          [
+            allChunks.map((c) => c.id),
+            JSON.stringify({
+              materialDiscoveryBarrier,
+              corpusGate: summarizeCorpusGateDecisions(corpusGateDecisions),
+            }),
+            runId,
+          ]
+        );
+        sourceContext = formatSourceContext(allChunks);
+        await runRetrieverAnalysisStage('Re-analyzing material after the extra outside search...');
+        await runSpecialistStage();
+        sourceAssessment = assessSourceSufficiency({
+          intentId: orchProfile.intent as never,
+          citableChunks: allChunks,
+          requesterUserId: creditCtx?.userId ?? null,
+          specialistOutputs: latestSpecialistOutputs,
+          rediscoveryPassesRemaining: 0,
+          requestedArtifactCount,
+          discoverySourceCount: discoveryIngestBarrier.readyCount + materialDiscoveryBarrier.readyCount,
+          corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
+        });
+        judged = await judgeNow();
+        step = await decide(judged, extraPassUsed);
+      }
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ materialJudgement: judged.judgement, materialJudgeFailed: judged.failed, materialStep: step }), runId]
+      );
+      if (step === 'stop') {
+        const situation = extraPassUsed ? 'search_ran' : 'search_unavailable';
+        throw new Error(readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, situation));
+      }
+    }
+
     if (sourceAssessment.action === 'low_evidence_labeled_delivery') {
       // Non-adjudicative intents ALWAYS synthesise. Low evidence changes how
       // confidence is expressed, never whether the artifact is produced.
@@ -2125,10 +2279,16 @@ async function runResearchJobInner(
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
-        targetWordCount,
+        ...synthesisLengthArgs(layer1Run, targetWordCount, lengthDecision),
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,
+        usedSources: allChunks.map((chunk) => ({
+          title: chunk.source_title || chunk.source_url || 'Untitled source',
+          publisher: chunk.source_publisher ?? null,
+          date: isoDay(chunk.source_published_at),
+          url: chunk.source_url || null,
+        })),
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
@@ -2646,7 +2806,9 @@ ${generatedReport.markdown}`,
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
       conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
       contradictionCount: 0,
-      sourceCount: new Set(allChunks.map((c) => c.source_url)).size,
+      sourceCount: baselineLayerEnabled() && !isAdjudicative
+        ? distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null })))
+        : new Set(allChunks.map((c) => c.source_url)).size,
       chunkCount: allChunks.length,
       falsificationCriteria: plan.falsification_criteria,
       requestedOpportunityCount,
@@ -2658,6 +2820,7 @@ ${generatedReport.markdown}`,
       independentDomainCount,
       validationExperimentCount: opportunityObjects.filter((item) => /validation/i.test(item.body)).length,
       contractStatus: reportStatus,
+      baselineLayer: baselineLayerEnabled() && !isAdjudicative,
     });
     const prov = await queryOne<{
       supplemental: string;

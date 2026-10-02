@@ -1,4 +1,5 @@
 import { config } from '../../config';
+import { plainQuestionIntent } from '../reasoning/baselineReport';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { IntentId } from './intentTaxonomy';
 import { getIntentById, INTENT_TAXONOMY } from './intentTaxonomy';
@@ -477,6 +478,13 @@ export async function classifyIntent(
         lex.intent,
         Math.min(lex.confidence, 0.8),
         `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
+      );
+    }
+    if (plainQuestionIntent(true, false, query)) {
+      return defaultResearchBrief(
+        'factual_report',
+        0.5,
+        `Classifier call failed (${detail}); a plain question resolved to factual_report.`
       );
     }
     throw err;

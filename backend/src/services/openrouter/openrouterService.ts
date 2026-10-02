@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import axios, { AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
-import { config } from '../../config';
-import { REASONING_FIRST_PREAMBLE, withPreamble, withStandardPreamble } from '../../constants/prompts';
+import { config, baselineLayerEnabled } from '../../config';
+import { LAYER_1_SOURCE_HANDLING, REASONING_FIRST_PREAMBLE, RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
 import { MODE_OVERLAYS, type AgentRole } from '../../constants/modeOverlays';
@@ -60,6 +60,8 @@ export interface ModelCallOptions {
   /** BYOK: when set, OpenRouter calls use this key instead of the platform master key. */
   byokApiKeyOverride?: string;
   isAdjudicative?: boolean;
+  /** Slice 3: Layer 1 writing. Off unless the run set it and the flag is on. */
+  baselineLayer?: boolean;
 }
 
 export interface ModelCallResult {
@@ -301,10 +303,22 @@ function getModeOverlay(objective: string, role: string): string | undefined {
  * being present, so removing the outer gate cannot make it fire on a run that
  * has no objective.
  */
-function applySystemAugmentations(options: ModelCallOptions): ChatMessage[] {
+export function applySystemAugmentations(options: ModelCallOptions): ChatMessage[] {
   let msgs = options.messages;
+  const layer1 = options.baselineLayer === true && options.isAdjudicative !== true;
+
+  if (layer1) {
+    msgs = msgs.map((msg) => {
+      if (msg.role !== 'system' || msg.content.includes(LAYER_1_SOURCE_HANDLING)) return msg;
+      const replaced = msg.content.includes(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK)
+        ? msg.content.replace(RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, LAYER_1_SOURCE_HANDLING)
+        : `${LAYER_1_SOURCE_HANDLING}\n\n${msg.content}`;
+      return { ...msg, content: replaced };
+    });
+  }
 
   if (
+    !layer1 &&
     (options.role === 'skeptic' || options.role === 'internal_challenger') &&
     options.callPurpose !== 'contradiction_extraction'
   ) {
@@ -600,18 +614,30 @@ async function callModel(
   return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
 }
 
+/** Layer 1 applies only when the caller asks for it, the switch is on, and the run is not adjudicative. */
+export function resolveBaselineLayer(options: Pick<ModelCallOptions, 'baselineLayer' | 'isAdjudicative'>): boolean {
+  return options.baselineLayer === true && baselineLayerEnabled() && options.isAdjudicative !== true;
+}
+
 /**
  * Call a model by role with automatic fallback.
  * Logs all calls with token counts and duration.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
-  const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(options);
+  const prepared: ModelCallOptions = {
+    ...options,
+    // Layer 1 is an explicit opt-in by the caller. Many pipeline calls do not
+    // pass isAdjudicative, so inferring Layer 1 from its absence would strip the
+    // policy block and the challenge prefix from adjudicative and challenge calls.
+    baselineLayer: resolveBaselineLayer(options),
+  };
+  const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(prepared);
   const fallbackModel = resolvedFallback;
   const startedAtMs = Date.now();
   const telemetryInvocationId = randomUUID();
 
   try {
-    const { result, backend } = await callModel(primaryModel, options);
+    const { result, backend } = await callModel(primaryModel, prepared);
     logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
     const augmented = { ...result, usedFallback: false, primaryModel };
     emitCallTelemetry(augmented, {
@@ -652,7 +678,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     if (fallbackModel && fallbackModel !== primaryModel) {
       logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
       try {
-        const { result, backend } = await callModel(fallbackModel, options);
+        const { result, backend } = await callModel(fallbackModel, prepared);
         logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         const augmentedFallback = { ...result, usedFallback: true, primaryModel, errorClassification };
         emitCallTelemetry(augmentedFallback, {

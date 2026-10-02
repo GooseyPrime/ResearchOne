@@ -3,9 +3,28 @@
  *
  * The admin sign-in is used only to submit tasks. Progress and results are
  * read from the database this command already connects to. It refuses to
- * start unless --confirm-spend is present.
+ * start a new run unless --confirm-spend is present.
  *
- *   npm run eval:harness -- --confirm-spend --limit 3
+ * Start it detached from the login session, or a closed console kills it.
+ * systemd-run starts in / with none of the shell's environment, so the command
+ * has to set the working directory and pass the two submission variables.
+ * The sign-in token lasts about 60 seconds and is used only to submit tasks,
+ * so fetch it immediately before the command. --score-run needs neither
+ * variable: it does not sign in.
+ *
+ *   systemd-run --unit researchone-eval --collect \
+ *     --working-directory=/path/to/backend \
+ *     --setenv=RESEARCHONE_API_BASE="$RESEARCHONE_API_BASE" \
+ *     --setenv=RESEARCHONE_ADMIN_AUTHORIZATION="$RESEARCHONE_ADMIN_AUTHORIZATION" \
+ *     /usr/bin/npm run eval:harness -- --confirm-spend --limit 3
+ *   journalctl -u researchone-eval
+ *
+ * Score stored runs without signing in. Fetch nothing; the database env
+ * comes from the backend env file in the working directory:
+ *   systemd-run --unit researchone-eval-score --collect \
+ *     --working-directory=/path/to/backend \
+ *     /usr/bin/npm run eval:harness -- --score-run <run-id>
+ *   journalctl -u researchone-eval-score
  */
 import { loadEnv } from '../bootstrap/loadEnv';
 import { initDb, query } from '../db/pool';
@@ -17,7 +36,28 @@ import {
   submitTaskThroughAdminRoute,
   type EvalTransport,
 } from '../services/eval/runHarness';
+import { judgeReportQuality } from '../services/eval/reportQualityJudge';
+import { applyJudgeGate, scoreStoredReport } from '../services/eval/scoreReport';
 import { loadEvalTasks, type EvalTask } from '../services/eval/taskSet';
+
+export function parseScoreRunIds(argv: string[]): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== '--score-run') continue;
+    const id = argv[i + 1];
+    if (!id) throw new Error('--score-run needs a run id');
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function shouldScoreStoredRun(input: { hasReport: boolean }): boolean {
+  return input.hasReport;
+}
+
+export function progressLine(reference: string, status: string, reason: string | null): string {
+  return `${reference} outcome=${status} reason=${reason ?? 'none'}`;
+}
 
 export const DEFAULT_TASK_LIMIT = 3;
 export const RUN_TIMEOUT_MS = 45 * 60 * 1000;
@@ -83,9 +123,7 @@ export async function submitSelectedTasks(args: {
     try {
       started = await args.submit(task);
     } catch (err) {
-      if (err instanceof SignInRejectedError) {
-        throw new SignInRejectedError();
-      }
+      if (err instanceof SignInRejectedError) throw err;
       throw err;
     }
     const reference = (await args.lookupReference(started.runId)) ?? started.runId;
@@ -140,20 +178,28 @@ export function followSubmittedRuns(
     timeoutMs: number;
     sleep?: (ms: number) => Promise<void>;
     now?: () => number;
+    print?: (line: string) => void;
   }
 ): Promise<Array<{ runId: string; status: string; reason: string | null }>> {
   return Promise.all(
     items.map(async (item) => {
-      const outcome = await waitForRunInDatabase({
-        runId: item.runId,
-        readStatus: args.readStatus,
-        approvePlan: args.approvePlan,
-        timeoutMs: args.timeoutMs,
-        startedAt: item.submittedAt,
-        sleep: args.sleep,
-        now: args.now,
-      });
-      return { runId: item.runId, ...outcome };
+      try {
+        const outcome = await waitForRunInDatabase({
+          runId: item.runId,
+          readStatus: args.readStatus,
+          approvePlan: args.approvePlan,
+          timeoutMs: args.timeoutMs,
+          startedAt: item.submittedAt,
+          sleep: args.sleep,
+          now: args.now,
+        });
+        args.print?.(progressLine(item.reference, outcome.status, outcome.reason));
+        return { runId: item.runId, ...outcome };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        args.print?.(progressLine(item.reference, 'timed_out', reason));
+        return { runId: item.runId, status: 'timed_out', reason };
+      }
     })
   );
 }
@@ -172,7 +218,36 @@ async function readStatus(runId: string): Promise<RunProgress> {
 }
 
 async function main(): Promise<void> {
-  assertSpendConfirmed(process.argv);
+  const scoreRunIds = parseScoreRunIds(process.argv);
+  if (scoreRunIds.length === 0) assertSpendConfirmed(process.argv);
+  loadEnv();
+  await initDb();
+  if (scoreRunIds.length > 0) {
+    for (const runId of scoreRunIds) {
+      const stored = await loadStoredRun(runId);
+      const hasReport = stored.reportMarkdown.trim().length > 0;
+      if (!shouldScoreStoredRun({ hasReport })) {
+        console.log(progressLine(runId, 'not_scored', 'no report'));
+        continue;
+      }
+      const judgment = await judgeReportQuality(stored.reportMarkdown);
+      const scores = applyJudgeGate(
+        scoreStoredReport({ reportMarkdown: stored.reportMarkdown, citations: stored.citations, reportQuality: judgment?.mean ?? null }),
+        judgment
+      );
+      await query(
+        `INSERT INTO eval_results (run_id, task_id, scores, git_sha) VALUES ($1, $2, $3::jsonb, $4)`,
+        [runId, 'score-run', JSON.stringify(scores), process.env.GIT_SHA ?? null]
+      );
+      if (scores.gate_status === 'verification_failed') {
+        console.log(progressLine(runId, 'verification_failed', 'quality judge returned nothing'));
+        continue;
+      }
+      console.log(progressLine(runId, 'scored', null));
+      console.log(`${runId} report_quality=${scores.report_quality}`);
+    }
+    return;
+  }
   const limit = parseLimit(process.argv);
   const flagOverrides = parseFlagOverrides(process.argv);
   const apiBase = process.env.RESEARCHONE_API_BASE;
@@ -180,8 +255,6 @@ async function main(): Promise<void> {
   if (!apiBase || !authHeader) {
     throw new Error('RESEARCHONE_API_BASE and RESEARCHONE_ADMIN_AUTHORIZATION are required');
   }
-  loadEnv();
-  await initDb();
   const tasks = selectHarnessTasks(loadEvalTasks(), limit);
   const submitted = await submitSelectedTasks({
     tasks,
@@ -194,11 +267,22 @@ async function main(): Promise<void> {
     readStatus,
     approvePlan: approveGeneratedPlanAsOwner,
     timeoutMs: RUN_TIMEOUT_MS,
+    print: (line) => console.log(line),
   });
   for (const item of submitted) {
     const outcome = outcomes.find((row) => row.runId === item.runId);
-    if (!outcome || outcome.status !== 'completed') {
-      console.log(`${item.reference} not scored: ${outcome?.status ?? 'missing'}. ${outcome?.reason ?? 'no reason recorded'}`);
+    if (!outcome || outcome.status === 'timed_out' || outcome.status === 'cancelled' || outcome.status === 'aborted') {
+      continue;
+    }
+    if (outcome.status !== 'completed' && outcome.status !== 'failed') continue;
+    // A failed run may have ended before any report was saved. Scoring it would
+    // record scores for a deliverable that does not exist.
+    const reportRows = await query<{ present: number }>(
+      `SELECT 1 AS present FROM reports WHERE run_id = $1 LIMIT 1`,
+      [item.runId]
+    );
+    if (!shouldScoreStoredRun({ hasReport: reportRows.length > 0 })) {
+      console.log(progressLine(item.reference, 'not_scored', 'no report'));
       continue;
     }
     scored.push(item);
@@ -222,7 +306,7 @@ async function main(): Promise<void> {
 
 if (process.argv[1]?.includes('runEvalHarness')) {
   main().catch((err) => {
-    console.error(err instanceof Error ? err.message : err);
+    console.error(err instanceof SignInRejectedError && err.serverReason ? `${err.message} ${err.serverReason}` : err instanceof Error ? err.message : err);
     process.exit(1);
   });
 }
