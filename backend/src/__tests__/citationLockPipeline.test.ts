@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const calls: Array<{ role: string; text: string }> = [];
 let firstDraftCitesUnknown = false;
 let retryAlsoCitesUnknown = false;
+let limitsRepeatsSummary = false;
+let rewriteSwapsMarkers = false;
 
 vi.mock('../services/openrouter/openrouterService', () => ({
   callRoleModel: vi.fn(async (options: { role: string; messages: Array<{ role: string; content: string }> }) => {
@@ -21,6 +23,10 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     if (options.role === 'outline_architect') {
       return reply('{"title":"FDA authorization of Casgevy","outline":["Casgevy authorization","Eligible patient group"]}');
     }
+    if (options.role === 'coherence_refiner' && rewriteSwapsMarkers && text.includes('Remove repeated sentences')) {
+      // A rewrite that moves every citation of one passage onto another.
+      return reply(options.messages[options.messages.length - 1].content.replace(/\[P1\]/g, '[P2]'));
+    }
     if (options.role !== 'section_drafter') return reply(text);
     const isRetry = options.messages.some((message) => message.content.includes('which you were not shown'));
     if (text.includes('Section to draft: Summary')) {
@@ -30,7 +36,9 @@ vi.mock('../services/openrouter/openrouterService', () => ({
       return reply('- The therapy edits a patient\'s own blood stem cells [P2].\n- A second regulator had authorized it weeks earlier [P3].');
     }
     if (text.includes('Section to draft: Where sources disagree')) return reply('The sources do not disagree.');
-    if (text.includes('Section to draft: Limits of this report')) return reply('This report rests on two sources.');
+    if (text.includes('Section to draft: Limits of this report')) {
+      return reply(limitsRepeatsSummary ? 'The FDA authorized Casgevy on 8 December 2023 [P1].' : 'This report rests on two sources.');
+    }
     if (text.includes('Section to draft: Casgevy authorization')) {
       if (firstDraftCitesUnknown && !isRetry) return reply('The authorization covered patients aged 12 and older [P9].');
       if (retryAlsoCitesUnknown && isRetry) return reply('The authorization covered patients aged 12 and older [P9]. It followed a priority review [P1].');
@@ -48,6 +56,8 @@ import {
   countShortfallSetsStatus,
   finalizeLockedCitations,
   issuePassages,
+  keepRewritesThatPreserveMarkers,
+  markersPreserved,
   passagesForSection,
   type LockedPassage,
 } from '../services/reasoning/citationLock';
@@ -100,6 +110,8 @@ describe('citation lock on the report path', () => {
     calls.length = 0;
     firstDraftCitesUnknown = false;
     retryAlsoCitesUnknown = false;
+    limitsRepeatsSummary = false;
+    rewriteSwapsMarkers = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -197,6 +209,15 @@ describe('citation lock on the report path', () => {
     expect(report.citationIssues).toEqual([{ section: 'Casgevy authorization', markers: ['P9'] }]);
   });
 
+  it('rejects a rewrite that moves a citation to a different passage', async () => {
+    limitsRepeatsSummary = true;
+    rewriteSwapsMarkers = true;
+    const report = await writeLocked();
+    expect(calls.some((call) => call.role === 'coherence_refiner' && call.text.includes('Remove repeated sentences'))).toBe(true);
+    expect(report.markdown).toContain('The FDA authorized Casgevy on 8 December 2023 [P1].');
+    expect(report.markdown).not.toContain('8 December 2023 [P2]');
+  });
+
   it('ignores locked passages when the Layer 1 switch is off', async () => {
     delete process.env.BASELINE_LAYER_ENABLED;
     await writeLocked();
@@ -248,6 +269,28 @@ describe('citation lock helpers', () => {
     const finalized = finalizeLockedCitations('## Summary\nA fact [P3].\n\n## References\n1. Stale\n\n## About this report\nStale.', passages(), '2 Oct 2026');
     expect(finalized.markdown.match(/## References/g)).toHaveLength(1);
     expect(finalized.markdown).not.toContain('Stale');
+  });
+
+  it('removes a bare number the lock did not issue, so it cannot pass as a citation', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P3]. A leftover [1]. Another [P1].', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('A fact [1]. A leftover. Another [2].');
+    expect(finalized.occurrences.map((occurrence) => occurrence.number)).toEqual([1, 2]);
+    expect(finalized.removed).toBe(1);
+  });
+
+  it('accepts a rewrite only when it keeps the citations where they were', () => {
+    const draft = 'One fact [P1]. Another fact [P2].';
+    expect(markersPreserved(draft, 'One fact, reworded [P1]. Another fact [P2].', { allowRemoval: false })).toBe(true);
+    expect(markersPreserved(draft, 'One fact [P1]. Another fact [P3].', { allowRemoval: false })).toBe(false);
+    expect(markersPreserved(draft, 'One fact [P1]. Another fact [P2]. A new one [P1].', { allowRemoval: true })).toBe(false);
+    expect(markersPreserved(draft, 'One fact [P1].', { allowRemoval: false })).toBe(false);
+    expect(markersPreserved(draft, 'One fact [P1].', { allowRemoval: true })).toBe(true);
+    const kept = keepRewritesThatPreserveMarkers(
+      [{ content: draft }, { content: 'Plain [P3].' }],
+      [{ content: 'One fact [P2]. Another fact [P1], swapped [P3].' }, { content: 'Plainer [P3].' }],
+      { allowRemoval: true }
+    );
+    expect(kept.map((section) => section.content)).toEqual([draft, 'Plainer [P3].']);
   });
 
   it('keeps the fixed source count from deciding a Layer 1 run', () => {

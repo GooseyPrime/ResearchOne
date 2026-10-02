@@ -1951,6 +1951,8 @@ async function runResearchJobInner(
       );
     }
     const resolvedWordTarget = lengthDecision.target;
+    /** True only when the Layer 1 judge read the material and found it sufficient. Not set by the fallback. */
+    let materialJudgedSufficient = false;
     if (layer1Run) {
       const discoveryAvailable = config.discovery.enabled;
       const digestOf = () =>
@@ -2061,6 +2063,7 @@ async function runResearchJobInner(
         `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
         [JSON.stringify({ materialJudgement: judged.judgement, materialJudgeFailed: judged.failed, materialStep: step }), runId]
       );
+      materialJudgedSufficient = !judged.failed && judged.judgement?.sufficient === true;
       if (step === 'stop') {
         const situation = extraPassUsed ? 'search_ran' : 'search_unavailable';
         throw new Error(readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, situation));
@@ -2609,7 +2612,9 @@ ${generatedReport.markdown}`,
         nextStatus = 'contract_failed';
       } else if (verifierFailed) {
         nextStatus = 'verification_failed';
-      } else if (countShortfallSetsStatus(layer1Run) && sourceShortfallDegradesStatus(sourceFailureReason)) {
+      } else if (!materialJudgedSufficient && sourceShortfallDegradesStatus(sourceFailureReason)) {
+        // The count-based source check still downgrades the run, except where
+        // the material judge read the passages and found them sufficient (grant I).
         nextStatus = 'completed_degraded';
       } else if (countShortfallSetsStatus(layer1Run) && sourceCoverageShortfall) {
         nextStatus = 'completed_degraded';
@@ -2913,16 +2918,15 @@ ${generatedReport.markdown}`,
 
     // Citation lock: save each citation against its section and passage. This is
     // deterministic and does not depend on the epistemic-persistence stage.
-    let lockedCitationsSaved = 0;
     if (lockedOccurrences) {
+      const bound = assignOccurrencesToSections(reportSections, lockedOccurrences);
       try {
-        lockedCitationsSaved = await persistBoundCitations({
-          runId,
-          reportId,
-          bound: assignOccurrencesToSections(reportSections, lockedOccurrences),
-        });
-      } catch (bindErr) {
-        logger.error(`[${runId}] Saving bound citations failed:`, bindErr);
+        await persistBoundCitations({ runId, reportId, bound });
+      } catch (firstErr) {
+        // The save is one transaction, so a failure wrote nothing. Try once more;
+        // a report whose numbers have nothing saved behind them must not complete.
+        logger.warn(`[${runId}] Saving bound citations failed; retrying once`, firstErr);
+        await persistBoundCitations({ runId, reportId, bound });
       }
     }
 
@@ -2956,9 +2960,10 @@ ${generatedReport.markdown}`,
           ...v2,
         });
 
-        // A locked report's citations are already saved, one per marker. The
-        // model-based mapper would add a second, looser set beside them.
-        if (lockedCitationsSaved === 0) await mapAndPersistCitations({
+        // A locked report's citations come only from its markers, including when
+        // it cites nothing. The model-based mapper would add a looser set that
+        // matches nothing in the text.
+        if (lockedOccurrences === null) await mapAndPersistCitations({
           runId,
           reportId,
           chunks: allChunks,

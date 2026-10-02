@@ -112,6 +112,36 @@ export function markersIn(text: string): string[] {
   return found;
 }
 
+/**
+ * Whether a rewrite kept a section's citations. A rewrite is shown the report
+ * text and not the passages, so it has no basis for adding a citation or moving
+ * one to a different passage. With `allowRemoval`, dropping a citation along with
+ * its sentence is accepted; adding or swapping one never is.
+ */
+export function markersPreserved(original: string, rewritten: string, options: { allowRemoval: boolean }): boolean {
+  const remaining = new Map<string, number>();
+  for (const marker of markersIn(original)) remaining.set(marker, (remaining.get(marker) ?? 0) + 1);
+  for (const marker of markersIn(rewritten)) {
+    const left = remaining.get(marker) ?? 0;
+    if (left === 0) return false;
+    remaining.set(marker, left - 1);
+  }
+  if (options.allowRemoval) return true;
+  return [...remaining.values()].every((count) => count === 0);
+}
+
+/** Keep each rewritten section only where it kept that section's citations. */
+export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
+  original: T[],
+  rewritten: T[],
+  options: { allowRemoval: boolean }
+): T[] {
+  return rewritten.map((section, index) => {
+    const before = original[index];
+    return before && !markersPreserved(before.content, section.content, options) ? before : section;
+  });
+}
+
 /** Markers in the text that were not among the passages the section was shown. */
 export function unknownMarkers(text: string, shown: LockedPassage[]): string[] {
   const allowed = new Set(shown.map((passage) => passage.marker));
@@ -199,7 +229,12 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
   const cited: UsedSource[] = [];
   const occurrences: CitationOccurrence[] = [];
   let removed = 0;
-  const body = dropSystemSections(markdown);
+  // A bare number in brackets was not issued by the lock. Left in, it would read
+  // as a citation with no reference behind it and could be mistaken for one of
+  // the numbers assigned below.
+  const bare = dropSystemSections(markdown);
+  removed += (bare.match(/\[\d+\]/g) ?? []).length;
+  const body = tidyAfterRemoval(bare.replace(/[ \t]*\[\d+\]/g, ''));
   const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
     const numbers: number[] = [];
     for (const marker of inner.match(SINGLE_MARKER) ?? []) {

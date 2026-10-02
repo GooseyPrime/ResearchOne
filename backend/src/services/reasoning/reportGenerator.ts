@@ -1,6 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { LOCK_INSTRUCTION, formatLockedContext, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
+import { LOCK_INSTRUCTION, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
 import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
@@ -1596,7 +1596,10 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     const refined = refinedBodies.get(section.key);
     const draftHasCitation = /\[(?:P)?\d+[\],;]/.test(section.content);
     const refinedHasCitation = refined ? /\[(?:P)?\d+[\],;]/.test(refined) : false;
-    const content = layer1 && refined && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
+    // Locked: the refiner sees the draft, not the passages, so its version is
+    // kept only when every citation is where the drafter put it.
+    const refinedKeepsLock = !lockedPassages || !refined || markersPreserved(section.content, refined, { allowRemoval: false });
+    const content = layer1 && refined && refinedKeepsLock && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
     return { ...section, content: layer1 ? stripMachineFiller(content) : content };
   });
 
@@ -1612,7 +1615,12 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ],
     });
     modelCalls.push(rewrite);
-    prepared = parseRewrittenSections(rewrite.content, prepared) ?? prepared;
+    const deduplicated = parseRewrittenSections(rewrite.content, prepared);
+    prepared = deduplicated
+      ? lockedPassages
+        ? keepRewritesThatPreserveMarkers(prepared, deduplicated, { allowRemoval: true })
+        : deduplicated
+      : prepared;
   }
   const cleaned = layer1
     ? removeRepeatedSentences(prepared).map((section) =>
@@ -1658,7 +1666,8 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ],
     });
     modelCalls.push(redraft);
-    const parsed = parseRewrittenSections(redraft.content, sectionsOut);
+    const redrafted = parseRewrittenSections(redraft.content, sectionsOut);
+    const parsed = redrafted && lockedPassages ? keepRewritesThatPreserveMarkers(sectionsOut, redrafted, { allowRemoval: true }) : redrafted;
     sectionsOut = parsed ?? sectionsOut.map((section) => ({
       ...section,
       content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
