@@ -619,7 +619,10 @@ Return revised section body only.`,
       baseCitations
         .filter((row) => row.section_id != null)
         .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
-      revisedSections.map((section) => ({ key: section.id, content: whole(section) }))
+      revisedSections.map((section) => ({ key: section.id, content: whole(section) })),
+      // Retention can delete a passage after its report was written. A citation
+      // with no passage left is not carried into the new report.
+      (row) => row.chunk_id != null
     );
     const reboundParts = rebound.contents.map((text) => {
       const cut = text.indexOf('\n\n');

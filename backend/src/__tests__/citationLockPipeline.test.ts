@@ -724,6 +724,28 @@ describe('code, links and stale reference lists', () => {
     expect(issuePassages([], [])).toEqual([]);
   });
 
+  it('leaves indented code alone even when it ends like a sentence', () => {
+    const body = '## Summary\nIt opened in 1932 [P1].\n\n    return [P1];\n\n    return [1].';
+    const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('    return [P1];');
+    expect(finalized.markdown).toContain('    return [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('does not carry a citation whose passage is gone', () => {
+    const rebound = rebindRevisedCitations(
+      [{ key: 'a', content: 'It opened in 1932 [1]. It closed in 1990 [2].' }],
+      [
+        { sectionKey: 'a', citationText: '[1]', row: { chunk: null as string | null } },
+        { sectionKey: 'a', citationText: '[2]', row: { chunk: 'c2' as string | null } },
+      ],
+      [{ key: 'a', content: 'It opened in 1932 [1]. It closed in 1990 [2].' }],
+      (row) => row.chunk != null
+    );
+    expect(rebound.contents).toEqual(['It opened in 1932. It closed in 1990 [2].']);
+    expect(rebound.kept).toEqual([{ sectionIndex: 0, row: { chunk: 'c2' } }]);
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

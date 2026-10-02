@@ -101,7 +101,10 @@ const CITATION_RUN = /^(?:\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]){2,}$/i;
 const INDENTED_LIST_ITEM_WITH_MARKER = /^(?: {4,}|\t)\s*(?:[-*+]|\d+[.)])\s[^\n]*(?:\[\s*P\d+|\s\[\d+\])/i;
 // The same holds once the marker has become a reader number, so the saved text
 // is read the same way as the draft it came from.
-const INDENTED_SENTENCE_WITH_MARKER = /^(?: {4,}|\t)[^\n=]*\s\[\s*(?:P\d+[^\]\n]*|\d+)\](?:\[\d+\])*[.,;:!?]/i;
+// It has to read as a sentence: several words, none of the punctuation code is
+// made of, and the marker at its end. "    return [P1];" stays code.
+const INDENTED_SENTENCE_WITH_MARKER =
+  /^(?: {4,}|\t)(?:[^\s=;{}()<>\[\]]+[ \t]+){3,}[^\n=;{}()<>]*\[\s*(?:P\d+[^\]\n]*|\d+)\](?:\[\d+\])*[.,:!?]?[ \t]*$/i;
 /** A passage marker written as the text of a link is still a citation. */
 const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
 /**

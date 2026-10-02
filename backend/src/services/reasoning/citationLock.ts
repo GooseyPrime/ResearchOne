@@ -617,7 +617,9 @@ const GROUPED_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\
 export function rebindRevisedCitations<T>(
   base: Array<{ key: string; content: string }>,
   rows: Array<{ sectionKey: string; citationText: string; row: T }>,
-  revised: Array<{ key: string; content: string }>
+  revised: Array<{ key: string; content: string }>,
+  /** Whether a row still has its passage behind it. One that does not is not carried, and its number is removed. */
+  carriable: (row: T) => boolean = () => true
 ): { contents: string[]; kept: Array<{ sectionIndex: number; row: T }>; removed: number } {
   const numbered = (content: string): Array<{ number: string; statement: string }> => {
     const out: Array<{ number: string; statement: string }> = [];
@@ -644,7 +646,7 @@ export function rebindRevisedCitations<T>(
   const contents = revised.map((section, sectionIndex) => {
     const before = baseByKey.get(section.key);
     const sectionRows = rowsByKey.get(section.key) ?? [];
-    if (before && before.content === section.content) {
+    if (before && before.content === section.content && sectionRows.every((entry) => carriable(entry.row))) {
       for (const entry of sectionRows) kept.push({ sectionIndex, row: entry.row });
       return section.content;
     }
@@ -673,11 +675,11 @@ export function rebindRevisedCitations<T>(
           const at = piece.start + offset;
           if (view.slice(at, at + full.length) !== full) return full;
           const match = pool.find((candidate) => !candidate.used && candidate.number === full && sameStatement(candidate.statement, basis));
-          if (!match) {
+          if (match) match.used = true;
+          if (!match || !carriable(match.row)) {
             removed += 1;
             return '\uE002';
           }
-          match.used = true;
           kept.push({ sectionIndex, row: match.row });
           return full;
         });

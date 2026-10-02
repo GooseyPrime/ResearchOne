@@ -407,7 +407,7 @@ Acceptance:
 
 **As built, part 1.**
 
-- The lock is behind `CITATION_LOCK_ENABLED`, and applies only where `BASELINE_LAYER_ENABLED` is also on and the run is not adjudicative. With either unset, a run is as it was.
+- The lock is behind `CITATION_LOCK_ENABLED`, and applies only where `BASELINE_LAYER_ENABLED` is also on and the run is not adjudicative. With `BASELINE_LAYER_ENABLED` unset, a run is as it was. With the baseline on and the lock unset, citations are as slice 3 left them; the one thing part 1 changes there is the status rule in B2 below, which belongs to grant I and to Layer 1, not to the lock.
 - The writer's markers are `[P1]`, `[P2]`, not `[E#]`. `[E#]` is already the export engine's alias for a saved citation (`formatting/evidenceAliaser.ts`), which can only be assigned after a report exists; reusing the form for something else would make the two collide.
 - Each section is shown whole passages, not quotes cut from them. While the retrieved passages fit a character budget every section sees all of them, so nothing the analysis stages read is hidden from the writer. Only when they do not fit is a section narrowed: a whole-report section sees as many as fit, a subject section the ones closest to its heading and the request, chosen by shared terms. The writer is told to state only what the shown passages support. No model call is added.
 - A draft that cites a marker it was not shown is drafted once more with the offending markers named. If the second draft still cites one, those markers are removed, the sentence stays, and the removal is recorded on the run and returned as `citationIssues`. It does not fail the run.
