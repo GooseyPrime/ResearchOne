@@ -114,9 +114,21 @@ export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuo
      WHERE r.run_id = $1
      ORDER BY s.section_order NULLS LAST, rc.citation_order NULLS LAST, rc.id`;
 
+/** Stored sections keep their heading apart from their body; the scores read headings. */
+export function storedSectionsToMarkdown(rows: Array<{ title: string | null; content: string }>): string {
+  return rows
+    .map((row) => {
+      const title = (row.title ?? '').trim();
+      return title && !new RegExp(`^#+\\s*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(row.content)
+        ? `## ${title}\n${row.content}`
+        : row.content;
+    })
+    .join('\n\n');
+}
+
 export async function loadStoredRun(runId: string): Promise<StoredRun> {
-  const report = await query<{ content: string }>(
-    `SELECT s.content FROM report_sections s
+  const report = await query<{ title: string | null; content: string }>(
+    `SELECT s.title, s.content FROM report_sections s
      JOIN reports r ON r.id = s.report_id
      WHERE r.run_id = $1
      ORDER BY s.section_order`,
@@ -147,7 +159,7 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
     [runId]
   );
   return {
-    reportMarkdown: report.map((row) => row.content).join('\n'),
+    reportMarkdown: storedSectionsToMarkdown(report),
     citations: citations.map((row) => ({
       alias: row.alias ?? '',
       chunkQuote: row.chunkQuote ?? '',

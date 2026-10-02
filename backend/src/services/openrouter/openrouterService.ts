@@ -614,6 +614,11 @@ async function callModel(
   return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
 }
 
+/** Layer 1 applies only when the caller asks for it, the switch is on, and the run is not adjudicative. */
+export function resolveBaselineLayer(options: Pick<ModelCallOptions, 'baselineLayer' | 'isAdjudicative'>): boolean {
+  return options.baselineLayer === true && baselineLayerEnabled() && options.isAdjudicative !== true;
+}
+
 /**
  * Call a model by role with automatic fallback.
  * Logs all calls with token counts and duration.
@@ -621,10 +626,10 @@ async function callModel(
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
   const prepared: ModelCallOptions = {
     ...options,
-    baselineLayer:
-      options.baselineLayer === false
-        ? false
-        : options.baselineLayer === true || (baselineLayerEnabled() && options.isAdjudicative !== true),
+    // Layer 1 is an explicit opt-in by the caller. Many pipeline calls do not
+    // pass isAdjudicative, so inferring Layer 1 from its absence would strip the
+    // policy block and the challenge prefix from adjudicative and challenge calls.
+    baselineLayer: resolveBaselineLayer(options),
   };
   const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(prepared);
   const fallbackModel = resolvedFallback;

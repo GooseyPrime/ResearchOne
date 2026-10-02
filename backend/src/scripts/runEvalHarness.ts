@@ -255,8 +255,6 @@ async function main(): Promise<void> {
   if (!apiBase || !authHeader) {
     throw new Error('RESEARCHONE_API_BASE and RESEARCHONE_ADMIN_AUTHORIZATION are required');
   }
-  loadEnv();
-  await initDb();
   const tasks = selectHarnessTasks(loadEvalTasks(), limit);
   const submitted = await submitSelectedTasks({
     tasks,
@@ -273,10 +271,20 @@ async function main(): Promise<void> {
   });
   for (const item of submitted) {
     const outcome = outcomes.find((row) => row.runId === item.runId);
-    if (!outcome || !shouldScoreStoredRun({ hasReport: true }) || outcome.status === 'timed_out' || outcome.status === 'cancelled' || outcome.status === 'aborted') {
+    if (!outcome || outcome.status === 'timed_out' || outcome.status === 'cancelled' || outcome.status === 'aborted') {
       continue;
     }
     if (outcome.status !== 'completed' && outcome.status !== 'failed') continue;
+    // A failed run may have ended before any report was saved. Scoring it would
+    // record scores for a deliverable that does not exist.
+    const reportRows = await query<{ present: number }>(
+      `SELECT 1 AS present FROM reports WHERE run_id = $1 LIMIT 1`,
+      [item.runId]
+    );
+    if (!shouldScoreStoredRun({ hasReport: reportRows.length > 0 })) {
+      console.log(progressLine(item.reference, 'not_scored', 'no report'));
+      continue;
+    }
     scored.push(item);
   }
   const transport: EvalTransport = {

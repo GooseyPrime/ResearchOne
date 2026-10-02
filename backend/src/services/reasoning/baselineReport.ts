@@ -14,8 +14,10 @@ const STRUCTURAL_HEADING =
 /** A heading a reader would write: not the question, not a structural label, a noun phrase. */
 export function acceptSubjectHeading(query: string, heading: string): boolean {
   const title = heading.replace(/^#+\s*/, '').trim();
-  if (title.length < 8 || /[?]/.test(title)) return false;
-  const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // Scripts written without spaces between words carry a heading in few characters.
+  const unspaced = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u.test(title);
+  if (title.length < (unspaced ? 3 : 8) || /[?？]/.test(title)) return false;
+  const norm = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   const headingNorm = norm(title);
   const queryNorm = norm(query);
   if (!headingNorm || headingNorm === queryNorm) return false;
@@ -23,7 +25,7 @@ export function acceptSubjectHeading(query: string, heading: string): boolean {
   if (/^(how|what|when|why|who|where)\b/.test(headingNorm)) return false;
   if (/\b(is described|the records show)\b/.test(headingNorm)) return false;
   if (STRUCTURAL_HEADING.test(title.trim())) return false;
-  return headingNorm.split(' ').length >= 2;
+  return unspaced || headingNorm.split(' ').length >= 2;
 }
 
 export function readerSections(intentId: string | undefined, _query = ''): Array<{ key: string; title: string; weight: number; system?: boolean }> {
@@ -88,10 +90,15 @@ export function scorePresentationClean(text: string): number {
 
 export const REQUIRED_READER_SECTIONS = ['Summary', 'Key findings', 'Limits of this report', 'References', 'About this report'];
 
-export function scoreStructureComplete(text: string, required = REQUIRED_READER_SECTIONS): number {
+/** A report under 300 words is the answer, its references when it cites any, and the closing note. */
+export const SHORT_READER_SECTIONS = ['Summary', 'About this report'];
+
+export function scoreStructureComplete(text: string, required?: string[]): number {
   const headings = [...text.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1]?.trim() ?? '');
+  const words = text.replace(/^#+\s.*$/gm, '').split(/\s+/).filter(Boolean).length;
+  const profile = required ?? (words < 300 && !headings.includes('Key findings') ? SHORT_READER_SECTIONS : REQUIRED_READER_SECTIONS);
   let cursor = 0;
-  for (const title of required) {
+  for (const title of profile) {
     const index = headings.findIndex((heading, position) => position >= cursor && heading === title);
     if (index === -1) return 0;
     cursor = index + 1;
@@ -181,10 +188,28 @@ export function readerTitle(query: string, proposed: string): string {
   return acceptSubjectHeading(query, proposed) ? proposed.trim() : 'Report';
 }
 
-export function plainQuestionIntent(classifierFailed: boolean, unsure: boolean): 'factual_report' | null {
+const CONTESTED_REQUEST = /\b(prove|proof|debunk|hoax|cover[- ]?up|conspiracy|alleg\w*|claim\w*|verify|true that|really|fake|fraud|evidence (?:for|against|that)|did .* (?:lie|fake))\b/i;
+const PLAIN_QUESTION = /^(who|what|when|where|which|how (?:many|much|old|long|far|tall|big)|in what year|on what date)\b/i;
+
+/**
+ * A classifier failure falls back to a factual report only when the request is
+ * plainly a short factual question. Anything else keeps the failure, so a
+ * request that needs adjudication is never quietly downgraded.
+ */
+export function plainQuestionIntent(classifierFailed: boolean, unsure: boolean, request = ''): 'factual_report' | null {
   if (!baselineLayerEnabled()) return null;
-  if (classifierFailed || unsure) return 'factual_report';
-  return null;
+  if (!classifierFailed && !unsure) return null;
+  const text = request.trim();
+  if (!text || text.split(/\s+/).length > 30) return null;
+  if (CONTESTED_REQUEST.test(text)) return null;
+  return PLAIN_QUESTION.test(text) ? 'factual_report' : null;
+}
+
+/** A stored date as YYYY-MM-DD. The database driver hands back Date objects. */
+export function isoDay(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
 export function buildReferences(sources: UsedSource[]): string {
@@ -217,15 +242,18 @@ export function distinctSourceCount(sources: UsedSource[]): number {
   return new Set(sources.map(sourceKey).filter(Boolean)).size;
 }
 
+const UNRESOLVED_MARKER = '\uE001';
+
 /** One number per cited source. Markers in the text are rewritten to match. */
 export function renumberCitations<T extends { content: string }>(sections: T[], sources: UsedSource[]): { sections: T[]; cited: UsedSource[] } {
   const assigned = new Map<string, { source: UsedSource; number: number }>();
   const cited: UsedSource[] = [];
-  const rewrite = (text: string) => text.replace(/\[(\d+)\]/g, (full, raw) => {
+  const rewriteMarkers = (text: string) => text.replace(/\[(\d+)\]/g, (full, raw) => {
+    // A marker with no source behind it would cite a reference that is not listed.
     const source = sources[Number(raw) - 1];
-    if (!source) return full;
+    if (!source) return UNRESOLVED_MARKER;
     const key = sourceKey(source);
-    if (!key) return full;
+    if (!key) return UNRESOLVED_MARKER;
     let entry = assigned.get(key);
     if (!entry) {
       entry = { source, number: cited.length + 1 };
@@ -234,6 +262,10 @@ export function renumberCitations<T extends { content: string }>(sections: T[], 
     }
     return `[${entry.number}]`;
   });
+  const rewrite = (text: string) =>
+    rewriteMarkers(text)
+      .replace(new RegExp(`[ \\t]*${UNRESOLVED_MARKER}`, 'g'), '')
+      .replace(/[ \t]+([.,;:!?])/g, '$1');
   return { sections: sections.map((section) => ({ ...section, content: rewrite(section.content) })), cited };
 }
 

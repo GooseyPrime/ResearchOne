@@ -128,7 +128,10 @@ describe('baseline writing messages', () => {
 
   it('routes a failed classifier to factual research', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
-    expect(plainQuestionIntent(true, false)).toBe('factual_report');
+    expect(plainQuestionIntent(true, false, 'When did the FDA authorize Casgevy?')).toBe('factual_report');
+    expect(plainQuestionIntent(true, false, 'Is the claim that the moon landing was a hoax true?')).toBeNull();
+    expect(plainQuestionIntent(true, false, 'Compare the evidence for and against cold fusion')).toBeNull();
+    expect(plainQuestionIntent(true, false)).toBeNull();
     delete process.env.BASELINE_LAYER_ENABLED;
   });
 });

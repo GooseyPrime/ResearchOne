@@ -1161,7 +1161,7 @@ export async function generateIterativeReport(args: {
     basePlan: activeSectionPlan,
     artifacts: args.contractArtifacts,
     intentId: args.intentId,
-    explicitWordTarget: args.targetWordCount,
+    explicitWordTarget: userChosenWordTarget(args.targetWordCount, args.lengthSource),
     perSectionFloor: REPORT_WORD_COUNT_PER_SECTION_FLOOR,
   });
   activeSectionPlan = outlineExpansion.plan;
@@ -1172,6 +1172,7 @@ export async function generateIterativeReport(args: {
     allowFallbackByRole: args.allowFallbackByRole,
     byokApiKeyOverride: args.byokApiKeyOverride,
     isAdjudicative: args.isAdjudicative,
+    baselineLayer: baselineLayerEnabled() && args.isAdjudicative !== true,
   };
 
   // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable

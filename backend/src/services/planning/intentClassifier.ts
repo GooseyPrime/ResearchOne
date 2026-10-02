@@ -480,7 +480,7 @@ export async function classifyIntent(
         `Classifier call failed (${detail}); fell back to lexical match on "${lex.intent}".`
       );
     }
-    if (plainQuestionIntent(true, false)) {
+    if (plainQuestionIntent(true, false, query)) {
       return defaultResearchBrief(
         'factual_report',
         0.5,

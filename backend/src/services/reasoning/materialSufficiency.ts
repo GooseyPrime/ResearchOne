@@ -68,9 +68,27 @@ export function gateFallbackStep(action: string, discoveryAvailable: boolean, ex
   return 'stop';
 }
 
-export function digestRetrievedMaterial(chunks: Array<{ label: string; text: string }>): string {
-  return chunks
-    .map((chunk, index) => `[CHUNK ${index + 1}] ${chunk.label}\n${stripGradeLines(chunk.text).slice(0, 500)}`)
+/** Characters of retrieved material the judge is shown in total. */
+export const MATERIAL_DIGEST_BUDGET = 120_000;
+const MATERIAL_DIGEST_MIN_PER_CHUNK = 1_500;
+
+/**
+ * Every passage reaches the judge. Passages are sent whole while they fit the
+ * budget; past that each gets an equal share, taken from its start and its end,
+ * so evidence late in a passage is still seen.
+ */
+export function digestRetrievedMaterial(chunks: Array<{ label: string; text: string }>, budget = MATERIAL_DIGEST_BUDGET): string {
+  const cleaned = chunks.map((chunk) => ({ label: chunk.label, text: stripGradeLines(chunk.text).trim() }));
+  const total = cleaned.reduce((sum, chunk) => sum + chunk.text.length, 0);
+  const share = Math.max(MATERIAL_DIGEST_MIN_PER_CHUNK, Math.floor(budget / Math.max(1, cleaned.length)));
+  return cleaned
+    .map((chunk, index) => {
+      const body =
+        total <= budget || chunk.text.length <= share
+          ? chunk.text
+          : `${chunk.text.slice(0, Math.ceil(share / 2))}\n[...]\n${chunk.text.slice(-Math.floor(share / 2))}`;
+      return `[CHUNK ${index + 1}] ${chunk.label}\n${body}`;
+    })
     .join('\n\n');
 }
 
