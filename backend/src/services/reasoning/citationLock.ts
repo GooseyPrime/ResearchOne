@@ -386,7 +386,8 @@ function sentenceBefore(text: string, index: number): string {
   return before.slice(start + 1).trim();
 }
 
-const SYSTEM_SECTION = /^#{1,3}\s+(?:References|About this report)\s*$/i;
+// Level 1 is the report's own title and is never a system section, whatever it says.
+const SYSTEM_SECTION = /^#{2,3}\s+(?:References|About this report)\s*$/i;
 
 /**
  * The report without its reference list and closing note. A system section runs
@@ -474,6 +475,8 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
         .replace(/(\[\s*P\d+[^\]\n]*\])\([^)\s]*(?:\s+"[^"]*")?\)/gi, '$1')
         // Likewise the empty second bracket of a collapsed reference link.
         .replace(/(\[\s*P\d+[^\]\n]*\])\[\]/gi, '$1')
+        // And the label of a full reference link ("[P1][source]"); a second marker is kept.
+        .replace(/(\[\s*P\d+[^\]\n]*\])\[(?!\s*P?\d+\s*[\],;])[^\]\n]*\]/gi, '$1')
     );
     const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
       const numbers: number[] = [];
@@ -644,12 +647,13 @@ export function rebindRevisedCitations<T>(
 export function renumberAfterRevision(
   sections: Array<{ title: string; content: string }>,
   citationTexts: string[]
-): { contents: string[]; citationTexts: string[] } {
+): { titles: string[]; contents: string[]; citationTexts: string[] } {
   const isSystem = (title: string): boolean => /^(?:references|about this report)$/i.test(title.trim());
   const order: string[] = [];
   for (const section of sections) {
     if (isSystem(section.title)) continue;
-    for (const number of readerNumbersIn(section.content)) if (!order.includes(number)) order.push(number);
+    // A heading can carry a citation too, and it is read before its body.
+    for (const number of readerNumbersIn(`${section.title}\n${section.content}`)) if (!order.includes(number)) order.push(number);
   }
   const renumbered = new Map(order.map((old, index) => [old, `[${index + 1}]`]));
   const contents = sections.map((section) => {
@@ -669,5 +673,8 @@ export function renumberAfterRevision(
     if (isSystem(section.title)) return section.content;
     return mapProse(section.content, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full));
   });
-  return { contents, citationTexts: citationTexts.map((text) => renumbered.get(text.trim()) ?? text) };
+  const titles = sections.map((section) =>
+    isSystem(section.title) ? section.title : mapProse(section.title, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full))
+  );
+  return { titles, contents, citationTexts: citationTexts.map((text) => renumbered.get(text.trim()) ?? text) };
 }

@@ -620,6 +620,33 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.removed).toBe(1);
   });
 
+  it('binds a marker written as the text of a full reference link', () => {
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1][source].\n\n[source]: https://example.org/x', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('keeps a report whose own title is References', () => {
+    const finalized = finalizeLockedCitations('# References\n\n## Summary\nIt opened in 1932 [P1].', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('# References\n\n## Summary\nIt opened in 1932 [1].');
+  });
+
+  it('carries and renumbers a citation that sits in a heading', () => {
+    const rebound = rebindRevisedCitations(
+      [{ key: 'a', content: 'The 1932 opening [2]\nIt cost four million [1].' }],
+      [
+        { sectionKey: 'a', citationText: '[2]', row: 'row-title' },
+        { sectionKey: 'a', citationText: '[1]', row: 'row-body' },
+      ],
+      [{ key: 'a', content: 'The 1932 opening [2]\nIt cost five million [1].' }]
+    );
+    expect(rebound.contents).toEqual(['The 1932 opening [2]\nIt cost five million.']);
+    expect(rebound.kept).toEqual([{ sectionIndex: 0, row: 'row-title' }]);
+    const out = renumberAfterRevision([{ title: 'The 1932 opening [2]', content: 'It cost five million.' }], ['[2]']);
+    expect(out.titles).toEqual(['The 1932 opening [1]']);
+    expect(out.citationTexts).toEqual(['[1]']);
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

@@ -108,7 +108,7 @@ const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
  * So is one that a link definition ("[P1]: url") turns into a shortcut or
  * collapsed reference link. The definition line itself stays protected.
  */
-const MARKER_AS_REFERENCE_LINK = /^\[\s*P\d+[^\]\n]*\](?:\[\])?$/i;
+const MARKER_AS_REFERENCE_LINK = /^\[\s*P\d+[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
 
 /**
  * Apply a change to the prose of a report and to nothing else. Code in every

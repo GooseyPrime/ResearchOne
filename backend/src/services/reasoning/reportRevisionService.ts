@@ -611,20 +611,31 @@ Return revised section body only.`,
       baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim())));
   let carriedCitations: Array<{ sectionKey: string; row: BaseCitationRow }>;
   if (lockedBase) {
+    // A heading can carry a citation, and the first save binds it. Heading and
+    // body are read together here so that citation is carried or removed with the rest.
+    const whole = (section: { title: string; content: string }): string => `${section.title}\n${section.content}`;
     const rebound = rebindRevisedCitations(
-      baseSections.map((section) => ({ key: section.id, content: section.content })),
+      baseSections.map((section) => ({ key: section.id, content: whole(section) })),
       baseCitations
         .filter((row) => row.section_id != null)
         .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
-      revisedSections.map((section) => ({ key: section.id, content: section.content }))
+      revisedSections.map((section) => ({ key: section.id, content: whole(section) }))
     );
+    const reboundParts = rebound.contents.map((text) => {
+      const cut = text.indexOf('\n');
+      return cut < 0 ? { title: text, content: '' } : { title: text.slice(0, cut), content: text.slice(cut + 1) };
+    });
     // Sources are numbered again in the order the revised report first cites them,
     // and the reference list keeps only the ones it still cites.
     const renumbered = renumberAfterRevision(
-      revisedSections.map((section, index) => ({ title: section.title, content: rebound.contents[index] })),
+      reboundParts,
       rebound.kept.map((entry) => entry.row.citation_text ?? '')
     );
-    revisedSections = revisedSections.map((section, index) => ({ ...section, content: renumbered.contents[index] }));
+    revisedSections = revisedSections.map((section, index) => ({
+      ...section,
+      title: renumbered.titles[index],
+      content: renumbered.contents[index],
+    }));
     carriedCitations = rebound.kept.map((entry, index) => ({
       sectionKey: revisedSections[entry.sectionIndex].id,
       row: { ...entry.row, citation_order: index + 1, citation_text: renumbered.citationTexts[index] },
