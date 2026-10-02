@@ -50,6 +50,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 }));
 
 import { generateIterativeReport } from '../services/reasoning/reportGenerator';
+import { sentenceKey } from '../services/reasoning/baselineReport';
 import {
   assignOccurrencesToSections,
   bestQuote,
@@ -184,6 +185,8 @@ describe('citation lock on the report path', () => {
     // must be backed, in order, by a saved row with a passage and a quote.
     expect(scoreCitationBound(finalized.markdown, stored, true)).toBe(1);
     expect(scoreCitationBound(finalized.markdown, stored.slice(1), true)).toBeLessThan(1);
+    // An alias-shaped token in a code sample does not switch the scorer to aliases.
+    expect(scoreCitationBound(`${finalized.markdown}\n\n\`\`\`\nrows[E1]\n\`\`\``, stored, true)).toBe(1);
     expect(scoreCitationBound(finalized.markdown, stored.map((row) => ({ ...row, chunkQuote: '' })), true)).toBe(0);
     expect(scoreQuoteVerbatim(stored)).toBe(1);
   });
@@ -600,6 +603,13 @@ describe('code, links and stale reference lists', () => {
     const rebound = rebindRevisedCitations([{ key: 'a', content: 'Nothing was cited.' }], [], [{ key: 'a', content: 'Now it claims a source [1].' }]);
     expect(rebound.contents).toEqual(['Now it claims a source.']);
     expect(rebound.kept).toEqual([]);
+  });
+
+  it('treats a repeated sentence as repeated whatever form its markers take', () => {
+    const plain = sentenceKey('It opened in 1932 [P1, P2].');
+    expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
+    expect(sentenceKey('It opened in 1932 [P1 and P2].')).toBe(plain);
+    expect(sentenceKey('It opened in 1932 [P1\u2013P3].')).toBe(plain);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

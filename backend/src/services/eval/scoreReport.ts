@@ -69,8 +69,11 @@ function aliasKey(value: string): string {
 export function scoreCitationBound(report: string, citations: EvalCitation[], citationLock = false): number {
   if (citations.length === 0) return 0;
   if (citationLock) {
+    // A locked report cites with reader numbers. Aliases are read only when it
+    // has none, so an "[E1]" inside a code sample does not change how it is scored.
+    if (readerNumbersIn(dropSystemSections(report)).length > 0) return scoreReaderNumbersBound(report, citations);
     const aliases = aliasesIn(report).map(aliasKey);
-    if (aliases.length === 0) return scoreReaderNumbersBound(report, citations);
+    if (aliases.length === 0) return 0;
     const byAlias = new Map(citations.map((row) => [aliasKey(row.alias), row]));
     const bound = aliases.filter((alias) => {
       const row = byAlias.get(alias);

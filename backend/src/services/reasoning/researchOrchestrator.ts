@@ -2315,6 +2315,12 @@ async function runResearchJobInner(
         );
       } else {
         lockedPassages = null;
+        // A retry of the same run may have recorded the lock on an earlier attempt.
+        // Clear it, so the record always describes the attempt that wrote the report.
+        await query(
+          `UPDATE research_runs SET corpus_after = corpus_after - 'citationLock' WHERE id=$1 AND corpus_after ? 'citationLock'`,
+          [runId]
+        );
       }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,
