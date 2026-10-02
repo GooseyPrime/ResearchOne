@@ -25,6 +25,7 @@ import {
   ensureGeneratedTitleHeading,
   generateIterativeReport,
   resolveReportWordTarget,
+  synthesisLengthArgs,
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
 } from './reportGenerator';
@@ -2114,10 +2115,13 @@ async function runResearchJobInner(
     if (lengthDecision.source === 'default') {
       logger.warn('report_length_defaulted', { runId, target: lengthDecision.target, reason: 'plan_missing_estimated_length' });
     }
-    await query(
-      `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-      [JSON.stringify({ reportLength: lengthDecision }), runId]
-    );
+    const layer1Run = baselineLayerEnabled() && !isAdjudicative;
+    if (layer1Run) {
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ reportLength: lengthDecision }), runId]
+      );
+    }
     const resolvedWordTarget = lengthDecision.target;
     if (baselineLayerEnabled() && !isAdjudicative) {
       const discoveryAvailable = config.discovery.enabled;
@@ -2245,8 +2249,7 @@ async function runResearchJobInner(
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
-        targetWordCount: resolvedWordTarget,
-        lengthSource: lengthDecision.source,
+        ...synthesisLengthArgs(layer1Run, targetWordCount, lengthDecision),
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,
@@ -2773,7 +2776,9 @@ ${generatedReport.markdown}`,
       executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
       conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
       contradictionCount: 0,
-      sourceCount: distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null }))),
+      sourceCount: baselineLayerEnabled() && !isAdjudicative
+        ? distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null })))
+        : new Set(allChunks.map((c) => c.source_url)).size,
       chunkCount: allChunks.length,
       falsificationCriteria: plan.falsification_criteria,
       requestedOpportunityCount,

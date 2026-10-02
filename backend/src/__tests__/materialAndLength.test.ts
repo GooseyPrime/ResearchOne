@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveReportWordTarget } from '../services/reasoning/reportGenerator';
+import { resolveReportWordTarget, synthesisLengthArgs, userChosenWordTarget } from '../services/reasoning/reportGenerator';
 import { digestRetrievedMaterial, gateFallbackStep, materialStep, readerInsufficientMessage } from '../services/reasoning/materialSufficiency';
 import { logger } from '../utils/logger';
 
@@ -56,5 +56,22 @@ describe('material judgement before a report is written', () => {
     logger.warn('material_judgement_fell_back_to_source_gate', { action: 'sufficient', reason: 'sufficient' });
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe('a length nobody chose does not block growth to fit requested items', () => {
+  it('treats only a user choice as explicit', () => {
+    expect(userChosenWordTarget(4000, 'user')).toBe(4000);
+    expect(userChosenWordTarget(4000, undefined)).toBe(4000);
+    expect(userChosenWordTarget(undefined, undefined)).toBeUndefined();
+    expect(userChosenWordTarget(105, 'planner')).toBeUndefined();
+    expect(userChosenWordTarget(2200, 'default')).toBeUndefined();
+  });
+
+  it('passes the writer exactly what the user sent when the switch is off', () => {
+    const decision = { target: 2200, source: 'user' as const };
+    expect(synthesisLengthArgs(false, undefined, decision)).toEqual({ targetWordCount: undefined });
+    expect(synthesisLengthArgs(false, 4000, decision)).toEqual({ targetWordCount: 4000 });
+    expect(synthesisLengthArgs(true, undefined, { target: 105, source: 'planner' })).toEqual({ targetWordCount: 105, lengthSource: 'planner' });
   });
 });

@@ -1,3 +1,4 @@
+import { baselineLayerEnabled } from '../../config';
 /**
  * the orchestration-profile pass — resolve canonical orchestration profile for a running job
  * and merge planner-visible plan fields from `orchestrationProfiles.ts`.
@@ -42,7 +43,7 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     outputShape: {
       ...plan.outputShape,
       estimatedLength:
-        plan.outputShape?.estimatedLength?.minWords > 0 && plan.outputShape?.estimatedLength?.maxWords > 0
+        baselineLayerEnabled() && plan.outputShape?.estimatedLength?.minWords > 0 && plan.outputShape?.estimatedLength?.maxWords > 0
           ? plan.outputShape.estimatedLength
           : { minWords: canon.expectedLengthRange.minWords, maxWords: canon.expectedLengthRange.maxWords },
     },

@@ -723,6 +723,30 @@ export function clampWordTarget(n: number | undefined): number {
 
 const PLANNER_WORD_FLOOR = 60;
 
+/**
+ * Only a length the user chose counts as explicit. A planner estimate or the
+ * standard default must not stop a report with many requested items from
+ * growing to fit them.
+ */
+export function userChosenWordTarget(
+  target: number | undefined,
+  lengthSource: 'user' | 'planner' | 'default' | undefined
+): number | undefined {
+  return lengthSource === 'planner' || lengthSource === 'default' ? undefined : target;
+}
+
+/**
+ * What the run passes to the report writer. With the Layer 1 switch off the
+ * writer receives exactly what the user sent, as it did before the switch existed.
+ */
+export function synthesisLengthArgs(
+  layer1: boolean,
+  userTarget: number | undefined,
+  decision: { target: number; source: 'user' | 'planner' | 'default' }
+): { targetWordCount: number | undefined; lengthSource?: 'user' | 'planner' | 'default' } {
+  return layer1 ? { targetWordCount: decision.target, lengthSource: decision.source } : { targetWordCount: userTarget };
+}
+
 /** A chosen length is clamped as the form already clamps it. An unchosen length comes from the plan. */
 export function resolveReportWordTarget(args: {
   userTarget?: number;
@@ -1158,13 +1182,13 @@ export async function generateIterativeReport(args: {
     (repeatedArtifact?.explicitRequiredFields?.length ?? 0) +
     (repeatedArtifact?.inferredRequiredFields?.length ?? 0);
   const contractTarget = deriveContractWordTarget({
-    explicitTarget: args.targetWordCount,
+    explicitTarget: userChosenWordTarget(args.targetWordCount, args.lengthSource),
     itemCount: outlineExpansion.itemCount,
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
   const targetWordCount = args.lengthSource === 'planner'
-    ? Math.max(60, Math.min(REPORT_WORD_COUNT_MAX, Math.round(args.targetWordCount ?? 60)))
+    ? (contractTarget ?? Math.max(PLANNER_WORD_FLOOR, Math.min(REPORT_WORD_COUNT_MAX, Math.round(args.targetWordCount ?? PLANNER_WORD_FLOOR))))
     : clampWordTarget(contractTarget ?? args.targetWordCount);
   if (baselineLayerEnabled() && args.isAdjudicative !== true && targetWordCount < 300) {
     activeSectionPlan = [{ key: 'summary', title: 'Summary', weight: 1 }];

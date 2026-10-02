@@ -11,7 +11,6 @@ import {
   removeRepeatedSentences,
   scoreNoRepetition,
   scorePresentationClean,
-  scoreStructureComplete,
   stripGradeLines,
   trimSummaryAtSentence,
 } from '../services/reasoning/baselineReport';
