@@ -2300,7 +2300,9 @@ async function runResearchJobInner(
         url: chunk.source_url || null,
       }));
       // Citation lock: the writer cites by marker, and only passages it was shown.
-      if (citationLockEnabled() && layer1Run && allChunks.length > 0) {
+      // The lock holds even when nothing was retrieved: the writer is told no
+      // passages are available, and the model-based mapper stays off.
+      if (citationLockEnabled() && layer1Run) {
         // One reader number per stored source, so look the sources up by passage.
         const sourceRows = await query<{ id: string; source_id: string | null }>(
           `SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`,

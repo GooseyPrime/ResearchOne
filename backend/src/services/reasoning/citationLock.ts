@@ -137,6 +137,7 @@ export function passagesForSection(
 
 /** What the writer reads: each passage whole, under the marker it must cite by. */
 export function formatLockedContext(passages: LockedPassage[], cleanText: (text: string) => string = (text) => text): string {
+  if (passages.length === 0) return 'No passages are available. State nothing that would need a source.';
   return passages
     .map((passage) => {
       const from = [passage.source.publisher, passage.source.title].filter(Boolean).join(', ');
@@ -255,7 +256,7 @@ function sameStatement(original: string, rewritten: string): boolean {
  * them for. A rewrite is shown the report text and not the passages, so a marker
  * that turns up on a different statement has nothing behind it.
  */
-function matchCitations(original: string, rewritten: string): { unsupported: number; unused: number } {
+function matchCitations(original: string, rewritten: string): { unsupported: number; unused: number; orphaned: number } {
   const pool = citedSentences(original).map((entry) => ({ ...entry, used: false }));
   let unsupported = 0;
   for (const entry of citedSentences(rewritten)) {
@@ -263,18 +264,31 @@ function matchCitations(original: string, rewritten: string): { unsupported: num
     if (match) match.used = true;
     else unsupported += 1;
   }
-  return { unsupported, unused: pool.filter((candidate) => !candidate.used).length };
+  // A citation may go only with its sentence. One whose sentence is still in the
+  // rewrite, word for word, has been stripped from a claim that remains.
+  const kept = new Set(
+    sentencePieces(rewritten)
+      .filter((piece) => !/^\s*$/.test(piece.text))
+      .map((piece) => statementKey(readable(piece.text).replace(MARKER_GROUP, ' ')))
+  );
+  const unusedEntries = pool.filter((candidate) => !candidate.used);
+  return {
+    unsupported,
+    unused: unusedEntries.length,
+    orphaned: unusedEntries.filter((candidate) => candidate.statement.length > 0 && kept.has(candidate.statement)).length,
+  };
 }
 
 /**
  * Whether a rewrite kept a section's citations on the statements they were
  * written for. With `allowRemoval`, dropping a citation along with its sentence
- * is accepted; adding one or moving one to another statement never is.
+ * is accepted; adding one, moving one to another statement, or dropping one
+ * while keeping its sentence never is.
  */
 export function markersPreserved(original: string, rewritten: string, options: { allowRemoval: boolean }): boolean {
-  const { unsupported, unused } = matchCitations(original, rewritten);
+  const { unsupported, unused, orphaned } = matchCitations(original, rewritten);
   if (unsupported > 0) return false;
-  return options.allowRemoval || unused === 0;
+  return options.allowRemoval ? orphaned === 0 : unused === 0;
 }
 
 /** Keep each rewritten section only where it kept that section's citations. */

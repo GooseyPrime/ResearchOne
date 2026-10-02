@@ -56,6 +56,7 @@ import {
   bestQuote,
   countShortfallSetsStatus,
   finalizeLockedCitations,
+  formatLockedContext,
   issuePassages,
   keepRewritesThatPreserveMarkers,
   markersIn,
@@ -709,6 +710,18 @@ describe('code, links and stale reference lists', () => {
 
   it('does not join text across a code span into a false marker', () => {
     expect(readerFacingLabelHits('CH`x`UNK 1 is not a marker.')).toEqual([]);
+  });
+
+  it('does not let a rewrite drop a citation while keeping its sentence', () => {
+    const draft = 'Costs reached five billion dollars by 2012 [P1]. The tunnel opened in 2015 [P2].';
+    const removal = { allowRemoval: true };
+    expect(markersPreserved(draft, 'Costs reached five billion dollars by 2012. The tunnel opened in 2015 [P2].', removal)).toBe(false);
+    expect(markersPreserved(draft, 'The tunnel opened in 2015 [P2].', removal)).toBe(true);
+  });
+
+  it('tells the writer plainly when nothing was retrieved', () => {
+    expect(formatLockedContext([])).toContain('No passages are available');
+    expect(issuePassages([], [])).toEqual([]);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

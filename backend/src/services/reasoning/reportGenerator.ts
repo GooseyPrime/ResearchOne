@@ -1184,7 +1184,8 @@ export async function generateIterativeReport(args: {
     baselineLayer: baselineLayerEnabled() && args.isAdjudicative !== true,
   };
   const lockedPassages =
-    baselineLayerEnabled() && args.isAdjudicative !== true && args.lockedPassages && args.lockedPassages.length > 0
+    // An empty list is still a lock: nothing was retrieved, so nothing may be cited.
+    baselineLayerEnabled() && args.isAdjudicative !== true && args.lockedPassages
       ? args.lockedPassages
       : null;
   /** Sections that speak for the whole report see every passage that fits. */
@@ -1652,7 +1653,10 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
   // While the lock is on the text still carries the writer's markers on purpose;
   // they are numbered before the report is saved and are not a presentation fault here.
   const readerFailures = (text: string): string[] =>
-    presentationFailures(text).filter((hit) => !(lockedPassages && hit === 'passage marker'));
+    // Markers still in place are not failures here: with the lock they become
+    // numbers later, and without it `[Chunk N]` is the citation form the report
+    // is saved with. Redrafting over either would rewrite the citations themselves.
+    presentationFailures(text).filter((hit) => !(lockedPassages ? hit === 'passage marker' : hit === 'chunk marker'));
   let sectionsOut = withSystem;
   let markdown = sectionsToMarkdown(sectionsOut, layer1 ? acceptedTitle || undefined : undefined);
   if (baselineLayerEnabled() && args.isAdjudicative !== true && readerFailures(markdown).length > 0) {
