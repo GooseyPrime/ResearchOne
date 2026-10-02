@@ -463,7 +463,7 @@ export function dropSystemSections(markdown: string): string {
   const lines = markdown.split('\n');
   const kept: string[] = [];
   let skippingLevel = 0;
-  let seenHeading = false;
+  let seenContent = false;
   let fence: { mark: string; length: number } | null = null;
   for (const line of lines) {
     // A heading inside a code fence is code. Indented code never matches the
@@ -479,12 +479,14 @@ export function dropSystemSections(markdown: string): string {
       if (heading) {
         const level = heading[1].length;
         if (skippingLevel === 0 || level <= skippingLevel) {
-          const title = level === 1 && !seenHeading;
+          // The title is a level-1 heading with nothing before it. After any
+          // prose, code or heading, a "References" heading is a reference list.
+          const title = level === 1 && !seenContent;
           skippingLevel = SYSTEM_SECTION.test(line) && !title ? level : 0;
         }
-        seenHeading = true;
       }
     }
+    if (/\S/.test(line)) seenContent = true;
     if (skippingLevel === 0) kept.push(line);
   }
   return kept.join('\n').trimEnd();

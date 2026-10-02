@@ -1,4 +1,4 @@
-import { mapCitationProse } from '../formatting/reportPresentation';
+import { mapCitationProse, mapLinkLabels } from '../formatting/reportPresentation';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
@@ -913,17 +913,23 @@ export { stripInternalLabelsFromReport } from '../formatting/reportPresentation'
 
 /**
  * Take grade labels, courtroom words and the stock opening out of the prose of a
- * section. Code in every Markdown form, links and their destinations are not
- * read and not changed.
+ * section, link labels included. Code in every Markdown form and link
+ * destinations are not read and not changed.
  */
 export function removeBannedWording(content: string): string {
-  return mapCitationProse(content, (prose) =>
-    prose
+  const clean = (text: string): string =>
+    text
       .replace(/[ \t]*\b(?:established_fact|strong_evidence)\b/gi, '')
       .replace(/[ \t]*\b(?:verdict|adjudicate|adjudicated|adjudicates|falsified)\b/gi, '')
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
-      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
-  );
+      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence');
+  // A link's label is prose the reader sees; its destination is not. A label
+  // that would be left empty is kept, so the link still has something to click.
+  const labels = mapLinkLabels(content, (label) => {
+    const cleaned = clean(label).trim();
+    return cleaned.length > 0 ? cleaned : label;
+  });
+  return mapCitationProse(labels, clean);
 }
 
 export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {

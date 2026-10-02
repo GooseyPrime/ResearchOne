@@ -234,6 +234,19 @@ function mapOutsideCode(markdown: string, change: (text: string) => string, code
 }
 
 /**
+ * Apply a change to the label of every link outside code: the "label" of
+ * "[label](destination)" and of "[label][ref]". Destinations, identifiers and
+ * code are returned as written.
+ */
+export function mapLinkLabels(markdown: string, change: (label: string) => string): string {
+  return mapOutsideCode(markdown, (text) =>
+    text
+      .replace(/\[([^\]\n]*)\](\([^)\s]*(?:\s+"[^"]*")?\))/g, (_full, label: string, destination: string) => `[${change(label)}]${destination}`)
+      .replace(/\[([^\]\n]*)\](\[[^\]\n]+\])/g, (_full, label: string, ref: string) => `[${change(label)}]${ref}`)
+  );
+}
+
+/**
  * The text as a reader sees it: each inline link replaced by its label where it
  * stands, and code, link definitions and bare addresses taken out.
  */

@@ -837,6 +837,20 @@ describe('code, links and stale reference lists', () => {
     );
   });
 
+  it('takes banned wording out of a link label and keeps the destination', () => {
+    expect(removeBannedWording('See [the final verdict](https://example.org/verdict) and [the verdict text][verdict].\n\n[verdict]: https://example.org')).toBe(
+      'See [the final](https://example.org/verdict) and [the text][verdict].\n\n[verdict]: https://example.org'
+    );
+    // A label that is only the banned word is kept, so the link is not left empty.
+    expect(removeBannedWording('See [verdict](https://example.org).')).toBe('See [verdict](https://example.org).');
+  });
+
+  it('removes a level-1 reference list that follows other content, with no title above it', () => {
+    const finalized = finalizeLockedCitations('A fact [P1].\n\n# References\n1. Stale entry', passages(), '2 Oct 2026');
+    expect(finalized.markdown).not.toContain('Stale entry');
+    expect(finalized.markdown.match(/^#+ References$/gm)).toHaveLength(1);
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
