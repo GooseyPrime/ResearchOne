@@ -732,13 +732,18 @@ Return strict JSON.`,
       claim_id: string | null;
       source_id: string | null;
       citation_text: string | null;
+      chunk_quote: string | null;
+      citation_order: number | null;
       evidence_tier: string;
       stance: string;
     }>(
-      `SELECT rs.section_type, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.evidence_tier, rc.stance
+      // The quote and the reading order are what tie a reader number to its
+      // passage; a revision keeps both.
+      `SELECT rs.section_type, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.chunk_quote, rc.citation_order, rc.evidence_tier, rc.stance
        FROM report_citations rc
        JOIN report_sections rs ON rs.id = rc.section_id
-       WHERE rc.report_id = $1`,
+       WHERE rc.report_id = $1
+       ORDER BY rc.citation_order NULLS LAST, rc.id`,
       [baseReport.id]
     );
 
@@ -746,8 +751,8 @@ Return strict JSON.`,
       const newSectionId = insertedSections.get(citation.section_type);
       if (!newSectionId) continue;
       await client.query(
-        `INSERT INTO report_citations (report_id, section_id, chunk_id, claim_id, source_id, citation_text, evidence_tier, stance)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::evidence_tier, $8::claim_stance)`,
+        `INSERT INTO report_citations (report_id, section_id, chunk_id, claim_id, source_id, citation_text, evidence_tier, stance, chunk_quote, citation_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::evidence_tier, $8::claim_stance, $9, $10)`,
         [
           revisedReportId,
           newSectionId,
@@ -757,6 +762,8 @@ Return strict JSON.`,
           citation.citation_text,
           citation.evidence_tier,
           citation.stance,
+          citation.chunk_quote,
+          citation.citation_order,
         ]
       );
     }

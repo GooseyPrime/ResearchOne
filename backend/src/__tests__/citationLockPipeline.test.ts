@@ -505,6 +505,36 @@ describe('code, links and stale reference lists', () => {
     expect(repaired.removed).toBe(1);
   });
 
+  it('treats a link inside a cited sentence as part of the sentence', () => {
+    const draft = 'The [FDA](https://fda.gov) authorized it in 2023 [P1].';
+    const keep = { allowRemoval: false };
+    expect(markersPreserved(draft, draft, keep)).toBe(true);
+    // The label is what a reader sees; changing it changes the claim.
+    expect(markersPreserved(draft, 'The [EMA](https://fda.gov) authorized it in 2023 [P1].', keep)).toBe(false);
+    // An unchanged linked sentence keeps its citation through a repair.
+    const repaired = stripUnsupportedMarkers(draft, `${draft} A new claim [P1].`);
+    expect(repaired.markdown).toBe('The [FDA](https://fda.gov) authorized it in 2023 [P1]. A new claim.');
+    expect(repaired.removed).toBe(1);
+  });
+
+  it('picks the quote that agrees with the claim on negation', () => {
+    const passage = 'The treatment is safe for adults. The treatment is not safe for children.';
+    expect(bestQuote(passage, 'It is not safe for children')).toBe('The treatment is not safe for children.');
+    expect(bestQuote('The treatment is safe. The treatment is not safe.', 'The treatment is not safe')).toBe('The treatment is not safe.');
+    expect(bestQuote('The treatment is not safe. The treatment is safe.', 'The treatment is safe')).toBe('The treatment is safe.');
+  });
+
+  it('counts sources read by the same identity the numbers use', () => {
+    const same = { title: 'Notes' };
+    const passages = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }, { id: 'chunk-b', content: 'It cost four million.' }],
+      [same, same],
+      new Map([['chunk-a', 'source-1'], ['chunk-b', 'source-2']])
+    );
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1].', passages, '2 Oct 2026');
+    expect(finalized.markdown).toMatch(/2 sources/);
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

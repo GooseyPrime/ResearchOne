@@ -12,7 +12,7 @@
  * citations (`formatting/evidenceAliaser.ts`).
  */
 import { mapCitationProse } from '../formatting/reportPresentation';
-import { buildAbout, buildReferences, distinctSourceCount, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
+import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 
 export interface LockedPassage {
   /** `P1`, `P2`, … in the order the passages were retrieved. */
@@ -79,7 +79,7 @@ export function issuePassages(
 }
 
 const STOP_WORDS = new Set([
-  'the', 'and', 'for', 'that', 'with', 'this', 'from', 'are', 'was', 'were', 'has', 'have', 'had', 'not', 'but', 'its',
+  'the', 'and', 'for', 'that', 'with', 'this', 'from', 'are', 'was', 'were', 'has', 'have', 'had', 'but', 'its',
   'into', 'than', 'then', 'they', 'their', 'there', 'which', 'what', 'when', 'where', 'who', 'how', 'why', 'did', 'does',
   'about', 'between', 'over', 'under', 'also', 'been', 'being', 'can', 'could', 'would', 'should', 'will', 'may',
 ]);
@@ -170,16 +170,47 @@ function statementKey(text: string): string {
   return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
 }
 
-/** Each citation with the sentence it follows. A marker standing alone belongs to the sentence before it. */
+/** A sentence as a reader sees it: a link shows its label, not its destination. */
+function readable(text: string): string {
+  return text.replace(/\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, '$1');
+}
+
+/** The text cut into sentences and the gaps between them, each with where it starts. */
+function sentencePieces(text: string): Array<{ start: number; text: string }> {
+  const out: Array<{ start: number; text: string }> = [];
+  let start = 0;
+  for (const piece of text.split(/((?<=[.!?])\s+|\n+)/)) {
+    out.push({ start, text: piece });
+    start += piece.length;
+  }
+  return out;
+}
+
+/** The prose citations inside one piece, read from the position-preserving prose view. */
+function proseMarkersAt(view: string, piece: { start: number; text: string }): string[] {
+  const found: string[] = [];
+  for (const group of view.slice(piece.start, piece.start + piece.text.length).matchAll(MARKER_GROUP)) {
+    found.push(...markersOf(group[1]));
+  }
+  return found;
+}
+
+/**
+ * Each citation with the sentence it follows. A marker standing alone belongs to
+ * the sentence before it. Sentences are cut from the whole text, so a link or a
+ * code span inside a sentence does not split it, and a link's label counts as
+ * part of what the sentence says.
+ */
 function citedSentences(text: string): Array<{ marker: string; statement: string }> {
   const out: Array<{ marker: string; statement: string }> = [];
+  const view = proseOf(text);
   let previous = '';
-  for (const sentence of verbatimSentences(proseOf(text))) {
-    const markers = markersIn(sentence);
-    const prose = sentence.replace(MARKER_GROUP, ' ').trim();
+  for (const piece of sentencePieces(text)) {
+    if (/^\s*$/.test(piece.text)) continue;
+    const prose = readable(piece.text).replace(MARKER_GROUP, ' ').trim();
     const basis = prose.length > 0 ? prose : previous;
     if (prose.length > 0) previous = prose;
-    for (const marker of markers) out.push({ marker, statement: statementKey(basis) });
+    for (const marker of proseMarkersAt(view, piece)) out.push({ marker, statement: statementKey(basis) });
   }
   return out;
 }
@@ -239,27 +270,33 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
  */
 export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdown: string): { markdown: string; removed: number } {
   const pool = citedSentences(originalMarkdown).map((entry) => ({ ...entry, used: false }));
+  const view = proseOf(repairedMarkdown);
   let removed = 0;
   let previous = '';
-  const out = mapProse(repairedMarkdown, (proseText) => proseText.split(/((?<=[.!?])\s+|\n+)/).map((piece) => {
-    if (/^\s*$/.test(piece)) return piece;
-    const prose = piece.replace(MARKER_GROUP, ' ').trim();
-    const basis = statementKey(prose.length > 0 ? prose : previous);
-    if (prose.length > 0) previous = prose;
-    return piece.replace(MARKER_GROUP, (_full, inner: string) => {
-      const kept: string[] = [];
-      for (const marker of markersOf(inner)) {
-        const match = pool.find((candidate) => !candidate.used && candidate.marker === marker && sameStatement(candidate.statement, basis));
-        if (match) {
-          match.used = true;
-          kept.push(marker);
-        } else {
-          removed += 1;
+  const out = sentencePieces(repairedMarkdown)
+    .map((piece) => {
+      if (/^\s*$/.test(piece.text)) return piece.text;
+      const prose = readable(piece.text).replace(MARKER_GROUP, ' ').trim();
+      const basis = statementKey(prose.length > 0 ? prose : previous);
+      if (prose.length > 0) previous = prose;
+      return piece.text.replace(MARKER_GROUP, (full: string, inner: string, offset: number) => {
+        // A marker-shaped piece of code is not a citation and is left as written.
+        const at = piece.start + offset;
+        if (view.slice(at, at + full.length) !== full) return full;
+        const kept: string[] = [];
+        for (const marker of markersOf(inner)) {
+          const match = pool.find((candidate) => !candidate.used && candidate.marker === marker && sameStatement(candidate.statement, basis));
+          if (match) {
+            match.used = true;
+            kept.push(marker);
+          } else {
+            removed += 1;
+          }
         }
-      }
-      return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
-    });
-  }).join(''));
+        return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
+      });
+    })
+    .join('');
   return { markdown: mapProse(out, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, ''))), removed };
 }
 
@@ -315,6 +352,7 @@ function verbatimSentences(text: string): string[] {
 }
 
 export const QUOTE_MAX_CHARS = 320;
+const NEGATION = /\b(?:not|no|never|none|neither|nor|without|cannot)\b|n't\b/i;
 
 /**
  * The part of the passage that the citing sentence most likely rests on, copied
@@ -322,10 +360,13 @@ export const QUOTE_MAX_CHARS = 320;
  */
 export function bestQuote(passageText: string, citingSentence: string): string {
   const wanted = terms(citingSentence);
+  const wantedNegated = NEGATION.test(citingSentence);
   let best = '';
   let bestScore = -1;
   for (const sentence of verbatimSentences(passageText)) {
-    const score = overlap(new Set(terms(sentence)), wanted);
+    // A sentence that says the opposite shares nearly every word. One that
+    // agrees on whether the claim is negated wins over one that does not.
+    const score = overlap(new Set(terms(sentence)), wanted) + (NEGATION.test(sentence) === wantedNegated ? 0.5 : 0);
     if (score > bestScore) {
       best = sentence;
       bestScore = score;
@@ -440,7 +481,8 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     return tidyAfterRemoval(rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, ''));
   });
   const references = buildReferences(cited);
-  const readCount = distinctSourceCount(passages.map((passage) => passage.source));
+  // Counted by the same identity the numbers use, so the note and the list agree.
+  const readCount = new Set(passages.map((passage) => passage.sourceId || sourceKey(passage.source)).filter(Boolean)).size;
   const about = buildAbout(cited.length === 0 ? 0 : readCount, readOn);
   const tail = `${references ? `\n\n## References\n${references}` : ''}\n\n## About this report\n${about}`;
   return { markdown: `${text}${tail}`, occurrences, cited, removed };
