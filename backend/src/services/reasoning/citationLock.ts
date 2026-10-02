@@ -38,7 +38,9 @@ export interface CitationOccurrence {
 const MARKER_GROUP = /\[\s*(P\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*)\s*\]/gi;
 const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 /** Any bracket that opens with a passage marker, whatever follows it. */
-const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
+// A bracket the model never closed ("Claim [P1") is still a marker a reader
+// would see. Only the opening token is taken, not the words after it.
+const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b(?:[^\]\n]*\]|(?![^\]\n]*\]))/gi;
 /** The pre-lock citation form, in brackets or parentheses. */
 const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]|[ \t]*\b(?:(?:see|in|from|per)\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\b/gi;
 /** The export engine's alias form. It is assigned after a report is saved; a writer that emits it has cited nothing. */

@@ -93,12 +93,6 @@ function protectedSegmentFor(markdown: string): RegExp {
 
 /** Two or more citation brackets side by side ("[1][2]", "[P1][P2]") are citations, not a reference link. */
 const CITATION_RUN = /^(?:\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]){2,}$/i;
-/**
- * An indented list item that carries a passage marker is nested prose, not
- * code, wherever it sits. Any other indented line is judged by its place in a
- * list (see nestedListProse).
- */
-const INDENTED_LIST_ITEM_WITH_MARKER = /^(?: {4,}|\t)\s*(?:[-*+]|\d+[.)])\s[^\n]*(?:\[\s*P\d+|\s\[\d+\])/i;
 /** A passage marker written as the text of a link is still a citation. */
 const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
 /**
@@ -156,7 +150,7 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
     const segment = match[0];
-    if (INDENTED_LIST_ITEM_WITH_MARKER.test(segment) || nestedListProse(markdown, segment, match.index ?? 0)) {
+    if (nestedListProse(markdown, segment, match.index ?? 0)) {
       // Nested prose: read the line itself, so code and links inside it stay protected.
       const start = match.index ?? 0;
       const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
@@ -238,7 +232,8 @@ export function readerFacingLabelHits(text: string): string[] {
   // Passage markers are how the writer and the pipeline refer to retrieved text.
   // A reader's citation is a number with a reference behind it.
   if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
-  if (/\[\s*P\d+\b[^\]\n]*\]/i.test(prose)) hits.push('passage marker');
+  // Closed or not: "[P1" left open is still a marker on the page.
+  if (/\[\s*P\d+\b/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.

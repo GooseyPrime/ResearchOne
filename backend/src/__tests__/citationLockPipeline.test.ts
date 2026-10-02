@@ -704,6 +704,18 @@ describe('code, links and stale reference lists', () => {
     expect(finalized.markdown).toContain('        rows[P1] = 1');
   });
 
+  it('leaves a list-shaped indented line as code when no list is above it', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA sample:\n\n    - example [P1]\n\nA fact [P1].', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('    - example [P1]');
+    expect(finalized.markdown).toContain('A fact [1].');
+  });
+
+  it('removes a marker the model never closed', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA claim [P1\nA fact [P1]. Another claim [P2 and more words.', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('A claim\nA fact [1]. Another claim and more words.');
+    expect(finalized.markdown).not.toMatch(/\[P\d/);
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
