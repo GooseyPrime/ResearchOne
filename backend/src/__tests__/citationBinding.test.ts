@@ -52,14 +52,17 @@ describe('saving bound citations', () => {
     ]);
   });
 
-  it('does not save a citation whose passage is no longer stored', async () => {
-    const written = await persistBoundCitations({
-      runId: 'run',
-      reportId: 'report',
-      bound: [{ number: 1, chunkId: 'chunk-gone', quote: 'Quote.', sectionOrder: 1, order: 1 }],
-    });
-    expect(written).toBe(0);
-    expect(inserts).toEqual([]);
+  it('fails the save when a cited passage is no longer stored', async () => {
+    await expect(
+      persistBoundCitations({
+        runId: 'run',
+        reportId: 'report',
+        bound: [
+          { number: 1, chunkId: 'chunk-a', quote: 'Quote A.', sectionOrder: 1, order: 1 },
+          { number: 2, chunkId: 'chunk-gone', quote: 'Quote.', sectionOrder: 1, order: 2 },
+        ],
+      })
+    ).rejects.toThrow('no longer stored');
   });
 
   it('does nothing for a report with no citations', async () => {

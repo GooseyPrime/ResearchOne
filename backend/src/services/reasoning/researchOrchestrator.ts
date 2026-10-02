@@ -46,7 +46,7 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled } from '../../config';
-import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, type CitationOccurrence, type LockedPassage } from './citationLock';
+import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
 import { persistBoundCitations } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay } from './baselineReport';
@@ -2712,9 +2712,19 @@ ${generatedReport.markdown}`,
           ],
         });
         modelLog.push(repairResult);
+        const beforeRepair = generatedReport.markdown;
         generatedReport = {
           markdown: applyTargetedRepair(generatedReport.markdown, repairResult.content, repairPlan),
         };
+        if (lockedPassages) {
+          // The repair saw the report, not the passages. Its text is kept; a
+          // citation it added or moved to a different statement is not.
+          const checked = stripUnsupportedMarkers(beforeRepair, generatedReport.markdown);
+          generatedReport.markdown = checked.markdown;
+          if (checked.removed > 0) {
+            logger.warn(`[${runId}] Repair attempt ${attempt}: removed ${checked.removed} citation(s) the repair added or moved`);
+          }
+        }
         generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
 
         if (shouldRunPipelineStage(orchProfile, 'verification')) {
@@ -2802,7 +2812,9 @@ ${generatedReport.markdown}`,
         tokenUsage: { prompt: plainLanguageResult.promptTokens, completion: plainLanguageResult.completionTokens },
       });
 
-      plainLanguageMarkdown = plainLanguageResult.content.trim();
+      // The plain-language version is a rewrite, and no saved citation is tied to
+      // it. On a locked report it carries no citation numbers; the main report does.
+      plainLanguageMarkdown = lockedPassages ? stripReaderNumbers(plainLanguageResult.content.trim()) : plainLanguageResult.content.trim();
     } else {
       await progress('plain_language', 93, 'Plain-language pass skipped until primary report passes all gates', { substep: 'stage_skipped' });
     }

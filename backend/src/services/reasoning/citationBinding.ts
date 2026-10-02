@@ -27,8 +27,12 @@ export async function persistBoundCitations(args: { runId: string; reportId: str
   let written = 0;
   await withTransaction(async (client) => {
     for (const row of bound) {
-      // A passage that is no longer stored cannot be cited: the row would point at nothing.
-      if (!sourceIdByChunk.has(row.chunkId)) continue;
+      // A passage that is no longer stored cannot back a citation. The report
+      // already shows the number, so this is a failed save, not a row to skip:
+      // throwing rolls the transaction back and the caller decides.
+      if (!sourceIdByChunk.has(row.chunkId)) {
+        throw new Error(`Cited passage ${row.chunkId} is no longer stored; citation ${row.order} cannot be saved`);
+      }
       await client.query(
         `INSERT INTO report_citations (
            report_id, section_id, chunk_id, source_id, chunk_quote, citation_order, citation_text
@@ -46,9 +50,6 @@ export async function persistBoundCitations(args: { runId: string; reportId: str
       written += 1;
     }
   });
-  if (written < bound.length) {
-    logger.warn(`[citations:${runId}] ${bound.length - written} citation(s) named a passage that is no longer stored and were not saved`);
-  }
   logger.info(`[citations:${runId}] Saved ${written} bound citation(s)`);
   return written;
 }

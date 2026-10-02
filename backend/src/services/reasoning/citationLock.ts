@@ -63,10 +63,11 @@ export const SECTION_CONTEXT_BUDGET = 60_000;
 export const SECTION_PASSAGE_LIMIT = 12;
 
 /**
- * The passages one section is shown. A section that covers the whole report
- * (summary, key findings, disagreement, limits) sees every passage that fits the
- * budget. A subject section sees the passages closest to its heading and the
- * request. Passages keep their retrieval order and their markers.
+ * The passages one section is shown. While the retrieved passages fit the budget
+ * every section sees all of them, so nothing the analysis stages read is hidden
+ * from the writer. When they do not fit, a section that covers the whole report
+ * sees as many as fit, and a subject section sees the ones closest to its heading
+ * and the request. Passages keep their retrieval order and their markers.
  */
 export function passagesForSection(
   passages: LockedPassage[],
@@ -79,7 +80,9 @@ export function passagesForSection(
   const ranked = passages
     .map((passage, index) => ({ passage, index, score: overlap(new Set(terms(passage.text)), hintTerms) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
-  const candidates = options.broad || passages.length <= limit ? ranked : ranked.slice(0, limit);
+  const total = passages.reduce((sum, passage) => sum + passage.text.length, 0);
+  // Everything is shown while it fits. Only a corpus too large for one prompt is narrowed.
+  const candidates = options.broad || total <= budget || passages.length <= limit ? ranked : ranked.slice(0, limit);
   const chosen: Array<{ passage: LockedPassage; index: number }> = [];
   let used = 0;
   for (const candidate of candidates) {
@@ -102,7 +105,7 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
 }
 
 export const LOCK_INSTRUCTION =
-  'Cite with the markers shown above and no others. A sentence drawn from a passage ends with that passage\'s marker before the full stop, for example "… in 2023 [P3]." A marker you were not shown is not a source. Do not write [Chunk N], a bare number in brackets, or a source name in brackets.';
+  'Cite with the markers shown above and no others. A sentence drawn from a passage ends with that passage\'s marker before the full stop, for example "… in 2023 [P3]." A marker you were not shown is not a source. Do not write [Chunk N], a bare number in brackets, or a source name in brackets. The notes from earlier stages may mention material you were not shown; state only what the shown passages support.';
 
 export function markersIn(text: string): string[] {
   const found: string[] = [];
@@ -112,22 +115,53 @@ export function markersIn(text: string): string[] {
   return found;
 }
 
+/** Each citation with the terms of the sentence it follows. A marker standing alone belongs to the sentence before it. */
+function citedSentences(text: string): Array<{ marker: string; terms: Set<string> }> {
+  const out: Array<{ marker: string; terms: Set<string> }> = [];
+  let previous = '';
+  for (const sentence of verbatimSentences(text)) {
+    const markers = markersIn(sentence);
+    const prose = sentence.replace(MARKER_GROUP, ' ').trim();
+    const basis = prose.length > 0 ? prose : previous;
+    if (prose.length > 0) previous = prose;
+    for (const marker of markers) out.push({ marker, terms: new Set(terms(basis)) });
+  }
+  return out;
+}
+
+/** Share of the original sentence's terms that the rewritten sentence still carries. */
+function sameStatement(original: Set<string>, rewritten: Set<string>): boolean {
+  if (original.size === 0) return rewritten.size === 0;
+  let kept = 0;
+  for (const term of original) if (rewritten.has(term)) kept += 1;
+  return kept / original.size >= 0.6;
+}
+
 /**
- * Whether a rewrite kept a section's citations. A rewrite is shown the report
- * text and not the passages, so it has no basis for adding a citation or moving
- * one to a different passage. With `allowRemoval`, dropping a citation along with
- * its sentence is accepted; adding or swapping one never is.
+ * Which citations in a rewrite still stand on the sentence the writer cited
+ * them for. A rewrite is shown the report text and not the passages, so a marker
+ * that turns up on a different statement has nothing behind it.
+ */
+function matchCitations(original: string, rewritten: string): { unsupported: number; unused: number } {
+  const pool = citedSentences(original).map((entry) => ({ ...entry, used: false }));
+  let unsupported = 0;
+  for (const entry of citedSentences(rewritten)) {
+    const match = pool.find((candidate) => !candidate.used && candidate.marker === entry.marker && sameStatement(candidate.terms, entry.terms));
+    if (match) match.used = true;
+    else unsupported += 1;
+  }
+  return { unsupported, unused: pool.filter((candidate) => !candidate.used).length };
+}
+
+/**
+ * Whether a rewrite kept a section's citations on the statements they were
+ * written for. With `allowRemoval`, dropping a citation along with its sentence
+ * is accepted; adding one or moving one to another statement never is.
  */
 export function markersPreserved(original: string, rewritten: string, options: { allowRemoval: boolean }): boolean {
-  const remaining = new Map<string, number>();
-  for (const marker of markersIn(original)) remaining.set(marker, (remaining.get(marker) ?? 0) + 1);
-  for (const marker of markersIn(rewritten)) {
-    const left = remaining.get(marker) ?? 0;
-    if (left === 0) return false;
-    remaining.set(marker, left - 1);
-  }
-  if (options.allowRemoval) return true;
-  return [...remaining.values()].every((count) => count === 0);
+  const { unsupported, unused } = matchCitations(original, rewritten);
+  if (unsupported > 0) return false;
+  return options.allowRemoval || unused === 0;
 }
 
 /** Keep each rewritten section only where it kept that section's citations. */
@@ -140,6 +174,51 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
     const before = original[index];
     return before && !markersPreserved(before.content, section.content, options) ? before : section;
   });
+}
+
+/**
+ * After a repair that rewrote the report without seeing the passages: keep the
+ * repaired text, and remove any citation that is not on a statement the writer
+ * cited it for. The sentence stays; the unsupported citation does not.
+ */
+export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdown: string): { markdown: string; removed: number } {
+  const pool = citedSentences(originalMarkdown).map((entry) => ({ ...entry, used: false }));
+  let removed = 0;
+  let previous = '';
+  const pieces = repairedMarkdown.split(/((?<=[.!?])\s+|\n+)/);
+  const out = pieces.map((piece) => {
+    if (/^\s*$/.test(piece)) return piece;
+    const prose = piece.replace(MARKER_GROUP, ' ').trim();
+    const basis = new Set(terms(prose.length > 0 ? prose : previous));
+    if (prose.length > 0) previous = prose;
+    return piece.replace(MARKER_GROUP, (_full, inner: string) => {
+      const kept: string[] = [];
+      for (const marker of inner.match(SINGLE_MARKER) ?? []) {
+        const match = pool.find((candidate) => !candidate.used && candidate.marker === marker && sameStatement(candidate.terms, basis));
+        if (match) {
+          match.used = true;
+          kept.push(marker);
+        } else {
+          removed += 1;
+        }
+      }
+      return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
+    });
+  });
+  return { markdown: tidyAfterRemoval(out.join('').replace(/[ \t]*\uE002/g, '')), removed };
+}
+
+/** Apply a change to prose only. Fenced and inline code is returned untouched. */
+function mapProse(text: string, change: (prose: string) => string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, index) => (index % 2 === 1 ? part : change(part)))
+    .join('');
+}
+
+/** Remove reader numbers from prose. Used where a text is not tied to saved citations. */
+export function stripReaderNumbers(text: string): string {
+  return mapProse(text, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\[\d+\](?!\()/g, '')));
 }
 
 /** Markers in the text that were not among the passages the section was shown. */
@@ -229,33 +308,35 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
   const cited: UsedSource[] = [];
   const occurrences: CitationOccurrence[] = [];
   let removed = 0;
-  // A bare number in brackets was not issued by the lock. Left in, it would read
-  // as a citation with no reference behind it and could be mistaken for one of
-  // the numbers assigned below.
-  const bare = dropSystemSections(markdown);
-  removed += (bare.match(/\[\d+\]/g) ?? []).length;
-  const body = tidyAfterRemoval(bare.replace(/[ \t]*\[\d+\]/g, ''));
-  const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
-    const numbers: number[] = [];
-    for (const marker of inner.match(SINGLE_MARKER) ?? []) {
-      const passage = byMarker.get(marker);
-      const key = passage ? sourceKey(passage.source) || passage.chunkId : '';
-      if (!passage || !key) {
-        removed += 1;
-        continue;
+  const withoutSystem = dropSystemSections(markdown);
+  const text = mapProse(withoutSystem, (prose) => {
+    // A bare number in brackets was not issued by the lock. Left in, it would
+    // read as a citation with no reference behind it and could be mistaken for
+    // one of the numbers assigned below. Code is never touched.
+    removed += (prose.match(/\[\d+\](?!\()/g) ?? []).length;
+    const body = tidyAfterRemoval(prose.replace(/[ \t]*\[\d+\](?!\()/g, ''));
+    const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
+      const numbers: number[] = [];
+      for (const marker of inner.match(SINGLE_MARKER) ?? []) {
+        const passage = byMarker.get(marker);
+        const key = passage ? sourceKey(passage.source) || passage.chunkId : '';
+        if (!passage || !key) {
+          removed += 1;
+          continue;
+        }
+        let number = numberBySource.get(key);
+        if (!number) {
+          number = cited.length + 1;
+          numberBySource.set(key, number);
+          cited.push(passage.source);
+        }
+        occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentenceBefore(body, offset)) });
+        numbers.push(number);
       }
-      let number = numberBySource.get(key);
-      if (!number) {
-        number = cited.length + 1;
-        numberBySource.set(key, number);
-        cited.push(passage.source);
-      }
-      occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentenceBefore(body, offset)) });
-      numbers.push(number);
-    }
-    return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '';
+      return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '\uE002';
+    });
+    return tidyAfterRemoval(rewritten.replace(/[ \t]*\uE002/g, ''));
   });
-  const text = tidyAfterRemoval(rewritten.replace(/[ \t]*/g, ''));
   const references = buildReferences(cited);
   const readCount = distinctSourceCount(passages.map((passage) => passage.source));
   const about = buildAbout(cited.length === 0 ? 0 : readCount, readOn);

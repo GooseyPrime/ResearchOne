@@ -58,6 +58,8 @@ import {
   issuePassages,
   keepRewritesThatPreserveMarkers,
   markersPreserved,
+  stripReaderNumbers,
+  stripUnsupportedMarkers,
   passagesForSection,
   type LockedPassage,
 } from '../services/reasoning/citationLock';
@@ -231,7 +233,7 @@ describe('citation lock on the report path', () => {
 });
 
 describe('citation lock helpers', () => {
-  it('gives a subject section the closest passages and a whole-report section all of them', () => {
+  it('shows every passage while they fit, and the closest ones when they do not', () => {
     const many = issuePassages(
       Array.from({ length: 20 }, (_, index) => ({
         id: `chunk-${index}`,
@@ -239,10 +241,13 @@ describe('citation lock helpers', () => {
       })),
       Array.from({ length: 20 }, (_, index) => ({ title: `Source ${index}`, url: `https://example.org/${index}` }))
     );
-    const subject = passagesForSection(many, ['Retraction notices', 'gene therapy'], { broad: false });
-    expect(subject).toHaveLength(12);
-    expect(subject.map((passage) => passage.marker)).toContain('P18');
-    expect(passagesForSection(many, ['Summary'], { broad: true })).toHaveLength(20);
+    expect(passagesForSection(many, ['Retraction notices', 'gene therapy'], { broad: false })).toHaveLength(20);
+    const narrowed = passagesForSection(many, ['Retraction notices', 'gene therapy'], { broad: false, budget: 400 });
+    expect(narrowed.length).toBeLessThan(20);
+    expect(narrowed.map((passage) => passage.marker)).toContain('P18');
+    const broad = passagesForSection(many, ['Summary'], { broad: true, budget: 400 });
+    expect(broad.length).toBeLessThan(20);
+    expect(broad.length).toBeGreaterThan(0);
   });
 
   it('copies the quote from the passage without changing a character', () => {
@@ -278,19 +283,50 @@ describe('citation lock helpers', () => {
     expect(finalized.removed).toBe(1);
   });
 
-  it('accepts a rewrite only when it keeps the citations where they were', () => {
-    const draft = 'One fact [P1]. Another fact [P2].';
-    expect(markersPreserved(draft, 'One fact, reworded [P1]. Another fact [P2].', { allowRemoval: false })).toBe(true);
-    expect(markersPreserved(draft, 'One fact [P1]. Another fact [P3].', { allowRemoval: false })).toBe(false);
-    expect(markersPreserved(draft, 'One fact [P1]. Another fact [P2]. A new one [P1].', { allowRemoval: true })).toBe(false);
-    expect(markersPreserved(draft, 'One fact [P1].', { allowRemoval: false })).toBe(false);
-    expect(markersPreserved(draft, 'One fact [P1].', { allowRemoval: true })).toBe(true);
+  it('accepts a rewrite only when each citation stays on the statement it was written for', () => {
+    const draft = 'Costs reached five billion dollars by 2012 [P1]. The tunnel opened to passengers in 2015 [P2].';
+    const keep = { allowRemoval: false };
+    expect(markersPreserved(draft, 'By 2012 costs had reached five billion dollars [P1]. The tunnel opened to passengers in 2015 [P2].', keep)).toBe(true);
+    // Same markers, swapped between the two statements.
+    expect(markersPreserved(draft, 'Costs reached five billion dollars by 2012 [P2]. The tunnel opened to passengers in 2015 [P1].', keep)).toBe(false);
+    // Marker kept, statement replaced.
+    expect(markersPreserved(draft, 'The project was cancelled outright [P1]. The tunnel opened to passengers in 2015 [P2].', keep)).toBe(false);
+    // A citation added.
+    expect(markersPreserved(draft, `${draft} Ridership doubled within a year [P1].`, { allowRemoval: true })).toBe(false);
+    // A citation dropped with its sentence.
+    expect(markersPreserved(draft, 'Costs reached five billion dollars by 2012 [P1].', keep)).toBe(false);
+    expect(markersPreserved(draft, 'Costs reached five billion dollars by 2012 [P1].', { allowRemoval: true })).toBe(true);
     const kept = keepRewritesThatPreserveMarkers(
-      [{ content: draft }, { content: 'Plain [P3].' }],
-      [{ content: 'One fact [P2]. Another fact [P1], swapped [P3].' }, { content: 'Plainer [P3].' }],
+      [{ content: draft }, { content: 'The audit was published in 2016 [P3].' }],
+      [{ content: 'Costs reached five billion dollars by 2012 [P2].' }, { content: 'In 2016 the audit was published [P3].' }],
       { allowRemoval: true }
     );
-    expect(kept.map((section) => section.content)).toEqual([draft, 'Plainer [P3].']);
+    expect(kept.map((section) => section.content)).toEqual([draft, 'In 2016 the audit was published [P3].']);
+  });
+
+  it('after a repair, keeps the repaired text and removes citations the repair added or moved', () => {
+    const before = '## Summary\nCosts reached five billion dollars by 2012 [P1].\n\n## Detail\nThe tunnel opened to passengers in 2015 [P2].';
+    const after = '## Summary\nCosts reached five billion dollars by 2012 [P1].\n\n## Detail\nThe tunnel opened to passengers in 2015 [P2]. Ridership doubled within a year [P2].\n\n## Added section\nA new statement the repair wrote [P1].';
+    const checked = stripUnsupportedMarkers(before, after);
+    expect(checked.removed).toBe(2);
+    expect(checked.markdown).toContain('Costs reached five billion dollars by 2012 [P1].');
+    expect(checked.markdown).toContain('The tunnel opened to passengers in 2015 [P2]. Ridership doubled within a year.');
+    expect(checked.markdown).toContain('A new statement the repair wrote.');
+    expect(checked.markdown).toContain('## Added section');
+  });
+
+  it('leaves bracketed numbers in code alone', () => {
+    const text = '## Steps\nRead the first item with `items[0]` and cite it [P1].\n\n```python\nvalue = rows[1]\n```\nA stray prose number [2].';
+    const finalized = finalizeLockedCitations(text, passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('`items[0]`');
+    expect(finalized.markdown).toContain('value = rows[1]');
+    expect(finalized.markdown).toContain('and cite it [1].');
+    expect(finalized.markdown).toContain('A stray prose number.');
+    expect(finalized.removed).toBe(1);
+  });
+
+  it('takes citation numbers out of a version that has no saved citations behind it', () => {
+    expect(stripReaderNumbers('Costs rose [1]. Use `rows[1]` here [2][3].')).toBe('Costs rose. Use `rows[1]` here.');
   });
 
   it('keeps the fixed source count from deciding a Layer 1 run', () => {
