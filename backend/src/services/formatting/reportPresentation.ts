@@ -105,39 +105,54 @@ const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^
 /** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
 const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
 
-/**
- * Whether an indented line is prose nested in a list, by where it sits and not
- * by what it says. Under a list item, a nested item is prose at any depth, and
- * a continuation line is prose up to seven spaces in; from eight spaces it is a
- * code block inside the item, as Markdown reads it.
- */
-function nestedListProse(markdown: string, segment: string, at: number): boolean {
-  const indent = /^(?: {4,}|\t+)/.exec(segment)?.[0];
-  if (!indent || !continuesList(markdown, at)) return false;
-  if (LIST_ITEM_LINE.test(segment)) return true;
-  return indent.replace(/\t/g, '    ').length < 8;
+/** Width of leading whitespace, a tab counting as four columns. */
+function indentWidth(line: string): number {
+  return (/^[ \t]*/.exec(line)?.[0] ?? '').replace(/\t/g, '    ').length;
 }
 
-const LIST_ITEM_LINE = /^[ \t]*(?:[-*+]|\d+[.)])\s/;
+const LIST_ITEM_LINE = /^([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)/;
 
 /**
- * Whether an indented line continues a list item. Markdown reads an indented
- * line as code unless it sits under a list item; word shape alone cannot tell
- * the two apart. Looking back past blank and indented lines, the first line
- * that is neither decides: a list item means nested prose, anything else code.
+ * The column where the text of the list item holding this line begins, or null
+ * when no list item holds it. Looking back, an item holds the line only if
+ * every line in between is indented at least as far as that item's text; a
+ * shallower line in between has already closed the item.
  */
-function continuesList(markdown: string, at: number): boolean {
+function containingItemColumn(markdown: string, at: number, lineIndent: number): number | null {
   const before = markdown.slice(0, at).split('\n');
   // A segment can begin with the line break before its line.
   if (!markdown.startsWith('\n', at)) before.pop();
+  let shallowest = lineIndent;
   for (let index = before.length - 1; index >= 0; index -= 1) {
     const line = before[index];
     if (/^\s*$/.test(line)) continue;
-    if (LIST_ITEM_LINE.test(line)) return true;
-    if (/^(?: {4,}|\t)/.test(line)) continue;
-    return false;
+    const indent = indentWidth(line);
+    const item = LIST_ITEM_LINE.exec(line);
+    if (item) {
+      const column = indent + item[2].length;
+      if (column <= shallowest) return column;
+    } else if (indent === 0) {
+      return null;
+    }
+    shallowest = Math.min(shallowest, indent);
   }
-  return false;
+  return null;
+}
+
+/**
+ * Whether an indented line is prose nested in a list, by where it sits and not
+ * by what it says. Inside a list item, a nested item is prose, and so is a
+ * continuation line; a line four or more columns past where the item's text
+ * begins is a code block inside the item, as Markdown reads it. With no list
+ * item holding it, an indented line is code.
+ */
+function nestedListProse(markdown: string, segment: string, at: number): boolean {
+  if (!/^(?: {4,}|\t)/.test(segment)) return false;
+  const indent = indentWidth(segment);
+  const column = containingItemColumn(markdown, at, indent);
+  if (column === null) return false;
+  if (LIST_ITEM_LINE.test(segment)) return true;
+  return indent < column + 4;
 }
 
 /**

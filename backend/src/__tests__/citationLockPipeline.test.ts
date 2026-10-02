@@ -772,6 +772,19 @@ describe('code, links and stale reference lists', () => {
     expect(dropped.contents).toEqual(['- A point.\n\n    It was finished early.']);
   });
 
+  it('measures code inside a list from where the item text begins', () => {
+    const finalized = finalizeLockedCitations(
+      '## Summary\n- A point [P1].\n\n      rows[P2] = sample [P2]\n\n1. A step.\n\n    Still the step [P1].\n\n       code under the step [P2]',
+      passages(),
+      '2 Oct 2026'
+    );
+    // Six spaces under "- " is four past the item text: code. Four spaces under "1. " is one past: prose.
+    expect(finalized.markdown).toContain('      rows[P2] = sample [P2]');
+    expect(finalized.markdown).toContain('    Still the step [1].');
+    expect(finalized.markdown).toContain('       code under the step [P2]');
+    expect(finalized.occurrences).toHaveLength(2);
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
