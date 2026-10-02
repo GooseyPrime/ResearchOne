@@ -111,6 +111,10 @@ review are in this file.
 
 ## Repo-specific reading list (in priority order)
 
+0. [`docs/UPGRADE_PLAN.md`](docs/UPGRADE_PLAN.md) — **the working plan for
+   the current upgrade.** It says which slice is next, what was decided, and
+   the rules for working. Read it whole before any slice work, and update it
+   in the pull request that completes a slice or records a decision.
 1. [`ResearchOne PolicyOne`](ResearchOne%20PolicyOne) — **the binding
    epistemic policy.** Read first.
 2. [`docs/V2_MODEL_SELECTION_CRITERIA.md`](docs/V2_MODEL_SELECTION_CRITERIA.md)
