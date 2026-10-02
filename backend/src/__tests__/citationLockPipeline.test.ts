@@ -55,7 +55,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport, isSubjectSection } from '../services/reasoning/reportGenerator';
+import { generateIterativeReport, isSubjectSection, removeBannedWording } from '../services/reasoning/reportGenerator';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 import { sentenceKey } from '../services/reasoning/baselineReport';
 import {
@@ -827,6 +827,14 @@ describe('code, links and stale reference lists', () => {
     const repaired = stripUnsupportedMarkers('A fact [P1].', 'A fact [P1]. A new claim [P2](https://example.org). Another [P2][].');
     expect(repaired.markdown).toBe('A fact [P1]. A new claim. Another.');
     expect(stripUnknownMarkers('A claim [P9](https://example.org). A fact [P1][].', passages())).toBe('A claim. A fact [P1].');
+  });
+
+  it('takes banned wording out of prose and leaves code and link destinations alone', () => {
+    const section =
+      'The verdict was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report synthesizes evidence, and `verdict` is a variable.';
+    expect(removeBannedWording(section)).toBe(
+      'The was clear [P1]. See [the ruling](https://example.org/verdict).\n\n```\nconst verdict = true;\n```\n\n    indented = verdict\n\nThis report draws on evidence, and `verdict` is a variable.'
+    );
   });
 
   it('treats a repeated sentence as repeated whatever form its markers take', () => {

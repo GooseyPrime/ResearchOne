@@ -1,3 +1,4 @@
+import { mapCitationProse } from '../formatting/reportPresentation';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
@@ -910,6 +911,21 @@ export function stripPromptEchoFromReport(markdown: string, query: string): stri
 
 export { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 
+/**
+ * Take grade labels, courtroom words and the stock opening out of the prose of a
+ * section. Code in every Markdown form, links and their destinations are not
+ * read and not changed.
+ */
+export function removeBannedWording(content: string): string {
+  return mapCitationProse(content, (prose) =>
+    prose
+      .replace(/[ \t]*\b(?:established_fact|strong_evidence)\b/gi, '')
+      .replace(/[ \t]*\b(?:verdict|adjudicate|adjudicated|adjudicates|falsified)\b/gi, '')
+      .replace(/\bcase (for|against)\b/gi, 'argument $1')
+      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
+  );
+}
+
 export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {
   const cleaned = stripPromptEchoFromReport(markdown, query);
   const title = deriveGeneratedReportTitle(query, cleaned, intentId);
@@ -1685,27 +1701,15 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     modelCalls.push(redraft);
     const redrafted = parseRewrittenSections(redraft.content, sectionsOut);
     const parsed = redrafted && lockedPassages ? keepRewritesThatPreserveMarkers(sectionsOut, redrafted, { allowRemoval: true }) : redrafted;
-    sectionsOut = parsed ?? sectionsOut.map((section) => ({
-      ...section,
-      content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
-    }));
-    // A redraft can come back with a section put back as it was, because the
-    // rewrite moved a citation. That section still carries what the redraft was
-    // for. The words are taken out of any section that still fails, whether or
-    // not the redraft parsed; citations stay where they are.
+    sectionsOut = parsed ?? sectionsOut;
+    // A redraft can fail to parse, or come back with a section put back as it
+    // was because the rewrite moved a citation. Either way a section can still
+    // carry what the redraft was for. The words are taken out of any section
+    // that still fails; citations stay where they are. Only prose is touched:
+    // code and link destinations are left exactly as written, as the check
+    // that found the wording never read them.
     sectionsOut = sectionsOut.map((section) =>
-      readerFailures(`${section.title}\n\n${section.content}`).length > 0
-        ? {
-            ...section,
-            content: section.content
-              .replace(/\b(?:established_fact|strong_evidence)\b/gi, '')
-              .replace(/\b(?:verdict|adjudicate|adjudicated|adjudicates|falsified)\b/gi, '')
-              .replace(/\bcase (for|against)\b/gi, 'argument $1')
-              .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
-              .replace(/[ \t]{2,}/g, ' ')
-              .replace(/[ \t]+([.,;:!?])/g, '$1'),
-          }
-        : section
+      readerFailures(`${section.title}\n\n${section.content}`).length > 0 ? { ...section, content: removeBannedWording(section.content) } : section
     );
   }
   if (layer1) {
