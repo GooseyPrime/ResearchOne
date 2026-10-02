@@ -64,6 +64,7 @@ import {
   stripUnknownMarkers,
   stripUnsupportedMarkers,
   passagesForSection,
+  rebindRevisedCitations,
   type LockedPassage,
 } from '../services/reasoning/citationLock';
 import { scoreCitationBound, scoreQuoteVerbatim } from '../services/eval/scoreReport';
@@ -533,6 +534,40 @@ describe('code, links and stale reference lists', () => {
     );
     const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1].', passages, '2 Oct 2026');
     expect(finalized.markdown).toMatch(/2 sources/);
+  });
+
+  it('uses the whole sentence, link label included, to choose the quote', () => {
+    const passages = issuePassages(
+      [{ id: 'chunk-a', content: 'The EMA authorized it in 2023. The FDA authorized it in 2023.' }],
+      [{ title: 'Regulators', url: 'https://example.org/r' }]
+    );
+    const finalized = finalizeLockedCitations('## Summary\nThe [FDA](https://fda.gov) authorized it in 2023 [P1].', passages, '2 Oct 2026');
+    expect(finalized.occurrences[0].quote).toBe('The FDA authorized it in 2023.');
+  });
+
+  it('carries citations into a revision only where the cited sentence is unchanged', () => {
+    const base = [
+      { key: 'a', content: 'It opened in 1932 [1]. It cost four million [2].' },
+      { key: 'b', content: 'It closed in 1990 [1].' },
+    ];
+    const rows = [
+      { sectionKey: 'a', citationText: '[1]', row: 'row-a1' },
+      { sectionKey: 'a', citationText: '[2]', row: 'row-a2' },
+      { sectionKey: 'b', citationText: '[1]', row: 'row-b1' },
+    ];
+    const revised = [
+      { key: 'new', content: 'A section the revision added [1].' },
+      { key: 'a', content: 'It cost four million [2]. It opened in 1933 [1].' },
+      { key: 'b', content: 'It closed in 1990 [1].' },
+    ];
+    const rebound = rebindRevisedCitations(base, rows, revised);
+    expect(rebound.contents).toEqual(['A section the revision added.', 'It cost four million [2]. It opened in 1933.', 'It closed in 1990 [1].']);
+    // Reading order of the revised report, each row on its own section.
+    expect(rebound.kept).toEqual([
+      { sectionIndex: 1, row: 'row-a2' },
+      { sectionIndex: 2, row: 'row-b1' },
+    ]);
+    expect(rebound.removed).toBe(2);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

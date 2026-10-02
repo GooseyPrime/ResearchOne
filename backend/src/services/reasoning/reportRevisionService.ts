@@ -15,6 +15,19 @@ import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchest
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
+import { rebindRevisedCitations } from './citationLock';
+
+interface BaseCitationRow {
+  section_id: string | null;
+  chunk_id: string | null;
+  claim_id: string | null;
+  source_id: string | null;
+  citation_text: string | null;
+  chunk_quote: string | null;
+  citation_order: number | null;
+  evidence_tier: string;
+  stance: string;
+}
 
 /** Source of an automated revision (Work Order T). Same pipeline as user revisions; UI/reporting only. */
 export type RevisionTriggerSource = 'user' | 'parallel_monitor' | 'reverse_citation_watch';
@@ -571,6 +584,45 @@ Return revised section body only.`,
   }
   revisedSections = revisedSections.map((section, index) => ({ ...section, section_order: index + 1 }));
 
+  // Citations of the base report, in reading order. A revised section keeps the
+  // id of the section it was made from, which is how a citation finds its place.
+  const baseCitations = await query<BaseCitationRow>(
+    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.chunk_quote, rc.citation_order, rc.evidence_tier, rc.stance
+     FROM report_citations rc
+     LEFT JOIN report_sections rs ON rs.id = rc.section_id
+     WHERE rc.report_id = $1
+     ORDER BY rs.section_order NULLS LAST, rc.citation_order NULLS LAST, rc.id`,
+    [baseReport.id]
+  );
+  // A report written with the citation lock: every citation has a place in the
+  // reading order and a reader number. Its citations are carried only where the
+  // cited sentence is unchanged; a number on a rewritten sentence is removed.
+  const lockedBase =
+    baseCitations.length > 0 &&
+    baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim()));
+  let carriedCitations: Array<{ sectionKey: string; row: BaseCitationRow }>;
+  if (lockedBase) {
+    const rebound = rebindRevisedCitations(
+      baseSections.map((section) => ({ key: section.id, content: section.content })),
+      baseCitations
+        .filter((row) => row.section_id != null)
+        .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
+      revisedSections.map((section) => ({ key: section.id, content: section.content }))
+    );
+    revisedSections = revisedSections.map((section, index) => ({ ...section, content: rebound.contents[index] }));
+    carriedCitations = rebound.kept.map((entry, index) => ({
+      sectionKey: revisedSections[entry.sectionIndex].id,
+      row: { ...entry.row, citation_order: index + 1 },
+    }));
+    if (rebound.removed > 0) {
+      logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: rebound.removed });
+    }
+  } else {
+    carriedCitations = baseCitations
+      .filter((row) => row.section_id != null)
+      .map((row) => ({ sectionKey: row.section_id as string, row }));
+  }
+
   emit('citation_integrity', 70, 'Running citation integrity checks');
   const citationChecks: Record<string, unknown> = {};
   const citationEntries = await Promise.all(
@@ -716,6 +768,9 @@ Return strict JSON.`,
     }
     revisedReportId = newReport.rows[0].id;
 
+    // Keyed by the section each revised section was made from. Keying by section
+    // type put every citation of an ordinary report on its last section, because
+    // most of its sections share one type.
     const insertedSections = new Map<string, string>();
     for (const section of revisedSections) {
       const inserted = await client.query<{ id: string }>(
@@ -723,32 +778,11 @@ Return strict JSON.`,
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [revisedReportId, section.section_type, section.title, section.content, section.section_order]
       );
-      insertedSections.set(section.section_type, inserted.rows[0].id);
+      insertedSections.set(section.id, inserted.rows[0].id);
     }
 
-    const copiedCitations = await client.query<{
-      section_type: string;
-      chunk_id: string | null;
-      claim_id: string | null;
-      source_id: string | null;
-      citation_text: string | null;
-      chunk_quote: string | null;
-      citation_order: number | null;
-      evidence_tier: string;
-      stance: string;
-    }>(
-      // The quote and the reading order are what tie a reader number to its
-      // passage; a revision keeps both.
-      `SELECT rs.section_type, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.chunk_quote, rc.citation_order, rc.evidence_tier, rc.stance
-       FROM report_citations rc
-       JOIN report_sections rs ON rs.id = rc.section_id
-       WHERE rc.report_id = $1
-       ORDER BY rc.citation_order NULLS LAST, rc.id`,
-      [baseReport.id]
-    );
-
-    for (const citation of copiedCitations.rows) {
-      const newSectionId = insertedSections.get(citation.section_type);
+    for (const { sectionKey, row: citation } of carriedCitations) {
+      const newSectionId = insertedSections.get(sectionKey);
       if (!newSectionId) continue;
       await client.query(
         `INSERT INTO report_citations (report_id, section_id, chunk_id, claim_id, source_id, citation_text, evidence_tier, stance, chunk_quote, citation_order)

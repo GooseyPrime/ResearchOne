@@ -438,6 +438,21 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
   const occurrences: CitationOccurrence[] = [];
   let removed = 0;
   const withoutSystem = dropSystemSections(markdown);
+  // The sentence each citation closes, read from the whole text so a link inside
+  // the sentence does not cut it short. One entry per marker group, in order.
+  const citing: string[] = [];
+  {
+    const view = proseOf(withoutSystem);
+    let previous = '';
+    for (const piece of sentencePieces(withoutSystem)) {
+      if (/^\s*$/.test(piece.text)) continue;
+      const prose = readable(piece.text).replace(MARKER_GROUP, ' ').trim();
+      if (prose.length > 0) previous = prose;
+      const groups = [...view.slice(piece.start, piece.start + piece.text.length).matchAll(MARKER_GROUP)].length;
+      for (let n = 0; n < groups; n += 1) citing.push(prose.length > 0 ? prose : previous);
+    }
+  }
+  let group = 0;
   const text = mapProse(withoutSystem, (prose) => {
     // A bare number in brackets was not issued by the lock. Left in, it would
     // read as a citation with no reference behind it and could be mistaken for
@@ -455,6 +470,8 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     );
     const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
       const numbers: number[] = [];
+      const sentence = citing[group] ?? sentenceBefore(body, offset);
+      group += 1;
       for (const marker of markersOf(inner)) {
         const passage = byMarker.get(marker);
         // The stored source is the identity. Title and link are a fallback: two
@@ -470,7 +487,7 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
           numberBySource.set(key, number);
           cited.push(passage.source);
         }
-        occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentenceBefore(body, offset)) });
+        occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentence) });
         numbers.push(number);
       }
       return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '\uE002';
@@ -527,4 +544,86 @@ export function assignOccurrencesToSections(
 /** Grant I. On a Layer 1 run the fixed source count is recorded and does not set the status. */
 export function countShortfallSetsStatus(layer1Run: boolean): boolean {
   return !layer1Run;
+}
+
+const READER_NUMBER = /\[\d+\](?!\()/g;
+
+/**
+ * Carry a locked report's citations into a revision of it.
+ *
+ * A revision rewrites sections without seeing the passages. A citation is kept
+ * only where its sentence is unchanged, word for word; anywhere else the number
+ * is removed from the revised text, so no number is left without a row behind it
+ * and no row is left on a claim it was not written for. Kept rows come back in
+ * the reading order of the revised report.
+ *
+ * `rows` are the base report's citations in reading order. Sections are matched
+ * by `key`, which a revised section keeps from the section it was made from.
+ */
+export function rebindRevisedCitations<T>(
+  base: Array<{ key: string; content: string }>,
+  rows: Array<{ sectionKey: string; citationText: string; row: T }>,
+  revised: Array<{ key: string; content: string }>
+): { contents: string[]; kept: Array<{ sectionIndex: number; row: T }>; removed: number } {
+  const numbered = (content: string): Array<{ number: string; statement: string }> => {
+    const out: Array<{ number: string; statement: string }> = [];
+    const view = proseOf(content);
+    let previous = '';
+    for (const piece of sentencePieces(content)) {
+      if (/^\s*$/.test(piece.text)) continue;
+      const prose = readable(piece.text).replace(READER_NUMBER, ' ').trim();
+      const basis = prose.length > 0 ? prose : previous;
+      if (prose.length > 0) previous = prose;
+      for (const hit of view.slice(piece.start, piece.start + piece.text.length).matchAll(READER_NUMBER)) {
+        out.push({ number: hit[0], statement: statementKey(basis) });
+      }
+    }
+    return out;
+  };
+
+  const baseByKey = new Map(base.map((section) => [section.key, section]));
+  const rowsByKey = new Map<string, Array<{ citationText: string; row: T }>>();
+  for (const entry of rows) rowsByKey.set(entry.sectionKey, [...(rowsByKey.get(entry.sectionKey) ?? []), entry]);
+
+  let removed = 0;
+  const kept: Array<{ sectionIndex: number; row: T }> = [];
+  const contents = revised.map((section, sectionIndex) => {
+    const before = baseByKey.get(section.key);
+    const sectionRows = rowsByKey.get(section.key) ?? [];
+    if (before && before.content === section.content) {
+      for (const entry of sectionRows) kept.push({ sectionIndex, row: entry.row });
+      return section.content;
+    }
+    // Pair the base section's numbers with its rows. If they do not line up, the
+    // base gives nothing deterministic to carry, and every number here is removed.
+    const baseNumbers = before ? numbered(before.content) : [];
+    const paired =
+      baseNumbers.length === sectionRows.length && baseNumbers.every((entry, k) => entry.number === sectionRows[k].citationText.trim());
+    const pool = paired ? baseNumbers.map((entry, k) => ({ ...entry, row: sectionRows[k].row, used: false })) : [];
+
+    const view = proseOf(section.content);
+    let previous = '';
+    const rewritten = sentencePieces(section.content)
+      .map((piece) => {
+        if (/^\s*$/.test(piece.text)) return piece.text;
+        const prose = readable(piece.text).replace(READER_NUMBER, ' ').trim();
+        const basis = statementKey(prose.length > 0 ? prose : previous);
+        if (prose.length > 0) previous = prose;
+        return piece.text.replace(READER_NUMBER, (full: string, offset: number) => {
+          const at = piece.start + offset;
+          if (view.slice(at, at + full.length) !== full) return full;
+          const match = pool.find((candidate) => !candidate.used && candidate.number === full && sameStatement(candidate.statement, basis));
+          if (!match) {
+            removed += 1;
+            return '\uE002';
+          }
+          match.used = true;
+          kept.push({ sectionIndex, row: match.row });
+          return full;
+        });
+      })
+      .join('');
+    return mapProse(rewritten, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, '')));
+  });
+  return { contents, kept, removed };
 }
