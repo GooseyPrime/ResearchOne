@@ -165,8 +165,8 @@ export function readerFacingLabelHits(text: string): string[] {
   if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
   if (/\[\s*P\d+\b[^\]\n]*\]/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
-  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
-  if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(prose)) hits.push('courtroom');
+  if (/\bthis report synthesizes evidence\b/i.test(prose)) hits.push('boilerplate');
   return hits;
 }
 

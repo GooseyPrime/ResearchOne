@@ -69,6 +69,11 @@ describe('baseline writing messages', () => {
     expect(scorePresentationClean(SAMPLE)).toBe(1);
     expect(scoreNoRepetition([{ content: SAMPLE }])).toBe(1);
     expect(presentationFailures('The verdict was established_fact.')).toContain('courtroom');
+    // Only prose is read: the same words inside a code sample are not a failure.
+    const sample = 'A plain sentence.\n\n```\nconst verdict = "this report synthesizes evidence";\n```\n';
+    expect(presentationFailures(sample)).not.toContain('courtroom');
+    expect(presentationFailures(sample)).not.toContain('boilerplate');
+    expect(presentationFailures('This report synthesizes evidence from two sources.')).toContain('boilerplate');
   });
 
   it('removes a repeated sentence after one redraft still repeats', () => {
