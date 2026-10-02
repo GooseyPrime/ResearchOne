@@ -204,6 +204,18 @@ export function unwrapCitationLinks(markdown: string): string {
   return out + markdown.slice(cursor).replace(CITATION_AS_LINK, '[$1]');
 }
 
+/**
+ * The text as a reader sees it: each inline link replaced by its label where it
+ * stands, and code, link definitions and bare addresses taken out.
+ */
+function readerVisibleText(text: string): string {
+  return text
+    .replace(CODE_ONLY, '\uE004')
+    .replace(INLINE_LINK, '$1')
+    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
+    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   // Only prose is checked: a code sample or a link that happens to contain a
@@ -224,8 +236,11 @@ export function readerFacingLabelHits(text: string): string[] {
   if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
   if (/\[\s*P\d+\b[^\]\n]*\]/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
-  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(prose)) hits.push('courtroom');
-  if (/\bthis report synthesizes evidence\b/i.test(prose)) hits.push('boilerplate');
+  // Phrases are read as the reader sees them: a link shows its label in place,
+  // so "This [report](url) synthesizes evidence" is the banned phrase.
+  const seen = `${prose}\uE004${readerVisibleText(text)}`;
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(seen)) hits.push('courtroom');
+  if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
   return hits;
 }
 

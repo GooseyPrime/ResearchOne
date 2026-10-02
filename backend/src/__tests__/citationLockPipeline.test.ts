@@ -668,6 +668,14 @@ describe('code, links and stale reference lists', () => {
     expect(code.markdown).toContain('A fact [1].');
   });
 
+  it('removes a model-written level-1 reference list but keeps the report title', () => {
+    const finalized = finalizeLockedCitations('# References\n\n## Summary\nA fact [P1].\n\n# References\n1. Stale entry', passages(), '2 Oct 2026');
+    expect(finalized.markdown.startsWith('# References')).toBe(true);
+    expect(finalized.markdown).not.toContain('Stale entry');
+    expect(finalized.markdown.match(/^#{1,3} References$/gm)).toHaveLength(2);
+    expect(finalized.markdown).toContain('A fact [1].');
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);

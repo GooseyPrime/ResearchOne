@@ -77,6 +77,10 @@ describe('baseline writing messages', () => {
     // A link's label is read by the reader; its destination and code are not.
     expect(presentationFailures('See [Chunk 4](https://example.org) for more.')).toContain('chunk marker');
     expect(presentationFailures('It holds [established_fact](https://example.org).')).toContain('grade label');
+    // A phrase split by a link is still the phrase the reader sees.
+    expect(presentationFailures('This [report](https://example.org) synthesizes evidence from two sources.')).toContain('boilerplate');
+    expect(presentationFailures('The [case](https://example.org) for reform is strong.')).toContain('courtroom');
+    expect(presentationFailures('See [the ruling](https://example.org/verdict) and `verdict`.')).not.toContain('courtroom');
     expect(presentationFailures('See [the study](https://example.org/chunk-4) and `[Chunk 4](x)`.')).not.toContain('chunk marker');
   });
 

@@ -429,8 +429,9 @@ function sentenceBefore(text: string, index: number): string {
   return before.slice(start + 1).trim();
 }
 
-// Level 1 is the report's own title and is never a system section, whatever it says.
-const SYSTEM_SECTION = /^#{2,3}\s+(?:References|About this report)\s*$/i;
+// The report's own title (a level-1 heading that opens the report) is never a
+// system section, whatever it says. A later level-1 "References" is one.
+const SYSTEM_SECTION = /^#{1,3}\s+(?:References|About this report)\s*$/i;
 
 /**
  * The report without its reference list and closing note. A system section runs
@@ -441,6 +442,7 @@ export function dropSystemSections(markdown: string): string {
   const lines = markdown.split('\n');
   const kept: string[] = [];
   let skippingLevel = 0;
+  let seenHeading = false;
   let fence: { mark: string; length: number } | null = null;
   for (const line of lines) {
     // A heading inside a code fence is code. Indented code never matches the
@@ -456,8 +458,10 @@ export function dropSystemSections(markdown: string): string {
       if (heading) {
         const level = heading[1].length;
         if (skippingLevel === 0 || level <= skippingLevel) {
-          skippingLevel = SYSTEM_SECTION.test(line) ? level : 0;
+          const title = level === 1 && !seenHeading;
+          skippingLevel = SYSTEM_SECTION.test(line) && !title ? level : 0;
         }
+        seenHeading = true;
       }
     }
     if (skippingLevel === 0) kept.push(line);
