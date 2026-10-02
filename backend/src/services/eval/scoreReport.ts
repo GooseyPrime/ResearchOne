@@ -1,3 +1,4 @@
+import { dropSystemSections, readerNumbersIn } from '../reasoning/citationLock';
 import { scoreNoRepetition, scorePresentationClean, scoreStructureComplete } from '../reasoning/baselineReport';
 
 export interface EvalCitation {
@@ -69,7 +70,7 @@ export function scoreCitationBound(report: string, citations: EvalCitation[], ci
   if (citations.length === 0) return 0;
   if (citationLock) {
     const aliases = aliasesIn(report).map(aliasKey);
-    if (aliases.length === 0) return 0;
+    if (aliases.length === 0) return scoreReaderNumbersBound(report, citations);
     const byAlias = new Map(citations.map((row) => [aliasKey(row.alias), row]));
     const bound = aliases.filter((alias) => {
       const row = byAlias.get(alias);
@@ -79,6 +80,22 @@ export function scoreCitationBound(report: string, citations: EvalCitation[], ci
   }
   const bound = citations.filter((row) => Boolean(row.chunkId) && row.chunkQuote.trim().length > 0).length;
   return bound / citations.length;
+}
+
+/**
+ * A locked report cites with reader numbers. The k-th number in the prose is
+ * backed by the k-th saved citation: it must carry the same number, a passage
+ * and a quote. Numbers in code, in links and in the reference list do not count.
+ */
+function scoreReaderNumbersBound(report: string, citations: EvalCitation[]): number {
+  const markers = readerNumbersIn(dropSystemSections(report));
+  if (markers.length === 0) return 0;
+  const rows = citations.filter((row) => /^\[\d+\]$/.test((row.citationText ?? '').trim()));
+  const bound = markers.filter((marker, index) => {
+    const row = rows[index];
+    return Boolean(row && (row.citationText ?? '').trim() === marker && row.chunkId && row.chunkQuote.trim().length > 0);
+  }).length;
+  return bound / markers.length;
 }
 
 export function scoreQuoteVerbatim(citations: EvalCitation[]): number {

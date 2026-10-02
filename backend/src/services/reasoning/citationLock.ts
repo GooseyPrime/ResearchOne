@@ -11,6 +11,7 @@
  * It is distinct from the `[E#]` aliases the export engine assigns to saved
  * citations (`formatting/evidenceAliaser.ts`).
  */
+import { mapCitationProse } from '../formatting/reportPresentation';
 import { buildAbout, buildReferences, distinctSourceCount, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 
 export interface LockedPassage {
@@ -220,12 +221,17 @@ export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdo
   return { markdown: tidyAfterRemoval(out.join('').replace(/[ \t]*\uE002/g, '')), removed };
 }
 
-/** Apply a change to prose only. Fenced and inline code is returned untouched. */
-function mapProse(text: string, change: (prose: string) => string): string {
-  return text
-    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
-    .map((part, index) => (index % 2 === 1 ? part : change(part)))
-    .join('');
+/** Apply a change to prose only. Code in every Markdown form, links and URLs are returned untouched. */
+const mapProse = mapCitationProse;
+
+/** Reader numbers in the prose of a text, in reading order. Numbers in code and links are not citations. */
+export function readerNumbersIn(text: string): string[] {
+  const found: string[] = [];
+  mapProse(text, (prose) => {
+    found.push(...(prose.match(/\[\d+\](?!\()/g) ?? []));
+    return prose;
+  });
+  return found;
 }
 
 /** Remove reader numbers from prose. Used where a text is not tied to saved citations. */
@@ -287,15 +293,26 @@ function sentenceBefore(text: string, index: number): string {
   return before.slice(start + 1).trim();
 }
 
-const SYSTEM_SECTION = /^##\s+(?:References|About this report)\s*$/im;
+const SYSTEM_SECTION = /^#{1,3}\s+(?:References|About this report)\s*$/i;
 
-function dropSystemSections(markdown: string): string {
+/**
+ * The report without its reference list and closing note. A system section runs
+ * until the next heading at its own level or above, so a sub-heading inside a
+ * model-written reference list is removed with it.
+ */
+export function dropSystemSections(markdown: string): string {
   const lines = markdown.split('\n');
   const kept: string[] = [];
-  let skipping = false;
+  let skippingLevel = 0;
   for (const line of lines) {
-    if (/^#{1,3}\s+/.test(line)) skipping = SYSTEM_SECTION.test(line);
-    if (!skipping) kept.push(line);
+    const heading = /^(#{1,6})\s+/.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      if (skippingLevel === 0 || level <= skippingLevel) {
+        skippingLevel = SYSTEM_SECTION.test(line) ? level : 0;
+      }
+    }
+    if (skippingLevel === 0) kept.push(line);
   }
   return kept.join('\n').trimEnd();
 }
@@ -378,11 +395,7 @@ export function assignOccurrencesToSections(
     if (/^(?:references|about this report)$/i.test(section.title.trim())) return;
     // Count what finalizing numbered: prose only. A number inside code, or the
     // label of a link, was never a citation and must not take one's place.
-    const markers: string[] = [];
-    mapProse(`${section.title}\n${section.content}`, (prose) => {
-      markers.push(...(prose.match(/\[\d+\](?!\()/g) ?? []));
-      return prose;
-    });
+    const markers = readerNumbersIn(`${section.title}\n${section.content}`);
     for (const marker of markers) {
       const occurrence = occurrences[cursor];
       if (!occurrence || `[${occurrence.number}]` !== marker) continue;

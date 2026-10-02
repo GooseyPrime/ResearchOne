@@ -47,7 +47,7 @@ import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
 import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
-import { persistBoundCitations } from './citationBinding';
+import { writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
@@ -2802,7 +2802,11 @@ ${generatedReport.markdown}`,
     // and before anything that reads the finished text, so the plain-language
     // version and the saved report both see numbers, never markers.
     if (lockedPassages && typeof generatedReport?.markdown === 'string') {
-      const finalized = finalizeLockedCitations(generatedReport.markdown, lockedPassages);
+      // Finalize the text that will be saved. The save removes prompt echo and
+      // internal labels; doing that first means each citation is bound to the
+      // sentence a reader will see, and the save's own pass then changes nothing.
+      const toSave = stripInternalLabelsFromReport(stripPromptEchoFromReport(generatedReport.markdown, researchQuery));
+      const finalized = finalizeLockedCitations(toSave, lockedPassages);
       generatedReport.markdown = finalized.markdown;
       lockedOccurrences = finalized.occurrences;
       if (finalized.removed > 0) {
@@ -2909,6 +2913,7 @@ ${generatedReport.markdown}`,
       plan,
       allChunks,
       synthesizerContent: reportMarkdown,
+      lockedOccurrences,
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
@@ -2951,31 +2956,6 @@ ${generatedReport.markdown}`,
       checkpointKey: 'report_saved',
       snapshot: { reportId, sectionCount: reportSections.length },
     });
-
-    // Citation lock: save each citation against its section and passage. This is
-    // deterministic and does not depend on the epistemic-persistence stage.
-    if (lockedOccurrences) {
-      const bound = assignOccurrencesToSections(reportSections, lockedOccurrences);
-      try {
-        await persistBoundCitations({ runId, reportId, bound });
-      } catch (firstErr) {
-        // The save is one transaction, so a failure wrote nothing. Try once more;
-        // a report whose numbers have nothing saved behind them must not complete.
-        logger.warn(`[${runId}] Saving bound citations failed; retrying once`, firstErr);
-        try {
-          await persistBoundCitations({ runId, reportId, bound });
-        } catch (secondErr) {
-          // The run fails here. Remove the saved report first, so no report is
-          // left on file whose numbers have nothing saved behind them.
-          try {
-            await query(`DELETE FROM reports WHERE id = $1`, [reportId]);
-          } catch (cleanupErr) {
-            logger.error(`[${runId}] Could not remove report ${reportId} after its citations failed to save`, cleanupErr);
-          }
-          throw secondErr;
-        }
-      }
-    }
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 10: EPISTEMIC PERSISTENCE — claims, contradictions, citations
@@ -3644,6 +3624,8 @@ async function saveReport(args: {
   plan: ResearchPlan;
   allChunks: RetrievedChunk[];
   synthesizerContent: string;
+  /** Citation lock: the citations of the text, in reading order. Saved with the report in one transaction. */
+  lockedOccurrences?: CitationOccurrence[] | null;
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
   plainLanguageMarkdown?: string;
@@ -3662,6 +3644,7 @@ async function saveReport(args: {
     plan,
     allChunks,
     synthesizerContent,
+    lockedOccurrences,
     verification,
     discoverySummary,
     plainLanguageMarkdown,
@@ -3774,6 +3757,16 @@ async function saveReport(args: {
          VALUES ($1, $2, $3, $4, $5)`,
         [reportId, sec.type, sec.title, sec.content, i + 1]
       );
+    }
+
+    // Citation lock: the citations go in with the report. A report whose numbers
+    // have nothing saved behind them is never committed, even if the worker stops.
+    if (lockedOccurrences) {
+      await writeBoundCitations(client as unknown as CitationWriter, {
+        runId,
+        reportId,
+        bound: assignOccurrencesToSections(sections, lockedOccurrences),
+      });
     }
 
     // Store verification metadata

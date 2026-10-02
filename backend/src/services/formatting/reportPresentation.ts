@@ -91,6 +91,28 @@ function protectedSegmentFor(markdown: string): RegExp {
   );
 }
 
+/** Two or more citation brackets side by side ("[1][2]", "[P1][P2]") are citations, not a reference link. */
+const CITATION_RUN = /^(?:\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]){2,}$/i;
+/** An indented line that carries a passage marker is nested prose, not code. */
+const INDENTED_WITH_MARKER = /^(?: {4,}|\t)[^\n]*(?:^|\s)\[\s*P\d+/i;
+
+/**
+ * Apply a change to the prose of a report and to nothing else. Code in every
+ * Markdown form, links, link definitions and URLs are returned as written, so a
+ * number in brackets inside them is never read as a citation or removed.
+ */
+export function mapCitationProse(markdown: string, change: (prose: string) => string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
+    if (CITATION_RUN.test(match[0]) || INDENTED_WITH_MARKER.test(match[0])) continue;
+    const start = match.index ?? 0;
+    out += change(markdown.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + change(markdown.slice(cursor));
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');

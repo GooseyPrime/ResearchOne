@@ -3,33 +3,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const inserts: unknown[][] = [];
 const cleared: unknown[][] = [];
 
-vi.mock('../db/pool', () => ({
-  query: vi.fn(async (sql: string) => {
+const client = {
+  query: async (sql: string, params: unknown[] = []) => {
     if (sql.includes('FROM report_sections')) {
-      return [
-        { id: 'section-1', section_order: 1 },
-        { id: 'section-2', section_order: 2 },
-      ];
+      return { rows: [{ id: 'section-1', section_order: 1 }, { id: 'section-2', section_order: 2 }] };
     }
     if (sql.includes('FROM chunks')) {
-      return [
-        { id: 'chunk-a', source_id: 'source-1' },
-        { id: 'chunk-b', source_id: 'source-2' },
-      ];
+      return { rows: [{ id: 'chunk-a', source_id: 'source-1' }, { id: 'chunk-b', source_id: 'source-2' }] };
     }
-    return [];
-  }),
-  withTransaction: vi.fn(async (work: (client: { query: (sql: string, params: unknown[]) => Promise<void> }) => Promise<void>) =>
-    work({
-      query: async (sql: string, params: unknown[]) => {
-        if (/^\s*DELETE/i.test(sql)) cleared.push(params);
-        else inserts.push(params);
-      },
-    })
-  ),
+    if (/^\s*DELETE/i.test(sql)) cleared.push(params);
+    else inserts.push(params);
+    return { rows: [] };
+  },
+};
+
+vi.mock('../db/pool', () => ({
+  withTransaction: vi.fn(async (work: (c: typeof client) => Promise<unknown>) => work(client)),
 }));
 
-import { persistBoundCitations } from '../services/reasoning/citationBinding';
+import { persistBoundCitations, writeBoundCitations } from '../services/reasoning/citationBinding';
 
 describe('saving bound citations', () => {
   beforeEach(() => {
@@ -68,6 +60,16 @@ describe('saving bound citations', () => {
         ],
       })
     ).rejects.toThrow('no longer stored');
+  });
+
+  it('writes through a transaction the caller owns, so the report and its citations commit together', async () => {
+    const written = await writeBoundCitations(client, {
+      runId: 'run',
+      reportId: 'report',
+      bound: [{ number: 1, chunkId: 'chunk-a', quote: 'Quote A.', sectionOrder: 2, order: 1 }],
+    });
+    expect(written).toBe(1);
+    expect(inserts).toEqual([['report', 'section-2', 'chunk-a', 'source-1', 'Quote A.', 1, '[1]']]);
   });
 
   it('does nothing for a report with no citations', async () => {

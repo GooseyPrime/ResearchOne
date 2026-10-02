@@ -66,7 +66,7 @@ import {
   type LockedPassage,
 } from '../services/reasoning/citationLock';
 import { scoreCitationBound, scoreQuoteVerbatim } from '../services/eval/scoreReport';
-import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
+import { readerFacingLabelHits, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
 
 const FDA = { title: 'FDA approves first gene therapies to treat sickle cell disease', publisher: 'US Food and Drug Administration', date: '2023-12-08', url: 'https://www.fda.gov/casgevy' };
 const MHRA = { title: 'MHRA authorises gene therapy', publisher: 'Medicines and Healthcare products Regulatory Agency', date: '2023-11-16', url: 'https://www.gov.uk/mhra-casgevy' };
@@ -177,6 +177,11 @@ describe('citation lock on the report path', () => {
       claimText: null,
     }));
     expect(scoreCitationBound(finalized.markdown, stored)).toBe(1);
+    // The harness scores a locked run on this branch: each number in the prose
+    // must be backed, in order, by a saved row with a passage and a quote.
+    expect(scoreCitationBound(finalized.markdown, stored, true)).toBe(1);
+    expect(scoreCitationBound(finalized.markdown, stored.slice(1), true)).toBeLessThan(1);
+    expect(scoreCitationBound(finalized.markdown, stored.map((row) => ({ ...row, chunkQuote: '' })), true)).toBe(0);
     expect(scoreQuoteVerbatim(stored)).toBe(1);
   });
 
@@ -370,6 +375,73 @@ describe('markers in either case and numbers that are not citations', () => {
       occurrences
     );
     expect(bound.map((row) => [row.number, row.sectionOrder])).toEqual([[1, 1], [2, 2]]);
+  });
+});
+
+describe('code, links and stale reference lists', () => {
+  const shown = (): LockedPassage[] =>
+    issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }],
+      [{ title: 'Bridge history', url: 'https://example.org/bridge' }]
+    );
+
+  it('leaves every form of code and link untouched', () => {
+    const body = [
+      '## Summary',
+      'It opened in 1932 [P1].',
+      '',
+      '~~~~',
+      'rows[1] = cells[P1]',
+      '~~~~',
+      '',
+      '````js',
+      'a[2]',
+      '````',
+      '',
+      '    indented[3]',
+      '',
+      'See [the note][1] for more.',
+      '',
+      '[1]: https://example.org/note',
+    ].join('\n');
+    const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(finalized.markdown).toContain('rows[1] = cells[P1]');
+    expect(finalized.markdown).toContain('a[2]');
+    expect(finalized.markdown).toContain('    indented[3]');
+    expect(finalized.markdown).toContain('[the note][1]');
+    expect(finalized.markdown).toContain('[1]: https://example.org/note');
+    expect(finalized.occurrences).toHaveLength(1);
+    expect(finalized.removed).toBe(0);
+  });
+
+  it('numbers markers written side by side and in nested list text', () => {
+    const two = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }, { id: 'chunk-b', content: 'It cost four million.' }],
+      [{ title: 'Bridge history', url: 'https://example.org/a' }, { title: 'Bridge costs', url: 'https://example.org/b' }]
+    );
+    const finalized = finalizeLockedCitations('## Summary\nIt opened and was paid for [P1][P2].\n\n- Point\n    - Nested point [P2].', two, '2 Oct 2026');
+    expect(finalized.markdown).toContain('paid for [1][2].');
+    expect(finalized.markdown).toContain('Nested point [2].');
+    expect(finalized.occurrences.map((occurrence) => occurrence.number)).toEqual([1, 2, 2]);
+    const bound = assignOccurrencesToSections([{ title: 'Summary', content: finalized.markdown }], finalized.occurrences);
+    expect(bound.every((row) => row.sectionOrder === 1)).toBe(true);
+  });
+
+  it('binds the text that is saved: the save-time clean-up changes nothing after finalizing', () => {
+    const cleaned = stripInternalLabelsFromReport('## Summary\nIt opened in 1932 (speculation) [P1].');
+    const finalized = finalizeLockedCitations(cleaned, shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(stripInternalLabelsFromReport(finalized.markdown)).toBe(finalized.markdown);
+  });
+
+  it('removes a model-written reference list together with its sub-headings', () => {
+    const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
+    const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');
+    expect(finalized.markdown).not.toContain('stale entry');
+    expect(finalized.markdown).not.toContain('Primary sources');
+    expect(finalized.markdown).toContain('## Notes\nKept.');
+    expect(finalized.markdown.match(/## References/g)).toHaveLength(1);
   });
 });
 
