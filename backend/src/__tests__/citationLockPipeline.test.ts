@@ -676,6 +676,23 @@ describe('code, links and stale reference lists', () => {
     expect(markersPreserved(abbreviated, abbreviated, keep)).toBe(true);
   });
 
+  it('keeps code inside a nested list item while binding the citation beside it', () => {
+    const finalized = finalizeLockedCitations('## Summary\n- Point\n    - Compare `rows[P2]` with the fact [P1].', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('    - Compare `rows[P2]` with the fact [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('removes grouped numbers from text that carries no saved citations', () => {
+    expect(stripReaderNumbers('A fact [1, 2]. Another [1 and 2]. A range [1-3]. Code `rows[1, 2]`.')).toBe(
+      'A fact. Another. A range. Code `rows[1, 2]`.'
+    );
+  });
+
+  it('does not treat a grade word inside code as a label', () => {
+    expect(readerFacingLabelHits('Example:\n\n```\nlabel = (inference)\n```')).toEqual([]);
+    expect(readerFacingLabelHits('The claim holds (inference).')).toContain('grade label');
+  });
+
   it('removes a model-written reference list together with its sub-headings', () => {
     const body = '## Summary\nIt opened in 1932 [P1].\n\n## References\n### Primary sources\nA stale entry.\n### Other\nAnother stale entry.\n\n## Notes\nKept.';
     const finalized = finalizeLockedCitations(body, shown(), '2 Oct 2026');

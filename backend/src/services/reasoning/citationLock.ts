@@ -43,6 +43,8 @@ const PASSAGE_LOOKING = /[ \t]*\[\s*P\d+\b[^\]\n]*\]/gi;
 const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\s*[\])]|[ \t]*\b(?:(?:see|in|from|per)\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+)*\b/gi;
 /** The export engine's alias form. It is assigned after a report is saved; a writer that emits it has cited nothing. */
 const EXPORT_ALIAS = /[ \t]*\[\s*E\d+(?:\s*[,;]\s*E\d+)*\s*\]/gi;
+/** A number in brackets the lock did not issue, alone or grouped ("[1, 2]", "[1 and 2]", "[1-3]"). */
+const BARE_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?!\()/g;
 /** A range wider than this is not expanded; its two ends are kept. */
 const RANGE_LIMIT = 12;
 
@@ -339,7 +341,7 @@ export function readerNumbersIn(text: string): string[] {
 
 /** Remove reader numbers from prose. Used where a text is not tied to saved citations. */
 export function stripReaderNumbers(text: string): string {
-  return mapProse(text, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\[\d+\](?!\()/g, '')));
+  return mapProse(text, (prose) => tidyAfterRemoval(prose.replace(BARE_NUMBERS, '')));
 }
 
 /** Markers in the text that were not among the passages the section was shown. */
@@ -484,13 +486,13 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     // A bare number in brackets was not issued by the lock. Left in, it would
     // read as a citation with no reference behind it and could be mistaken for
     // one of the numbers assigned below. Code is never touched.
-    removed += (prose.match(/\[\d+\](?!\()/g) ?? []).length;
+    removed += (prose.match(BARE_NUMBERS) ?? []).length;
     // A locked report has no chunk markers: a later repair that writes
     // "[Chunk 4]" has cited nothing the lock can save.
     removed += (prose.match(CHUNK_MARKER) ?? []).length + (prose.match(EXPORT_ALIAS) ?? []).length;
     const body = tidyAfterRemoval(
       prose
-        .replace(/[ \t]*\[\d+\](?!\()/g, '')
+        .replace(BARE_NUMBERS, '')
         .replace(CHUNK_MARKER, '')
         .replace(EXPORT_ALIAS, '')
         // A marker written as link text is a citation; the link around it is dropped.

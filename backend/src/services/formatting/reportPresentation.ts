@@ -122,10 +122,16 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
     const segment = match[0];
+    if (INDENTED_LIST_ITEM_WITH_MARKER.test(segment) || INDENTED_SENTENCE_WITH_MARKER.test(segment)) {
+      // Nested prose: read the line itself, so code and links inside it stay protected.
+      const start = match.index ?? 0;
+      const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
+      out += change(markdown.slice(cursor, start)) + indent + mapCitationProse(segment.slice(indent.length), change);
+      cursor = start + segment.length;
+      continue;
+    }
     if (
       CITATION_RUN.test(segment) ||
-      INDENTED_LIST_ITEM_WITH_MARKER.test(segment) ||
-      INDENTED_SENTENCE_WITH_MARKER.test(segment) ||
       MARKER_AS_LINK_TEXT.test(segment) ||
       MARKER_AS_REFERENCE_LINK.test(segment) ||
       NUMBER_AS_REFERENCE_LINK.test(segment)
@@ -141,19 +147,20 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
 
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
-  if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');
-  if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
-  // Passage markers are how the writer and the pipeline refer to retrieved text.
-  // A reader's citation is a number with a reference behind it.
-  // Only prose is checked: a code sample or a link that happens to contain one is not a leak.
+  // Only prose is checked: a code sample or a link that happens to contain a
+  // label is not a leak, and the clean-up that removes labels never touches it.
   let prose = '';
   mapCitationProse(text, (part) => {
     prose += part;
     return part;
   });
+  if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
+  if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
+  // Passage markers are how the writer and the pipeline refer to retrieved text.
+  // A reader's citation is a number with a reference behind it.
   if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
   if (/\[\s*P\d+\b[^\]\n]*\]/i.test(prose)) hits.push('passage marker');
-  if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(text)) hits.push('grade label');
+  if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
   if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
   if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
   return hits;
