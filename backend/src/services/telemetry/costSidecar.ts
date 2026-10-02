@@ -281,6 +281,9 @@ async function writeRow(
   // ON CONFLICT (idempotency_key) DO NOTHING — per rule 25 (I-4).
   // We use adminQuery (bypasses RLS) because agent_executions is
   // admin-only data per rule 25 (I-8).
+  // $15 is used twice. Both uses carry the same cast: Postgres rejects a
+  // parameter whose uses deduce different types (42P08), and that rejection
+  // dropped every row this statement tried to write.
   await adminQuery(
     `INSERT INTO agent_executions (
        run_id, report_id, user_id, org_id,
@@ -295,7 +298,7 @@ async function writeRow(
        $5, $6, $7,
        $8, $9, $10, $11,
        $12, $13,
-       $14, $15, to_timestamp($15::double precision / 1000.0),
+       $14, $15::bigint, to_timestamp($15::bigint / 1000.0),
        $16, $17, $18,
        $19, $20::jsonb
      )
