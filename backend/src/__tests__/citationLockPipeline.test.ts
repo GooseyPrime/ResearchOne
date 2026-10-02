@@ -65,6 +65,7 @@ import {
   stripUnsupportedMarkers,
   passagesForSection,
   rebindRevisedCitations,
+  renumberAfterRevision,
   type LockedPassage,
 } from '../services/reasoning/citationLock';
 import { scoreCitationBound, scoreQuoteVerbatim } from '../services/eval/scoreReport';
@@ -568,6 +569,37 @@ describe('code, links and stale reference lists', () => {
       { sectionIndex: 2, row: 'row-b1' },
     ]);
     expect(rebound.removed).toBe(2);
+  });
+
+  it('binds a marker that a link definition turned into a reference link', () => {
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1].\n\n[P1]: https://example.org/x', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('numbers sources again after a revision drops one, and trims the reference list', () => {
+    const out = renumberAfterRevision(
+      [
+        { title: 'Summary', content: 'It cost four million [2]. See `rows[2]`.' },
+        { title: 'Findings', content: 'It closed in 1990 [3]. It cost a lot [2].' },
+        { title: 'References', content: '1. First source\n2. Second source\n3. Third source' },
+        { title: 'About this report', content: '3 sources were read on 2 Oct 2026.' },
+      ],
+      ['[2]', '[3]', '[2]']
+    );
+    expect(out.contents).toEqual([
+      'It cost four million [1]. See `rows[2]`.',
+      'It closed in 1990 [2]. It cost a lot [1].',
+      '1. Second source\n2. Third source',
+      '3 sources were read on 2 Oct 2026.',
+    ]);
+    expect(out.citationTexts).toEqual(['[1]', '[2]', '[1]']);
+  });
+
+  it('removes a number a revision adds to a locked report that cited nothing', () => {
+    const rebound = rebindRevisedCitations([{ key: 'a', content: 'Nothing was cited.' }], [], [{ key: 'a', content: 'Now it claims a source [1].' }]);
+    expect(rebound.contents).toEqual(['Now it claims a source.']);
+    expect(rebound.kept).toEqual([]);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

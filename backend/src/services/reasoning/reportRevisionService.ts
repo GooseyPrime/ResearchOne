@@ -15,7 +15,7 @@ import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchest
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
 import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
-import { rebindRevisedCitations } from './citationLock';
+import { rebindRevisedCitations, renumberAfterRevision } from './citationLock';
 
 interface BaseCitationRow {
   section_id: string | null;
@@ -597,9 +597,18 @@ Return revised section body only.`,
   // A report written with the citation lock: every citation has a place in the
   // reading order and a reader number. Its citations are carried only where the
   // cited sentence is unchanged; a number on a rewritten sentence is removed.
+  // The run records that it was written with the lock; a locked report may cite
+  // nothing at all, so the rows alone cannot say.
+  const lockRecord = await query<{ citation_lock: string | null }>(
+    `SELECT rr.corpus_after->>'citationLock' AS citation_lock
+     FROM reports r JOIN research_runs rr ON rr.id = r.run_id
+     WHERE r.id = $1`,
+    [baseReport.id]
+  );
   const lockedBase =
-    baseCitations.length > 0 &&
-    baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim()));
+    lockRecord[0]?.citation_lock === 'true' ||
+    (baseCitations.length > 0 &&
+      baseCitations.every((row) => row.citation_order != null && /^\[\d+\]$/.test((row.citation_text ?? '').trim())));
   let carriedCitations: Array<{ sectionKey: string; row: BaseCitationRow }>;
   if (lockedBase) {
     const rebound = rebindRevisedCitations(
@@ -609,10 +618,16 @@ Return revised section body only.`,
         .map((row) => ({ sectionKey: row.section_id as string, citationText: row.citation_text ?? '', row })),
       revisedSections.map((section) => ({ key: section.id, content: section.content }))
     );
-    revisedSections = revisedSections.map((section, index) => ({ ...section, content: rebound.contents[index] }));
+    // Sources are numbered again in the order the revised report first cites them,
+    // and the reference list keeps only the ones it still cites.
+    const renumbered = renumberAfterRevision(
+      revisedSections.map((section, index) => ({ title: section.title, content: rebound.contents[index] })),
+      rebound.kept.map((entry) => entry.row.citation_text ?? '')
+    );
+    revisedSections = revisedSections.map((section, index) => ({ ...section, content: renumbered.contents[index] }));
     carriedCitations = rebound.kept.map((entry, index) => ({
       sectionKey: revisedSections[entry.sectionIndex].id,
-      row: { ...entry.row, citation_order: index + 1 },
+      row: { ...entry.row, citation_order: index + 1, citation_text: renumbered.citationTexts[index] },
     }));
     if (rebound.removed > 0) {
       logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: rebound.removed });

@@ -102,6 +102,11 @@ const INDENTED_LIST_ITEM_WITH_MARKER = /^(?: {4,}|\t)\s*(?:[-*+]|\d+[.)])\s[^\n]
 const INDENTED_SENTENCE_WITH_MARKER = /^(?: {4,}|\t)[^\n=]*\s\[\s*P\d+[^\]\n]*\][.,;:!?]/i;
 /** A passage marker written as the text of a link is still a citation. */
 const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
+/**
+ * So is one that a link definition ("[P1]: url") turns into a shortcut or
+ * collapsed reference link. The definition line itself stays protected.
+ */
+const MARKER_AS_REFERENCE_LINK = /^\[\s*P\d+[^\]\n]*\](?:\[\])?$/i;
 
 /**
  * Apply a change to the prose of a report and to nothing else. Code in every
@@ -117,7 +122,8 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
       CITATION_RUN.test(segment) ||
       INDENTED_LIST_ITEM_WITH_MARKER.test(segment) ||
       INDENTED_SENTENCE_WITH_MARKER.test(segment) ||
-      MARKER_AS_LINK_TEXT.test(segment)
+      MARKER_AS_LINK_TEXT.test(segment) ||
+      MARKER_AS_REFERENCE_LINK.test(segment)
     ) {
       continue;
     }

@@ -467,6 +467,8 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
         .replace(CHUNK_MARKER, '')
         // A marker written as link text is a citation; the link around it is dropped.
         .replace(/(\[\s*P\d+[^\]\n]*\])\([^)\s]*(?:\s+"[^"]*")?\)/gi, '$1')
+        // Likewise the empty second bracket of a collapsed reference link.
+        .replace(/(\[\s*P\d+[^\]\n]*\])\[\]/gi, '$1')
     );
     const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
       const numbers: number[] = [];
@@ -626,4 +628,41 @@ export function rebindRevisedCitations<T>(
     return mapProse(rewritten, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, '')));
   });
   return { contents, kept, removed };
+}
+
+/**
+ * After a revision has dropped citations: number the sources again in the order
+ * they are now first cited, and cut the reference list down to the ones still
+ * cited. The entries themselves are kept as written; only their numbers change.
+ * `citationTexts` are the kept rows' numbers, returned renumbered in the same order.
+ */
+export function renumberAfterRevision(
+  sections: Array<{ title: string; content: string }>,
+  citationTexts: string[]
+): { contents: string[]; citationTexts: string[] } {
+  const isSystem = (title: string): boolean => /^(?:references|about this report)$/i.test(title.trim());
+  const order: string[] = [];
+  for (const section of sections) {
+    if (isSystem(section.title)) continue;
+    for (const number of readerNumbersIn(section.content)) if (!order.includes(number)) order.push(number);
+  }
+  const renumbered = new Map(order.map((old, index) => [old, `[${index + 1}]`]));
+  const contents = sections.map((section) => {
+    if (/^references$/i.test(section.title.trim())) {
+      const lines = new Map<string, string>();
+      for (const line of section.content.split('\n')) {
+        const entry = /^\s*(\d+)\.\s+(.*)$/.exec(line);
+        if (entry) lines.set(`[${entry[1]}]`, entry[2]);
+      }
+      // A list that is not in the expected numbered form is left as it is.
+      if (lines.size === 0) return section.content;
+      return order
+        .filter((old) => lines.has(old))
+        .map((old) => `${(renumbered.get(old) as string).slice(1, -1)}. ${lines.get(old)}`)
+        .join('\n');
+    }
+    if (isSystem(section.title)) return section.content;
+    return mapProse(section.content, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full));
+  });
+  return { contents, citationTexts: citationTexts.map((text) => renumbered.get(text.trim()) ?? text) };
 }
