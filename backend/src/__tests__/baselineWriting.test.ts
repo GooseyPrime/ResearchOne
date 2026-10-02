@@ -78,6 +78,7 @@ describe('baseline writing messages', () => {
     expect(presentationFailures('See [Chunk 4](https://example.org) for more.')).toContain('chunk marker');
     expect(presentationFailures('It holds [established_fact](https://example.org).')).toContain('grade label');
     // A nested list item is prose, not code.
+    expect(presentationFailures('- A point.\n    - Detail [Chunk 4](https://example.org).')).toContain('chunk marker');
     expect(presentationFailures('- A point.\n    - Detail [Chunk 4].')).toContain('chunk marker');
     expect(presentationFailures('A paragraph.\n\n    print("[Chunk 4]")')).not.toContain('chunk marker');
     // A reference-style link shows its label and never its identifier.

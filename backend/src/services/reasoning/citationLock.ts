@@ -184,7 +184,13 @@ function statementKey(text: string): string {
 
 /** A sentence as a reader sees it: a link shows its label, not its destination. */
 function readable(text: string): string {
-  return text.replace(/\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, '$1');
+  return (
+    text
+      .replace(/\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, '$1')
+      // A reference-style link shows its label; the identifier after it is never
+      // seen. Two citation numbers side by side ("[1][2]") are not a link.
+      .replace(/\[(?!\s*\d+\s*\])([^\]\n]*)\]\[(?!\s*\d+\s*\])[^\]\n]*\]/g, '$1')
+  );
 }
 
 /** The text cut into sentences and the gaps between them, each with where it starts. */

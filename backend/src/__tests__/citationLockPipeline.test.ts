@@ -5,6 +5,7 @@ let firstDraftCitesUnknown = false;
 let retryAlsoCitesUnknown = false;
 let limitsRepeatsSummary = false;
 let rewriteSwapsMarkers = false;
+let summaryHasVerdict = false;
 
 vi.mock('../services/openrouter/openrouterService', () => ({
   callRoleModel: vi.fn(async (options: { role: string; messages: Array<{ role: string; content: string }> }) => {
@@ -27,9 +28,14 @@ vi.mock('../services/openrouter/openrouterService', () => ({
       // A rewrite that moves every citation of one passage onto another.
       return reply(options.messages[options.messages.length - 1].content.replace(/\[P1\]/g, '[P2]'));
     }
+    if (options.role === 'coherence_refiner' && summaryHasVerdict && text.includes('plain encyclopedia prose')) {
+      // A redraft that fixes the wording but moves a citation, so its section is put back.
+      return reply(options.messages[options.messages.length - 1].content.replace(/verdict/gi, 'finding').replace(/\[P1\]/g, '[P2]'));
+    }
     if (options.role !== 'section_drafter') return reply(text);
     const isRetry = options.messages.some((message) => message.content.includes('which you were not shown'));
     if (text.includes('Section to draft: Summary')) {
+      if (summaryHasVerdict) return reply('The verdict of the agency was to authorize Casgevy on 8 December 2023 [P1].');
       return reply('The FDA authorized Casgevy on 8 December 2023 [P1]. It was the first therapy of its kind in the United States [P3].');
     }
     if (text.includes('Section to draft: Key findings')) {
@@ -122,6 +128,7 @@ describe('citation lock on the report path', () => {
     retryAlsoCitesUnknown = false;
     limitsRepeatsSummary = false;
     rewriteSwapsMarkers = false;
+    summaryHasVerdict = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -232,6 +239,16 @@ describe('citation lock on the report path', () => {
     const report = await writeLocked();
     expect(calls.some((call) => call.role === 'coherence_refiner' && call.text.includes('Remove repeated sentences'))).toBe(true);
     expect(report.markdown).toContain('The FDA authorized Casgevy on 8 December 2023 [P1].');
+    expect(report.markdown).not.toContain('8 December 2023 [P2]');
+  });
+
+  it('takes banned wording out of a section the redraft could not keep', async () => {
+    summaryHasVerdict = true;
+    const report = await writeLocked();
+    expect(calls.some((call) => call.text.includes('Rewrite the report in plain encyclopedia prose'))).toBe(true);
+    // The redraft moved the citation, so its version of the section was refused; the wording is fixed without it.
+    expect(report.markdown).not.toMatch(/verdict/i);
+    expect(report.markdown).toContain('8 December 2023 [P1].');
     expect(report.markdown).not.toContain('8 December 2023 [P2]');
   });
 
@@ -714,6 +731,30 @@ describe('code, links and stale reference lists', () => {
     const finalized = finalizeLockedCitations('## Summary\nA claim [P1\nA fact [P1]. Another claim [P2 and more words.', passages(), '2 Oct 2026');
     expect(finalized.markdown).toContain('A claim\nA fact [1]. Another claim and more words.');
     expect(finalized.markdown).not.toMatch(/\[P\d/);
+  });
+
+  it('reads a reference-style link by its label when deciding whether a sentence changed', () => {
+    const base = [{ key: 'a', content: 'The [FDA][source] authorized it [1]. A second line.\n\n[source]: https://example.org' }];
+    const rows = [{ sectionKey: 'a', citationText: '[1]', row: 'first' }];
+    const same = rebindRevisedCitations(base, rows, [
+      { key: 'a', content: 'The [FDA][source] authorized it [1]. A new second line.\n\n[source]: https://example.org' },
+    ]);
+    expect(same.kept.map((entry) => entry.row)).toEqual(['first']);
+    const changed = rebindRevisedCitations(base, rows, [{ key: 'a', content: 'The FDA source authorized it [1]. A second line.' }]);
+    expect(changed.kept).toEqual([]);
+    expect(changed.contents).toEqual(['The FDA source authorized it. A second line.']);
+  });
+
+  it('reads a linked number in nested list prose during a revision', () => {
+    const base = [{ key: 'a', content: '- A point.\n\n    The bridge opened in 1932 [1].' }];
+    const rows = [{ sectionKey: 'a', citationText: '[1]', row: 'first' }];
+    const kept = rebindRevisedCitations(base, rows, [
+      { key: 'a', content: '- A point.\n\n    The bridge opened in 1932 [1](https://example.org). It has `rows[1](x)` in code.' },
+    ]);
+    expect(kept.contents).toEqual(['- A point.\n\n    The bridge opened in 1932 [1]. It has `rows[1](x)` in code.']);
+    expect(kept.kept.map((entry) => entry.row)).toEqual(['first']);
+    const dropped = rebindRevisedCitations(base, rows, [{ key: 'a', content: '- A point.\n\n    It was finished early [1](https://example.org).' }]);
+    expect(dropped.contents).toEqual(['- A point.\n\n    It was finished early.']);
   });
 
   it('treats a repeated sentence as repeated whatever form its markers take', () => {

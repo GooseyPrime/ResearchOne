@@ -192,14 +192,30 @@ const CITATION_AS_LINK =
  * is an ordinary link and is left alone.
  */
 export function unwrapCitationLinks(markdown: string): string {
+  return mapOutsideCode(markdown, (text) => text.replace(CITATION_AS_LINK, '[$1]'));
+}
+
+/**
+ * Apply a change to everything that is not code. An indented line nested in a
+ * list is prose, so it is read too, with any inline code inside it still kept.
+ * `code` says what a code segment becomes; by default it is left as written.
+ */
+function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(CODE_ONLY)) {
     const start = match.index ?? 0;
-    out += markdown.slice(cursor, start).replace(CITATION_AS_LINK, '[$1]') + match[0];
-    cursor = start + match[0].length;
+    const segment = match[0];
+    out += change(markdown.slice(cursor, start));
+    if (nestedListProse(markdown, segment, start)) {
+      const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
+      out += indent + mapOutsideCode(segment.slice(indent.length), change, code);
+    } else {
+      out += code(segment);
+    }
+    cursor = start + segment.length;
   }
-  return out + markdown.slice(cursor).replace(CITATION_AS_LINK, '[$1]');
+  return out + change(markdown.slice(cursor));
 }
 
 /**
@@ -207,8 +223,7 @@ export function unwrapCitationLinks(markdown: string): string {
  * stands, and code, link definitions and bare addresses taken out.
  */
 function readerVisibleText(text: string): string {
-  return text
-    .replace(CODE_ONLY, '\uE004')
+  return mapOutsideCode(text, (part) => part, () => '\uE004')
     .replace(INLINE_LINK, '$1')
     // A reference-style link shows its label; the identifier after it is never seen.
     .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
@@ -227,7 +242,7 @@ export function readerFacingLabelHits(text: string): string[] {
     return part;
   });
   // The label of a link is read by the reader too; its destination is not.
-  const outsideCode = text.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' '));
+  const outsideCode = mapOutsideCode(text, (part) => part, () => '\uE004');
   for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
   // Likewise the label of a reference-style link ("[label][ref]").
   for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;

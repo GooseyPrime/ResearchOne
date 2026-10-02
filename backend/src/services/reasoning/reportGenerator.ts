@@ -1189,7 +1189,26 @@ export async function generateIterativeReport(args: {
       ? args.lockedPassages
       : null;
   /** Sections that speak for the whole report see every passage that fits. */
-  const BROAD_SECTION_KEYS = new Set(['summary', 'key_findings', 'disagreement', 'limits', 'established', 'contested', 'open_questions']);
+  const BROAD_SECTION_KEYS = new Set([
+    'summary',
+    'key_findings',
+    'disagreement',
+    'limits',
+    'established',
+    'contested',
+    'open_questions',
+    // The same kind of section under the names an explicit format or an older plan gives it.
+    'executive_summary',
+    'abstract',
+    'overview',
+    'conclusion',
+    'conclusions',
+    'synthesis_conclusions',
+    'narrative_briefing',
+    'structured_report',
+    'contradiction_analysis',
+    'unresolved_questions',
+  ]);
   const citationIssues: Array<{ section: string; markers: string[] }> = [];
 
   // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable
@@ -1676,12 +1695,24 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ...section,
       content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
     }));
-    if (!parsed && readerFailures(sectionsToMarkdown(sectionsOut)).length > 0) {
-      sectionsOut = sectionsOut.map((section) => ({
-        ...section,
-        content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
-      }));
-    }
+    // A redraft can come back with a section put back as it was, because the
+    // rewrite moved a citation. That section still carries what the redraft was
+    // for. The words are taken out of any section that still fails, whether or
+    // not the redraft parsed; citations stay where they are.
+    sectionsOut = sectionsOut.map((section) =>
+      readerFailures(`${section.title}\n\n${section.content}`).length > 0
+        ? {
+            ...section,
+            content: section.content
+              .replace(/\b(?:established_fact|strong_evidence)\b/gi, '')
+              .replace(/\b(?:verdict|adjudicate|adjudicated|adjudicates|falsified)\b/gi, '')
+              .replace(/\bcase (for|against)\b/gi, 'argument $1')
+              .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
+              .replace(/[ \t]{2,}/g, ' ')
+              .replace(/[ \t]+([.,;:!?])/g, '$1'),
+          }
+        : section
+    );
   }
   if (layer1) {
     sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
