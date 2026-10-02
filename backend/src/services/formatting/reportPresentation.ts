@@ -199,7 +199,7 @@ const INLINE_LINK = /\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
  * link with a label of its own.
  */
 const CITATION_AS_LINK =
-  /\[(\s*(?:\d{1,3}|P\d+\b[^\]\n]*|E\d+|(?:see\s+)?chunks?\s+\d+[^\]\n]*)\s*)\](?:\([^)\s]*(?:\s+"[^"]*")?\)|\[(?!\s*(?:P?\d+|E\d+)\s*[\],;])[^\]\n]+\])/gi;
+  /\[(\s*(?:\d{1,3}|P\d+\b[^\]\n]*|E\d+|(?:see\s+)?chunks?\s+\d+[^\]\n]*)\s*)\](?:\([^)\s]*(?:\s+"[^"]*")?\)|\[(?!\s*(?:P?\d+|E\d+)\s*[\],;])[^\]\n]*\])/gi;
 
 /**
  * Turn "[1](url)" into "[1]" outside code, so a citation written as a link is

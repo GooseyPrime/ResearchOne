@@ -330,11 +330,13 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
  * cited it for. The sentence stays; the unsupported citation does not.
  */
 export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdown: string): { markdown: string; removed: number } {
+  // A marker written as a link is read as the marker, so removing it leaves no "(url)" behind.
+  const repaired = unwrapCitationLinks(repairedMarkdown);
   const pool = citedSentences(originalMarkdown).map((entry) => ({ ...entry, used: false }));
-  const view = proseOf(repairedMarkdown);
+  const view = proseOf(repaired);
   let removed = 0;
   let previous = '';
-  const out = sentencePieces(repairedMarkdown)
+  const out = sentencePieces(repaired)
     .map((piece) => {
       if (/^\s*$/.test(piece.text)) return piece.text;
       const prose = readable(piece.text).replace(MARKER_GROUP, ' ').trim();
@@ -396,7 +398,8 @@ function tidyAfterRemoval(text: string): string {
 export function stripUnknownMarkers(text: string, shown: LockedPassage[]): string {
   const allowed = new Set(shown.map((passage) => passage.marker));
   // Prose only: a marker-shaped piece of code is not a citation and is never edited.
-  return mapProse(text, (prose) =>
+  // A marker written as a link is read as the marker, so removing it leaves no "(url)" behind.
+  return mapProse(unwrapCitationLinks(text), (prose) =>
     tidyAfterRemoval(
       prose
         .replace(MARKER_GROUP, (_full, inner: string) => {
@@ -605,7 +608,9 @@ export function assignOccurrencesToSections(
   const bound: BoundCitation[] = [];
   let cursor = 0;
   sections.forEach((section, index) => {
-    if (/^(?:references|about this report)$/i.test(section.title.trim())) return;
+    // The generated reference list and closing note come after the report. A
+    // report that opens with a section of that name is an ordinary section.
+    if (index > 0 && /^(?:references|about this report)$/i.test(section.title.trim())) return;
     // Count what finalizing numbered: prose only. A number inside code, or the
     // label of a link, was never a citation and must not take one's place.
     const markers = readerNumbersIn(`${section.title}\n${section.content}`);
@@ -736,16 +741,18 @@ export function renumberAfterRevision(
   sections: Array<{ title: string; content: string }>,
   citationTexts: string[]
 ): { titles: string[]; contents: string[]; citationTexts: string[] } {
-  const isSystem = (title: string): boolean => /^(?:references|about this report)$/i.test(title.trim());
+  // The generated reference list and closing note come after the report. A
+  // report that opens with a section of that name is an ordinary section.
+  const isSystem = (title: string, index: number): boolean => index > 0 && /^(?:references|about this report)$/i.test(title.trim());
   const order: string[] = [];
-  for (const section of sections) {
-    if (isSystem(section.title)) continue;
+  for (const [index, section] of sections.entries()) {
+    if (isSystem(section.title, index)) continue;
     // A heading can carry a citation too, and it is read before its body.
     for (const number of readerNumbersIn(`${section.title}\n${section.content}`)) if (!order.includes(number)) order.push(number);
   }
   const renumbered = new Map(order.map((old, index) => [old, `[${index + 1}]`]));
-  const contents = sections.map((section) => {
-    if (/^references$/i.test(section.title.trim())) {
+  const contents = sections.map((section, index) => {
+    if (index > 0 && /^references$/i.test(section.title.trim())) {
       const lines = new Map<string, string>();
       for (const line of section.content.split('\n')) {
         const entry = /^\s*(\d+)\.\s+(.*)$/.exec(line);
@@ -761,11 +768,11 @@ export function renumberAfterRevision(
     // The closing note says how many sources were read, which a revision does not
     // change. The one case it must follow is a report left citing nothing, where
     // the first save would have said so.
-    if (isSystem(section.title)) return order.length === 0 ? buildAbout(0, '') : section.content;
+    if (isSystem(section.title, index)) return order.length === 0 ? buildAbout(0, '') : section.content;
     return mapProse(section.content, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full));
   });
-  const titles = sections.map((section) =>
-    isSystem(section.title) ? section.title : mapProse(section.title, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full))
+  const titles = sections.map((section, index) =>
+    isSystem(section.title, index) ? section.title : mapProse(section.title, (prose) => prose.replace(READER_NUMBER, (full) => renumbered.get(full) ?? full))
   );
   return { titles, contents, citationTexts: citationTexts.map((text) => renumbered.get(text.trim()) ?? text) };
 }

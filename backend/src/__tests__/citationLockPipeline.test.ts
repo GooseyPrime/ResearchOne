@@ -808,6 +808,27 @@ describe('code, links and stale reference lists', () => {
     }
   });
 
+  it('binds citations in a report whose opening section is named like a system section', () => {
+    const finalized = finalizeLockedCitations('# References\nA fact [P1].\n\n## Use\nAnother [P2].', passages(), '2 Oct 2026');
+    const bound = assignOccurrencesToSections(sectionsOf(finalized.markdown), finalized.occurrences);
+    expect(bound.map((row) => row.sectionOrder)).toEqual([1, 2]);
+    const renumbered = renumberAfterRevision(
+      [
+        { title: 'References', content: 'A fact [2].' },
+        { title: 'References', content: '1. First\n2. Second' },
+      ],
+      ['[2]']
+    );
+    expect(renumbered.contents).toEqual(['A fact [1].', '1. Second']);
+    expect(renumbered.citationTexts).toEqual(['[1]']);
+  });
+
+  it('removes an unsupported marker written as a link without leaving the link behind', () => {
+    const repaired = stripUnsupportedMarkers('A fact [P1].', 'A fact [P1]. A new claim [P2](https://example.org). Another [P2][].');
+    expect(repaired.markdown).toBe('A fact [P1]. A new claim. Another.');
+    expect(stripUnknownMarkers('A claim [P9](https://example.org). A fact [P1][].', passages())).toBe('A claim. A fact [P1].');
+  });
+
   it('treats a repeated sentence as repeated whatever form its markers take', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
