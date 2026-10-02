@@ -562,6 +562,10 @@ validateEnsemblePresetsAgainstAllowlist();
 validateV2ModePresetsAgainstAllowlist();
 
 export { config };
+/** Slice 4. Unset is off. The lock applies only where the Layer 1 switch is also on. */
+export function citationLockEnabled(): boolean {
+  return process.env.CITATION_LOCK_ENABLED === 'true' && process.env.BASELINE_LAYER_ENABLED === 'true';
+}
 export function baselineLayerEnabled(): boolean {
   return process.env.BASELINE_LAYER_ENABLED === 'true';
 }

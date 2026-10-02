@@ -1,0 +1,275 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const calls: Array<{ role: string; text: string }> = [];
+let firstDraftCitesUnknown = false;
+let retryAlsoCitesUnknown = false;
+
+vi.mock('../services/openrouter/openrouterService', () => ({
+  callRoleModel: vi.fn(async (options: { role: string; messages: Array<{ role: string; content: string }> }) => {
+    const text = options.messages.map((message) => message.content).join('\n');
+    calls.push({ role: options.role, text });
+    const reply = (content: string) => ({
+      content,
+      model: 'test',
+      role: options.role,
+      promptTokens: 1,
+      completionTokens: 1,
+      durationMs: 1,
+      usedFallback: false,
+      primaryModel: 'test',
+    });
+    if (options.role === 'outline_architect') {
+      return reply('{"title":"FDA authorization of Casgevy","outline":["Casgevy authorization","Eligible patient group"]}');
+    }
+    if (options.role !== 'section_drafter') return reply(text);
+    const isRetry = options.messages.some((message) => message.content.includes('which you were not shown'));
+    if (text.includes('Section to draft: Summary')) {
+      return reply('The FDA authorized Casgevy on 8 December 2023 [P1]. It was the first therapy of its kind in the United States [P3].');
+    }
+    if (text.includes('Section to draft: Key findings')) {
+      return reply('- The therapy edits a patient\'s own blood stem cells [P2].\n- A second regulator had authorized it weeks earlier [P3].');
+    }
+    if (text.includes('Section to draft: Where sources disagree')) return reply('The sources do not disagree.');
+    if (text.includes('Section to draft: Limits of this report')) return reply('This report rests on two sources.');
+    if (text.includes('Section to draft: Casgevy authorization')) {
+      if (firstDraftCitesUnknown && !isRetry) return reply('The authorization covered patients aged 12 and older [P9].');
+      if (retryAlsoCitesUnknown && isRetry) return reply('The authorization covered patients aged 12 and older [P9]. It followed a priority review [P1].');
+      return reply('The authorization covered patients aged 12 and older [P1, P2].');
+    }
+    return reply('Eligible patients have recurrent vaso-occlusive crises [P2].');
+  }),
+  getSystemPrompt: () => 'Write the section.',
+}));
+
+import { generateIterativeReport } from '../services/reasoning/reportGenerator';
+import {
+  assignOccurrencesToSections,
+  bestQuote,
+  countShortfallSetsStatus,
+  finalizeLockedCitations,
+  issuePassages,
+  passagesForSection,
+  type LockedPassage,
+} from '../services/reasoning/citationLock';
+import { scoreCitationBound, scoreQuoteVerbatim } from '../services/eval/scoreReport';
+import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
+
+const FDA = { title: 'FDA approves first gene therapies to treat sickle cell disease', publisher: 'US Food and Drug Administration', date: '2023-12-08', url: 'https://www.fda.gov/casgevy' };
+const MHRA = { title: 'MHRA authorises gene therapy', publisher: 'Medicines and Healthcare products Regulatory Agency', date: '2023-11-16', url: 'https://www.gov.uk/mhra-casgevy' };
+
+const CHUNKS = [
+  { id: '11111111-1111-4111-8111-111111111111', content: 'Today the agency acted.  On 8 December 2023 the FDA authorized Casgevy for patients aged 12 and older. The application received priority review.' },
+  { id: '22222222-2222-4222-8222-222222222222', content: 'Casgevy edits a patient\'s own blood stem cells. Eligible patients have recurrent vaso-occlusive crises.' },
+  { id: '33333333-3333-4333-8333-333333333333', content: 'The United Kingdom regulator authorized the therapy on 16 November 2023, weeks before the United States.' },
+];
+const SOURCES = [FDA, FDA, MHRA];
+
+function passages(): LockedPassage[] {
+  return issuePassages(CHUNKS, SOURCES);
+}
+
+async function writeLocked() {
+  return generateIterativeReport({
+    query: 'When did the FDA authorize the first CRISPR therapy?',
+    plan: {},
+    sourceContext: 'UNLOCKED-CONTEXT-SENTINEL',
+    retrieverAnalysis: '',
+    reasoningChains: '',
+    challenges: '',
+    intentId: 'factual_report',
+    outputTemplateId: 'intent_factual_report',
+    skipChallenger: true,
+    targetWordCount: 2200,
+    usedSources: SOURCES,
+    lockedPassages: passages(),
+  });
+}
+
+function sectionsOf(markdown: string): Array<{ title: string; content: string }> {
+  const out: Array<{ title: string; content: string }> = [];
+  for (const block of markdown.split(/^(?=#{1,3}\s)/m)) {
+    const [heading, ...rest] = block.split('\n');
+    out.push({ title: heading.replace(/^#+\s*/, '').trim(), content: rest.join('\n').trim() });
+  }
+  return out;
+}
+
+describe('citation lock on the report path', () => {
+  beforeEach(() => {
+    process.env.BASELINE_LAYER_ENABLED = 'true';
+    calls.length = 0;
+    firstDraftCitesUnknown = false;
+    retryAlsoCitesUnknown = false;
+  });
+  afterEach(() => {
+    delete process.env.BASELINE_LAYER_ENABLED;
+  });
+
+  it('shows the writer whole passages under markers, not the unlocked context', async () => {
+    await writeLocked();
+    const drafter = calls.filter((call) => call.role === 'section_drafter');
+    expect(drafter.length).toBeGreaterThan(0);
+    for (const call of drafter) {
+      expect(call.text).not.toContain('UNLOCKED-CONTEXT-SENTINEL');
+      expect(call.text).toContain('[P1] US Food and Drug Administration');
+      expect(call.text).toContain('The application received priority review.');
+      expect(call.text).toContain('Cite with the markers shown above and no others.');
+      expect(call.text).not.toContain('A sentence drawn from CHUNK n');
+    }
+  });
+
+  it('leaves markers in the generated text and adds no reference list of its own', async () => {
+    const report = await writeLocked();
+    expect(report.markdown).toContain('[P1]');
+    expect(report.markdown).not.toContain('## References');
+    expect(report.markdown).not.toContain('## About this report');
+    expect(report.citationIssues).toEqual([]);
+    // The markers are deliberate at this point and must not trigger a rewrite of the whole report.
+    expect(calls.some((call) => call.text.includes('Rewrite the report in plain encyclopedia prose'))).toBe(false);
+  });
+
+  it('numbers by source in first-citation order and ties every citation to a word-for-word quote', async () => {
+    const report = await writeLocked();
+    const finalized = finalizeLockedCitations(report.markdown, passages(), '2 Oct 2026');
+
+    expect(finalized.markdown).not.toMatch(/\[P\d+/);
+    expect(readerFacingLabelHits(finalized.markdown)).toEqual([]);
+    expect(finalized.markdown).toContain('8 December 2023 [1]. It was the first therapy of its kind in the United States [2].');
+    // Two passages from one source share its number.
+    expect(finalized.markdown).toContain('aged 12 and older [1][1].');
+    const references = finalized.markdown.split('## References\n')[1].split('\n\n## About this report')[0].split('\n');
+    expect(references).toEqual([
+      '1. US Food and Drug Administration, FDA approves first gene therapies to treat sickle cell disease, 2023-12-08 https://www.fda.gov/casgevy',
+      '2. Medicines and Healthcare products Regulatory Agency, MHRA authorises gene therapy, 2023-11-16 https://www.gov.uk/mhra-casgevy',
+    ]);
+    expect(finalized.markdown.trimEnd().endsWith('2 sources were read on 2 Oct 2026.')).toBe(true);
+
+    const markersInText = finalized.markdown.split('## References')[0].match(/\[\d+\]/g) ?? [];
+    expect(finalized.occurrences).toHaveLength(markersInText.length);
+    const byChunk = new Map(CHUNKS.map((chunk) => [chunk.id, chunk.content]));
+    for (const occurrence of finalized.occurrences) {
+      expect(byChunk.get(occurrence.chunkId)).toContain(occurrence.quote);
+      expect(occurrence.quote.length).toBeGreaterThan(0);
+    }
+
+    const stored = finalized.occurrences.map((occurrence) => ({
+      alias: `[${occurrence.number}]`,
+      chunkQuote: occurrence.quote,
+      chunkText: byChunk.get(occurrence.chunkId) ?? '',
+      chunkId: occurrence.chunkId,
+      citationText: `[${occurrence.number}]`,
+      claimText: null,
+    }));
+    expect(scoreCitationBound(finalized.markdown, stored)).toBe(1);
+    expect(scoreQuoteVerbatim(stored)).toBe(1);
+  });
+
+  it('places each citation in the section it appears in', async () => {
+    const report = await writeLocked();
+    const finalized = finalizeLockedCitations(report.markdown, passages(), '2 Oct 2026');
+    const sections = sectionsOf(finalized.markdown);
+    const bound = assignOccurrencesToSections(sections, finalized.occurrences);
+    expect(bound).toHaveLength(finalized.occurrences.length);
+    expect(bound.every((row) => row.sectionOrder != null)).toBe(true);
+    expect(bound.map((row) => row.order)).toEqual(bound.map((_, index) => index + 1));
+    const summaryOrder = sections.findIndex((section) => section.title === 'Summary') + 1;
+    expect(bound.filter((row) => row.sectionOrder === summaryOrder).map((row) => row.number)).toEqual([1, 2]);
+    const referencesOrder = sections.findIndex((section) => section.title === 'References') + 1;
+    expect(bound.some((row) => row.sectionOrder === referencesOrder)).toBe(false);
+  });
+
+  it('drafts a section again when it cites a marker it was not shown', async () => {
+    firstDraftCitesUnknown = true;
+    const report = await writeLocked();
+    const retries = calls.filter((call) => call.text.includes('which you were not shown'));
+    expect(retries).toHaveLength(1);
+    expect(retries[0].text).toContain('[P9]');
+    expect(report.markdown).not.toContain('[P9]');
+    expect(report.citationIssues).toEqual([]);
+  });
+
+  it('removes a marker that survives the second draft, keeps the sentence, and reports it', async () => {
+    firstDraftCitesUnknown = true;
+    retryAlsoCitesUnknown = true;
+    const report = await writeLocked();
+    expect(report.markdown).not.toContain('[P9]');
+    expect(report.markdown).toContain('The authorization covered patients aged 12 and older. It followed a priority review [P1].');
+    expect(report.citationIssues).toEqual([{ section: 'Casgevy authorization', markers: ['P9'] }]);
+  });
+
+  it('ignores locked passages when the Layer 1 switch is off', async () => {
+    delete process.env.BASELINE_LAYER_ENABLED;
+    await writeLocked();
+    const drafter = calls.filter((call) => call.role === 'section_drafter');
+    expect(drafter.length).toBeGreaterThan(0);
+    for (const call of drafter) {
+      expect(call.text).toContain('UNLOCKED-CONTEXT-SENTINEL');
+      expect(call.text).not.toContain('Cite with the markers shown above');
+    }
+  });
+});
+
+describe('citation lock helpers', () => {
+  it('gives a subject section the closest passages and a whole-report section all of them', () => {
+    const many = issuePassages(
+      Array.from({ length: 20 }, (_, index) => ({
+        id: `chunk-${index}`,
+        content: index === 17 ? 'Retraction notices for gene therapy trials were issued in 2021.' : `Filler passage number ${index} about unrelated shipping schedules.`,
+      })),
+      Array.from({ length: 20 }, (_, index) => ({ title: `Source ${index}`, url: `https://example.org/${index}` }))
+    );
+    const subject = passagesForSection(many, ['Retraction notices', 'gene therapy'], { broad: false });
+    expect(subject).toHaveLength(12);
+    expect(subject.map((passage) => passage.marker)).toContain('P18');
+    expect(passagesForSection(many, ['Summary'], { broad: true })).toHaveLength(20);
+  });
+
+  it('copies the quote from the passage without changing a character', () => {
+    const passage = 'First line.\nCosts  rose to $5.2 billion by 2012, according to the audit. A later sentence.';
+    const quote = bestQuote(passage, 'The audit found costs reached $5.2 billion by 2012');
+    expect(passage).toContain(quote);
+    expect(quote).toContain('Costs  rose to $5.2 billion by 2012');
+  });
+
+  it('removes a marker that names no passage and lists no reference for it', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P1]. A stray one [P7].', passages(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('A fact [1]. A stray one.');
+    expect(finalized.removed).toBe(1);
+    expect(finalized.occurrences).toHaveLength(1);
+  });
+
+  it('says no sources were used when nothing is cited', () => {
+    const finalized = finalizeLockedCitations('## Summary\nNothing cited here.', passages(), '2 Oct 2026');
+    expect(finalized.markdown).not.toContain('## References');
+    expect(finalized.markdown.trimEnd().endsWith('No sources were used.')).toBe(true);
+  });
+
+  it('replaces a reference list or closing note already in the text', () => {
+    const finalized = finalizeLockedCitations('## Summary\nA fact [P3].\n\n## References\n1. Stale\n\n## About this report\nStale.', passages(), '2 Oct 2026');
+    expect(finalized.markdown.match(/## References/g)).toHaveLength(1);
+    expect(finalized.markdown).not.toContain('Stale');
+  });
+
+  it('keeps the fixed source count from deciding a Layer 1 run', () => {
+    expect(countShortfallSetsStatus(true)).toBe(false);
+    expect(countShortfallSetsStatus(false)).toBe(true);
+  });
+});
+
+describe('labels a reader must not see', () => {
+  it.each([
+    ['Costs rose [Chunk 12].', 'chunk marker'],
+    ['Costs rose [Chunks 2, 13].', 'chunk marker'],
+    ['See CHUNK 4 for detail.', 'chunk marker'],
+    ['Costs rose [P3].', 'passage marker'],
+    ['Costs rose (Testimony).', 'grade label'],
+    ['Costs rose (Strong_Evidence).', 'grade label'],
+    ['Costs rose [inference].', 'grade label'],
+  ])('flags %s', (text, hit) => {
+    expect(readerFacingLabelHits(text)).toContain(hit);
+  });
+
+  it('passes ordinary prose and numbered citations', () => {
+    expect(readerFacingLabelHits('Congressional testimony said the vote was public [1]. Statistical inference was not required [2].')).toEqual([]);
+  });
+});

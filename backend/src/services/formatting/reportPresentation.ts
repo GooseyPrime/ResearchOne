@@ -95,6 +95,11 @@ export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
+  // Passage markers are how the writer and the pipeline refer to retrieved text.
+  // A reader's citation is a number with a reference behind it.
+  if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(text)) hits.push('chunk marker');
+  if (/\[\s*P\d+(?:\s*[,;]\s*P\d+)*\s*\]/.test(text)) hits.push('passage marker');
+  if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(text)) hits.push('grade label');
   if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
   if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
   return hits;

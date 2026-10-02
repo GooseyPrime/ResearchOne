@@ -21,7 +21,8 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 2. Measurement harness | Done | PR #239. |
 | Fixes outside the slices | Done | PRs #240, #241, #242, #245. |
 | Slice 3. Baseline report: writing | Done | PR #243. Behind `BASELINE_LAYER_ENABLED`, unset by default. See "As built" under slice 3. |
-| **Slice 4. Citations and references** | **Next** | Start only when Brandon tells you to. |
+| Slice 4, part 1. Citation core | In review | Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
+| **Slice 4, parts 2 to 4** | **Next** | Part 2: author, publisher and citation styles. Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
@@ -120,7 +121,7 @@ This is a safety net, not the fix. Slices 3 to 5 make the writer produce the sta
 - Every fix needs a test that fails without it. Run the mutation: revert the fix, watch the named test fail, restore it. Name the test in the commit message.
 - Test the pipeline, not the helper. The repeated failure on this repo is a fix that computes the right answer and hands it to something that ignores it. Each acceptance test below must exercise the path a real run takes.
 - Work the Rule 44 self-check before requesting review. Reply to every automated review comment before asking for a merge.
-- One PR per slice below. Do not combine slices.
+- One PR per slice below. Do not combine slices. A slice may be delivered in parts when this document lists the parts (slice 4 is); each part is its own PR, reviewed and merged before the next starts.
 - TypeScript strict. No `any` to get past the compiler.
 - Where a model call is added, give it a primary and a fallback on a different provider.
 - Status updates to Brandon are in plain English: what the system does today, what the change makes it do, what that means for users. No function names or file paths in status updates. Those belong in commits and PR descriptions.
@@ -189,6 +190,7 @@ Use these. They correct errors in the earlier spec.
 | Layer 1 opt-in (rev 6) | Layer 1 prompt handling applies only when the caller passes `baselineLayer: true`, the switch is on and the run is not adjudicative (`resolveBaselineLayer` in `openrouterService.ts`). It is never inferred from a missing `isAdjudicative`. Only the report writer in `reportGenerator.ts` opts in. |
 | Baseline helpers (rev 6) | `reasoning/baselineReport.ts` holds the reader section plan, heading acceptance, repetition removal, `renumberCitations`, `buildReferences`, `buildAbout`, `distinctSourceCount`, `isoDay` and the reader scores. |
 | Citation markers (rev 6) | With the switch on, the section writer is told that a sentence drawn from `CHUNK n` ends with `[n]`. `renumberCitations` gives each cited source one number, rewrites the markers and removes any marker with no source behind it. Nothing is bound to `report_citations` yet; slice 4 does that. |
+| Citation lock (slice 4, part 1) | `reasoning/citationLock.ts` and `reasoning/citationBinding.ts`. With `CITATION_LOCK_ENABLED` and `BASELINE_LAYER_ENABLED` both on and a non-adjudicative run on the iterative path, the section writer is shown whole passages under `[P#]` markers and may cite only those. The markers are numbered, and the reference list and closing note are built, in `researchOrchestrator.ts` after verification and repair and before the plain-language version and the save. One `report_citations` row is written per citation with `section_id`, `chunk_id`, `source_id`, a word-for-word `chunk_quote`, `citation_order` and the reader number in `citation_text`. The model-based citation mapper is skipped for a report saved this way. |
 | Report length (rev 6) | `resolveReportWordTarget`: a length the user chose is used as chosen; otherwise the confirmed plan's `outputShape.estimatedLength` sets it; otherwise the standard default, logged. A planner or default length is not a user choice for contract growth (`userChosenWordTarget`). Under 300 words the report is the summary, references and closing note. |
 | Material check (rev 6) | `reasoning/materialSufficiency.ts`. With the switch on and a non-adjudicative run, a model judges after retrieval and before reasoning whether the material can answer the request. Insufficient and discovery enabled on the server: one extra search, wait for ingest, re-run retriever analysis and specialists, judge again. Still insufficient: the run ends with a plain reader message, no report row, hold released. Judge unreadable on both models: `assessSourceSufficiency` decides and that is logged. |
 | Outside search control (rev 6) | There is no per-request control by which a user turns outside search off. Availability is `config.discovery.enabled`. |
@@ -399,7 +401,23 @@ Acceptance:
   - `answer_correct` improves and `time_to_report` does not get worse.
 - On challenge tasks, `presentation_clean` is 1.0 and the other challenge scores are unchanged.
 
-### Slice 4. Citations and references (next)
+### Slice 4. Citations and references (part 1 in review)
+
+**Delivered in four parts (2 Oct 2026).** Part 1: the citation core. Part 2: author and publisher metadata and citation styles (the Metadata, Source type and Style bullets, and B4). Part 3: DOI resolution and retraction (the "DOI and retraction" block). Part 4: the quality judge (B3). The acceptance lines below belong to the part that builds what they test.
+
+**As built, part 1.**
+
+- The lock is behind `CITATION_LOCK_ENABLED`, and applies only where `BASELINE_LAYER_ENABLED` is also on and the run is not adjudicative. With either unset, a run is as it was.
+- The writer's markers are `[P1]`, `[P2]`, not `[E#]`. `[E#]` is already the export engine's alias for a saved citation (`formatting/evidenceAliaser.ts`), which can only be assigned after a report exists; reusing the form for something else would make the two collide.
+- Each section is shown whole passages, not quotes cut from them. A section that speaks for the whole report (summary, key findings, disagreement, limits, and the survey layers) sees every passage that fits a character budget. A subject section sees the twelve passages closest to its heading and the request, chosen by shared terms. No model call is added.
+- A draft that cites a marker it was not shown is drafted once more with the offending markers named. If the second draft still cites one, those markers are removed, the sentence stays, and the removal is recorded on the run and returned as `citationIssues`. It does not fail the run.
+- Reader numbers are written into the saved report text, one per source in first-citation order, rather than assigned when the page renders. The passage behind each marker is kept in `report_citations`: the k-th marker in a saved section is the row with that section and the k-th `citation_order`. Slice 5 reads that to show the passage on hover.
+- The quote for a citation is the sentence of the passage that shares the most terms with the citing sentence, copied without changing a character.
+- The reference list keeps the slice 3 layout (publisher, title, date, link) until part 2.
+- A1: the model-based mapper wrote no rows when the writer cited in a form it did not recognise, and it runs only inside the epistemic-persistence stage, which the reference-lookup profile skips. A locked report no longer depends on it. Reference lookups are slice 7.
+- A2 and B1: the presentation check now fails `[Chunk N]`, `[Chunks N, M]`, `CHUNK N`, a leftover `[P#]`, and a bracketed or parenthesised grade word in any letter case. It detects; it does not delete. The save-time clean-up still keeps `[Chunk N]` in reports written with the lock off, because those markers are the only citations such a report has. They stop appearing when the lock is on.
+- B2: on a Layer 1 run the fixed source count is recorded on the run and does not set a failed or degraded status. Verification and the contract audit still decide. Adjudicative runs and switch-off runs are unchanged.
+- Not in part 1: the hover card and the reference list on the reading page (slice 5), exports reading the new rows (part 2, with styles), the light synthesis path (slice 7).
 
 **Starting point (rev 6).** Slice 3 left an interim scheme: the writer cites `[n]` for `CHUNK n`, `renumberCitations` renumbers by source, and nothing is bound to `report_citations`. This slice replaces the interim scheme with the citation lock below and keeps its two guarantees: one number per source in first-citation order, and no marker without a source. Everything new is gated as invariants 13 and 14 require.
 

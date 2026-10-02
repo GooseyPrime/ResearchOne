@@ -1,5 +1,6 @@
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
+import { LOCK_INSTRUCTION, formatLockedContext, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
 import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
@@ -1085,6 +1086,12 @@ export async function generateIterativeReport(args: {
   skipChallenger?: boolean;
   isAdjudicative?: boolean;
   usedSources?: UsedSource[];
+  /**
+   * Passages the writer must cite by marker. Present only when the citation lock
+   * is on. The markers stay in the returned text; the caller turns them into
+   * reader numbers and builds the reference list before the report is saved.
+   */
+  lockedPassages?: LockedPassage[];
 }): Promise<{
   markdown: string;
   sections: ReportSectionDraft[];
@@ -1093,6 +1100,8 @@ export async function generateIterativeReport(args: {
   plannedItemTitles: ReadonlySet<string>;
   /** How many sections the refiner returned usably; the rest kept their draft. */
   refinedSectionCount: number;
+  /** Sections whose second draft still cited a marker they were not shown; those markers were removed. */
+  citationIssues: Array<{ section: string; markers: string[] }>;
   /**
    * Every role call this function made, for `research_runs.model_log`.
    *
@@ -1174,6 +1183,13 @@ export async function generateIterativeReport(args: {
     isAdjudicative: args.isAdjudicative,
     baselineLayer: baselineLayerEnabled() && args.isAdjudicative !== true,
   };
+  const lockedPassages =
+    baselineLayerEnabled() && args.isAdjudicative !== true && args.lockedPassages && args.lockedPassages.length > 0
+      ? args.lockedPassages
+      : null;
+  /** Sections that speak for the whole report see every passage that fits. */
+  const BROAD_SECTION_KEYS = new Set(['summary', 'key_findings', 'disagreement', 'limits', 'established', 'contested', 'open_questions']);
+  const citationIssues: Array<{ section: string; markers: string[] }> = [];
 
   // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable
   // must not share a default budget with a four-section explainer. An explicit
@@ -1339,10 +1355,10 @@ Write the section body starting on the following line.`;
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
     const rollingSummary = contextSummary;
 
-    const sectionResult = await callRoleModel({
-      role: 'section_drafter',
-      ...v2,
-      messages: [
+    const shownPassages = lockedPassages
+      ? passagesForSection(lockedPassages, [section.title, args.query], { broad: BROAD_SECTION_KEYS.has(section.key) })
+      : null;
+    const drafterMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? false) },
         {
           role: 'user',
@@ -1367,23 +1383,54 @@ Required deliverables for this intent:\n${templateRequiredDeliverables.length > 
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 ${itemNameDirectiveFor(section)}
-Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
+Source material: ${shownPassages ? formatLockedContext(shownPassages, stripGradeLines) : baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
-${layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
+${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
-      ],
-    });
+    ];
+    let sectionResult = await callRoleModel({ role: 'section_drafter', ...v2, messages: drafterMessages });
 
     modelCalls.push(sectionResult);
+
+    // Citation lock: a marker the section was not shown is not a source. The
+    // section is drafted once more with the offending markers named. If the
+    // second draft still cites one, those markers are removed and the removal
+    // is reported, so a reader never sees a citation with nothing behind it.
+    let draftedText = sectionResult.content;
+    if (shownPassages) {
+      const unknown = unknownMarkers(draftedText, shownPassages);
+      if (unknown.length > 0) {
+        const retry = await callRoleModel({
+          role: 'section_drafter',
+          ...v2,
+          messages: [
+            ...drafterMessages,
+            { role: 'assistant', content: draftedText },
+            {
+              role: 'user',
+              content: `That draft cites ${unknown.map((marker) => `[${marker}]`).join(', ')}, which you were not shown. Rewrite the section using only the markers shown in the source material. Where no shown passage supports a sentence, remove the sentence.`,
+            },
+          ],
+        });
+        modelCalls.push(retry);
+        sectionResult = retry;
+        draftedText = retry.content;
+        const stillUnknown = unknownMarkers(draftedText, shownPassages);
+        if (stillUnknown.length > 0) {
+          citationIssues.push({ section: section.title, markers: stillUnknown });
+          draftedText = stripUnknownMarkers(draftedText, shownPassages);
+        }
+      }
+    }
 
     // Headings are composed here, from the plan's ordinal, the report type's
     // label, and the drafter's declared item name. The model never authors one,
     // so the contract auditor matches exactly rather than pattern-matching prose.
-    const { itemName, content: sectionText } = extractItemName(sectionResult.content.trim());
+    const { itemName, content: sectionText } = extractItemName(draftedText.trim());
     const finalTitle =
       typeof section.itemOrdinal === 'number'
         ? composeItemHeading({
@@ -1547,8 +1594,8 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       .trim();
   const finalSections: ReportSectionDraft[] = sections.map((section) => {
     const refined = refinedBodies.get(section.key);
-    const draftHasCitation = /\[\d+\]/.test(section.content);
-    const refinedHasCitation = refined ? /\[\d+\]/.test(refined) : false;
+    const draftHasCitation = /\[(?:P)?\d+[\],;]/.test(section.content);
+    const refinedHasCitation = refined ? /\[(?:P)?\d+[\],;]/.test(refined) : false;
     const content = layer1 && refined && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
     return { ...section, content: layer1 ? stripMachineFiller(content) : content };
   });
@@ -1574,20 +1621,33 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
           : section
       )
     : prepared;
-  const numbered = layer1 ? renumberCitations(cleaned, args.usedSources ?? []) : { sections: cleaned, cited: [] as UsedSource[] };
+  // With the citation lock on, markers stay as issued. The caller numbers them
+  // and adds the reference list and closing note just before the report is saved,
+  // after verification and repair, so those steps cannot break the binding.
+  const numbered = lockedPassages
+    ? { sections: cleaned.filter((section) => section.key !== 'references' && section.key !== 'about'), cited: [] as UsedSource[] }
+    : layer1
+      ? renumberCitations(cleaned, args.usedSources ?? [])
+      : { sections: cleaned, cited: [] as UsedSource[] };
   const cited = numbered.cited;
   const references = buildReferences(cited);
   const readCount = distinctSourceCount(args.usedSources ?? []);
-  const withSystem = layer1
+  const withSystem = lockedPassages
+    ? numbered.sections
+    : layer1
     ? [
         ...numbered.sections.filter((section) => section.key !== 'references' && section.key !== 'about'),
         ...(references ? [{ key: 'references', title: 'References', content: references }] : []),
         { key: 'about', title: 'About this report', content: buildAbout(cited.length === 0 ? 0 : readCount, formatReadDate()) },
       ]
     : cleaned;
+  // While the lock is on the text still carries the writer's markers on purpose;
+  // they are numbered before the report is saved and are not a presentation fault here.
+  const readerFailures = (text: string): string[] =>
+    presentationFailures(text).filter((hit) => !(lockedPassages && hit === 'passage marker'));
   let sectionsOut = withSystem;
   let markdown = sectionsToMarkdown(sectionsOut, layer1 ? acceptedTitle || undefined : undefined);
-  if (baselineLayerEnabled() && args.isAdjudicative !== true && presentationFailures(markdown).length > 0) {
+  if (baselineLayerEnabled() && args.isAdjudicative !== true && readerFailures(markdown).length > 0) {
     const redraft = await callRoleModel({
       role: 'coherence_refiner',
       ...v2,
@@ -1603,7 +1663,7 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ...section,
       content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
     }));
-    if (!parsed && presentationFailures(sectionsToMarkdown(sectionsOut)).length > 0) {
+    if (!parsed && readerFailures(sectionsToMarkdown(sectionsOut)).length > 0) {
       sectionsOut = sectionsOut.map((section) => ({
         ...section,
         content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
@@ -1625,5 +1685,6 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     plannedItemTitles: new Set(resolvedItemTitles),
     refinedSectionCount: refinedBodies.size,
     modelCalls,
+    citationIssues,
   };
 }
