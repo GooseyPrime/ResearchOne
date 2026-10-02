@@ -3,22 +3,22 @@ import { scoreStoredReport } from '../services/eval/scoreReport';
 import { loadEvalTasks } from '../services/eval/taskSet';
 
 describe('eval scorers', () => {
-  it('scores a dangling alias below 1 when citation lock is on', () => {
-    const scores = scoreStoredReport({
-      reportMarkdown: 'The finding holds [E9].',
-      citations: [{ alias: 'E1', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-1' }],
-      citationLock: true,
-    });
-    expect(scores.citation_bound).toBeLessThan(1);
-  });
-
-  it('matches a stored alias written with brackets when citation lock is on', () => {
+  it('scores a locked report that cites only with an export alias as unbound', () => {
     const scores = scoreStoredReport({
       reportMarkdown: 'The finding holds [E1].',
       citations: [{ alias: '[E1]', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-1' }],
       citationLock: true,
     });
-    expect(scores.citation_bound).toBe(1);
+    expect(scores.citation_bound).toBe(0);
+  });
+
+  it('lowers the score of a locked report that has a saved row its text does not show', () => {
+    const numbered = { alias: '', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-1', citationText: '[1]' };
+    const report = 'The finding holds [1].';
+    expect(scoreStoredReport({ reportMarkdown: report, citations: [numbered], citationLock: true }).citation_bound).toBe(1);
+    const extra = { alias: '', chunkQuote: 'a quote', chunkText: 'a quote in the chunk', chunkId: 'chunk-2', citationText: null };
+    expect(scoreStoredReport({ reportMarkdown: report, citations: [numbered, extra], citationLock: true }).citation_bound).toBe(0.5);
+    expect(scoreStoredReport({ reportMarkdown: report, citations: [extra, numbered], citationLock: true }).citation_bound).toBe(0);
   });
 
   it('scores a stored report that has no alias markers from its citation rows', () => {

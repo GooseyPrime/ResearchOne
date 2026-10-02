@@ -1,3 +1,4 @@
+import { citationLockEnabled, runWithFlags } from '../../config';
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
 import { judgeReportQuality } from './reportQualityJudge';
@@ -21,6 +22,8 @@ export interface StoredRun {
   completedAt: string | null;
   tokens: number | null;
   recordedCostUsd: number | null;
+  /** Whether the worker wrote this report with the citation lock; null when the run did not record it. */
+  citationLocked?: boolean | null;
 }
 
 export interface EvalTransport {
@@ -50,7 +53,11 @@ export function buildScoreInput(
     anomalyPhrase: task.anomalyPhrase,
     quoteSupports,
     quoteSupportsNotJudged: notJudged,
-    citationLock: flagOverrides?.CITATION_LOCK_ENABLED === true,
+    // Score as locked only when the run was locked: the lock needs both switches,
+    // read the same way the worker reads them for this run.
+    // The worker's own record decides. The harness may run on another machine
+    // with other settings, so its view is only a fallback for a run with no record.
+    citationLock: stored.citationLocked ?? runWithFlags(flagOverrides ?? null, () => citationLockEnabled()),
     seconds: secondsBetween(stored.startedAt, stored.completedAt),
     tokens: stored.tokens,
   };
@@ -149,8 +156,8 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
      WHERE x.run_id = $1`,
     [runId]
   );
-  const timing = await query<{ started_at: string | null; completed_at: string | null }>(
-    `SELECT started_at, completed_at FROM research_runs WHERE id = $1`,
+  const timing = await query<{ started_at: string | null; completed_at: string | null; citation_lock: string | null }>(
+    `SELECT started_at, completed_at, corpus_after->>'citationLock' AS citation_lock FROM research_runs WHERE id = $1`,
     [runId]
   );
   const usage = await query<{ tokens: string | null; cost: string | null }>(
@@ -173,6 +180,8 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
     completedAt: timing[0]?.completed_at ?? null,
     tokens: usage[0]?.tokens ? Number(usage[0].tokens) : null,
     recordedCostUsd: usage[0]?.cost ? Number(usage[0].cost) : null,
+    // A finished run that recorded nothing was written without the lock.
+    citationLocked: timing[0] ? timing[0].citation_lock === 'true' : null,
   };
 }
 

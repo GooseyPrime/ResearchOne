@@ -1,3 +1,4 @@
+import { switchEnabled } from './runFlags';
 import path from 'path';
 import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
@@ -562,8 +563,13 @@ validateEnsemblePresetsAgainstAllowlist();
 validateV2ModePresetsAgainstAllowlist();
 
 export { config };
+export { runWithFlags, switchEnabled } from './runFlags';
+/** Slice 4. Unset is off. The lock applies only where the Layer 1 switch is also on. */
+export function citationLockEnabled(): boolean {
+  return switchEnabled('CITATION_LOCK_ENABLED') && switchEnabled('BASELINE_LAYER_ENABLED');
+}
 export function baselineLayerEnabled(): boolean {
-  return process.env.BASELINE_LAYER_ENABLED === 'true';
+  return switchEnabled('BASELINE_LAYER_ENABLED');
 }
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';

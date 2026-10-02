@@ -26,3 +26,42 @@ describe('reportGateStatus', () => {
     }
   });
 });
+
+describe('terminal status and the fixed source count', () => {
+  const base = { contractFailed: false, verifierFailed: false, evidenceShortfallDegrades: false, sourceCoverageShortfall: true };
+
+  it('downgrades a switch-off run that read fewer sources than planned', async () => {
+    const { decideReportGateStatus } = await import('../services/reasoning/reportGateStatus');
+    const { countShortfallSetsStatus } = await import('../services/reasoning/citationLock');
+    expect(decideReportGateStatus({ ...base, countSetsStatus: countShortfallSetsStatus(false) })).toEqual({
+      status: 'completed_degraded',
+      countShortfallApplied: true,
+    });
+  });
+
+  it('completes a Layer 1 run with the same shortfall, leaving verification and the contract to decide', async () => {
+    const { decideReportGateStatus } = await import('../services/reasoning/reportGateStatus');
+    const { countShortfallSetsStatus } = await import('../services/reasoning/citationLock');
+    const countSetsStatus = countShortfallSetsStatus(true);
+    expect(decideReportGateStatus({ ...base, countSetsStatus })).toEqual({ status: 'completed', countShortfallApplied: false });
+    expect(decideReportGateStatus({ ...base, countSetsStatus, verifierFailed: true }).status).toBe('verification_failed');
+    expect(decideReportGateStatus({ ...base, countSetsStatus, contractFailed: true }).status).toBe('contract_failed');
+    expect(decideReportGateStatus({ ...base, countSetsStatus, evidenceShortfallDegrades: true }).status).toBe('completed_degraded');
+  });
+
+  it('applies the count after contract and verifier failures, never before', async () => {
+    const { decideReportGateStatus } = await import('../services/reasoning/reportGateStatus');
+    expect(decideReportGateStatus({ ...base, countSetsStatus: true, contractFailed: true, verifierFailed: true })).toEqual({
+      status: 'contract_failed',
+      countShortfallApplied: false,
+    });
+    expect(decideReportGateStatus({ ...base, countSetsStatus: true, verifierFailed: true }).countShortfallApplied).toBe(false);
+  });
+
+  it('is the rule the research job applies', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('src/services/reasoning/researchOrchestrator.ts', 'utf8');
+    expect(source).toMatch(/const decided = decideReportGateStatus\(\{[\s\S]{0,400}countSetsStatus: countShortfallSetsStatus\(layer1Run\)/);
+    expect(source).toMatch(/const nextStatus: ReportGateStatus = decided\.status;/);
+  });
+});

@@ -91,12 +91,202 @@ function protectedSegmentFor(markdown: string): RegExp {
   );
 }
 
+/** Two or more citation brackets side by side ("[1][2]", "[P1][P2]") are citations, not a reference link. */
+const CITATION_RUN = /^(?:\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]){2,}$/i;
+/** A passage marker written as the text of a link is still a citation. */
+const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
+/**
+ * So is one that a link definition ("[P1]: url") turns into a shortcut or
+ * collapsed reference link. The definition line itself stays protected. The
+ * older citation forms ("[E1]", "[Chunk 4]") are released the same way, so a
+ * definition cannot hide one from the checks and clean-ups that read prose.
+ */
+const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
+/** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
+const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
+
+/** Width of leading whitespace, a tab counting as four columns. */
+function indentWidth(line: string): number {
+  return (/^[ \t]*/.exec(line)?.[0] ?? '').replace(/\t/g, '    ').length;
+}
+
+const LIST_ITEM_LINE = /^([ \t]*)((?:[-*+]|\d+[.)])[ \t]+)/;
+
+/**
+ * The column where the text of the list item holding this line begins, or null
+ * when no list item holds it. Looking back, an item holds the line only if
+ * every line in between is indented at least as far as that item's text; a
+ * shallower line in between has already closed the item.
+ */
+function containingItemColumn(markdown: string, at: number, lineIndent: number): number | null {
+  const before = markdown.slice(0, at).split('\n');
+  // A segment can begin with the line break before its line.
+  if (!markdown.startsWith('\n', at)) before.pop();
+  let shallowest = lineIndent;
+  for (let index = before.length - 1; index >= 0; index -= 1) {
+    const line = before[index];
+    if (/^\s*$/.test(line)) continue;
+    const indent = indentWidth(line);
+    const item = LIST_ITEM_LINE.exec(line);
+    if (item) {
+      const column = indent + item[2].length;
+      if (column <= shallowest) return column;
+    } else if (indent === 0) {
+      return null;
+    }
+    shallowest = Math.min(shallowest, indent);
+  }
+  return null;
+}
+
+/**
+ * Whether an indented line is prose nested in a list, by where it sits and not
+ * by what it says. Inside a list item, a nested item is prose, and so is a
+ * continuation line; a line four or more columns past where the item's text
+ * begins is a code block inside the item, as Markdown reads it. With no list
+ * item holding it, an indented line is code.
+ */
+function nestedListProse(markdown: string, segment: string, at: number): boolean {
+  if (!/^(?: {4,}|\t)/.test(segment)) return false;
+  const indent = indentWidth(segment);
+  const column = containingItemColumn(markdown, at, indent);
+  if (column === null) return false;
+  if (LIST_ITEM_LINE.test(segment)) return true;
+  return indent < column + 4;
+}
+
+/**
+ * Apply a change to the prose of a report and to nothing else. Code in every
+ * Markdown form, links, link definitions and URLs are returned as written, so a
+ * number in brackets inside them is never read as a citation or removed.
+ */
+export function mapCitationProse(markdown: string, change: (prose: string) => string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
+    const segment = match[0];
+    if (nestedListProse(markdown, segment, match.index ?? 0)) {
+      // Nested prose: read the line itself, so code and links inside it stay protected.
+      const start = match.index ?? 0;
+      const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
+      out += change(markdown.slice(cursor, start)) + indent + mapCitationProse(segment.slice(indent.length), change);
+      cursor = start + segment.length;
+      continue;
+    }
+    if (
+      CITATION_RUN.test(segment) ||
+      MARKER_AS_LINK_TEXT.test(segment) ||
+      MARKER_AS_REFERENCE_LINK.test(segment) ||
+      NUMBER_AS_REFERENCE_LINK.test(segment)
+    ) {
+      // Released, not protected: the cursor stays put, so the segment is handed
+      // to `change` once, inside the next prose span, joined to the words around
+      // it. Passing it alone would cut the sentence it cites in two.
+      continue;
+    }
+    const start = match.index ?? 0;
+    out += change(markdown.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + change(markdown.slice(cursor));
+}
+
+/** An inline link, with its label captured. */
+const INLINE_LINK = /\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g;
+/**
+ * A link whose whole label is a citation: a small number, a passage marker, an
+ * export alias or a chunk marker, written as an inline link or as a reference
+ * link with a label of its own.
+ */
+const CITATION_AS_LINK =
+  /\[(\s*(?:\d{1,3}|P\d+\b[^\]\n]*|E\d+|(?:see\s+)?chunks?\s+\d+[^\]\n]*)\s*)\](?:\([^)\s]*(?:\s+"[^"]*")?\)|\[(?!\s*(?:P?\d+|E\d+)\s*[\],;])[^\]\n]*\])/gi;
+
+/**
+ * Turn "[1](url)" into "[1]" outside code, so a citation written as a link is
+ * read as the citation the reader takes it for. A longer number ("[2023](url)")
+ * is an ordinary link and is left alone.
+ */
+export function unwrapCitationLinks(markdown: string): string {
+  return mapOutsideCode(markdown, (text) => text.replace(CITATION_AS_LINK, '[$1]'));
+}
+
+/**
+ * Apply a change to everything that is not code. An indented line nested in a
+ * list is prose, so it is read too, with any inline code inside it still kept.
+ * `code` says what a code segment becomes; by default it is left as written.
+ */
+function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of markdown.matchAll(CODE_ONLY)) {
+    const start = match.index ?? 0;
+    const segment = match[0];
+    out += change(markdown.slice(cursor, start));
+    if (nestedListProse(markdown, segment, start)) {
+      const indent = /^[ \t]*/.exec(segment)?.[0] ?? '';
+      out += indent + mapOutsideCode(segment.slice(indent.length), change, code);
+    } else {
+      out += code(segment);
+    }
+    cursor = start + segment.length;
+  }
+  return out + change(markdown.slice(cursor));
+}
+
+/**
+ * Apply a change to the label of every link outside code: the "label" of
+ * "[label](destination)" and of "[label][ref]". Destinations, identifiers and
+ * code are returned as written.
+ */
+export function mapLinkLabels(markdown: string, change: (label: string) => string): string {
+  return mapOutsideCode(markdown, (text) =>
+    text
+      .replace(/\[([^\]\n]*)\](\([^)\s]*(?:\s+"[^"]*")?\))/g, (_full, label: string, destination: string) => `[${change(label)}]${destination}`)
+      .replace(/\[([^\]\n]*)\](\[[^\]\n]+\])/g, (_full, label: string, ref: string) => `[${change(label)}]${ref}`)
+  );
+}
+
+/**
+ * The text as a reader sees it: each inline link replaced by its label where it
+ * stands, and code, link definitions and bare addresses taken out.
+ */
+function readerVisibleText(text: string): string {
+  return mapOutsideCode(text, (part) => part, () => '\uE004')
+    .replace(INLINE_LINK, '$1')
+    // A reference-style link shows its label; the identifier after it is never seen.
+    .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
+    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
+    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
-  if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(text) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(text)) hits.push('grade label');
-  if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(text)) hits.push('internal step');
-  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(text)) hits.push('courtroom');
-  if (/\bthis report synthesizes evidence\b/i.test(text)) hits.push('boilerplate');
+  // Only prose is checked: a code sample or a link that happens to contain a
+  // label is not a leak, and the clean-up that removes labels never touches it.
+  // Fragments are kept apart, so text on either side of a code span cannot join into a false match.
+  let prose = '';
+  mapCitationProse(text, (part) => {
+    prose += `${part}\uE004`;
+    return part;
+  });
+  // The label of a link is read by the reader too; its destination is not.
+  const outsideCode = mapOutsideCode(text, (part) => part, () => '\uE004');
+  for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+  // Likewise the label of a reference-style link ("[label][ref]").
+  for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+  if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
+  if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
+  // Passage markers are how the writer and the pipeline refer to retrieved text.
+  // A reader's citation is a number with a reference behind it.
+  if (/\[\s*chunks?\s+\d+(?:\s*,\s*\d+)*\s*\]|\bCHUNK\s+\d+\b/i.test(prose)) hits.push('chunk marker');
+  // Closed or not: "[P1" left open is still a marker on the page.
+  if (/\[\s*P\d+\b/i.test(prose)) hits.push('passage marker');
+  if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
+  // Phrases are read as the reader sees them: a link shows its label in place,
+  // so "This [report](url) synthesizes evidence" is the banned phrase.
+  const seen = `${prose}\uE004${readerVisibleText(text)}`;
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(seen)) hits.push('courtroom');
+  if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
   return hits;
 }
 

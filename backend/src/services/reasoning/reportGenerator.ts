@@ -1,5 +1,7 @@
+import { mapCitationProse, mapLinkLabels } from '../formatting/reportPresentation';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
+import { LOCK_INSTRUCTION, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
 import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
@@ -428,6 +430,21 @@ row is read as belonging to a different schema.`;
  * the ordinals the assembler needs were invisible to it.
  */
 type RuntimeSectionPlanEntry = SectionPlanEntry;
+
+/**
+ * Whether a section is about one subject, not the whole report. Only two kinds
+ * are: a subject heading the outline step named ("topic_…"), and one item of a
+ * repeated deliverable. Every other section of every template (summary, direct
+ * answer, sources, findings, limits, recommendation, conclusion and the rest)
+ * speaks for the whole report. Under the citation lock a subject section is
+ * narrowed to the passages closest to it when they do not all fit; a
+ * whole-report section sees every passage that fits. Naming the two narrow
+ * kinds, not listing the broad ones, means a new template key is never
+ * narrowed by oversight.
+ */
+export function isSubjectSection(section: { key: string; itemOrdinal?: number }): boolean {
+  return section.key.startsWith('topic_') || typeof section.itemOrdinal === 'number';
+}
 
 /**
  * How many item sections may be drafted at once.
@@ -894,6 +911,39 @@ export function stripPromptEchoFromReport(markdown: string, query: string): stri
 
 export { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 
+/**
+ * Replace courtroom words and the stock opening in the prose of a section with
+ * plain wording, and take grade labels out; link labels included. Code in every Markdown form and link
+ * destinations are not read and not changed.
+ */
+export function removeBannedWording(content: string): string {
+  // Each word is swapped for a plain one that fits the same place in the
+  // sentence, so the sentence still reads. A grade token is a label, not a
+  // word of the sentence, and is taken out.
+  const plain: Record<string, string> = {
+    verdict: 'finding',
+    verdicts: 'findings',
+    adjudicate: 'assess',
+    adjudicated: 'assessed',
+    adjudicates: 'assesses',
+    adjudicating: 'assessing',
+    falsified: 'disproved',
+  };
+  const clean = (text: string): string =>
+    text
+      // In brackets first, so no empty pair is left behind.
+      .replace(/[ \t]*[[(]\s*(?:established[_ ]fact|strong[_ ]evidence)\s*[\])]/gi, '')
+      .replace(/[ \t]*\b(?:established_fact|strong_evidence)\b/gi, '')
+      .replace(/\b(?:verdicts?|adjudicat(?:e|ed|es|ing)|falsified)\b/gi, (word) => {
+        const swap = plain[word.toLowerCase()] ?? word;
+        return word[0] === word[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap;
+      })
+      .replace(/\bcase (for|against)\b/gi, 'argument $1')
+      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence');
+  // A link's label is prose the reader sees; its destination is not.
+  return mapCitationProse(mapLinkLabels(content, clean), clean);
+}
+
 export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {
   const cleaned = stripPromptEchoFromReport(markdown, query);
   const title = deriveGeneratedReportTitle(query, cleaned, intentId);
@@ -1085,6 +1135,12 @@ export async function generateIterativeReport(args: {
   skipChallenger?: boolean;
   isAdjudicative?: boolean;
   usedSources?: UsedSource[];
+  /**
+   * Passages the writer must cite by marker. Present only when the citation lock
+   * is on. The markers stay in the returned text; the caller turns them into
+   * reader numbers and builds the reference list before the report is saved.
+   */
+  lockedPassages?: LockedPassage[];
 }): Promise<{
   markdown: string;
   sections: ReportSectionDraft[];
@@ -1093,6 +1149,8 @@ export async function generateIterativeReport(args: {
   plannedItemTitles: ReadonlySet<string>;
   /** How many sections the refiner returned usably; the rest kept their draft. */
   refinedSectionCount: number;
+  /** Sections whose second draft still cited a marker they were not shown; those markers were removed. */
+  citationIssues: Array<{ section: string; markers: string[] }>;
   /**
    * Every role call this function made, for `research_runs.model_log`.
    *
@@ -1174,6 +1232,12 @@ export async function generateIterativeReport(args: {
     isAdjudicative: args.isAdjudicative,
     baselineLayer: baselineLayerEnabled() && args.isAdjudicative !== true,
   };
+  const lockedPassages =
+    // An empty list is still a lock: nothing was retrieved, so nothing may be cited.
+    baselineLayerEnabled() && args.isAdjudicative !== true && args.lockedPassages
+      ? args.lockedPassages
+      : null;
+  const citationIssues: Array<{ section: string; markers: string[] }> = [];
 
   // WO-AC R2 — scale the word budget to the contract. A 107-block deliverable
   // must not share a default budget with a four-section explainer. An explicit
@@ -1339,10 +1403,10 @@ Write the section body starting on the following line.`;
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
     const rollingSummary = contextSummary;
 
-    const sectionResult = await callRoleModel({
-      role: 'section_drafter',
-      ...v2,
-      messages: [
+    const shownPassages = lockedPassages
+      ? passagesForSection(lockedPassages, [section.title, args.query], { broad: !isSubjectSection(section) })
+      : null;
+    const drafterMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system', content: getSystemPrompt('section_drafter', args.isAdjudicative ?? false) },
         {
           role: 'user',
@@ -1367,23 +1431,54 @@ Required deliverables for this intent:\n${templateRequiredDeliverables.length > 
 Verifier rubric for this intent:\n${templateVerifierRubric || 'none'}
 ${requestedFormatsBlock}
 ${itemNameDirectiveFor(section)}
-Source material: ${baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
+Source material: ${shownPassages ? formatLockedContext(shownPassages, stripGradeLines) : baselineLayerEnabled() && args.isAdjudicative !== true ? stripGradeLines(args.sourceContext) : args.sourceContext}
 Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
-${layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
+${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
-      ],
-    });
+    ];
+    let sectionResult = await callRoleModel({ role: 'section_drafter', ...v2, messages: drafterMessages });
 
     modelCalls.push(sectionResult);
+
+    // Citation lock: a marker the section was not shown is not a source. The
+    // section is drafted once more with the offending markers named. If the
+    // second draft still cites one, those markers are removed and the removal
+    // is reported, so a reader never sees a citation with nothing behind it.
+    let draftedText = sectionResult.content;
+    if (shownPassages) {
+      const unknown = unknownMarkers(draftedText, shownPassages);
+      if (unknown.length > 0) {
+        const retry = await callRoleModel({
+          role: 'section_drafter',
+          ...v2,
+          messages: [
+            ...drafterMessages,
+            { role: 'assistant', content: draftedText },
+            {
+              role: 'user',
+              content: `That draft cites ${unknown.map((marker) => `[${marker}]`).join(', ')}, which you were not shown. Rewrite the section using only the markers shown in the source material. Where no shown passage supports a sentence, remove the sentence.`,
+            },
+          ],
+        });
+        modelCalls.push(retry);
+        sectionResult = retry;
+        draftedText = retry.content;
+        const stillUnknown = unknownMarkers(draftedText, shownPassages);
+        if (stillUnknown.length > 0) {
+          citationIssues.push({ section: section.title, markers: stillUnknown });
+          draftedText = stripUnknownMarkers(draftedText, shownPassages);
+        }
+      }
+    }
 
     // Headings are composed here, from the plan's ordinal, the report type's
     // label, and the drafter's declared item name. The model never authors one,
     // so the contract auditor matches exactly rather than pattern-matching prose.
-    const { itemName, content: sectionText } = extractItemName(sectionResult.content.trim());
+    const { itemName, content: sectionText } = extractItemName(draftedText.trim());
     const finalTitle =
       typeof section.itemOrdinal === 'number'
         ? composeItemHeading({
@@ -1547,9 +1642,12 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       .trim();
   const finalSections: ReportSectionDraft[] = sections.map((section) => {
     const refined = refinedBodies.get(section.key);
-    const draftHasCitation = /\[\d+\]/.test(section.content);
-    const refinedHasCitation = refined ? /\[\d+\]/.test(refined) : false;
-    const content = layer1 && refined && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
+    const draftHasCitation = /\[(?:P)?\d+[\],;]/.test(section.content);
+    const refinedHasCitation = refined ? /\[(?:P)?\d+[\],;]/.test(refined) : false;
+    // Locked: the refiner sees the draft, not the passages, so its version is
+    // kept only when every citation is where the drafter put it.
+    const refinedKeepsLock = !lockedPassages || !refined || markersPreserved(section.content, refined, { allowRemoval: false });
+    const content = layer1 && refined && refinedKeepsLock && (!draftHasCitation || refinedHasCitation) ? refined : refined && !layer1 ? refined : section.content;
     return { ...section, content: layer1 ? stripMachineFiller(content) : content };
   });
 
@@ -1565,7 +1663,12 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ],
     });
     modelCalls.push(rewrite);
-    prepared = parseRewrittenSections(rewrite.content, prepared) ?? prepared;
+    const deduplicated = parseRewrittenSections(rewrite.content, prepared);
+    prepared = deduplicated
+      ? lockedPassages
+        ? keepRewritesThatPreserveMarkers(prepared, deduplicated, { allowRemoval: true })
+        : deduplicated
+      : prepared;
   }
   const cleaned = layer1
     ? removeRepeatedSentences(prepared).map((section) =>
@@ -1574,20 +1677,36 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
           : section
       )
     : prepared;
-  const numbered = layer1 ? renumberCitations(cleaned, args.usedSources ?? []) : { sections: cleaned, cited: [] as UsedSource[] };
+  // With the citation lock on, markers stay as issued. The caller numbers them
+  // and adds the reference list and closing note just before the report is saved,
+  // after verification and repair, so those steps cannot break the binding.
+  const numbered = lockedPassages
+    ? { sections: cleaned.filter((section) => section.key !== 'references' && section.key !== 'about'), cited: [] as UsedSource[] }
+    : layer1
+      ? renumberCitations(cleaned, args.usedSources ?? [])
+      : { sections: cleaned, cited: [] as UsedSource[] };
   const cited = numbered.cited;
   const references = buildReferences(cited);
   const readCount = distinctSourceCount(args.usedSources ?? []);
-  const withSystem = layer1
+  const withSystem = lockedPassages
+    ? numbered.sections
+    : layer1
     ? [
         ...numbered.sections.filter((section) => section.key !== 'references' && section.key !== 'about'),
         ...(references ? [{ key: 'references', title: 'References', content: references }] : []),
         { key: 'about', title: 'About this report', content: buildAbout(cited.length === 0 ? 0 : readCount, formatReadDate()) },
       ]
     : cleaned;
+  // While the lock is on the text still carries the writer's markers on purpose;
+  // they are numbered before the report is saved and are not a presentation fault here.
+  const readerFailures = (text: string): string[] =>
+    // Markers still in place are not failures here: with the lock they become
+    // numbers later, and without it `[Chunk N]` is the citation form the report
+    // is saved with. Redrafting over either would rewrite the citations themselves.
+    presentationFailures(text).filter((hit) => !(lockedPassages ? hit === 'passage marker' : hit === 'chunk marker'));
   let sectionsOut = withSystem;
   let markdown = sectionsToMarkdown(sectionsOut, layer1 ? acceptedTitle || undefined : undefined);
-  if (baselineLayerEnabled() && args.isAdjudicative !== true && presentationFailures(markdown).length > 0) {
+  if (baselineLayerEnabled() && args.isAdjudicative !== true && readerFailures(markdown).length > 0) {
     const redraft = await callRoleModel({
       role: 'coherence_refiner',
       ...v2,
@@ -1598,17 +1717,18 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ],
     });
     modelCalls.push(redraft);
-    const parsed = parseRewrittenSections(redraft.content, sectionsOut);
-    sectionsOut = parsed ?? sectionsOut.map((section) => ({
-      ...section,
-      content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
-    }));
-    if (!parsed && presentationFailures(sectionsToMarkdown(sectionsOut)).length > 0) {
-      sectionsOut = sectionsOut.map((section) => ({
-        ...section,
-        content: section.content.replace(/\b(?:established_fact|strong_evidence)\b/gi, '').replace(/\b(?:verdict|adjudicate)\b/gi, ''),
-      }));
-    }
+    const redrafted = parseRewrittenSections(redraft.content, sectionsOut);
+    const parsed = redrafted && lockedPassages ? keepRewritesThatPreserveMarkers(sectionsOut, redrafted, { allowRemoval: true }) : redrafted;
+    sectionsOut = parsed ?? sectionsOut;
+    // A redraft can fail to parse, or come back with a section put back as it
+    // was because the rewrite moved a citation. Either way a section can still
+    // carry what the redraft was for. The words are taken out of any section
+    // that still fails; citations stay where they are. Only prose is touched:
+    // code and link destinations are left exactly as written, as the check
+    // that found the wording never read them.
+    sectionsOut = sectionsOut.map((section) =>
+      readerFailures(`${section.title}\n\n${section.content}`).length > 0 ? { ...section, content: removeBannedWording(section.content) } : section
+    );
   }
   if (layer1) {
     sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
@@ -1625,5 +1745,6 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     plannedItemTitles: new Set(resolvedItemTitles),
     refinedSectionCount: refinedBodies.size,
     modelCalls,
+    citationIssues,
   };
 }
