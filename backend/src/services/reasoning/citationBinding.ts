@@ -26,6 +26,8 @@ export async function persistBoundCitations(args: { runId: string; reportId: str
 
   let written = 0;
   await withTransaction(async (client) => {
+    // Saving twice must leave one set of rows, so a retry or a resumed run cannot double them.
+    await client.query(`DELETE FROM report_citations WHERE report_id = $1`, [reportId]);
     for (const row of bound) {
       // A passage that is no longer stored cannot back a citation. The report
       // already shows the number, so this is a failed save, not a row to skip:

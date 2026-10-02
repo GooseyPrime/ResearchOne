@@ -45,7 +45,7 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled, citationLockEnabled } from '../../config';
+import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
 import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
 import { persistBoundCitations } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
@@ -929,8 +929,32 @@ export async function runResearchJob(
       orgId: null,
       reportId: null,
     },
-    () => runResearchJobInner(data, onProgress)
+    async () => runWithFlags(await loadRunFlags(data.runId), () => runResearchJobInner(data, onProgress))
   );
+}
+
+/**
+ * Switches an admin recorded for this one run. Read once, before the job starts,
+ * so the whole run sees one consistent set. No record, or a database that does
+ * not have the table yet, means the process settings apply unchanged.
+ */
+export async function loadRunFlags(runId: string): Promise<Record<string, boolean> | null> {
+  try {
+    const row = await queryOne<{ flags: unknown }>(`SELECT flags FROM eval_run_overrides WHERE run_id = $1`, [runId]);
+    const raw = row?.flags;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const flags: Record<string, boolean> = {};
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === 'boolean') flags[name] = value;
+    }
+    return Object.keys(flags).length > 0 ? flags : null;
+  } catch (err) {
+    if ((err as { code?: string }).code === '42P01') {
+      logger.debug(`[${runId}] No per-run switch table yet; using process settings`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 async function runResearchJobInner(
@@ -2647,8 +2671,8 @@ ${generatedReport.markdown}`,
       minimumUsableSources > 0 &&
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
-    if (layer1Run && sourceCoverageShortfall) {
-      // Grant I: the count is kept for the record and does not decide the outcome.
+    if (layer1Run && typeof minimumUsableSources === 'number' && Number.isFinite(minimumUsableSources) && minimumUsableSources > 0) {
+      // Grant I: the count is kept for the record on every run, met or not, and does not decide the outcome.
       await query(
         `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
         [JSON.stringify({ sourceCount: { observed: usableSourcesObserved, planned: minimumUsableSources } }), runId]
@@ -2938,7 +2962,18 @@ ${generatedReport.markdown}`,
         // The save is one transaction, so a failure wrote nothing. Try once more;
         // a report whose numbers have nothing saved behind them must not complete.
         logger.warn(`[${runId}] Saving bound citations failed; retrying once`, firstErr);
-        await persistBoundCitations({ runId, reportId, bound });
+        try {
+          await persistBoundCitations({ runId, reportId, bound });
+        } catch (secondErr) {
+          // The run fails here. Remove the saved report first, so no report is
+          // left on file whose numbers have nothing saved behind them.
+          try {
+            await query(`DELETE FROM reports WHERE id = $1`, [reportId]);
+          } catch (cleanupErr) {
+            logger.error(`[${runId}] Could not remove report ${reportId} after its citations failed to save`, cleanupErr);
+          }
+          throw secondErr;
+        }
       }
     }
 

@@ -57,7 +57,9 @@ import {
   finalizeLockedCitations,
   issuePassages,
   keepRewritesThatPreserveMarkers,
+  markersIn,
   markersPreserved,
+  unknownMarkers,
   stripReaderNumbers,
   stripUnsupportedMarkers,
   passagesForSection,
@@ -286,7 +288,12 @@ describe('citation lock helpers', () => {
   it('accepts a rewrite only when each citation stays on the statement it was written for', () => {
     const draft = 'Costs reached five billion dollars by 2012 [P1]. The tunnel opened to passengers in 2015 [P2].';
     const keep = { allowRemoval: false };
-    expect(markersPreserved(draft, 'By 2012 costs had reached five billion dollars [P1]. The tunnel opened to passengers in 2015 [P2].', keep)).toBe(true);
+    // Unchanged wording, different spacing, punctuation and marker case.
+    expect(markersPreserved(draft, 'Costs reached five billion dollars, by 2012 [p1].  The tunnel opened to passengers in 2015 [P2].', keep)).toBe(true);
+    // Reworded: the rewrite did not see the passage, so the citation no longer stands.
+    expect(markersPreserved(draft, 'By 2012 costs had reached five billion dollars [P1]. The tunnel opened to passengers in 2015 [P2].', keep)).toBe(false);
+    // One added word reverses the claim.
+    expect(markersPreserved('The vaccine is safe for adults [P1].', 'The vaccine is not safe for adults [P1].', keep)).toBe(false);
     // Same markers, swapped between the two statements.
     expect(markersPreserved(draft, 'Costs reached five billion dollars by 2012 [P2]. The tunnel opened to passengers in 2015 [P1].', keep)).toBe(false);
     // Marker kept, statement replaced.
@@ -301,7 +308,8 @@ describe('citation lock helpers', () => {
       [{ content: 'Costs reached five billion dollars by 2012 [P2].' }, { content: 'In 2016 the audit was published [P3].' }],
       { allowRemoval: true }
     );
-    expect(kept.map((section) => section.content)).toEqual([draft, 'In 2016 the audit was published [P3].']);
+    // The first rewrite moved a citation; the second reworded a cited sentence. Both fall back to the original.
+    expect(kept.map((section) => section.content)).toEqual([draft, 'The audit was published in 2016 [P3].']);
   });
 
   it('after a repair, keeps the repaired text and removes citations the repair added or moved', () => {
@@ -332,6 +340,36 @@ describe('citation lock helpers', () => {
   it('keeps the fixed source count from deciding a Layer 1 run', () => {
     expect(countShortfallSetsStatus(true)).toBe(false);
     expect(countShortfallSetsStatus(false)).toBe(true);
+  });
+});
+
+describe('markers in either case and numbers that are not citations', () => {
+  it('treats a lower-case marker as the same citation', () => {
+    const shown = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }],
+      [{ title: 'Bridge history', url: 'https://example.org/bridge' }]
+    );
+    expect(markersIn('It opened in 1932 [p1].')).toEqual(['P1']);
+    expect(unknownMarkers('It opened in 1932 [p1]. It closed in 1990 [p7].', shown)).toEqual(['P7']);
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [p1].', shown, '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1].');
+    expect(finalized.occurrences).toHaveLength(1);
+    expect(readerFacingLabelHits('It opened in 1932 [p1].')).toContain('passage marker');
+  });
+
+  it('does not count a number in code or a link label as a citation', () => {
+    const occurrences = [
+      { number: 1, chunkId: 'chunk-a', quote: 'A.' },
+      { number: 2, chunkId: 'chunk-b', quote: 'B.' },
+    ];
+    const bound = assignOccurrencesToSections(
+      [
+        { title: 'Background', content: 'See `items[2]` and the note [1](https://example.org). The first fact [1].' },
+        { title: 'Findings', content: 'The second fact [2].' },
+      ],
+      occurrences
+    );
+    expect(bound.map((row) => [row.number, row.sectionOrder])).toEqual([[1, 1], [2, 2]]);
   });
 });
 

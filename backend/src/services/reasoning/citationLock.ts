@@ -29,8 +29,14 @@ export interface CitationOccurrence {
   quote: string;
 }
 
-const MARKER_GROUP = /\[\s*(P\d+(?:\s*[,;]\s*P\d+)*)\s*\]/g;
-const SINGLE_MARKER = /P\d+/g;
+// A model may write the marker in either case; `[p3]` is the same citation as `[P3]`.
+const MARKER_GROUP = /\[\s*(P\d+(?:\s*[,;]\s*P\d+)*)\s*\]/gi;
+const SINGLE_MARKER = /P\d+/gi;
+
+/** The markers inside one bracket, in the upper-case form passages are issued under. */
+function markersOf(inner: string): string[] {
+  return (inner.match(SINGLE_MARKER) ?? []).map((marker) => marker.toUpperCase());
+}
 
 export function issuePassages(chunks: Array<{ id: string; content: string }>, sources: UsedSource[]): LockedPassage[] {
   return chunks.map((chunk, index) => ({
@@ -110,31 +116,37 @@ export const LOCK_INSTRUCTION =
 export function markersIn(text: string): string[] {
   const found: string[] = [];
   for (const group of text.matchAll(MARKER_GROUP)) {
-    for (const marker of group[1].match(SINGLE_MARKER) ?? []) found.push(marker);
+    found.push(...markersOf(group[1]));
   }
   return found;
 }
 
-/** Each citation with the terms of the sentence it follows. A marker standing alone belongs to the sentence before it. */
-function citedSentences(text: string): Array<{ marker: string; terms: Set<string> }> {
-  const out: Array<{ marker: string; terms: Set<string> }> = [];
+/** Every word and number of a sentence, lower-cased, in order. Punctuation and spacing do not count. */
+function statementKey(text: string): string {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
+}
+
+/** Each citation with the sentence it follows. A marker standing alone belongs to the sentence before it. */
+function citedSentences(text: string): Array<{ marker: string; statement: string }> {
+  const out: Array<{ marker: string; statement: string }> = [];
   let previous = '';
   for (const sentence of verbatimSentences(text)) {
     const markers = markersIn(sentence);
     const prose = sentence.replace(MARKER_GROUP, ' ').trim();
     const basis = prose.length > 0 ? prose : previous;
     if (prose.length > 0) previous = prose;
-    for (const marker of markers) out.push({ marker, terms: new Set(terms(basis)) });
+    for (const marker of markers) out.push({ marker, statement: statementKey(basis) });
   }
   return out;
 }
 
-/** Share of the original sentence's terms that the rewritten sentence still carries. */
-function sameStatement(original: Set<string>, rewritten: Set<string>): boolean {
-  if (original.size === 0) return rewritten.size === 0;
-  let kept = 0;
-  for (const term of original) if (rewritten.has(term)) kept += 1;
-  return kept / original.size >= 0.6;
+/**
+ * A citation stands only on the sentence it was written for, word for word.
+ * Any measure of similarity lets a rewrite change the claim and keep the
+ * citation: "is safe" and "is not safe" share nearly every word.
+ */
+function sameStatement(original: string, rewritten: string): boolean {
+  return original === rewritten;
 }
 
 /**
@@ -146,7 +158,7 @@ function matchCitations(original: string, rewritten: string): { unsupported: num
   const pool = citedSentences(original).map((entry) => ({ ...entry, used: false }));
   let unsupported = 0;
   for (const entry of citedSentences(rewritten)) {
-    const match = pool.find((candidate) => !candidate.used && candidate.marker === entry.marker && sameStatement(candidate.terms, entry.terms));
+    const match = pool.find((candidate) => !candidate.used && candidate.marker === entry.marker && sameStatement(candidate.statement, entry.statement));
     if (match) match.used = true;
     else unsupported += 1;
   }
@@ -189,12 +201,12 @@ export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdo
   const out = pieces.map((piece) => {
     if (/^\s*$/.test(piece)) return piece;
     const prose = piece.replace(MARKER_GROUP, ' ').trim();
-    const basis = new Set(terms(prose.length > 0 ? prose : previous));
+    const basis = statementKey(prose.length > 0 ? prose : previous);
     if (prose.length > 0) previous = prose;
     return piece.replace(MARKER_GROUP, (_full, inner: string) => {
       const kept: string[] = [];
-      for (const marker of inner.match(SINGLE_MARKER) ?? []) {
-        const match = pool.find((candidate) => !candidate.used && candidate.marker === marker && sameStatement(candidate.terms, basis));
+      for (const marker of markersOf(inner)) {
+        const match = pool.find((candidate) => !candidate.used && candidate.marker === marker && sameStatement(candidate.statement, basis));
         if (match) {
           match.used = true;
           kept.push(marker);
@@ -235,7 +247,7 @@ function tidyAfterRemoval(text: string): string {
 export function stripUnknownMarkers(text: string, shown: LockedPassage[]): string {
   const allowed = new Set(shown.map((passage) => passage.marker));
   const stripped = text.replace(MARKER_GROUP, (_full, inner: string) => {
-    const kept = (inner.match(SINGLE_MARKER) ?? []).filter((marker) => allowed.has(marker));
+    const kept = markersOf(inner).filter((marker) => allowed.has(marker));
     return kept.length > 0 ? `[${kept.join(', ')}]` : '';
   });
   return tidyAfterRemoval(stripped.replace(/[ \t]*/g, ''));
@@ -317,7 +329,7 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     const body = tidyAfterRemoval(prose.replace(/[ \t]*\[\d+\](?!\()/g, ''));
     const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
       const numbers: number[] = [];
-      for (const marker of inner.match(SINGLE_MARKER) ?? []) {
+      for (const marker of markersOf(inner)) {
         const passage = byMarker.get(marker);
         const key = passage ? sourceKey(passage.source) || passage.chunkId : '';
         if (!passage || !key) {
@@ -364,7 +376,13 @@ export function assignOccurrencesToSections(
   let cursor = 0;
   sections.forEach((section, index) => {
     if (/^(?:references|about this report)$/i.test(section.title.trim())) return;
-    const markers = `${section.title}\n${section.content}`.match(/\[\d+\]/g) ?? [];
+    // Count what finalizing numbered: prose only. A number inside code, or the
+    // label of a link, was never a citation and must not take one's place.
+    const markers: string[] = [];
+    mapProse(`${section.title}\n${section.content}`, (prose) => {
+      markers.push(...(prose.match(/\[\d+\](?!\()/g) ?? []));
+      return prose;
+    });
     for (const marker of markers) {
       const occurrence = occurrences[cursor];
       if (!occurrence || `[${occurrence.number}]` !== marker) continue;

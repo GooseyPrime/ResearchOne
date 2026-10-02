@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const inserts: unknown[][] = [];
+const cleared: unknown[][] = [];
 
 vi.mock('../db/pool', () => ({
   query: vi.fn(async (sql: string) => {
@@ -20,8 +21,9 @@ vi.mock('../db/pool', () => ({
   }),
   withTransaction: vi.fn(async (work: (client: { query: (sql: string, params: unknown[]) => Promise<void> }) => Promise<void>) =>
     work({
-      query: async (_sql: string, params: unknown[]) => {
-        inserts.push(params);
+      query: async (sql: string, params: unknown[]) => {
+        if (/^\s*DELETE/i.test(sql)) cleared.push(params);
+        else inserts.push(params);
       },
     })
   ),
@@ -32,6 +34,7 @@ import { persistBoundCitations } from '../services/reasoning/citationBinding';
 describe('saving bound citations', () => {
   beforeEach(() => {
     inserts.length = 0;
+    cleared.length = 0;
   });
 
   it('writes one row per citation with its section, passage, source, quote and number', async () => {
@@ -45,6 +48,8 @@ describe('saving bound citations', () => {
       ],
     });
     expect(written).toBe(3);
+    // Earlier rows for this report are cleared first, so saving twice leaves one set.
+    expect(cleared).toEqual([['report']]);
     expect(inserts).toEqual([
       ['report', 'section-1', 'chunk-a', 'source-1', 'Quote A.', 1, '[1]'],
       ['report', 'section-2', 'chunk-b', 'source-2', 'Quote B.', 2, '[2]'],
