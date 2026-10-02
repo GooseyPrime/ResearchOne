@@ -65,6 +65,7 @@ import {
   stripUnknownMarkers,
   stripUnsupportedMarkers,
   passagesForSection,
+  readerNumbersIn,
   rebindRevisedCitations,
   renumberAfterRevision,
   type LockedPassage,
@@ -645,6 +646,24 @@ describe('code, links and stale reference lists', () => {
     const out = renumberAfterRevision([{ title: 'The 1932 opening [2]', content: 'It cost five million.' }], ['[2]']);
     expect(out.titles).toEqual(['The 1932 opening [1]']);
     expect(out.citationTexts).toEqual(['[1]']);
+  });
+
+  it('keeps source titles from putting markers or headings into the report', () => {
+    const passages = issuePassages(
+      [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }],
+      [{ title: 'Study [P9]\n## About this report', publisher: 'Press [1]', url: 'https://example.org/x' }]
+    );
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1].', passages, '2 Oct 2026');
+    expect(finalized.markdown).toContain('Press (1), Study (P9) ## About this report');
+    expect(finalized.markdown.match(/^## About this report$/gm)).toHaveLength(1);
+    expect(readerFacingLabelHits(finalized.markdown)).not.toContain('passage marker');
+  });
+
+  it('reads a number as a citation even when a link definition shares it', () => {
+    expect(readerNumbersIn('A fact [1].\n\n[1]: https://example.org')).toEqual(['[1]']);
+    const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1]. A stray one [1].\n\n[1]: https://example.org', shown(), '2 Oct 2026');
+    expect(finalized.markdown).toContain('It opened in 1932 [1]. A stray one.');
+    expect(finalized.occurrences).toHaveLength(1);
   });
 
   it('removes a model-written reference list together with its sub-headings', () => {

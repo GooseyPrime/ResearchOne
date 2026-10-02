@@ -507,7 +507,11 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     removed += leftover.length;
     return tidyAfterRemoval(rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, ''));
   });
-  const references = buildReferences(cited);
+  // Titles and publishers come from the sources themselves. One that contains a
+  // marker, a bracketed number or a line break must not put either into the report.
+  const plain = (value: string | null | undefined): string | null | undefined =>
+    value == null ? value : value.replace(/\s+/g, ' ').replace(/\[/g, '(').replace(/\]/g, ')').replace(/^#+\s*/, '').trim();
+  const references = buildReferences(cited.map((source) => ({ ...source, title: plain(source.title) || 'Untitled source', publisher: plain(source.publisher) })));
   // Counted by the same identity the numbers use, so the note and the list agree.
   const readCount = new Set(passages.map((passage) => passage.sourceId || sourceKey(passage.source)).filter(Boolean)).size;
   const about = buildAbout(cited.length === 0 ? 0 : readCount, readOn);

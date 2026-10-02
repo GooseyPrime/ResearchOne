@@ -109,6 +109,8 @@ const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
  * collapsed reference link. The definition line itself stays protected.
  */
 const MARKER_AS_REFERENCE_LINK = /^\[\s*P\d+[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
+/** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link. */
+const NUMBER_AS_REFERENCE_LINK = /^\[\d+\](?:\[\])?$/;
 
 /**
  * Apply a change to the prose of a report and to nothing else. Code in every
@@ -125,7 +127,8 @@ export function mapCitationProse(markdown: string, change: (prose: string) => st
       INDENTED_LIST_ITEM_WITH_MARKER.test(segment) ||
       INDENTED_SENTENCE_WITH_MARKER.test(segment) ||
       MARKER_AS_LINK_TEXT.test(segment) ||
-      MARKER_AS_REFERENCE_LINK.test(segment)
+      MARKER_AS_REFERENCE_LINK.test(segment) ||
+      NUMBER_AS_REFERENCE_LINK.test(segment)
     ) {
       continue;
     }
