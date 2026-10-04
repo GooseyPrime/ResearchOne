@@ -21,13 +21,14 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 2. Measurement harness | Done | PR #239. |
 | Fixes outside the slices | Done | PRs #240, #241, #242, #245. |
 | Slice 3. Baseline report: writing | Done | PR #243. Behind `BASELINE_LAYER_ENABLED`, unset by default. See "As built" under slice 3. |
-| Slice 4, part 1. Citation core | In review | Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
-| **Slice 4, parts 2 to 4** | **Next** | Part 2: author, publisher and citation styles. Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order. |
+| Slice 4, part 1. Citation core | Done | PR #248. Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
+| **Slice 4, part 1. Live samples** | **Next** | Two live sample reports, one single-fact question and one broad question, made with the per-run admin overrides. No switch is turned on for customers. |
+| Slice 4, parts 2 to 4 | Not started | Starts after the samples are produced and the part 1 deploy is confirmed healthy. Part 2: author, publisher and citation styles. Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 3, 6, 7 and slice 4 changed. Then wait for Brandon to tell you to start slice 4, from a fresh branch off current `main`. One draft pull request per slice.
+**Your task now:** read this whole document again; sections 3, 6, 7 and slice 4 changed. Then, before any switch is turned on for customers, produce the two live sample reports for slice 4 part 1 (one single-fact question, one broad question) with the per-run admin overrides, as section 3 requires. Start slice 4 part 2 only after both samples are produced and the part 1 deploy is confirmed healthy, from a fresh branch off current `main`. One pull request per part. S6 still governs the move from slice 4 to slice 5.
 
 ---
 
@@ -401,7 +402,7 @@ Acceptance:
   - `answer_correct` improves and `time_to_report` does not get worse.
 - On challenge tasks, `presentation_clean` is 1.0 and the other challenge scores are unchanged.
 
-### Slice 4. Citations and references (part 1 in review)
+### Slice 4. Citations and references (part 1 merged, PR #248)
 
 **Delivered in four parts (2 Oct 2026).** Part 1: the citation core. Part 2: author and publisher metadata and citation styles (the Metadata, Source type and Style bullets, and B4). Part 3: DOI resolution and retraction (the "DOI and retraction" block). Part 4: the quality judge (B3). The acceptance lines below belong to the part that builds what they test.
 
