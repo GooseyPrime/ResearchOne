@@ -45,7 +45,9 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled } from '../../config';
+import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
+import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
+import { writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
@@ -126,6 +128,7 @@ import {
   mapGateStatusToRunStatus,
   shouldRunPipelineBFromGateStatus,
   type ReportGateStatus,
+  decideReportGateStatus,
 } from './reportGateStatus';
 
 export type {
@@ -927,8 +930,32 @@ export async function runResearchJob(
       orgId: null,
       reportId: null,
     },
-    () => runResearchJobInner(data, onProgress)
+    async () => runWithFlags(await loadRunFlags(data.runId), () => runResearchJobInner(data, onProgress))
   );
+}
+
+/**
+ * Switches an admin recorded for this one run. Read once, before the job starts,
+ * so the whole run sees one consistent set. No record, or a database that does
+ * not have the table yet, means the process settings apply unchanged.
+ */
+export async function loadRunFlags(runId: string): Promise<Record<string, boolean> | null> {
+  try {
+    const row = await queryOne<{ flags: unknown }>(`SELECT flags FROM eval_run_overrides WHERE run_id = $1`, [runId]);
+    const raw = row?.flags;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const flags: Record<string, boolean> = {};
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === 'boolean') flags[name] = value;
+    }
+    return Object.keys(flags).length > 0 ? flags : null;
+  } catch (err) {
+    if ((err as { code?: string }).code === '42P01') {
+      logger.debug(`[${runId}] No per-run switch table yet; using process settings`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 async function runResearchJobInner(
@@ -1949,6 +1976,8 @@ async function runResearchJobInner(
       );
     }
     const resolvedWordTarget = lengthDecision.target;
+    /** True only when the Layer 1 judge read the material and found it sufficient. Not set by the fallback. */
+    let materialJudgedSufficient = false;
     if (layer1Run) {
       const discoveryAvailable = config.discovery.enabled;
       const digestOf = () =>
@@ -2059,6 +2088,7 @@ async function runResearchJobInner(
         `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
         [JSON.stringify({ materialJudgement: judged.judgement, materialJudgeFailed: judged.failed, materialStep: step }), runId]
       );
+      materialJudgedSufficient = !judged.failed && judged.judgement?.sufficient === true;
       if (step === 'stop') {
         const situation = extraPassUsed ? 'search_ran' : 'search_unavailable';
         throw new Error(readerInsufficientMessage(judged.judgement?.missing ?? sourceAssessment.gaps, situation));
@@ -2251,6 +2281,20 @@ async function runResearchJobInner(
     // label pattern the drafter never agreed to follow (run c50162a9).
     let plannedItemTitles: ReadonlySet<string> = new Set<string>();
     let generatedReport: { markdown: string };
+    let lockedPassages: LockedPassage[] | null = null;
+    /**
+     * The text the gates judge. With the citation lock on, the working draft
+     * still carries the writer's markers and has no reference list or closing
+     * note; those are added when it is finalized. The verifier and the contract
+     * audit read the report as it will be saved, so a contract that asks for a
+     * reference list is not failed for one that is about to be added. Repairs
+     * still work on the marker draft.
+     */
+    const reportForGates = (markdown: string): string =>
+      lockedPassages
+        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages).markdown
+        : markdown;
+    let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
       // Fail the run explicitly instead of shipping a placeholder verdict.
@@ -2262,6 +2306,37 @@ async function runResearchJobInner(
     if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
+      const usedSources = allChunks.map((chunk) => ({
+        title: chunk.source_title || chunk.source_url || 'Untitled source',
+        publisher: chunk.source_publisher ?? null,
+        date: isoDay(chunk.source_published_at),
+        url: chunk.source_url || null,
+      }));
+      // Citation lock: the writer cites by marker, and only passages it was shown.
+      // The lock holds even when nothing was retrieved: the writer is told no
+      // passages are available, and the model-based mapper stays off.
+      if (citationLockEnabled() && layer1Run) {
+        // One reader number per stored source, so look the sources up by passage.
+        const sourceRows = await query<{ id: string; source_id: string | null }>(
+          `SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`,
+          [allChunks.map((chunk) => chunk.id)]
+        );
+        lockedPassages = issuePassages(allChunks, usedSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+        // Recorded on the run, so anything that scores it later knows how it was
+        // written without having to guess from its own settings.
+        await query(
+          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+          [JSON.stringify({ citationLock: true }), runId]
+        );
+      } else {
+        lockedPassages = null;
+        // A retry of the same run may have recorded the lock on an earlier attempt.
+        // Clear it, so the record always describes the attempt that wrote the report.
+        await query(
+          `UPDATE research_runs SET corpus_after = corpus_after - 'citationLock' WHERE id=$1 AND corpus_after ? 'citationLock'`,
+          [runId]
+        );
+      }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,
         plan,
@@ -2283,12 +2358,8 @@ async function runResearchJobInner(
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,
-        usedSources: allChunks.map((chunk) => ({
-          title: chunk.source_title || chunk.source_url || 'Untitled source',
-          publisher: chunk.source_publisher ?? null,
-          date: isoDay(chunk.source_published_at),
-          url: chunk.source_url || null,
-        })),
+        usedSources,
+        lockedPassages: lockedPassages ?? undefined,
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
@@ -2310,6 +2381,19 @@ async function runResearchJobInner(
       // omitted `outline_architect`, every `section_drafter` call, the
       // challenger and the synthesis-time `coherence_refiner` entirely.
       modelLog.push(...iterativeReport.modelCalls);
+      if (iterativeReport.citationIssues.length > 0) {
+        logger.warn(`[${runId}] Citation lock removed markers the writer was not shown`, { sections: iterativeReport.citationIssues });
+        await query(
+          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+          [JSON.stringify({ citationIssues: iterativeReport.citationIssues }), runId]
+        );
+      } else {
+        // A clean attempt after an earlier one that had issues: the record describes this attempt.
+        await query(
+          `UPDATE research_runs SET corpus_after = corpus_after - 'citationIssues' WHERE id=$1 AND corpus_after ? 'citationIssues'`,
+          [runId]
+        );
+      }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
@@ -2379,7 +2463,7 @@ async function runResearchJobInner(
           { role: 'system', content: intentVerifierPrompt },
           {
             role: 'user',
-            content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+            content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
           },
         ],
       });
@@ -2398,7 +2482,7 @@ async function runResearchJobInner(
               role: 'user',
               content: `Return ONLY valid JSON matching the VerificationResult schema for this report. Do not include markdown fences or commentary. REPORT:
 
-${generatedReport.markdown}`,
+${reportForGates(generatedReport.markdown)}`,
             },
           ],
         });
@@ -2575,10 +2659,9 @@ ${generatedReport.markdown}`,
         };
       }
     };
-    await runContractAudit(generatedReport.markdown);
+    await runContractAudit(reportForGates(generatedReport.markdown));
 
     const recomputeReportStatus = (): ReportGateStatus => {
-      let nextStatus: ReportGateStatus = 'completed';
       const contractFailed = contractAuditResult ? !contractAuditResult.pass : false;
       const verifierFailed = verificationUnavailable || !verification.passed || verification.overall !== 'PASS';
       // Deliverable-contract and verifier failures are evaluated BEFORE the
@@ -2588,16 +2671,17 @@ ${generatedReport.markdown}`,
       // evidence grounds used to hide those failures and skip repair entirely,
       // shipping an incomplete deliverable with a green-ish status
       // (Codex P1 review, PR #202).
-      if (contractFailed && verifierFailed) {
-        nextStatus = 'contract_failed';
-      } else if (contractFailed) {
-        nextStatus = 'contract_failed';
-      } else if (verifierFailed) {
-        nextStatus = 'verification_failed';
-      } else if (sourceShortfallDegradesStatus(sourceFailureReason)) {
-        nextStatus = 'completed_degraded';
-      } else if (sourceCoverageShortfall) {
-        nextStatus = 'completed_degraded';
+      // The count-based source check still downgrades the run, except where
+      // the material judge read the passages and found them sufficient (grant I).
+      const decided = decideReportGateStatus({
+        contractFailed,
+        verifierFailed,
+        evidenceShortfallDegrades: !materialJudgedSufficient && sourceShortfallDegradesStatus(sourceFailureReason),
+        sourceCoverageShortfall,
+        countSetsStatus: countShortfallSetsStatus(layer1Run),
+      });
+      const nextStatus: ReportGateStatus = decided.status;
+      if (decided.countShortfallApplied) {
         contractAuditResult = {
           pass: false,
           missing_requirements: [
@@ -2627,6 +2711,30 @@ ${generatedReport.markdown}`,
       minimumUsableSources > 0 &&
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
+    if (layer1Run && typeof minimumUsableSources === 'number' && Number.isFinite(minimumUsableSources) && minimumUsableSources > 0) {
+      // Grant I: the count is kept for the record on every run, met or not, and does not decide the outcome.
+      // Counted by stored source, the identity the reader numbers use. An uploaded
+      // file has no link, so counting links would leave it out and record a
+      // shortfall that is not there. The link count is the fallback if the
+      // lookup fails; a record is still written.
+      let observedSources = usableSourcesObserved;
+      try {
+        const stored = await query<{ source_id: string }>(
+          `SELECT DISTINCT source_id FROM chunks WHERE id = ANY($1::uuid[]) AND source_id IS NOT NULL`,
+          [allChunks.map((chunk) => chunk.id)]
+        );
+        observedSources = countObservedSources(stored.map((row) => row.source_id), usableSourcesObserved);
+      } catch (countErr) {
+        logger.warn('layer1_source_count_lookup_failed', {
+          runId,
+          message: countErr instanceof Error ? countErr.message : String(countErr),
+        });
+      }
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ sourceCount: { observed: observedSources, planned: minimumUsableSources } }), runId]
+      );
+    }
 
     // The repair loop is no longer skipped on evidence grounds. Repair cannot
     // manufacture evidence, but it CAN fix a drafter that omitted requested
@@ -2685,9 +2793,19 @@ ${generatedReport.markdown}`,
           ],
         });
         modelLog.push(repairResult);
+        const beforeRepair = generatedReport.markdown;
         generatedReport = {
           markdown: applyTargetedRepair(generatedReport.markdown, repairResult.content, repairPlan),
         };
+        if (lockedPassages) {
+          // The repair saw the report, not the passages. Its text is kept; a
+          // citation it added or moved to a different statement is not.
+          const checked = stripUnsupportedMarkers(beforeRepair, generatedReport.markdown);
+          generatedReport.markdown = checked.markdown;
+          if (checked.removed > 0) {
+            logger.warn(`[${runId}] Repair attempt ${attempt}: removed ${checked.removed} citation(s) the repair added or moved`);
+          }
+        }
         generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
 
         if (shouldRunPipelineStage(orchProfile, 'verification')) {
@@ -2701,7 +2819,7 @@ ${generatedReport.markdown}`,
               { role: 'system', content: intentVerifierPrompt },
               {
                 role: 'user',
-                content: `Verify this research report meets epistemic standards:\n\n${generatedReport.markdown}`,
+                content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
               },
             ],
           });
@@ -2720,7 +2838,7 @@ ${generatedReport.markdown}`,
                   role: 'user',
                   content: `Return ONLY valid JSON matching the VerificationResult schema for this revised report. Do not include markdown fences or commentary. REPORT:
 
-${generatedReport.markdown}`,
+${reportForGates(generatedReport.markdown)}`,
                 },
               ],
             });
@@ -2731,8 +2849,25 @@ ${generatedReport.markdown}`,
           verificationUnavailable = verification.overall === 'PARSE_FAILED';
         }
 
-        await runContractAudit(generatedReport.markdown);
+        await runContractAudit(reportForGates(generatedReport.markdown));
         reportStatus = recomputeReportStatus();
+      }
+    }
+
+    // Citation lock: turn the writer's markers into reader numbers and add the
+    // reference list and closing note. This runs after verification and repair,
+    // and before anything that reads the finished text, so the plain-language
+    // version and the saved report both see numbers, never markers.
+    if (lockedPassages && typeof generatedReport?.markdown === 'string') {
+      // Finalize the text that will be saved. The save removes prompt echo and
+      // internal labels; doing that first means each citation is bound to the
+      // sentence a reader will see, and the save's own pass then changes nothing.
+      const toSave = stripInternalLabelsFromReport(stripPromptEchoFromReport(generatedReport.markdown, researchQuery));
+      const finalized = finalizeLockedCitations(toSave, lockedPassages);
+      generatedReport.markdown = finalized.markdown;
+      lockedOccurrences = finalized.occurrences;
+      if (finalized.removed > 0) {
+        logger.warn(`[${runId}] ${finalized.removed} citation marker(s) named no passage and were removed`);
       }
     }
 
@@ -2762,7 +2897,9 @@ ${generatedReport.markdown}`,
         tokenUsage: { prompt: plainLanguageResult.promptTokens, completion: plainLanguageResult.completionTokens },
       });
 
-      plainLanguageMarkdown = plainLanguageResult.content.trim();
+      // The plain-language version is a rewrite, and no saved citation is tied to
+      // it. On a locked report it carries no citation numbers; the main report does.
+      plainLanguageMarkdown = lockedPassages ? stripReaderNumbers(plainLanguageResult.content.trim()) : plainLanguageResult.content.trim();
     } else {
       await progress('plain_language', 93, 'Plain-language pass skipped until primary report passes all gates', { substep: 'stage_skipped' });
     }
@@ -2833,6 +2970,7 @@ ${generatedReport.markdown}`,
       plan,
       allChunks,
       synthesizerContent: reportMarkdown,
+      lockedOccurrences,
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
@@ -2906,7 +3044,10 @@ ${generatedReport.markdown}`,
           ...v2,
         });
 
-        await mapAndPersistCitations({
+        // A locked report's citations come only from its markers, including when
+        // it cites nothing. The model-based mapper would add a looser set that
+        // matches nothing in the text.
+        if (lockedOccurrences === null) await mapAndPersistCitations({
           runId,
           reportId,
           chunks: allChunks,
@@ -3534,12 +3675,25 @@ function formatSourceContext(chunks: RetrievedChunk[]): string {
     .join('\n\n');
 }
 
-async function saveReport(args: {
+/**
+ * How many sources a Layer 1 run read, for the record. Stored sources are the
+ * count when any are known; the count of distinct links is used only when none
+ * is, so a run is never recorded as having read fewer than either shows.
+ */
+export function countObservedSources(storedSourceIds: string[], distinctLinks: number): number {
+  const stored = new Set(storedSourceIds.filter((id) => typeof id === 'string' && id.length > 0)).size;
+  return Math.max(stored, distinctLinks);
+}
+
+/** Exported for the save-path test; the research job is its only caller. */
+export async function saveReport(args: {
   runId: string;
   query: string;
   plan: ResearchPlan;
   allChunks: RetrievedChunk[];
   synthesizerContent: string;
+  /** Citation lock: the citations of the text, in reading order. Saved with the report in one transaction. */
+  lockedOccurrences?: CitationOccurrence[] | null;
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
   plainLanguageMarkdown?: string;
@@ -3558,6 +3712,7 @@ async function saveReport(args: {
     plan,
     allChunks,
     synthesizerContent,
+    lockedOccurrences,
     verification,
     discoverySummary,
     plainLanguageMarkdown,
@@ -3672,6 +3827,16 @@ async function saveReport(args: {
       );
     }
 
+    // Citation lock: the citations go in with the report. A report whose numbers
+    // have nothing saved behind them is never committed, even if the worker stops.
+    if (lockedOccurrences) {
+      await writeBoundCitations(client as unknown as CitationWriter, {
+        runId,
+        reportId,
+        bound: assignOccurrencesToSections(sections, lockedOccurrences),
+      });
+    }
+
     // Store verification metadata
     await client.query(
       `UPDATE reports SET metadata=$1 WHERE id=$2`,
@@ -3756,8 +3921,19 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
   let currentType = 'body';
   let currentLines: string[] = [];
 
+  // A heading inside a fenced code sample is code, not a section break. Splitting
+  // there would cut the sample in two and, for "## References" in a sample, hide
+  // the prose after it from citation binding.
+  let fence: { mark: string; length: number } | null = null;
   for (const line of lines) {
-    if (headerRegex.test(line)) {
+    const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceLine) {
+      const mark = fenceLine[1][0];
+      const length = fenceLine[1].length;
+      if (!fence) fence = { mark, length };
+      else if (mark === fence.mark && length >= fence.length && /^ {0,3}[`~]+\s*$/.test(line)) fence = null;
+    }
+    if (!fence && !fenceLine && headerRegex.test(line)) {
       if (currentLines.length > 0) {
         sections.push({
           type: currentType,

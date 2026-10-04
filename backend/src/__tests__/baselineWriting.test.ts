@@ -69,6 +69,28 @@ describe('baseline writing messages', () => {
     expect(scorePresentationClean(SAMPLE)).toBe(1);
     expect(scoreNoRepetition([{ content: SAMPLE }])).toBe(1);
     expect(presentationFailures('The verdict was established_fact.')).toContain('courtroom');
+    // Only prose is read: the same words inside a code sample are not a failure.
+    const sample = 'A plain sentence.\n\n```\nconst verdict = "this report synthesizes evidence";\n```\n';
+    expect(presentationFailures(sample)).not.toContain('courtroom');
+    expect(presentationFailures(sample)).not.toContain('boilerplate');
+    expect(presentationFailures('This report synthesizes evidence from two sources.')).toContain('boilerplate');
+    // A link's label is read by the reader; its destination and code are not.
+    expect(presentationFailures('See [Chunk 4](https://example.org) for more.')).toContain('chunk marker');
+    expect(presentationFailures('It holds [established_fact](https://example.org).')).toContain('grade label');
+    // A nested list item is prose, not code.
+    expect(presentationFailures('- A point.\n    - Detail [Chunk 4](https://example.org).')).toContain('chunk marker');
+    expect(presentationFailures('- A point.\n    - Detail [Chunk 4].')).toContain('chunk marker');
+    expect(presentationFailures('A paragraph.\n\n    print("[Chunk 4]")')).not.toContain('chunk marker');
+    // A reference-style link shows its label and never its identifier.
+    expect(presentationFailures('It holds [inference][source].\n\n[source]: https://example.org')).toContain('grade label');
+    expect(presentationFailures('See [Chunk 4][source].\n\n[source]: https://example.org')).toContain('chunk marker');
+    expect(presentationFailures('This [report][r] synthesizes evidence from two sources.\n\n[r]: https://example.org')).toContain('boilerplate');
+    expect(presentationFailures('See [the ruling][verdict].\n\n[verdict]: https://example.org')).not.toContain('courtroom');
+    // A phrase split by a link is still the phrase the reader sees.
+    expect(presentationFailures('This [report](https://example.org) synthesizes evidence from two sources.')).toContain('boilerplate');
+    expect(presentationFailures('The [case](https://example.org) for reform is strong.')).toContain('courtroom');
+    expect(presentationFailures('See [the ruling](https://example.org/verdict) and `verdict`.')).not.toContain('courtroom');
+    expect(presentationFailures('See [the study](https://example.org/chunk-4) and `[Chunk 4](x)`.')).not.toContain('chunk marker');
   });
 
   it('removes a repeated sentence after one redraft still repeats', () => {

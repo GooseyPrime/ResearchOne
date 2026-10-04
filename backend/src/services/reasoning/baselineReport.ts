@@ -114,7 +114,7 @@ function proseBlocks(content: string): string[] {
 /** A citation marker is not part of the sentence it follows. */
 export function sentenceKey(sentence: string): string {
   return sentence
-    .replace(/\s*\[(?:E)?\d+\]/gi, '')
+    .replace(/\s*\[\s*(?:[EP])?\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*\s*\]/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
