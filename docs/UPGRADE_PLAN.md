@@ -22,12 +22,13 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Fixes outside the slices | Done | PRs #240, #241, #242, #245. |
 | Slice 3. Baseline report: writing | Done | PR #243. Behind `BASELINE_LAYER_ENABLED`, unset by default. See "As built" under slice 3. |
 | Slice 4, part 1. Citation core | Done | PR #248. Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
-| **Slice 4, parts 2 to 4** | **Next** | Part 2: author, publisher and citation styles. Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order. |
+| **Slice 4, part 1. Live samples** | **Next** | Two live sample reports, one single-fact question and one broad question, made with the per-run admin overrides. No switch is turned on for customers. |
+| Slice 4, parts 2 to 4 | Not started | Starts after the samples are produced and the part 1 deploy is confirmed healthy. Part 2: author, publisher and citation styles. Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 3, 6, 7 and slice 4 changed. Then, before any switch is turned on for customers, produce the two live sample reports for slice 4 part 1 (one single-fact question, one broad question) with the per-run admin overrides, as section 3 requires. After that, start slice 4 part 2 from a fresh branch off current `main`. One pull request per part.
+**Your task now:** read this whole document again; sections 3, 6, 7 and slice 4 changed. Then, before any switch is turned on for customers, produce the two live sample reports for slice 4 part 1 (one single-fact question, one broad question) with the per-run admin overrides, as section 3 requires. Start slice 4 part 2 only after both samples are produced and the part 1 deploy is confirmed healthy, from a fresh branch off current `main`. One pull request per part. S6 still governs the move from slice 4 to slice 5.
 
 ---
 
