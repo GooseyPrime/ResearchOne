@@ -427,6 +427,10 @@ export function guardLockedRepair(
     // So does any line set in from the margin (a heading or a sentence inside
     // a list item): cut the line above and it belongs to something else.
     if (/^[ \t]+\S|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // Two sub-headings of one name cannot be told apart once one is cut, so
+    // what was under the second would pass as being under the first.
+    const subHeadings = (body(was).match(/^[ \t]{0,3}#{1,6}[ \t]+.*$/gm) ?? []).map((line) => line.replace(/^[ \t#]+|[ \t#]+$/g, '').toLowerCase());
+    if (new Set(subHeadings).size !== subHeadings.length) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     // Two spaces at the end of a line are a line break in Markdown. A repair
     // that adds them has changed how the section is set out, not cut from it.
     if (/[ \t]{2,}\n(?=[ \t]*\S)/.test(body(now)) && body(was).replace(/\s+$/, '') !== body(now).replace(/\s+$/, '')) return false;

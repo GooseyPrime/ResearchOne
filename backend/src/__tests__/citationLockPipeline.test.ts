@@ -630,6 +630,12 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(led, led.replace('\n\nThe sources do not cover long-term follow-up.', '')).restored).toEqual(['Limits of this report']);
     });
 
+    it('does not accept a cut that merges two sub-sections of one name', () => {
+      const twin = before.replace('The sources do not cover long-term follow-up.', '### Details\nFollow-up is short [P2].\n\n### Details\nPrices are not covered.');
+      expect(guardLockedRepair(twin, twin).restored).toEqual([]);
+      expect(guardLockedRepair(twin, twin.replace('[P2].\n\n### Details\n', '[P2].\n\n')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not accept a cut from a numbered list, which would renumber what is left', () => {
       const ranked = before.replace('The sources do not cover long-term follow-up.', 'The gaps, in order of weight.\n\n1. No long-term follow-up.\n1. No price data [P2].');
       expect(guardLockedRepair(ranked, ranked).restored).toEqual([]);
