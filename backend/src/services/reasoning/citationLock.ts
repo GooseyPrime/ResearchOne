@@ -425,7 +425,7 @@ export function guardLockedRepair(
     if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
     const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
-    const marked = /[`*_~<>[\]|\\]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
+    const marked = /[`*_~<>[\]|\\]|:\/\/|\bwww\.|\S@\S|\S[ \t]+[-+][ \t]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
     if (marked || runsOn) {
       return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap) && body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     }

@@ -533,6 +533,13 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(nested, nested.replace('- Group B\n', '')).restored).toEqual(['Key findings']);
     });
 
+    it('takes a section holding a bare address or a spaced hyphen unchanged or not at all', () => {
+      const bare = before.replace('The sources do not cover long-term follow-up.', 'An opening sentence. See https://www.fda.gov/casgevy for updates.');
+      expect(guardLockedRepair(bare, bare.replace('An opening sentence. ', '')).restored).toEqual(['Limits of this report']);
+      const dashed = before.replace('The sources do not cover long-term follow-up.', 'An opening sentence. Costs - not reported - are outside the sources.');
+      expect(guardLockedRepair(dashed, dashed.replace('An opening sentence. Costs ', '')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not let a parent sub-heading go while its child stays', () => {
       const tree = before.replace('The sources do not cover long-term follow-up.', '### Parent\nAn introduction [P1].\n#### Child\nA detail [P2].');
       expect(guardLockedRepair(tree, tree.replace('### Parent\nAn introduction [P1].\n', '')).restored).toEqual(['Limits of this report']);
