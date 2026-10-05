@@ -434,9 +434,21 @@ describe('citation lock helpers', () => {
       const nested = guardLockedRepair(before, before.replace('## Limits of this report\n', '## Limits of this report\n### Pricing\n'));
       expect(nested.restored).toEqual(['Limits of this report']);
       const paths = guardLockedRepair(before, before.replace('The FDA approved Casgevy', '[The FDA approved Casgevy](/invented-source)').replace('long-term follow-up', '[long-term follow-up](mailto:someone@example.org)'));
-      expect(paths.linksRemoved).toBe(2);
+      expect(paths.restored).toEqual(['Summary', 'Limits of this report']);
       expect(paths.markdown).not.toMatch(/invented-source|mailto:/);
-      expect(paths.markdown).toContain('The FDA approved Casgevy on 8 December 2023 [P1].');
+      // Reference links, their definitions, autolinks and underlined headings are links and headings too.
+      const reference = guardLockedRepair(before, before.replace('The FDA approved Casgevy', '[The FDA approved Casgevy][new]').replace('long-term follow-up.', 'long-term follow-up.\n\n[new]: /invented-source'));
+      expect(reference.restored).toEqual(['Summary', 'Limits of this report']);
+      expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up <https://example.org/x>.')).restored).toEqual(['Limits of this report']);
+      const setext = guardLockedRepair(before, before.replace('The sources do not cover long-term follow-up.', 'Added section\n---\nInvented statement.'));
+      expect(setext.restored).toEqual(['Limits of this report']);
+    });
+
+    it('keeps a link the section already had, and puts the section back when the link moves to another statement', () => {
+      const linkedBefore = before.replace('The sources do not cover long-term follow-up.', 'The sources do not cover long-term follow-up. See [the agency](https://www.fda.gov/casgevy) for updates.');
+      expect(guardLockedRepair(linkedBefore, linkedBefore.replace('for updates', 'for later updates')).restored).toEqual([]);
+      const moved = linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'See the agency for updates.').replace('The sources do not cover', '[The sources](https://www.fda.gov/casgevy) do not cover');
+      expect(guardLockedRepair(linkedBefore, moved).restored).toEqual(['Limits of this report']);
     });
 
     it('puts back a section that had no citations when the repair wrote one into it', () => {
@@ -460,8 +472,8 @@ describe('citation lock helpers', () => {
       expect(guarded.markdown).not.toContain('Report lacks a citation');
       expect(guarded.markdown).not.toContain('fda.gov/invented-page');
       const linked = guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up (see https://example.org/more and [the agency](https://www.fda.gov/x)).'));
-      expect(linked.linksRemoved).toBe(2);
-      expect(linked.markdown).toContain('long-term follow-up (see  and the agency).');
+      expect(linked.restored).toEqual(['Limits of this report']);
+      expect(linked.markdown).toBe(`${before}\n`);
     });
 
     it('keeps the report as it was when the repair leaves nothing usable', () => {

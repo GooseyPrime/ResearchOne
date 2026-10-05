@@ -2838,14 +2838,13 @@ ${reportForGates(generatedReport.markdown)}`,
           // The repair saw the report, not the passages. Its text is kept; a
           // citation it added or moved to a different statement is not.
           // First what a repair may not do at all: lose a section's citations,
-          // add a section, add a link.
+          // or add a section, a sentence with no citation, or a link.
           const guarded = guardLockedRepair(beforeRepair, generatedReport.markdown);
           generatedReport.markdown = guarded.markdown;
-          if (guarded.restored.length > 0 || guarded.dropped.length > 0 || guarded.linksRemoved > 0) {
+          if (guarded.restored.length > 0 || guarded.dropped.length > 0) {
             logger.warn(`[${runId}] Repair attempt ${attempt}: held to the citation lock`, {
               sectionsRestored: guarded.restored.length,
               sectionsNotAdded: guarded.dropped.length,
-              linksRemoved: guarded.linksRemoved,
             });
           }
           const checked = stripUnsupportedMarkers(beforeRepair, generatedReport.markdown);
