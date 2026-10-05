@@ -523,8 +523,19 @@ describe('citation lock helpers', () => {
       expect(guarded.markdown).toContain('## C# limits\nThe sources do not cover long-term follow-up.');
       expect(guarded.markdown).not.toContain('## C limits');
       expect(guardLockedRepair(before, before.replace('The sources do not cover', '    The sources do not cover')).restored).toEqual(['Limits of this report']);
-      // A sentence wrapped onto two lines is the same sentence.
-      expect(guardLockedRepair(before, before.replace('do not cover long-term', 'do not cover\nlong-term')).restored).toEqual([]);
+      // Spaces left at the end of a line are not content.
+      expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up.   ')).restored).toEqual([]);
+    });
+
+    it('does not accept a list run together into a line or a table flattened', () => {
+      const shaped = before.replace('The sources do not cover long-term follow-up.', 'The gaps are these.\n- No long-term follow-up.\n- No pricing.\n\n| Year | Event |\n| --- | --- |\n| 2023 | Approval |');
+      expect(guardLockedRepair(shaped, shaped).restored).toEqual([]);
+      expect(guardLockedRepair(shaped, shaped.replace('The gaps are these.\n- No long-term', 'The gaps are these. - No long-term')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(shaped, shaped.replace('| Year | Event |\n| --- | --- |\n| 2023 | Approval |', '| Year | Event | | --- | --- | | 2023 | Approval |')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(shaped, shaped.replace('The gaps are these.\n- No', '> The gaps are these.\n- No')).restored).toEqual(['Limits of this report']);
+      // Cutting a list item, or the sentence that opens a paragraph, is a cut.
+      expect(guardLockedRepair(shaped, shaped.replace('- No long-term follow-up.\n', '')).restored).toEqual([]);
+      expect(guardLockedRepair(before, before.replace('The FDA approved Casgevy on 8 December 2023 [P1]. ', '')).restored).toEqual([]);
     });
 
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {

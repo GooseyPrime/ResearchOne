@@ -353,21 +353,41 @@ export function guardLockedRepair(
 ): { markdown: string; restored: string[]; dropped: string[] } {
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
   const body = (text: string): string => text.split('\n').slice(1).join('\n');
-  /** A section's sentences, heading lines and list items in order, exactly as written apart from the spacing between words. */
-  const pieces = (text: string): string[] =>
-    sentencePieces(body(text))
-      // Spacing between words is not content. Indentation at the start of a
-      // line is: four spaces turn a sentence into a code block.
-      .map((piece) => piece.text.replace(/^(?:[ \t]*\n)+/, '').replace(/(\S)\s+/g, '$1 ').trimEnd())
-      .filter((piece) => piece.length > 0);
+  /**
+   * A section's sentences, heading lines and list items in order, exactly as
+   * written, each with how it is set off from the one before it: on the same
+   * line (0), on a new line (1), or after a blank line (2). Only spaces left at
+   * the end of a line are not content. A line break is: it is what makes a
+   * list a list and a table a table.
+   */
+  const pieces = (text: string): Array<{ text: string; gap: number }> => {
+    const out: Array<{ text: string; gap: number }> = [];
+    let gap = 2;
+    for (const piece of sentencePieces(body(text))) {
+      if (/^\s*$/.test(piece.text)) {
+        const breaks = (piece.text.match(/\n/g) ?? []).length;
+        gap = Math.max(gap, Math.min(2, breaks));
+        continue;
+      }
+      // A piece can open with the break that set it off.
+      const lead = /^\s*\n/.exec(piece.text)?.[0] ?? '';
+      const breaks = (lead.match(/\n/g) ?? []).length;
+      const indent = /[ \t]*$/.exec(lead)?.[0] ?? '';
+      out.push({ text: `${indent}${piece.text.slice(lead.length)}`.replace(/[ \t]+(?=\n|$)/g, ''), gap: Math.max(gap, Math.min(2, breaks)) });
+      gap = /\n[ \t]*$/.test(piece.text) ? 1 : 0;
+    }
+    return out;
+  };
   /**
    * A locked repair may cut, and nothing else. It was shown the report and not
    * the passages, so anything it adds or changes was written from no source.
    * What a section holds after the repair must be what it held before, in the
    * same order, less whatever was cut: every piece left is a piece the section
-   * had, character for character, citation and all. A changed sign, a moved
-   * citation, a new link, a swapped pair of headings and a reordered pair of
-   * sentences all fail the same test. A section that had text still has some.
+   * had, character for character, citation and all, and set off from its
+   * neighbour as it was, or as the cut between them leaves it. A changed sign,
+   * a moved citation, a new link, a swapped pair of headings, a reordered pair
+   * of sentences, a list run together into a line and a table flattened all
+   * fail the same test. A section that had text still has some.
    */
   const onlyCuts = (was: string, now: string): boolean => {
     const had = pieces(was);
@@ -375,8 +395,12 @@ export function guardLockedRepair(
     if (had.length > 0 && has.length === 0) return false;
     let at = 0;
     for (const piece of has) {
-      while (at < had.length && had[at] !== piece) at += 1;
+      const from = at;
+      while (at < had.length && had[at].text !== piece.text) at += 1;
       if (at === had.length) return false;
+      // Between its own break and the strongest break among whatever was cut before it.
+      const strongest = Math.max(...had.slice(from, at + 1).map((entry) => entry.gap));
+      if (piece.gap < had[at].gap || piece.gap > strongest) return false;
       at += 1;
     }
     return true;
