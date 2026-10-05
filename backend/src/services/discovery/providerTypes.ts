@@ -79,6 +79,18 @@ export function withoutBibliographic(candidate: SearchResultCandidate): SearchRe
 }
 
 /**
+ * A provider's result as a run may use it. A DOI in the provider's record is
+ * kept only when the run checks DOIs (DOI_RESOLVE_ENABLED): with that switch
+ * off the record is what it was before the switch existed, so nothing new is
+ * stored.
+ */
+export function resultForRun(candidate: SearchResultCandidate, doiChecksOn: boolean): SearchResultCandidate {
+  if (doiChecksOn || !candidate.bibliographic?.doi) return candidate;
+  const { doi: _doi, ...rest } = candidate.bibliographic;
+  return { ...candidate, bibliographic: rest };
+}
+
+/**
  * The candidate a run keeps. With the citation lock on for the run it keeps the
  * provider's reference details; with it off it is the candidate as it always was,
  * so nothing new is stored, logged or queued.

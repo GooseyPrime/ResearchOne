@@ -35,7 +35,7 @@ import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
-import { citationLockEnabled, config } from '../../config';
+import { citationLockEnabled, config, doiResolveEnabled } from '../../config';
 import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
@@ -45,6 +45,7 @@ import {
   SearchResultCandidate,
   bibliographicMetadata,
   candidateForRun,
+  resultForRun,
   fullestBibliographic,
   providerRecord,
 } from './providerTypes';
@@ -432,7 +433,8 @@ async function runDiscoveryOrchestratorInner(args: {
           });
 
           let newCount = 0;
-          for (const r of results) {
+          for (const found of results) {
+            const r = resultForRun(found, doiResolveEnabled());
             const key = normalizeUrl(r.url);
             const isExcluded = exclusionPatterns.some((pat) => key.includes(pat));
             if (isExcluded) continue;

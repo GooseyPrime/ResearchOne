@@ -26,7 +26,7 @@ import { applyDoiChecks, formatLockedContext, issuePassages, stripUnstatedRetrac
 import { finalizeLockedReportForSave } from '../services/reasoning/reportGenerator';
 import { recordDoiChecks } from '../services/reasoning/citationBinding';
 import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { fullestBibliographic } from '../services/discovery/providerTypes';
+import { fullestBibliographic, resultForRun } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { scoreDoiResolution } from '../services/eval/scoreReport';
 import { STORED_CITATION_SQL } from '../services/eval/runHarness';
@@ -238,6 +238,16 @@ describe('a DOI that is only in the provider record', () => {
     expect(fullestBibliographic([{ provider: 'crossref', authors: ['A'] }, { provider: 'pmc', doi: '10.1000/bad' }])?.doi).toBe('10.1000/bad');
     expect(orchestratorSource).toMatch(/doiOf\(detailByChunk\.get\(chunk\.id\)\?\.doi\) \?\? doiOf\(referenceSources\[index\]\?\.url\)/);
     expect(orchestratorSource).toContain("s.metadata->'bibliographic'->>'doi' AS doi");
+  });
+});
+
+describe('a provider DOI with the switch off', () => {
+  it('is not kept, so nothing new is stored', () => {
+    const found = { url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC1/', title: 't', snippet: '', score: 1, rank: 1, provider: 'pubmed_central', sourceQuery: 'q', bibliographic: { publisher: 'Journal', doi: '10.1000/bad' } };
+    expect(resultForRun(found, false).bibliographic).toEqual({ publisher: 'Journal' });
+    expect(resultForRun(found, true).bibliographic).toEqual({ publisher: 'Journal', doi: '10.1000/bad' });
+    const discovery = readFileSync(join(__dirname, '../services/discovery/discoveryOrchestrator.ts'), 'utf8');
+    expect(discovery).toContain('const r = resultForRun(found, doiResolveEnabled());');
   });
 });
 
