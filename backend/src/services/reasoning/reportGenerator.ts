@@ -4,7 +4,7 @@ import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService'
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
-import { firstSentences, fixedSectionWords, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { firstSentences, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -1803,7 +1803,7 @@ ${layer1
     if (!isSizedReaderSection(section.key)) return section;
     // The last word on shape and size, after every rewrite has had its turn.
     // Whole sentences and whole bullets only, so a citation leaves with its sentence.
-    if (section.key === 'limits') return { ...section, content: firstSentences(section.content, 4) };
+    if (isLimitsSection(section.key)) return { ...section, content: firstSentences(section.content, 4) };
     // Key findings are a list. Paragraphs that survived the second request are
     // given the shape here, sentence by sentence, with their citations.
     const shaped = section.key === 'key_findings' ? sentencesAsBullets(section.content, 7) : section.content;

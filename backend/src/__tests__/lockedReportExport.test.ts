@@ -57,12 +57,12 @@ const CITATION_ROWS = [
 ];
 
 /** Answers each query by what it asks for, so the order of queries is not part of the test. */
-function answer(state: { locked: boolean; referenceStyle?: string | null; citationStyle?: string | null }) {
+function answer(state: { locked: boolean; referenceStyle?: string | null; citationStyle?: string | null; citationRows?: LockedCitationSourceRow[] }) {
   mocks.adminQueryMock.mockImplementation(async (sql: string) => {
     if (sql.includes("corpus_after->>'citationLock'")) {
       return [{ locked: state.locked ? 'true' : null, reference_style: state.referenceStyle ?? null, citation_style: state.citationStyle ?? null }];
     }
-    if (sql.includes('FROM report_citations')) return CITATION_ROWS;
+    if (sql.includes('FROM report_citations')) return state.citationRows ?? CITATION_ROWS;
     if (sql.includes('FROM report_sections')) return SECTIONS;
     if (sql.includes('FROM reports')) return META;
     return [];
@@ -106,6 +106,14 @@ describe('exporting a report written with the citation lock', () => {
     // The first source cited under a number is its entry; a second stored copy is not.
     expect(markdown).not.toContain('copy.example.org');
     expect(markdown.match(/^## References$/gm)).toHaveLength(1);
+  });
+
+  it('refuses the export when the list cannot be written in the style asked for', async () => {
+    // One of the two cited sources has since been removed: the list cannot be rebuilt.
+    answer({ locked: true, referenceStyle: 'numeric', citationRows: [CITATION_ROWS[0]] });
+    await expect(exportReport({ reportId: 'r1', format: 'pdf', style: 'apa' })).rejects.toThrow('cannot be rewritten in the apa style');
+    // No file labelled APA that holds a numbered list.
+    expect(mocks.runPandocMock).not.toHaveBeenCalled();
   });
 
   it('keeps the saved list when the report was saved in the style asked for', async () => {

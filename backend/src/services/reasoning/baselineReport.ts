@@ -379,7 +379,12 @@ export function wordCount(text: string): number {
  * summary, the key findings, the note on disagreement and the limits. Together
  * they take at most this share of a report, so the body is never squeezed out.
  */
-const FIXED_SECTION_WORDS: Readonly<Record<string, number>> = { summary: 150, key_findings: 180, disagreement: 220, limits: 90 };
+const FIXED_SECTION_WORDS: Readonly<Record<string, number>> = { summary: 150, key_findings: 180, disagreement: 220, limits: 90, limitations: 90 };
+
+/** The limits note under either of its keys: the reader plan calls it `limits`, the literature-review plan `limitations`. */
+export function isLimitsSection(key: string): boolean {
+  return key === 'limits' || key === 'limitations';
+}
 const FIXED_SHARE_CEILING = 0.4;
 const BODY_SECTION_FLOOR = 80;
 
@@ -412,7 +417,7 @@ export function readerSectionRule(key: string): string {
   if (key === 'key_findings') {
     return 'Write 3 to 7 bullet points and nothing else. Each bullet starts with "- ", is one sentence, and ends with its citation. No introduction, no paragraphs, no closing line.';
   }
-  if (key === 'limits') {
+  if (isLimitsSection(key)) {
     return 'Write two to four sentences that name only real limits of this report, such as a period the sources do not cover or a point they leave unsettled. Do not restate findings. Do not describe what the report chose not to do.';
   }
   if (key === 'summary') return '';
@@ -428,7 +433,7 @@ export function readerSectionRule(key: string): string {
  * is shortened here.
  */
 export function isSizedReaderSection(key: string): boolean {
-  return /^(?:key_findings|limits|disagreement|established|contested|open_questions|topic_\d+)$/.test(key);
+  return /^(?:key_findings|limits|limitations|disagreement|established|contested|open_questions|topic_\d+)$/.test(key);
 }
 
 /** A list and nothing else: every non-empty line is a bullet. */
@@ -506,12 +511,38 @@ export function sentencesAsBullets(content: string, max = 7): string {
   return sentences.slice(0, max).map((sentence) => `- ${sentence}`).join('\n');
 }
 
-/** The first `max` sentences of a section, for a note that must stay a note. A note written as a list keeps its first `max` items. */
-export function firstSentences(content: string, max: number): string {
-  const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
-  if (blocks.length > 0 && blocks.every((block) => isListBlock(block))) {
-    return blocks.join('\n').split('\n').filter((line) => line.trim().length > 0).slice(0, max).join('\n');
+/**
+ * The items of a section that is a list and nothing else, each with the lines
+ * that continue it, or null when the section is not such a list. A line that
+ * does not open an item continues the one above it; after a blank line it must
+ * be indented to do so, as Markdown requires. Anything else is prose.
+ */
+function listItems(content: string): string[] | null {
+  const items: string[][] = [];
+  let afterBlank = false;
+  for (const line of content.split('\n')) {
+    if (!line.trim()) {
+      afterBlank = true;
+      continue;
+    }
+    if (/^(?:[-*+]|\d+[.)])\s+\S/.test(line)) {
+      items.push([line]);
+    } else {
+      const current = items[items.length - 1];
+      if (!current || line.trim().startsWith('```') || (afterBlank && !/^\s{2,}\S/.test(line))) return null;
+      if (afterBlank) current.push('');
+      current.push(line);
+    }
+    afterBlank = false;
   }
+  return items.length > 0 ? items.map((lines) => lines.join('\n')) : null;
+}
+
+/** The first `max` sentences of a section, for a note that must stay a note. A note written as a list keeps its first `max` items, each whole. */
+export function firstSentences(content: string, max: number): string {
+  const items = listItems(content);
+  if (items) return items.slice(0, max).join('\n');
+  const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
   const out: string[] = [];
   for (const block of blocks) {
     if (block.trim().startsWith('```') || block.includes('|') || isListBlock(block)) continue;

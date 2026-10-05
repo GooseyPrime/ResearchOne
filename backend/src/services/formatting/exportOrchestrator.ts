@@ -182,8 +182,15 @@ async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceSt
     const restyled = withReferenceStyle(saved, sourcesByNumber(citationRows), wanted);
     sections = restyled.sections;
     if (!restyled.rebuilt) {
-      // The saved list stands. It is complete and correct; it is only not in the style asked for.
-      logger.warn('export: reference list could not be written in the requested style; saved list kept', { reportId, wanted, savedStyle });
+      // The sources behind the citations no longer match the saved list (a
+      // source was removed, or the list was edited). Handing over the saved
+      // list under the name of the style asked for would be a file that is not
+      // what its label says, so the export is refused with the reason.
+      logger.warn('export: reference list could not be written in the requested style', { reportId, wanted, savedStyle });
+      throw new PandocError(
+        `The reference list of this report cannot be rewritten in the ${wanted} style. Export it in the style it was saved in (${savedStyle}).`,
+        'validation_error'
+      );
     }
   }
 

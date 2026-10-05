@@ -297,15 +297,27 @@ function readerVisibleText(text: string): string {
     .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
 }
 
-/** The text without its reference list: from a "References" heading to the next heading. */
+/**
+ * The text without its generated reference list: from the last "References"
+ * heading to the next heading. The list is written after the body, so it is the
+ * last section of that name; an earlier one is the report's own writing and is
+ * checked like any other section.
+ */
 function withoutReferenceList(text: string): string {
-  const kept: string[] = [];
-  let skipping = false;
-  for (const line of text.split('\n')) {
-    if (/^#{1,6}[ \t]+\S/.test(line)) skipping = /^#{1,6}[ \t]+References[ \t#]*$/i.test(line);
-    if (!skipping) kept.push(line);
+  const lines = text.split('\n');
+  let listStart = -1;
+  lines.forEach((line, index) => {
+    if (/^#{1,6}[ \t]+References[ \t#]*$/i.test(line)) listStart = index;
+  });
+  if (listStart === -1) return text;
+  let listEnd = lines.length;
+  for (let index = listStart + 1; index < lines.length; index += 1) {
+    if (/^#{1,6}[ \t]+\S/.test(lines[index])) {
+      listEnd = index;
+      break;
+    }
   }
-  return kept.join('\n');
+  return [...lines.slice(0, listStart), ...lines.slice(listEnd)].join('\n');
 }
 
 export function readerFacingLabelHits(text: string): string[] {

@@ -45,7 +45,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     if (first.includes('Section to draft: Where sources disagree')) {
       return reply(`The record is contested, with Lovering et al. ${TAIL} Critics claim that the figures were estimates and not final costs [P1].`);
     }
-    if (first.includes('Section to draft: Limits')) {
+    if (first.includes('Section to draft: Limit')) {
       if (limitsAsList) return reply(Array.from({ length: 9 }, (_, index) => `- Limit number ${index + 1} names a separate gap in what the sources cover.`).join('\n'));
       return reply(Array.from({ length: limitsIsLong && !asksShorter ? 30 : 7 }, (_, index) => `Limit number ${index + 1} names a separate gap in what the sources cover.`).join(' '));
     }
@@ -179,6 +179,29 @@ describe('section size and shape on the Layer 1 report path', () => {
     const asks = calls.filter((call) => call.last.startsWith('That draft is') && call.text.includes('Section to draft: Limits'));
     expect(asks).toHaveLength(1);
     expect(asks[0].last).toContain('Rewrite it within 90 words');
+  });
+
+  it('holds the limitations of a literature review to the same size when a format was chosen', async () => {
+    const report = await generateIterativeReport({
+      query: 'What does the literature say about nuclear construction costs?',
+      plan: {},
+      sourceContext: 'context',
+      retrieverAnalysis: '',
+      reasoningChains: '',
+      challenges: '',
+      intentId: 'literature_review',
+      outputTemplateId: 'intent_literature_review',
+      skipChallenger: true,
+      targetWordCount: 3000,
+      lengthSource: 'planner',
+      requestedFormats: ['narrative_briefing'],
+      usedSources: [SOURCE, SOURCE, SOURCE],
+      lockedPassages: issuePassages(CHUNKS, [SOURCE, SOURCE, SOURCE]),
+    });
+    const call = calls.find((entry) => entry.role === 'section_drafter' && entry.text.includes('Section to draft: Limitations'));
+    expect(call?.text).toContain('target: ~90 words');
+    expect(call?.text).toContain('Write two to four sentences that name only real limits');
+    expect(splitSentences(report.sections.find((entry) => entry.key === 'limitations')?.content ?? '')).toHaveLength(4);
   });
 
   it('asks once for a shorter draft when a section runs far past its share, and uses it', async () => {
@@ -350,8 +373,15 @@ describe('helpers behind section size and shape', () => {
     expect(trimToWords(`One two three four five.\n\n${table}\n\nA closing paragraph that is dropped.`, 8)).toBe(`One two three four five.\n\n${table}`);
   });
 
+  it('keeps the first four items of a limits list whole, wrapped lines and all', () => {
+    const wrapped = ['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.', '- Fifth.'].join('\n');
+    expect(firstSentences(wrapped, 4)).toBe(['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.'].join('\n'));
+    // A list followed by a paragraph is not a list and nothing else: it is read as prose, as before.
+    expect(firstSentences('- One.\n- Two.\n\nA closing paragraph. With two sentences. And a third.', 2)).toBe('A closing paragraph. With two sentences.');
+  });
+
   it('holds only the sections whose length is the writer\'s to manage', () => {
-    for (const key of ['key_findings', 'limits', 'disagreement', 'established', 'contested', 'open_questions', 'topic_0', 'topic_12']) {
+    for (const key of ['key_findings', 'limits', 'limitations', 'disagreement', 'established', 'contested', 'open_questions', 'topic_0', 'topic_12']) {
       expect(isSizedReaderSection(key)).toBe(true);
     }
     // The summary has its own 150-word rule; steps, a comparison table and sections a request named are not cut.

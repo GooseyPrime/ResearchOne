@@ -546,7 +546,6 @@ export function sameArticleSources(passages: LockedPassage[]): Map<string, strin
     const b = info.get(order[later]);
     if (!b) continue;
     for (let earlier = 0; earlier < later; earlier += 1) {
-      if (copyOf.has(order[earlier])) continue;
       const a = info.get(order[earlier]);
       if (!a) continue;
       if (!contains(a.title, b.title) && !contains(b.title, a.title)) continue;
@@ -555,7 +554,9 @@ export function sameArticleSources(passages: LockedPassage[]): Map<string, strin
       let shared = 0;
       for (const shingle of a.text.size <= b.text.size ? a.text : b.text) if ((a.text.size <= b.text.size ? b.text : a.text).has(shingle)) shared += 1;
       if (shared / smaller >= SAME_TEXT_SHARE) {
-        copyOf.set(order[later], order[earlier]);
+        // A copy of a copy is a copy of the first: A and B match, B and C match,
+        // and the passages retrieved from A and C need not overlap at all.
+        copyOf.set(order[later], copyOf.get(order[earlier]) ?? order[earlier]);
         break;
       }
     }

@@ -315,7 +315,14 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
   if (existing) {
     // The page is already stored. Reference details a provider now supplies fill
     // what the stored record lacks; nothing already recorded is overwritten.
-    if (bibliographic) await fillReferenceDetails(existing.id, bibliographic);
+    if (bibliographic) {
+      // Optional detail. Losing it costs a fuller reference entry, never the job.
+      try {
+        await fillReferenceDetails(existing.id, bibliographic);
+      } catch (err) {
+        logger.warn('ingestion: could not add reference details to a stored source', { sourceId: existing.id, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,

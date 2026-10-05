@@ -94,6 +94,37 @@ describe('one article stored from two sites', () => {
     expect(finalized.occurrences.map((occurrence) => occurrence.chunkId)).toEqual(['c1', 'c2', 'c3']);
   });
 
+  it('treats a copy of a copy as a copy of the first, though the first and third share no retrieved text', () => {
+    const first = 'After 1979 construction costs in the United States rose sharply as rules changed during building.';
+    const third = 'French units of one repeated design took between sixty five and ninety months to complete on average.';
+    const chain = issuePassages(
+      [
+        { id: 'c1', content: first },
+        { id: 'c2', content: first },
+        { id: 'c3', content: third },
+        { id: 'c4', content: third },
+      ],
+      [
+        { title: 'Historical construction costs of nuclear reactors' },
+        { title: 'Historical construction costs of nuclear reactors - Mirror' },
+        { title: 'Historical construction costs of nuclear reactors - Mirror' },
+        { title: 'Historical construction costs of nuclear reactors - Mirror - Archive' },
+      ],
+      new Map([
+        ['c1', 'source-a'],
+        ['c2', 'source-b'],
+        ['c3', 'source-b'],
+        ['c4', 'source-c'],
+      ])
+    );
+    expect([...sameArticleSources(chain).entries()]).toEqual([
+      ['source-b', 'source-a'],
+      ['source-c', 'source-a'],
+    ]);
+    const finalized = finalizeLockedCitations('## Summary\nCosts rose [P1]. French units took longer [P4].', chain, '4 Oct 2026');
+    expect(finalized.markdown).toContain('Costs rose [1]. French units took longer [1].');
+  });
+
   it('keeps two articles apart when they share a title but not their text', () => {
     const apart = issuePassages(
       [

@@ -174,6 +174,11 @@ describe('the reference list and the wording check', () => {
     const report = '## Summary\nThe rule changed in 2019 [1].\n\n## References\n1. Agency. Health claims made on foods: the claim register. https://example.org/x\n\n## About this report\n1 source was read on 4 Oct 2026.';
     expect(readerFacingLabelHits(report)).toEqual([]);
     expect(readerFacingLabelHits('## Summary\nThe agency claims the rule changed [1].')).toContain('claims wording');
+    // Only the generated list, the last section named References, is left unread.
+    const ownSection = '## Summary\nThe rule changed [1].\n\n## References\nThe agency claims two statutes apply [1].\n\n## References\n1. A study.\n\n## About this report\n1 source was read.';
+    expect(readerFacingLabelHits(ownSection)).toContain('claims wording');
+    const listOnly = '## Summary\nThe rule changed [1].\n\n## References\n1. Insurance claims in 2020. Example Press.\n\n## About this report\n1 source was read.';
+    expect(readerFacingLabelHits(listOnly)).not.toContain('claims wording');
   });
 
   it('reads the report\'s own words, not a direct quotation or a term of the subject', () => {
