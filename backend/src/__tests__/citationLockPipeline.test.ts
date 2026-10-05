@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const calls: Array<{ role: string; text: string }> = [];
@@ -377,11 +379,11 @@ describe('citation lock helpers', () => {
       // What a live run did: a correct, cited report came back as bare sentences and was saved with no references.
       const after = '# First CRISPR therapy approval\n\n## Summary\nThe FDA approved Casgevy on 8 December 2023.\n\n## Key findings\n- The approval came on 8 December 2023.\n\n## Limits of this report\nThis report covers the approval only.';
       const guarded = guardLockedRepair(before, after);
-      expect(guarded.restored).toEqual(['Summary', 'Key findings']);
+      // Every section comes back as it was: two lost their citations and the third was reworded from no source.
+      expect(guarded.restored).toEqual(['Summary', 'Key findings', 'Limits of this report']);
+      expect(guarded.markdown).toBe(before);
       expect(guarded.markdown).toContain('The FDA approved Casgevy on 8 December 2023 [P1]. It treats sickle cell disease in patients aged 12 and older [P1, P2].');
       expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
-      // A section that never had citations takes the repair's wording.
-      expect(guarded.markdown).toContain('This report covers the approval only.');
       const finalized = finalizeLockedCitations(guarded.markdown, passages(), '5 Oct 2026');
       expect(finalized.markdown).toContain('## References');
       expect(finalized.occurrences.length).toBeGreaterThan(0);
@@ -408,12 +410,12 @@ describe('citation lock helpers', () => {
     });
 
     it('keeps a section the repair left out, in the report\'s own order', () => {
-      const after = '# First CRISPR therapy approval\n\n## Limits of this report\nThe sources do not cover follow-up.\n\n## Summary\nThe FDA approved Casgevy on 8 December 2023 [P1].';
+      const after = '# First CRISPR therapy approval\n\n## Limits of this report\nThe sources do not cover long-term follow-up.\n\n## Summary\nThe FDA approved Casgevy on 8 December 2023 [P1].';
       const guarded = guardLockedRepair(before, after);
       expect(guarded.restored).toEqual(['Key findings']);
       expect([...guarded.markdown.matchAll(/^## (.+)$/gm)].map((match) => match[1])).toEqual(['Summary', 'Key findings', 'Limits of this report']);
       expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
-      expect(guarded.markdown).toContain('The sources do not cover follow-up.');
+      expect(guarded.markdown).toContain('## Summary\nThe FDA approved Casgevy on 8 December 2023 [P1].\n');
     });
 
     it('puts a section back when the repair added a sentence with no citation', () => {
@@ -421,10 +423,12 @@ describe('citation lock helpers', () => {
       const guarded = guardLockedRepair(before, after);
       expect(guarded.restored).toEqual(['Summary']);
       expect(guarded.markdown).not.toContain('two million dollars');
-      // Rewording a sentence that had no citation is still a repair.
-      const reworded = guardLockedRepair(before, before.replace('The sources do not cover long-term follow-up.', 'Long-term follow-up is outside what the sources cover.'));
-      expect(reworded.restored).toEqual([]);
-      expect(reworded.markdown).toContain('Long-term follow-up is outside what the sources cover.');
+      // The same number of sentences, one of them swapped for an unsupported one, is still new material.
+      const swapped = guardLockedRepair(before, before.replace('The sources do not cover long-term follow-up.', 'The therapy costs about two million dollars per patient.'));
+      expect(swapped.restored).toEqual(['Limits of this report']);
+      // So is a clause added to a sentence the report had.
+      const extended = guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up, which costs two million dollars.'));
+      expect(extended.restored).toEqual(['Limits of this report']);
     });
 
     it('keeps the report\'s own title and adds no preamble, sub-heading or link of any kind', () => {
@@ -451,8 +455,10 @@ describe('citation lock helpers', () => {
 
     it('keeps a link the section already had, and puts the section back when the link moves to another statement', () => {
       const linkedBefore = before.replace('The sources do not cover long-term follow-up.', 'The sources do not cover long-term follow-up. See [the agency](https://www.fda.gov/casgevy) for updates.');
-      // The linked sentence stays as it was while another sentence is reworded.
-      expect(guardLockedRepair(linkedBefore, linkedBefore.replace('The sources do not cover long-term follow-up.', 'Long-term follow-up is outside the sources.')).restored).toEqual([]);
+      // The linked sentence stays as it was while another sentence is cut.
+      const cut = guardLockedRepair(linkedBefore, linkedBefore.replace('The sources do not cover long-term follow-up. ', ''));
+      expect(cut.restored).toEqual([]);
+      expect(cut.markdown).toContain('## Limits of this report\nSee [the agency](https://www.fda.gov/casgevy) for updates.');
       // The same link moved onto other words in the same section is not the link the report had.
       expect(guardLockedRepair(linkedBefore, linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'Ask [the agency](https://www.fda.gov/casgevy) about pricing.')).restored).toEqual(['Limits of this report']);
       const moved = linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'See the agency for updates.').replace('The sources do not cover', '[The sources](https://www.fda.gov/casgevy) do not cover');
@@ -489,9 +495,32 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(before, '## A different heading\nSomething else entirely.').markdown).toBe(before);
     });
 
+    it('puts back sections returned as headings with nothing under them', () => {
+      const skeleton = '# First CRISPR therapy approval\n\n## Summary\n\n## Key findings\n\n## Limits of this report\n';
+      expect(guardLockedRepair(before, skeleton).markdown).toBe(before);
+    });
+
+    it('does not let a heading the section has be written twice', () => {
+      const withSub = before.replace('## Limits of this report\n', '## Limits of this report\n### Scope\n');
+      expect(guardLockedRepair(withSub, withSub).restored).toEqual([]);
+      const doubled = withSub.replace('The sources do not cover long-term follow-up.', 'The sources do not cover long-term follow-up.\n### Scope\n');
+      expect(guardLockedRepair(withSub, doubled).restored).toEqual(['Limits of this report']);
+    });
+
+    it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
+      const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
+      const repair = source.slice(source.indexOf('const beforeRepair = generatedReport.markdown;'), source.indexOf('ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);', source.indexOf('const beforeRepair = generatedReport.markdown;')));
+      expect(repair).toMatch(/if \(lockedPassages\) \{[\s\S]*guardLockedRepair\(beforeRepair, generatedReport\.markdown\)[\s\S]*generatedReport\.markdown = guarded\.markdown;[\s\S]*stripUnsupportedMarkers\(beforeRepair, generatedReport\.markdown\)/);
+      // The guard is reached only inside the lock branch.
+      expect(repair.indexOf('guardLockedRepair(')).toBeGreaterThan(repair.indexOf('if (lockedPassages) {'));
+      expect(source).toContain('lockedPassages ? `${LOCKED_REPAIR_RULE}\\n\\n${repairPlan.userPrompt}` : repairPlan.userPrompt');
+      expect(source).toMatch(/missingRequirements: lockedPassages\s*\?\s*\[\]/);
+    });
+
     it('tells the repair what it may not do', () => {
       expect(LOCKED_REPAIR_RULE).toContain('Do not remove a citation from a sentence you keep.');
-      expect(LOCKED_REPAIR_RULE).toContain('Do not add a section.');
+      expect(LOCKED_REPAIR_RULE).toContain('you may only cut');
+      expect(LOCKED_REPAIR_RULE).toContain('do not add a sentence, a citation, a source, a link, a heading or a section');
     });
   });
 

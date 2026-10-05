@@ -329,61 +329,69 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
 /** What can make a link in rendered Markdown: a bracket, an angle bracket, a scheme, a bare "www." host or a mail address. */
 const LINK_SYNTAX = /[[\]<>]|:\/\/|\bwww\.|\S@\S/i;
 /** A heading line of any level, or the underline that turns the line above it into one. */
-const HEADING_LINE = /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|=+[ \t]*$|-{2,}[ \t]*$)/;
+const HEADING_LINE = /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|=+[ \t]*$|-+[ \t]*$)/;
 
 /** Told to a repair of a report written with the citation lock. */
 export const LOCKED_REPAIR_RULE =
-  'Citations: every marker such as [P3] stays exactly as written, attached to the sentence it follows. ' +
-  'Do not remove a citation from a sentence you keep. Do not add a citation, a source, a link or a reference list: ' +
-  'you have not been shown the sources. Do not add a section.';
+  'You have not been shown the sources, so you may only cut. Remove the sentences the requirements object to; ' +
+  'keep every other sentence exactly as written, with its citation marker such as [P3] attached. ' +
+  'Do not remove a citation from a sentence you keep. Do not reword, and do not add a sentence, a citation, a source, a link, a heading or a section. ' +
+  'Return every section, including those you did not change.';
 
 /**
  * A repair of a report written with the citation lock, held to what a repair
- * may do. The repair is shown the report and not the passages, so it can
- * reword and it can cut, and nothing more:
+ * may do. The repair is shown the report and not the passages, so the one thing
+ * it can safely do is cut. A repair once returned a correct, cited report as
+ * five bare sentences, and a second added a section citing a source the run had
+ * not read; the report was saved with no citations and no references.
  *
- *  - a section in which a kept sentence lost its citation, or a citation was
- *    moved or added, is put back as it was. Cutting a cited sentence whole is
- *    allowed. A repair once returned a correct, cited report as five bare
- *    sentences, and the report was saved with no citations and no references;
- *  - a section the report did not have is not added. It was written from no
- *    passage, so nothing in it can be cited or checked;
- *  - a section that gained a link of any form, or a heading written with an
- *    underline, is put back as it was, for the same reason.
- *
- *  - a section that gained a sentence with no citation is put back as it was:
- *    the new sentence was written from no passage;
- *  - a section the repair left out is still there.
- *
- * A repair that leaves nothing usable returns the report as it was.
+ * The result is the report's own sections in their own order under its own
+ * title. A section is taken from the repair only when its citations are still
+ * on their statements and the repair has only cut from it; otherwise it is put
+ * back as it was. A section the repair left out stays, and a section the
+ * report did not have is not added. A repair that leaves nothing usable returns
+ * the report as it was.
  */
 export function guardLockedRepair(
   before: string,
   after: string
 ): { markdown: string; restored: string[]; dropped: string[] } {
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
-  const marker = new RegExp(MARKER_GROUP.source, 'i');
-  /** Sentences that carry no citation. A repair may reword or cut one; a section that has more of them than before has gained material. */
-  const uncited = (text: string): number =>
-    sentencePieces(text).filter((piece) => /\p{L}/u.test(piece.text) && !/^\s*#{1,6}\s/.test(piece.text) && !marker.test(piece.text)).length;
   const flat = (text: string): string => text.replace(new RegExp(MARKER_GROUP.source, 'gi'), ' ').replace(/\s+/g, ' ').trim();
-  /**
-   * A repair may reword plain sentences. A sentence that carries anything
-   * able to render as a link, and any heading line below the section's own,
-   * must be one the section already had, word for word: that ties every link
-   * to the statement it was on and leaves no Markdown form to enumerate.
-   */
-  const addsNoLinkOrHeading = (was: string, now: string): boolean => {
-    const body = (text: string): string => text.split('\n').slice(1).join('\n');
-    const hadSentences = new Set(sentencePieces(body(was)).map((piece) => flat(piece.text)));
-    const hadLines = new Set(body(was).split('\n').map((line) => line.trim()));
-    const linesNow = body(now).split('\n');
-    const headingsKept = linesNow.every((line) => !HEADING_LINE.test(line) || hadLines.has(line.trim()));
-    const linksKept = sentencePieces(body(now)).every((piece) => {
-      const sentence = flat(piece.text);
-      return !LINK_SYNTAX.test(sentence) || hadSentences.has(sentence);
+  const body = (text: string): string => text.split('\n').slice(1).join('\n');
+  /** Every item of `now` is matched by its own item of `was`: a second copy needs a second original. */
+  const eachFrom = (now: string[], was: string[]): boolean => {
+    const left = [...was];
+    return now.every((item) => {
+      const at = left.indexOf(item);
+      if (at === -1) return false;
+      left.splice(at, 1);
+      return true;
     });
-    return headingsKept && linksKept;
+  };
+  /**
+   * A locked repair may cut, and nothing else. It was shown the report and not
+   * the passages, so any words it adds were written from no source. Sentence by
+   * sentence, what the section holds after the repair must be what it held
+   * before, less whatever was cut:
+   *  - the words of every sentence are the words of one of the section's own
+   *    sentences (case and punctuation aside), each original used once;
+   *  - a sentence carrying anything that can render as a link is one of the
+   *    section's own, character for character, so a link stays on its statement;
+   *  - a heading line or heading underline is one the section already had;
+   *  - a section that had text still has some.
+   */
+  const onlyCuts = (was: string, now: string): boolean => {
+    const sentences = (text: string): string[] => sentencePieces(body(text)).map((piece) => flat(piece.text)).filter((sentence) => /[\p{L}\p{N}]/u.test(sentence));
+    const before = sentences(was);
+    const after = sentences(now);
+    if (before.length > 0 && after.length === 0) return false;
+    const headingLines = (text: string): string[] => body(text).split('\n').filter((line) => HEADING_LINE.test(line)).map((line) => line.trim());
+    return (
+      eachFrom(after.map(statementKey), before.map(statementKey)) &&
+      eachFrom(after.filter((sentence) => LINK_SYNTAX.test(sentence)), before) &&
+      eachFrom(headingLines(now), headingLines(was))
+    );
   };
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
@@ -402,18 +410,9 @@ export function guardLockedRepair(
   const restored: string[] = [];
   const kept = beforeBlocks.map((block) => {
     const now = repaired.get(key(block.heading));
-    // Statement by statement: a cited sentence may be cut with its citation, but
-    // a sentence that is kept keeps its citation, no citation moves or is added,
-    // and no sentence arrives without one.
-    const sound =
-      now !== undefined &&
-      // Every section, cited before or not: a citation added to a section that
-      // had none marks a sentence the repair wrote itself.
-      markersPreserved(block.text, now, { allowRemoval: true }) &&
-      uncited(now) <= uncited(block.text) &&
-      // No link of any form and no heading the section did not already have:
-      // the repair was shown no source to link to and may not add a section.
-      addsNoLinkOrHeading(block.text, now);
+    // Citations stay on the statements they were written for, and the repair
+    // has only cut.
+    const sound = now !== undefined && markersPreserved(block.text, now, { allowRemoval: true }) && onlyCuts(block.text, now);
     if (sound) return now as string;
     restored.push(block.heading);
     return block.text;
