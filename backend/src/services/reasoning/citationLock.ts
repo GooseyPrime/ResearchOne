@@ -411,9 +411,30 @@ export function guardLockedRepair(
     // fence and its close, an HTML comment or tag and its end, a reference link
     // and its definition. Cutting one part changes what the reader sees of the
     // other. A section that holds any of them is taken unchanged or not at all.
-    if (/^[ \t]{0,3}(?:`{3,}|~{3,})|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
+    // So does a quotation, and a list item or quoted line that runs on to a
+    // line of its own without a marker: cut the first line and the second
+    // stops being part of it.
+    const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|>)[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|>|\|)\S/m.test(body(was));
+    if (runsOn || /^[ \t]{0,3}(?:`{3,}|~{3,})|^[ \t]{0,3}>|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
       return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap);
     }
+    // A line that Markdown gives a shape (a list item, a table row, a quoted or
+    // indented line) is kept whole or cut whole: taking the bullet off a
+    // sentence, or a row out of its cell marks, changes what the reader is told
+    // it is. Such lines must be the section's own, in order.
+    const shaped = (line: string): boolean => /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|>|\|)|^(?: {4}|\t)/.test(line);
+    const shapedLines = (text: string): string[] => body(text).split('\n').filter(shaped).map((line) => line.replace(/[ \t]+$/, ''));
+    const wasShaped = shapedLines(was);
+    let shapedAt = 0;
+    for (const line of shapedLines(now)) {
+      while (shapedAt < wasShaped.length && wasShaped[shapedAt] !== line) shapedAt += 1;
+      if (shapedAt === wasShaped.length) return false;
+      shapedAt += 1;
+    }
+    // And a plain line left standing must not have been part of a shaped one.
+    const plainText = (text: string): string => body(text).split('\n').filter((line) => !shaped(line)).join('\n');
+    const plainHad = new Set(sentencePieces(plainText(was)).map((piece) => piece.text.trim()).filter(Boolean));
+    if (!sentencePieces(plainText(now)).every((piece) => !piece.text.trim() || plainHad.has(piece.text.trim()))) return false;
     // A code fence is cut with its partner or not at all: one left open turns
     // everything after it, the reference list included, into code.
     const fences = (text: string): number => (body(text).match(/^[ \t]{0,3}(?:```|~~~)/gm) ?? []).length;

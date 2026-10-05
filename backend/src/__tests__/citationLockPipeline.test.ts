@@ -560,6 +560,20 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(referenced, referenced.replace(' It treats sickle cell disease in patients aged 12 and older [P1, P2].', '')).restored).toEqual([]);
     });
 
+    it('keeps a list item or a quoted line whole, or cuts it whole', () => {
+      const listed = before.replace('- The approval came on 8 December 2023 [P1].', '- Background first. The approval came on 8 December 2023 [P1].');
+      // The bullet taken off the sentence that is kept.
+      expect(guardLockedRepair(listed, listed.replace('- Background first. The approval', 'The approval')).restored).toEqual(['Key findings']);
+      // Half an item cut, bullet kept: still not the item the report had.
+      expect(guardLockedRepair(listed, listed.replace('- Background first. The approval', '- The approval')).restored).toEqual(['Key findings']);
+      // The whole item cut.
+      expect(guardLockedRepair(listed, listed.replace('- Background first. The approval came on 8 December 2023 [P1].\n', '')).restored).toEqual([]);
+      const quotedLine = before.replace('The sources do not cover long-term follow-up.', '> The agency said this.\nIt applies to patients aged 12 and older [P2].');
+      expect(guardLockedRepair(quotedLine, quotedLine.replace('> The agency said this.\n', '')).restored).toEqual(['Limits of this report']);
+      const runOn = before.replace('- Eligible patients have recurrent crises [P2].', '- Eligible patients have recurrent crises [P2].\nThis continues the item.');
+      expect(guardLockedRepair(runOn, runOn.replace('- Eligible patients have recurrent crises [P2].\n', '')).restored).toEqual(['Key findings']);
+    });
+
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
       const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
       const repair = source.slice(source.indexOf('const beforeRepair = generatedReport.markdown;'), source.indexOf('ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);', source.indexOf('const beforeRepair = generatedReport.markdown;')));
