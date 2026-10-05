@@ -27,6 +27,7 @@ import {
 } from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
+import { fillReferenceDetails, storedBibliographic } from '../ingestion/ingestionService';
 import { selectByRelevance } from './candidateRelevance';
 import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
@@ -43,6 +44,7 @@ import {
   SearchResultCandidate,
   bibliographicMetadata,
   candidateForRun,
+  withFullerBibliographic,
 } from './providerTypes';
 import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
@@ -395,6 +397,8 @@ async function runDiscoveryOrchestratorInner(args: {
     : providers;
   const allCandidates: SearchResultCandidate[] = [];
   const seenUrls = new Set<string>();
+  /** Where each kept candidate sits in `allCandidates`, by normalised address. */
+  const candidateAt = new Map<string, number>();
   const queriesExecuted: string[] = [];
   let roundsExecuted = 0;
   // Total query budget shared across all discovery rounds.
@@ -427,8 +431,19 @@ async function runDiscoveryOrchestratorInner(args: {
           for (const r of results) {
             const key = normalizeUrl(r.url);
             const isExcluded = exclusionPatterns.some((pat) => key.includes(pat));
-            if (isExcluded || seenUrls.has(key)) continue;
+            if (isExcluded) continue;
+            if (seenUrls.has(key)) {
+              // The same address from a second provider is still one candidate.
+              // With the citation lock on it keeps the fuller reference record of
+              // the two, whichever provider answered first.
+              const at = candidateAt.get(key);
+              if (citationLockEnabled() && at !== undefined) {
+                allCandidates[at] = withFullerBibliographic(allCandidates[at], r);
+              }
+              continue;
+            }
             seenUrls.add(key);
+            candidateAt.set(key, allCandidates.length);
             // Reference details travel with a candidate only when the citation lock
             // is on for this run. With it off a candidate is exactly what it was.
             allCandidates.push(candidateForRun(r, citationLockEnabled()));
@@ -617,6 +632,18 @@ async function runDiscoveryOrchestratorInner(args: {
     );
 
     if (alreadyIngested) {
+      // The source is stored from an earlier run, perhaps before reference
+      // details were kept. What this run's provider record says fills what the
+      // stored source lacks. A candidate carries details only with the citation
+      // lock on, and a failure here costs the reference entry, not the run.
+      const referenceDetails = storedBibliographic(bibliographicMetadata(candidate));
+      if (referenceDetails) {
+        try {
+          await fillReferenceDetails(alreadyIngested.id, referenceDetails);
+        } catch (err) {
+          logger.warn(`[discovery:${runId}] could not add reference details to a stored source: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       skipped.push({
         ...candidate,
         selectionRationale: 'already in corpus',

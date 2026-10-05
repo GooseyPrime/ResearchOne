@@ -10,6 +10,9 @@ const calls: Array<{ role: string; text: string; last: string }> = [];
 let keyFindingsAsParagraph = false;
 let shortenWorks = true;
 let bodyIsLong = false;
+let bulletsNeverCome = false;
+let limitsAsList = false;
+let limitsIsLong = false;
 
 const sentence = (n: number, marker: string) => `Finding number ${n} adds one more separate detail about the construction programme ${marker}.`;
 const LONG_BODY = Array.from({ length: 120 }, (_, index) => sentence(index + 1, '[P2]')).join(' ');
@@ -29,7 +32,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     const asksShorter = last.startsWith('That draft is');
     if (first.includes('Section to draft: Summary')) return reply('Costs rose in the United States after 1979 [P1].');
     if (first.includes('Section to draft: Key findings')) {
-      if (keyFindingsAsParagraph && !asksBullets) return reply('The comparative analysis reveals three factors. Regulation changed during construction [P1]. Designs were not repeated [P2].');
+      if (keyFindingsAsParagraph && (bulletsNeverCome || !asksBullets)) return reply('The comparative analysis reveals three factors. Regulation changed during construction [P1]. Designs were not repeated [P2].');
       return reply(Array.from({ length: 9 }, (_, index) => `- Point ${index + 1} about the programme is stated once here [P1].`).join('\n'));
     }
     if (first.includes('Section to draft: Regulatory change during construction')) {
@@ -42,8 +45,9 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     if (first.includes('Section to draft: Where sources disagree')) {
       return reply(`The record is contested, with Lovering et al. ${TAIL} Critics claim that the figures were estimates and not final costs [P1].`);
     }
-    if (first.includes('Section to draft: Limits of this report')) {
-      return reply(Array.from({ length: 7 }, (_, index) => `Limit number ${index + 1} names a separate gap in what the sources cover.`).join(' '));
+    if (first.includes('Section to draft: Limits')) {
+      if (limitsAsList) return reply(Array.from({ length: 9 }, (_, index) => `- Limit number ${index + 1} names a separate gap in what the sources cover.`).join('\n'));
+      return reply(Array.from({ length: limitsIsLong && !asksShorter ? 30 : 7 }, (_, index) => `Limit number ${index + 1} names a separate gap in what the sources cover.`).join(' '));
     }
     if (first.includes('Section to draft: Steps')) {
       return reply(Array.from({ length: 150 }, (_, index) => `${index + 1}. Carry out step ${index + 1} of the procedure exactly as the manual describes it [P2].`).join('\n'));
@@ -65,7 +69,7 @@ const CHUNKS = [
   { id: '33333333-3333-4333-8333-333333333333', content: 'Korean costs fell by half between the first reactor and the later builds.' },
 ];
 
-async function write(lock = true) {
+async function write(lock = true, requestedFormats?: string[]) {
   return generateIterativeReport({
     query: 'Why do nuclear plants cost more to build in the United States?',
     plan: {},
@@ -78,6 +82,7 @@ async function write(lock = true) {
     skipChallenger: true,
     targetWordCount: 2200,
     lengthSource: 'planner',
+    requestedFormats,
     usedSources: [SOURCE, SOURCE, SOURCE],
     lockedPassages: lock ? issuePassages(CHUNKS, [SOURCE, SOURCE, SOURCE]) : undefined,
   });
@@ -93,6 +98,9 @@ describe('section size and shape on the Layer 1 report path', () => {
     keyFindingsAsParagraph = false;
     shortenWorks = true;
     bodyIsLong = false;
+    bulletsNeverCome = false;
+    limitsAsList = false;
+    limitsIsLong = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -129,6 +137,48 @@ describe('section size and shape on the Layer 1 report path', () => {
     const report = await write();
     expect(calls.some((call) => call.last.startsWith('Rewrite this as 3 to 7 bullet points'))).toBe(false);
     expect(section(report, 'key_findings').split('\n')).toHaveLength(7);
+  });
+
+  it('makes key findings a list itself when the second draft is still paragraphs', async () => {
+    keyFindingsAsParagraph = true;
+    bulletsNeverCome = true;
+    const report = await write();
+    expect(calls.filter((call) => call.last.startsWith('Rewrite this as 3 to 7 bullet points'))).toHaveLength(1);
+    const findings = section(report, 'key_findings');
+    expect(isBulletList(findings)).toBe(true);
+    // The writer's own sentences, each with its citation, one to a bullet.
+    expect(findings.split('\n')).toEqual([
+      '- The comparative analysis reveals three factors.',
+      '- Regulation changed during construction [P1].',
+      '- Designs were not repeated [P2].',
+    ]);
+  });
+
+  it('keeps a limits note written as a list to four items', async () => {
+    limitsAsList = true;
+    const report = await write();
+    const limits = section(report, 'limits').split('\n');
+    expect(limits).toHaveLength(4);
+    expect(limits[0]).toBe('- Limit number 1 names a separate gap in what the sources cover.');
+  });
+
+  it('holds the limits note to its size when a presentation format was chosen', async () => {
+    // With a format chosen the report keeps the older section plan, where every
+    // section had an even share: 440 words of a 2,200-word report for a limits note.
+    const report = await write(true, ['narrative_briefing']);
+    expect(report.sections.some((entry) => entry.key === 'narrative_briefing')).toBe(true);
+    const limitsCall = calls.find((call) => call.role === 'section_drafter' && call.text.includes('Section to draft: Limits'));
+    expect(limitsCall?.text).toContain('target: ~90 words');
+    expect(limitsCall?.text).toContain('Write two to four sentences that name only real limits');
+    expect(splitSentences(section(report, 'limits'))).toHaveLength(4);
+  });
+
+  it('asks for a shorter limits note when a presentation format was chosen, as it does without one', async () => {
+    limitsIsLong = true;
+    await write(true, ['narrative_briefing']);
+    const asks = calls.filter((call) => call.last.startsWith('That draft is') && call.text.includes('Section to draft: Limits'));
+    expect(asks).toHaveLength(1);
+    expect(asks[0].last).toContain('Rewrite it within 90 words');
   });
 
   it('asks once for a shorter draft when a section runs far past its share, and uses it', async () => {
@@ -243,6 +293,15 @@ describe('helpers behind section size and shape', () => {
     expect(splitSentences('The review by Dr. Chen covers Fig. 3 in full. It is short.')).toEqual(['The review by Dr. Chen covers Fig. 3 in full.', 'It is short.']);
     expect(splitSentences('The study by J. R. Lovering covers 349 reactors. It is cited often.')).toEqual(['The study by J. R. Lovering covers 349 reactors.', 'It is cited often.']);
     expect(splitSentences('Costs differ by country, e.g. France and Korea. Both built in series.')).toEqual(['Costs differ by country, e.g. France and Korea.', 'Both built in series.']);
+  });
+
+  it('ends a sentence at a lettered label, and still keeps an initial with its name', () => {
+    expect(splitSentences('Choose option A. Next, compare the totals.')).toEqual(['Choose option A.', 'Next, compare the totals.']);
+    expect(splitSentences('The figures are in Appendix B. Costs rose after 1979.')).toHaveLength(2);
+    expect(splitSentences('Most patients had hepatitis C. Treatment began in 2014.')).toHaveLength(2);
+    expect(splitSentences('The review by J. Lovering covers sixty years.')).toHaveLength(1);
+    expect(splitSentences('It cites Jessica R. Lovering on overnight cost.')).toHaveLength(1);
+    expect(splitSentences('The authors, R. Smith and J. A. Brown, disagree.')).toHaveLength(1);
   });
 
   it('does not split "et al." or a dotted abbreviation from the number or bracket after it', () => {

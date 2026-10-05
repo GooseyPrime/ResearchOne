@@ -40,6 +40,12 @@ export interface BibliographicDetails {
   kind?: string;
   /** YYYY-MM-DD. Left out when the record gives less than a full day, or a day that does not exist. */
   publishedAt?: string;
+  /**
+   * The provider whose record these details came from, when that is not the
+   * provider of the candidate carrying them: the same address found by two
+   * providers keeps one candidate and the fuller record.
+   */
+  provider?: string;
 }
 
 /**
@@ -87,7 +93,40 @@ export function candidateForRun(candidate: SearchResultCandidate, citationLockOn
  */
 export function bibliographicMetadata(candidate: SearchResultCandidate): { bibliographic?: BibliographicDetails & { provider: string } } {
   if (!candidate.bibliographic) return {};
-  return { bibliographic: { ...candidate.bibliographic, provider: candidate.provider } };
+  return { bibliographic: { ...candidate.bibliographic, provider: candidate.bibliographic.provider ?? candidate.provider } };
+}
+
+const DETAIL_FIELDS = ['authors', 'publisher', 'kind', 'publishedAt'] as const;
+
+function detailCount(details: BibliographicDetails): number {
+  return DETAIL_FIELDS.filter((field) => {
+    const value = details[field];
+    return Array.isArray(value) ? value.length > 0 : Boolean(value);
+  }).length;
+}
+
+/**
+ * One address found by two providers: the candidate already kept, with the
+ * fuller of the two reference records. Which record wins does not depend on
+ * which provider answered first: the one with more details, and on a tie the
+ * provider whose name sorts first. What the winner lacks the other fills. The
+ * record is stamped with the provider it came from, since the kind it names is
+ * that provider's wording. A later candidate without details changes nothing.
+ */
+export function withFullerBibliographic(kept: SearchResultCandidate, later: SearchResultCandidate): SearchResultCandidate {
+  if (!later.bibliographic) return kept;
+  const laterRecord = { ...later.bibliographic, provider: later.bibliographic.provider ?? later.provider };
+  if (!kept.bibliographic) return { ...kept, bibliographic: laterRecord };
+  const keptRecord = { ...kept.bibliographic, provider: kept.bibliographic.provider ?? kept.provider };
+  const difference = detailCount(laterRecord) - detailCount(keptRecord);
+  const laterWins = difference > 0 || (difference === 0 && laterRecord.provider < keptRecord.provider);
+  const [winner, other] = laterWins ? [laterRecord, keptRecord] : [keptRecord, laterRecord];
+  const merged: BibliographicDetails = { ...winner };
+  if (!merged.authors?.length && other.authors?.length) merged.authors = other.authors;
+  if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
+  if (!merged.kind && other.kind) merged.kind = other.kind;
+  if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
+  return { ...kept, bibliographic: merged };
 }
 
 export interface DiscoverySource {

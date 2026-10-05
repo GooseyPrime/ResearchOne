@@ -67,9 +67,16 @@ export function sourcesByNumber(rows: LockedCitationSourceRow[]): ReferenceSourc
   return out;
 }
 
-/** The generated reference list is a later section named "References"; a report may open with a section of that name. */
-function isReferenceList(section: { title: string }, index: number): boolean {
-  return index > 0 && /^references$/i.test(section.title.trim());
+/**
+ * Where the generated reference list is. It is written last, so it is the last
+ * section named "References"; a report may hold an earlier section of that name
+ * (its own opening section, or one the writer chose), which is never the list.
+ */
+function referenceListIndex(sections: ReadonlyArray<{ title: string }>): number {
+  for (let index = sections.length - 1; index > 0; index -= 1) {
+    if (/^references$/i.test(sections[index].title.trim())) return index;
+  }
+  return -1;
 }
 
 /**
@@ -83,7 +90,7 @@ export function withReferenceStyle<T extends { title: string; content: string }>
   style: ReferenceStyle
 ): { sections: T[]; rebuilt: boolean } {
   if (!sources || sources.length === 0) return { sections, rebuilt: false };
-  const at = sections.findIndex(isReferenceList);
+  const at = referenceListIndex(sections);
   if (at === -1) return { sections, rebuilt: false };
   const savedEntries = sections[at].content.split('\n').filter((line) => /^\s*\d+\.\s+\S/.test(line)).length;
   if (savedEntries !== sources.length) return { sections, rebuilt: false };

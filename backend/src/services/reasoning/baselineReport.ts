@@ -320,7 +320,8 @@ export function sectionsToMarkdown(sections: Array<{ title: string; content: str
  * - the next word starts with a lower-case letter ("et al. reporting that…");
  * - a title or a reference word that always has something after it
  *   ("Dr. Chen", "Fig. 3", "e.g. France", "vs. Korea");
- * - a single initial before a name ("J. R. Lovering");
+ * - a single initial where a name can stand, before a capitalised word
+ *   ("J. R. Lovering", "by A. Yip"), but not a letter label ("option A.");
  * - "et al.", "etc.", "Inc." and the like, or a dotted abbreviation ("U.S."),
  *   but only when a number or a bracket follows ("et al. (2016)", "U.S. [3]").
  *   Before a capitalised word these do end sentences ("…built in the U.S.
@@ -330,7 +331,27 @@ export function sectionsToMarkdown(sections: Array<{ title: string; content: str
  * Scripts without letter case are split at every full stop.
  */
 const ALWAYS_CONTINUES = /\b(?:e\.g|i\.e|vs|cf|Mr|Mrs|Ms|Dr|Prof|St|Fig|No|approx)\.$/;
-const SINGLE_INITIAL = /(?<![\p{L}.])\p{Lu}\.$/u;
+/**
+ * A single capital and a full stop is an initial only where a name can stand:
+ * at the start, after another initial or a capitalised word ("Jessica R."),
+ * after a comma or bracket, or after a word that introduces a person ("by J.").
+ * After an ordinary word it is a label that ends the sentence ("option A.",
+ * "vitamin C."), and so it is after a word that takes a letter label
+ * ("Appendix B.", "Table A.").
+ */
+const LETTER_LABEL_WORD = /^(?:appendix|annex|table|figure|section|option|part|phase|plan|type|group|class|grade|category|exhibit|schedule|vitamin|hepatitis|level|tier|series|model|unit|block|zone|stage|step|item|case|variant|scenario)$/i;
+function endsWithNameInitial(text: string): boolean {
+  const match = /(?:^|(\S+)\s+)\p{Lu}\.$/u.exec(text);
+  if (!match) return false;
+  const before = match[1];
+  if (before === undefined) return true;
+  if (/[,;:(\[\u2014\u2013-]$/.test(before)) return true;
+  const word = before.replace(/^[("'\u201C\u2018[]+/, '');
+  if (LETTER_LABEL_WORD.test(word)) return false;
+  if (/^\p{Lu}\.$/u.test(word)) return true;
+  if (/^(?:by|and|with|from|per|see|of|to|for|as|author|authors|editor|editors)$/i.test(word)) return true;
+  return /^\p{Lu}\p{Ll}/u.test(word);
+}
 const MAY_END_SENTENCE = /(?:\b(?:et al|etc|Inc|Ltd|Co|Corp)|\b(?:\p{Lu}\.){1,}\p{Lu})\.$/u;
 
 export function splitSentences(text: string): string[] {
@@ -341,7 +362,7 @@ export function splitSentences(text: string): string[] {
       last !== undefined &&
       (/^\p{Ll}/u.test(piece) ||
         ALWAYS_CONTINUES.test(last) ||
-        (SINGLE_INITIAL.test(last) && /^\p{Lu}/u.test(piece)) ||
+        (endsWithNameInitial(last) && /^\p{Lu}/u.test(piece)) ||
         (MAY_END_SENTENCE.test(last) && /^[\p{N}([]/u.test(piece)));
     if (continues) out[out.length - 1] = `${last} ${piece}`;
     else out.push(piece);
@@ -463,9 +484,34 @@ export function trimToWords(content: string, maxWords: number): string {
   return kept.join('\n\n').trim();
 }
 
-/** The first `max` sentences of a section, for a note that must stay a note. */
+/** The size a section has whatever the length of the report, or undefined for a section sized by the report. */
+export function fixedSectionWords(key: string): number | undefined {
+  return FIXED_SECTION_WORDS[key];
+}
+
+/**
+ * Prose written as a list, one sentence to a bullet, at most `max`. For key
+ * findings a writer returned as paragraphs twice: the sentences and their
+ * citations are kept as they are and only the shape changes.
+ */
+export function sentencesAsBullets(content: string, max = 7): string {
+  if (isBulletList(content.trim())) return capBullets(content.trim(), max);
+  const sentences: string[] = [];
+  for (const block of content.split(/\n{2,}/)) {
+    if (!block.trim() || block.trim().startsWith('```') || block.includes('|')) continue;
+    const lines = isListBlock(block) ? block.split('\n').map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')) : splitSentences(block.replace(/\s*\n\s*/g, ' ').trim());
+    for (const line of lines) if (line.trim()) sentences.push(line.trim());
+  }
+  if (sentences.length === 0) return content;
+  return sentences.slice(0, max).map((sentence) => `- ${sentence}`).join('\n');
+}
+
+/** The first `max` sentences of a section, for a note that must stay a note. A note written as a list keeps its first `max` items. */
 export function firstSentences(content: string, max: number): string {
   const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
+  if (blocks.length > 0 && blocks.every((block) => isListBlock(block))) {
+    return blocks.join('\n').split('\n').filter((line) => line.trim().length > 0).slice(0, max).join('\n');
+  }
   const out: string[] = [];
   for (const block of blocks) {
     if (block.trim().startsWith('```') || block.includes('|') || isListBlock(block)) continue;

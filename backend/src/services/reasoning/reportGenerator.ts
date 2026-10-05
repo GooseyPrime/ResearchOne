@@ -4,7 +4,7 @@ import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService'
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
-import { capBullets, firstSentences, isSizedReaderSection, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { firstSentences, fixedSectionWords, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -1443,6 +1443,17 @@ Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun p
   }
   /** How far over its share a section may run before it is asked to be shorter, and the most it may keep. */
   const OVER_BUDGET = 1.35;
+  /**
+   * Words a section may use. On a Layer 1 report the summary, key findings,
+   * disagreement note and limits never get more than their own size, whatever
+   * plan they sit in: with a format chosen the plan is split evenly, and an
+   * even share of a long report is far more than a limits note should have.
+   */
+  const sectionWords = (key: string): number => {
+    const share = sectionBudgets.get(key) ?? Math.round(targetWordCount / activeSectionPlan.length);
+    const own = layer1 ? fixedSectionWords(key) : undefined;
+    return own === undefined ? share : Math.min(share, own);
+  };
 
   const sections: ReportSectionDraft[] = [];
   let rollingSummary = '';
@@ -1476,7 +1487,7 @@ Write the section body starting on the following line.`;
     section: RuntimeSectionPlanEntry,
     contextSummary: string
   ): Promise<ReportSectionDraft> => {
-    const sectionTarget = sectionBudgets.get(section.key) ?? Math.round(targetWordCount / activeSectionPlan.length);
+    const sectionTarget = sectionWords(section.key);
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
     const rollingSummary = contextSummary;
 
@@ -1513,7 +1524,7 @@ Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
-${useReaderHeadings ? readerSectionRule(section.key) : ''}
+${useReaderHeadings || (layer1 && fixedSectionWords(section.key) !== undefined) ? readerSectionRule(section.key) : ''}
 ${layer1 ? READER_WORDING_RULE : ''}
 ${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
@@ -1557,7 +1568,7 @@ Return section body text only. Do NOT write a markdown heading for this section 
     // Shape and size (report standard): key findings are a short list, and no
     // section runs far past its share. The writer is asked once, with the
     // passages still in front of it; what it returns is held to the same lock.
-    if (useReaderHeadings && isSizedReaderSection(section.key)) {
+    if (layer1 && isSizedReaderSection(section.key)) {
       const tooLong = wordCount(draftedText) > sectionTarget * OVER_BUDGET;
       const notAList = section.key === 'key_findings' && !isBulletList(draftedText.trim());
       if (tooLong || notAList) {
@@ -1578,8 +1589,10 @@ Return section body text only. Do NOT write a markdown heading for this section 
             shorterText = stripUnknownMarkers(shorterText, shownPassages);
           }
         }
-        // Kept only when it did what was asked; a rewrite that came back longer is not an improvement.
-        if (shorterText.trim() && (notAList ? isBulletList(shorterText.trim()) || wordCount(shorterText) < wordCount(draftedText) : wordCount(shorterText) < wordCount(draftedText))) {
+        // Kept only when it did what was asked: a list when a list was asked for,
+        // fewer words when fewer were asked for. A second paragraph is not a list
+        // however short it is; the final pass gives the first draft its shape instead.
+        if (shorterText.trim() && (notAList ? isBulletList(shorterText.trim()) : wordCount(shorterText) < wordCount(draftedText))) {
           sectionResult = shorter;
           draftedText = shorterText;
         }
@@ -1787,13 +1800,14 @@ ${layer1
     if (section.key === 'summary') {
       return wordCount(section.content) > 150 ? { ...section, content: trimSummaryAtSentence(section.content) } : section;
     }
-    if (!useReaderHeadings || !isSizedReaderSection(section.key)) return section;
+    if (!isSizedReaderSection(section.key)) return section;
     // The last word on shape and size, after every rewrite has had its turn.
     // Whole sentences and whole bullets only, so a citation leaves with its sentence.
     if (section.key === 'limits') return { ...section, content: firstSentences(section.content, 4) };
-    const budget = sectionBudgets.get(section.key);
-    const shaped = section.key === 'key_findings' ? capBullets(section.content, 7) : section.content;
-    const content = budget ? trimToWords(shaped, Math.round(budget * OVER_BUDGET)) : shaped;
+    // Key findings are a list. Paragraphs that survived the second request are
+    // given the shape here, sentence by sentence, with their citations.
+    const shaped = section.key === 'key_findings' ? sentencesAsBullets(section.content, 7) : section.content;
+    const content = trimToWords(shaped, Math.round(sectionWords(section.key) * OVER_BUDGET));
     if (content !== section.content) {
       logger.info('report_section_trimmed', { section: section.key, from: wordCount(section.content), to: wordCount(content) });
     }

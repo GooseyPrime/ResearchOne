@@ -25,9 +25,24 @@ interface ESummaryResult {
 
 const PMC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/**
+ * A PubMed name as "Family, G. I.". The summary record writes a person as the
+ * family name followed by run-together initials ("Frangoul H", "Smith JA",
+ * "van der Berg JA"), which read the other way round would make the initials the
+ * family name. A name not of that shape (a group, a name already holding a
+ * comma) is kept as written.
+ */
+export function pmcAuthorName(name: string): string {
+  const trimmed = name.replace(/\s+/g, ' ').trim();
+  if (trimmed.includes(',')) return trimmed;
+  const match = /^(.+\S) ([A-Z]{1,3})$/.exec(trimmed);
+  if (!match) return trimmed;
+  return `${match[1]}, ${match[2].split('').map((letter) => `${letter}.`).join(' ')}`;
+}
+
 /** What the summary record says about who wrote and published the article. */
 export function pmcBibliographic(summary: ESummaryResult): BibliographicDetails | undefined {
-  const authors = (summary.authors ?? []).map((author) => (author.name ?? '').trim()).filter(Boolean);
+  const authors = (summary.authors ?? []).map((author) => pmcAuthorName(author.name ?? '')).filter(Boolean);
   const publisher = (summary.fulljournalname ?? summary.source ?? '').trim();
   const out: BibliographicDetails = {};
   if (authors.length > 0) out.authors = authors;

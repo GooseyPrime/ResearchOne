@@ -164,4 +164,20 @@ describe('rebuilding the list from saved citations', () => {
     const opening = [{ title: 'References', content: '1. a\n2. b' }, { title: 'Summary', content: 'x' }];
     expect(withReferenceStyle(opening, sources, 'apa').rebuilt).toBe(false);
   });
+
+  it('rebuilds the last section named References, not an earlier one the writer chose', () => {
+    const rows = [row(1, { title: 'First source' }), row(2, { title: 'Second source' })];
+    const sources = sourcesByNumber(rows);
+    const sections = [
+      { title: 'Summary', content: 'x [1][2].' },
+      { title: 'References', content: 'The writer used this heading for a section on legal references.\n\n1. One statute.\n2. Another statute.' },
+      { title: 'References', content: '1. First source.\n2. Second source.' },
+      { title: 'About this report', content: '2 sources were read.' },
+    ];
+    const out = withReferenceStyle(sections, sources, 'apa');
+    expect(out.rebuilt).toBe(true);
+    expect(out.sections[1]).toBe(sections[1]);
+    expect(out.sections[2].content).toContain('First source');
+    expect(out.sections[2].content).not.toBe(sections[2].content);
+  });
 });

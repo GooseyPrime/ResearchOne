@@ -244,6 +244,28 @@ export function bibliographicRecord(details: NonNullable<ReturnType<typeof store
   return out;
 }
 
+/**
+ * Reference details for a source that is already stored. They fill what the
+ * stored record lacks; nothing already recorded is overwritten.
+ */
+export async function fillReferenceDetails(
+  sourceId: string,
+  details: NonNullable<ReturnType<typeof storedBibliographic>>
+): Promise<void> {
+  await query(
+    `UPDATE sources
+        SET authors = COALESCE(authors, $2::text[]),
+            publication = COALESCE(publication, $3),
+            published_at = COALESCE(published_at, $4::timestamptz),
+            metadata = CASE
+              WHEN COALESCE(metadata, '{}'::jsonb) ? 'bibliographic' THEN metadata
+              ELSE COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('bibliographic', $5::jsonb)
+            END
+      WHERE id = $1`,
+    [sourceId, details.authors, details.publisher, details.publishedAt, JSON.stringify(bibliographicRecord(details))]
+  );
+}
+
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
 async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
   sourceId: string;
@@ -293,20 +315,7 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
   if (existing) {
     // The page is already stored. Reference details a provider now supplies fill
     // what the stored record lacks; nothing already recorded is overwritten.
-    if (bibliographic) {
-      await query(
-        `UPDATE sources
-            SET authors = COALESCE(authors, $2::text[]),
-                publication = COALESCE(publication, $3),
-                published_at = COALESCE(published_at, $4::timestamptz),
-                metadata = CASE
-                  WHEN COALESCE(metadata, '{}'::jsonb) ? 'bibliographic' THEN metadata
-                  ELSE COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('bibliographic', $5::jsonb)
-                END
-          WHERE id = $1`,
-        [existing.id, bibliographic.authors, bibliographic.publisher, bibliographic.publishedAt, JSON.stringify(bibliographicRecord(bibliographic))]
-      );
-    }
+    if (bibliographic) await fillReferenceDetails(existing.id, bibliographic);
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,

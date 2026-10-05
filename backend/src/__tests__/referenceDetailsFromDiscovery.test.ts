@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest';
 import { crossrefBibliographic } from '../services/discovery/providers/crossrefSearch';
 import { openAlexBibliographic } from '../services/discovery/providers/openAlexSearch';
 import { arxivBibliographic } from '../services/discovery/providers/arxivSearch';
-import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { bibliographicMetadata, candidateForRun, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
+import { formatReference } from '../services/formatting/referenceList';
+import { pmcAuthorName, pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
+import { bibliographicMetadata, candidateForRun, withFullerBibliographic, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { citationLockEnabled, runWithFlags } from '../config';
 
@@ -79,7 +80,7 @@ describe('what each provider record says', () => {
 
   it('reads PubMed Central authors and journal, and a date only when it states a day', () => {
     expect(pmcBibliographic({ authors: [{ name: 'Frangoul H' }, { name: '' }], fulljournalname: 'New England Journal of Medicine', pubdate: '2021 Jan 21' })).toEqual({
-      authors: ['Frangoul H'],
+      authors: ['Frangoul, H.'],
       publisher: 'New England Journal of Medicine',
       publishedAt: '2021-01-21',
       kind: 'journal article',
@@ -109,6 +110,47 @@ describe('what a run keeps', () => {
     expect(Object.keys(off).sort()).toEqual(['provider', 'rank', 'score', 'snippet', 'sourceQuery', 'title', 'url']);
     expect(bibliographicMetadata(off)).toEqual({});
     expect(candidateForRun(candidate, true)).toBe(candidate);
+  });
+
+  it('writes a PubMed name family first with its initials, and leaves other names alone', () => {
+    expect(pmcAuthorName('Smith JA')).toBe('Smith, J. A.');
+    expect(pmcAuthorName('van der Berg JA')).toBe('van der Berg, J. A.');
+    expect(pmcAuthorName('Frangoul, Haydar')).toBe('Frangoul, Haydar');
+    expect(pmcAuthorName('CLIMB SCD-121 Study Group')).toBe('CLIMB SCD-121 Study Group');
+    expect(pmcAuthorName('  ')).toBe('');
+    // The reference list reads the family name from it, not the initials.
+    expect(formatReference({ title: 'Exa-cel for sickle cell disease', authors: [pmcAuthorName('Frangoul H')], date: '2021-01-21' }, 'apa')).toMatch(/^Frangoul, H\. \(2021/);
+  });
+
+  describe('one address found by two providers', () => {
+    const web: SearchResultCandidate = { url: 'https://doi.org/10.1/x', title: 'A study', snippet: '', score: 0.9, rank: 1, provider: 'tavily', sourceQuery: 'q' };
+    const openAlex: SearchResultCandidate = { ...web, provider: 'openalex', rank: 4, bibliographic: { authors: ['Jessica R. Lovering'], kind: 'journal article' } };
+    const crossref: SearchResultCandidate = { ...web, provider: 'crossref', rank: 7, bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01' } };
+
+    it('gives a candidate without details the record a later provider has, stamped with that provider', () => {
+      const merged = withFullerBibliographic(web, crossref);
+      expect(merged.provider).toBe('tavily');
+      expect(merged.rank).toBe(1);
+      expect(bibliographicMetadata(merged)).toEqual({ bibliographic: { ...crossref.bibliographic, provider: 'crossref' } });
+    });
+
+    it('keeps the same record whichever provider answered first', () => {
+      const oneWay = bibliographicMetadata(withFullerBibliographic(withFullerBibliographic(web, openAlex), crossref));
+      const otherWay = bibliographicMetadata(withFullerBibliographic(withFullerBibliographic(web, crossref), openAlex));
+      expect(oneWay).toEqual(otherWay);
+      // The fuller record wins and the other fills what it lacks.
+      expect(oneWay).toEqual({
+        bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01', kind: 'journal article', provider: 'crossref' },
+      });
+    });
+
+    it('breaks a tie by provider name and ignores a later candidate without details', () => {
+      const a: SearchResultCandidate = { ...web, provider: 'arxiv', bibliographic: { authors: ['A'] } };
+      const b: SearchResultCandidate = { ...web, provider: 'pmc', bibliographic: { authors: ['B'] } };
+      expect(withFullerBibliographic(a, b).bibliographic).toEqual({ authors: ['A'], provider: 'arxiv' });
+      expect(withFullerBibliographic(b, a).bibliographic).toEqual({ authors: ['A'], provider: 'arxiv' });
+      expect(withFullerBibliographic(crossref, web)).toBe(crossref);
+    });
   });
 
   it('queues the provider with the details it found', () => {
