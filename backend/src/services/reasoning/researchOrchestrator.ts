@@ -2380,6 +2380,7 @@ async function runResearchJobInner(
         let lockSources = referenceSources;
         let lockRetracted: boolean[] = [];
         let lockChecked: Array<{ status: string; notice: string | null } | null> = [];
+        let evidenceGoneAfterLinkCheck = false;
         let doiCheckRecord: { resolved: number; unresolved: number; unknown: number; retracted: number } | null = null;
         if (doiResolveEnabled()) {
           try {
@@ -2424,6 +2425,11 @@ async function runResearchJobInner(
                 materialJudgedSufficient = false;
                 const afterCheck = assessSourcesAsTheyStand();
                 if (afterCheck.action !== 'sufficient') sourceFailureReason = afterCheck.reason;
+                // A question that needs a verdict, with no independent evidence
+                // left: the run stops, as it would have had the gate seen this
+                // earlier. Raised below, outside the guard that keeps a failed
+                // check from stopping a run.
+                if (afterCheck.action === 'insufficient_evidence_fail_closed') evidenceGoneAfterLinkCheck = true;
               }
               lockChunks = applied.chunks;
               lockSources = applied.sources;
@@ -2437,6 +2443,12 @@ async function runResearchJobInner(
             });
           } catch (doiErr) {
             logger.warn(`[${runId}] Link check failed; sources are used as retrieved`, { err: doiErr });
+          }
+          if (evidenceGoneAfterLinkCheck) {
+            throw new Error(
+              'Adjudicative run halted: no independent evidence was left once sources whose links do not resolve were set aside. ' +
+              'Rerun with a broader corpus or supply supplemental sources.'
+            );
           }
         }
         lockedPassages = issuePassages(lockChunks, lockSources, new Map(sourceRows.map((row) => [row.id, row.source_id]))).map((passage, index) => ({
