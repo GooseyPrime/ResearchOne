@@ -50,7 +50,9 @@ import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
 import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
-import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
+import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
+  guardLockedRepair,
+  LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
 import { writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
@@ -2807,8 +2809,11 @@ ${reportForGates(generatedReport.markdown)}`,
         const repairPlan = planTargetedRepair({
           markdown: generatedReport.markdown,
           revisionInstructions,
-          missingRequirements:
-            (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [],
+          // With the citation lock the repair is not shown the passages, so it
+          // cannot write a new section that could be cited. It rewords and cuts.
+          missingRequirements: lockedPassages
+            ? []
+            : (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [],
         });
         await progress('verification', 93, repairPlan.progressMessage, {
           substep: 'repair_scope',
@@ -2821,7 +2826,7 @@ ${reportForGates(generatedReport.markdown)}`,
           runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'coherence_refiner'),
           messages: [
             { role: 'system', content: getSystemPrompt('coherence_refiner', isAdjudicative) },
-            { role: 'user', content: repairPlan.userPrompt },
+            { role: 'user', content: lockedPassages ? `${LOCKED_REPAIR_RULE}\n\n${repairPlan.userPrompt}` : repairPlan.userPrompt },
           ],
         });
         modelLog.push(repairResult);
@@ -2832,6 +2837,17 @@ ${reportForGates(generatedReport.markdown)}`,
         if (lockedPassages) {
           // The repair saw the report, not the passages. Its text is kept; a
           // citation it added or moved to a different statement is not.
+          // First what a repair may not do at all: lose a section's citations,
+          // add a section, add a link.
+          const guarded = guardLockedRepair(beforeRepair, generatedReport.markdown);
+          generatedReport.markdown = guarded.markdown;
+          if (guarded.restored.length > 0 || guarded.dropped.length > 0 || guarded.linksRemoved > 0) {
+            logger.warn(`[${runId}] Repair attempt ${attempt}: held to the citation lock`, {
+              sectionsRestored: guarded.restored.length,
+              sectionsNotAdded: guarded.dropped.length,
+              linksRemoved: guarded.linksRemoved,
+            });
+          }
           const checked = stripUnsupportedMarkers(beforeRepair, generatedReport.markdown);
           generatedReport.markdown = checked.markdown;
           if (checked.removed > 0) {

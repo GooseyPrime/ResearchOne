@@ -12,6 +12,7 @@
  * citations (`formatting/evidenceAliaser.ts`).
  */
 import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPresentation';
+import { splitTopLevelSections } from './targetedRepair';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 import type { ReferenceStyle } from '../formatting/referenceList';
 
@@ -323,6 +324,70 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
     const before = original[index];
     return before && !markersPreserved(before.content, section.content, options) ? before : section;
   });
+}
+
+const CITATION_MARKER = /\[\s*P\d+(?:\s*,\s*P\d+)*\s*\]/g;
+const LINK_OR_URL = /\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)>\]]+/g;
+
+/** Told to a repair of a report written with the citation lock. */
+export const LOCKED_REPAIR_RULE =
+  'Citations: every marker such as [P3] stays exactly as written, attached to the sentence it follows. ' +
+  'Do not remove a citation from a sentence you keep. Do not add a citation, a source, a link or a reference list: ' +
+  'you have not been shown the sources. Do not add a section.';
+
+/**
+ * A repair of a report written with the citation lock, held to what a repair
+ * may do. The repair is shown the report and not the passages, so it can
+ * reword and it can cut, and nothing more:
+ *
+ *  - a section that came back with every one of its citations gone is put back
+ *    as it was. A repair once returned a correct, cited report as five bare
+ *    sentences, and the report was saved with no citations and no references;
+ *  - a section the report did not have is not added. It was written from no
+ *    passage, so nothing in it can be cited or checked;
+ *  - a link the report did not have is taken out, for the same reason.
+ *
+ * A repair that leaves nothing usable returns the report as it was.
+ */
+export function guardLockedRepair(
+  before: string,
+  after: string
+): { markdown: string; restored: string[]; dropped: string[]; linksRemoved: number } {
+  const count = (text: string): number => (text.match(CITATION_MARKER) ?? []).length;
+  const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
+  const beforeBlocks = splitTopLevelSections(before);
+  const afterBlocks = splitTopLevelSections(after);
+  const original = new Map(beforeBlocks.map((block) => [key(block.heading), block.text]));
+  const restored: string[] = [];
+  const dropped: string[] = [];
+  const kept: string[] = [];
+  for (const block of afterBlocks) {
+    const was = original.get(key(block.heading));
+    if (was === undefined) {
+      dropped.push(block.heading);
+      continue;
+    }
+    if (count(was) > 0 && count(block.text) === 0) {
+      restored.push(block.heading);
+      kept.push(was);
+    } else {
+      kept.push(block.text);
+    }
+  }
+  if (kept.length === 0) return { markdown: before, restored: beforeBlocks.map((block) => block.heading), dropped, linksRemoved: 0 };
+  const lead = after.split('\n').slice(0, afterBlocks[0]?.startLine ?? 0).join('\n').trim();
+  let markdown = `${lead ? `${lead}\n\n` : ''}${kept.join('\n\n')}\n`;
+  if (count(before) > 0 && count(markdown) === 0) {
+    return { markdown: before, restored: beforeBlocks.map((block) => block.heading), dropped, linksRemoved: 0 };
+  }
+  const known = new Set((before.match(LINK_OR_URL) ?? []).map((link) => link.replace(/^\[[^\]]*\]\(|\)$/g, '')));
+  let linksRemoved = 0;
+  markdown = markdown.replace(LINK_OR_URL, (whole: string, label: string | undefined, url: string | undefined) => {
+    if (known.has(url ?? whole)) return whole;
+    linksRemoved += 1;
+    return label ?? '';
+  });
+  return { markdown, restored, dropped, linksRemoved };
 }
 
 /**

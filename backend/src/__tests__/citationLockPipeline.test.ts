@@ -72,6 +72,8 @@ import {
   stripReaderNumbers,
   stripUnknownMarkers,
   stripUnsupportedMarkers,
+  guardLockedRepair,
+  LOCKED_REPAIR_RULE,
   passagesForSection,
   readerNumbersIn,
   rebindRevisedCitations,
@@ -354,6 +356,65 @@ describe('citation lock helpers', () => {
     expect(checked.markdown).toContain('The tunnel opened to passengers in 2015 [P2]. Ridership doubled within a year.');
     expect(checked.markdown).toContain('A new statement the repair wrote.');
     expect(checked.markdown).toContain('## Added section');
+  });
+
+  describe('a repair held to the citation lock', () => {
+    const before = [
+      '# First CRISPR therapy approval',
+      '',
+      '## Summary',
+      'The FDA approved Casgevy on 8 December 2023 [P1]. It treats sickle cell disease in patients aged 12 and older [P1, P2].',
+      '',
+      '## Key findings',
+      '- The approval came on 8 December 2023 [P1].',
+      '- Eligible patients have recurrent crises [P2].',
+      '',
+      '## Limits of this report',
+      'The sources do not cover long-term follow-up.',
+    ].join('\n');
+
+    it('puts back every section a repair returned with its citations gone', () => {
+      // What a live run did: a correct, cited report came back as bare sentences and was saved with no references.
+      const after = '# First CRISPR therapy approval\n\n## Summary\nThe FDA approved Casgevy on 8 December 2023.\n\n## Key findings\n- The approval came on 8 December 2023.\n\n## Limits of this report\nThis report covers the approval only.';
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual(['Summary', 'Key findings']);
+      expect(guarded.markdown).toContain('The FDA approved Casgevy on 8 December 2023 [P1]. It treats sickle cell disease in patients aged 12 and older [P1, P2].');
+      expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
+      // A section that never had citations takes the repair's wording.
+      expect(guarded.markdown).toContain('This report covers the approval only.');
+      const finalized = finalizeLockedCitations(guarded.markdown, passages(), '5 Oct 2026');
+      expect(finalized.markdown).toContain('## References');
+      expect(finalized.occurrences.length).toBeGreaterThan(0);
+    });
+
+    it('accepts a repair that cut sentences and kept the citations of those it kept', () => {
+      const after = before.replace(' It treats sickle cell disease in patients aged 12 and older [P1, P2].', '');
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual([]);
+      expect(guarded.markdown).toContain('## Summary\nThe FDA approved Casgevy on 8 December 2023 [P1].\n');
+      expect(guarded.markdown).not.toContain('patients aged 12 and older');
+    });
+
+    it('does not add a section the repair wrote from no passage, or a link the report did not have', () => {
+      const after = `${before}\n\n## Report lacks a citation\nThe approval is confirmed by the agency. Source: [FDA press release](https://www.fda.gov/invented-page).`;
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.dropped).toEqual(['Report lacks a citation']);
+      expect(guarded.markdown).not.toContain('Report lacks a citation');
+      expect(guarded.markdown).not.toContain('fda.gov/invented-page');
+      const linked = guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up (see https://example.org/more and [the agency](https://www.fda.gov/x)).'));
+      expect(linked.linksRemoved).toBe(2);
+      expect(linked.markdown).toContain('long-term follow-up (see  and the agency).');
+    });
+
+    it('keeps the report as it was when the repair leaves nothing usable', () => {
+      expect(guardLockedRepair(before, 'I have revised the report as requested.').markdown).toBe(before);
+      expect(guardLockedRepair(before, '## A different heading\nSomething else entirely.').markdown).toBe(before);
+    });
+
+    it('tells the repair what it may not do', () => {
+      expect(LOCKED_REPAIR_RULE).toContain('Do not remove a citation from a sentence you keep.');
+      expect(LOCKED_REPAIR_RULE).toContain('Do not add a section.');
+    });
   });
 
   it('leaves bracketed numbers in code alone', () => {

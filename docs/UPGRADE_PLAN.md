@@ -26,6 +26,7 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 4, part 1. Citation core | Done | PR #248. Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
 | Slice 4, part 1. Live samples | Done | Produced 4 Oct 2026 with the per-run admin overrides; no switch was turned on for customers. See "What the live samples showed" under slice 4. |
 | Slice 4, part 2. Reference details and styles, with the sample fixes | Done | PR #250, with three late review findings closed in a follow-up pull request. Behind the same two switches, unset by default. See "As built, part 2" under slice 4. |
+| Slice 4, part 2. Second live samples | Done | Produced 5 Oct 2026. The broad report met the length, shape, numbering and wording points. The single-fact report lost its citations in a repair pass; fixed in the pull request that adds this row. See "What the second samples showed" under slice 4. |
 | Slice 4, parts 3 and 4 | Not started | Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order, each after the one before it is merged. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
@@ -467,6 +468,14 @@ Acceptance:
 - An export finds the generated reference list as the last section named References, so an earlier section of that name is left alone.
 - Wording: see "Wording check" in section 5. A passage label written into a sentence is replaced with "one source" when it names an issued passage and stands before a verb of saying. What cannot be removed is recorded on the run. The wording checks read the report's own sentences only: the generated reference list is never checked for wording or reworded, so a source called "The Case for Nuclear Power" keeps its name. The last wording check before the save runs for every Layer 1 report, with or without the lock. A pipeline role is read as a leak only where a sentence credits it with a finding ("as noted by the …", "the … flagged"), since several role names are real occupations. Terms a subject uses for itself ("copyright claims", "product-liability claim") are left as written.
 - Not in part 2: DOI resolution and retraction (part 3), the quality judge (part 4), the reference list and hover card on the reading page (slice 5).
+
+**What the second samples showed (5 Oct 2026).**
+
+- Broad question: inside the length limit, key findings as bullets, a four-sentence limits note, no doubled numbers, no banned wording, no cut sentence, cleaner reference titles.
+- Still open on the broad report: one article stored from two sites was listed twice (the copies shared a title but the passages retrieved from each were different, so the text test did not match); the summary and key findings restate each other in different words; web sources carry no authors. The first is for part 3 or slice 6, the second for part 4's judge, the third for slice 6.
+- Single-fact question: the writer's draft was correct and cited. The contract check asked for a more direct answer, the repair returned the report as bare sentences with every citation gone, and it was accepted. A second repair appended a section named after the check's complaint, citing a source the run had not read. The run ended failed with no reference list.
+- Fix: a repair of a locked report is told to keep every citation and add nothing, and is then held to that. A section returned without its citations is put back as it was, a section the report did not have is not added, and a link the report did not have is removed. A locked repair no longer appends sections at all, because it is not shown the passages. Known limit: where the check wants a section added, a locked repair cannot supply it; giving the repair the passages is later work.
+- Not fixed here: a one-fact question named as a factual report was still planned at 3,600 words, which is what the contract check objected to. The short path for such questions is slice 7.
 
 **Starting point (rev 6).** Slice 3 left an interim scheme: the writer cites `[n]` for `CHUNK n`, `renumberCitations` renumbers by source, and nothing is bound to `report_citations`. This slice replaces the interim scheme with the citation lock below and keeps its two guarantees: one number per source in first-citation order, and no marker without a source. Everything new is gated as invariants 13 and 14 require.
 
