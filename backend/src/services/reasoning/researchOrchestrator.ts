@@ -2435,6 +2435,11 @@ async function runResearchJobInner(
               lockSources = applied.sources;
               lockRetracted = applied.retracted;
               lockChecked = applied.checked;
+            } else {
+              // Nothing is left out, but what was found is still true of each
+              // source and is still saved beside any citation of it.
+              lockRetracted = applied.everyRetracted;
+              lockChecked = applied.everyChecked;
             }
             logger.info(`[${runId}] Link check on cited sources`, {
               sourcesWithDoi: new Set(dois).size,

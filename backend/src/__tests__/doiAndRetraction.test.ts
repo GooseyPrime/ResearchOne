@@ -28,6 +28,7 @@ import { recordDoiChecks } from '../services/reasoning/citationBinding';
 import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
 import { fullestBibliographic, requestMetadataForStorage, resultForRun } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
+import { doiResolveEnabled, runWithFlags } from '../config';
 import { scoreDoiResolution } from '../services/eval/scoreReport';
 import { STORED_CITATION_SQL } from '../services/eval/runHarness';
 
@@ -173,6 +174,15 @@ describe('what a locked report may cite after the link check', () => {
     expect(shown.some((passage) => passage.chunkId === 'c4')).toBe(false);
   });
 
+  it('still reports what was found for every passage when none can be left out', () => {
+    const allGone = new Map([['10.1000/ok', { status: 'unresolved', notice: null }], ['10.1000/bad', { status: 'unresolved', notice: null }]]);
+    const two = applyDoiChecks(chunks.slice(0, 2), sources.slice(0, 2), allGone, sources.slice(0, 2).map((source) => doiOf(source.url)));
+    expect(two.chunks).toHaveLength(0);
+    expect(two.everyChecked).toEqual([{ status: 'unresolved', notice: null }, { status: 'unresolved', notice: null }]);
+    expect(applyDoiChecks(chunks, sources, checks, sources.map((source) => doiOf(source.url))).everyRetracted).toEqual([false, true, false, false]);
+    expect(orchestratorSource).toMatch(/lockRetracted = applied\.everyRetracted;\s*lockChecked = applied\.everyChecked;/);
+  });
+
   it('changes nothing when the check was unavailable or the source has no DOI', () => {
     const unknown = new Map([['10.1000/ok', { status: 'unknown', notice: null }], ['10.1000/bad', { status: 'unknown', notice: null }], ['10.1000/gone', { status: 'unknown', notice: null }]]);
     const applied = applyDoiChecks(chunks, sources, unknown, sources.map((source) => doiOf(source.url)));
@@ -207,6 +217,12 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('The retracted study was not reliable [P2].', shown)).toEqual([]);
     expect(unstatedRetractions('No benefit was found in the retracted study [P2].', shown)).toEqual([]);
     expect(unstatedRetractions('The trial, since retracted, never reached its enrolment target [P2].', shown)).toEqual([]);
+    // A retraction put as a possibility or a question is not stated.
+    expect(unstatedRetractions('If the study was retracted, the effect is unproven [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('Whether the study was retracted remains unclear [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('There is no evidence that the study was retracted [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('The paper may have been withdrawn [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('Was the trial later retracted [P2]?', shown)).toEqual(['P2']);
     // One statement covers one retracted work.
     const two = shown.map((passage) => (passage.marker === 'P3' ? { ...passage, retracted: true } : passage));
     expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toEqual(['P2', 'P3']);
@@ -361,6 +377,15 @@ describe('earlier verdicts after sources are left out', () => {
     expect(stop).toBeGreaterThan(guardEnd);
     expect(orchestratorSource.slice(stop, stop + 260)).toMatch(/throw new Error\(\s*'Adjudicative run halted: no independent evidence was left/);
     expect(orchestratorSource).toMatch(/const assessSourcesAsTheyStand = \(\) =>\s*assessSourceSufficiency\(\{[^}]*citableChunks: allChunks,[^}]*rediscoveryPassesRemaining: 0,/);
+  });
+});
+
+describe('the switch and the citation lock', () => {
+  it('is on only where the lock is on', () => {
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true, CITATION_LOCK_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true, CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => doiResolveEnabled())).toBe(true);
+    expect(runWithFlags({ CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
   });
 });
 

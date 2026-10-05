@@ -195,9 +195,17 @@ const AFFIRMS_RETRACTION = new RegExp(
   ].join('|'),
   'i'
 );
-/** How many works the sentence describes as retracted; none when it also denies a retraction. */
+/**
+ * "If the study was retracted", "whether it was retracted is unclear", "there
+ * is no evidence it was retracted", "may have been withdrawn": the retraction
+ * is put as a possibility or a question, not stated.
+ */
+const HEDGES_RETRACTION =
+  /\b(?:if|whether|unless|unclear|uncertain|unknown|unconfirmed|no\s+evidence|may|might|could|would|should|possibly|perhaps|allegedly|reportedly|rumou?red|claims?\s+that)\b[^.;:!?]{0,80}\b(?:retract\w*|withdraw\w*)|\b(?:retract\w*|withdraw\w*)\b[^.;:!?]{0,60}\b(?:unclear|uncertain|unknown|unconfirmed|in\s+doubt)\b|\?/i;
+
+/** How many works the sentence describes as retracted; none when it denies or only supposes a retraction. */
 function retractionsStated(sentence: string): number {
-  if (DENIES_RETRACTION.test(sentence)) return 0;
+  if (DENIES_RETRACTION.test(sentence) || HEDGES_RETRACTION.test(sentence)) return 0;
   return (sentence.match(new RegExp(AFFIRMS_RETRACTION.source, 'gi')) ?? []).length;
 }
 
@@ -275,15 +283,28 @@ export function applyDoiChecks<Chunk, Source>(
   sources: Source[],
   checks: ReadonlyMap<string, { status: string; notice: { kind: string; text: string } | null }>,
   dois: ReadonlyArray<string | null>
-): { chunks: Chunk[]; sources: Source[]; retracted: boolean[]; checked: Array<{ status: string; notice: string | null } | null>; dropped: number } {
+): {
+  chunks: Chunk[];
+  sources: Source[];
+  retracted: boolean[];
+  checked: Array<{ status: string; notice: string | null } | null>;
+  dropped: number;
+  /** The same two findings for every passage given, none left out: for when nothing can be left out. */
+  everyRetracted: boolean[];
+  everyChecked: Array<{ status: string; notice: string | null } | null>;
+} {
   const keptChunks: Chunk[] = [];
   const keptSources: Source[] = [];
   const retracted: boolean[] = [];
   const checked: Array<{ status: string; notice: string | null } | null> = [];
+  const everyRetracted: boolean[] = [];
+  const everyChecked: Array<{ status: string; notice: string | null } | null> = [];
   let dropped = 0;
   chunks.forEach((chunk, index) => {
     const doi = dois[index] ?? null;
     const check = doi ? checks.get(doi) : undefined;
+    everyRetracted.push(check?.notice?.kind === 'retracted');
+    everyChecked.push(check ? { status: check.status, notice: check.notice?.text ?? null } : null);
     if (check?.status === 'unresolved') {
       dropped += 1;
       return;
@@ -293,7 +314,7 @@ export function applyDoiChecks<Chunk, Source>(
     retracted.push(check?.notice?.kind === 'retracted');
     checked.push(check ? { status: check.status, notice: check.notice?.text ?? null } : null);
   });
-  return { chunks: keptChunks, sources: keptSources, retracted, checked, dropped };
+  return { chunks: keptChunks, sources: keptSources, retracted, checked, dropped, everyRetracted, everyChecked };
 }
 
 export const LOCK_INSTRUCTION =

@@ -571,9 +571,13 @@ export function citationLockEnabled(): boolean {
 export function baselineLayerEnabled(): boolean {
   return switchEnabled('BASELINE_LAYER_ENABLED');
 }
-/** Slice 4 part 3. DOI resolution and retraction checking. Unset is off. */
+/**
+ * Slice 4 part 3. DOI resolution and retraction checking. Unset is off. The
+ * check acts on locked passages, so it is on only where the citation lock is:
+ * with the lock off this switch changes nothing, stored details included.
+ */
 export function doiResolveEnabled(): boolean {
-  return switchEnabled('DOI_RESOLVE_ENABLED');
+  return switchEnabled('DOI_RESOLVE_ENABLED') && citationLockEnabled();
 }
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';
