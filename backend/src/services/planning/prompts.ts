@@ -122,7 +122,7 @@ Return ONLY valid JSON (no markdown fences) matching this TypeScript-like shape:
 
 Use conservative ranges. estimatedCostCents must be null unless the caller instructs otherwise (BYOK/Sovereign billing detail is unknown here).`;
 
-export const PLAN_LENGTH_FIT_INSTRUCTION = `Size estimatedLength to what the question needs. A single-fact question, such as a date, a name, a number, or a yes or no, gets a short answer, on the order of 60 to 150 words. A broad survey gets a full report. Do not use a fixed length for every question.`;
+export const PLAN_LENGTH_FIT_INSTRUCTION = `Size estimatedLength to what the question needs. A single-fact question, such as a date, a name, a number, or a yes or no, gets a short answer, on the order of 60 to 150 words. A broad survey gets a full report of 1,500 to 5,000 words; never plan more than 5,000 words unless the request asks for a length. Do not use a fixed length for every question.`;
 
 export const PLAN_REFINEMENT_PROMPT = `You revise a structured plan based on the user's natural-language refinement instruction.
 
