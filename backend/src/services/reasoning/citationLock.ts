@@ -12,6 +12,7 @@
  * citations (`formatting/evidenceAliaser.ts`).
  */
 import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPresentation';
+import { splitTopLevelSections } from './targetedRepair';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 import type { ReferenceStyle } from '../formatting/referenceList';
 
@@ -323,6 +324,215 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
     const before = original[index];
     return before && !markersPreserved(before.content, section.content, options) ? before : section;
   });
+}
+
+/** Told to a repair of a report written with the citation lock. */
+export const LOCKED_REPAIR_RULE =
+  'You have not been shown the sources, so you may only cut. Remove the sentences the requirements object to; ' +
+  'keep every other sentence exactly as written, with its citation marker such as [P3] attached. ' +
+  'Do not remove a citation from a sentence you keep. Do not reword, and do not add a sentence, a citation, a source, a link, a heading or a section. ' +
+  'Return every section you were shown, including those you did not change.';
+
+/**
+ * A repair of a report written with the citation lock, held to what a repair
+ * may do. The repair is shown the report and not the passages, so the one thing
+ * it can safely do is cut. A repair once returned a correct, cited report as
+ * five bare sentences, and a second added a section citing a source the run had
+ * not read; the report was saved with no citations and no references.
+ *
+ * The result is the report's own sections in their own order under its own
+ * title. A section is taken from the repair only when its citations are still
+ * on their statements and the repair has only cut from it; otherwise it is put
+ * back as it was. A section the repair left out stays, and a section the
+ * report did not have is not added. A repair that leaves nothing usable returns
+ * the report as it was.
+ */
+export function guardLockedRepair(
+  before: string,
+  after: string
+): { markdown: string; restored: string[]; dropped: string[] } {
+  const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
+  const body = (text: string): string => text.split('\n').slice(1).join('\n');
+  /**
+   * A section's sentences, heading lines and list items in order, exactly as
+   * written, each with how it is set off from the one before it: on the same
+   * line (0), on a new line (1), or after a blank line (2). Only spaces left at
+   * the end of a line are not content. A line break is: it is what makes a
+   * list a list and a table a table.
+   */
+  const pieces = (text: string): Array<{ text: string; gap: number }> => {
+    const out: Array<{ text: string; gap: number }> = [];
+    let gap = 2;
+    // A fenced block is one piece: kept whole or cut whole. Taking off only its
+    // fences would turn what it quotes into headings and lists of the report.
+    // A fence is three or more of one mark and closes on a run at least as long.
+    const fenced = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[`~]*[ \t]*$/gm;
+    const parts: Array<{ text: string; block: boolean }> = [];
+    let cursor = 0;
+    const whole = body(text);
+    for (const match of whole.matchAll(fenced)) {
+      const start = match.index ?? 0;
+      parts.push({ text: whole.slice(cursor, start), block: false }, { text: match[0], block: true });
+      cursor = start + match[0].length;
+    }
+    parts.push({ text: whole.slice(cursor), block: false });
+    const stream = parts.flatMap((part) => (part.block ? [{ start: 0, text: `\n\n${part.text}\n` }] : sentencePieces(part.text)));
+    for (const piece of stream) {
+      if (/^\s*$/.test(piece.text)) {
+        const breaks = (piece.text.match(/\n/g) ?? []).length;
+        gap = Math.max(gap, Math.min(2, breaks));
+        continue;
+      }
+      // A piece can open with the break that set it off.
+      const lead = /^\s*\n/.exec(piece.text)?.[0] ?? '';
+      const breaks = (lead.match(/\n/g) ?? []).length;
+      const indent = /[ \t]*$/.exec(lead)?.[0] ?? '';
+      out.push({ text: `${indent}${piece.text.slice(lead.length)}`.replace(/[ \t]+(?=\n|$)/g, ''), gap: Math.max(gap, Math.min(2, breaks)) });
+      gap = /\n[ \t]*$/.test(piece.text) ? 1 : 0;
+    }
+    return out;
+  };
+  /**
+   * A locked repair may cut, and nothing else. It was shown the report and not
+   * the passages, so anything it adds or changes was written from no source.
+   * What a section holds after the repair must be what it held before, in the
+   * same order, less whatever was cut: every piece left is a piece the section
+   * had, character for character, citation and all, and set off from its
+   * neighbour as it was, or as the cut between them leaves it. A changed sign,
+   * a moved citation, a new link, a swapped pair of headings, a reordered pair
+   * of sentences, a list run together into a line and a table flattened all
+   * fail the same test. A section that had text still has some.
+   */
+  const onlyCuts = (was: string, now: string): boolean => {
+    const had = pieces(was);
+    const has = pieces(now);
+    // A section that had something to say still says something: a heading
+    // with nothing under it is not content.
+    const substance = (entries: Array<{ text: string }>): number =>
+      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text.replace(new RegExp(MARKER_GROUP.source, 'gi'), '')) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text) && !/\n[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(entry.text)).length;
+    if (substance(had) > 0 && substance(has) === 0) return false;
+    // Cuts are taken only from plain writing: sentences, simple bullets and
+    // "#" sub-headings, with citation markers. Anything else Markdown can do
+    // (links, code, emphasis, tables, quotations, HTML, underlined headings,
+    // hard line breaks, indented blocks) comes in parts that only mean something
+    // together, and there is no end to the ways a cut can leave one part
+    // hanging. A section that holds any of it is taken unchanged or not at all.
+    // A section that was cited stays cited: with every citation cut, the
+    // report would be saved with nothing behind what is left.
+    const cited = (text: string): boolean => new RegExp(MARKER_GROUP.source, 'i').test(text);
+    if (cited(was) && !cited(now)) return false;
+    // A bullet set in under another takes its meaning from the one above it.
+    // A numbered item takes its number from the ones before it, however the
+    // number is typed: with an earlier item cut, a ranking reads differently.
+    // So does any line set in from the margin (a heading or a sentence inside
+    // a list item): cut the line above and it belongs to something else.
+    if (/^[ \t]+\S|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // Two sub-headings of one name cannot be told apart once one is cut, so
+    // what was under the second would pass as being under the first.
+    const subHeadings = (body(was).match(/^[ \t]{0,3}#{1,6}[ \t]+.*$/gm) ?? []).map((line) => line.replace(/^[ \t#]+|[ \t#]+$/g, '').toLowerCase());
+    if (new Set(subHeadings).size !== subHeadings.length) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // Two spaces at the end of a line are a line break in Markdown. A repair
+    // that adds them has changed how the section is set out, not cut from it.
+    if (/[ \t]{2,}\n(?=[ \t]*\S)/.test(body(now)) && body(was).replace(/\s+$/, '') !== body(now).replace(/\s+$/, '')) return false;
+    const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
+    const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
+    const marked = /[`*_~<>[\]|\\]|:\/\/|\bwww\.|\S@\S|\S[ \t]+[-+][ \t]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
+    if (marked || runsOn) {
+      return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap) && body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    }
+    // A line that Markdown gives a shape (a list item, a table row, a quoted or
+    // indented line) is kept whole or cut whole: taking the bullet off a
+    // sentence, or a row out of its cell marks, changes what the reader is told
+    // it is. Such lines must be the section's own, in order.
+    const shaped = (line: string): boolean => /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|>|\|)|^(?: {4}|\t)/.test(line);
+    const shapedLines = (text: string): string[] => body(text).split('\n').filter(shaped).map((line) => line.replace(/[ \t]+$/, ''));
+    const wasShaped = shapedLines(was);
+    let shapedAt = 0;
+    for (const line of shapedLines(now)) {
+      while (shapedAt < wasShaped.length && wasShaped[shapedAt] !== line) shapedAt += 1;
+      if (shapedAt === wasShaped.length) return false;
+      shapedAt += 1;
+    }
+    // And a plain line left standing must not have been part of a shaped one.
+    const plainText = (text: string): string => body(text).split('\n').filter((line) => !shaped(line)).join('\n');
+    const plainHad = new Set(sentencePieces(plainText(was)).map((piece) => piece.text.trim()).filter(Boolean));
+    if (!sentencePieces(plainText(now)).every((piece) => !piece.text.trim() || plainHad.has(piece.text.trim()))) return false;
+    // A code fence is cut with its partner or not at all: one left open turns
+    // everything after it, the reference list included, into code.
+    const fences = (text: string): number => (body(text).match(/^[ \t]{0,3}(?:```|~~~)/gm) ?? []).length;
+    if (fences(now) % 2 !== fences(was) % 2) return false;
+    // Each piece stays under the sub-heading it was written under: a heading
+    // may go only with everything beneath it.
+    const isHeading = (text: string): boolean => /^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(text);
+    const under = (entries: Array<{ text: string }>): string[] => {
+      // The whole line of headings above it, by level: a parent cannot go while its child stays.
+      const stack: Array<{ level: number; text: string }> = [];
+      return entries.map((entry) => {
+        if (isHeading(entry.text)) {
+          const level = (/#+/.exec(entry.text)?.[0] ?? '#').length;
+          while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+          stack.push({ level, text: entry.text });
+        }
+        return stack.map((heading) => heading.text).join('\n');
+      });
+    };
+    const hadUnder = under(had);
+    const hasUnder = under(has);
+    let at = 0;
+    for (const [index, piece] of has.entries()) {
+      const from = at;
+      while (at < had.length && (had[at].text !== piece.text || hadUnder[at] !== hasUnder[index])) at += 1;
+      if (at === had.length) return false;
+      // Words that sat in the middle of a line are not a heading because a cut brought them to the start of one.
+      if (isHeading(piece.text) && had[at].gap === 0) return false;
+      // Between its own break and the strongest break among whatever was cut before it.
+      const strongest = Math.max(...had.slice(from, at + 1).map((entry) => entry.gap));
+      if (piece.gap < had[at].gap || piece.gap > strongest) return false;
+      at += 1;
+    }
+    return true;
+  };
+  // A report that holds a code fence anywhere is not taken apart: a fence can
+  // hold lines that look like headings, and one fence can sit inside another.
+  // Such a report is kept as it was unless the repair returned it unchanged.
+  // The same for a line that opens raw HTML: a "<pre>" block can hold a line
+  // that looks like a heading, and taking the report apart there would change
+  // what is inside it.
+  if (/^[ \t]{0,3}(?:`{3,}|~{3,}|<[A-Za-z!?/])/m.test(before)) return { markdown: before, restored: before === after ? [] : ['(whole report)'], dropped: [] };
+  const beforeBlocks = splitTopLevelSections(before);
+  const afterBlocks = splitTopLevelSections(after);
+  if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading) };
+  const repaired = new Map<string, string>();
+  const dropped: string[] = [];
+  const names = new Set(beforeBlocks.map((block) => key(block.heading)));
+  for (const block of afterBlocks) {
+    const name = key(block.heading);
+    // A section the report did not have, or a second copy of one it has.
+    if (!names.has(name) || repaired.has(name)) dropped.push(block.heading);
+    else repaired.set(name, block.text);
+  }
+  // Built in the report's own order from the report's own sections, so a repair
+  // can neither leave a section out nor rename one away.
+  const restored: string[] = [];
+  const kept = beforeBlocks.map((block) => {
+    // Two sections of one name cannot be told apart in what the repair returned, so neither is taken from it.
+    const twice = beforeBlocks.filter((other) => key(other.heading) === key(block.heading)).length > 1;
+    const now = twice ? undefined : repaired.get(key(block.heading));
+    // Citations stay on the statements they were written for, and the repair
+    // has only cut.
+    const sound = now !== undefined && markersPreserved(block.text, now, { allowRemoval: true }) && onlyCuts(block.text, now);
+    // The heading line is the report's own: sections are matched by heading
+    // with decoration ignored, so the repair's spelling of it is not taken.
+    if (sound) return `${block.text.split('\n')[0]}\n${body(now as string)}`.trimEnd();
+    restored.push(block.heading);
+    return block.text;
+  });
+  // The title and anything before the first section are the report's own; a
+  // repair's preamble was written from no passage.
+  const lead = before.split('\n').slice(0, beforeBlocks[0]?.startLine ?? 0).join('\n').trim();
+  const markdown = `${lead ? `${lead}\n\n` : ''}${kept.join('\n\n')}\n`;
+  if (restored.length === beforeBlocks.length) return { markdown: before, restored, dropped };
+  return { markdown, restored, dropped };
 }
 
 /**
