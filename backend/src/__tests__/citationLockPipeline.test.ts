@@ -618,6 +618,12 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(wrapped, wrapped.replace('stop early.\n', 'stop early.  \n')).restored).toEqual(['Limits of this report']);
     });
 
+    it('does not accept a cut that leaves an indented heading without its bullet', () => {
+      const owned = before.replace('The sources do not cover long-term follow-up.', '- Group A\n  ### Details\n  No long-term follow-up [P2].');
+      expect(guardLockedRepair(owned, owned).restored).toEqual([]);
+      expect(guardLockedRepair(owned, owned.replace('- Group A\n', '')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not accept a cut from a numbered list, which would renumber what is left', () => {
       const ranked = before.replace('The sources do not cover long-term follow-up.', 'The gaps, in order of weight.\n\n1. No long-term follow-up.\n1. No price data [P2].');
       expect(guardLockedRepair(ranked, ranked).restored).toEqual([]);

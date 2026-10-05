@@ -424,7 +424,9 @@ export function guardLockedRepair(
     // A bullet set in under another takes its meaning from the one above it.
     // A numbered item takes its number from the ones before it, however the
     // number is typed: with an earlier item cut, a ranking reads differently.
-    if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // So does any line set in from the margin (a heading or a sentence inside
+    // a list item): cut the line above and it belongs to something else.
+    if (/^[ \t]+\S|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     // Two spaces at the end of a line are a line break in Markdown. A repair
     // that adds them has changed how the section is set out, not cut from it.
     if (/[ \t]{2,}\n(?=[ \t]*\S)/.test(body(now)) && body(was).replace(/\s+$/, '') !== body(now).replace(/\s+$/, '')) return false;
