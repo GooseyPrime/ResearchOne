@@ -88,7 +88,7 @@ describe('reference details of a retrieved source', () => {
     expect(
       referenceDetails(
         { title: 'A study', publisher: null, date: '2016-04-01', url: 'https://doi.org/10.1/x' },
-        row({ authors: ['Lovering, Jessica R.', ' '], publication: 'Energy Policy', provider: 'crossref', retrieval_timestamp: new Date('2026-10-04T20:46:00Z') })
+        row({ authors: ['Lovering, Jessica R.', ' '], publication: 'Energy Policy', provider: 'crossref', kind: 'journal article', retrieval_timestamp: new Date('2026-10-04T20:46:00Z') })
       )
     ).toEqual({
       title: 'A study',
@@ -96,7 +96,7 @@ describe('reference details of a retrieved source', () => {
       date: '2016-04-01',
       url: 'https://doi.org/10.1/x',
       authors: ['Lovering, Jessica R.'],
-      kind: 'peer-reviewed study',
+      kind: 'journal article',
       accessed: '2026-10-04',
     });
   });

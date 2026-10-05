@@ -111,6 +111,11 @@ export type CitationStyleSlug =
  */
 export type CitationStyleChoice = CitationStyleSlug | 'automatic';
 
+/** What a form sends for its citation style control: the style chosen, or nothing for "Report default". */
+export function citationStyleToSend(choice: CitationStyleChoice): CitationStyleSlug | undefined {
+  return choice === 'automatic' ? undefined : choice;
+}
+
 export const CITATION_STYLE_OPTIONS: { value: CitationStyleSlug; label: string }[] = [
   { value: 'mla', label: 'MLA (9th ed.)' },
   { value: 'apa', label: 'APA (7th ed.)' },

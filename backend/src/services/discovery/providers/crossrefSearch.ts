@@ -14,7 +14,24 @@ interface CrossrefItem {
   publisher?: string;
   'container-title'?: string[];
   issued?: { 'date-parts'?: number[][] };
+  type?: string;
 }
+
+/** Crossref's own name for what a work is, in words a reader would use. A type not listed gives no kind. */
+const CROSSREF_KINDS: Readonly<Record<string, string>> = {
+  'journal-article': 'journal article',
+  'proceedings-article': 'conference paper',
+  'book-chapter': 'book chapter',
+  book: 'book',
+  monograph: 'book',
+  'edited-book': 'book',
+  'reference-book': 'book',
+  'posted-content': 'preprint',
+  report: 'report',
+  dataset: 'dataset',
+  dissertation: 'dissertation',
+  standard: 'standard',
+};
 
 /** What the record says about who wrote and published the work. Nothing is invented for a field it leaves out. */
 export function crossrefBibliographic(item: CrossrefItem): BibliographicDetails | undefined {
@@ -29,6 +46,8 @@ export function crossrefBibliographic(item: CrossrefItem): BibliographicDetails 
   if (publisher) out.publisher = publisher;
   const published = isoFromParts(parts);
   if (published) out.publishedAt = published;
+  const kind = CROSSREF_KINDS[(item.type ?? '').toLowerCase()];
+  if (kind) out.kind = kind;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

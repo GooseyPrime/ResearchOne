@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { BibliographicDetails, SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -13,9 +13,22 @@ interface OpenAlexWork {
   cited_by_count?: number;
   relevance_score?: number;
   authorships?: Array<{ author?: { display_name?: string } }>;
-  primary_location?: { source?: { display_name?: string } | null } | null;
+  primary_location?: { source?: { display_name?: string; type?: string } | null } | null;
   publication_date?: string;
+  type?: string;
 }
+
+/** OpenAlex's own name for what a work is, in words. An "article" is a journal article only when its venue is a journal. */
+const OPENALEX_KINDS: Readonly<Record<string, string>> = {
+  preprint: 'preprint',
+  book: 'book',
+  'book-chapter': 'book chapter',
+  dataset: 'dataset',
+  dissertation: 'dissertation',
+  report: 'report',
+  review: 'review article',
+  standard: 'standard',
+};
 
 /** What the record says about who wrote and published the work. */
 export function openAlexBibliographic(work: OpenAlexWork): BibliographicDetails | undefined {
@@ -24,7 +37,11 @@ export function openAlexBibliographic(work: OpenAlexWork): BibliographicDetails 
   const out: BibliographicDetails = {};
   if (authors.length > 0) out.authors = authors;
   if (publisher) out.publisher = publisher;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(work.publication_date ?? '')) out.publishedAt = work.publication_date;
+  if (isCalendarDay(work.publication_date ?? '')) out.publishedAt = work.publication_date;
+  const type = (work.type ?? '').toLowerCase();
+  const venue = (work.primary_location?.source?.type ?? '').toLowerCase();
+  const kind = type === 'article' ? (venue === 'journal' ? 'journal article' : venue === 'conference' ? 'conference paper' : undefined) : OPENALEX_KINDS[type];
+  if (kind) out.kind = kind;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

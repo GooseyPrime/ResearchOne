@@ -36,18 +36,31 @@ export interface SearchResultCandidate {
 export interface BibliographicDetails {
   authors?: string[];
   publisher?: string;
-  /** YYYY-MM-DD. Left out when the record gives less than a full day. */
+  /** What the provider's record says the work is, in words: "journal article", "preprint", "book chapter". */
+  kind?: string;
+  /** YYYY-MM-DD. Left out when the record gives less than a full day, or a day that does not exist. */
   publishedAt?: string;
 }
 
-/** [year, month, day] as YYYY-MM-DD. A record that gives less than a full day gives no date: none is made up. */
+/**
+ * Whether YYYY-MM-DD names a day that exists. `Date.parse` turns 31 February
+ * into 3 March instead of refusing it, and the database refuses it outright,
+ * which would fail the job that stores the source. A day is real only if it
+ * comes back unchanged.
+ */
+export function isCalendarDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value && Number(value.slice(0, 4)) >= 1000;
+}
+
+/** [year, month, day] as YYYY-MM-DD. A record that gives less than a full day, or a day that does not exist, gives no date: none is made up. */
 export function isoFromParts(parts: ReadonlyArray<number> | undefined): string | undefined {
   if (!parts || parts.length < 3) return undefined;
   const [year, month, day] = parts;
-  if (!Number.isInteger(year) || year < 1000 || year > 9999) return undefined;
-  if (!Number.isInteger(month) || month < 1 || month > 12) return undefined;
-  if (!Number.isInteger(day) || day < 1 || day > 31) return undefined;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (![year, month, day].every((part) => Number.isInteger(part))) return undefined;
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return isCalendarDay(iso) ? iso : undefined;
 }
 
 /** The candidate as it was before reference details existed. */

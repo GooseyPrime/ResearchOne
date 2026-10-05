@@ -7,7 +7,10 @@
  * an entry never says "unknown" and never shows an empty slot.
  *
  * The numbers in the text are the same in every style. A style the user chose
- * decides how each entry is written, on the page and in every export.
+ * decides how each entry is written, on the page and in every export. A named
+ * style is written as that style writes a reference: it gives the day a web
+ * page was read, in its own form, and has no place for the kind of source, so
+ * the kind in words appears in the numbered default only.
  *
  * Pure functions: no database, no clock, no model.
  */
@@ -80,17 +83,22 @@ export function siteName(url: string | null | undefined): string | null {
 }
 
 /**
- * What kind of source this is, in words, from where it came from. Until source
- * authority is ranked (slice 6) this is read from the provider and the address:
- * a journal article, a preprint, or a web page.
+ * What kind of source this is, in words. The provider's own record of what the
+ * work is comes first ("journal article", "preprint", "book chapter"). Without
+ * one it is read from where the source came from. Nothing here says a work was
+ * peer reviewed: a catalogue entry or a DOI does not establish that, and a
+ * journal article is called a journal article. Ranking sources by authority is
+ * slice 6.
  */
-export function sourceKindInWords(input: { provider?: string | null; url?: string | null; hasFile?: boolean }): string {
+export function sourceKindInWords(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean }): string {
+  const recorded = (input.kind ?? '').trim().toLowerCase();
+  if (/^[a-z][a-z -]{2,39}$/.test(recorded)) return recorded;
   const provider = (input.provider ?? '').toLowerCase();
   const host = siteName(input.url) ?? '';
   if (provider === 'arxiv' || host === 'arxiv.org' || host.endsWith('.arxiv.org')) return 'preprint';
-  if (provider === 'crossref' || provider === 'pmc' || provider === 'openalex') return 'peer-reviewed study';
-  if (host === 'doi.org' || host === 'dx.doi.org') return 'peer-reviewed study';
-  if (host === 'ncbi.nlm.nih.gov' && /\/pmc\//i.test(input.url ?? '')) return 'peer-reviewed study';
+  if (provider === 'pmc' || (host === 'ncbi.nlm.nih.gov' && /\/pmc\//i.test(input.url ?? ''))) return 'journal article';
+  // A DOI names a published work of some kind: an article, a book, a dataset, a report.
+  if (provider === 'crossref' || provider === 'openalex' || host === 'doi.org' || host === 'dx.doi.org') return 'scholarly work';
   if (provider === 'clinicaltrials' || host === 'clinicaltrials.gov') return 'clinical trial record';
   if (provider === 'uspto' || host === 'patents.google.com' || host.endsWith('uspto.gov')) return 'patent record';
   if (!input.url) return input.hasFile ? 'uploaded document' : 'document';
@@ -216,7 +224,8 @@ function apaEntry(r: Resolved): string {
   parts.push(`${date}.`);
   parts.push(closed(r.title));
   if (names.length > 0 && r.publisher) parts.push(closed(r.publisher));
-  if (r.url) parts.push(r.url);
+  // A page can change after it is read, so the day it was read is given with its address.
+  if (r.url) parts.push(r.accessed && r.kind === 'web page' ? `Retrieved ${monthDayYear(r.accessed)}, from ${r.url}` : r.url);
   return parts.join(' ');
 }
 
@@ -234,7 +243,7 @@ function mlaEntry(r: Resolved): string {
   parts.push(`"${closed(r.title)}"`);
   const tail = [r.publisher, r.published ? `${r.published.day} ${shortMonth(r.published)}. ${r.published.year}` : r.publishedText, r.url].filter(Boolean).join(', ');
   if (tail) parts.push(closed(tail));
-  if (r.accessed) parts.push(`Accessed ${r.accessed.day} ${shortMonth(r.accessed)}. ${r.accessed.year}.`);
+  if (r.accessed && r.kind === 'web page') parts.push(`Accessed ${r.accessed.day} ${shortMonth(r.accessed)}. ${r.accessed.year}.`);
   return parts.join(' ');
 }
 
@@ -251,13 +260,15 @@ function chicagoAuthorDateEntry(r: Resolved): string {
   parts.push(`"${closed(r.title)}"`);
   if (r.authors.length > 0 && r.publisher) parts.push(closed(r.publisher));
   if (r.published) parts.push(closed(`${longMonth(r.published)} ${r.published.day}`));
+  if (r.accessed && r.kind === 'web page') parts.push(`Accessed ${monthDayYear(r.accessed)}.`);
   if (r.url) parts.push(closed(r.url));
   return parts.join(' ');
 }
 
 function chicagoNoteEntry(r: Resolved): string {
   const names = joinNames(r.authors.map(givenFamily));
-  const pieces = [names || null, `"${r.title},"`, r.publisher, r.published ? monthDayYear(r.published) : r.publishedText, r.url].filter(Boolean) as string[];
+  const accessed = r.accessed && r.kind === 'web page' ? `accessed ${monthDayYear(r.accessed)}` : null;
+  const pieces = [names || null, `"${r.title},"`, r.publisher, r.published ? monthDayYear(r.published) : r.publishedText, accessed, r.url].filter(Boolean) as string[];
   // The title carries its own comma inside the quotation mark.
   return closed(pieces.join(', ').replace(/,",/g, ',"').replace(/,"$/, '."'));
 }
@@ -267,6 +278,7 @@ function ieeeEntry(r: Resolved): string {
   const head = [names || r.publisher, `"${r.title},"`].filter(Boolean).join(', ');
   const middle = [names ? r.publisher : null, r.published ? `${shortMonth(r.published)}. ${r.published.day}, ${r.published.year}` : r.publishedText].filter(Boolean).join(', ');
   const parts = [closed(`${head}${middle ? ` ${middle}` : ''}`.replace(/,"\s*$/, '."'))];
+  if (r.url && r.accessed && r.kind === 'web page') parts.push(`Accessed: ${shortMonth(r.accessed)}. ${r.accessed.day}, ${r.accessed.year}.`);
   if (r.url) parts.push(`[Online]. Available: ${r.url}`);
   return parts.join(' ');
 }
@@ -278,7 +290,7 @@ function harvardEntry(r: Resolved): string {
   const parts: string[] = [[lead, year].filter(Boolean).join(' '), closed(r.title)];
   if (names && r.publisher) parts.push(closed(r.publisher));
   if (r.url) parts.push(`Available at: ${r.url}`);
-  if (r.accessed) parts.push(`(Accessed: ${r.accessed.day} ${longMonth(r.accessed)} ${r.accessed.year}).`);
+  if (r.accessed && r.kind === 'web page') parts.push(`(Accessed: ${r.accessed.day} ${longMonth(r.accessed)} ${r.accessed.year}).`);
   return parts.join(' ');
 }
 

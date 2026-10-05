@@ -36,6 +36,24 @@ describe('changing the report type at the plan screen', () => {
     expect(runsAsChallenge(revised)).toBe(false);
   });
 
+  it('follows the new type even when the model writes it into the brief and echoes the old method', () => {
+    const current = planFor('investigation');
+    // The model updated both the plan's type and the brief's, and left the rest of the brief as it was.
+    const revisedPlan = {
+      ...current,
+      intent: { ...current.intent, id: 'survey', displayLabel: 'survey' },
+      researchBrief: { ...current.researchBrief, primaryIntent: 'survey' },
+    };
+    const revised = parsePlanRefinementJson(
+      JSON.stringify({ revisedPlan, diffSummary: 'changed', intentChange: { detected: true, from: 'investigation', to: 'survey', rationale: 'asked' } }),
+      current
+    ).revisedPlan;
+    expect(revised.researchBrief?.primaryIntent).toBe('survey');
+    expect(revised.researchBrief?.resolvedMethodology).toBe('standard');
+    expect(revised.researchBrief?.epistemicPosture).toBe(planFor('survey').researchBrief?.epistemicPosture);
+    expect(runsAsChallenge(revised)).toBe(false);
+  });
+
   it('a Survey changed to an Investigation runs as a challenge', () => {
     const revised = refine(planFor('survey'), 'investigation', true);
     expect(revised.researchBrief?.primaryIntent).toBe('investigation');

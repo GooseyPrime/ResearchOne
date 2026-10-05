@@ -171,7 +171,8 @@ async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceSt
   if (wanted !== savedStyle) {
     const citationRows = await adminQuery<LockedCitationSourceRow>(
       `SELECT rc.citation_text, s.title, s.authors, s.publication, s.published_at, s.url, s.original_filename,
-              s.retrieval_timestamp, s.metadata->'bibliographic'->>'provider' AS provider
+              s.retrieval_timestamp, s.metadata->'bibliographic'->>'provider' AS provider,
+              s.metadata->'bibliographic'->>'kind' AS kind
          FROM report_citations rc
          JOIN sources s ON s.id = rc.source_id
         WHERE rc.report_id = $1

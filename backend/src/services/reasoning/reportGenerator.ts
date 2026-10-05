@@ -744,7 +744,8 @@ const PLANNER_WORD_FLOOR = 60;
 /**
  * The most a report is sized at when nobody chose a length: the top of the
  * range the report standard gives for a full report. A length the user chose is
- * not capped by this.
+ * not capped by this, and neither is a request for many items, which the
+ * writer sizes to hold the items asked for.
  */
 export const PLANNER_WORD_CEILING = 5000;
 
@@ -1320,6 +1321,10 @@ export async function generateIterativeReport(args: {
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
+  // One exception to the planner ceiling: a request for many items, each with
+  // required fields, is sized to hold them (`contractTarget`) even when that is
+  // more than the ceiling. Twenty items with five fields each do not fit in
+  // 5,000 words, and cutting them to fit would drop what was asked for.
   const targetWordCount = args.lengthSource === 'planner'
     ? (contractTarget ?? Math.max(PLANNER_WORD_FLOOR, Math.min(REPORT_WORD_COUNT_MAX, Math.round(args.targetWordCount ?? PLANNER_WORD_FLOOR))))
     : clampWordTarget(contractTarget ?? args.targetWordCount);

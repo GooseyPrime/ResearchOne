@@ -309,20 +309,41 @@ export function sectionsToMarkdown(sections: Array<{ title: string; content: str
 }
 
 /**
- * Sentences of a paragraph. A full stop after an abbreviation or an initial
- * ("et al.", "U.S.", "Dr.") does not end a sentence, and neither does one
- * followed by a lower-case letter: no sentence starts that way. Reading a
- * boundary where there is none cuts a sentence in two, and the half that
- * repeats an earlier sentence is then removed from the middle of its own.
- * Scripts without letter case are split at every full stop, as before.
+ * Sentences of a paragraph.
+ *
+ * A full stop does not always end a sentence, and reading a boundary where
+ * there is none cuts a sentence in two; the half that repeats an earlier
+ * sentence is then removed from the middle of its own. A full stop is not a
+ * boundary when what follows cannot start a sentence, or when what precedes it
+ * is a form that is followed by the rest of its phrase:
+ *
+ * - the next word starts with a lower-case letter ("et al. reporting that…");
+ * - a title or a reference word that always has something after it
+ *   ("Dr. Chen", "Fig. 3", "e.g. France", "vs. Korea");
+ * - a single initial before a name ("J. R. Lovering");
+ * - "et al.", "etc.", "Inc." and the like, or a dotted abbreviation ("U.S."),
+ *   but only when a number or a bracket follows ("et al. (2016)", "U.S. [3]").
+ *   Before a capitalised word these do end sentences ("…built in the U.S.
+ *   Later units cost more."), and merging there would hide a real sentence
+ *   from the limits cap and from the repetition check.
+ *
+ * Scripts without letter case are split at every full stop.
  */
-const ABBREVIATION_END = /(?:\b(?:et al|e\.g|i\.e|vs|etc|cf|Mr|Mrs|Ms|Dr|Prof|St|Inc|Ltd|Co|No|Fig|approx)|\b\p{Lu})\.$/u;
+const ALWAYS_CONTINUES = /\b(?:e\.g|i\.e|vs|cf|Mr|Mrs|Ms|Dr|Prof|St|Fig|No|approx)\.$/;
+const SINGLE_INITIAL = /(?<![\p{L}.])\p{Lu}\.$/u;
+const MAY_END_SENTENCE = /(?:\b(?:et al|etc|Inc|Ltd|Co|Corp)|\b(?:\p{Lu}\.){1,}\p{Lu})\.$/u;
 
 export function splitSentences(text: string): string[] {
   const out: string[] = [];
   for (const piece of text.split(/(?<=[.!?])\s+/)) {
     const last = out[out.length - 1];
-    if (last !== undefined && (ABBREVIATION_END.test(last) || /^\p{Ll}/u.test(piece))) out[out.length - 1] = `${last} ${piece}`;
+    const continues =
+      last !== undefined &&
+      (/^\p{Ll}/u.test(piece) ||
+        ALWAYS_CONTINUES.test(last) ||
+        (SINGLE_INITIAL.test(last) && /^\p{Lu}/u.test(piece)) ||
+        (MAY_END_SENTENCE.test(last) && /^[\p{N}([]/u.test(piece)));
+    if (continues) out[out.length - 1] = `${last} ${piece}`;
     else out.push(piece);
   }
   return out;

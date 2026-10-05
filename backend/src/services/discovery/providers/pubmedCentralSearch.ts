@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { BibliographicDetails, SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -37,8 +37,11 @@ export function pmcBibliographic(summary: ESummaryResult): BibliographicDetails 
   const stated = /^(\d{4}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2})$/.exec((summary.pubdate ?? '').trim());
   if (stated) {
     const month = PMC_MONTHS.indexOf(stated[2]) + 1;
-    out.publishedAt = `${stated[1]}-${String(month).padStart(2, '0')}-${stated[3].padStart(2, '0')}`;
+    const day = `${stated[1]}-${String(month).padStart(2, '0')}-${stated[3].padStart(2, '0')}`;
+    if (isCalendarDay(day)) out.publishedAt = day;
   }
+  // PubMed Central holds journal literature; the record names the journal.
+  if (publisher) out.kind = 'journal article';
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

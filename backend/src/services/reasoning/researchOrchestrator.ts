@@ -946,6 +946,8 @@ export interface LockedSourceRow {
   original_filename: string | null;
   retrieval_timestamp: unknown;
   provider: string | null;
+  /** What the provider's record says the work is, in words, when it said. */
+  kind?: string | null;
 }
 
 /** A retrieved source with what its stored record adds for the reference list. Missing details stay missing. */
@@ -958,7 +960,7 @@ export function referenceDetails(source: UsedSource | undefined, row: LockedSour
     ...base,
     publisher: base.publisher ?? row.publication ?? null,
     authors: authors.length > 0 ? authors : null,
-    kind: sourceKindInWords({ provider: row.provider, url, hasFile: Boolean(row.original_filename) }),
+    kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename) }),
     accessed: isoDay(row.retrieval_timestamp),
   };
 }
@@ -2331,7 +2333,8 @@ async function runResearchJobInner(
         try {
           sourceRows = await query<LockedSourceRow>(
             `SELECT c.id, c.source_id, s.authors, s.publication, s.url, s.original_filename, s.retrieval_timestamp,
-                    s.metadata->'bibliographic'->>'provider' AS provider
+                    s.metadata->'bibliographic'->>'provider' AS provider,
+                    s.metadata->'bibliographic'->>'kind' AS kind
                FROM chunks c
                LEFT JOIN sources s ON s.id = c.source_id
               WHERE c.id = ANY($1::uuid[])`,

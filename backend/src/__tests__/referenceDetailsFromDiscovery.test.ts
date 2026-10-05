@@ -8,8 +8,8 @@ import { crossrefBibliographic } from '../services/discovery/providers/crossrefS
 import { openAlexBibliographic } from '../services/discovery/providers/openAlexSearch';
 import { arxivBibliographic } from '../services/discovery/providers/arxivSearch';
 import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { bibliographicMetadata, candidateForRun, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
-import { storedBibliographic } from '../services/ingestion/ingestionService';
+import { bibliographicMetadata, candidateForRun, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
+import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { citationLockEnabled, runWithFlags } from '../config';
 
 describe('what each provider record says', () => {
@@ -22,6 +22,25 @@ describe('what each provider record says', () => {
         issued: { 'date-parts': [[2016, 4, 1]] },
       })
     ).toEqual({ authors: ['Lovering, Jessica R.', 'Breakthrough Institute'], publisher: 'Energy Policy', publishedAt: '2016-04-01' });
+  });
+
+  it('reads what Crossref says the work is, and says nothing for a type it does not know', () => {
+    expect(crossrefBibliographic({ publisher: 'Elsevier BV', type: 'journal-article' })?.kind).toBe('journal article');
+    expect(crossrefBibliographic({ publisher: 'OSF', type: 'posted-content' })?.kind).toBe('preprint');
+    expect(crossrefBibliographic({ publisher: 'Dryad', type: 'dataset' })?.kind).toBe('dataset');
+    expect(crossrefBibliographic({ publisher: 'Springer', type: 'book-chapter' })?.kind).toBe('book chapter');
+    expect(crossrefBibliographic({ publisher: 'X', type: 'component' })?.kind).toBeUndefined();
+    expect(crossrefBibliographic({ publisher: 'X' })?.kind).toBeUndefined();
+  });
+
+  it('gives no date for a day that does not exist', () => {
+    expect(crossrefBibliographic({ publisher: 'X', issued: { 'date-parts': [[2023, 2, 31]] } })).toEqual({ publisher: 'X' });
+    expect(isoFromParts([2023, 2, 28])).toBe('2023-02-28');
+    expect(isoFromParts([2024, 2, 29])).toBe('2024-02-29');
+    expect(isoFromParts([2023, 2, 29])).toBeUndefined();
+    expect(isCalendarDay('2023-04-31')).toBe(false);
+    expect(isCalendarDay('2023-04-30')).toBe(true);
+    expect(isCalendarDay('2023-4-30')).toBe(false);
   });
 
   it('gives no date when Crossref gives only a year or a month', () => {
@@ -41,15 +60,21 @@ describe('what each provider record says', () => {
       })
     ).toEqual({ authors: ['Arnulf Grubler'], publisher: 'Energy Policy', publishedAt: '2010-09-01' });
     expect(openAlexBibliographic({ primary_location: null, publication_date: '2010' })).toBeUndefined();
+    expect(openAlexBibliographic({ publication_date: '2010-02-30' })).toBeUndefined();
+    // An "article" is a journal article only when its venue is a journal.
+    expect(openAlexBibliographic({ type: 'article', primary_location: { source: { display_name: 'Energy Policy', type: 'journal' } } })?.kind).toBe('journal article');
+    expect(openAlexBibliographic({ type: 'article', primary_location: { source: { display_name: 'SSRN', type: 'repository' } } })?.kind).toBeUndefined();
+    expect(openAlexBibliographic({ type: 'preprint', primary_location: { source: { display_name: 'SSRN', type: 'repository' } } })?.kind).toBe('preprint');
   });
 
   it('reads authors and the posting day from arXiv, one author or many', () => {
     expect(arxivBibliographic({ author: [{ name: 'A.  One' }, { name: 'B Two' }], published: '2024-01-05T18:00:00Z' })).toEqual({
       publisher: 'arXiv',
+      kind: 'preprint',
       authors: ['A. One', 'B Two'],
       publishedAt: '2024-01-05',
     });
-    expect(arxivBibliographic({ author: { name: 'Solo Author' } })).toEqual({ publisher: 'arXiv', authors: ['Solo Author'] });
+    expect(arxivBibliographic({ author: { name: 'Solo Author' } })).toEqual({ publisher: 'arXiv', kind: 'preprint', authors: ['Solo Author'] });
   });
 
   it('reads PubMed Central authors and journal, and a date only when it states a day', () => {
@@ -57,8 +82,10 @@ describe('what each provider record says', () => {
       authors: ['Frangoul H'],
       publisher: 'New England Journal of Medicine',
       publishedAt: '2021-01-21',
+      kind: 'journal article',
     });
-    expect(pmcBibliographic({ source: 'N Engl J Med', pubdate: '2021 Jan' })).toEqual({ publisher: 'N Engl J Med' });
+    expect(pmcBibliographic({ source: 'N Engl J Med', pubdate: '2021 Jan' })).toEqual({ publisher: 'N Engl J Med', kind: 'journal article' });
+    expect(pmcBibliographic({ source: 'N Engl J Med', pubdate: '2021 Feb 30' })).toEqual({ publisher: 'N Engl J Med', kind: 'journal article' });
     expect(pmcBibliographic({ pubdate: '2021' })).toBeUndefined();
   });
 });
@@ -110,12 +137,33 @@ describe('what is stored', () => {
       storedBibliographic({
         bibliographic: { authors: ['  Lovering, Jessica R. ', 7, ''], publisher: ' Energy Policy ', publishedAt: '2016-04-01', provider: 'crossref' },
       })
-    ).toEqual({ authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01' });
+    ).toEqual({ authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01', kind: null, provider: 'crossref' });
     expect(storedBibliographic({ bibliographic: { authors: 'Lovering', publisher: 3, publishedAt: '2016' } })).toBeNull();
     expect(storedBibliographic({ bibliographic: { publisher: 'Energy Policy', publishedAt: 'April 2016' } })).toEqual({
       authors: null,
       publisher: 'Energy Policy',
       publishedAt: null,
+      kind: null,
+      provider: null,
+    });
+  });
+
+  it('never hands the database a day that does not exist', () => {
+    // 31 February parses to 3 March in JavaScript and is refused by Postgres, which would fail the whole job.
+    expect(storedBibliographic({ bibliographic: { publisher: 'Energy Policy', publishedAt: '2023-02-31' } })?.publishedAt).toBeNull();
+    expect(storedBibliographic({ bibliographic: { publisher: 'Energy Policy', publishedAt: '2023-02-28' } })?.publishedAt).toBe('2023-02-28');
+  });
+
+  it('keeps the kind and provider only in the form they are issued in, and stores the checked record', () => {
+    const checked = storedBibliographic({ bibliographic: { publisher: 'Energy Policy', kind: 'Journal Article', provider: 'OpenAlex', extra: { nested: true } } });
+    expect(checked).toEqual({ authors: null, publisher: 'Energy Policy', publishedAt: null, kind: 'journal article', provider: 'openalex' });
+    expect(bibliographicRecord(checked!)).toEqual({ provider: 'openalex', kind: 'journal article', publisher: 'Energy Policy' });
+    expect(storedBibliographic({ bibliographic: { publisher: 'X', kind: '<script>', provider: 'bad provider!' } })).toEqual({
+      authors: null,
+      publisher: 'X',
+      publishedAt: null,
+      kind: null,
+      provider: null,
     });
   });
 });

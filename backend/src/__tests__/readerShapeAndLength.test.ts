@@ -55,7 +55,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 
 import { generateIterativeReport } from '../services/reasoning/reportGenerator';
 import { issuePassages } from '../services/reasoning/citationLock';
-import { isBulletList, isSizedReaderSection, readerSectionBudgets, splitSentences, trimToWords, wordCount, removeRepeatedSentences } from '../services/reasoning/baselineReport';
+import { firstSentences, isBulletList, isSizedReaderSection, readerSectionBudgets, splitSentences, trimToWords, wordCount, removeRepeatedSentences } from '../services/reasoning/baselineReport';
 import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
 
 const SOURCE = { title: 'Nuclear construction cost study', publisher: 'Energy Policy', date: '2016-04-01', url: 'https://example.org/study' };
@@ -234,11 +234,33 @@ describe('helpers behind section size and shape', () => {
     expect(readerSectionBudgets(900, [{ key: 'summary' }]).get('summary')).toBe(150);
   });
 
-  it('does not split after an abbreviation, an initial, or before a lower-case word', () => {
-    expect(splitSentences('Costs fell, per Lovering et al. The record is mixed.')).toEqual(['Costs fell, per Lovering et al. The record is mixed.']);
-    expect(splitSentences('It was built in the U.S. Later units cost more. Why?')).toEqual(['It was built in the U.S. Later units cost more.', 'Why?']);
+  it('does not split where the next word cannot start a sentence', () => {
+    expect(splitSentences('The record is mixed, with Lovering et al. reporting a fall. Critics disagree.')).toEqual(['The record is mixed, with Lovering et al. reporting a fall.', 'Critics disagree.']);
     expect(splitSentences('See the 2012 audit. it covers 58 reactors.')).toEqual(['See the 2012 audit. it covers 58 reactors.']);
+  });
+
+  it('does not split after a title, a reference word or an initial before a name', () => {
+    expect(splitSentences('The review by Dr. Chen covers Fig. 3 in full. It is short.')).toEqual(['The review by Dr. Chen covers Fig. 3 in full.', 'It is short.']);
+    expect(splitSentences('The study by J. R. Lovering covers 349 reactors. It is cited often.')).toEqual(['The study by J. R. Lovering covers 349 reactors.', 'It is cited often.']);
+    expect(splitSentences('Costs differ by country, e.g. France and Korea. Both built in series.')).toEqual(['Costs differ by country, e.g. France and Korea.', 'Both built in series.']);
+  });
+
+  it('does not split "et al." or a dotted abbreviation from the number or bracket after it', () => {
+    expect(splitSentences('Lovering et al. (2016) cover 349 reactors. Grubler covers France.')).toEqual(['Lovering et al. (2016) cover 349 reactors.', 'Grubler covers France.']);
+    expect(splitSentences('Costs rose in the U.S. [3] after 1979. They fell in Korea.')).toEqual(['Costs rose in the U.S. [3] after 1979.', 'They fell in Korea.']);
+  });
+
+  it('still ends a sentence at an abbreviation when a new sentence follows', () => {
+    // A real boundary: merging here would hide a sentence from the four-sentence cap and the repetition check.
+    expect(splitSentences('It was built in the U.S. Later units cost more.')).toEqual(['It was built in the U.S.', 'Later units cost more.']);
+    expect(splitSentences('The supplier is Acme Inc. Revenue rose.')).toEqual(['The supplier is Acme Inc.', 'Revenue rose.']);
+    expect(splitSentences('The data are from Smith et al. Coverage ends in 2020.')).toEqual(['The data are from Smith et al.', 'Coverage ends in 2020.']);
     expect(splitSentences('First point. Second point.')).toEqual(['First point.', 'Second point.']);
+  });
+
+  it('counts a sentence that ends in an abbreviation toward the limits cap', () => {
+    const limits = 'The data are from Smith et al. Coverage ends in 2020. No cost data are given for Korea. Labour figures are missing. A fifth sentence must go.';
+    expect(firstSentences(limits, 4)).toBe('The data are from Smith et al. Coverage ends in 2020. No cost data are given for Korea. Labour figures are missing.');
   });
 
   it('still splits text in a script without letter case at every full stop', () => {

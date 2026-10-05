@@ -28,6 +28,7 @@ import {
   getResearchV2EnsemblePresets,
   listSavedOrchestrationProfiles,
   startResearch,
+  citationStyleToSend,
   type CitationStyleChoice,
   type ResearchObjective,
 } from '../../utils/api';
@@ -285,7 +286,7 @@ export default function ResearchRequestForm() {
         requestedFormats,
         targetWordCount,
         // A style is sent only when one was chosen; "Automatic" leaves it to the report.
-        citationStyle: citationStyle === 'automatic' ? undefined : citationStyle,
+        citationStyle: citationStyleToSend(citationStyle),
         savedOrchestrationProfileId: savedOrchestrationProfileId || undefined,
         addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       });

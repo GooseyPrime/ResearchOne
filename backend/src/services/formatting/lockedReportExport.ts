@@ -24,6 +24,7 @@ export interface LockedCitationSourceRow {
   original_filename: string | null;
   retrieval_timestamp: unknown;
   provider: string | null;
+  kind?: string | null;
 }
 
 function isoDayOf(value: unknown): string | null {
@@ -53,7 +54,7 @@ export function sourcesByNumber(rows: LockedCitationSourceRow[]): ReferenceSourc
       publisher: row.publication,
       date: isoDayOf(row.published_at),
       url: row.url,
-      kind: sourceKindInWords({ provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename) }),
+      kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename) }),
       accessed: isoDayOf(row.retrieval_timestamp),
     });
   }

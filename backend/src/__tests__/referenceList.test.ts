@@ -17,7 +17,7 @@ const STUDY: ReferenceSource = {
   publisher: 'Energy Policy',
   date: '2016-04-01',
   url: 'https://doi.org/10.1016/j.enpol.2016.01.011',
-  kind: 'peer-reviewed study',
+  kind: 'journal article',
 };
 const PAGE: ReferenceSource = {
   title: 'FDA Approves First Gene Therapies to Treat Patients with Sickle Cell Disease',
@@ -30,7 +30,7 @@ const PAGE: ReferenceSource = {
 describe('reference entries', () => {
   it('writes authors, title, publisher, date, kind and link in the numbered default', () => {
     expect(formatReference(STUDY)).toBe(
-      'Jessica R. Lovering, Arthur Yip, and Ted Nordhaus. Historical construction costs of global nuclear power reactors. Energy Policy. 1 Apr 2016. Peer-reviewed study. https://doi.org/10.1016/j.enpol.2016.01.011'
+      'Jessica R. Lovering, Arthur Yip, and Ted Nordhaus. Historical construction costs of global nuclear power reactors. Energy Policy. 1 Apr 2016. Journal article. https://doi.org/10.1016/j.enpol.2016.01.011'
     );
   });
 
@@ -80,6 +80,23 @@ describe('reference entries', () => {
     );
   });
 
+  it('gives the day a web page was read in every style, in that style\'s form', () => {
+    expect(formatReference(PAGE, 'apa')).toBe(
+      'fda.gov. (2023, December 8). FDA Approves First Gene Therapies to Treat Patients with Sickle Cell Disease. Retrieved October 4, 2026, from https://www.fda.gov/news-events/press-announcements/fda-approves-first-gene-therapies'
+    );
+    expect(formatReference(PAGE, 'mla')).toContain('Accessed 4 Oct. 2026.');
+    expect(formatReference(PAGE, 'chicago-author-date')).toContain('December 8. Accessed October 4, 2026. https://www.fda.gov/');
+    expect(formatReference(PAGE, 'chicago-note')).toContain('December 8, 2023, accessed October 4, 2026, https://www.fda.gov/');
+    expect(formatReference(PAGE, 'ieee')).toContain('Accessed: Oct. 4, 2026. [Online]. Available: https://www.fda.gov/');
+    expect(formatReference(PAGE, 'harvard')).toContain('(Accessed: 4 October 2026).');
+  });
+
+  it('gives no read date for a published work, whose text does not change', () => {
+    for (const style of ['numeric', 'apa', 'mla', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'] as const) {
+      expect(formatReference({ ...STUDY, accessed: '2026-10-04' }, style)).not.toMatch(/accessed|retrieved/i);
+    }
+  });
+
   it('keeps a date that is not a calendar day as the source gave it', () => {
     expect(formatReference({ title: 'Report', publisher: 'Agency', date: 'December 2023' })).toBe('Agency. Report. December 2023.');
     expect(formatReference({ title: 'Report', publisher: 'Agency', date: 'December 2023' }, 'harvard')).toBe('Agency (2023) Report.');
@@ -114,10 +131,29 @@ describe('source details', () => {
     expect(siteName(null)).toBeNull();
   });
 
-  it('names the kind of source from the provider and the address', () => {
-    expect(sourceKindInWords({ provider: 'crossref', url: 'https://doi.org/10.1/x' })).toBe('peer-reviewed study');
-    expect(sourceKindInWords({ provider: 'pmc', url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/' })).toBe('peer-reviewed study');
-    expect(sourceKindInWords({ url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/' })).toBe('peer-reviewed study');
+  it('uses what the provider recorded the work to be', () => {
+    expect(sourceKindInWords({ kind: 'Book chapter', provider: 'crossref', url: 'https://doi.org/10.1/x' })).toBe('book chapter');
+    expect(sourceKindInWords({ kind: 'dataset', url: 'https://doi.org/10.1/x' })).toBe('dataset');
+    // Not a kind: too long, or not words. The address decides instead.
+    expect(sourceKindInWords({ kind: '<b>x</b>', url: 'https://example.org/post' })).toBe('web page');
+    expect(sourceKindInWords({ kind: 'a'.repeat(60), url: 'https://example.org/post' })).toBe('web page');
+  });
+
+  it('never says a work was peer reviewed on the strength of a catalogue entry or a DOI', () => {
+    for (const input of [
+      { provider: 'crossref', url: 'https://doi.org/10.1/x' },
+      { provider: 'openalex', url: 'https://openalex.org/W1' },
+      { url: 'https://doi.org/10.5061/dryad.x' },
+      { provider: 'pmc', url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/' },
+    ]) {
+      expect(sourceKindInWords(input)).not.toMatch(/peer/i);
+    }
+  });
+
+  it('names the kind of source from the provider and the address when the record does not say', () => {
+    expect(sourceKindInWords({ provider: 'crossref', url: 'https://doi.org/10.1/x' })).toBe('scholarly work');
+    expect(sourceKindInWords({ provider: 'pmc', url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/' })).toBe('journal article');
+    expect(sourceKindInWords({ url: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/' })).toBe('journal article');
     expect(sourceKindInWords({ url: 'https://www.ncbi.nlm.nih.gov/books/NBK1/' })).toBe('web page');
     expect(sourceKindInWords({ provider: 'arxiv', url: 'https://arxiv.org/pdf/2401.00001' })).toBe('preprint');
     expect(sourceKindInWords({ url: 'https://export.arxiv.org/abs/2401.00001' })).toBe('preprint');

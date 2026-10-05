@@ -458,11 +458,14 @@ export function parsePlanGeneratorJson(
  * A brief made to agree with the report type of the plan it belongs to. The
  * same rules the classifier applies when a request names its own type: the
  * method follows the type unless the user asked for the challenge method by
- * name, and the objective follows it unless the user chose one. A brief that
- * already names this type is returned as it is.
+ * name, and the objective follows it unless the user chose one. When the type
+ * is the one the plan already had, the brief is returned as it is.
  */
-export function alignBriefWithIntent(brief: ResearchBrief, intent: IntentId): ResearchBrief {
-  if (brief.primaryIntent === intent) return brief;
+export function alignBriefWithIntent(brief: ResearchBrief, intent: IntentId, previousIntent: IntentId = brief.primaryIntent): ResearchBrief {
+  // The type changed when it differs from the plan before it. The model can
+  // write the new type into the brief itself and still echo the old method, so
+  // the brief naming the new type is not proof that the rest of it followed.
+  if (brief.primaryIntent === intent && previousIntent === intent) return brief;
   const next: ResearchBrief = {
     ...brief,
     primaryIntent: intent,
@@ -498,7 +501,8 @@ export function parsePlanRefinementJson(
       revisedPlanRaw.researchBrief ??
         currentPlan.researchBrief ??
         defaultResearchBrief(currentPlan.intent.id, currentPlan.intent.confidence, currentPlan.intent.reasoning),
-      revisedPlanRaw.intent.id
+      revisedPlanRaw.intent.id,
+      currentPlan.intent.id
     );
     const revisedPlan = mergePlanPayloadWithCanonicalProfile({
       ...revisedPlanRaw,
