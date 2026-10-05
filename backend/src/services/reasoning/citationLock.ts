@@ -365,7 +365,8 @@ export function guardLockedRepair(
     let gap = 2;
     // A fenced block is one piece: kept whole or cut whole. Taking off only its
     // fences would turn what it quotes into headings and lists of the report.
-    const fenced = /^[ \t]{0,3}(```|~~~)[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$/gm;
+    // A fence is three or more of one mark and closes on a run at least as long.
+    const fenced = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[`~]*[ \t]*$/gm;
     const parts: Array<{ text: string; block: boolean }> = [];
     let cursor = 0;
     const whole = body(text);

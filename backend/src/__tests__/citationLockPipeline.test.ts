@@ -545,6 +545,9 @@ describe('citation lock helpers', () => {
       // Both fences taken off, leaving what the block quoted as part of the report.
       const quoted = before.replace('The sources do not cover long-term follow-up.', 'An example follows.\n\n```markdown\n### Pricing\nIt costs two million dollars.\n```\n\nNothing else is covered.');
       expect(guardLockedRepair(quoted, quoted.replace('```markdown\n', '').replace('\n```\n', '\n')).restored).toEqual(['Limits of this report']);
+      const longer = quoted.replace('```markdown', '````markdown').replace('\n```\n', '\n````\n');
+      expect(guardLockedRepair(longer, longer).restored).toEqual([]);
+      expect(guardLockedRepair(longer, longer.replace('````markdown\n', '').replace('\n````\n', '\n')).restored).toEqual(['Limits of this report']);
       // The whole block cut with both its fences is a cut.
       expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual([]);
     });
