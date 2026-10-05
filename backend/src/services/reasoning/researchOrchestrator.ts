@@ -2413,6 +2413,9 @@ async function runResearchJobInner(
                 const keptUsed = usedSources.filter((_source, index) => kept.has(allChunks[index].id));
                 usedSources.splice(0, usedSources.length, ...keptUsed);
                 allChunks.splice(0, allChunks.length, ...applied.chunks);
+                // The outline writer is shown this text. Built again, so a source
+                // left out is not put in front of any model that writes the report.
+                sourceContext = formatSourceContext(allChunks);
                 // The gates that passed this run judged the passages as they
                 // were. With some gone those verdicts are stale: the reading
                 // judge's "sufficient" no longer stands, and the source count is

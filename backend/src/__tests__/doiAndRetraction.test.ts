@@ -345,7 +345,9 @@ describe('a source left out is not counted as read', () => {
 describe('earlier verdicts after sources are left out', () => {
   it('are not relied on: the reading judge\'s pass is withdrawn and the source count judged again', () => {
     const at = orchestratorSource.indexOf('allChunks.splice(0, allChunks.length, ...applied.chunks);');
-    const after = orchestratorSource.slice(at, at + 900);
+    const after = orchestratorSource.slice(at, at + 1200);
+    // What the outline writer is shown is built again from what is left.
+    expect(after).toMatch(/sourceContext = formatSourceContext\(allChunks\);/);
     expect(after).toMatch(/materialJudgedSufficient = false;\s*const afterCheck = assessSourcesAsTheyStand\(\);\s*if \(afterCheck\.action !== 'sufficient'\) sourceFailureReason = afterCheck\.reason;/);
     expect(orchestratorSource).toMatch(/const assessSourcesAsTheyStand = \(\) =>\s*assessSourceSufficiency\(\{[^}]*citableChunks: allChunks,[^}]*rediscoveryPassesRemaining: 0,/);
   });
