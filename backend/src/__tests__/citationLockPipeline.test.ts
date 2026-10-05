@@ -427,6 +427,25 @@ describe('citation lock helpers', () => {
       expect(reworded.markdown).toContain('Long-term follow-up is outside what the sources cover.');
     });
 
+    it('keeps the report\'s own title and adds no preamble, sub-heading or link of any kind', () => {
+      const preamble = guardLockedRepair(before, before.replace('# First CRISPR therapy approval', '# A new title\n\nCasgevy is the most important therapy of the decade.'));
+      expect(preamble.markdown.startsWith('# First CRISPR therapy approval\n\n## Summary')).toBe(true);
+      expect(preamble.markdown).not.toContain('most important therapy');
+      const nested = guardLockedRepair(before, before.replace('## Limits of this report\n', '## Limits of this report\n### Pricing\n'));
+      expect(nested.restored).toEqual(['Limits of this report']);
+      const paths = guardLockedRepair(before, before.replace('The FDA approved Casgevy', '[The FDA approved Casgevy](/invented-source)').replace('long-term follow-up', '[long-term follow-up](mailto:someone@example.org)'));
+      expect(paths.linksRemoved).toBe(2);
+      expect(paths.markdown).not.toMatch(/invented-source|mailto:/);
+      expect(paths.markdown).toContain('The FDA approved Casgevy on 8 December 2023 [P1].');
+    });
+
+    it('puts back a section that had no citations when the repair wrote one into it', () => {
+      const after = before.replace('The sources do not cover long-term follow-up.', 'The therapy was priced at two million dollars [P1].');
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual(['Limits of this report']);
+      expect(guarded.markdown).not.toContain('two million dollars');
+    });
+
     it('reads lower-case and grouped markers as citations', () => {
       const grouped = '## Summary\nThe FDA approved Casgevy on 8 December 2023 [p1]. It treats sickle cell disease [P1 and P2].';
       const guarded = guardLockedRepair(grouped, '## Summary\nThe FDA approved Casgevy on 8 December 2023. It treats sickle cell disease.');

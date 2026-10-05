@@ -326,7 +326,8 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
   });
 }
 
-const LINK_OR_URL = /\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)>\]]+/g;
+/** A Markdown link to anywhere (a page, a path, a mail address), or a bare web address. */
+const LINK_OR_URL = /\[([^\]\n]*)\]\(\s*([^)\s]+)[^)\n]*\)|https?:\/\/[^\s)>\]]+/g;
 
 /** Told to a repair of a report written with the citation lock. */
 export const LOCKED_REPAIR_RULE =
@@ -357,13 +358,12 @@ export function guardLockedRepair(
   before: string,
   after: string
 ): { markdown: string; restored: string[]; dropped: string[]; linksRemoved: number } {
-  // The same marker forms the lock reads everywhere else: either case, and grouped.
-  const count = (text: string): number => (text.match(new RegExp(MARKER_GROUP.source, MARKER_GROUP.flags.includes('g') ? MARKER_GROUP.flags : `${MARKER_GROUP.flags}g`)) ?? []).length;
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
   const marker = new RegExp(MARKER_GROUP.source, 'i');
   /** Sentences that carry no citation. A repair may reword or cut one; a section that has more of them than before has gained material. */
   const uncited = (text: string): number =>
     sentencePieces(text).filter((piece) => /\p{L}/u.test(piece.text) && !/^\s*#{1,6}\s/.test(piece.text) && !marker.test(piece.text)).length;
+  const subheadings = (text: string): string[] => [...text.matchAll(/^#{3,6}[ \t]+(.+?)[ \t#]*$/gm)].map((match) => key(match[1]));
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
   if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading), linksRemoved: 0 };
@@ -386,19 +386,26 @@ export function guardLockedRepair(
     // and no sentence arrives without one.
     const sound =
       now !== undefined &&
-      (count(block.text) === 0 || markersPreserved(block.text, now, { allowRemoval: true })) &&
-      uncited(now) <= uncited(block.text);
+      // Every section, cited before or not: a citation added to a section that
+      // had none marks a sentence the repair wrote itself.
+      markersPreserved(block.text, now, { allowRemoval: true }) &&
+      uncited(now) <= uncited(block.text) &&
+      // A new or renamed sub-heading is a new section by another name.
+      subheadings(now).every((heading) => subheadings(block.text).includes(heading));
     if (sound) return now as string;
     restored.push(block.heading);
     return block.text;
   });
-  const leadOf = (text: string, blocks: Array<{ startLine: number }>): string => text.split('\n').slice(0, blocks[0]?.startLine ?? 0).join('\n').trim();
-  const lead = (afterBlocks.length > 0 ? leadOf(after, afterBlocks) : '') || leadOf(before, beforeBlocks);
+  // The title and anything before the first section are the report's own; a
+  // repair's preamble was written from no passage.
+  const lead = before.split('\n').slice(0, beforeBlocks[0]?.startLine ?? 0).join('\n').trim();
   let markdown = `${lead ? `${lead}\n\n` : ''}${kept.join('\n\n')}\n`;
   if (restored.length === beforeBlocks.length) return { markdown: before, restored, dropped, linksRemoved: 0 };
-  const known = new Set((before.match(LINK_OR_URL) ?? []).map((link) => link.replace(/^\[[^\]]*\]\(|\)$/g, '')));
+  const known = new Set([...before.matchAll(LINK_OR_URL)].map((match) => match[2] ?? match[0]));
   let linksRemoved = 0;
   markdown = markdown.replace(LINK_OR_URL, (whole: string, label: string | undefined, url: string | undefined) => {
+    // A citation marker written as a link is the lock's own business, not a new link.
+    if (label !== undefined && marker.test(`[${label}]`)) return whole;
     if (known.has(url ?? whole)) return whole;
     linksRemoved += 1;
     return label ?? '';
