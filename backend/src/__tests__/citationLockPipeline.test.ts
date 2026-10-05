@@ -525,6 +525,14 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(spanning, spanning.replace('[Background first. ', '')).restored).toEqual(['Limits of this report']);
     });
 
+    it('puts back a cited section left with only its uncited sentence, and a nested list that lost a parent', () => {
+      const mixed = before.replace('The FDA approved Casgevy on 8 December 2023 [P1].', 'This section sets out the decision. The FDA approved Casgevy on 8 December 2023 [P1].');
+      const bare = mixed.replace(' The FDA approved Casgevy on 8 December 2023 [P1]. It treats sickle cell disease in patients aged 12 and older [P1, P2].', '');
+      expect(guardLockedRepair(mixed, bare).restored).toEqual(['Summary']);
+      const nested = before.replace('- The approval came on 8 December 2023 [P1].\n- Eligible patients have recurrent crises [P2].', '- Group A\n  - Claim A [P1].\n- Group B\n  - Claim B [P2].');
+      expect(guardLockedRepair(nested, nested.replace('- Group B\n', '')).restored).toEqual(['Key findings']);
+    });
+
     it('does not let a parent sub-heading go while its child stays', () => {
       const tree = before.replace('The sources do not cover long-term follow-up.', '### Parent\nAn introduction [P1].\n#### Child\nA detail [P2].');
       expect(guardLockedRepair(tree, tree.replace('### Parent\nAn introduction [P1].\n', '')).restored).toEqual(['Limits of this report']);

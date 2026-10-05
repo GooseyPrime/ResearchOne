@@ -417,6 +417,12 @@ export function guardLockedRepair(
     // hard line breaks, indented blocks) comes in parts that only mean something
     // together, and there is no end to the ways a cut can leave one part
     // hanging. A section that holds any of it is taken unchanged or not at all.
+    // A section that was cited stays cited: with every citation cut, the
+    // report would be saved with nothing behind what is left.
+    const cited = (text: string): boolean => new RegExp(MARKER_GROUP.source, 'i').test(text);
+    if (cited(was) && !cited(now)) return false;
+    // A bullet set in under another takes its meaning from the one above it.
+    if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
     const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
     const marked = /[`*_~<>[\]|\\]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
