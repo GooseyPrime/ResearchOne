@@ -180,7 +180,6 @@ describe('what a locked report may cite after the link check', () => {
     expect(two.chunks).toHaveLength(0);
     expect(two.everyChecked).toEqual([{ status: 'unresolved', notice: null }, { status: 'unresolved', notice: null }]);
     expect(applyDoiChecks(chunks, sources, checks, sources.map((source) => doiOf(source.url))).everyRetracted).toEqual([false, true, false, false]);
-    expect(orchestratorSource).toMatch(/lockRetracted = applied\.everyRetracted;\s*lockChecked = applied\.everyChecked;/);
   });
 
   it('changes nothing when the check was unavailable or the source has no DOI', () => {
@@ -223,11 +222,18 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('There is no evidence that the study was retracted [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('The paper may have been withdrawn [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('Was the trial later retracted [P2]?', shown)).toEqual(['P2']);
+    // The statement has to be about the cited work, in the same part of the sentence.
+    expect(unstatedRetractions('Another paper was retracted, but the trial found benefit [P2].', shown)).toEqual(['P2']);
+    // A concession about the same work is a statement about it.
+    expect(unstatedRetractions('The trial found benefit [P2], although it was later retracted.', shown)).toEqual([]);
+    expect(unstatedRetractions('Costs rose [P1], but the trial, since retracted, had found otherwise [P2].', shown)).toEqual([]);
     // One statement covers one retracted work.
     const two = shown.map((passage) => (passage.marker === 'P3' ? { ...passage, retracted: true } : passage));
-    expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toEqual(['P2', 'P3']);
+    expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toEqual(['P3']);
+    // Within one part, fewer statements than works: neither is let through.
+    expect(unstatedRetractions('Study A, since retracted, found X [P2] and Study B found Y [P3].', two)).toEqual(['P2', 'P3']);
     expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B, later withdrawn, found Y [P3].', two)).toEqual([]);
-    expect(stripUnstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toBe('Study A, since retracted, found X, while Study B found Y.');
+    expect(stripUnstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toBe('Study A, since retracted, found X [P2], while Study B found Y.');
     // Saying so in a neighbouring sentence is not saying so in the sentence.
     expect(unstatedRetractions('One study was retracted. The trial found a large effect [P2].', shown)).toEqual(['P2']);
   });
@@ -269,7 +275,7 @@ describe('a DOI that is only in the provider record', () => {
     expect(pmcBibliographic({ doi: 'not a doi', fulljournalname: 'Journal' } as never)?.doi).toBeUndefined();
     expect(bibliographicRecord(storedBibliographic({ bibliographic: { doi: '10.1000/bad' } })!)).toEqual({ doi: '10.1000/bad' });
     expect(fullestBibliographic([{ provider: 'crossref', authors: ['A'] }, { provider: 'pmc', doi: '10.1000/bad' }])?.doi).toBe('10.1000/bad');
-    expect(orchestratorSource).toMatch(/doiOf\(detailByChunk\.get\(chunk\.id\)\?\.doi\) \?\? doiOf\(referenceSources\[index\]\?\.url\)/);
+    expect(orchestratorSource).toMatch(/doiOf\(rowById\.get\(chunk\.id\)\?\.doi\) \?\? doiOf\(rowById\.get\(chunk\.id\)\?\.url\)/);
     expect(orchestratorSource).toContain("s.metadata->'bibliographic'->>'doi' AS doi");
   });
 });
@@ -357,26 +363,29 @@ describe('saving what the link check found', () => {
   });
 });
 
-describe('a source left out is not counted as read', () => {
-  it('takes it out of what the gates, the reader line and the saved counts work from', () => {
-    expect(orchestratorSource).toMatch(/usedSources\.splice\(0, usedSources\.length, \.\.\.keptUsed\);\s*allChunks\.splice\(0, allChunks\.length, \.\.\.applied\.chunks\);/);
-  });
-});
+describe('when the link check runs', () => {
+  const at = (needle: string): number => orchestratorSource.indexOf(needle);
 
-describe('earlier verdicts after sources are left out', () => {
-  it('are not relied on: the reading judge\'s pass is withdrawn and the source count judged again', () => {
-    const at = orchestratorSource.indexOf('allChunks.splice(0, allChunks.length, ...applied.chunks);');
-    const after = orchestratorSource.slice(at, at + 1700);
-    // What the outline writer is shown is built again from what is left.
-    expect(after).toMatch(/sourceContext = formatSourceContext\(allChunks\);/);
-    expect(after).toMatch(/materialJudgedSufficient = false;\s*const afterCheck = assessSourcesAsTheyStand\(\);\s*if \(afterCheck\.action !== 'sufficient'\) sourceFailureReason = afterCheck\.reason;/);
-    // A verdict question left with no independent evidence stops, and the stop is raised outside the guard that swallows a failed check.
-    expect(after).toMatch(/if \(afterCheck\.action === 'insufficient_evidence_fail_closed'\) evidenceGoneAfterLinkCheck = true;/);
-    const guardEnd = orchestratorSource.indexOf('Link check failed; sources are used as retrieved');
-    const stop = orchestratorSource.indexOf('if (evidenceGoneAfterLinkCheck) {');
-    expect(stop).toBeGreaterThan(guardEnd);
-    expect(orchestratorSource.slice(stop, stop + 260)).toMatch(/throw new Error\(\s*'Adjudicative run halted: no independent evidence was left/);
-    expect(orchestratorSource).toMatch(/const assessSourcesAsTheyStand = \(\) =>\s*assessSourceSufficiency\(\{[^}]*citableChunks: allChunks,[^}]*rediscoveryPassesRemaining: 0,/);
+  it('runs on retrieved passages before any stage reads them', () => {
+    // After retrieval is recorded, before the analysis builds its source text.
+    const first = at('await applyLinkCheckToRunPassages();');
+    expect(first).toBeGreaterThan(at("checkpointKey: 'retrieval_ids'"));
+    expect(first).toBeLessThan(at('let sourceContext = formatSourceContext(allChunks);'));
+    // Every later rebuild of the source text after a search is preceded by the check.
+    const rebuilds = [...orchestratorSource.matchAll(/await applyLinkCheckToRunPassages\(\);\s*sourceContext = formatSourceContext\(allChunks\);/g)];
+    expect(rebuilds).toHaveLength(2);
+    // A specialist's own search is checked before the specialist is handed the passages.
+    expect(orchestratorSource).toMatch(/const usableScoped = await usableAfterLinkCheck\(collected\);[\s\S]{0,600}return usableScoped;/);
+    expect(orchestratorSource).not.toMatch(/return collected;/);
+  });
+
+  it('is not repeated when the report is written: the writer gets what the check left, with its findings', () => {
+    expect(orchestratorSource.match(/checkDois\(/g)).toHaveLength(1);
+    expect(orchestratorSource).toMatch(/const found = linkCheckByChunk\.get\(passage\.chunkId\);\s*return \{ \.\.\.passage, retracted: found\?\.retracted === true,/);
+  });
+
+  it('never stops a run when the check itself fails', () => {
+    expect(orchestratorSource).toMatch(/catch \(linkErr\) \{[\s\S]{0,200}return chunks;/);
   });
 });
 
@@ -390,16 +399,16 @@ describe('the switch and the citation lock', () => {
 });
 
 describe('the switch', () => {
-  const orchestrator = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
   const writer = readFileSync(join(__dirname, '../services/reasoning/reportGenerator.ts'), 'utf8');
 
   it('asks the network only behind DOI_RESOLVE_ENABLED, and only once', () => {
-    expect(orchestrator.match(/checkDois\(/g)).toHaveLength(1);
-    const at = orchestrator.indexOf('checkDois(');
-    const guard = orchestrator.lastIndexOf('if (doiResolveEnabled()) {', at);
-    expect(guard).toBeGreaterThan(-1);
-    // Nothing closes the guarded block between the switch and the call.
-    expect(orchestrator.slice(guard, at)).not.toMatch(/\n {8}\}/);
+    expect(orchestratorSource.match(/checkDois\(/g)).toHaveLength(1);
+    const call = orchestratorSource.indexOf('checkDois(');
+    const guard = orchestratorSource.lastIndexOf('if (chunks.length === 0 || !doiResolveEnabled()) return chunks;', call);
+    const helper = orchestratorSource.lastIndexOf('const usableAfterLinkCheck = async', call);
+    // The switch is the first thing the one function that asks the network does.
+    expect(guard).toBeGreaterThan(helper);
+    expect(orchestratorSource.slice(helper, guard)).not.toMatch(/await /);
   });
 
   it('holds every draft and the saved report to the retraction rule', () => {

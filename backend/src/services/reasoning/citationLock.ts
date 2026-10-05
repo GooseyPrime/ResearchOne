@@ -209,17 +209,26 @@ function retractionsStated(sentence: string): number {
   return (sentence.match(new RegExp(AFFIRMS_RETRACTION.source, 'gi')) ?? []).length;
 }
 
+/** Where a sentence turns from one thing to another: what is said before "but" is not said of what follows it. */
+const CONTRAST = /;|\b(?:but|while|whereas|however)\b/gi;
+
 /**
- * The retracted sources a sentence cites without saying so. One statement
- * covers one retracted work: a sentence citing two retracted works and calling
- * one of them retracted has presented the other as standing, and since the
- * words cannot be tied to a marker, neither citation is let through.
+ * The retracted sources a sentence cites without saying so. The statement has
+ * to sit in the same part of the sentence as the citation: "another paper was
+ * retracted, but the trial found benefit [P2]" says nothing about the trial.
+ * Within a part, one statement covers one retracted work; where there are
+ * fewer statements than works, the words cannot be tied to a marker and none
+ * of those citations is let through.
  */
 function unstatedIn(sentence: string, retractedSourceOf: ReadonlyMap<string, string>): Set<string> {
-  const cited = markersIn(sentence).filter((marker) => retractedSourceOf.has(marker));
-  if (cited.length === 0) return new Set();
-  const works = new Set(cited.map((marker) => retractedSourceOf.get(marker) as string));
-  return retractionsStated(sentence) >= works.size ? new Set() : new Set(cited);
+  const unstated = new Set<string>();
+  for (const part of sentence.split(CONTRAST)) {
+    const cited = markersIn(part).filter((marker) => retractedSourceOf.has(marker));
+    if (cited.length === 0) continue;
+    const works = new Set(cited.map((marker) => retractedSourceOf.get(marker) as string));
+    if (retractionsStated(part) < works.size) for (const marker of cited) unstated.add(marker);
+  }
+  return unstated;
 }
 
 /** Each retracted passage's marker, with a key for the work it comes from. */
