@@ -407,6 +407,26 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(before, after).restored).toEqual(['Key findings']);
     });
 
+    it('keeps a section the repair left out, in the report\'s own order', () => {
+      const after = '# First CRISPR therapy approval\n\n## Limits of this report\nThe sources do not cover follow-up.\n\n## Summary\nThe FDA approved Casgevy on 8 December 2023 [P1].';
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual(['Key findings']);
+      expect([...guarded.markdown.matchAll(/^## (.+)$/gm)].map((match) => match[1])).toEqual(['Summary', 'Key findings', 'Limits of this report']);
+      expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
+      expect(guarded.markdown).toContain('The sources do not cover follow-up.');
+    });
+
+    it('puts a section back when the repair added a sentence with no citation', () => {
+      const after = before.replace('[P1, P2].', '[P1, P2]. The therapy costs about two million dollars per patient.');
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual(['Summary']);
+      expect(guarded.markdown).not.toContain('two million dollars');
+      // Rewording a sentence that had no citation is still a repair.
+      const reworded = guardLockedRepair(before, before.replace('The sources do not cover long-term follow-up.', 'Long-term follow-up is outside what the sources cover.'));
+      expect(reworded.restored).toEqual([]);
+      expect(reworded.markdown).toContain('Long-term follow-up is outside what the sources cover.');
+    });
+
     it('reads lower-case and grouped markers as citations', () => {
       const grouped = '## Summary\nThe FDA approved Casgevy on 8 December 2023 [p1]. It treats sickle cell disease [P1 and P2].';
       const guarded = guardLockedRepair(grouped, '## Summary\nThe FDA approved Casgevy on 8 December 2023. It treats sickle cell disease.');

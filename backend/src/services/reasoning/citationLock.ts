@@ -347,6 +347,10 @@ export const LOCKED_REPAIR_RULE =
  *    passage, so nothing in it can be cited or checked;
  *  - a link the report did not have is taken out, for the same reason.
  *
+ *  - a section that gained a sentence with no citation is put back as it was:
+ *    the new sentence was written from no passage;
+ *  - a section the repair left out is still there.
+ *
  * A repair that leaves nothing usable returns the report as it was.
  */
 export function guardLockedRepair(
@@ -356,33 +360,42 @@ export function guardLockedRepair(
   // The same marker forms the lock reads everywhere else: either case, and grouped.
   const count = (text: string): number => (text.match(new RegExp(MARKER_GROUP.source, MARKER_GROUP.flags.includes('g') ? MARKER_GROUP.flags : `${MARKER_GROUP.flags}g`)) ?? []).length;
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
+  const marker = new RegExp(MARKER_GROUP.source, 'i');
+  /** Sentences that carry no citation. A repair may reword or cut one; a section that has more of them than before has gained material. */
+  const uncited = (text: string): number =>
+    sentencePieces(text).filter((piece) => /\p{L}/u.test(piece.text) && !/^\s*#{1,6}\s/.test(piece.text) && !marker.test(piece.text)).length;
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
-  const original = new Map(beforeBlocks.map((block) => [key(block.heading), block.text]));
-  const restored: string[] = [];
+  if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading), linksRemoved: 0 };
+  const repaired = new Map<string, string>();
   const dropped: string[] = [];
-  const kept: string[] = [];
+  const names = new Set(beforeBlocks.map((block) => key(block.heading)));
   for (const block of afterBlocks) {
-    const was = original.get(key(block.heading));
-    if (was === undefined) {
-      dropped.push(block.heading);
-      continue;
-    }
+    const name = key(block.heading);
+    // A section the report did not have, or a second copy of one it has.
+    if (!names.has(name) || repaired.has(name)) dropped.push(block.heading);
+    else repaired.set(name, block.text);
+  }
+  // Built in the report's own order from the report's own sections, so a repair
+  // can neither leave a section out nor rename one away.
+  const restored: string[] = [];
+  const kept = beforeBlocks.map((block) => {
+    const now = repaired.get(key(block.heading));
     // Statement by statement: a cited sentence may be cut with its citation, but
-    // a sentence that is kept keeps its citation, and no citation moves or is added.
-    if (count(was) > 0 && !markersPreserved(was, block.text, { allowRemoval: true })) {
-      restored.push(block.heading);
-      kept.push(was);
-    } else {
-      kept.push(block.text);
-    }
-  }
-  if (kept.length === 0) return { markdown: before, restored: beforeBlocks.map((block) => block.heading), dropped, linksRemoved: 0 };
-  const lead = after.split('\n').slice(0, afterBlocks[0]?.startLine ?? 0).join('\n').trim();
+    // a sentence that is kept keeps its citation, no citation moves or is added,
+    // and no sentence arrives without one.
+    const sound =
+      now !== undefined &&
+      (count(block.text) === 0 || markersPreserved(block.text, now, { allowRemoval: true })) &&
+      uncited(now) <= uncited(block.text);
+    if (sound) return now as string;
+    restored.push(block.heading);
+    return block.text;
+  });
+  const leadOf = (text: string, blocks: Array<{ startLine: number }>): string => text.split('\n').slice(0, blocks[0]?.startLine ?? 0).join('\n').trim();
+  const lead = (afterBlocks.length > 0 ? leadOf(after, afterBlocks) : '') || leadOf(before, beforeBlocks);
   let markdown = `${lead ? `${lead}\n\n` : ''}${kept.join('\n\n')}\n`;
-  if (count(before) > 0 && count(markdown) === 0) {
-    return { markdown: before, restored: beforeBlocks.map((block) => block.heading), dropped, linksRemoved: 0 };
-  }
+  if (restored.length === beforeBlocks.length) return { markdown: before, restored, dropped, linksRemoved: 0 };
   const known = new Set((before.match(LINK_OR_URL) ?? []).map((link) => link.replace(/^\[[^\]]*\]\(|\)$/g, '')));
   let linksRemoved = 0;
   markdown = markdown.replace(LINK_OR_URL, (whole: string, label: string | undefined, url: string | undefined) => {
