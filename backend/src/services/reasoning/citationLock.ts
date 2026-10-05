@@ -326,11 +326,6 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
   });
 }
 
-/** What can make a link in rendered Markdown: a bracket, an angle bracket, a scheme, a bare "www." host or a mail address. */
-const LINK_SYNTAX = /[[\]<>]|:\/\/|\bwww\.|\S@\S/i;
-/** A heading line of any level, or the underline that turns the line above it into one. */
-const HEADING_LINE = /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|=+[ \t]*$|-+[ \t]*$)/;
-
 /** Told to a repair of a report written with the citation lock. */
 export const LOCKED_REPAIR_RULE =
   'You have not been shown the sources, so you may only cut. Remove the sentences the requirements object to; ' +
@@ -357,41 +352,32 @@ export function guardLockedRepair(
   after: string
 ): { markdown: string; restored: string[]; dropped: string[] } {
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
-  const flat = (text: string): string => text.replace(new RegExp(MARKER_GROUP.source, 'gi'), ' ').replace(/\s+/g, ' ').trim();
   const body = (text: string): string => text.split('\n').slice(1).join('\n');
-  /** Every item of `now` is matched by its own item of `was`: a second copy needs a second original. */
-  const eachFrom = (now: string[], was: string[]): boolean => {
-    const left = [...was];
-    return now.every((item) => {
-      const at = left.indexOf(item);
-      if (at === -1) return false;
-      left.splice(at, 1);
-      return true;
-    });
-  };
+  /** A section's sentences, heading lines and list items in order, exactly as written apart from the spacing between words. */
+  const pieces = (text: string): string[] =>
+    sentencePieces(body(text))
+      .map((piece) => piece.text.replace(/\s+/g, ' ').trim())
+      .filter((piece) => piece.length > 0);
   /**
    * A locked repair may cut, and nothing else. It was shown the report and not
-   * the passages, so any words it adds were written from no source. Sentence by
-   * sentence, what the section holds after the repair must be what it held
-   * before, less whatever was cut:
-   *  - the words of every sentence are the words of one of the section's own
-   *    sentences (case and punctuation aside), each original used once;
-   *  - a sentence carrying anything that can render as a link is one of the
-   *    section's own, character for character, so a link stays on its statement;
-   *  - a heading line or heading underline is one the section already had;
-   *  - a section that had text still has some.
+   * the passages, so anything it adds or changes was written from no source.
+   * What a section holds after the repair must be what it held before, in the
+   * same order, less whatever was cut: every piece left is a piece the section
+   * had, character for character, citation and all. A changed sign, a moved
+   * citation, a new link, a swapped pair of headings and a reordered pair of
+   * sentences all fail the same test. A section that had text still has some.
    */
   const onlyCuts = (was: string, now: string): boolean => {
-    const sentences = (text: string): string[] => sentencePieces(body(text)).map((piece) => flat(piece.text)).filter((sentence) => /[\p{L}\p{N}]/u.test(sentence));
-    const before = sentences(was);
-    const after = sentences(now);
-    if (before.length > 0 && after.length === 0) return false;
-    const headingLines = (text: string): string[] => body(text).split('\n').filter((line) => HEADING_LINE.test(line)).map((line) => line.trim());
-    return (
-      eachFrom(after.map(statementKey), before.map(statementKey)) &&
-      eachFrom(after.filter((sentence) => LINK_SYNTAX.test(sentence)), before) &&
-      eachFrom(headingLines(now), headingLines(was))
-    );
+    const had = pieces(was);
+    const has = pieces(now);
+    if (had.length > 0 && has.length === 0) return false;
+    let at = 0;
+    for (const piece of has) {
+      while (at < had.length && had[at] !== piece) at += 1;
+      if (at === had.length) return false;
+      at += 1;
+    }
+    return true;
   };
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);

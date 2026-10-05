@@ -507,6 +507,16 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(withSub, doubled).restored).toEqual(['Limits of this report']);
     });
 
+    it('does not accept a changed sign, a reordered pair of sentences or a swapped pair of headings', () => {
+      const figures = before.replace('The sources do not cover long-term follow-up.', '### Benefits\nThe margin was +5 percent [P1].\n### Harms\nCrises fell in the first year [P2]. Costs were not reported [P2].');
+      expect(guardLockedRepair(figures, figures).restored).toEqual([]);
+      expect(guardLockedRepair(figures, figures.replace('+5 percent', '-5 percent')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(figures, figures.replace('Crises fell in the first year [P2]. Costs were not reported [P2].', 'Costs were not reported [P2]. Crises fell in the first year [P2].')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(figures, figures.replace('### Benefits', '### X').replace('### Harms', '### Benefits').replace('### X', '### Harms')).restored).toEqual(['Limits of this report']);
+      // Cutting one of them is still a cut.
+      expect(guardLockedRepair(figures, figures.replace(' Costs were not reported [P2].', '')).restored).toEqual([]);
+    });
+
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
       const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
       const repair = source.slice(source.indexOf('const beforeRepair = generatedReport.markdown;'), source.indexOf('ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);', source.indexOf('const beforeRepair = generatedReport.markdown;')));
