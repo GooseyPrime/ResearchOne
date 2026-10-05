@@ -91,10 +91,12 @@ async function checkOne(doi: string, http: DoiHttp): Promise<DoiCheck> {
     let code = await http.status('HEAD', address);
     // Should the resolver refuse HEAD, the same address is asked for with GET.
     if (code === 403 || code === 405) code = await http.status('GET', address);
-    // A fault at the resolver is no answer about the DOI, the same as a timeout.
-    if (code >= 500) throw new Error(`resolver answered ${code}`);
-    // A redirect means the resolver knows the DOI. "Not found" and "gone" mean it does not.
-    status = code === 404 || code === 410 ? 'unresolved' : 'resolved';
+    // "Not found" and "gone" are the resolver saying it does not know the DOI.
+    if (code === 404 || code === 410) status = 'unresolved';
+    // A redirect, or a page, is the resolver saying it does.
+    else if (code >= 200 && code < 400) status = 'resolved';
+    // Anything else (rate limited, refused, a fault) is no answer about the DOI, the same as a timeout.
+    else throw new Error(`resolver answered ${code}`);
   } catch (err) {
     networkFailure = true;
     logger.warn('[doi-resolve] no answer for a DOI', { doi, err: (err as Error)?.message });

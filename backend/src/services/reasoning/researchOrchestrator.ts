@@ -1844,6 +1844,20 @@ async function runResearchJobInner(
       discoverySourceCount: discoveryIngestBarrier.readyCount,
       corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
+    // Outside sources that became readable in a later search, added to the count below when it runs.
+    let laterDiscoverySourcesReady = 0;
+    /** The same judgement over whatever the passages are now, with no search left to run. */
+    const assessSourcesAsTheyStand = () =>
+      assessSourceSufficiency({
+        intentId: orchProfile.intent as never,
+        citableChunks: allChunks,
+        requesterUserId: creditCtx?.userId ?? null,
+        specialistOutputs: latestSpecialistOutputs,
+        rediscoveryPassesRemaining: 0,
+        requestedArtifactCount,
+        discoverySourceCount: discoveryIngestBarrier.readyCount + laterDiscoverySourcesReady,
+        corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
+      });
 
     if (sourceAssessment.action === 'rediscover') {
       await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
@@ -2093,7 +2107,7 @@ async function runResearchJobInner(
           specialistOutputs: latestSpecialistOutputs,
           rediscoveryPassesRemaining: 0,
           requestedArtifactCount,
-          discoverySourceCount: discoveryIngestBarrier.readyCount + materialDiscoveryBarrier.readyCount,
+          discoverySourceCount: discoveryIngestBarrier.readyCount + (laterDiscoverySourcesReady = materialDiscoveryBarrier.readyCount),
           corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
         });
         judged = await judgeNow();
@@ -2396,6 +2410,14 @@ async function runResearchJobInner(
                 const keptUsed = usedSources.filter((_source, index) => kept.has(allChunks[index].id));
                 usedSources.splice(0, usedSources.length, ...keptUsed);
                 allChunks.splice(0, allChunks.length, ...applied.chunks);
+                // The gates that passed this run judged the passages as they
+                // were. With some gone those verdicts are stale: the reading
+                // judge's "sufficient" no longer stands, and the source count is
+                // judged again over what is left. A shortfall found now marks
+                // the report the way one found earlier would have.
+                materialJudgedSufficient = false;
+                const afterCheck = assessSourcesAsTheyStand();
+                if (afterCheck.action !== 'sufficient') sourceFailureReason = afterCheck.reason;
               }
               lockChunks = applied.chunks;
               lockSources = applied.sources;

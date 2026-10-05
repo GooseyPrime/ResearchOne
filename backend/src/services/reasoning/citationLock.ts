@@ -189,7 +189,33 @@ const AFFIRMS_RETRACTION = new RegExp(
   ].join('|'),
   'i'
 );
-const SAYS_RETRACTED = { test: (sentence: string): boolean => AFFIRMS_RETRACTION.test(sentence) && !DENIES_RETRACTION.test(sentence) };
+/** How many works the sentence describes as retracted; none when it also denies a retraction. */
+function retractionsStated(sentence: string): number {
+  if (DENIES_RETRACTION.test(sentence)) return 0;
+  return (sentence.match(new RegExp(AFFIRMS_RETRACTION.source, 'gi')) ?? []).length;
+}
+
+/**
+ * The retracted sources a sentence cites without saying so. One statement
+ * covers one retracted work: a sentence citing two retracted works and calling
+ * one of them retracted has presented the other as standing, and since the
+ * words cannot be tied to a marker, neither citation is let through.
+ */
+function unstatedIn(sentence: string, retractedSourceOf: ReadonlyMap<string, string>): Set<string> {
+  const cited = markersIn(sentence).filter((marker) => retractedSourceOf.has(marker));
+  if (cited.length === 0) return new Set();
+  const works = new Set(cited.map((marker) => retractedSourceOf.get(marker) as string));
+  return retractionsStated(sentence) >= works.size ? new Set() : new Set(cited);
+}
+
+/** Each retracted passage's marker, with a key for the work it comes from. */
+function retractedSources(shown: LockedPassage[]): Map<string, string> {
+  return new Map(
+    shown
+      .filter((passage) => passage.retracted)
+      .map((passage) => [passage.marker, passage.sourceId ?? passage.source.url ?? passage.source.title ?? passage.marker])
+  );
+}
 
 /**
  * Markers of retracted sources cited in a sentence that does not say the work
@@ -197,14 +223,11 @@ const SAYS_RETRACTED = { test: (sentence: string): boolean => AFFIRMS_RETRACTION
  * for a standing one.
  */
 export function unstatedRetractions(text: string, shown: LockedPassage[]): string[] {
-  const retracted = new Set(shown.filter((passage) => passage.retracted).map((passage) => passage.marker));
+  const retracted = retractedSources(shown);
   if (retracted.size === 0) return [];
   const found = new Set<string>();
   mapProse(unwrapCitationLinks(text), (prose) => {
-    for (const piece of sentencePieces(prose)) {
-      if (SAYS_RETRACTED.test(piece.text)) continue;
-      for (const marker of markersIn(piece.text)) if (retracted.has(marker)) found.add(marker);
-    }
+    for (const piece of sentencePieces(prose)) for (const marker of unstatedIn(piece.text, retracted)) found.add(marker);
     return prose;
   });
   return [...found];
@@ -212,16 +235,17 @@ export function unstatedRetractions(text: string, shown: LockedPassage[]): strin
 
 /** Take a retracted source's marker off every sentence that does not say it was retracted. The sentence stays, uncited. */
 export function stripUnstatedRetractions(text: string, shown: LockedPassage[]): string {
-  const retracted = new Set(shown.filter((passage) => passage.retracted).map((passage) => passage.marker));
+  const retracted = retractedSources(shown);
   if (retracted.size === 0) return text;
   return mapProse(unwrapCitationLinks(text), (prose) =>
     sentencePieces(prose)
       .map((piece) => {
-        if (SAYS_RETRACTED.test(piece.text)) return piece.text;
+        const unstated = unstatedIn(piece.text, retracted);
+        if (unstated.size === 0) return piece.text;
         return tidyAfterRemoval(
           piece.text
             .replace(MARKER_GROUP, (_full, inner: string) => {
-              const kept = markersOf(inner).filter((marker) => !retracted.has(marker));
+              const kept = markersOf(inner).filter((marker) => !unstated.has(marker));
               return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
             })
             .replace(/[ \t]*\uE002/g, '')

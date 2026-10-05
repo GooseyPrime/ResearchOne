@@ -91,6 +91,13 @@ describe('checking DOIs', () => {
     expect(source).toMatch(/maxRedirects: 0,/);
   });
 
+  it('takes only a page or a redirect as resolved; a refusal or rate limit is no answer', async () => {
+    const results = await checkDois(['10.1000/limited', '10.1000/refused', '10.1000/ok'], fakeHttp({ '10.1000/limited': { HEAD: 429 }, '10.1000/refused': { HEAD: 403, GET: 403 }, '10.1000/ok': { HEAD: 302 } }));
+    expect(results.get('10.1000/limited')).toMatchObject({ status: 'unresolved', networkFailure: true });
+    expect(results.get('10.1000/refused')).toMatchObject({ status: 'unresolved', networkFailure: true });
+    expect(results.get('10.1000/ok')).toMatchObject({ status: 'resolved', networkFailure: false });
+  });
+
   it('treats a fault at the resolver as no answer, so a resolver outage leaves every source in', async () => {
     const results = await checkDois(['10.1000/a', '10.1000/b'], fakeHttp({ '10.1000/a': { HEAD: 503 }, '10.1000/b': { HEAD: 500 } }));
     expect([...results.values()].map((result) => result.status)).toEqual(['unknown', 'unknown']);
@@ -194,6 +201,11 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('The trial was not retracted and showed benefit [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('No retraction of the paper was issued [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('The trial was never withdrawn [P2].', shown)).toEqual(['P2']);
+    // One statement covers one retracted work.
+    const two = shown.map((passage) => (passage.marker === 'P3' ? { ...passage, retracted: true } : passage));
+    expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toEqual(['P2', 'P3']);
+    expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B, later withdrawn, found Y [P3].', two)).toEqual([]);
+    expect(stripUnstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toBe('Study A, since retracted, found X, while Study B found Y.');
     // Saying so in a neighbouring sentence is not saying so in the sentence.
     expect(unstatedRetractions('One study was retracted. The trial found a large effect [P2].', shown)).toEqual(['P2']);
   });
@@ -315,6 +327,15 @@ describe('saving what the link check found', () => {
 describe('a source left out is not counted as read', () => {
   it('takes it out of what the gates, the reader line and the saved counts work from', () => {
     expect(orchestratorSource).toMatch(/usedSources\.splice\(0, usedSources\.length, \.\.\.keptUsed\);\s*allChunks\.splice\(0, allChunks\.length, \.\.\.applied\.chunks\);/);
+  });
+});
+
+describe('earlier verdicts after sources are left out', () => {
+  it('are not relied on: the reading judge\'s pass is withdrawn and the source count judged again', () => {
+    const at = orchestratorSource.indexOf('allChunks.splice(0, allChunks.length, ...applied.chunks);');
+    const after = orchestratorSource.slice(at, at + 900);
+    expect(after).toMatch(/materialJudgedSufficient = false;\s*const afterCheck = assessSourcesAsTheyStand\(\);\s*if \(afterCheck\.action !== 'sufficient'\) sourceFailureReason = afterCheck\.reason;/);
+    expect(orchestratorSource).toMatch(/const assessSourcesAsTheyStand = \(\) =>\s*assessSourceSufficiency\(\{[^}]*citableChunks: allChunks,[^}]*rediscoveryPassesRemaining: 0,/);
   });
 });
 
