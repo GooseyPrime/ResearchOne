@@ -500,6 +500,11 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(before, skeleton).markdown).toBe(before);
     });
 
+    it('puts back a section cut down to a sub-heading with nothing under it', () => {
+      const nested = before.replace('The sources do not cover long-term follow-up.', '### Follow-up\nThe sources do not cover long-term follow-up [P2].');
+      expect(guardLockedRepair(nested, nested.replace('\nThe sources do not cover long-term follow-up [P2].', '')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not let a heading the section has be written twice', () => {
       const withSub = before.replace('## Limits of this report\n', '## Limits of this report\n### Scope\n');
       expect(guardLockedRepair(withSub, withSub).restored).toEqual([]);

@@ -406,7 +406,11 @@ export function guardLockedRepair(
   const onlyCuts = (was: string, now: string): boolean => {
     const had = pieces(was);
     const has = pieces(now);
-    if (had.length > 0 && has.length === 0) return false;
+    // A section that had something to say still says something: a heading
+    // with nothing under it is not content.
+    const substance = (entries: Array<{ text: string }>): number =>
+      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text)).length;
+    if (substance(had) > 0 && substance(has) === 0) return false;
     // Some constructs come in parts that only mean something together: a code
     // fence and its close, an HTML comment or tag and its end, a reference link
     // and its definition. Cutting one part changes what the reader sees of the
