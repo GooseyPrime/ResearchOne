@@ -571,5 +571,9 @@ export function citationLockEnabled(): boolean {
 export function baselineLayerEnabled(): boolean {
   return switchEnabled('BASELINE_LAYER_ENABLED');
 }
+/** Slice 4 part 3. DOI resolution and retraction checking. Unset is off. */
+export function doiResolveEnabled(): boolean {
+  return switchEnabled('DOI_RESOLVE_ENABLED');
+}
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';
