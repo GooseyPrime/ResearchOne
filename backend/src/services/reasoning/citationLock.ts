@@ -422,7 +422,9 @@ export function guardLockedRepair(
     const cited = (text: string): boolean => new RegExp(MARKER_GROUP.source, 'i').test(text);
     if (cited(was) && !cited(now)) return false;
     // A bullet set in under another takes its meaning from the one above it.
-    if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // A numbered item takes its number from the ones before it, however the
+    // number is typed: with an earlier item cut, a ranking reads differently.
+    if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
     const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
     const marked = /[`*_~<>[\]|\\]|:\/\/|\bwww\.|\S@\S|\S[ \t]+[-+][ \t]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
@@ -484,7 +486,10 @@ export function guardLockedRepair(
   // A report that holds a code fence anywhere is not taken apart: a fence can
   // hold lines that look like headings, and one fence can sit inside another.
   // Such a report is kept as it was unless the repair returned it unchanged.
-  if (/^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(before)) return { markdown: before, restored: before === after ? [] : ['(whole report)'], dropped: [] };
+  // The same for a line that opens raw HTML: a "<pre>" block can hold a line
+  // that looks like a heading, and taking the report apart there would change
+  // what is inside it.
+  if (/^[ \t]{0,3}(?:`{3,}|~{3,}|<[A-Za-z!?/])/m.test(before)) return { markdown: before, restored: before === after ? [] : ['(whole report)'], dropped: [] };
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
   if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading) };

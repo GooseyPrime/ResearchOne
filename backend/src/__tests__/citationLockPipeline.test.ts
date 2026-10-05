@@ -605,7 +605,17 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual(['(whole report)']);
       // The same for an HTML comment, and for a reference link and its definition.
       const hidden = before.replace('The sources do not cover long-term follow-up.', 'The sources stop in 2023.\n\n<!--\n\nIt costs two million dollars.\n\n-->');
-      expect(guardLockedRepair(hidden, hidden.replace('<!--\n\n', '').replace('\n\n-->', '')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(hidden, hidden.replace('<!--\n\n', '').replace('\n\n-->', '')).restored).toEqual(['(whole report)']);
+      // Raw HTML can hold a line that looks like a heading. Such a report is not taken apart.
+      const raw = before.replace('The sources do not cover long-term follow-up.', 'An example follows.\n\n<pre>\n## literal heading\ntext\n</pre>');
+      expect(guardLockedRepair(raw, raw)).toEqual({ markdown: raw, restored: [], dropped: [] });
+      expect(guardLockedRepair(raw, raw.replace('An example follows.\n\n', '')).restored).toEqual(['(whole report)']);
+    });
+
+    it('does not accept a cut from a numbered list, which would renumber what is left', () => {
+      const ranked = before.replace('The sources do not cover long-term follow-up.', 'The gaps, in order of weight.\n\n1. No long-term follow-up.\n1. No price data [P2].');
+      expect(guardLockedRepair(ranked, ranked).restored).toEqual([]);
+      expect(guardLockedRepair(ranked, ranked.replace('1. No long-term follow-up.\n', '')).restored).toEqual(['Limits of this report']);
       const referenced = before.replace('The sources do not cover long-term follow-up.', 'The [FDA][agency] has more.\n\n[agency]: https://www.fda.gov/source');
       expect(guardLockedRepair(referenced, referenced).restored).toEqual([]);
       expect(guardLockedRepair(referenced, referenced.replace('\n\n[agency]: https://www.fda.gov/source', '')).restored).toEqual(['Limits of this report']);
