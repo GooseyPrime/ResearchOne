@@ -70,3 +70,33 @@ export async function writeBoundCitations(
 export async function persistBoundCitations(args: { runId: string; reportId: string; bound: BoundCitation[] }): Promise<number> {
   return withTransaction((client) => writeBoundCitations(client as unknown as CitationWriter, args));
 }
+
+/**
+ * Save what the link check found beside each saved citation of a report, in
+ * the transaction that saves the citations, so the two cannot come apart.
+ * Before migration 059 the columns do not exist (42703): that one case is
+ * undone to a savepoint and skipped, leaving the transaction usable. Any other
+ * failure is thrown and fails the save, like any other part of it.
+ */
+export async function recordDoiChecks(client: CitationWriter, reportId: string, checks: Array<{ chunkId: string; status: string | null; notice: string | null }>): Promise<void> {
+  if (checks.length === 0) return;
+  const groups = new Map<string, { status: string | null; notice: string | null; chunkIds: string[] }>();
+  for (const check of checks) {
+    const key = `${check.status ?? ''}\u0000${check.notice ?? ''}`;
+    const group = groups.get(key) ?? { status: check.status, notice: check.notice, chunkIds: [] };
+    group.chunkIds.push(check.chunkId);
+    groups.set(key, group);
+  }
+  await client.query('SAVEPOINT link_check_notes');
+  try {
+    for (const group of groups.values()) {
+      await client.query(`UPDATE report_citations SET resolve_status=$2, editorial_notice=$3 WHERE report_id=$1 AND chunk_id = ANY($4::uuid[])`, [reportId, group.status, group.notice, group.chunkIds]);
+    }
+    await client.query('RELEASE SAVEPOINT link_check_notes');
+  } catch (err) {
+    const missingColumn = (err as { code?: string })?.code === '42703' && /resolve_status|editorial_notice/.test(String((err as Error)?.message ?? ''));
+    if (!missingColumn) throw err;
+    await client.query('ROLLBACK TO SAVEPOINT link_check_notes');
+    logger.debug('[citation-lock] link-check columns not present yet; note not saved', { reportId });
+  }
+}

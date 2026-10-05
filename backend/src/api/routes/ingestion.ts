@@ -9,7 +9,8 @@ import {
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
 import { ingestionQueue } from '../../queue/queues';
-import { config } from '../../config';
+import { config, doiResolveEnabled } from '../../config';
+import { requestMetadataForStorage } from '../../services/discovery/providerTypes';
 import { retentionConfig } from '../../config/retention';
 import { writeAuditLog } from '../../services/ingestion/auditLogger';
 import { stageFileBuffer } from '../../services/ingestion/uploadStaging';
@@ -90,7 +91,7 @@ router.post('/url', requirePrivateCorpus(), async (req, res, next) => {
     }
 
     const jobMetadata = {
-      ...(metadata ?? {}),
+      ...requestMetadataForStorage(metadata, doiResolveEnabled()),
       ...(crawlEnabled ? { site_crawl: true, crawl_layers: layers } : {}),
     };
 
@@ -149,14 +150,14 @@ router.post('/text', requirePrivateCorpus(), async (req, res, next) => {
       await query(
         `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata, user_id)
          VALUES ($1, $2, 'text', 'queued', $3, $4)`,
-        [id, title ?? 'Imported Text', JSON.stringify(metadata ?? {}), ingestionUserId]
+        [id, title ?? 'Imported Text', JSON.stringify(requestMetadataForStorage(metadata, doiResolveEnabled())), ingestionUserId]
       );
     } catch (insertErr) {
       if ((insertErr as { code?: string })?.code !== '42703') throw insertErr;
       await query(
         `INSERT INTO ingestion_jobs (id, file_name, source_type, status, metadata)
          VALUES ($1, $2, 'text', 'queued', $3)`,
-        [id, title ?? 'Imported Text', JSON.stringify(metadata ?? {})]
+        [id, title ?? 'Imported Text', JSON.stringify(requestMetadataForStorage(metadata, doiResolveEnabled()))]
       );
     }
 
@@ -166,7 +167,7 @@ router.post('/text', requirePrivateCorpus(), async (req, res, next) => {
       fileName: title ?? 'Imported Text',
       sourceType: 'text',
       tags: tags ?? [],
-      metadata: metadata ?? {},
+      metadata: requestMetadataForStorage(metadata, doiResolveEnabled()),
       importedVia: 'manual_upload',
     });
 
@@ -186,7 +187,7 @@ router.post('/file', requirePrivateCorpus(), upload.single('file'), async (req, 
 
     const { tags, metadata } = req.body as { tags?: string; metadata?: string };
     const parsedTags = tags ? (JSON.parse(tags) as string[]) : [];
-    const parsedMetadata = metadata ? (JSON.parse(metadata) as Record<string, unknown>) : {};
+    const parsedMetadata = requestMetadataForStorage(metadata ? (JSON.parse(metadata) as Record<string, unknown>) : {}, doiResolveEnabled());
 
     const id = uuidv4();
     const mime = req.file.mimetype;

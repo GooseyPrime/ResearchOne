@@ -10,6 +10,25 @@ export interface EvalCitation {
   claimText?: string | null;
 }
 
+/** What a run's link check found, one count per distinct DOI, as the worker recorded it. */
+export interface DoiCheckCounts {
+  resolved: number;
+  unresolved: number;
+}
+
+/**
+ * Of the distinct DOIs a run checked and got an answer for, the share that
+ * resolve. Counted per DOI from the run's own record, which includes sources
+ * left out for not resolving; the saved citations cannot show those. Null when
+ * the run recorded no answered check: the switch was off, or no source had a DOI.
+ */
+export function scoreDoiResolution(counts: DoiCheckCounts | null | undefined): number | null {
+  const resolved = Number(counts?.resolved ?? 0);
+  const unresolved = Number(counts?.unresolved ?? 0);
+  if (!Number.isFinite(resolved) || !Number.isFinite(unresolved) || resolved + unresolved <= 0) return null;
+  return resolved / (resolved + unresolved);
+}
+
 export interface ContradictionLink {
   documentA: string;
   documentB: string;
@@ -25,6 +44,7 @@ export interface EvalScoreInput {
   quoteSupports?: number | null;
   quoteSupportsNotJudged?: number | null;
   citationLock?: boolean;
+  doiChecks?: DoiCheckCounts | null;
   seconds?: number | null;
   tokens?: number | null;
   reportQuality?: number | null;
@@ -37,7 +57,7 @@ export interface EvalScores {
   quote_supports: number | null;
   quote_supports_not_judged: number | null;
   authority_share: null;
-  doi_resolution: null;
+  doi_resolution: number | null;
   contradiction_retention: number | null;
   anomaly_retained: number | null;
   time_to_report: number | null;
@@ -118,7 +138,7 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
     quote_supports: input.quoteSupports ?? null,
     quote_supports_not_judged: input.quoteSupportsNotJudged ?? null,
     authority_share: null,
-    doi_resolution: null,
+    doi_resolution: scoreDoiResolution(input.doiChecks),
     contradiction_retention: input.fixtureSides
       ? scoreContradictionRetention(input.contradictionLinks ?? [], input.fixtureSides)
       : null,

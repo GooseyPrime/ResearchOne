@@ -40,6 +40,8 @@ export interface BibliographicDetails {
   kind?: string;
   /** YYYY-MM-DD. Left out when the record gives less than a full day, or a day that does not exist. */
   publishedAt?: string;
+  /** The work's DOI when the provider's record gives one, as "10.xxxx/…". Kept apart from the address, which may be the provider's own page. */
+  doi?: string;
   /**
    * The provider whose record these details came from, when that is not the
    * provider of the candidate carrying them: the same address found by two
@@ -74,6 +76,33 @@ export function withoutBibliographic(candidate: SearchResultCandidate): SearchRe
   if (!('bibliographic' in candidate)) return candidate;
   const { bibliographic: _dropped, ...rest } = candidate;
   return rest;
+}
+
+/**
+ * A provider's result as a run may use it. A DOI in the provider's record is
+ * kept only when the run checks DOIs (DOI_RESOLVE_ENABLED): with that switch
+ * off the record is what it was before the switch existed, so nothing new is
+ * stored.
+ */
+export function resultForRun(candidate: SearchResultCandidate, doiChecksOn: boolean): SearchResultCandidate {
+  if (doiChecksOn || !candidate.bibliographic?.doi) return candidate;
+  const { doi: _doi, ...rest } = candidate.bibliographic;
+  return { ...candidate, bibliographic: rest };
+}
+
+/**
+ * Metadata a person sent with a request to ingest something, as it may be
+ * stored. A DOI under `bibliographic` is kept only when DOI checks are on: with
+ * the switch off, no route stores the new field.
+ */
+export function requestMetadataForStorage(metadata: Record<string, unknown> | undefined, doiChecksOn: boolean): Record<string, unknown> {
+  const out = { ...(metadata ?? {}) };
+  const record = out.bibliographic;
+  if (!doiChecksOn && record && typeof record === 'object' && !Array.isArray(record) && 'doi' in record) {
+    const { doi: _doi, ...rest } = record as Record<string, unknown>;
+    out.bibliographic = rest;
+  }
+  return out;
 }
 
 /**
@@ -129,6 +158,7 @@ export function fullestBibliographic(records: ReadonlyArray<BibliographicDetails
     if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
     if (!merged.kind && other.kind) merged.kind = other.kind;
     if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
+    if (!merged.doi && other.doi) merged.doi = other.doi;
   }
   return merged;
 }

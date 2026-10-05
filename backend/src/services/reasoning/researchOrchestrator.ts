@@ -48,12 +48,13 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
+import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
+import { checkDois, doiOf, type DoiCheck } from '../verification/doiResolve';
 import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
-import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
+import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
   guardLockedRepair,
   LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
-import { writeBoundCitations, type CitationWriter } from './citationBinding';
+import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
@@ -951,6 +952,8 @@ export interface LockedSourceRow {
   provider: string | null;
   /** What the provider's record says the work is, in words, when it said. */
   kind?: string | null;
+  /** The work's DOI from the provider's record, when the address is not a DOI address. */
+  doi?: string | null;
 }
 
 /** A retrieved source with what its stored record adds for the reference list. Missing details stay missing. */
@@ -1505,6 +1508,68 @@ async function runResearchJobInner(
     // STAGE 3: RETRIEVAL — gather evidence (now includes discovery sources)
     // ────────────────────────────────────────────────────────────────
     const allChunks: RetrievedChunk[] = [];
+    // Link check (slice 4 part 3, DOI_RESOLVE_ENABLED). Each DOI is asked about
+    // once per run. Passages from a source whose DOI does not resolve are set
+    // aside the moment they are retrieved, so no stage reads them: not the
+    // analysis, not the specialists, not the gates, not the writer.
+    const linkCheckByDoi = new Map<string, DoiCheck>();
+    const linkCheckByChunk = new Map<string, { status: string; notice: string | null; retracted: boolean }>();
+    const usableAfterLinkCheck = async (chunks: RetrievedChunk[]): Promise<RetrievedChunk[]> => {
+      if (chunks.length === 0 || !doiResolveEnabled()) return chunks;
+      try {
+        const unseen = chunks.filter((chunk) => !linkCheckByChunk.has(chunk.id));
+        // The provider's record first: a PubMed Central source's address is
+        // PubMed Central's page, and its DOI is only in the record.
+        const rows = unseen.length
+          ? await query<{ id: string; url: string | null; doi: string | null }>(
+              `SELECT c.id, s.url, s.metadata->'bibliographic'->>'doi' AS doi
+                 FROM chunks c LEFT JOIN sources s ON s.id = c.source_id
+                WHERE c.id = ANY($1::uuid[])`,
+              [unseen.map((chunk) => chunk.id)]
+            )
+          : [];
+        const rowById = new Map(rows.map((row) => [row.id, row]));
+        const doiByChunk = new Map(unseen.map((chunk) => [chunk.id, doiOf(rowById.get(chunk.id)?.doi) ?? doiOf(rowById.get(chunk.id)?.url) ?? doiOf(chunk.source_url)]));
+        const toAsk = [...new Set([...doiByChunk.values()].filter((doi): doi is string => Boolean(doi) && !linkCheckByDoi.has(doi as string)))];
+        for (const [doi, found] of await checkDois(toAsk)) linkCheckByDoi.set(doi, found);
+        const applied = applyDoiChecks(unseen, unseen, linkCheckByDoi, unseen.map((chunk) => doiByChunk.get(chunk.id) ?? null));
+        const leftOut = new Set<string>();
+        unseen.forEach((chunk, index) => {
+          const found = applied.everyChecked[index];
+          if (found?.status === 'unresolved') leftOut.add(chunk.id);
+          if (found) linkCheckByChunk.set(chunk.id, { ...found, retracted: applied.everyRetracted[index] });
+        });
+        // A passage seen before keeps the answer it got then.
+        const usable = chunks.filter((chunk) => !leftOut.has(chunk.id) && linkCheckByChunk.get(chunk.id)?.status !== 'unresolved');
+        if (usable.length < chunks.length) {
+          logger.info(`[${runId}] Link check set passages aside`, { passagesLeftOut: chunks.length - usable.length, passagesKept: usable.length });
+        }
+        return usable;
+      } catch (linkErr) {
+        // A failed check never stops a run: the passages are used as retrieved.
+        logger.warn(`[${runId}] Link check failed; passages are used as retrieved`, { err: linkErr });
+        return chunks;
+      }
+    };
+    /** What the run's link check found, per distinct DOI, for the run record. Null when nothing was asked. */
+    const linkCheckRecord = (): { resolved: number; unresolved: number; unknown: number; retracted: number } | null => {
+      const outcomes = [...linkCheckByDoi.values()];
+      if (outcomes.length === 0) return null;
+      return {
+        resolved: outcomes.filter((outcome) => outcome.status === 'resolved').length,
+        // "Unresolved" in the score means the resolver said so. A lookup that
+        // got no answer leaves its source out all the same, and is counted
+        // with the unknowns.
+        unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved' && !outcome.networkFailure).length,
+        unknown: outcomes.filter((outcome) => outcome.status === 'unknown' || (outcome.status === 'unresolved' && outcome.networkFailure)).length,
+        retracted: outcomes.filter((outcome) => outcome.notice?.kind === 'retracted').length,
+      };
+    };
+    /** Take out of the run's passages any the link check set aside. Run wherever passages were just added. */
+    const applyLinkCheckToRunPassages = async (): Promise<void> => {
+      const usable = await usableAfterLinkCheck(allChunks);
+      if (usable.length !== allChunks.length) allChunks.splice(0, allChunks.length, ...usable);
+    };
     const corpusGateDecisions: Array<Record<string, unknown>> = [];
     // Rule 40 seals partitions on purpose while the corpus is still small.
     // When every decision is "sealed", zero citable chunks is the DESIGNED
@@ -1607,6 +1672,10 @@ async function runResearchJobInner(
       checkpointKey: 'retrieval_ids',
       snapshot: { retrievalIds, chunkCount: allChunks.length },
     });
+    // What retrieval returned is recorded above. From here on the run works
+    // with the passages the link check leaves.
+    await applyLinkCheckToRunPassages();
+    retrievalIds = allChunks.map((chunk) => chunk.id);
     if (allChunks.length === 0) {
       // Announce it; do NOT halt here.
       //
@@ -1741,15 +1810,18 @@ async function runResearchJobInner(
                 }
               }
             }
+            // The link check comes first, so a specialist is never handed a
+            // passage the run has set aside.
+            const usableScoped = await usableAfterLinkCheck(collected);
             // Merge novel scoped hits into the run-level chunk collection so they
             // can be cited and persisted alongside shared-retrieval chunks (P1).
             const existingChunkIds = new Set(allChunks.map((c) => c.id));
-            for (const chunk of collected) {
+            for (const chunk of usableScoped) {
               if (!existingChunkIds.has(chunk.id)) {
                 allChunks.push(chunk);
               }
             }
-            return collected;
+            return usableScoped;
           },
           onProgress: async (message) => {
             await progress('reasoning', 45, message, { substep: 'specialist_running' });
@@ -1948,6 +2020,8 @@ async function runResearchJobInner(
         ]
       );
 
+      // Passages a later search added go through the link check before anything reads them.
+      await applyLinkCheckToRunPassages();
       sourceContext = formatSourceContext(allChunks);
       await runRetrieverAnalysisStage('Re-analyzing evidence after targeted re-discovery...');
       await runSpecialistStage();
@@ -2080,6 +2154,8 @@ async function runResearchJobInner(
             runId,
           ]
         );
+        // Passages a later search added go through the link check before anything reads them.
+        await applyLinkCheckToRunPassages();
         sourceContext = formatSourceContext(allChunks);
         await runRetrieverAnalysisStage('Re-analyzing material after the extra outside search...');
         await runSpecialistStage();
@@ -2337,7 +2413,8 @@ async function runResearchJobInner(
           sourceRows = await query<LockedSourceRow>(
             `SELECT c.id, c.source_id, s.authors, s.publication, s.url, s.original_filename, s.retrieval_timestamp,
                     s.metadata->'bibliographic'->>'provider' AS provider,
-                    s.metadata->'bibliographic'->>'kind' AS kind
+                    s.metadata->'bibliographic'->>'kind' AS kind,
+                    s.metadata->'bibliographic'->>'doi' AS doi
                FROM chunks c
                LEFT JOIN sources s ON s.id = c.source_id
               WHERE c.id = ANY($1::uuid[])`,
@@ -2355,12 +2432,21 @@ async function runResearchJobInner(
         // reference entry needs beyond the title and date retrieval already carries.
         const detailByChunk = new Map(sourceRows.map((row) => [row.id, row]));
         const referenceSources = allChunks.map((chunk, index) => referenceDetails(usedSources[index], detailByChunk.get(chunk.id)));
-        lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+        // Link check (DOI_RESOLVE_ENABLED). Sources whose DOI does not resolve
+        // were set aside when their passages were retrieved, before anything
+        // read them. What is left carries what the check found: a retracted
+        // source is flagged to the writer, and each finding is saved with the
+        // citations of its source.
+        lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id]))).map((passage) => {
+          const found = linkCheckByChunk.get(passage.chunkId);
+          return { ...passage, retracted: found?.retracted === true, doiCheck: found ? { status: found.status, notice: found.notice } : null };
+        });
+        const doiCheckRecord = linkCheckRecord();
         // Recorded on the run, so anything that scores it later knows how it was
         // written without having to guess from its own settings.
         await query(
           `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-          [JSON.stringify({ citationLock: true }), runId]
+          [JSON.stringify({ citationLock: true, ...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {}) }), runId]
         );
       } else {
         lockedPassages = null;
@@ -3040,6 +3126,7 @@ ${reportForGates(generatedReport.markdown)}`,
       allChunks,
       synthesizerContent: reportMarkdown,
       lockedOccurrences,
+      doiChecks: (lockedPassages ?? []).flatMap((passage) => (passage.doiCheck ? [{ chunkId: passage.chunkId, status: passage.doiCheck.status, notice: passage.doiCheck.notice }] : [])),
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
@@ -3766,6 +3853,8 @@ export async function saveReport(args: {
   synthesizerContent: string;
   /** Citation lock: the citations of the text, in reading order. Saved with the report in one transaction. */
   lockedOccurrences?: CitationOccurrence[] | null;
+  /** What the link check found for each passage's source, when the check ran. */
+  doiChecks?: Array<{ chunkId: string; status: string; notice: string | null }>;
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
   plainLanguageMarkdown?: string;
@@ -3785,6 +3874,7 @@ export async function saveReport(args: {
     allChunks,
     synthesizerContent,
     lockedOccurrences,
+    doiChecks,
     verification,
     discoverySummary,
     plainLanguageMarkdown,
@@ -3907,6 +3997,8 @@ export async function saveReport(args: {
         reportId,
         bound: assignOccurrencesToSections(sections, lockedOccurrences),
       });
+      // What the link check found, saved with the citations it is about.
+      if (doiChecks && doiChecks.length > 0) await recordDoiChecks(client as unknown as CitationWriter, reportId, doiChecks);
     }
 
     // Store verification metadata

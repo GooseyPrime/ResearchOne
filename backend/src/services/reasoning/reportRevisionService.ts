@@ -16,6 +16,7 @@ import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolu
 import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
 import { rebindRevisedCitations, renumberAfterRevision } from './citationLock';
+import { recordDoiChecks, type CitationWriter } from './citationBinding';
 
 export interface BaseCitationRow {
   section_id: string | null;
@@ -27,6 +28,9 @@ export interface BaseCitationRow {
   citation_order: number | null;
   evidence_tier: string;
   stance: string;
+  /** What the link check recorded when the base report was written; carried with the citation. */
+  resolve_status?: string | null;
+  editorial_notice?: string | null;
 }
 
 /** Source of an automated revision (Work Order T). Same pipeline as user revisions; UI/reporting only. */
@@ -659,7 +663,8 @@ Return revised section body only.`,
   // Citations of the base report, in reading order. A revised section keeps the
   // id of the section it was made from, which is how a citation finds its place.
   const baseCitations = await query<BaseCitationRow>(
-    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.chunk_quote, rc.citation_order, rc.evidence_tier, rc.stance
+    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.chunk_quote, rc.citation_order, rc.evidence_tier, rc.stance,
+            to_jsonb(rc)->>'resolve_status' AS resolve_status, to_jsonb(rc)->>'editorial_notice' AS editorial_notice
      FROM report_citations rc
      LEFT JOIN report_sections rs ON rs.id = rc.section_id
      WHERE rc.report_id = $1
@@ -891,6 +896,14 @@ Return strict JSON.`,
         ]
       );
     }
+    // A carried citation keeps what the link check found for its source.
+    await recordDoiChecks(
+      client as unknown as CitationWriter,
+      revisedReportId,
+      carriedCitations.flatMap(({ row }) =>
+        row.chunk_id && (row.resolve_status || row.editorial_notice) ? [{ chunkId: row.chunk_id, status: row.resolve_status ?? null, notice: row.editorial_notice ?? null }] : []
+      )
+    );
 
     const revisionMetaJson = JSON.stringify(
       args.revisionTriggeredBy ? { triggeredBy: args.revisionTriggeredBy } : {}

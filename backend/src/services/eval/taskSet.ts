@@ -41,7 +41,7 @@ export function summarizeScores(rows: Array<{ taskId: string; scores: EvalScores
     quote_supports: mean(rows.map((row) => row.scores.quote_supports)),
     quote_supports_not_judged: mean(rows.map((row) => row.scores.quote_supports_not_judged)),
     authority_share: null,
-    doi_resolution: null,
+    doi_resolution: mean(rows.map((row) => row.scores.doi_resolution)),
     contradiction_retention: mean(rows.map((row) => row.scores.contradiction_retention)),
     anomaly_retained: mean(rows.map((row) => row.scores.anomaly_retained)),
     time_to_report_p50: percentile(times, 50),

@@ -24,6 +24,10 @@ export interface LockedPassage {
   sourceId?: string | null;
   text: string;
   source: UsedSource;
+  /** Set when the publisher has retracted the source. A sentence citing it must say so. */
+  retracted?: boolean;
+  /** What the link check found for the source's DOI, kept to be saved with the citation. */
+  doiCheck?: { status: string; notice: string | null } | null;
 }
 
 export interface CitationOccurrence {
@@ -158,9 +162,168 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
         .map((part) => unmark(String(part).replace(/\s+/g, ' ').trim()))
         .join(', ');
       const body = unmark(cleanText(passage.text).trim());
-      return `[${passage.marker}] ${from}\n${body}`;
+      const warning = passage.retracted ? ` ${RETRACTED_LABEL}` : '';
+      return `[${passage.marker}] ${from}${warning}\n${body}`;
     })
     .join('\n\n---\n\n');
+}
+
+/** Shown beside a retracted source's marker, where the writer reads what it may cite. */
+export const RETRACTED_LABEL =
+  '(RETRACTED by its publisher. Cite it only in a sentence that itself says the work was retracted, for example "a 2019 study, since retracted, reported …".)';
+
+/**
+ * A sentence says the work it cites was retracted when it describes a work
+ * that way: "since retracted", "was later withdrawn", "the retracted trial",
+ * "the retraction of the paper". The bare topic ("retraction rates were low")
+ * is not that, and does not let a retracted source through as standing evidence.
+ */
+const WORK = '(?:study|studies|paper|article|trial|work|report|publication|review|analysis|findings?|results?|source|preprint|letter)';
+/**
+ * "was not retracted", "no retraction was issued", "never withdrawn": a denial,
+ * which presents the work as standing. Only a negative that governs the
+ * retraction counts: "the retracted study was not reliable" says the work was
+ * retracted, and denies something else.
+ */
+const DENIES_RETRACTION =
+  /\b(?:not|never|n't|n\u2019t)\s+(?:(?:been|yet|ever|later|since|formally|subsequently|actually)\s+){0,3}(?:retracted|withdrawn)\b|\bno\s+(?:\w+\s+)?(?:retraction|withdrawal)s?\b|\b(?:without|nor|neither)\s+(?:\w+\s+){0,2}(?:retraction|retracted|withdrawn)\b|\bunretracted\b/i;
+const AFFIRMS_RETRACTION = new RegExp(
+  [
+    '\\b(?:since|later|subsequently|now|was|were|been|is|are|being|then|eventually|formally)\\s+(?:\\w+\\s+){0,2}(?:retracted|withdrawn)\\b',
+    `\\b(?:retracted|withdrawn)\\s+(?:\\w+\\s+){0,2}${WORK}\\b`,
+    `\\bretraction\\s+of\\s+(?:the|this|that|its|their)\\b`,
+  ].join('|'),
+  'i'
+);
+/**
+ * "If the study was retracted", "whether it was retracted is unclear", "there
+ * is no evidence it was retracted", "may have been withdrawn": the retraction
+ * is put as a possibility or a question, not stated.
+ */
+const HEDGES_RETRACTION =
+  /\b(?:if|whether|unless|unclear|uncertain|unknown|unconfirmed|no\s+evidence|may|might|could|would|should|possibly|perhaps|allegedly|reportedly|rumou?red|claims?\s+that)\b[^.;:!?]{0,80}\b(?:retract\w*|withdraw\w*)|\b(?:retract\w*|withdraw\w*)\b[^.;:!?]{0,60}\b(?:unclear|uncertain|unknown|unconfirmed|in\s+doubt)\b|\?/i;
+
+/** How many works the sentence describes as retracted; none when it denies or only supposes a retraction. */
+function retractionsStated(sentence: string): number {
+  if (DENIES_RETRACTION.test(sentence) || HEDGES_RETRACTION.test(sentence)) return 0;
+  return (sentence.match(new RegExp(AFFIRMS_RETRACTION.source, 'gi')) ?? []).length;
+}
+
+/** Where a sentence turns from one thing to another: what is said before "but" is not said of what follows it. */
+const CONTRAST = /;|\b(?:but|while|whereas|however)\b/gi;
+
+/**
+ * The retracted sources a sentence cites without saying so. The statement has
+ * to sit in the same part of the sentence as the citation: "another paper was
+ * retracted, but the trial found benefit [P2]" says nothing about the trial.
+ * Within a part, one statement covers one retracted work; where there are
+ * fewer statements than works, the words cannot be tied to a marker and none
+ * of those citations is let through.
+ */
+function unstatedIn(sentence: string, retractedSourceOf: ReadonlyMap<string, string>): Set<string> {
+  const unstated = new Set<string>();
+  for (const part of sentence.split(CONTRAST)) {
+    const cited = markersIn(part).filter((marker) => retractedSourceOf.has(marker));
+    if (cited.length === 0) continue;
+    const works = new Set(cited.map((marker) => retractedSourceOf.get(marker) as string));
+    if (retractionsStated(part) < works.size) for (const marker of cited) unstated.add(marker);
+  }
+  return unstated;
+}
+
+/** Each retracted passage's marker, with a key for the work it comes from. */
+function retractedSources(shown: LockedPassage[]): Map<string, string> {
+  return new Map(
+    shown
+      .filter((passage) => passage.retracted)
+      .map((passage) => [passage.marker, passage.sourceId ?? passage.source.url ?? passage.source.title ?? passage.marker])
+  );
+}
+
+/**
+ * Markers of retracted sources cited in a sentence that does not say the work
+ * was retracted. A reader shown such a sentence would take a withdrawn finding
+ * for a standing one.
+ */
+export function unstatedRetractions(text: string, shown: LockedPassage[]): string[] {
+  const retracted = retractedSources(shown);
+  if (retracted.size === 0) return [];
+  const found = new Set<string>();
+  mapProse(unwrapCitationLinks(text), (prose) => {
+    for (const piece of sentencePieces(prose)) for (const marker of unstatedIn(piece.text, retracted)) found.add(marker);
+    return prose;
+  });
+  return [...found];
+}
+
+/** Take a retracted source's marker off every sentence that does not say it was retracted. The sentence stays, uncited. */
+export function stripUnstatedRetractions(text: string, shown: LockedPassage[]): string {
+  const retracted = retractedSources(shown);
+  if (retracted.size === 0) return text;
+  return mapProse(unwrapCitationLinks(text), (prose) =>
+    sentencePieces(prose)
+      .map((piece) => {
+        const unstated = unstatedIn(piece.text, retracted);
+        if (unstated.size === 0) return piece.text;
+        return tidyAfterRemoval(
+          piece.text
+            .replace(MARKER_GROUP, (_full, inner: string) => {
+              const kept = markersOf(inner).filter((marker) => !unstated.has(marker));
+              return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
+            })
+            .replace(/[ \t]*\uE002/g, '')
+        );
+      })
+      .join('')
+  );
+}
+
+/**
+ * Apply what the link check found, before any passage is given a marker.
+ *
+ * A source whose DOI does not resolve is left out: it cannot be shown to the
+ * writer, so it cannot be cited or counted as support for anything. A source
+ * its publisher retracted stays, flagged, because a report may need to say that
+ * a finding was withdrawn. "Unknown" (the check itself was unavailable) changes
+ * nothing. `dois` gives each passage's DOI, or null, in passage order.
+ */
+export function applyDoiChecks<Chunk, Source>(
+  chunks: Chunk[],
+  sources: Source[],
+  checks: ReadonlyMap<string, { status: string; notice: { kind: string; text: string } | null }>,
+  dois: ReadonlyArray<string | null>
+): {
+  chunks: Chunk[];
+  sources: Source[];
+  retracted: boolean[];
+  checked: Array<{ status: string; notice: string | null } | null>;
+  dropped: number;
+  /** The same two findings for every passage given, none left out: for when nothing can be left out. */
+  everyRetracted: boolean[];
+  everyChecked: Array<{ status: string; notice: string | null } | null>;
+} {
+  const keptChunks: Chunk[] = [];
+  const keptSources: Source[] = [];
+  const retracted: boolean[] = [];
+  const checked: Array<{ status: string; notice: string | null } | null> = [];
+  const everyRetracted: boolean[] = [];
+  const everyChecked: Array<{ status: string; notice: string | null } | null> = [];
+  let dropped = 0;
+  chunks.forEach((chunk, index) => {
+    const doi = dois[index] ?? null;
+    const check = doi ? checks.get(doi) : undefined;
+    everyRetracted.push(check?.notice?.kind === 'retracted');
+    everyChecked.push(check ? { status: check.status, notice: check.notice?.text ?? null } : null);
+    if (check?.status === 'unresolved') {
+      dropped += 1;
+      return;
+    }
+    keptChunks.push(chunk);
+    keptSources.push(sources[index]);
+    retracted.push(check?.notice?.kind === 'retracted');
+    checked.push(check ? { status: check.status, notice: check.notice?.text ?? null } : null);
+  });
+  return { chunks: keptChunks, sources: keptSources, retracted, checked, dropped, everyRetracted, everyChecked };
 }
 
 export const LOCK_INSTRUCTION =

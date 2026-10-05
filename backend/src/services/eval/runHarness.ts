@@ -24,6 +24,8 @@ export interface StoredRun {
   recordedCostUsd: number | null;
   /** Whether the worker wrote this report with the citation lock; null when the run did not record it. */
   citationLocked?: boolean | null;
+  /** What the run's link check found, per distinct DOI; null when it recorded none. */
+  doiChecks?: { resolved: number; unresolved: number } | null;
 }
 
 export interface EvalTransport {
@@ -58,6 +60,7 @@ export function buildScoreInput(
     // The worker's own record decides. The harness may run on another machine
     // with other settings, so its view is only a fallback for a run with no record.
     citationLock: stored.citationLocked ?? runWithFlags(flagOverrides ?? null, () => citationLockEnabled()),
+    doiChecks: stored.doiChecks ?? null,
     seconds: secondsBetween(stored.startedAt, stored.completedAt),
     tokens: stored.tokens,
   };
@@ -156,8 +159,8 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
      WHERE x.run_id = $1`,
     [runId]
   );
-  const timing = await query<{ started_at: string | null; completed_at: string | null; citation_lock: string | null }>(
-    `SELECT started_at, completed_at, corpus_after->>'citationLock' AS citation_lock FROM research_runs WHERE id = $1`,
+  const timing = await query<{ started_at: string | null; completed_at: string | null; citation_lock: string | null; doi_checks: { resolved?: number; unresolved?: number } | null }>(
+    `SELECT started_at, completed_at, corpus_after->>'citationLock' AS citation_lock, corpus_after->'doiChecks' AS doi_checks FROM research_runs WHERE id = $1`,
     [runId]
   );
   const usage = await query<{ tokens: string | null; cost: string | null }>(
@@ -182,6 +185,7 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
     recordedCostUsd: usage[0]?.cost ? Number(usage[0].cost) : null,
     // A finished run that recorded nothing was written without the lock.
     citationLocked: timing[0] ? timing[0].citation_lock === 'true' : null,
+    doiChecks: timing[0]?.doi_checks ? { resolved: Number(timing[0].doi_checks.resolved ?? 0), unresolved: Number(timing[0].doi_checks.unresolved ?? 0) } : null,
   };
 }
 

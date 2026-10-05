@@ -19,6 +19,8 @@ interface ESummaryResult {
   fulljournalname?: string;
   pmcid?: string;
   doi?: string;
+  /** How ESummary gives a record's identifiers: one entry per kind, the DOI under idtype "doi". */
+  articleids?: Array<{ idtype?: string; value?: string }>;
   authors?: Array<{ name?: string }>;
   pubdate?: string;
 }
@@ -55,6 +57,10 @@ export function pmcBibliographic(summary: ESummaryResult): BibliographicDetails 
     const day = `${stated[1]}-${String(month).padStart(2, '0')}-${stated[3].padStart(2, '0')}`;
     if (isCalendarDay(day)) out.publishedAt = day;
   }
+  // The address is PubMed Central's own page; the DOI is how the work is checked against its publisher.
+  const listed = (summary.articleids ?? []).find((entry) => (entry?.idtype ?? '').toLowerCase() === 'doi')?.value;
+  const doi = /^10\.\d{4,9}\/\S+$/.exec((listed ?? summary.doi ?? '').trim())?.[0];
+  if (doi) out.doi = doi.toLowerCase();
   // PubMed Central holds journal literature; the record names the journal.
   if (publisher) out.kind = 'journal article';
   return Object.keys(out).length > 0 ? out : undefined;
