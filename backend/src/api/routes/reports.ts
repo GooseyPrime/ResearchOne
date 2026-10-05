@@ -17,7 +17,7 @@ import {
 } from '../../services/reasoning/reportRevisionService';
 import { ingestSupplementalForRevision } from '../../services/research/reportRevisionSupplementalIngest';
 import { getSpinoffPrefill } from '../../services/research/spinoffService';
-import { exportReport } from '../../services/formatting/exportOrchestrator';
+import { exportReport, type RequestedExportStyle } from '../../services/formatting/exportOrchestrator';
 import {
   cleanReaderMetadata,
   cleanRevisionForReader,
@@ -27,7 +27,6 @@ import {
   pandocAvailable,
   PandocError,
   type ExportFormat,
-  type ExportStyle,
 } from '../../services/formatting/pandocRunner';
 import { reportExportQueue } from '../../queue/queues';
 import { resolveLocalExportDiskPath } from '../../services/formatting/exportStorage';
@@ -730,7 +729,9 @@ router.get('/:id/citations', async (req, res, next) => {
 });
 
 const VALID_EXPORT_FORMATS: ReadonlySet<ExportFormat> = new Set(['docx', 'pdf', 'md', 'html']);
-const VALID_EXPORT_STYLES: ReadonlySet<ExportStyle> = new Set([
+const VALID_EXPORT_STYLES: ReadonlySet<RequestedExportStyle> = new Set<RequestedExportStyle>([
+  // The numbered list a report shows when no style was chosen.
+  'numeric',
   'mla',
   'apa',
   'chicago-author-date',
@@ -752,7 +753,7 @@ router.post('/:id/export', async (req, res, next) => {
     const reportId = req.params.id;
     const body = req.body as Record<string, unknown>;
     const format = String(body.format ?? '').toLowerCase() as ExportFormat;
-    const style = String(body.style ?? '').toLowerCase() as ExportStyle;
+    const style = String(body.style ?? '').toLowerCase() as RequestedExportStyle;
     const sync = body.sync === true;
 
     if (!VALID_EXPORT_FORMATS.has(format)) {

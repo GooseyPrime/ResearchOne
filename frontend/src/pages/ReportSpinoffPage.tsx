@@ -13,6 +13,8 @@ import {
   fetchSpinoffPrefill,
   getResearchV2EnsemblePresets,
   startResearchSpinoff,
+  citationStyleToSend,
+  type CitationStyleChoice,
   type CitationStyleSlug,
   type ResearchObjective,
 } from '@/utils/api';
@@ -61,7 +63,8 @@ export default function ReportSpinoffPage() {
   const [supplementalCrawlLayers, setSupplementalCrawlLayers] = useState(2);
   const [filterTags, setFilterTags] = useState('');
   const [researchObjective, setResearchObjective] = useState<ResearchObjective>('GENERAL_EPISTEMIC_RESEARCH');
-  const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
+  // Opens on the report default. A style is sent only when the parent run had one or one is chosen here.
+  const [citationStyle, setCitationStyle] = useState<CitationStyleChoice>('automatic');
   const [reportLengthPreset, setReportLengthPreset] = useState<'automatic' | 'short' | 'standard' | 'long' | 'extra_long' | 'custom'>('automatic');
   const [reportLengthCustom, setReportLengthCustom] = useState('2200');
   const [showModels, setShowModels] = useState(false);
@@ -89,9 +92,9 @@ export default function ReportSpinoffPage() {
     if (prefill.researchObjective) {
       setResearchObjective(prefill.researchObjective as ResearchObjective);
     }
-    if (prefill.citationStyle) {
-      setCitationStyle(prefill.citationStyle as CitationStyleSlug);
-    }
+    // Every parent sets the style, including one that had none: a style left
+    // over from the last report opened here would be sent without being chosen.
+    setCitationStyle((prefill.citationStyle as CitationStyleSlug | null | undefined) ?? 'automatic');
     if (prefill.filterTags?.length) {
       setFilterTags(prefill.filterTags.join(', '));
     }
@@ -197,7 +200,7 @@ export default function ReportSpinoffPage() {
           supplementalSiteCrawlEnabled,
           supplementalCrawlLayers
         ),
-        citationStyle,
+        citationStyle: citationStyleToSend(citationStyle),
         addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       }),
     onSuccess: (data) => {
@@ -342,9 +345,10 @@ export default function ReportSpinoffPage() {
               <select
                 className="input md:max-w-xs"
                 value={citationStyle}
-                onChange={(e) => setCitationStyle(e.target.value as CitationStyleSlug)}
+                onChange={(e) => setCitationStyle(e.target.value as CitationStyleChoice)}
                 disabled={mutation.isPending}
               >
+                <option value="automatic">Report default</option>
                 {CITATION_STYLE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}

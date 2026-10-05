@@ -13,6 +13,7 @@
  */
 import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPresentation';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
+import type { ReferenceStyle } from '../formatting/referenceList';
 
 export interface LockedPassage {
   /** `P1`, `P2`, … in the order the passages were retrieved. */
@@ -492,6 +493,85 @@ export function dropSystemSections(markdown: string): string {
   return kept.join('\n').trimEnd();
 }
 
+/** Identity of the stored source behind a passage. Title and link are a fallback for a passage with no stored source. */
+function passageSourceKey(passage: LockedPassage): string {
+  return passage.sourceId || sourceKey(passage.source) || passage.chunkId;
+}
+
+function titleWords(title: string): string[] {
+  return title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/** Runs of five words, for telling whether two texts are the same text. */
+function shingles(text: string): Set<string> {
+  const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const out = new Set<string>();
+  for (let i = 0; i + 5 <= words.length; i += 1) out.add(words.slice(i, i + 5).join(' '));
+  return out;
+}
+
+const SAME_TITLE_MIN_WORDS = 4;
+const SAME_TEXT_SHARE = 0.5;
+
+/**
+ * Stored sources that are one article published in two places: the title of one
+ * is the title of the other with a site name added, and their passages are
+ * largely the same words. Both conditions are needed. Two articles can share a
+ * title, and two articles can quote the same paragraph; one article carried by
+ * two sites does both. Returns, for each source that is a copy, the source it
+ * is a copy of (the one retrieved first), so the pair is numbered and listed once.
+ */
+export function sameArticleSources(passages: LockedPassage[]): Map<string, string> {
+  const order: string[] = [];
+  const info = new Map<string, { title: string[]; text: Set<string> }>();
+  for (const passage of passages) {
+    const key = passageSourceKey(passage);
+    let entry = info.get(key);
+    if (!entry) {
+      entry = { title: titleWords(passage.source.title ?? ''), text: new Set<string>() };
+      info.set(key, entry);
+      order.push(key);
+    }
+    for (const shingle of shingles(passage.text)) entry.text.add(shingle);
+  }
+  const contains = (longer: string[], shorter: string[]): boolean => {
+    if (shorter.length < SAME_TITLE_MIN_WORDS || shorter.length > longer.length) return false;
+    for (let start = 0; start + shorter.length <= longer.length; start += 1) {
+      if (shorter.every((word, index) => longer[start + index] === word)) return true;
+    }
+    return false;
+  };
+  const copyOf = new Map<string, string>();
+  for (let later = 1; later < order.length; later += 1) {
+    const b = info.get(order[later]);
+    if (!b) continue;
+    for (let earlier = 0; earlier < later; earlier += 1) {
+      const a = info.get(order[earlier]);
+      if (!a) continue;
+      if (!contains(a.title, b.title) && !contains(b.title, a.title)) continue;
+      const smaller = Math.min(a.text.size, b.text.size);
+      if (smaller === 0) continue;
+      let shared = 0;
+      for (const shingle of a.text.size <= b.text.size ? a.text : b.text) if ((a.text.size <= b.text.size ? b.text : a.text).has(shingle)) shared += 1;
+      if (shared / smaller >= SAME_TEXT_SHARE) {
+        // A copy of a copy is a copy of the first: A and B match, B and C match,
+        // and the passages retrieved from A and C need not overlap at all.
+        copyOf.set(order[later], copyOf.get(order[earlier]) ?? order[earlier]);
+        break;
+      }
+    }
+  }
+  return copyOf;
+}
+
+/**
+ * A passage label written into a sentence ("while P20 notes that…"). The writer
+ * cites with the marker; a label in the prose is the pipeline showing through.
+ * Read only in the form the labels are issued in, a capital P, and only before a
+ * verb of saying: lower-case "p53" is a protein, not a passage.
+ */
+const SPOKEN_PASSAGE_LABEL = /\b(?:(?:[Pp]assages?|[Ss]ources?|[Cc]hunks?)\s+)?P(\d+)\b(?=\s+(?:notes?|states?|shows?|reports?|says?|describes?|mentions?|indicates?|suggests?|argues?|finds?|confirms?|provides?|cites?|adds?|also|and\s+P\d+)\b)/g;
+
 export interface FinalizedCitations {
   markdown: string;
   /** One entry per marker left in the text, in reading order. */
@@ -506,8 +586,18 @@ export interface FinalizedCitations {
  * closing note. One number per source, in order of first citation. A marker that
  * names no passage is removed.
  */
-export function finalizeLockedCitations(markdown: string, passages: LockedPassage[], readOn = formatReadDate()): FinalizedCitations {
+export function finalizeLockedCitations(
+  markdown: string,
+  passages: LockedPassage[],
+  readOn = formatReadDate(),
+  style: ReferenceStyle = 'numeric'
+): FinalizedCitations {
   const byMarker = new Map(passages.map((passage) => [passage.marker, passage]));
+  const copyOf = sameArticleSources(passages);
+  const identity = (passage: LockedPassage): string => {
+    const key = passageSourceKey(passage);
+    return copyOf.get(key) ?? key;
+  };
   const numberBySource = new Map<string, number>();
   const cited: UsedSource[] = [];
   const occurrences: CitationOccurrence[] = [];
@@ -550,15 +640,22 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
         // And the label of a full reference link ("[P1][source]"); a second marker is kept.
         .replace(/(\[\s*P\d+[^\]\n]*\])\[(?!\s*P?\d+\s*[\],;])[^\]\n]*\]/gi, '$1')
     );
-    const rewritten = body.replace(MARKER_GROUP, (_full, inner: string, offset: number) => {
+    // Markers standing side by side are one run. Two passages of one source in a
+    // run would print the same number twice ("[1][1]"); the number is shown once,
+    // with the first passage behind it.
+    let runEnd = -1;
+    let runNumbers = new Set<number>();
+    const rewritten = body.replace(MARKER_GROUP, (full: string, inner: string, offset: number) => {
       const numbers: number[] = [];
       const sentence = citing[group] ?? sentenceBefore(body, offset);
       group += 1;
+      if (runEnd === -1 || body.slice(runEnd, offset).trim() !== '') runNumbers = new Set<number>();
+      runEnd = offset + full.length;
       for (const marker of markersOf(inner)) {
         const passage = byMarker.get(marker);
         // The stored source is the identity. Title and link are a fallback: two
         // uploads can share a title and have no link, and are still two sources.
-        const key = passage ? passage.sourceId || sourceKey(passage.source) || passage.chunkId : '';
+        const key = passage ? identity(passage) : '';
         if (!passage || !key) {
           removed += 1;
           continue;
@@ -569,6 +666,8 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
           numberBySource.set(key, number);
           cited.push(passage.source);
         }
+        if (runNumbers.has(number)) continue;
+        runNumbers.add(number);
         occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentence) });
         numbers.push(number);
       }
@@ -577,15 +676,35 @@ export function finalizeLockedCitations(markdown: string, passages: LockedPassag
     // Anything still shaped like a passage marker was not a citation the lock could read.
     const leftover = rewritten.match(PASSAGE_LOOKING) ?? [];
     removed += leftover.length;
-    return tidyAfterRemoval(rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, ''));
+    const unmarked = rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, '');
+    // A label of a passage that was issued, written into the sentence itself.
+    const spoken = unmarked.replace(SPOKEN_PASSAGE_LABEL, (label: string, digits: string, offset: number) => {
+      if (!byMarker.has(`P${digits}`)) return label;
+      removed += 1;
+      const opensSentence = offset === 0 || /[.!?]\s+$|\n\s*$/.test(unmarked.slice(0, offset));
+      return opensSentence ? 'One source' : 'one source';
+    });
+    return tidyAfterRemoval(spoken);
   });
   // Titles and publishers come from the sources themselves. One that contains a
   // marker, a bracketed number or a line break must not put either into the report.
   const plain = (value: string | null | undefined): string | null | undefined =>
     value == null ? value : value.replace(/\s+/g, ' ').replace(/\[/g, '(').replace(/\]/g, ')').replace(/^#+\s*/, '').trim();
-  const references = buildReferences(cited.map((source) => ({ ...source, title: plain(source.title) || 'Untitled source', publisher: plain(source.publisher) })));
+  const references = buildReferences(
+    cited.map((source) => ({
+      ...source,
+      title: plain(source.title) || 'Untitled source',
+      publisher: plain(source.publisher),
+      authors: (source.authors ?? []).map((author) => plain(author) ?? '').filter(Boolean),
+    })),
+    style
+  );
   // Counted by the same identity the numbers use, so the note and the list agree.
-  const readCount = new Set(passages.map((passage) => passage.sourceId || sourceKey(passage.source)).filter(Boolean)).size;
+  const readCount = new Set(
+    passages
+      .filter((passage) => Boolean(passage.sourceId || sourceKey(passage.source)))
+      .map(identity)
+  ).size;
   const about = buildAbout(cited.length === 0 ? 0 : readCount, readOn);
   const tail = `${references ? `\n\n## References\n${references}` : ''}\n\n## About this report\n${about}`;
   return { markdown: `${text}${tail}`, occurrences, cited, removed };

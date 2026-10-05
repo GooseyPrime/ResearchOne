@@ -93,7 +93,7 @@ function cslType(sourceType: string | null): string {
  *                          "Organization", etc.)
  *   "" / null          → null (caller filters)
  */
-function parseAuthor(raw: string): CslAuthor | null {
+export function parseAuthor(raw: string): CslAuthor | null {
   const s = raw.trim();
   if (!s) return null;
 

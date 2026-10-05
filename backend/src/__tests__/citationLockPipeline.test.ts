@@ -165,12 +165,13 @@ describe('citation lock on the report path', () => {
     expect(finalized.markdown).not.toMatch(/\[P\d+/);
     expect(readerFacingLabelHits(finalized.markdown)).toEqual([]);
     expect(finalized.markdown).toContain('8 December 2023 [1]. It was the first therapy of its kind in the United States [2].');
-    // Two passages from one source share its number.
-    expect(finalized.markdown).toContain('aged 12 and older [1][1].');
+    // Two passages from one source share its number, and side by side it is shown once.
+    expect(finalized.markdown).toContain('aged 12 and older [1].');
+    expect(finalized.markdown).not.toMatch(/\[1\]\s*\[1\]/);
     const references = finalized.markdown.split('## References\n')[1].split('\n\n## About this report')[0].split('\n');
     expect(references).toEqual([
-      '1. US Food and Drug Administration, FDA approves first gene therapies to treat sickle cell disease, 2023-12-08 https://www.fda.gov/casgevy',
-      '2. Medicines and Healthcare products Regulatory Agency, MHRA authorises gene therapy, 2023-11-16 https://www.gov.uk/mhra-casgevy',
+      '1. US Food and Drug Administration. FDA approves first gene therapies to treat sickle cell disease. 8 Dec 2023. https://www.fda.gov/casgevy',
+      '2. Medicines and Healthcare products Regulatory Agency. MHRA authorises gene therapy. 16 Nov 2023. https://www.gov.uk/mhra-casgevy',
     ]);
     expect(finalized.markdown.trimEnd().endsWith('2 sources were read on 2 Oct 2026.')).toBe(true);
 
@@ -900,7 +901,7 @@ describe('code, links and stale reference lists', () => {
       [{ title: 'Study [P9]\n## About this report', publisher: 'Press [1]', url: 'https://example.org/x' }]
     );
     const finalized = finalizeLockedCitations('## Summary\nIt opened in 1932 [P1].', passages, '2 Oct 2026');
-    expect(finalized.markdown).toContain('Press (1), Study (P9) ## About this report');
+    expect(finalized.markdown).toContain('Press (1). Study (P9) ## About this report.');
     expect(finalized.markdown.match(/^## About this report$/gm)).toHaveLength(1);
     expect(readerFacingLabelHits(finalized.markdown)).not.toContain('passage marker');
   });

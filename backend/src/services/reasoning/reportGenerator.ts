@@ -1,8 +1,10 @@
-import { mapCitationProse, mapLinkLabels } from '../formatting/reportPresentation';
+import { CLAIM_WORD, SPOKEN_ROLE_NAME, mapCitationProse, mapLinkLabels, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
+import { logger } from '../../utils/logger';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { LOCK_INSTRUCTION, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type LockedPassage } from './citationLock';
-import { draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type FinalizedCitations, type LockedPassage } from './citationLock';
+import type { ReferenceStyle } from '../formatting/referenceList';
+import { firstSentences, fitToTotal, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -739,6 +741,13 @@ export function clampWordTarget(n: number | undefined): number {
 }
 
 const PLANNER_WORD_FLOOR = 60;
+/**
+ * The most a report is sized at when nobody chose a length: the top of the
+ * range the report standard gives for a full report. A length the user chose is
+ * not capped by this, and neither is a request for many items, which the
+ * writer sizes to hold the items asked for.
+ */
+export const PLANNER_WORD_CEILING = 5000;
 
 /**
  * Only a length the user chose counts as explicit. A planner estimate or the
@@ -781,7 +790,7 @@ export function resolveReportWordTarget(args: {
   }
   const derived = usableMin != null && usableMax != null ? (usableMin + usableMax) / 2 : (usableMin ?? usableMax ?? REPORT_WORD_COUNT_DEFAULT);
   return {
-    target: Math.max(PLANNER_WORD_FLOOR, Math.min(REPORT_WORD_COUNT_MAX, Math.round(derived))),
+    target: Math.max(PLANNER_WORD_FLOOR, Math.min(PLANNER_WORD_CEILING, Math.round(derived))),
     source: 'planner',
   };
 }
@@ -909,7 +918,7 @@ export function stripPromptEchoFromReport(markdown: string, query: string): stri
   return trimmed;
 }
 
-export { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
+export { stripInternalLabelsFromReport };
 
 /**
  * Replace courtroom words and the stock opening in the prose of a section with
@@ -939,10 +948,104 @@ export function removeBannedWording(content: string): string {
         return word[0] === word[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap;
       })
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
-      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence');
+      .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
+      .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
+      .replace(/\btestimony[- ]tier\b/gi, 'first-hand')
+      // A role of the pipeline named in a sentence: the reader is told who said it in plain words.
+      .replace(SPOKEN_ROLE_NAME, (name) => (name[0] === 'T' ? 'This analysis' : 'this analysis'));
+  // The report's own wording only: a direct quotation keeps the source's words.
+  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
   // A link's label is prose the reader sees; its destination is not.
-  return mapCitationProse(mapLinkLabels(content, clean), clean);
+  return mapCitationProse(mapLinkLabels(content, cleanOwnWords), cleanOwnWords);
 }
+
+/** Words that follow "claim(s)" when it is a noun: "claims about", "claims are", "claim is". */
+const AFTER_CLAIM_NOUN = /^(?:about|of|in|on|for|from|by|like|such|and|or|but|is|are|was|were|has|have|had|can|could|may|might|will|would|should|made|remain|remains|regarding|concerning|as|at|with|without|than|within|across|rest|rests)$/i;
+
+/**
+ * "Claim" for what a source or the report says, put in plain words. A verb
+ * becomes "states"; a noun becomes "statement". The word after it decides which:
+ * a noun is followed by a preposition, a conjunction or its own verb.
+ */
+export function plainClaimWords(text: string): string {
+  return text.replace(new RegExp(`${CLAIM_WORD.source}(\\s+that\\b)?(?=(\\s+[\\p{L}]+)?)`, 'giu'), (word: string, that: string | undefined, next: string | undefined, offset: number, whole: string) => {
+    const base = that ? word.slice(0, word.length - that.length) : word;
+    const lower = base.toLowerCase();
+    const before = whole.slice(Math.max(0, offset - 16), offset).toLowerCase();
+    const nounBefore = /\b(?:the|a|this|that|these|those|its|their|his|her|such|each|every|any|no|key|main|central|numeric|specific|several|many|some|two|three|both|all|of|to|with|about|against|despite|on|for|by|from|between|regarding|contradicts?|disputes?|rejects?|supports?|challenges?|undermines?|refutes?|repeats?|echo(?:es)?|makes?|made)\s+$/.test(before);
+    const nextWord = (next ?? '').trim();
+    let swap: string;
+    if (lower === 'claimed') swap = 'stated';
+    else if (lower === 'claiming') swap = 'stating';
+    else if (nounBefore || (!that && (nextWord === '' || AFTER_CLAIM_NOUN.test(nextWord)))) swap = lower === 'claims' ? 'statements' : 'statement';
+    else swap = lower === 'claims' ? 'states' : 'state';
+    const cased = base[0] === base[0].toUpperCase() ? swap[0].toUpperCase() + swap.slice(1) : swap;
+    return `${cased}${that ?? ''}`;
+  });
+}
+
+/**
+ * The text of a locked report as it will be saved: prompt echo and internal
+ * labels removed, banned wording put into plain words, markers numbered, and
+ * the reference list and closing note added.
+ *
+ * This is the last check before saving. The writer's own check runs before the
+ * verifier and the contract repair, and a repair can put banned wording back.
+ * It is cleaned here, before numbering, so each citation is tied to the
+ * sentence a reader will see. `wordingAfter` lists anything still on the page,
+ * for the caller to record; nothing is shipped silently.
+ */
+export function finalizeLockedReportForSave(
+  markdown: string,
+  query: string,
+  passages: LockedPassage[],
+  style: ReferenceStyle = 'numeric',
+  readOn?: string
+): { finalized: FinalizedCitations; wordingAfter: string[] } {
+  const cleaned = stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, query));
+  const wordingBefore = presentationFailures(cleaned).filter((hit) => hit !== 'passage marker');
+  const toSave = wordingBefore.length > 0 ? removeBannedWording(cleaned) : cleaned;
+  const finalized = finalizeLockedCitations(toSave, passages, readOn, style);
+  return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
+}
+
+const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label']);
+
+/**
+ * The same last check for a Layer 1 report written without the citation lock.
+ * Verification and contract repair run after the writer's own check and can put
+ * banned wording back; it is put into plain words here, before the save. The
+ * generated reference list, the last section named References, is the sources'
+ * own titles and is left exactly as it is. `wordingAfter` lists what is still
+ * on the page.
+ */
+export function cleanLayer1WordingForSave(markdown: string): { markdown: string; wordingAfter: string[] } {
+  const wording = (text: string): string[] => presentationFailures(text).filter((hit) => WORDING_HITS.has(hit));
+  if (wording(markdown).length === 0) return { markdown, wordingAfter: [] };
+  const lines = markdown.split('\n');
+  let listStart = -1;
+  lines.forEach((line, index) => {
+    if (/^#{1,6}[ \t]+References[ \t#]*$/i.test(line)) listStart = index;
+  });
+  let listEnd = lines.length;
+  if (listStart !== -1) {
+    for (let index = listStart + 1; index < lines.length; index += 1) {
+      if (/^#{1,6}[ \t]+\S/.test(lines[index])) {
+        listEnd = index;
+        break;
+      }
+    }
+  }
+  const cleaned =
+    listStart === -1
+      ? removeBannedWording(markdown)
+      : [removeBannedWording(lines.slice(0, listStart).join('\n')), ...lines.slice(listStart, listEnd), removeBannedWording(lines.slice(listEnd).join('\n'))].join('\n');
+  return { markdown: cleaned, wordingAfter: wording(cleaned) };
+}
+
+/** Told to every Layer 1 section writer. The check before saving looks for the same things. */
+const READER_WORDING_RULE =
+  'Never use the words claim or claims for what a source or this report says; write says, reports, states or finds. Never name a research step, a reviewer or a passage label (such as P12) in a sentence; cite with the marker only.';
 
 export function ensureGeneratedTitleHeading(markdown: string, query: string, intentId?: string): string {
   const cleaned = stripPromptEchoFromReport(markdown, query);
@@ -1252,6 +1355,10 @@ export async function generateIterativeReport(args: {
     requiredFieldsPerItem,
     baselineWords: clampWordTarget(undefined),
   });
+  // One exception to the planner ceiling: a request for many items, each with
+  // required fields, is sized to hold them (`contractTarget`) even when that is
+  // more than the ceiling. Twenty items with five fields each do not fit in
+  // 5,000 words, and cutting them to fit would drop what was asked for.
   const targetWordCount = args.lengthSource === 'planner'
     ? (contractTarget ?? Math.max(PLANNER_WORD_FLOOR, Math.min(REPORT_WORD_COUNT_MAX, Math.round(args.targetWordCount ?? PLANNER_WORD_FLOOR))))
     : clampWordTarget(contractTarget ?? args.targetWordCount);
@@ -1294,7 +1401,7 @@ export async function generateIterativeReport(args: {
     Array.isArray(args.requestedFormats) && args.requestedFormats.length > 0
       ? `Requested presentation formats:\n${args.requestedFormats.map((format) => `- ${format}`).join('\n')}`
       : 'Requested presentation formats:\n- automatic / best fit';
-  const sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
+  let sectionBudgets = distributeWordBudget(targetWordCount, activeSectionPlan);
   const outlineResponse = await callRoleModel({
     role: 'outline_architect',
     ...v2,
@@ -1365,7 +1472,22 @@ Return strict JSON only: {"title":"noun phrase","outline":["noun phrase","noun p
         return title ? { ...section, title } : section;
       })
       .filter((section) => section.title !== 'Pending subject');
+    // Sized by what each section is for, now that the subject sections are known.
+    sectionBudgets = readerSectionBudgets(targetWordCount, activeSectionPlan);
   }
+  /** How far over its share a section may run before it is asked to be shorter, and the most it may keep. */
+  const OVER_BUDGET = 1.35;
+  /**
+   * Words a section may use. On a Layer 1 report the summary, key findings,
+   * disagreement note and limits never get more than their own size, whatever
+   * plan they sit in: with a format chosen the plan is split evenly, and an
+   * even share of a long report is far more than a limits note should have.
+   */
+  const sectionWords = (key: string): number => {
+    const share = sectionBudgets.get(key) ?? Math.round(targetWordCount / activeSectionPlan.length);
+    const own = layer1 ? fixedSectionWords(key) : undefined;
+    return own === undefined ? share : Math.min(share, own);
+  };
 
   const sections: ReportSectionDraft[] = [];
   let rollingSummary = '';
@@ -1399,7 +1521,7 @@ Write the section body starting on the following line.`;
     section: RuntimeSectionPlanEntry,
     contextSummary: string
   ): Promise<ReportSectionDraft> => {
-    const sectionTarget = sectionBudgets.get(section.key) ?? Math.round(targetWordCount / activeSectionPlan.length);
+    const sectionTarget = sectionWords(section.key);
     const lengthDirective = formatLengthDirective(targetWordCount, sectionTarget, section.title);
     const rollingSummary = contextSummary;
 
@@ -1436,6 +1558,8 @@ Rolling summary from previous sections: ${rollingSummary || 'none yet'}
 ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
+${useReaderHeadings || (layer1 && fixedSectionWords(section.key) !== undefined) ? readerSectionRule(section.key) : ''}
+${layer1 ? READER_WORDING_RULE : ''}
 ${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
@@ -1471,6 +1595,40 @@ Return section body text only. Do NOT write a markdown heading for this section 
         if (stillUnknown.length > 0) {
           citationIssues.push({ section: section.title, markers: stillUnknown });
           draftedText = stripUnknownMarkers(draftedText, shownPassages);
+        }
+      }
+    }
+
+    // Shape and size (report standard): key findings are a short list, and no
+    // section runs far past its share. The writer is asked once, with the
+    // passages still in front of it; what it returns is held to the same lock.
+    if (layer1 && isSizedReaderSection(section.key)) {
+      const tooLong = wordCount(draftedText) > sectionTarget * OVER_BUDGET;
+      const notAList = section.key === 'key_findings' && !isBulletList(draftedText.trim());
+      if (tooLong || notAList) {
+        const ask = notAList
+          ? `Rewrite this as 3 to 7 bullet points and nothing else. Each bullet starts with "- ", is one sentence, and ends with its citation. Keep it under ${sectionTarget} words.`
+          : `That draft is ${wordCount(draftedText)} words. This section may use about ${sectionTarget}. Rewrite it within ${sectionTarget} words: keep the most important points with their citations, and leave out anything the summary or an earlier section already says.`;
+        const shorter = await callRoleModel({
+          role: 'section_drafter',
+          ...v2,
+          messages: [...drafterMessages, { role: 'assistant', content: draftedText }, { role: 'user', content: ask }],
+        });
+        modelCalls.push(shorter);
+        let shorterText = shorter.content;
+        if (shownPassages) {
+          const unknown = unknownMarkers(shorterText, shownPassages);
+          if (unknown.length > 0) {
+            citationIssues.push({ section: section.title, markers: unknown });
+            shorterText = stripUnknownMarkers(shorterText, shownPassages);
+          }
+        }
+        // Kept only when it did what was asked: a list when a list was asked for,
+        // fewer words when fewer were asked for. A second paragraph is not a list
+        // however short it is; the final pass gives the first draft its shape instead.
+        if (shorterText.trim() && (notAList ? isBulletList(shorterText.trim()) : wordCount(shorterText) < wordCount(draftedText))) {
+          sectionResult = shorter;
+          draftedText = shorterText;
         }
       }
     }
@@ -1619,7 +1777,9 @@ DRAFT SECTIONS:\n${formatSectionsForRefiner(sections).join('\n\n')}
 
 ${requestedFormatsBlock}
 
-LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.`,
+${layer1
+  ? `LENGTH GUIDANCE: the full report should stay close to ~${targetWordCount} words. Tighten redundant phrasing and remove a fact a section repeats from an earlier one. Never lengthen a section and never add material.`
+  : `LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighten redundant phrasing but do not delete substantive findings or counterarguments. If a section is materially under its share of the budget, extend it with substantive analysis from the challenger findings rather than padding.`}`,
       },
     ],
   });
@@ -1670,11 +1830,31 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
         : deduplicated
       : prepared;
   }
+  const sized = (section: ReportSectionDraft): ReportSectionDraft => {
+    if (section.key === 'summary') {
+      return wordCount(section.content) > 150 ? { ...section, content: trimSummaryAtSentence(section.content) } : section;
+    }
+    if (!isSizedReaderSection(section.key)) return section;
+    // The last word on shape and size, after every rewrite has had its turn.
+    // Whole sentences and whole bullets only, so a citation leaves with its sentence.
+    if (isLimitsSection(section.key)) return { ...section, content: firstSentences(section.content, 4) };
+    // Key findings are a list. Paragraphs that survived the second request are
+    // given the shape here, sentence by sentence, with their citations.
+    const shaped = section.key === 'key_findings' ? sentencesAsBullets(section.content, 7) : section.content;
+    const content = trimToWords(shaped, Math.round(sectionWords(section.key) * OVER_BUDGET));
+    if (content !== section.content) {
+      logger.info('report_section_trimmed', { section: section.key, from: wordCount(section.content), to: wordCount(content) });
+    }
+    return { ...section, content };
+  };
+  // Section by section first, then the whole: a report is not longer than its
+  // length because each of its sections was allowed to run a little over.
   const cleaned = layer1
-    ? removeRepeatedSentences(prepared).map((section) =>
-        section.key === 'summary' && section.content.trim().split(/\s+/).length > 150
-          ? { ...section, content: trimSummaryAtSentence(section.content) }
-          : section
+    ? fitToTotal(
+        removeRepeatedSentences(prepared).map(sized),
+        targetWordCount,
+        sectionWords,
+        (key) => isSizedReaderSection(key) && !isLimitsSection(key) && key !== 'key_findings'
       )
     : prepared;
   // With the citation lock on, markers stay as issued. The caller numbers them
@@ -1712,7 +1892,7 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
       ...v2,
       baselineLayer: true,
       messages: [
-        { role: 'system', content: 'Rewrite the report in plain encyclopedia prose. Remove grade labels and courtroom wording. Keep every section heading. Do not add facts.' },
+        { role: 'system', content: 'Rewrite the report in plain encyclopedia prose. Remove grade labels and courtroom wording. Do not use the words claim or claims for what a source or the report says, and do not name a research step or reviewer. Keep every section heading. Do not add facts.' },
         { role: 'user', content: markdown },
       ],
     });
@@ -1726,8 +1906,11 @@ LENGTH GUIDANCE: keep the full report close to ~${targetWordCount} words. Tighte
     // that still fails; citations stay where they are. Only prose is touched:
     // code and link destinations are left exactly as written, as the check
     // that found the wording never read them.
+    // The reference list is the sources' own titles, never reworded.
     sectionsOut = sectionsOut.map((section) =>
-      readerFailures(`${section.title}\n\n${section.content}`).length > 0 ? { ...section, content: removeBannedWording(section.content) } : section
+      section.key !== 'references' && readerFailures(`${section.title}\n\n${section.content}`).length > 0
+        ? { ...section, content: removeBannedWording(section.content) }
+        : section
     );
   }
   if (layer1) {

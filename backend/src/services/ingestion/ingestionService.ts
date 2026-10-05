@@ -1,3 +1,4 @@
+import { isCalendarDay } from '../discovery/providerTypes';
 import axios from 'axios';
 import crypto from 'crypto';
 import { query, queryOne, withTransaction } from '../../db/pool';
@@ -204,6 +205,67 @@ interface IngestFetchedWebPageParams {
   onProgress: ProgressCallback;
 }
 
+/**
+ * Reference details a discovery job carried, checked before they are stored: a
+ * list of author names, a publisher, and a date Postgres can read. A value of
+ * the wrong shape is dropped, not coerced. Returns null when the job carried none.
+ */
+export function storedBibliographic(
+  metadata: Record<string, unknown> | undefined
+): { authors: string[] | null; publisher: string | null; publishedAt: string | null; kind: string | null; provider: string | null } | null {
+  const raw = metadata?.bibliographic;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const authors = Array.isArray(record.authors)
+    ? record.authors.filter((author): author is string => typeof author === 'string' && author.trim().length > 0).map((author) => author.trim().slice(0, 200)).slice(0, 50)
+    : [];
+  const publisher = typeof record.publisher === 'string' && record.publisher.trim() ? record.publisher.trim().slice(0, 300) : null;
+  const date = typeof record.publishedAt === 'string' ? record.publishedAt.trim() : '';
+  // A full day that exists, or nothing. A year alone would have to be stored as
+  // a day nobody published on, and a day that does not exist (31 February) is
+  // refused by the database, which would fail the whole job.
+  const publishedAt = isCalendarDay(date) ? date : null;
+  const kindText = typeof record.kind === 'string' ? record.kind.trim().toLowerCase() : '';
+  const kind = /^[a-z][a-z -]{2,39}$/.test(kindText) ? kindText : null;
+  const providerText = typeof record.provider === 'string' ? record.provider.trim().toLowerCase() : '';
+  const provider = /^[a-z][a-z0-9_-]{1,39}$/.test(providerText) ? providerText : null;
+  if (authors.length === 0 && !publisher && !publishedAt && !kind) return null;
+  return { authors: authors.length > 0 ? authors : null, publisher, publishedAt, kind, provider };
+}
+
+/** The checked details as they are kept under a source's metadata, without empty fields. */
+export function bibliographicRecord(details: NonNullable<ReturnType<typeof storedBibliographic>>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (details.provider) out.provider = details.provider;
+  if (details.kind) out.kind = details.kind;
+  if (details.authors) out.authors = details.authors;
+  if (details.publisher) out.publisher = details.publisher;
+  if (details.publishedAt) out.publishedAt = details.publishedAt;
+  return out;
+}
+
+/**
+ * Reference details for a source that is already stored. They fill what the
+ * stored record lacks; nothing already recorded is overwritten.
+ */
+export async function fillReferenceDetails(
+  sourceId: string,
+  details: NonNullable<ReturnType<typeof storedBibliographic>>
+): Promise<void> {
+  await query(
+    `UPDATE sources
+        SET authors = COALESCE(authors, $2::text[]),
+            publication = COALESCE(publication, $3),
+            published_at = COALESCE(published_at, $4::timestamptz),
+            metadata = CASE
+              WHEN COALESCE(metadata, '{}'::jsonb) ? 'bibliographic' THEN metadata
+              ELSE COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('bibliographic', $5::jsonb)
+            END
+      WHERE id = $1`,
+    [sourceId, details.authors, details.publisher, details.publishedAt, JSON.stringify(bibliographicRecord(details))]
+  );
+}
+
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
 async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
   sourceId: string;
@@ -233,6 +295,13 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     storedMetadata.ingested_by_user_id = ingestedByUserId;
   }
 
+  // What is kept under the source's metadata is the checked record, not whatever the job carried.
+  const checkedBibliographic = storedBibliographic(metadata);
+  if ('bibliographic' in storedMetadata) {
+    if (checkedBibliographic) storedMetadata.bibliographic = bibliographicRecord(checkedBibliographic);
+    else delete storedMetadata.bibliographic;
+  }
+
   onProgress({ stage: 'dedup', percent: 20, message: 'Checking for duplicates...' });
 
   const contentHash = crypto.createHash('sha256').update(rawContent).digest('hex');
@@ -241,8 +310,19 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     'SELECT id FROM sources WHERE content_hash=$1',
     [contentHash]
   );
+  const bibliographic = checkedBibliographic;
 
   if (existing) {
+    // The page is already stored. Reference details a provider now supplies fill
+    // what the stored record lacks; nothing already recorded is overwritten.
+    if (bibliographic) {
+      // Optional detail. Losing it costs a fuller reference entry, never the job.
+      try {
+        await fillReferenceDetails(existing.id, bibliographic);
+      } catch (err) {
+        logger.warn('ingestion: could not add reference details to a stored source', { sourceId: existing.id, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
@@ -263,9 +343,9 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
          url, title, source_type, raw_content, content_hash, tags, metadata,
          discovered_by_run_id, discovery_query, source_rank, imported_via,
          original_mime_type, original_filename, fetch_method, canonical_url,
-         retrieval_timestamp
+         retrieval_timestamp, authors, publication, published_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::text[], $18, $19::timestamptz)
        RETURNING id`,
       [
         pageUrl || null,
@@ -286,6 +366,10 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
         fetchMetadata.retrieval_timestamp
           ? new Date(fetchMetadata.retrieval_timestamp as string)
           : new Date(),
+        // Null unless the job carried reference details, as these columns were before.
+        bibliographic?.authors ?? null,
+        bibliographic?.publisher ?? null,
+        bibliographic?.publishedAt ?? null,
       ]
     );
     sourceId = sourceResult.rows[0].id;

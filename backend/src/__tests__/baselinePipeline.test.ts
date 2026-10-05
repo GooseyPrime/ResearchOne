@@ -63,7 +63,7 @@ describe('baseline report pipeline', () => {
     expect(report.markdown).toContain('## Where sources disagree');
     expect(report.markdown).toContain('## Key findings');
     expect(report.markdown).toContain('## References');
-    expect(report.markdown).toContain('1. US Food and Drug Administration, FDA Casgevy authorization, December 2023');
+    expect(report.markdown).toContain('1. US Food and Drug Administration. FDA Casgevy authorization. December 2023. https://www.fda.gov/casgevy');
     expect(report.markdown).not.toContain('When did the FDA authorize');
     expect(report.markdown).toContain('1 source was read');
     expect(report.markdown).not.toContain('About this report: About this report');

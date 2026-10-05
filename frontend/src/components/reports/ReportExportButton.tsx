@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { exportErrorMessage } from '@/utils/exportErrorMessage';
 import { Download, AlertCircle, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
 
@@ -16,6 +17,7 @@ import api from '../../utils/api';
 
 export type ExportFormat = 'docx' | 'pdf' | 'md' | 'html';
 export type ExportStyle =
+  | 'numeric'
   | 'mla' | 'apa'
   | 'chicago-author-date' | 'chicago-note'
   | 'ieee' | 'harvard';
@@ -28,6 +30,7 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
 };
 
 const STYLE_LABELS: Record<ExportStyle, string> = {
+  'numeric':              'Numbered references',
   'mla':                  'MLA (9th ed.)',
   'apa':                  'APA (7th ed.)',
   'chicago-author-date':  'Chicago — Author/Date',
@@ -43,7 +46,11 @@ function coerceExportStyle(raw: string | null | undefined): ExportStyle | null {
 
 export interface ReportExportButtonProps {
   reportId: string;
-  /** `research_runs.citation_style` for the report's source run — default export citation style. */
+  /**
+   * The style the export dialog opens on: the style the report's reference list
+   * was saved in when the report records one, else `research_runs.citation_style`
+   * for the report's source run.
+   */
   runCitationStyle?: string | null;
 }
 
@@ -143,8 +150,7 @@ export default function ReportExportButton({ reportId, runCitationStyle }: Repor
         setOpen(false);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(await exportErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

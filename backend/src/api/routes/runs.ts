@@ -22,6 +22,8 @@ import {
   markRunRunningAfterPlanConfirm,
 } from '../../services/planning/planWriteService';
 import { refinePlan } from '../../services/planning/planRefinementService';
+import { loadRunFlags } from '../../services/eval/runFlagStore';
+import { runWithFlags } from '../../config';
 import type { PlanPayload } from '../../services/planning/planTypes';
 import type { ResearchJobData } from '../../services/reasoning/researchOrchestratorTypes';
 import { allowFallbackByRoleFromOverrides } from '../../services/reasoning/v2FallbackResolution';
@@ -149,17 +151,27 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
       (await queryOne<{ query: string }>(`SELECT query FROM research_runs WHERE id = $1::uuid`, [runId]))?.query ??
       '';
 
-    const { revisedPlan, diffSummary, intentChange } = await refinePlan({
-      currentPlan: gatePlan.plan_payload as PlanPayload,
-      refinementInstruction: instruction,
-      query: queryText,
-      llmOpts: {
-        engineVersion: payload?.engineVersion,
-        researchObjective: payload?.researchObjective,
-        allowFallbackByRole,
-        byokApiKeyOverride,
-      },
-    });
+    // A switch an admin turned on for this run applies to its plan too. The first
+    // plan is written by the worker inside the run's switches; a revision written
+    // here without them was sized and shaped as if they were off.
+    // A run with no recorded switches, or a database without the table, reads
+    // as none. Any other failure fails this request: revising the plan under the
+    // process settings while the run later starts under its own switches is the
+    // mismatch this is here to prevent, and the request can simply be sent again.
+    const runFlags = await loadRunFlags(runId);
+    const { revisedPlan, diffSummary, intentChange } = await runWithFlags(runFlags, () =>
+      refinePlan({
+        currentPlan: gatePlan.plan_payload as PlanPayload,
+        refinementInstruction: instruction,
+        query: queryText,
+        llmOpts: {
+          engineVersion: payload?.engineVersion,
+          researchObjective: payload?.researchObjective,
+          allowFallbackByRole,
+          byokApiKeyOverride,
+        },
+      })
+    );
 
     await appendPlanRevision({
       planId: gatePlan.id,

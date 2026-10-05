@@ -454,6 +454,35 @@ export function parsePlanGeneratorJson(
   }
 }
 
+/**
+ * A brief made to agree with the report type of the plan it belongs to. The
+ * same rules the classifier applies when a request names its own type: the
+ * method follows the type unless the user asked for the challenge method by
+ * name, and the objective follows it unless the user chose one. When the type
+ * is the one the plan already had, the brief is returned as it is.
+ */
+export function alignBriefWithIntent(brief: ResearchBrief, intent: IntentId, previousIntent: IntentId = brief.primaryIntent): ResearchBrief {
+  // The type changed when it differs from the plan before it. The model can
+  // write the new type into the brief itself and still echo the old method, so
+  // the brief naming the new type is not proof that the rest of it followed.
+  if (brief.primaryIntent === intent && previousIntent === intent) return brief;
+  const next: ResearchBrief = {
+    ...brief,
+    primaryIntent: intent,
+    epistemicPosture: INTENT_EPISTEMIC_POSTURE[intent] ?? brief.epistemicPosture,
+  };
+  if (brief.requestedMethodology !== 'policyone') {
+    next.resolvedMethodology = resolveMethodologyFromIntent(intent);
+    next.methodologyResolutionSource = 'triage';
+  }
+  if (brief.objectiveResolutionSource !== 'user') {
+    next.resolvedResearchObjective = resolveObjectiveFromIntent(intent);
+    next.objectiveResolutionSource = 'triage';
+    next.objectiveResolutionReason = `Resolved from the report type chosen at the plan screen (${intent}).`;
+  }
+  return next;
+}
+
 export function parsePlanRefinementJson(
   content: string,
   currentPlan: PlanPayload
@@ -464,12 +493,25 @@ export function parsePlanRefinementJson(
     const o = JSON.parse(slice) as Record<string, unknown>;
     const revisedRaw = o.revisedPlan;
     const revisedPlanRaw = coercePlanPayload(revisedRaw, currentPlan.intent.id, currentPlan.intent.confidence);
-    const revisedPlan = mergePlanPayloadWithCanonicalProfile({
-      ...revisedPlanRaw,
-      researchBrief:
-        revisedPlanRaw.researchBrief ??
+    // The brief follows the report type the plan now names. A brief carried over
+    // from the plan before it, or echoed back by the model, still describes the
+    // old type; the worker reads the method from the brief, so a plan changed
+    // from an investigation to a survey went on running as an investigation.
+    const researchBrief = alignBriefWithIntent(
+      revisedPlanRaw.researchBrief ??
         currentPlan.researchBrief ??
         defaultResearchBrief(currentPlan.intent.id, currentPlan.intent.confidence, currentPlan.intent.reasoning),
+      revisedPlanRaw.intent.id,
+      currentPlan.intent.id
+    );
+    const revisedPlan = mergePlanPayloadWithCanonicalProfile({
+      ...revisedPlanRaw,
+      researchBrief,
+      requestedMethodology: researchBrief.requestedMethodology,
+      resolvedMethodology: researchBrief.resolvedMethodology,
+      resolvedResearchObjective: researchBrief.resolvedResearchObjective ?? revisedPlanRaw.resolvedResearchObjective,
+      objectiveResolutionSource: researchBrief.objectiveResolutionSource ?? revisedPlanRaw.objectiveResolutionSource,
+      objectiveResolutionReason: researchBrief.objectiveResolutionReason ?? revisedPlanRaw.objectiveResolutionReason,
     });
     const diffSummary = typeof o.diffSummary === 'string' ? o.diffSummary : 'Refinement applied.';
     const icRaw = o.intentChange && typeof o.intentChange === 'object' ? (o.intentChange as Record<string, unknown>) : {};

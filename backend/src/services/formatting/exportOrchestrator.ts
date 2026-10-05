@@ -24,11 +24,21 @@ import { runPandoc, PandocError, type ExportFormat, type ExportStyle } from './p
 import { runScope } from '../telemetry';
 import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
+import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
+import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
+
+/** What an export may ask for: a named style, or the numbered default. */
+export type RequestedExportStyle = ExportStyle | 'numeric';
+
+/** The style file Pandoc is given. The numbered default has no author-date form; IEEE is the numbered style on file. */
+export function pandocStyleFor(style: RequestedExportStyle): ExportStyle {
+  return style === 'numeric' ? 'ieee' : style;
+}
 
 export interface ExportJobInput {
   reportId: string;
   format: ExportFormat;
-  style: ExportStyle;
+  style: RequestedExportStyle;
   /** User who initiated the export (for scope + audit). */
   userId?: string | null;
   /** Override default pandoc wall-clock timeout (ms). */
@@ -37,7 +47,7 @@ export interface ExportJobInput {
 
 export interface ExportJobOutput {
   format: ExportFormat;
-  style: ExportStyle;
+  style: RequestedExportStyle;
   outputBuffer: Buffer;
   outputBytes: number;
   pandocDurationMs: number;
@@ -72,6 +82,11 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   //    (`report_sections`, not a fictional `reports.body_markdown`).
   const { title, bodyMarkdown } = await loadReportMarkdownForExport(reportId);
 
+  // A report written with the citation lock is exported as it was saved:
+  // its numbers and its reference list are already in the text.
+  const locked = await loadLockedReportState(reportId);
+  if (locked) return exportLockedReport(input, locked.savedStyle);
+
   // 2. Assign / load evidence aliases for this report.
   const aliases = await assignEvidenceAliases(reportId);
   logger.info('export: aliases ready', {
@@ -97,7 +112,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
     markdown: `${titleBlock}${rewrittenBody}\n\n## References\n`,
     cslJson: bibliography,
     format,
-    style,
+    style: pandocStyleFor(style),
     timeoutMs: input.pandocTimeoutMs,
   });
 
@@ -108,6 +123,96 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
     outputBytes: pandocResult.outputBytes,
     pandocDurationMs: pandocResult.durationMs,
     aliasCount: aliases.length,
+  };
+}
+
+/**
+ * Whether the report's run wrote it with the citation lock, and the reference
+ * style it was saved in. Null for every other report, and for a database that
+ * does not have the columns this reads: those reports export as they always did.
+ */
+async function loadLockedReportState(reportId: string): Promise<{ savedStyle: ReferenceStyle } | null> {
+  try {
+    const rows = await adminQuery<{ locked: string | null; reference_style: string | null; citation_style: string | null }>(
+      `SELECT rr.corpus_after->>'citationLock' AS locked,
+              r.metadata->>'reference_style' AS reference_style,
+              rr.citation_style
+         FROM reports r
+         LEFT JOIN research_runs rr ON rr.id = r.run_id
+        WHERE r.id = $1
+        LIMIT 1`,
+      [reportId]
+    );
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    if (!row || row.locked !== 'true') return null;
+    return { savedStyle: resolveReferenceStyle(row.reference_style ?? row.citation_style) };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === '42703' || code === '42P01') {
+      logger.debug('export: lock state unavailable on this schema; exporting as an unlocked report', { reportId });
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceStyle): Promise<ExportJobOutput> {
+  const { reportId, format, style } = input;
+  const metaRows = await adminQuery<ReportMetaRow>(`SELECT title, executive_summary, conclusion FROM reports WHERE id = $1 LIMIT 1`, [reportId]);
+  if (metaRows.length === 0) throw new PandocError(`report not found: ${reportId}`, 'validation_error');
+  const saved = await adminQuery<SectionRow>(
+    `SELECT title, content, section_order FROM report_sections WHERE report_id = $1 ORDER BY section_order ASC`,
+    [reportId]
+  );
+  if (saved.length === 0) throw new PandocError(`report has no body content: ${reportId}`, 'validation_error');
+
+  let sections = saved;
+  const wanted = resolveReferenceStyle(style);
+  if (wanted !== savedStyle) {
+    const citationRows = await adminQuery<LockedCitationSourceRow>(
+      `SELECT rc.citation_text, s.title, s.authors, s.publication, s.published_at, s.url, s.original_filename,
+              s.retrieval_timestamp, s.metadata->'bibliographic'->>'provider' AS provider,
+              s.metadata->'bibliographic'->>'kind' AS kind
+         FROM report_citations rc
+         JOIN sources s ON s.id = rc.source_id
+        WHERE rc.report_id = $1
+        ORDER BY rc.citation_order ASC NULLS LAST, rc.created_at ASC`,
+      [reportId]
+    );
+    const restyled = withReferenceStyle(saved, sourcesByNumber(citationRows), wanted);
+    sections = restyled.sections;
+    if (!restyled.rebuilt) {
+      // The sources behind the citations no longer match the saved list (a
+      // source was removed, or the list was edited). Handing over the saved
+      // list under the name of the style asked for would be a file that is not
+      // what its label says, so the export is refused with the reason.
+      logger.warn('export: reference list could not be written in the requested style', { reportId, wanted, savedStyle });
+      throw new PandocError(
+        `The reference list of this report cannot be rewritten in the ${wanted} style. Export it in the style it was saved in (${savedStyle}).`,
+        'validation_error'
+      );
+    }
+  }
+
+  const title = metaRows[0].title ?? null;
+  const body = sections
+    .map((section) => `## ${stripInternalLabelsFromReport(section.title)}\n\n${stripInternalLabelsFromReport(section.content)}`)
+    .join('\n\n');
+  const titleBlock = title ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n` : '';
+  const pandocResult = await runPandoc({
+    markdown: `${titleBlock}${body}\n`,
+    cslJson: [],
+    format,
+    style: pandocStyleFor(style),
+    timeoutMs: input.pandocTimeoutMs,
+  });
+  return {
+    format,
+    style,
+    outputBuffer: pandocResult.outputBuffer,
+    outputBytes: pandocResult.outputBytes,
+    pandocDurationMs: pandocResult.durationMs,
+    aliasCount: 0,
   };
 }
 

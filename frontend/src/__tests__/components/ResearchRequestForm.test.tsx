@@ -243,12 +243,23 @@ describe('ResearchRequestForm — the Lab controls survived the merge', () => {
     expect(call.researchObjective).toBe('PATENT_GAP_ANALYSIS');
   });
 
-  it('keeps the citation style', async () => {
+  it('sends no citation style until one is chosen', async () => {
     renderForm();
     fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
     expect(screen.getByText('Citation Style')).toBeInTheDocument();
     const call = await submitWith('Compare two suppliers');
-    expect(call.citationStyle).toBe('apa');
+    expect(call.citationStyle).toBeUndefined();
+  });
+
+  it('sends the citation style that was chosen', async () => {
+    renderForm();
+    fireEvent.click(screen.getByTestId('request-output-prefs-toggle'));
+    const select = screen.getByText('Citation Style').closest('label')?.querySelector('select');
+    expect(select).not.toBeNull();
+    expect((select as HTMLSelectElement).value).toBe('automatic');
+    fireEvent.change(select as HTMLSelectElement, { target: { value: 'mla' } });
+    const call = await submitWith('Compare two suppliers');
+    expect(call.citationStyle).toBe('mla');
   });
 
   it('keeps the library tag filter', async () => {
@@ -369,7 +380,7 @@ describe('ResearchRequestForm — a cancelled plan restores the request', () => 
     expect(call.requestedFormats).toBeUndefined();
     expect(call.targetWordCount).toBeUndefined();
     expect(call.modelOverrides).toBeUndefined();
-    expect(call.citationStyle).toBe('apa');
+    expect(call.citationStyle).toBeUndefined();
   });
   it('leaves the form alone when there is no prefill parameter', async () => {
     renderForm(['/app/research']);

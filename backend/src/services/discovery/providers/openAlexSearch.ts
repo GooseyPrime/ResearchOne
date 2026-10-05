@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate, isCalendarDay } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -12,6 +12,37 @@ interface OpenAlexWork {
   abstract_inverted_index?: Record<string, number[]>;
   cited_by_count?: number;
   relevance_score?: number;
+  authorships?: Array<{ author?: { display_name?: string } }>;
+  primary_location?: { source?: { display_name?: string; type?: string } | null } | null;
+  publication_date?: string;
+  type?: string;
+}
+
+/** OpenAlex's own name for what a work is, in words. An "article" is a journal article only when its venue is a journal. */
+const OPENALEX_KINDS: Readonly<Record<string, string>> = {
+  preprint: 'preprint',
+  book: 'book',
+  'book-chapter': 'book chapter',
+  dataset: 'dataset',
+  dissertation: 'dissertation',
+  report: 'report',
+  review: 'review article',
+  standard: 'standard',
+};
+
+/** What the record says about who wrote and published the work. */
+export function openAlexBibliographic(work: OpenAlexWork): BibliographicDetails | undefined {
+  const authors = (work.authorships ?? []).map((entry) => (entry.author?.display_name ?? '').trim()).filter(Boolean);
+  const publisher = (work.primary_location?.source?.display_name ?? '').trim();
+  const out: BibliographicDetails = {};
+  if (authors.length > 0) out.authors = authors;
+  if (publisher) out.publisher = publisher;
+  if (isCalendarDay(work.publication_date ?? '')) out.publishedAt = work.publication_date;
+  const type = (work.type ?? '').toLowerCase();
+  const venue = (work.primary_location?.source?.type ?? '').toLowerCase();
+  const kind = type === 'article' ? (venue === 'journal' ? 'journal article' : venue === 'conference' ? 'conference paper' : undefined) : OPENALEX_KINDS[type];
+  if (kind) out.kind = kind;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 interface OpenAlexResponse {
@@ -76,6 +107,7 @@ export class OpenAlexSearchProvider implements SearchProvider {
             provider: this.name,
             sourceQuery: query.text,
             contentHash: doiPath,
+            bibliographic: openAlexBibliographic(w),
           };
         });
     } catch (err) {

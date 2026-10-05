@@ -25,6 +25,112 @@ export interface SearchResultCandidate {
   sourceQuery: string;
   /** Optional content hash if content was already fetched */
   contentHash?: string;
+  /**
+   * Who wrote and published the work and when, where the provider's record
+   * says. Used for the reference list. Carried into storage only when the
+   * citation lock is on for the run.
+   */
+  bibliographic?: BibliographicDetails;
+}
+
+export interface BibliographicDetails {
+  authors?: string[];
+  publisher?: string;
+  /** What the provider's record says the work is, in words: "journal article", "preprint", "book chapter". */
+  kind?: string;
+  /** YYYY-MM-DD. Left out when the record gives less than a full day, or a day that does not exist. */
+  publishedAt?: string;
+  /**
+   * The provider whose record these details came from, when that is not the
+   * provider of the candidate carrying them: the same address found by two
+   * providers keeps one candidate and the fuller record.
+   */
+  provider?: string;
+}
+
+/**
+ * Whether YYYY-MM-DD names a day that exists. `Date.parse` turns 31 February
+ * into 3 March instead of refusing it, and the database refuses it outright,
+ * which would fail the job that stores the source. A day is real only if it
+ * comes back unchanged.
+ */
+export function isCalendarDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value && Number(value.slice(0, 4)) >= 1000;
+}
+
+/** [year, month, day] as YYYY-MM-DD. A record that gives less than a full day, or a day that does not exist, gives no date: none is made up. */
+export function isoFromParts(parts: ReadonlyArray<number> | undefined): string | undefined {
+  if (!parts || parts.length < 3) return undefined;
+  const [year, month, day] = parts;
+  if (![year, month, day].every((part) => Number.isInteger(part))) return undefined;
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return isCalendarDay(iso) ? iso : undefined;
+}
+
+/** The candidate as it was before reference details existed. */
+export function withoutBibliographic(candidate: SearchResultCandidate): SearchResultCandidate {
+  if (!('bibliographic' in candidate)) return candidate;
+  const { bibliographic: _dropped, ...rest } = candidate;
+  return rest;
+}
+
+/**
+ * The candidate a run keeps. With the citation lock on for the run it keeps the
+ * provider's reference details; with it off it is the candidate as it always was,
+ * so nothing new is stored, logged or queued.
+ */
+export function candidateForRun(candidate: SearchResultCandidate, citationLockOn: boolean): SearchResultCandidate {
+  return citationLockOn ? candidate : withoutBibliographic(candidate);
+}
+
+/**
+ * What goes with a discovered source into storage for its reference entry: the
+ * provider that found it, and whatever the provider's record says about who
+ * wrote and published it. Empty when the candidate carries none, which is every
+ * candidate of a run without the citation lock.
+ */
+export function bibliographicMetadata(candidate: SearchResultCandidate): { bibliographic?: BibliographicDetails & { provider: string } } {
+  if (!candidate.bibliographic) return {};
+  return { bibliographic: { ...candidate.bibliographic, provider: candidate.bibliographic.provider ?? candidate.provider } };
+}
+
+const DETAIL_FIELDS = ['authors', 'publisher', 'kind', 'publishedAt'] as const;
+
+function detailCount(details: BibliographicDetails): number {
+  return DETAIL_FIELDS.filter((field) => {
+    const value = details[field];
+    return Array.isArray(value) ? value.length > 0 : Boolean(value);
+  }).length;
+}
+
+/** A candidate's reference record with the provider it came from, or undefined when it has none. */
+export function providerRecord(candidate: SearchResultCandidate): BibliographicDetails | undefined {
+  if (!candidate.bibliographic) return undefined;
+  return { ...candidate.bibliographic, provider: candidate.bibliographic.provider ?? candidate.provider };
+}
+
+/**
+ * One reference record from the records several providers hold for one address.
+ * The choice is made over the providers' own records, never over a record
+ * already merged, so it cannot depend on which provider answered first: the
+ * record with the most details wins, a tie goes to the provider whose name
+ * sorts first, and what the winner lacks is filled from the others in that same
+ * order. The result carries the winner's provider, since the kind it names is
+ * that provider's wording.
+ */
+export function fullestBibliographic(records: ReadonlyArray<BibliographicDetails>): BibliographicDetails | undefined {
+  if (records.length === 0) return undefined;
+  const ordered = [...records].sort((a, b) => detailCount(b) - detailCount(a) || (a.provider ?? '').localeCompare(b.provider ?? '') || JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const merged: BibliographicDetails = { ...ordered[0] };
+  for (const other of ordered.slice(1)) {
+    if (!merged.authors?.length && other.authors?.length) merged.authors = other.authors;
+    if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
+    if (!merged.kind && other.kind) merged.kind = other.kind;
+    if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
+  }
+  return merged;
 }
 
 export interface DiscoverySource {

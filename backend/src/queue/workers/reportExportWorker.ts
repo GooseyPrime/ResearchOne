@@ -27,7 +27,8 @@ import { createRedisConnection } from '../redis';
 import { QUEUE_NAMES } from '../queues';
 import { adminQuery } from '../../db/pool';
 import { exportReport } from '../../services/formatting/exportOrchestrator';
-import { PandocError, type ExportFormat, type ExportStyle } from '../../services/formatting/pandocRunner';
+import { PandocError, type ExportFormat } from '../../services/formatting/pandocRunner';
+import type { RequestedExportStyle } from '../../services/formatting/exportOrchestrator';
 import { uploadExportOutput } from '../../services/formatting/exportStorage';
 import { logger } from '../../utils/logger';
 
@@ -35,7 +36,7 @@ interface ExportJobData {
   exportId: string;
   reportId: string;
   format: ExportFormat;
-  style: ExportStyle;
+  style: RequestedExportStyle;
   userId: string | null;
 }
 

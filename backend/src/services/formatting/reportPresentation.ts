@@ -22,6 +22,63 @@ const ROLE_NAME_PATTERN = REASONING_MODEL_ROLES.map((role) => role.split('_').jo
 const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\]`, 'gi');
 
 /**
+ * The same role names written into a sentence as the one who said something
+ * ("as noted by the quantitative quality auditor", "the contract auditor
+ * flagged"). Only names of two or more words are read: a one-word role
+ * ("planner", "verifier") is also an ordinary word. And only where the sentence
+ * credits the role with a finding: several of these names are real occupations,
+ * and a report about what a contract auditor or a market scout does must be
+ * able to say so. The match is the role name alone, so it can be replaced in place.
+ */
+const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes('_'))
+  .map((role) => role.split('_').join('[_ ]'))
+  .join('|');
+const ROLE_SAYS =
+  '(?:notes?|noted|finds?|found|flags?|flagged|identifie[sd]|reports?|reported|observe[sd]|concludes?|concluded|states?|stated|determine[sd]|confirms?|confirmed|warns?|warned|raise[sd]|points?\\s+out|pointed\\s+out|highlights?|highlighted|cautions?|cautioned|verifie[sd]|agent|stage|step|pass)';
+export const SPOKEN_ROLE_NAME = new RegExp(
+  `(?:(?<=\\b(?:by|from|per|according\\s+to)\\s)the\\s+(?:${SPOKEN_ROLE_PATTERN})\\b|\\bthe\\s+(?:${SPOKEN_ROLE_PATTERN})\\b(?=\\s+${ROLE_SAYS}\\b))`,
+  'gi'
+);
+
+/**
+ * "Claim" in the sense the report standard bans: a word for what a source or
+ * the report says. The same word names other things a report may be about (a
+ * patent claim, an insurance claim, a land claim, to claim a refund); those are
+ * the subject's own terms and are left alone.
+ */
+const CLAIM_AS_SUBJECT_TERM =
+  '(?:(?:[\\p{L}]+-)*(?:patent|insurance|health|nutrition|warranty|tax|land|territorial|benefits?|expenses?|damages?|compensation|legal|court|medical|disability|unemployment|refund|asylum|mining|small|copyright|trademark|liability|injury|negligence|malpractice|fraud|defamation|libel|pension|welfare|accident|property|title|ownership|sovereignty|maritime|wage|discrimination|harassment|antitrust|breach|contract|civil|action|creditors?|bankruptcy|debt|estate|inheritance|treaty|medicare|medicaid|advertising|infringement|indemnity|salvage|water|native|aboriginal))';
+const CLAIM_OBJECT = '(?:adjusters?|forms?|numbers?|a\\s+refund|damages|compensation|asylum|benefits)';
+/** After "claims that": the words that make "that" a relative pronoun ("insurance claims that were denied"), so "claims" is still the noun. */
+const RELATIVE_AFTER_THAT = '(?:were|was|are|is|have|has|had|remain|remains|could|would|may|might|can|will|did|do|does)';
+export const CLAIM_WORD = new RegExp(
+  '(?:' +
+    // The noun, unless it is one of the subject's own compounds.
+    `(?<!\\b${CLAIM_AS_SUBJECT_TERM}\\s)\\bclaims?\\b(?!\\s+${CLAIM_OBJECT})` +
+    // The verb is never part of a compound: "the contract claims that the price
+    // is fixed" and "the fraud claimed that" are the report saying what a source says.
+    `|(?<=\\b${CLAIM_AS_SUBJECT_TERM}\\s)claims?\\b(?=\\s+that\\b(?!\\s+${RELATIVE_AFTER_THAT}\\b))` +
+    `|\\bclaim(?:ed|ing)\\b(?!\\s+${CLAIM_OBJECT})` +
+    ')',
+  'giu'
+);
+
+/** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
+const QUOTED_SPAN = /"[^"\n]{1,600}"|\u201C[^\u201D\n]{1,600}\u201D/g;
+
+/** Apply a change to everything outside double quotation marks. */
+export function mapOutsideQuotes(text: string, change: (part: string) => string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of text.matchAll(QUOTED_SPAN)) {
+    const start = match.index ?? 0;
+    out += change(text.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + change(text.slice(cursor));
+}
+
+/**
  * Left exactly as written:
  * - fenced code with any fence length (```, ````, ~~~ ...), indented up to three
  *   spaces, closed by the same fence or running to the end of the text;
@@ -259,21 +316,49 @@ function readerVisibleText(text: string): string {
     .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
 }
 
+/**
+ * The text without its generated reference list: from the last "References"
+ * heading to the next heading. The list is written after the body, so it is the
+ * last section of that name; an earlier one is the report's own writing and is
+ * checked like any other section.
+ */
+function withoutReferenceList(text: string): string {
+  const lines = text.split('\n');
+  let listStart = -1;
+  lines.forEach((line, index) => {
+    if (/^#{1,6}[ \t]+References[ \t#]*$/i.test(line)) listStart = index;
+  });
+  if (listStart === -1) return text;
+  let listEnd = lines.length;
+  for (let index = listStart + 1; index < lines.length; index += 1) {
+    if (/^#{1,6}[ \t]+\S/.test(lines[index])) {
+      listEnd = index;
+      break;
+    }
+  }
+  return [...lines.slice(0, listStart), ...lines.slice(listEnd)].join('\n');
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   // Only prose is checked: a code sample or a link that happens to contain a
   // label is not a leak, and the clean-up that removes labels never touches it.
   // Fragments are kept apart, so text on either side of a code span cannot join into a false match.
-  let prose = '';
-  mapCitationProse(text, (part) => {
-    prose += `${part}\uE004`;
-    return part;
-  });
-  // The label of a link is read by the reader too; its destination is not.
-  const outsideCode = mapOutsideCode(text, (part) => part, () => '\uE004');
-  for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
-  // Likewise the label of a reference-style link ("[label][ref]").
-  for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+  const proseOf = (source: string): string => {
+    let prose = '';
+    mapCitationProse(source, (part) => {
+      prose += `${part}\uE004`;
+      return part;
+    });
+    // The label of a link is read by the reader too; its destination is not.
+    const outsideCode = mapOutsideCode(source, (part) => part, () => '\uE004');
+    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+    // Likewise the label of a reference-style link ("[label][ref]").
+    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+    return prose;
+  };
+  // Labels and markers are a leak wherever they are printed, the reference list included.
+  const prose = proseOf(text);
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
   // Passage markers are how the writer and the pipeline refer to retrieved text.
@@ -282,10 +367,24 @@ export function readerFacingLabelHits(text: string): string[] {
   // Closed or not: "[P1" left open is still a marker on the page.
   if (/\[\s*P\d+\b/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
+  // Every check of wording reads the report's own sentences. A reference entry
+  // is a source's title and publisher, which the report did not write: a source
+  // called "The Case for Nuclear Power" is not courtroom wording.
+  const own = withoutReferenceList(text);
+  const body = readerVisibleText(own);
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
-  const seen = `${prose}\uE004${readerVisibleText(text)}`;
-  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(seen)) hits.push('courtroom');
+  const seen = `${proseOf(own)}\uE004${body}`;
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
+  // A role named in a sentence is an internal step on the page, brackets or not.
+  if (new RegExp(SPOKEN_ROLE_NAME.source, 'i').test(body) && !hits.includes('internal step')) hits.push('internal step');
+  // What a source says in its own words stays as it said it; the report's own wording is checked.
+  let ownWords = '';
+  mapOutsideQuotes(body, (part) => {
+    ownWords += `${part}\uE004`;
+    return part;
+  });
+  if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
   if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
   return hits;
 }
