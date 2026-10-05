@@ -457,8 +457,9 @@ describe('citation lock helpers', () => {
       const linkedBefore = before.replace('The sources do not cover long-term follow-up.', 'The sources do not cover long-term follow-up. See [the agency](https://www.fda.gov/casgevy) for updates.');
       // The linked sentence stays as it was while another sentence is cut.
       const cut = guardLockedRepair(linkedBefore, linkedBefore.replace('The sources do not cover long-term follow-up. ', ''));
-      expect(cut.restored).toEqual([]);
-      expect(cut.markdown).toContain('## Limits of this report\nSee [the agency](https://www.fda.gov/casgevy) for updates.');
+      // A section that holds a link is taken unchanged or not at all, so even a clean cut beside the link puts it back.
+      expect(cut.restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(linkedBefore, linkedBefore).restored).toEqual([]);
       // The same link moved onto other words in the same section is not the link the report had.
       expect(guardLockedRepair(linkedBefore, linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'Ask [the agency](https://www.fda.gov/casgevy) about pricing.')).restored).toEqual(['Limits of this report']);
       const moved = linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'See the agency for updates.').replace('The sources do not cover', '[The sources](https://www.fda.gov/casgevy) do not cover');
@@ -568,22 +569,25 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(shaped, shaped.replace('| Year | Event |\n| --- | --- |\n| 2023 | Approval |', '| Year | Event | | --- | --- | | 2023 | Approval |')).restored).toEqual(['Limits of this report']);
       expect(guardLockedRepair(shaped, shaped.replace('The gaps are these.\n- No', '> The gaps are these.\n- No')).restored).toEqual(['Limits of this report']);
       // Cutting a list item, or the sentence that opens a paragraph, is a cut.
-      expect(guardLockedRepair(shaped, shaped.replace('- No long-term follow-up.\n', '')).restored).toEqual([]);
+      // A section that holds a table is taken unchanged or not at all.
+      expect(guardLockedRepair(shaped, shaped.replace('- No long-term follow-up.\n', '')).restored).toEqual(['Limits of this report']);
+      // In a section of plain bullets, cutting one is a cut.
+      expect(guardLockedRepair(before, before.replace('- Eligible patients have recurrent crises [P2].', '').replace('2023 [P1].\n\n\n## Limits', '2023 [P1].\n\n## Limits')).restored).toEqual([]);
       expect(guardLockedRepair(before, before.replace('The FDA approved Casgevy on 8 December 2023 [P1]. ', '')).restored).toEqual([]);
     });
 
     it('does not accept a code block left open by a cut', () => {
       const coded = before.replace('The sources do not cover long-term follow-up.', 'The command is this.\n\n```text\nrun --all.\n```\n\nNothing else is covered.');
       expect(guardLockedRepair(coded, coded).restored).toEqual([]);
-      expect(guardLockedRepair(coded, coded.replace('run --all.\n```\n', 'run --all.\n')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(coded, coded.replace('run --all.\n```\n', 'run --all.\n')).restored).toEqual(['(whole report)']);
       // Both fences taken off, leaving what the block quoted as part of the report.
       const quoted = before.replace('The sources do not cover long-term follow-up.', 'An example follows.\n\n```markdown\n### Pricing\nIt costs two million dollars.\n```\n\nNothing else is covered.');
-      expect(guardLockedRepair(quoted, quoted.replace('```markdown\n', '').replace('\n```\n', '\n')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(quoted, quoted.replace('```markdown\n', '').replace('\n```\n', '\n')).restored).toEqual(['(whole report)']);
       const longer = quoted.replace('```markdown', '````markdown').replace('\n```\n', '\n````\n');
       expect(guardLockedRepair(longer, longer).restored).toEqual([]);
-      expect(guardLockedRepair(longer, longer.replace('````markdown\n', '').replace('\n````\n', '\n')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(longer, longer.replace('````markdown\n', '').replace('\n````\n', '\n')).restored).toEqual(['(whole report)']);
       // A section holding a code block is taken unchanged or not at all, so even a clean cut of the block puts it back.
-      expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual(['(whole report)']);
       // The same for an HTML comment, and for a reference link and its definition.
       const hidden = before.replace('The sources do not cover long-term follow-up.', 'The sources stop in 2023.\n\n<!--\n\nIt costs two million dollars.\n\n-->');
       expect(guardLockedRepair(hidden, hidden.replace('<!--\n\n', '').replace('\n\n-->', '')).restored).toEqual(['Limits of this report']);

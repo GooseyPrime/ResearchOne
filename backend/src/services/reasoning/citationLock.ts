@@ -411,27 +411,17 @@ export function guardLockedRepair(
     const substance = (entries: Array<{ text: string }>): number =>
       entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text) && !/\n[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(entry.text)).length;
     if (substance(had) > 0 && substance(has) === 0) return false;
-    // Some constructs come in parts that only mean something together: a code
-    // fence and its close, an HTML comment or tag and its end, a reference link
-    // and its definition. Cutting one part changes what the reader sees of the
-    // other. A section that holds any of them is taken unchanged or not at all.
-    // So does a quotation, and a list item or quoted line that runs on to a
-    // line of its own without a marker: cut the first line and the second
-    // stops being part of it.
-    const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|>)[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|>|\|)\S/m.test(body(was));
-    // And so does a link, a code span or emphasis that opens in one sentence
-    // and closes in another: cut either sentence and the marks are left hanging.
-    const tally = (text: string, mark: string): number => text.split(mark).length - 1;
-    const spans = had.some(
-      (piece) =>
-        tally(piece.text, '[') !== tally(piece.text, ']') ||
-        tally(piece.text, '(') !== tally(piece.text, ')') ||
-        tally(piece.text, '`') % 2 === 1 ||
-        tally(piece.text, '**') % 2 === 1 ||
-        tally(piece.text, '~~') % 2 === 1
-    );
-    if (spans || runsOn || /^[ \t]{0,3}(?:`{3,}|~{3,})|^[ \t]{0,3}>|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
-      return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap);
+    // Cuts are taken only from plain writing: sentences, simple bullets and
+    // "#" sub-headings, with citation markers. Anything else Markdown can do
+    // (links, code, emphasis, tables, quotations, HTML, underlined headings,
+    // hard line breaks, indented blocks) comes in parts that only mean something
+    // together, and there is no end to the ways a cut can leave one part
+    // hanging. A section that holds any of it is taken unchanged or not at all.
+    const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
+    const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
+    const marked = /[`*_~<>[\]|\\]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
+    if (marked || runsOn) {
+      return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap) && body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
     }
     // A line that Markdown gives a shape (a list item, a table row, a quoted or
     // indented line) is kept whole or cut whole: taking the bullet off a
@@ -485,6 +475,10 @@ export function guardLockedRepair(
     }
     return true;
   };
+  // A report that holds a code fence anywhere is not taken apart: a fence can
+  // hold lines that look like headings, and one fence can sit inside another.
+  // Such a report is kept as it was unless the repair returned it unchanged.
+  if (/^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(before)) return { markdown: before, restored: before === after ? [] : ['(whole report)'], dropped: [] };
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
   if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading) };
