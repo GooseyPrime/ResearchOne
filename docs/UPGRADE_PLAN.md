@@ -27,7 +27,8 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 4, part 1. Live samples | Done | Produced 4 Oct 2026 with the per-run admin overrides; no switch was turned on for customers. See "What the live samples showed" under slice 4. |
 | Slice 4, part 2. Reference details and styles, with the sample fixes | Done | PR #250, with three late review findings closed in a follow-up pull request. Behind the same two switches, unset by default. See "As built, part 2" under slice 4. |
 | Slice 4, part 2. Second live samples | Done | Produced 5 Oct 2026. The broad report met the length, shape, numbering and wording points. The single-fact report lost its citations in a repair pass; fixed in the pull request that adds this row. See "What the second samples showed" under slice 4. |
-| Slice 4, parts 3 and 4 | Not started | Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order, each after the one before it is merged. |
+| Slice 4, part 3. DOI and retraction | Built, awaiting review | DOI resolution and retraction checking implemented. |
+| Slice 4, part 4. Quality judge | Not started | Next part in the sequence. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
@@ -513,6 +514,8 @@ Flags `CITATION_LOCK_ENABLED`, `DOI_RESOLVE_ENABLED`. This was slice 5; it moves
 - Check for retraction or correction notices using the Crossref record, and Scite when it is keyed. Store a nullable `editorial_notice`. A retracted source may be cited only with the retraction stated in the sentence, in plain words ("a 2019 study, since retracted, reported…").
 - When OpenAlex or PubMed Central offers an open full-text PDF, ingest it through the existing file pipeline and prefer its chunks over the abstract.
 - A statement whose only support is an abstract, when full text was available and unused, gets the lower internal grade. This is internal only.
+
+Built in part 3: DOI resolution and retraction checking are implemented behind the `DOI_RESOLVE_ENABLED` flag. Ingesting open full-text PDFs and the abstract-only grade are NOT built and remain for a later part.
 
 Acceptance:
 

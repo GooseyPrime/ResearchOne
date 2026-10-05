@@ -17,6 +17,7 @@ import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
 import { updateCitationDoiStatus } from '../verification/citationDoiResolver';
+import { areCitationsValidForSupport, getInvalidCitationsForSupport } from '../verification/citationValidation';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
@@ -49,7 +50,7 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
+import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
 import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
 import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
   guardLockedRepair,
@@ -3134,6 +3135,24 @@ ${reportForGates(generatedReport.markdown)}`,
         
         // Update DOI resolution status for citations
         await updateCitationDoiStatus(reportId);
+        
+        // Validate citations for support (check for unresolved/retracted citations)
+        // Only run if DOI resolution is enabled
+        if (doiResolveEnabled()) {
+          try {
+            const citationsValidForSupport = await areCitationsValidForSupport(reportId);
+            if (!citationsValidForSupport) {
+              // Get invalid citations for logging purposes
+              const invalidCitations = await getInvalidCitationsForSupport(reportId);
+              logger.info(`[citations:${runId}] Found ${invalidCitations.length} citations not valid for support`, {
+                invalidCitationStatuses: [...new Set(invalidCitations.map(ic => ic.resolveStatus))],
+                reportId
+              });
+            }
+          } catch (validationErr) {
+            logger.warn(`[citations:${runId}] Error validating citation support status:`, validationErr);
+          }
+        }
       } catch (epistemicErr) {
         // Do not fail the run if epistemic persistence fails — log and continue
         logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
