@@ -407,6 +407,13 @@ export function guardLockedRepair(
     const had = pieces(was);
     const has = pieces(now);
     if (had.length > 0 && has.length === 0) return false;
+    // Some constructs come in parts that only mean something together: a code
+    // fence and its close, an HTML comment or tag and its end, a reference link
+    // and its definition. Cutting one part changes what the reader sees of the
+    // other. A section that holds any of them is taken unchanged or not at all.
+    if (/^[ \t]{0,3}(?:`{3,}|~{3,})|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
+      return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap);
+    }
     // A code fence is cut with its partner or not at all: one left open turns
     // everything after it, the reference list included, into code.
     const fences = (text: string): number => (body(text).match(/^[ \t]{0,3}(?:```|~~~)/gm) ?? []).length;

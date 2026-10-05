@@ -548,8 +548,16 @@ describe('citation lock helpers', () => {
       const longer = quoted.replace('```markdown', '````markdown').replace('\n```\n', '\n````\n');
       expect(guardLockedRepair(longer, longer).restored).toEqual([]);
       expect(guardLockedRepair(longer, longer.replace('````markdown\n', '').replace('\n````\n', '\n')).restored).toEqual(['Limits of this report']);
-      // The whole block cut with both its fences is a cut.
-      expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual([]);
+      // A section holding a code block is taken unchanged or not at all, so even a clean cut of the block puts it back.
+      expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual(['Limits of this report']);
+      // The same for an HTML comment, and for a reference link and its definition.
+      const hidden = before.replace('The sources do not cover long-term follow-up.', 'The sources stop in 2023.\n\n<!--\n\nIt costs two million dollars.\n\n-->');
+      expect(guardLockedRepair(hidden, hidden.replace('<!--\n\n', '').replace('\n\n-->', '')).restored).toEqual(['Limits of this report']);
+      const referenced = before.replace('The sources do not cover long-term follow-up.', 'The [FDA][agency] has more.\n\n[agency]: https://www.fda.gov/source');
+      expect(guardLockedRepair(referenced, referenced).restored).toEqual([]);
+      expect(guardLockedRepair(referenced, referenced.replace('\n\n[agency]: https://www.fda.gov/source', '')).restored).toEqual(['Limits of this report']);
+      // Other sections of the same report can still be cut.
+      expect(guardLockedRepair(referenced, referenced.replace(' It treats sickle cell disease in patients aged 12 and older [P1, P2].', '')).restored).toEqual([]);
     });
 
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
