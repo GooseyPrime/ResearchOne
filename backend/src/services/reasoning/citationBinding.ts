@@ -3,7 +3,7 @@
  * tied to its section, its passage and its source, with a quote copied word for
  * word from the passage. Nothing here calls a model.
  */
-import { query, withTransaction } from '../../db/pool';
+import { withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import type { BoundCitation } from './citationLock';
 
@@ -72,26 +72,31 @@ export async function persistBoundCitations(args: { runId: string; reportId: str
 }
 
 /**
- * Save what the link check found beside each saved citation of a report.
- * Never throws. Before migration 059 the columns do not exist (42703) and the
- * note is skipped; any other failure is logged and also skipped.
+ * Save what the link check found beside each saved citation of a report, in
+ * the transaction that saves the citations, so the two cannot come apart.
+ * Before migration 059 the columns do not exist (42703): that one case is
+ * undone to a savepoint and skipped, leaving the transaction usable. Any other
+ * failure is thrown and fails the save, like any other part of it.
  */
-export async function recordDoiChecks(reportId: string, checks: Array<{ chunkId: string; status: string; notice: string | null }>): Promise<void> {
-  const groups = new Map<string, { status: string; notice: string | null; chunkIds: string[] }>();
+export async function recordDoiChecks(client: CitationWriter, reportId: string, checks: Array<{ chunkId: string; status: string | null; notice: string | null }>): Promise<void> {
+  if (checks.length === 0) return;
+  const groups = new Map<string, { status: string | null; notice: string | null; chunkIds: string[] }>();
   for (const check of checks) {
-    const key = `${check.status}\u0000${check.notice ?? ''}`;
+    const key = `${check.status ?? ''}\u0000${check.notice ?? ''}`;
     const group = groups.get(key) ?? { status: check.status, notice: check.notice, chunkIds: [] };
     group.chunkIds.push(check.chunkId);
     groups.set(key, group);
   }
-  for (const group of groups.values()) {
-    try {
-      await query(`UPDATE report_citations SET resolve_status=$2, editorial_notice=$3 WHERE report_id=$1 AND chunk_id = ANY($4::uuid[])`, [reportId, group.status, group.notice, group.chunkIds]);
-    } catch (err) {
-      const missingColumn = (err as { code?: string })?.code === '42703' && /resolve_status|editorial_notice/.test(String((err as Error)?.message ?? ''));
-      if (missingColumn) logger.debug('[citation-lock] link-check columns not present yet; note not saved', { reportId });
-      else logger.warn('[citation-lock] link-check note could not be saved', { reportId, err });
-      return;
+  await client.query('SAVEPOINT link_check_notes');
+  try {
+    for (const group of groups.values()) {
+      await client.query(`UPDATE report_citations SET resolve_status=$2, editorial_notice=$3 WHERE report_id=$1 AND chunk_id = ANY($4::uuid[])`, [reportId, group.status, group.notice, group.chunkIds]);
     }
+    await client.query('RELEASE SAVEPOINT link_check_notes');
+  } catch (err) {
+    const missingColumn = (err as { code?: string })?.code === '42703' && /resolve_status|editorial_notice/.test(String((err as Error)?.message ?? ''));
+    if (!missingColumn) throw err;
+    await client.query('ROLLBACK TO SAVEPOINT link_check_notes');
+    logger.debug('[citation-lock] link-check columns not present yet; note not saved', { reportId });
   }
 }

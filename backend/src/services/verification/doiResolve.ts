@@ -37,15 +37,17 @@ const axiosHttp: DoiHttp = {
       method,
       url,
       timeout: TIMEOUT_MS,
-      maxRedirects: 5,
+      // The resolver's own answer is the whole question: it redirects for a DOI
+      // it knows and says "not found" for one it does not. The redirect is never
+      // followed, so this server never requests an address a DOI's owner chose.
+      maxRedirects: 0,
       // Every status is an answer; only "no response" rejects.
       validateStatus: () => true,
       headers: { 'User-Agent': config.discovery.crossrefUserAgent },
-      // A GET is only asked whether the page exists; its body is not kept.
-      responseType: 'stream',
+      // Only the status is read.
+      maxContentLength: 64 * 1024,
+      responseType: 'text',
     });
-    const body = response.data as { destroy?: () => void } | undefined;
-    body?.destroy?.();
     return response.status;
   },
   async json(url) {
@@ -87,10 +89,12 @@ async function checkOne(doi: string, http: DoiHttp): Promise<DoiCheck> {
   let networkFailure = false;
   try {
     let code = await http.status('HEAD', address);
-    // Some publishers refuse HEAD; the page is asked for instead.
+    // Should the resolver refuse HEAD, the same address is asked for with GET.
     if (code === 403 || code === 405) code = await http.status('GET', address);
-    // A publisher that answers, even to say "not for robots", has the work. Only "not found" and server faults do not count.
-    status = code === 404 || code === 410 || code >= 500 ? 'unresolved' : 'resolved';
+    // A fault at the resolver is no answer about the DOI, the same as a timeout.
+    if (code >= 500) throw new Error(`resolver answered ${code}`);
+    // A redirect means the resolver knows the DOI. "Not found" and "gone" mean it does not.
+    status = code === 404 || code === 410 ? 'unresolved' : 'resolved';
   } catch (err) {
     networkFailure = true;
     logger.warn('[doi-resolve] no answer for a DOI', { doi, err: (err as Error)?.message });

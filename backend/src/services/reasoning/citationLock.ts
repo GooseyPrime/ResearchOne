@@ -179,7 +179,9 @@ export const RETRACTED_LABEL =
  * is not that, and does not let a retracted source through as standing evidence.
  */
 const WORK = '(?:study|studies|paper|article|trial|work|report|publication|review|analysis|findings?|results?|source|preprint|letter)';
-const SAYS_RETRACTED = new RegExp(
+/** "was not retracted", "no retraction of the paper was issued", "never withdrawn": a denial, which presents the work as standing. */
+const DENIES_RETRACTION = /\b(?:not|never|no|nor|neither|without|n't|n\u2019t|unretracted)\b[^.;:!?]{0,60}\b(?:retract\w*|withdraw\w*)|\b(?:retract\w*|withdraw\w*)\b[^.;:!?]{0,30}\b(?:not|never)\b/i;
+const AFFIRMS_RETRACTION = new RegExp(
   [
     '\\b(?:since|later|subsequently|now|was|were|been|is|are|being|then|eventually|formally)\\s+(?:\\w+\\s+){0,2}(?:retracted|withdrawn)\\b',
     `\\b(?:retracted|withdrawn)\\s+(?:\\w+\\s+){0,2}${WORK}\\b`,
@@ -187,6 +189,7 @@ const SAYS_RETRACTED = new RegExp(
   ].join('|'),
   'i'
 );
+const SAYS_RETRACTED = { test: (sentence: string): boolean => AFFIRMS_RETRACTION.test(sentence) && !DENIES_RETRACTION.test(sentence) };
 
 /**
  * Markers of retracted sources cited in a sentence that does not say the work

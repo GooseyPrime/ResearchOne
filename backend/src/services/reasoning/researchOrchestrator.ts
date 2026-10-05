@@ -2376,6 +2376,16 @@ async function runResearchJobInner(
             // With every passage gone there is nothing to write from. That is a
             // judgement about the check, not the sources: keep them all.
             if (applied.chunks.length > 0) {
+              if (applied.dropped > 0) {
+                // A source left out supports nothing, so it is not counted as
+                // read either: the gates, the "sources read" line and the saved
+                // counts below all work from what is left. What retrieval
+                // returned is already recorded on the run.
+                const kept = new Set(applied.chunks.map((chunk) => chunk.id));
+                const keptUsed = usedSources.filter((_source, index) => kept.has(allChunks[index].id));
+                usedSources.splice(0, usedSources.length, ...keptUsed);
+                allChunks.splice(0, allChunks.length, ...applied.chunks);
+              }
               lockChunks = applied.chunks;
               lockSources = applied.sources;
               lockRetracted = applied.retracted;
@@ -3950,6 +3960,8 @@ export async function saveReport(args: {
         reportId,
         bound: assignOccurrencesToSections(sections, lockedOccurrences),
       });
+      // What the link check found, saved with the citations it is about.
+      if (doiChecks && doiChecks.length > 0) await recordDoiChecks(client as unknown as CitationWriter, reportId, doiChecks);
     }
 
     // Store verification metadata
@@ -3979,10 +3991,6 @@ export async function saveReport(args: {
       ]
     );
   });
-
-  // What the link check found, saved beside each citation. An addition: the
-  // report is already committed, and a failure here loses only the note.
-  if (doiChecks && doiChecks.length > 0) await recordDoiChecks(reportId, doiChecks);
 
   // Best-effort retention timestamps. Finalized report retention is applied only
   // when all gates pass; non-passing reports remain under review.

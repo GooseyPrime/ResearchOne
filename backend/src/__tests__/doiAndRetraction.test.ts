@@ -7,7 +7,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({ calls: [] as Array<{ sql: string; params: unknown[] }>, fail: null as null | { code?: string; message: string } }));
 vi.mock('../db/pool', () => ({
@@ -82,6 +82,21 @@ describe('checking DOIs', () => {
     expect(http.asked.filter((line) => line.startsWith('GET '))).toHaveLength(1);
     const refused = fakeHttp({ '10.1000/shy': { HEAD: 403, GET: 404 } });
     expect((await checkDois(['10.1000/shy'], refused)).get('10.1000/shy')?.status).toBe('unresolved');
+  });
+
+  it('takes a redirect from the resolver as the answer, and never follows it', async () => {
+    const http = fakeHttp({ '10.1000/known': { HEAD: 302 } });
+    expect((await checkDois(['10.1000/known'], http)).get('10.1000/known')?.status).toBe('resolved');
+    expect(http.asked.filter((line) => !line.startsWith('JSON ')).every((line) => line.includes('https://doi.org/'))).toBe(true);
+    const source = readFileSync(join(__dirname, '../services/verification/doiResolve.ts'), 'utf8');
+    expect(source).toMatch(/maxRedirects: 0,/);
+  });
+
+  it('treats a fault at the resolver as no answer, so a resolver outage leaves every source in', async () => {
+    const results = await checkDois(['10.1000/a', '10.1000/b'], fakeHttp({ '10.1000/a': { HEAD: 503 }, '10.1000/b': { HEAD: 500 } }));
+    expect([...results.values()].map((result) => result.status)).toEqual(['unknown', 'unknown']);
+    const one = await checkDois(['10.1000/a', '10.1000/ok'], fakeHttp({ '10.1000/a': { HEAD: 503 }, '10.1000/ok': { HEAD: 200 } }));
+    expect(one.get('10.1000/a')).toMatchObject({ status: 'unresolved', networkFailure: true });
   });
 
   it('marks a DOI that never answers as unresolved, without throwing', async () => {
@@ -175,6 +190,10 @@ describe('what a locked report may cite after the link check', () => {
     // The word as a topic is not a statement about the cited work.
     expect(unstatedRetractions('Retraction rates were low, while the trial reported benefit [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('Journals retract few papers; the trial reported benefit [P2].', shown)).toEqual(['P2']);
+    // A denial presents the work as standing.
+    expect(unstatedRetractions('The study was not retracted [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('No retraction of the paper was issued [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('The trial was never withdrawn [P2].', shown)).toEqual(['P2']);
     // Saying so in a neighbouring sentence is not saying so in the sentence.
     expect(unstatedRetractions('One study was retracted. The trial found a large effect [P2].', shown)).toEqual(['P2']);
   });
@@ -228,27 +247,56 @@ describe('the harness score', () => {
 });
 
 describe('saving what the link check found', () => {
-  beforeEach(() => {
-    db.calls.length = 0;
-    db.fail = null;
-  });
+  function client(fail: null | { code?: string; message: string } = null) {
+    const calls: Array<{ sql: string; params?: unknown[] }> = [];
+    return {
+      calls,
+      async query(sql: string, params?: unknown[]) {
+        calls.push({ sql, params });
+        if (fail && sql.startsWith('UPDATE')) throw Object.assign(new Error(fail.message), { code: fail.code });
+        return { rows: [] };
+      },
+    };
+  }
 
-  it('writes one update per finding', async () => {
-    await recordDoiChecks('r1', [
+  it('writes one update per finding, inside the caller\'s transaction', async () => {
+    const tx = client();
+    await recordDoiChecks(tx, 'r1', [
       { chunkId: 'c1', status: 'resolved', notice: null },
       { chunkId: 'c3', status: 'resolved', notice: null },
       { chunkId: 'c2', status: 'resolved', notice: 'The publisher has retracted this work.' },
     ]);
-    expect(db.calls).toHaveLength(2);
-    expect(db.calls[0].params).toEqual(['r1', 'resolved', null, ['c1', 'c3']]);
-    expect(db.calls[1].params).toEqual(['r1', 'resolved', 'The publisher has retracted this work.', ['c2']]);
+    expect(tx.calls.map((call) => call.sql.split(' ')[0])).toEqual(['SAVEPOINT', 'UPDATE', 'UPDATE', 'RELEASE']);
+    expect(tx.calls[1].params).toEqual(['r1', 'resolved', null, ['c1', 'c3']]);
+    expect(tx.calls[2].params).toEqual(['r1', 'resolved', 'The publisher has retracted this work.', ['c2']]);
+    expect(db.calls).toHaveLength(0);
   });
 
-  it('carries on when the columns are not there yet, or the save fails', async () => {
-    db.fail = { code: '42703', message: 'column "resolve_status" of relation "report_citations" does not exist' };
-    await expect(recordDoiChecks('r1', [{ chunkId: 'c1', status: 'resolved', notice: null }])).resolves.toBeUndefined();
-    db.fail = { message: 'connection lost' };
-    await expect(recordDoiChecks('r1', [{ chunkId: 'c1', status: 'resolved', notice: null }])).resolves.toBeUndefined();
+  it('skips the note, and keeps the transaction usable, when the columns are not there yet', async () => {
+    const tx = client({ code: '42703', message: 'column "resolve_status" of relation "report_citations" does not exist' });
+    await expect(recordDoiChecks(tx, 'r1', [{ chunkId: 'c1', status: 'resolved', notice: null }])).resolves.toBeUndefined();
+    expect(tx.calls.at(-1)?.sql).toBe('ROLLBACK TO SAVEPOINT link_check_notes');
+  });
+
+  it('fails the save on any other fault, and asks nothing when there is nothing to save', async () => {
+    await expect(recordDoiChecks(client({ message: 'connection lost' }), 'r1', [{ chunkId: 'c1', status: 'resolved', notice: null }])).rejects.toThrow('connection lost');
+    await expect(recordDoiChecks(client({ code: '42703', message: 'column "other" does not exist' }), 'r1', [{ chunkId: 'c1', status: 'resolved', notice: null }])).rejects.toThrow();
+    const idle = client();
+    await recordDoiChecks(idle, 'r1', []);
+    expect(idle.calls).toHaveLength(0);
+  });
+
+  it('is carried into a revision, and saved with the report', () => {
+    const revision = readFileSync(join(__dirname, '../services/reasoning/reportRevisionService.ts'), 'utf8');
+    expect(revision).toContain(`to_jsonb(rc)->>'resolve_status' AS resolve_status, to_jsonb(rc)->>'editorial_notice' AS editorial_notice`);
+    expect(revision).toMatch(/await recordDoiChecks\(\s*client as unknown as CitationWriter,\s*revisedReportId/);
+    expect(orchestratorSource).toMatch(/await recordDoiChecks\(client as unknown as CitationWriter, reportId, doiChecks\)/);
+  });
+});
+
+describe('a source left out is not counted as read', () => {
+  it('takes it out of what the gates, the reader line and the saved counts work from', () => {
+    expect(orchestratorSource).toMatch(/usedSources\.splice\(0, usedSources\.length, \.\.\.keptUsed\);\s*allChunks\.splice\(0, allChunks\.length, \.\.\.applied\.chunks\);/);
   });
 });
 
