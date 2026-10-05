@@ -226,8 +226,14 @@ describe('a pipeline role named in a sentence', () => {
     expect(removeBannedWording('The figures are uncertain, as noted by the quantitative quality auditor [1].')).toBe('The figures are uncertain, as noted by this analysis [1].');
   });
 
+  it('is found without "the", and takes a capital only where a sentence starts', () => {
+    expect(removeBannedWording('Quantitative Quality Auditor found that costs rose [1].')).toBe('This analysis found that costs rose [1].');
+    expect(removeBannedWording('Costs rose, as noted by Quantitative Quality Auditor [1].')).toBe('Costs rose, as noted by this analysis [1].');
+    expect(readerFacingLabelHits('Costs rose. Contract auditor flagged two gaps [1].')).toContain('internal step');
+  });
+
   it('is left alone where it is the subject matter', () => {
-    const subject = 'A contract auditor checks invoices against the agreed terms [1]. Hiring a market scout or a data analysis specialist costs more [2]. The work of the contract auditor is set by statute [3].';
+    const subject = 'A contract auditor reports to the board and checks invoices [1]. An independent market scout found three sites [4]. Hiring a market scout or a data analysis specialist costs more [2]. The work of the contract auditor is set by statute [3].';
     expect(readerFacingLabelHits(subject)).toEqual([]);
     expect(removeBannedWording(subject)).toBe(subject);
   });

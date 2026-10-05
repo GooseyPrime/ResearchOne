@@ -246,7 +246,9 @@ export function bibliographicRecord(details: NonNullable<ReturnType<typeof store
 
 /**
  * Reference details for a source that is already stored. They fill what the
- * stored record lacks; nothing already recorded is overwritten.
+ * stored record lacks; nothing already recorded is overwritten. That holds key
+ * by key for the record kept under the source's metadata too: a stored record
+ * that names only a provider gains the kind a later record supplies.
  */
 export async function fillReferenceDetails(
   sourceId: string,
@@ -257,10 +259,13 @@ export async function fillReferenceDetails(
         SET authors = COALESCE(authors, $2::text[]),
             publication = COALESCE(publication, $3),
             published_at = COALESCE(published_at, $4::timestamptz),
-            metadata = CASE
-              WHEN COALESCE(metadata, '{}'::jsonb) ? 'bibliographic' THEN metadata
-              ELSE COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('bibliographic', $5::jsonb)
-            END
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+              'bibliographic',
+              CASE
+                WHEN jsonb_typeof(metadata->'bibliographic') = 'object' THEN $5::jsonb || (metadata->'bibliographic')
+                ELSE $5::jsonb
+              END
+            )
       WHERE id = $1`,
     [sourceId, details.authors, details.publisher, details.publishedAt, JSON.stringify(bibliographicRecord(details))]
   );

@@ -35,8 +35,15 @@ const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes
   .join('|');
 const ROLE_SAYS =
   '(?:notes?|noted|finds?|found|flags?|flagged|identifie[sd]|reports?|reported|observe[sd]|concludes?|concluded|states?|stated|determine[sd]|confirms?|confirmed|warns?|warned|raise[sd]|points?\\s+out|pointed\\s+out|highlights?|highlighted|cautions?|cautioned|verifie[sd]|agent|stage|step|pass)';
+/** A word before the name that makes it an occupation ("a contract auditor"), not the pipeline's own role. */
+const NOT_OUR_ROLE = '(?<!\\b(?:a|an|any|each|every|one|your|our|their|his|her|its|this|that|no|some|another|independent|external|internal|senior|junior|qualified|licensed|certified)\\s)';
 export const SPOKEN_ROLE_NAME = new RegExp(
-  `(?:(?<=\\b(?:by|from|per|according\\s+to)\\s)the\\s+(?:${SPOKEN_ROLE_PATTERN})\\b|\\bthe\\s+(?:${SPOKEN_ROLE_PATTERN})\\b(?=\\s+${ROLE_SAYS}\\b))`,
+  '(?:' +
+    // Credited after a preposition: "as noted by (the) quantitative quality auditor".
+    `(?<=\\b(?:by|from|per|according\\s+to)\\s)(?:the\\s+)?(?:${SPOKEN_ROLE_PATTERN})\\b` +
+    // Credited as the one who says: "(The) quantitative quality auditor found".
+    `|${NOT_OUR_ROLE}\\b(?:the\\s+)?(?:${SPOKEN_ROLE_PATTERN})\\b(?=\\s+${ROLE_SAYS}\\b)` +
+    ')',
   'gi'
 );
 

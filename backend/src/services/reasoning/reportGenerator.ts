@@ -952,7 +952,10 @@ export function removeBannedWording(content: string): string {
       .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
       .replace(/\btestimony[- ]tier\b/gi, 'first-hand')
       // A role of the pipeline named in a sentence: the reader is told who said it in plain words.
-      .replace(SPOKEN_ROLE_NAME, (name) => (name[0] === 'T' ? 'This analysis' : 'this analysis'));
+      .replace(SPOKEN_ROLE_NAME, (_name: string, offset: number, whole: string) =>
+        // Capital only where a sentence starts; a role written in capitals mid-sentence is not one.
+        /(?:^|[.!?]\s+|\n\s*(?:[-*+]\s+)?)$/.test(whole.slice(0, offset)) ? 'This analysis' : 'this analysis'
+      );
   // The report's own wording only: a direct quotation keeps the source's words.
   const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
   // A link's label is prose the reader sees; its destination is not.
@@ -1849,14 +1852,9 @@ ${layer1
   };
   // Section by section first, then the whole: a report is not longer than its
   // length because each of its sections was allowed to run a little over.
-  const cleaned = layer1
-    ? fitToTotal(
-        removeRepeatedSentences(prepared).map(sized),
-        targetWordCount,
-        sectionWords,
-        (key) => isSizedReaderSection(key) && !isLimitsSection(key) && key !== 'key_findings'
-      )
-    : prepared;
+  const fitted = (drafts: ReportSectionDraft[]): ReportSectionDraft[] =>
+    fitToTotal(drafts.map(sized), targetWordCount, sectionWords, (key) => isSizedReaderSection(key) && !isLimitsSection(key) && key !== 'key_findings');
+  const cleaned = layer1 ? fitted(removeRepeatedSentences(prepared)) : prepared;
   // With the citation lock on, markers stay as issued. The caller numbers them
   // and adds the reference list and closing note just before the report is saved,
   // after verification and repair, so those steps cannot break the binding.
@@ -1906,6 +1904,15 @@ ${layer1
     // that still fails; citations stay where they are. Only prose is touched:
     // code and link destinations are left exactly as written, as the check
     // that found the wording never read them.
+    // The redraft is one more rewrite, and it can lengthen a section or undo its
+    // shape. What it returned is held to the same sizes as the draft it replaced;
+    // the reference list and closing note are not part of the report's length.
+    if (parsed) {
+      const isSystem = (section: ReportSectionDraft): boolean => section.key === 'references' || section.key === 'about';
+      const resized = fitted(sectionsOut.filter((section) => !isSystem(section)));
+      let next = 0;
+      sectionsOut = sectionsOut.map((section) => (isSystem(section) ? section : resized[next++]));
+    }
     // The reference list is the sources' own titles, never reworded.
     sectionsOut = sectionsOut.map((section) =>
       section.key !== 'references' && readerFailures(`${section.title}\n\n${section.content}`).length > 0
