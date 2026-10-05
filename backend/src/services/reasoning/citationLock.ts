@@ -356,7 +356,9 @@ export function guardLockedRepair(
   /** A section's sentences, heading lines and list items in order, exactly as written apart from the spacing between words. */
   const pieces = (text: string): string[] =>
     sentencePieces(body(text))
-      .map((piece) => piece.text.replace(/\s+/g, ' ').trim())
+      // Spacing between words is not content. Indentation at the start of a
+      // line is: four spaces turn a sentence into a code block.
+      .map((piece) => piece.text.replace(/^(?:[ \t]*\n)+/, '').replace(/(\S)\s+/g, '$1 ').trimEnd())
       .filter((piece) => piece.length > 0);
   /**
    * A locked repair may cut, and nothing else. It was shown the report and not
@@ -399,7 +401,9 @@ export function guardLockedRepair(
     // Citations stay on the statements they were written for, and the repair
     // has only cut.
     const sound = now !== undefined && markersPreserved(block.text, now, { allowRemoval: true }) && onlyCuts(block.text, now);
-    if (sound) return now as string;
+    // The heading line is the report's own: sections are matched by heading
+    // with decoration ignored, so the repair's spelling of it is not taken.
+    if (sound) return `${block.text.split('\n')[0]}\n${body(now as string)}`.trimEnd();
     restored.push(block.heading);
     return block.text;
   });

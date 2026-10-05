@@ -517,6 +517,16 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(figures, figures.replace(' Costs were not reported [P2].', '')).restored).toEqual([]);
     });
 
+    it('keeps the report\'s own heading line and does not accept a change of indentation', () => {
+      const sharp = before.replace('## Limits of this report', '## C# limits');
+      const guarded = guardLockedRepair(sharp, sharp.replace('## C# limits', '## C limits'));
+      expect(guarded.markdown).toContain('## C# limits\nThe sources do not cover long-term follow-up.');
+      expect(guarded.markdown).not.toContain('## C limits');
+      expect(guardLockedRepair(before, before.replace('The sources do not cover', '    The sources do not cover')).restored).toEqual(['Limits of this report']);
+      // A sentence wrapped onto two lines is the same sentence.
+      expect(guardLockedRepair(before, before.replace('do not cover long-term', 'do not cover\nlong-term')).restored).toEqual([]);
+    });
+
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
       const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
       const repair = source.slice(source.indexOf('const beforeRepair = generatedReport.markdown;'), source.indexOf('ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);', source.indexOf('const beforeRepair = generatedReport.markdown;')));
