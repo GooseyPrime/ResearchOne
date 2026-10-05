@@ -2810,7 +2810,7 @@ ${reportForGates(generatedReport.markdown)}`,
           markdown: generatedReport.markdown,
           revisionInstructions,
           // With the citation lock the repair is not shown the passages, so it
-          // cannot write a new section that could be cited. It rewords and cuts.
+          // cannot write a new section that could be cited. It may only cut.
           missingRequirements: lockedPassages
             ? []
             : (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [],

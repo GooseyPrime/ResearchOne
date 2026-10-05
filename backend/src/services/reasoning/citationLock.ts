@@ -331,7 +331,7 @@ export const LOCKED_REPAIR_RULE =
   'You have not been shown the sources, so you may only cut. Remove the sentences the requirements object to; ' +
   'keep every other sentence exactly as written, with its citation marker such as [P3] attached. ' +
   'Do not remove a citation from a sentence you keep. Do not reword, and do not add a sentence, a citation, a source, a link, a heading or a section. ' +
-  'Return every section, including those you did not change.';
+  'Return every section you were shown, including those you did not change.';
 
 /**
  * A repair of a report written with the citation lock, held to what a repair
@@ -363,7 +363,20 @@ export function guardLockedRepair(
   const pieces = (text: string): Array<{ text: string; gap: number }> => {
     const out: Array<{ text: string; gap: number }> = [];
     let gap = 2;
-    for (const piece of sentencePieces(body(text))) {
+    // A fenced block is one piece: kept whole or cut whole. Taking off only its
+    // fences would turn what it quotes into headings and lists of the report.
+    const fenced = /^[ \t]{0,3}(```|~~~)[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$/gm;
+    const parts: Array<{ text: string; block: boolean }> = [];
+    let cursor = 0;
+    const whole = body(text);
+    for (const match of whole.matchAll(fenced)) {
+      const start = match.index ?? 0;
+      parts.push({ text: whole.slice(cursor, start), block: false }, { text: match[0], block: true });
+      cursor = start + match[0].length;
+    }
+    parts.push({ text: whole.slice(cursor), block: false });
+    const stream = parts.flatMap((part) => (part.block ? [{ start: 0, text: `\n\n${part.text}\n` }] : sentencePieces(part.text)));
+    for (const piece of stream) {
       if (/^\s*$/.test(piece.text)) {
         const breaks = (piece.text.match(/\n/g) ?? []).length;
         gap = Math.max(gap, Math.min(2, breaks));

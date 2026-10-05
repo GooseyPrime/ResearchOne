@@ -542,6 +542,9 @@ describe('citation lock helpers', () => {
       const coded = before.replace('The sources do not cover long-term follow-up.', 'The command is this.\n\n```text\nrun --all.\n```\n\nNothing else is covered.');
       expect(guardLockedRepair(coded, coded).restored).toEqual([]);
       expect(guardLockedRepair(coded, coded.replace('run --all.\n```\n', 'run --all.\n')).restored).toEqual(['Limits of this report']);
+      // Both fences taken off, leaving what the block quoted as part of the report.
+      const quoted = before.replace('The sources do not cover long-term follow-up.', 'An example follows.\n\n```markdown\n### Pricing\nIt costs two million dollars.\n```\n\nNothing else is covered.');
+      expect(guardLockedRepair(quoted, quoted.replace('```markdown\n', '').replace('\n```\n', '\n')).restored).toEqual(['Limits of this report']);
       // The whole block cut with both its fences is a cut.
       expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual([]);
     });
@@ -559,6 +562,7 @@ describe('citation lock helpers', () => {
     it('tells the repair what it may not do', () => {
       expect(LOCKED_REPAIR_RULE).toContain('Do not remove a citation from a sentence you keep.');
       expect(LOCKED_REPAIR_RULE).toContain('you may only cut');
+      expect(LOCKED_REPAIR_RULE).toContain('Return every section you were shown');
       expect(LOCKED_REPAIR_RULE).toContain('do not add a sentence, a citation, a source, a link, a heading or a section');
     });
   });
