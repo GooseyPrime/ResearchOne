@@ -1,4 +1,4 @@
-import { CLAIM_WORD, SPOKEN_ROLE_NAME, mapCitationProse, mapLinkLabels, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
+import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { logger } from '../../utils/logger';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
@@ -939,7 +939,9 @@ export function removeBannedWording(content: string): string {
     falsified: 'disproved',
   };
   const clean = (text: string): string =>
-    text
+    // A role of the pipeline credited in a sentence: the reader is told who said it in plain words.
+    replaceSpokenRoles(
+      text
       // In brackets first, so no empty pair is left behind.
       .replace(/[ \t]*[[(]\s*(?:established[_ ]fact|strong[_ ]evidence)\s*[\])]/gi, '')
       .replace(/[ \t]*\b(?:established_fact|strong_evidence)\b/gi, '')
@@ -950,12 +952,10 @@ export function removeBannedWording(content: string): string {
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
       .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
       .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
-      .replace(/\btestimony[- ]tier\b/gi, 'first-hand')
-      // A role of the pipeline named in a sentence: the reader is told who said it in plain words.
-      .replace(SPOKEN_ROLE_NAME, (_name: string, offset: number, whole: string) =>
-        // Capital only where a sentence starts; a role written in capitals mid-sentence is not one.
-        /(?:^|[.!?]\s+|\n\s*(?:[-*+]\s+)?)$/.test(whole.slice(0, offset)) ? 'This analysis' : 'this analysis'
-      );
+      .replace(/\btestimony[- ]tier\b/gi, 'first-hand'),
+      (sentenceStart) => (sentenceStart ? 'This analysis' : 'this analysis')
+    );
+
   // The report's own wording only: a direct quotation keeps the source's words.
   const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
   // A link's label is prose the reader sees; its destination is not.
