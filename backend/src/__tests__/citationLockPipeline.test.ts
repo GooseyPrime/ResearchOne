@@ -518,6 +518,12 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(inline, inline.replace('An opening sentence. ', '')).restored).toEqual(['Limits of this report']);
     });
 
+    it('does not cut inside a link or code span that runs across sentences', () => {
+      const spanning = before.replace('The sources do not cover long-term follow-up.', '[Background first. The agency page.](https://www.fda.gov/casgevy) The sources stop in 2023 [P2].');
+      expect(guardLockedRepair(spanning, spanning).restored).toEqual([]);
+      expect(guardLockedRepair(spanning, spanning.replace('[Background first. ', '')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not let a parent sub-heading go while its child stays', () => {
       const tree = before.replace('The sources do not cover long-term follow-up.', '### Parent\nAn introduction [P1].\n#### Child\nA detail [P2].');
       expect(guardLockedRepair(tree, tree.replace('### Parent\nAn introduction [P1].\n', '')).restored).toEqual(['Limits of this report']);

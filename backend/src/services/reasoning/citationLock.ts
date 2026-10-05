@@ -409,7 +409,7 @@ export function guardLockedRepair(
     // A section that had something to say still says something: a heading
     // with nothing under it is not content.
     const substance = (entries: Array<{ text: string }>): number =>
-      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text)).length;
+      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text) && !/\n[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(entry.text)).length;
     if (substance(had) > 0 && substance(has) === 0) return false;
     // Some constructs come in parts that only mean something together: a code
     // fence and its close, an HTML comment or tag and its end, a reference link
@@ -419,7 +419,18 @@ export function guardLockedRepair(
     // line of its own without a marker: cut the first line and the second
     // stops being part of it.
     const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|>)[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|>|\|)\S/m.test(body(was));
-    if (runsOn || /^[ \t]{0,3}(?:`{3,}|~{3,})|^[ \t]{0,3}>|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
+    // And so does a link, a code span or emphasis that opens in one sentence
+    // and closes in another: cut either sentence and the marks are left hanging.
+    const tally = (text: string, mark: string): number => text.split(mark).length - 1;
+    const spans = had.some(
+      (piece) =>
+        tally(piece.text, '[') !== tally(piece.text, ']') ||
+        tally(piece.text, '(') !== tally(piece.text, ')') ||
+        tally(piece.text, '`') % 2 === 1 ||
+        tally(piece.text, '**') % 2 === 1 ||
+        tally(piece.text, '~~') % 2 === 1
+    );
+    if (spans || runsOn || /^[ \t]{0,3}(?:`{3,}|~{3,})|^[ \t]{0,3}>|<!--|<\/?[a-z][^>\n]*>|^[ \t]{0,3}\[[^\]\n]+\]:|\[[^\]\n]+\]\[[^\]\n]*\]/im.test(body(was))) {
       return had.length === has.length && had.every((piece, index) => piece.text === has[index].text && piece.gap === has[index].gap);
     }
     // A line that Markdown gives a shape (a list item, a table row, a quoted or
