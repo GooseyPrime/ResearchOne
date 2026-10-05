@@ -326,7 +326,6 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
   });
 }
 
-const CITATION_MARKER = /\[\s*P\d+(?:\s*,\s*P\d+)*\s*\]/g;
 const LINK_OR_URL = /\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)>\]]+/g;
 
 /** Told to a repair of a report written with the citation lock. */
@@ -340,8 +339,9 @@ export const LOCKED_REPAIR_RULE =
  * may do. The repair is shown the report and not the passages, so it can
  * reword and it can cut, and nothing more:
  *
- *  - a section that came back with every one of its citations gone is put back
- *    as it was. A repair once returned a correct, cited report as five bare
+ *  - a section in which a kept sentence lost its citation, or a citation was
+ *    moved or added, is put back as it was. Cutting a cited sentence whole is
+ *    allowed. A repair once returned a correct, cited report as five bare
  *    sentences, and the report was saved with no citations and no references;
  *  - a section the report did not have is not added. It was written from no
  *    passage, so nothing in it can be cited or checked;
@@ -353,7 +353,8 @@ export function guardLockedRepair(
   before: string,
   after: string
 ): { markdown: string; restored: string[]; dropped: string[]; linksRemoved: number } {
-  const count = (text: string): number => (text.match(CITATION_MARKER) ?? []).length;
+  // The same marker forms the lock reads everywhere else: either case, and grouped.
+  const count = (text: string): number => (text.match(new RegExp(MARKER_GROUP.source, MARKER_GROUP.flags.includes('g') ? MARKER_GROUP.flags : `${MARKER_GROUP.flags}g`)) ?? []).length;
   const key = (heading: string): string => heading.toLowerCase().replace(/\s+/g, ' ').trim();
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
@@ -367,7 +368,9 @@ export function guardLockedRepair(
       dropped.push(block.heading);
       continue;
     }
-    if (count(was) > 0 && count(block.text) === 0) {
+    // Statement by statement: a cited sentence may be cut with its citation, but
+    // a sentence that is kept keeps its citation, and no citation moves or is added.
+    if (count(was) > 0 && !markersPreserved(was, block.text, { allowRemoval: true })) {
       restored.push(block.heading);
       kept.push(was);
     } else {

@@ -395,6 +395,25 @@ describe('citation lock helpers', () => {
       expect(guarded.markdown).not.toContain('patients aged 12 and older');
     });
 
+    it('puts a section back when one kept sentence lost its citation and another kept its own', () => {
+      const after = before.replace('- The approval came on 8 December 2023 [P1].', '- The approval came on 8 December 2023.');
+      const guarded = guardLockedRepair(before, after);
+      expect(guarded.restored).toEqual(['Key findings']);
+      expect(guarded.markdown).toContain('- The approval came on 8 December 2023 [P1].');
+    });
+
+    it('puts a section back when a citation was moved to another statement', () => {
+      const after = before.replace('- The approval came on 8 December 2023 [P1].\n- Eligible patients have recurrent crises [P2].', '- The approval came on 8 December 2023 [P2].\n- Eligible patients have recurrent crises [P1].');
+      expect(guardLockedRepair(before, after).restored).toEqual(['Key findings']);
+    });
+
+    it('reads lower-case and grouped markers as citations', () => {
+      const grouped = '## Summary\nThe FDA approved Casgevy on 8 December 2023 [p1]. It treats sickle cell disease [P1 and P2].';
+      const guarded = guardLockedRepair(grouped, '## Summary\nThe FDA approved Casgevy on 8 December 2023. It treats sickle cell disease.');
+      expect(guarded.restored).toEqual(['Summary']);
+      expect(guarded.markdown).toContain('[p1]');
+    });
+
     it('does not add a section the repair wrote from no passage, or a link the report did not have', () => {
       const after = `${before}\n\n## Report lacks a citation\nThe approval is confirmed by the agency. Source: [FDA press release](https://www.fda.gov/invented-page).`;
       const guarded = guardLockedRepair(before, after);
