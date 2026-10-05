@@ -172,6 +172,8 @@ describe('reference details through discovery', () => {
     expect(JSON.parse(String(record))).toEqual({ provider: 'openalex', kind: 'journal article', authors: ['Jessica R. Lovering'] });
     // Fills gaps only: nothing a stored source already records is replaced.
     expect(fills()[0].sql).toContain('authors = COALESCE(authors,');
+    // The record kept under metadata is merged key by key, stored keys first.
+    expect(fills()[0].sql).toContain("$5::jsonb || (metadata->'bibliographic')");
   });
 
   it('finishes the run when the stored source cannot be updated', async () => {

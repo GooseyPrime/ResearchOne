@@ -35,10 +35,52 @@ const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes
   .join('|');
 const ROLE_SAYS =
   '(?:notes?|noted|finds?|found|flags?|flagged|identifie[sd]|reports?|reported|observe[sd]|concludes?|concluded|states?|stated|determine[sd]|confirms?|confirmed|warns?|warned|raise[sd]|points?\\s+out|pointed\\s+out|highlights?|highlighted|cautions?|cautioned|verifie[sd]|agent|stage|step|pass)';
-export const SPOKEN_ROLE_NAME = new RegExp(
-  `(?:(?<=\\b(?:by|from|per|according\\s+to)\\s)the\\s+(?:${SPOKEN_ROLE_PATTERN})\\b|\\bthe\\s+(?:${SPOKEN_ROLE_PATTERN})\\b(?=\\s+${ROLE_SAYS}\\b))`,
-  'gi'
+const ROLE_EMPHASIS = '(?:\\*\\*|__|\\*|_)?';
+const ROLE_NAME = new RegExp(
+  `(?<![\\p{L}\\p{N}_])${ROLE_EMPHASIS}(?:the\\s+)?(${SPOKEN_ROLE_PATTERN})(?=\\b|_{1,2}(?:\\W|$))${ROLE_EMPHASIS}`,
+  'giu'
 );
+const SAYS_NEXT = new RegExp(`^\\s+${ROLE_SAYS}\\b`, 'i');
+const CREDIT_BEFORE = /\b(?:by|from|per|according\s+to)\s$/i;
+/** Text that ends where a sentence starts: the start, a sentence end or a new line, then any list marker and opening punctuation. */
+const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'\u201C\u2018([]*$/;
+
+/** Whether the text before `offset` ends where a sentence starts. */
+export function startsSentence(whole: string, offset: number): boolean {
+  return SENTENCE_START.test(whole.slice(0, offset));
+}
+
+/**
+ * Pipeline roles credited in a sentence, replaced by what `swap` returns. A
+ * name counts only where the sentence credits it (after "by", "from", "per" or
+ * "according to", or before a verb of saying). Without "the" it needs one more
+ * sign that it is a name and not an occupation: it follows one of those
+ * prepositions, it is written as a title ("Quantitative Quality Auditor"), or
+ * it opens the sentence. "A highly experienced contract auditor reports to the
+ * board" has none of these and is left as written.
+ */
+export function replaceSpokenRoles(text: string, swap: (sentenceStart: boolean) => string): string {
+  return text.replace(ROLE_NAME, (match: string, name: string, offset: number, whole: string) => {
+    const afterCredit = CREDIT_BEFORE.test(whole.slice(0, offset));
+    const says = SAYS_NEXT.test(whole.slice(offset + match.length));
+    if (!afterCredit && !says) return match;
+    const sentenceStart = startsSentence(whole, offset);
+    const hasArticle = /^(?:(?:\*{1,2}|_{1,2}))?the\s+/i.test(match);
+    const titled = name.split(/[_ ]/).every((word) => /^\p{Lu}/u.test(word));
+    if (!hasArticle && !afterCredit && !titled && !sentenceStart) return match;
+    return swap(sentenceStart);
+  });
+}
+
+/** Whether a sentence in the text credits a pipeline role. */
+export function namesSpokenRole(text: string): boolean {
+  let found = false;
+  replaceSpokenRoles(text, () => {
+    found = true;
+    return '';
+  });
+  return found;
+}
 
 /**
  * "Claim" in the sense the report standard bans: a word for what a source or
@@ -377,7 +419,7 @@ export function readerFacingLabelHits(text: string): string[] {
   const seen = `${proseOf(own)}\uE004${body}`;
   if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
   // A role named in a sentence is an internal step on the page, brackets or not.
-  if (new RegExp(SPOKEN_ROLE_NAME.source, 'i').test(body) && !hits.includes('internal step')) hits.push('internal step');
+  if (namesSpokenRole(body) && !hits.includes('internal step')) hits.push('internal step');
   // What a source says in its own words stays as it said it; the report's own wording is checked.
   let ownWords = '';
   mapOutsideQuotes(body, (part) => {

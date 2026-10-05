@@ -14,6 +14,7 @@ let bulletsNeverCome = false;
 let limitsAsList = false;
 let limitsIsLong = false;
 let everySectionLong = false;
+let redraftExpands = false;
 
 const sentence = (n: number, marker: string) => `Finding number ${n} adds one more separate detail about the construction programme ${marker}.`;
 const LONG_BODY = Array.from({ length: 120 }, (_, index) => sentence(index + 1, '[P2]')).join(' ');
@@ -28,6 +29,11 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     calls.push({ role: options.role, text, last });
     const reply = (content: string) => ({ content, model: 'test', role: options.role, promptTokens: 1, completionTokens: 1, durationMs: 1, usedFallback: false, primaryModel: 'test' });
     if (options.role === 'outline_architect') return reply('{"title":"Nuclear construction costs by country","outline":["Regulatory change during construction","Standard designs built in series"]}');
+    if (redraftExpands && text.includes('Rewrite the report in plain encyclopedia prose')) {
+      // A redraft that keeps every heading and citation but writes the limits out at length.
+      const longLimits = Array.from({ length: 9 }, (_, index) => `Restated limit ${index + 1} covers one more gap in the sources.`).join(' ');
+      return reply(last.replace(/(## Limits of this report\n+)[\s\S]*?(?=\n## |$)/, `$1${longLimits}\n`));
+    }
     if (options.role !== 'section_drafter') return reply(last);
     const first = options.messages[1].content;
     const asksBullets = last.startsWith('Rewrite this as 3 to 7 bullet points');
@@ -106,6 +112,7 @@ describe('section size and shape on the Layer 1 report path', () => {
     limitsAsList = false;
     limitsIsLong = false;
     everySectionLong = false;
+    redraftExpands = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -222,6 +229,15 @@ describe('section size and shape on the Layer 1 report path', () => {
     for (const key of ['topic_0', 'topic_1', 'disagreement']) expect(section(report, key).endsWith('].')).toBe(true);
     expect(section(report, 'key_findings').split('\n')).toHaveLength(7);
     expect(splitSentences(section(report, 'limits'))).toHaveLength(4);
+  });
+
+  it('holds the limits to four sentences again when the wording redraft writes them out at length', async () => {
+    redraftExpands = true;
+    const report = await write();
+    const limits = section(report, 'limits');
+    // The redraft was used (its wording is on the page) and was then cut back.
+    expect(limits).toContain('Restated limit 1 ');
+    expect(splitSentences(limits)).toHaveLength(4);
   });
 
   it('asks once for a shorter draft when a section runs far past its share, and uses it', async () => {
