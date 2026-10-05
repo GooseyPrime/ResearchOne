@@ -16,6 +16,7 @@ import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBar
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
+import { updateCitationDoiStatus } from '../verification/citationDoiResolver';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
@@ -3130,6 +3131,9 @@ ${reportForGates(generatedReport.markdown)}`,
           chunkContextLimit: addonEffects.citationChunkContextLimit,
           ...v2,
         });
+        
+        // Update DOI resolution status for citations
+        await updateCitationDoiStatus(reportId);
       } catch (epistemicErr) {
         // Do not fail the run if epistemic persistence fails — log and continue
         logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);

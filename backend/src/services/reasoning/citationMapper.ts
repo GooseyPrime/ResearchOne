@@ -16,6 +16,7 @@ import { ExtractedClaim } from './claimExtractor';
 import { logger } from '../../utils/logger';
 import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
 import { resolveSourceClassForChunk } from '../planning/wave53EpistemicPolicy';
+import { resolveDois, fetchCrossrefMetadata, doiResolveEnabled } from '../verification/doiResolve';
 
 export interface SectionCitation {
   section_type: string;
@@ -216,12 +217,50 @@ export async function mapAndPersistCitations(args: {
           : null;
 
       try {
+        // Extract DOI from the source URL if available
+        let resolveStatus: string | null = null;
+        let editorialNotice: string | undefined;
+        
+        if (doiResolveEnabled()) {
+          const sourceUrl = chunkById.get(citation.chunk_id)?.source_url;
+          if (sourceUrl) {
+            // Extract DOI from URL if it looks like a DOI URL
+            const doiMatch = sourceUrl.match(/https?:\/\/doi\.org\/(10\.[^\/]+\/[^\s]+)/i);
+            if (doiMatch) {
+              const doi = doiMatch[1];
+              
+              // Get Crossref metadata for retraction/correction status
+              const crossrefMeta = await fetchCrossrefMetadata(doi);
+              
+              if (crossrefMeta.retracted) {
+                resolveStatus = 'retracted';
+                editorialNotice = crossrefMeta.retractionNotice || 'Source has been retracted';
+              } else if (crossrefMeta.corrected) {
+                resolveStatus = 'corrected';
+                editorialNotice = crossrefMeta.correctionNotice || 'Source has been corrected';
+              } else if (crossrefMeta.withdrawn) {
+                resolveStatus = 'withdrawn';
+                editorialNotice = crossrefMeta.withdrawalNotice || 'Source has been withdrawn';
+              } else {
+                // Perform basic DOI resolution check
+                const resolutionResults = await resolveDois([doi]);
+                if (resolutionResults.length > 0) {
+                  const result = resolutionResults[0];
+                  resolveStatus = result.resolveStatus;
+                  editorialNotice = result.editorialNotice;
+                }
+              }
+            }
+          }
+        }
+
         await client.query(
           `INSERT INTO report_citations (
              report_id, section_id, chunk_id, source_id, claim_id,
-             chunk_quote, citation_order, discovery_origin, source_class
+             chunk_quote, citation_order, discovery_origin, source_class,
+             resolve_status, editorial_notice
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT DO NOTHING`,
           [
             reportId,
@@ -233,17 +272,20 @@ export async function mapAndPersistCitations(args: {
             citation.citation_order ?? 0,
             JSON.stringify(origin),
             sourceClass,
+            resolveStatus,
+            editorialNotice,
           ]
         );
       } catch (err) {
         const code = (err as { code?: string })?.code;
         if (code === '42703') {
+          // Column doesn't exist, try without resolve_status and editorial_notice
           await client.query(
             `INSERT INTO report_citations (
                report_id, section_id, chunk_id, source_id, claim_id,
-               chunk_quote, citation_order, discovery_origin
+               chunk_quote, citation_order, discovery_origin, source_class
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT DO NOTHING`,
             [
               reportId,
@@ -254,6 +296,7 @@ export async function mapAndPersistCitations(args: {
               citation.chunk_quote ?? null,
               citation.citation_order ?? 0,
               JSON.stringify(origin),
+              sourceClass,
             ]
           );
         } else {
