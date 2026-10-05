@@ -25,7 +25,7 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 3. Baseline report: writing | Done | PR #243. Behind `BASELINE_LAYER_ENABLED`, unset by default. See "As built" under slice 3. |
 | Slice 4, part 1. Citation core | Done | PR #248. Behind `CITATION_LOCK_ENABLED`, unset by default. See "As built, part 1" under slice 4. |
 | Slice 4, part 1. Live samples | Done | Produced 4 Oct 2026 with the per-run admin overrides; no switch was turned on for customers. See "What the live samples showed" under slice 4. |
-| **Slice 4, part 2. Reference details and styles, with the sample fixes** | **In review** | PR PART2_PR. Behind the same two switches, unset by default. See "As built, part 2" under slice 4. |
+| **Slice 4, part 2. Reference details and styles, with the sample fixes** | **In review** | PR #250. Behind the same two switches, unset by default. See "As built, part 2" under slice 4. |
 | Slice 4, parts 3 and 4 | Not started | Part 3: DOI and retraction. Part 4: the quality judge. One pull request each, in that order, each after the one before it is merged. |
 | Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
