@@ -612,6 +612,12 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(raw, raw.replace('An example follows.\n\n', '')).restored).toEqual(['(whole report)']);
     });
 
+    it('does not accept a line break added with trailing spaces', () => {
+      const wrapped = before.replace('The sources do not cover long-term follow-up.', 'The sources stop early.\nThey do not cover long-term follow-up.');
+      expect(guardLockedRepair(wrapped, wrapped).restored).toEqual([]);
+      expect(guardLockedRepair(wrapped, wrapped.replace('stop early.\n', 'stop early.  \n')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not accept a cut from a numbered list, which would renumber what is left', () => {
       const ranked = before.replace('The sources do not cover long-term follow-up.', 'The gaps, in order of weight.\n\n1. No long-term follow-up.\n1. No price data [P2].');
       expect(guardLockedRepair(ranked, ranked).restored).toEqual([]);

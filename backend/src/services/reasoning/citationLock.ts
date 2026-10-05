@@ -425,6 +425,9 @@ export function guardLockedRepair(
     // A numbered item takes its number from the ones before it, however the
     // number is typed: with an earlier item cut, a ranking reads differently.
     if (/^[ \t]+(?:[-*+]|\d+[.)])[ \t]|^\d+[.)][ \t]/m.test(body(was))) return body(was).replace(/\s+$/, '') === body(now).replace(/\s+$/, '');
+    // Two spaces at the end of a line are a line break in Markdown. A repair
+    // that adds them has changed how the section is set out, not cut from it.
+    if (/[ \t]{2,}\n(?=[ \t]*\S)/.test(body(now)) && body(was).replace(/\s+$/, '') !== body(now).replace(/\s+$/, '')) return false;
     const plainOnly = body(was).replace(new RegExp(MARKER_GROUP.source, 'gi'), '');
     const runsOn = /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t])[^\n]*\n[ \t]*(?![-*+][ \t]|\d+[.)][ \t]|#)\S/m.test(body(was));
     const marked = /[`*_~<>[\]|\\]|:\/\/|\bwww\.|\S@\S|\S[ \t]+[-+][ \t]|^[ \t]*(?:=+|-{2,})[ \t]*$|[ \t]{2,}$|^(?: {4}|\t)|^[ \t]*\+[ \t]/m.test(plainOnly.replace(/^[ \t]*[-*][ \t]/gm, ''));
