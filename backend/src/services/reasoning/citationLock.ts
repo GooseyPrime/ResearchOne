@@ -24,6 +24,10 @@ export interface LockedPassage {
   sourceId?: string | null;
   text: string;
   source: UsedSource;
+  /** Set when the publisher has retracted the source. A sentence citing it must say so. */
+  retracted?: boolean;
+  /** What the link check found for the source's DOI, kept to be saved with the citation. */
+  doiCheck?: { status: string; notice: string | null } | null;
 }
 
 export interface CitationOccurrence {
@@ -158,9 +162,92 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
         .map((part) => unmark(String(part).replace(/\s+/g, ' ').trim()))
         .join(', ');
       const body = unmark(cleanText(passage.text).trim());
-      return `[${passage.marker}] ${from}\n${body}`;
+      const warning = passage.retracted ? ` ${RETRACTED_LABEL}` : '';
+      return `[${passage.marker}] ${from}${warning}\n${body}`;
     })
     .join('\n\n---\n\n');
+}
+
+/** Shown beside a retracted source's marker, where the writer reads what it may cite. */
+export const RETRACTED_LABEL =
+  '(RETRACTED by its publisher. Cite it only in a sentence that itself says the work was retracted, for example "a 2019 study, since retracted, reported …".)';
+
+/** A sentence says a source was retracted when it uses one of these words. */
+const SAYS_RETRACTED = /\bretract(?:ed|ion|ions)?\b|\bwithdrawn\b/i;
+
+/**
+ * Markers of retracted sources cited in a sentence that does not say the work
+ * was retracted. A reader shown such a sentence would take a withdrawn finding
+ * for a standing one.
+ */
+export function unstatedRetractions(text: string, shown: LockedPassage[]): string[] {
+  const retracted = new Set(shown.filter((passage) => passage.retracted).map((passage) => passage.marker));
+  if (retracted.size === 0) return [];
+  const found = new Set<string>();
+  mapProse(unwrapCitationLinks(text), (prose) => {
+    for (const piece of sentencePieces(prose)) {
+      if (SAYS_RETRACTED.test(piece.text)) continue;
+      for (const marker of markersIn(piece.text)) if (retracted.has(marker)) found.add(marker);
+    }
+    return prose;
+  });
+  return [...found];
+}
+
+/** Take a retracted source's marker off every sentence that does not say it was retracted. The sentence stays, uncited. */
+export function stripUnstatedRetractions(text: string, shown: LockedPassage[]): string {
+  const retracted = new Set(shown.filter((passage) => passage.retracted).map((passage) => passage.marker));
+  if (retracted.size === 0) return text;
+  return mapProse(unwrapCitationLinks(text), (prose) =>
+    sentencePieces(prose)
+      .map((piece) => {
+        if (SAYS_RETRACTED.test(piece.text)) return piece.text;
+        return tidyAfterRemoval(
+          piece.text
+            .replace(MARKER_GROUP, (_full, inner: string) => {
+              const kept = markersOf(inner).filter((marker) => !retracted.has(marker));
+              return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
+            })
+            .replace(/[ \t]*\uE002/g, '')
+        );
+      })
+      .join('')
+  );
+}
+
+/**
+ * Apply what the link check found, before any passage is given a marker.
+ *
+ * A source whose DOI does not resolve is left out: it cannot be shown to the
+ * writer, so it cannot be cited or counted as support for anything. A source
+ * its publisher retracted stays, flagged, because a report may need to say that
+ * a finding was withdrawn. "Unknown" (the check itself was unavailable) changes
+ * nothing. `doiOfSource` reads a source's DOI from its address.
+ */
+export function applyDoiChecks<Chunk, Source extends { url?: string | null }>(
+  chunks: Chunk[],
+  sources: Source[],
+  checks: ReadonlyMap<string, { status: string; notice: { kind: string; text: string } | null }>,
+  doiOfSource: (url: string | null | undefined) => string | null
+): { chunks: Chunk[]; sources: Source[]; retracted: boolean[]; checked: Array<{ status: string; notice: string | null } | null>; dropped: number } {
+  const keptChunks: Chunk[] = [];
+  const keptSources: Source[] = [];
+  const retracted: boolean[] = [];
+  const checked: Array<{ status: string; notice: string | null } | null> = [];
+  let dropped = 0;
+  chunks.forEach((chunk, index) => {
+    const doi = doiOfSource(sources[index]?.url);
+    const check = doi ? checks.get(doi) : undefined;
+    if (check?.status === 'unresolved') {
+      dropped += 1;
+      return;
+    }
+    keptChunks.push(chunk);
+    keptSources.push(sources[index]);
+    retracted.push(check?.notice?.kind === 'retracted');
+    checked.push(check ? { status: check.status, notice: check.notice?.text ?? null } : null);
+  });
+  return { chunks: keptChunks, sources: keptSources, retracted, checked, dropped };
 }
 
 export const LOCK_INSTRUCTION =

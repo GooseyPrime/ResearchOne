@@ -1,286 +1,127 @@
 /**
- * DOI resolution and retraction checking (slice 4, part 3).
+ * DOI resolution and editorial notices (slice 4, part 3).
  *
- * For each citation with a DOI: request https://doi.org/{doi} with the existing Crossref user agent,
- * timeout 8 seconds, HEAD first, retry with GET on 403 or 405. 404 or a network failure marks
- * the citation `unresolved`. Retraction or correction is read from Crossref record (and Scite
- * when configured) and stored in `editorial_notice`.
+ * For a source with a DOI: does the DOI resolve, and has the publisher
+ * retracted or corrected the work? The answers decide what a locked report may
+ * cite (see `applyDoiChecks` in citationLock.ts). Nothing here runs unless
+ * DOI_RESOLVE_ENABLED is on, and nothing here throws: a lookup that fails is an
+ * answer ("unresolved"), not an error.
  */
-
 import axios from 'axios';
 import { logger } from '../../utils/logger';
-import { config, switchEnabled } from '../../config';
+import { config } from '../../config';
 
-export interface DoiResolutionResult {
+export type ResolveStatus = 'resolved' | 'unresolved' | 'unknown';
+export type EditorialKind = 'retracted' | 'corrected';
+
+export interface DoiCheck {
   doi: string;
-  /** 'resolved', 'unresolved', 'retracted', 'corrected', etc. */
-  resolveStatus: string;
-  /** Details about retraction, correction, or other editorial notices */
-  editorialNotice?: string;
+  status: ResolveStatus;
+  /** Set when the publisher's record says the work was retracted or corrected. */
+  notice: { kind: EditorialKind; text: string } | null;
+  /** True when the lookup never reached an answer (timeout, connection), as opposed to "not found". */
+  networkFailure: boolean;
 }
 
-/**
- * Checks if DOI resolution is enabled via the feature flag.
- * Respects per-run overrides via runWithFlags (same pattern as CITATION_LOCK_ENABLED).
- */
-export function doiResolveEnabled(): boolean {
-  return switchEnabled('DOI_RESOLVE_ENABLED');
+/** The two requests a check needs; replaced in tests. Each resolves to an HTTP status, or rejects when no answer came. */
+export interface DoiHttp {
+  status(method: 'HEAD' | 'GET', url: string): Promise<number>;
+  json(url: string): Promise<unknown>;
 }
 
-/**
- * Resolves DOIs for citations, checking for availability and editorial status.
- * 
- * @param dois Array of DOI strings to resolve
- * @returns Array of resolution results
- */
-export async function resolveDois(dois: string[]): Promise<DoiResolutionResult[]> {
-  if (!doiResolveEnabled() || dois.length === 0) {
-    return dois.map(doi => ({
-      doi,
-      resolveStatus: 'unknown', // When disabled, we don't resolve
-    }));
+const TIMEOUT_MS = 8000;
+
+const axiosHttp: DoiHttp = {
+  async status(method, url) {
+    const response = await axios.request({
+      method,
+      url,
+      timeout: TIMEOUT_MS,
+      maxRedirects: 5,
+      // Every status is an answer; only "no response" rejects.
+      validateStatus: () => true,
+      headers: { 'User-Agent': config.discovery.crossrefUserAgent },
+      // A GET is only asked whether the page exists; its body is not kept.
+      responseType: 'stream',
+    });
+    const body = response.data as { destroy?: () => void } | undefined;
+    body?.destroy?.();
+    return response.status;
+  },
+  async json(url) {
+    const response = await axios.get(url, { timeout: TIMEOUT_MS, headers: { 'User-Agent': config.discovery.crossrefUserAgent } });
+    return response.data as unknown;
+  },
+};
+
+/** The DOI in a source address, or null. "https://doi.org/10.1000/abc" and "doi:10.1000/abc" both give "10.1000/abc". */
+export function doiOf(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const match = /(?:^|doi\.org\/|doi:\s*)(10\.\d{4,9}\/[^\s?#]+)/i.exec(address.trim());
+  if (!match) return null;
+  let doi = match[1];
+  try {
+    doi = decodeURIComponent(doi);
+  } catch {
+    // Not percent-encoded; used as written.
   }
+  return doi.replace(/[.,;)\]]+$/, '').toLowerCase();
+}
 
-  const results: DoiResolutionResult[] = [];
+const RETRACTION_TYPES = /^(retraction|withdrawal|removal|partial[_ -]retraction)$/i;
+const CORRECTION_TYPES = /^(correction|erratum|corrigendum|addendum)$/i;
 
-  for (const doi of dois) {
+/** What a Crossref work record says was published about the work afterwards. A retraction outranks a correction. */
+export function editorialNoticeFrom(record: unknown): DoiCheck['notice'] {
+  const message = (record as { message?: { 'updated-by'?: unknown } } | null)?.message;
+  const updates = Array.isArray(message?.['updated-by']) ? (message?.['updated-by'] as Array<{ type?: unknown; label?: unknown }>) : [];
+  const types = updates.map((update) => (typeof update?.type === 'string' ? update.type : ''));
+  if (types.some((type) => RETRACTION_TYPES.test(type))) return { kind: 'retracted', text: 'The publisher has retracted this work.' };
+  if (types.some((type) => CORRECTION_TYPES.test(type))) return { kind: 'corrected', text: 'The publisher has issued a correction to this work.' };
+  return null;
+}
+
+async function checkOne(doi: string, http: DoiHttp): Promise<DoiCheck> {
+  const address = `https://doi.org/${doi.split('/').map(encodeURIComponent).join('/')}`;
+  let status: ResolveStatus = 'unresolved';
+  let networkFailure = false;
+  try {
+    let code = await http.status('HEAD', address);
+    // Some publishers refuse HEAD; the page is asked for instead.
+    if (code === 403 || code === 405) code = await http.status('GET', address);
+    // A publisher that answers, even to say "not for robots", has the work. Only "not found" and server faults do not count.
+    status = code === 404 || code === 410 || code >= 500 ? 'unresolved' : 'resolved';
+  } catch (err) {
+    networkFailure = true;
+    logger.warn('[doi-resolve] no answer for a DOI', { doi, err: (err as Error)?.message });
+  }
+  let notice: DoiCheck['notice'] = null;
+  if (status === 'resolved') {
     try {
-      const result = await resolveSingleDoi(doi);
-      results.push(result);
-    } catch (error) {
-      logger.warn(`[doi-resolve] Failed to resolve DOI ${doi}:`, error);
-      results.push({
-        doi,
-        resolveStatus: 'unresolved',
-        editorialNotice: `DOI resolution failed: ${(error as Error).message}`,
-      });
+      notice = editorialNoticeFrom(await http.json(`https://api.crossref.org/works/${encodeURIComponent(doi)}`));
+    } catch (err) {
+      // No record is not a notice. Many DOIs are not Crossref's (DataCite, for one).
+      logger.debug('[doi-resolve] no Crossref record read for a DOI', { doi, err: (err as Error)?.message });
     }
   }
-
-  return results;
-}
-
-function isAxiosLikeError(error: unknown): error is { response?: { status?: number }; code?: string } {
-  return Boolean(
-    error &&
-      typeof error === 'object' &&
-      ((error as { isAxiosError?: boolean }).isAxiosError === true || axios.isAxiosError?.(error))
-  );
+  return { doi, status, notice, networkFailure };
 }
 
 /**
- * Resolves a single DOI with HEAD request first, falling back to GET on 403/405.
+ * Check each DOI once, a few at a time. Never throws.
+ *
+ * When two or more were asked and not one lookup got an answer, the fault is
+ * ours or the network's, not the sources': every result comes back "unknown",
+ * so an outage cannot empty a report of its sources.
  */
-async function resolveSingleDoi(doi: string): Promise<DoiResolutionResult> {
-  const userAgent = config.discovery.crossrefUserAgent;
-  const url = `https://doi.org/${encodeURIComponent(doi.trim())}`;
-
-  // First try HEAD request
-  try {
-    const headResponse = await axios.head(url, {
-      headers: {
-        'User-Agent': userAgent,
-      },
-      timeout: 8000, // 8 seconds timeout
-    });
-
-    // Check for redirects that might indicate retraction/correction
-    const finalUrl = headResponse.request?.res?.responseUrl || url;
-    return analyzeDoiResult(doi, finalUrl, headResponse.status);
-  } catch (headError) {
-    // If HEAD fails with 403 or 405, try GET
-    if (isAxiosLikeError(headError)) {
-      const statusCode = headError.response?.status;
-      if (statusCode === 403 || statusCode === 405) {
-        return await doGetRequest(doi, url, userAgent);
-      } else if (statusCode === 404) {
-        return {
-          doi,
-          resolveStatus: 'unresolved',
-          editorialNotice: 'DOI not found (404)',
-        };
-      }
-    }
-
-    // For other errors, try GET as fallback
-    try {
-      return await doGetRequest(doi, url, userAgent);
-    } catch (_getError) {
-      logger.debug(`[doi-resolve] DOI ${doi} resolution failed with network error`);
-      return {
-        doi,
-        resolveStatus: 'unresolved',
-        editorialNotice: 'Network error during DOI resolution',
-      };
-    }
+export async function checkDois(dois: string[], http: DoiHttp = axiosHttp): Promise<Map<string, DoiCheck>> {
+  const unique = [...new Set(dois)];
+  const results: DoiCheck[] = [];
+  const CONCURRENT = 4;
+  for (let at = 0; at < unique.length; at += CONCURRENT) {
+    results.push(...(await Promise.all(unique.slice(at, at + CONCURRENT).map((doi) => checkOne(doi, http)))));
   }
-}
-
-/**
- * Performs a GET request for DOI resolution when HEAD fails.
- */
-async function doGetRequest(doi: string, url: string, userAgent: string): Promise<DoiResolutionResult> {
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': userAgent,
-      },
-      timeout: 8000, // 8 seconds timeout
-    });
-
-    const finalUrl = response.request?.res?.responseUrl || url;
-    return analyzeDoiResult(doi, finalUrl, response.status);
-  } catch (error) {
-    if (isAxiosLikeError(error)) {
-      if (error.response?.status === 404) {
-        return {
-          doi,
-          resolveStatus: 'unresolved',
-          editorialNotice: 'DOI not found (404)',
-        };
-      }
-    }
-
-    // Network error or other issue
-    logger.debug(`[doi-resolve] DOI ${doi} GET request failed with error`);
-    return {
-      doi,
-      resolveStatus: 'unresolved',
-      editorialNotice: 'Network error during DOI resolution',
-    };
-  }
-}
-
-/**
- * Analyzes the result of DOI resolution to determine status and any editorial notices.
- */
-function analyzeDoiResult(doi: string, finalUrl: string, statusCode: number): DoiResolutionResult {
-  // Check if the final URL indicates a retraction, correction, or other editorial notice
-  if (finalUrl.includes('retraction') || finalUrl.toLowerCase().includes('retrac')) {
-    return {
-      doi,
-      resolveStatus: 'retracted',
-      editorialNotice: 'Source has been retracted',
-    };
-  } else if (finalUrl.includes('correction') || finalUrl.toLowerCase().includes('correct')) {
-    return {
-      doi,
-      resolveStatus: 'corrected',
-      editorialNotice: 'Source has been corrected',
-    };
-  } else if (statusCode >= 200 && statusCode < 300) {
-    return {
-      doi,
-      resolveStatus: 'resolved',
-    };
-  } else if (statusCode === 404) {
-    return {
-      doi,
-      resolveStatus: 'unresolved',
-      editorialNotice: 'DOI not found (404)',
-    };
-  } else {
-    // For other status codes, consider as unresolved
-    return {
-      doi,
-      resolveStatus: 'unresolved',
-      editorialNotice: `Unexpected status code: ${statusCode}`,
-    };
-  }
-}
-
-/**
- * Fetches detailed information from Crossref API about the DOI, including retraction status.
- */
-export async function fetchCrossrefMetadata(doi: string): Promise<{
-  retracted: boolean;
-  retractionNotice?: string;
-  corrected: boolean;
-  correctionNotice?: string;
-  withdrawn: boolean;
-  withdrawalNotice?: string;
-}> {
-  if (!doiResolveEnabled()) {
-    return {
-      retracted: false,
-      corrected: false,
-      withdrawn: false,
-    };
-  }
-
-  const userAgent = config.discovery.crossrefUserAgent;
-  const url = `https://api.crossref.org/works/${encodeURIComponent(doi)}`;
-  
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': userAgent,
-      },
-      timeout: 8000,
-    });
-
-    const item = response.data?.message;
-    if (!item) {
-      return {
-        retracted: false,
-        corrected: false,
-        withdrawn: false,
-      };
-    }
-
-    // Check Crossref metadata for retraction/correction status
-    // Crossref has specific fields for this
-    const status = item.status?.toLowerCase() || '';
-    const $ref = item.$ref?.toLowerCase() || '';
-    const notices = item['relation'] || item['update-to'] || [];
-
-    let retracted = status.includes('retracted') || $ref.includes('retracted');
-    let corrected = status.includes('corrected') || $ref.includes('corrected');
-    let withdrawn = status.includes('withdrawn') || $ref.includes('withdrawn');
-    
-    let retractionNotice = '';
-    let correctionNotice = '';
-    let withdrawalNotice = '';
-
-    // Check for updates that might indicate retraction/correction
-    if (Array.isArray(notices)) {
-      for (const notice of notices) {
-        if (notice.type) {
-          const type = notice.type.toLowerCase();
-          if (type.includes('retraction')) {
-            retracted = true;
-            retractionNotice = notice.label || `Retraction notice published`;
-          } else if (type.includes('correction') || type.includes('erratum') || type.includes('addendum')) {
-            corrected = true;
-            correctionNotice = notice.label || `Correction notice published`;
-          } else if (type.includes('withdrawal')) {
-            withdrawn = true;
-            withdrawalNotice = notice.label || `Withdrawal notice published`;
-          }
-        }
-      }
-    }
-
-    // Alternative check in Crossref metadata structure
-    if (item['is-retracted'] === true) {
-      retracted = true;
-      retractionNotice = 'Marked as retracted in Crossref metadata';
-    }
-
-    return {
-      retracted,
-      retractionNotice: retracted ? retractionNotice : undefined,
-      corrected,
-      correctionNotice: corrected ? correctionNotice : undefined,
-      withdrawn,
-      withdrawalNotice: withdrawn ? withdrawalNotice : undefined,
-    };
-  } catch (error) {
-    logger.warn(`[doi-resolve] Failed to fetch Crossref metadata for ${doi}:`, error);
-    return {
-      retracted: false,
-      corrected: false,
-      withdrawn: false,
-    };
-  }
+  const outage = results.length >= 2 && results.every((result) => result.networkFailure);
+  if (outage) logger.warn('[doi-resolve] no DOI lookup got an answer; treating the check as unavailable', { asked: results.length });
+  return new Map(results.map((result) => [result.doi, outage ? { ...result, status: 'unknown' as const } : result]));
 }

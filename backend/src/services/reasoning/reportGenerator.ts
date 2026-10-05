@@ -2,7 +2,7 @@ import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOut
 import { logger } from '../../utils/logger';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type FinalizedCitations, type LockedPassage } from './citationLock';
+import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, stripUnstatedRetractions, unknownMarkers, unstatedRetractions, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
 import { firstSentences, fitToTotal, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
@@ -1007,7 +1007,9 @@ export function finalizeLockedReportForSave(
 ): { finalized: FinalizedCitations; wordingAfter: string[] } {
   const cleaned = stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, query));
   const wordingBefore = presentationFailures(cleaned).filter((hit) => hit !== 'passage marker');
-  const toSave = wordingBefore.length > 0 ? removeBannedWording(cleaned) : cleaned;
+  // Last look, after every rewrite: a retracted source is never cited by a
+  // sentence that does not say it was retracted.
+  const toSave = stripUnstatedRetractions(wordingBefore.length > 0 ? removeBannedWording(cleaned) : cleaned, passages);
   const finalized = finalizeLockedCitations(toSave, passages, readOn, style);
   return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
 }
@@ -1578,7 +1580,14 @@ Return section body text only. Do NOT write a markdown heading for this section 
     let draftedText = sectionResult.content;
     if (shownPassages) {
       const unknown = unknownMarkers(draftedText, shownPassages);
-      if (unknown.length > 0) {
+      // A retracted source cited as if it stood is handled the same way: one
+      // more draft with the fault named, then the citation comes off.
+      const unstated = unstatedRetractions(draftedText, shownPassages);
+      if (unknown.length > 0 || unstated.length > 0) {
+        const faults = [
+          unknown.length > 0 ? `That draft cites ${unknown.map((marker) => `[${marker}]`).join(', ')}, which you were not shown. Rewrite the section using only the markers shown in the source material. Where no shown passage supports a sentence, remove the sentence.` : '',
+          unstated.length > 0 ? `That draft cites ${unstated.map((marker) => `[${marker}]`).join(', ')}, a retracted source, in a sentence that does not say the work was retracted. Rewrite so every sentence citing it says so in plain words, or remove the sentence.` : '',
+        ].filter(Boolean).join(' ');
         const retry = await callRoleModel({
           role: 'section_drafter',
           ...v2,
@@ -1587,7 +1596,7 @@ Return section body text only. Do NOT write a markdown heading for this section 
             { role: 'assistant', content: draftedText },
             {
               role: 'user',
-              content: `That draft cites ${unknown.map((marker) => `[${marker}]`).join(', ')}, which you were not shown. Rewrite the section using only the markers shown in the source material. Where no shown passage supports a sentence, remove the sentence.`,
+              content: faults,
             },
           ],
         });
@@ -1598,6 +1607,11 @@ Return section body text only. Do NOT write a markdown heading for this section 
         if (stillUnknown.length > 0) {
           citationIssues.push({ section: section.title, markers: stillUnknown });
           draftedText = stripUnknownMarkers(draftedText, shownPassages);
+        }
+        const stillUnstated = unstatedRetractions(draftedText, shownPassages);
+        if (stillUnstated.length > 0) {
+          citationIssues.push({ section: section.title, markers: stillUnstated });
+          draftedText = stripUnstatedRetractions(draftedText, shownPassages);
         }
       }
     }
@@ -1624,6 +1638,11 @@ Return section body text only. Do NOT write a markdown heading for this section 
           if (unknown.length > 0) {
             citationIssues.push({ section: section.title, markers: unknown });
             shorterText = stripUnknownMarkers(shorterText, shownPassages);
+          }
+          const unstatedShorter = unstatedRetractions(shorterText, shownPassages);
+          if (unstatedShorter.length > 0) {
+            citationIssues.push({ section: section.title, markers: unstatedShorter });
+            shorterText = stripUnstatedRetractions(shorterText, shownPassages);
           }
         }
         // Kept only when it did what was asked: a list when a list was asked for,

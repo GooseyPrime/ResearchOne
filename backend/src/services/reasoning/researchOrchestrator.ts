@@ -16,8 +16,6 @@ import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBar
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
-import { updateCitationDoiStatus } from '../verification/citationDoiResolver';
-import { areCitationsValidForSupport, getInvalidCitationsForSupport } from '../verification/citationValidation';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
@@ -51,11 +49,12 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
+import { checkDois, doiOf } from '../verification/doiResolve';
 import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
-import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
+import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
   guardLockedRepair,
   LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
-import { writeBoundCitations, type CitationWriter } from './citationBinding';
+import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
@@ -2357,7 +2356,39 @@ async function runResearchJobInner(
         // reference entry needs beyond the title and date retrieval already carries.
         const detailByChunk = new Map(sourceRows.map((row) => [row.id, row]));
         const referenceSources = allChunks.map((chunk, index) => referenceDetails(usedSources[index], detailByChunk.get(chunk.id)));
-        lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+        // Link check (DOI_RESOLVE_ENABLED): a source whose DOI does not resolve
+        // is not shown to the writer, so nothing can cite it; a retracted one is
+        // shown flagged. A failed check changes nothing and never stops the run.
+        let lockChunks = allChunks;
+        let lockSources = referenceSources;
+        let lockRetracted: boolean[] = [];
+        let lockChecked: Array<{ status: string; notice: string | null } | null> = [];
+        if (doiResolveEnabled()) {
+          try {
+            const dois = referenceSources.map((source) => doiOf(source.url)).filter((doi): doi is string => Boolean(doi));
+            const applied = applyDoiChecks(allChunks, referenceSources, await checkDois(dois), doiOf);
+            // With every passage gone there is nothing to write from. That is a
+            // judgement about the check, not the sources: keep them all.
+            if (applied.chunks.length > 0) {
+              lockChunks = applied.chunks;
+              lockSources = applied.sources;
+              lockRetracted = applied.retracted;
+              lockChecked = applied.checked;
+            }
+            logger.info(`[${runId}] Link check on cited sources`, {
+              sourcesWithDoi: new Set(dois).size,
+              passagesLeftOut: applied.chunks.length > 0 ? applied.dropped : 0,
+              passagesFromRetractedSources: applied.retracted.filter(Boolean).length,
+            });
+          } catch (doiErr) {
+            logger.warn(`[${runId}] Link check failed; sources are used as retrieved`, { err: doiErr });
+          }
+        }
+        lockedPassages = issuePassages(lockChunks, lockSources, new Map(sourceRows.map((row) => [row.id, row.source_id]))).map((passage, index) => ({
+          ...passage,
+          retracted: lockRetracted[index] === true,
+          doiCheck: lockChecked[index] ?? null,
+        }));
         // Recorded on the run, so anything that scores it later knows how it was
         // written without having to guess from its own settings.
         await query(
@@ -3042,6 +3073,7 @@ ${reportForGates(generatedReport.markdown)}`,
       allChunks,
       synthesizerContent: reportMarkdown,
       lockedOccurrences,
+      doiChecks: (lockedPassages ?? []).flatMap((passage) => (passage.doiCheck ? [{ chunkId: passage.chunkId, status: passage.doiCheck.status, notice: passage.doiCheck.notice }] : [])),
       verification,
       discoverySummary: discoverySummary as unknown as Record<string, unknown>,
       plainLanguageMarkdown,
@@ -3132,27 +3164,6 @@ ${reportForGates(generatedReport.markdown)}`,
           chunkContextLimit: addonEffects.citationChunkContextLimit,
           ...v2,
         });
-        
-        // Update DOI resolution status for citations
-        await updateCitationDoiStatus(reportId);
-        
-        // Validate citations for support (check for unresolved/retracted citations)
-        // Only run if DOI resolution is enabled
-        if (doiResolveEnabled()) {
-          try {
-            const citationsValidForSupport = await areCitationsValidForSupport(reportId);
-            if (!citationsValidForSupport) {
-              // Get invalid citations for logging purposes
-              const invalidCitations = await getInvalidCitationsForSupport(reportId);
-              logger.info(`[citations:${runId}] Found ${invalidCitations.length} citations not valid for support`, {
-                invalidCitationStatuses: [...new Set(invalidCitations.map(ic => ic.resolveStatus))],
-                reportId
-              });
-            }
-          } catch (validationErr) {
-            logger.warn(`[citations:${runId}] Error validating citation support status:`, validationErr);
-          }
-        }
       } catch (epistemicErr) {
         // Do not fail the run if epistemic persistence fails — log and continue
         logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
@@ -3789,6 +3800,8 @@ export async function saveReport(args: {
   synthesizerContent: string;
   /** Citation lock: the citations of the text, in reading order. Saved with the report in one transaction. */
   lockedOccurrences?: CitationOccurrence[] | null;
+  /** What the link check found for each passage's source, when the check ran. */
+  doiChecks?: Array<{ chunkId: string; status: string; notice: string | null }>;
   verification: VerificationResult;
   discoverySummary?: Record<string, unknown>;
   plainLanguageMarkdown?: string;
@@ -3808,6 +3821,7 @@ export async function saveReport(args: {
     allChunks,
     synthesizerContent,
     lockedOccurrences,
+    doiChecks,
     verification,
     discoverySummary,
     plainLanguageMarkdown,
@@ -3959,6 +3973,10 @@ export async function saveReport(args: {
       ]
     );
   });
+
+  // What the link check found, saved beside each citation. An addition: the
+  // report is already committed, and a failure here loses only the note.
+  if (doiChecks && doiChecks.length > 0) await recordDoiChecks(reportId, doiChecks);
 
   // Best-effort retention timestamps. Finalized report retention is applied only
   // when all gates pass; non-passing reports remain under review.

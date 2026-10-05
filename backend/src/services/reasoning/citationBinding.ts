@@ -3,7 +3,7 @@
  * tied to its section, its passage and its source, with a quote copied word for
  * word from the passage. Nothing here calls a model.
  */
-import { withTransaction } from '../../db/pool';
+import { query, withTransaction } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import type { BoundCitation } from './citationLock';
 
@@ -69,4 +69,29 @@ export async function writeBoundCitations(
 /** The same save in a transaction of its own. */
 export async function persistBoundCitations(args: { runId: string; reportId: string; bound: BoundCitation[] }): Promise<number> {
   return withTransaction((client) => writeBoundCitations(client as unknown as CitationWriter, args));
+}
+
+/**
+ * Save what the link check found beside each saved citation of a report.
+ * Never throws. Before migration 059 the columns do not exist (42703) and the
+ * note is skipped; any other failure is logged and also skipped.
+ */
+export async function recordDoiChecks(reportId: string, checks: Array<{ chunkId: string; status: string; notice: string | null }>): Promise<void> {
+  const groups = new Map<string, { status: string; notice: string | null; chunkIds: string[] }>();
+  for (const check of checks) {
+    const key = `${check.status}\u0000${check.notice ?? ''}`;
+    const group = groups.get(key) ?? { status: check.status, notice: check.notice, chunkIds: [] };
+    group.chunkIds.push(check.chunkId);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) {
+    try {
+      await query(`UPDATE report_citations SET resolve_status=$2, editorial_notice=$3 WHERE report_id=$1 AND chunk_id = ANY($4::uuid[])`, [reportId, group.status, group.notice, group.chunkIds]);
+    } catch (err) {
+      const missingColumn = (err as { code?: string })?.code === '42703' && /resolve_status|editorial_notice/.test(String((err as Error)?.message ?? ''));
+      if (missingColumn) logger.debug('[citation-lock] link-check columns not present yet; note not saved', { reportId });
+      else logger.warn('[citation-lock] link-check note could not be saved', { reportId, err });
+      return;
+    }
+  }
 }
