@@ -230,6 +230,15 @@ describe('a pipeline role named in a sentence', () => {
     expect(removeBannedWording('Quantitative Quality Auditor found that costs rose [1].')).toBe('This analysis found that costs rose [1].');
     expect(removeBannedWording('Costs rose, as noted by Quantitative Quality Auditor [1].')).toBe('Costs rose, as noted by this analysis [1].');
     expect(readerFacingLabelHits('Costs rose. Contract auditor flagged two gaps [1].')).toContain('internal step');
+    expect(removeBannedWording('**Quantitative Quality Auditor** found that costs rose [1].')).toBe(
+      'This analysis found that costs rose [1].'
+    );
+    expect(removeBannedWording('Costs rose, as noted by **Quantitative Quality Auditor** [1].')).toBe(
+      'Costs rose, as noted by this analysis [1].'
+    );
+    expect(readerFacingLabelHits('**Quantitative Quality Auditor** found that costs rose [1].')).toContain('internal step');
+    expect(readerFacingLabelHits('Costs rose, as noted by **Quantitative Quality Auditor** [1].')).toContain('internal step');
+    expect(removeBannedWording('__contract_auditor__ flagged two gaps [1].')).toBe('This analysis flagged two gaps [1].');
     // The first word of a list item, or after an opening bracket or quotation mark, starts a sentence too.
     expect(removeBannedWording('- Quantitative Quality Auditor found that costs rose [1].\n- (Contract auditor flagged two gaps [2].)')).toBe(
       '- This analysis found that costs rose [1].\n- (This analysis flagged two gaps [2].)'
@@ -237,7 +246,7 @@ describe('a pipeline role named in a sentence', () => {
   });
 
   it('is left alone where it is the subject matter', () => {
-    const subject = 'A contract auditor reports to the board and checks invoices [1]. An independent market scout found three sites [4]. A highly experienced contract auditor reports to the board [5]. Hiring a market scout or a data analysis specialist costs more [2]. The work of the contract auditor is set by statute [3].';
+    const subject = 'A contract auditor reports to the board and checks invoices [1]. An independent market scout found three sites [4]. A highly experienced contract auditor reports to the board [5]. A highly experienced **contract auditor** reports to the board [6]. Hiring a market scout or a data analysis specialist costs more [2]. The work of the contract auditor is set by statute [3].';
     expect(readerFacingLabelHits(subject)).toEqual([]);
     expect(removeBannedWording(subject)).toBe(subject);
   });

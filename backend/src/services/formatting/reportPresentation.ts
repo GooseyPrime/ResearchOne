@@ -35,7 +35,11 @@ const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes
   .join('|');
 const ROLE_SAYS =
   '(?:notes?|noted|finds?|found|flags?|flagged|identifie[sd]|reports?|reported|observe[sd]|concludes?|concluded|states?|stated|determine[sd]|confirms?|confirmed|warns?|warned|raise[sd]|points?\\s+out|pointed\\s+out|highlights?|highlighted|cautions?|cautioned|verifie[sd]|agent|stage|step|pass)';
-const ROLE_NAME = new RegExp(`\\b(?:the\\s+)?(${SPOKEN_ROLE_PATTERN})\\b`, 'gi');
+const ROLE_EMPHASIS = '(?:\\*\\*|__|\\*|_)?';
+const ROLE_NAME = new RegExp(
+  `(?<![\\p{L}\\p{N}_])${ROLE_EMPHASIS}(?:the\\s+)?(${SPOKEN_ROLE_PATTERN})(?=\\b|_{1,2}(?:\\W|$))${ROLE_EMPHASIS}`,
+  'giu'
+);
 const SAYS_NEXT = new RegExp(`^\\s+${ROLE_SAYS}\\b`, 'i');
 const CREDIT_BEFORE = /\b(?:by|from|per|according\s+to)\s$/i;
 /** Text that ends where a sentence starts: the start, a sentence end or a new line, then any list marker and opening punctuation. */
@@ -61,7 +65,7 @@ export function replaceSpokenRoles(text: string, swap: (sentenceStart: boolean) 
     const says = SAYS_NEXT.test(whole.slice(offset + match.length));
     if (!afterCredit && !says) return match;
     const sentenceStart = startsSentence(whole, offset);
-    const hasArticle = match.length > name.length;
+    const hasArticle = /^(?:(?:\*{1,2}|_{1,2}))?the\s+/i.test(match);
     const titled = name.split(/[_ ]/).every((word) => /^\p{Lu}/u.test(word));
     if (!hasArticle && !afterCredit && !titled && !sentenceStart) return match;
     return swap(sentenceStart);
