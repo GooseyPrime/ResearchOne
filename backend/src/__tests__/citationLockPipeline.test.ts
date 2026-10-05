@@ -513,6 +513,11 @@ describe('citation lock helpers', () => {
       expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
     });
 
+    it('does not let a cut bring mid-line words to the start of a line as a heading', () => {
+      const inline = before.replace('The sources do not cover long-term follow-up.', 'An opening sentence. # Caveat [P1]. The rest [P2].');
+      expect(guardLockedRepair(inline, inline.replace('An opening sentence. ', '')).restored).toEqual(['Limits of this report']);
+    });
+
     it('does not let a parent sub-heading go while its child stays', () => {
       const tree = before.replace('The sources do not cover long-term follow-up.', '### Parent\nAn introduction [P1].\n#### Child\nA detail [P2].');
       expect(guardLockedRepair(tree, tree.replace('### Parent\nAn introduction [P1].\n', '')).restored).toEqual(['Limits of this report']);

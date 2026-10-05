@@ -465,6 +465,8 @@ export function guardLockedRepair(
       const from = at;
       while (at < had.length && (had[at].text !== piece.text || hadUnder[at] !== hasUnder[index])) at += 1;
       if (at === had.length) return false;
+      // Words that sat in the middle of a line are not a heading because a cut brought them to the start of one.
+      if (isHeading(piece.text) && had[at].gap === 0) return false;
       // Between its own break and the strongest break among whatever was cut before it.
       const strongest = Math.max(...had.slice(from, at + 1).map((entry) => entry.gap));
       if (piece.gap < had[at].gap || piece.gap > strongest) return false;
