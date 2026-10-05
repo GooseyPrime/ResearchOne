@@ -29,7 +29,6 @@ import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralS
 import { fullestBibliographic, resultForRun } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { scoreDoiResolution } from '../services/eval/scoreReport';
-import { STORED_CITATION_SQL } from '../services/eval/runHarness';
 
 const orchestratorSource = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
 
@@ -252,12 +251,16 @@ describe('a provider DOI with the switch off', () => {
 });
 
 describe('the harness score', () => {
-  it('is the share of answered checks that resolved, and nothing when none was checked', () => {
-    const cite = (resolveStatus: string | null) => ({ alias: 'E1', chunkQuote: 'q', chunkText: 'q', resolveStatus });
-    expect(scoreDoiResolution([cite('resolved'), cite('resolved')])).toBe(1);
-    expect(scoreDoiResolution([cite('resolved'), cite('unresolved'), cite(null), cite('unknown')])).toBe(0.5);
-    expect(scoreDoiResolution([cite(null), cite('unknown')])).toBeNull();
-    expect(STORED_CITATION_SQL).toContain(`to_jsonb(rc)->>'resolve_status' AS "resolveStatus"`);
+  it('is the share of distinct answered DOIs that resolved, from the run record, and nothing when none was answered', () => {
+    expect(scoreDoiResolution({ resolved: 4, unresolved: 0 })).toBe(1);
+    // A source left out for not resolving never becomes a saved citation; the run record still counts it.
+    expect(scoreDoiResolution({ resolved: 3, unresolved: 1 })).toBe(0.75);
+    expect(scoreDoiResolution({ resolved: 0, unresolved: 0 })).toBeNull();
+    expect(scoreDoiResolution(null)).toBeNull();
+    expect(orchestratorSource).toContain("unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved').length,");
+    expect(orchestratorSource).toContain('...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {})');
+    const harness = readFileSync(join(__dirname, '../services/eval/runHarness.ts'), 'utf8');
+    expect(harness).toContain("corpus_after->'doiChecks' AS doi_checks");
   });
 });
 

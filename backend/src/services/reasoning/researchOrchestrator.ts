@@ -2366,13 +2366,24 @@ async function runResearchJobInner(
         let lockSources = referenceSources;
         let lockRetracted: boolean[] = [];
         let lockChecked: Array<{ status: string; notice: string | null } | null> = [];
+        let doiCheckRecord: { resolved: number; unresolved: number; unknown: number; retracted: number } | null = null;
         if (doiResolveEnabled()) {
           try {
             // The provider's record first: a PubMed Central source's address is
             // PubMed Central's page, and its DOI is only in the record.
             const doiByPassage = allChunks.map((chunk, index) => doiOf(detailByChunk.get(chunk.id)?.doi) ?? doiOf(referenceSources[index]?.url));
             const dois = doiByPassage.filter((doi): doi is string => Boolean(doi));
-            const applied = applyDoiChecks(allChunks, referenceSources, await checkDois(dois), doiByPassage);
+            const checked = await checkDois(dois);
+            // Counted per DOI and recorded on the run, sources left out included,
+            // so a later score can see what the saved citations cannot.
+            const outcomes = [...checked.values()];
+            doiCheckRecord = {
+              resolved: outcomes.filter((outcome) => outcome.status === 'resolved').length,
+              unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved').length,
+              unknown: outcomes.filter((outcome) => outcome.status === 'unknown').length,
+              retracted: outcomes.filter((outcome) => outcome.notice?.kind === 'retracted').length,
+            };
+            const applied = applyDoiChecks(allChunks, referenceSources, checked, doiByPassage);
             // With every passage gone there is nothing to write from. That is a
             // judgement about the check, not the sources: keep them all.
             if (applied.chunks.length > 0) {
@@ -2409,7 +2420,7 @@ async function runResearchJobInner(
         // written without having to guess from its own settings.
         await query(
           `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-          [JSON.stringify({ citationLock: true }), runId]
+          [JSON.stringify({ citationLock: true, ...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {}) }), runId]
         );
       } else {
         lockedPassages = null;
