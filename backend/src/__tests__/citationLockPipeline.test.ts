@@ -518,6 +518,10 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(figures, figures.replace('+5 percent', '-5 percent')).restored).toEqual(['Limits of this report']);
       expect(guardLockedRepair(figures, figures.replace('Crises fell in the first year [P2]. Costs were not reported [P2].', 'Costs were not reported [P2]. Crises fell in the first year [P2].')).restored).toEqual(['Limits of this report']);
       expect(guardLockedRepair(figures, figures.replace('### Benefits', '### X').replace('### Harms', '### Benefits').replace('### X', '### Harms')).restored).toEqual(['Limits of this report']);
+      // A sub-heading cut while what was under it stays would file it under the heading above.
+      expect(guardLockedRepair(figures, figures.replace('### Harms\n', '')).restored).toEqual(['Limits of this report']);
+      // A sub-heading cut with everything under it is a cut.
+      expect(guardLockedRepair(figures, figures.replace('\n### Harms\nCrises fell in the first year [P2]. Costs were not reported [P2].', '')).restored).toEqual([]);
       // Cutting one of them is still a cut.
       expect(guardLockedRepair(figures, figures.replace(' Costs were not reported [P2].', '')).restored).toEqual([]);
     });

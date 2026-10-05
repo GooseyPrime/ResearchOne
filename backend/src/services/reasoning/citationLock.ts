@@ -443,10 +443,22 @@ export function guardLockedRepair(
     // everything after it, the reference list included, into code.
     const fences = (text: string): number => (body(text).match(/^[ \t]{0,3}(?:```|~~~)/gm) ?? []).length;
     if (fences(now) % 2 !== fences(was) % 2) return false;
+    // Each piece stays under the sub-heading it was written under: a heading
+    // may go only with everything beneath it.
+    const isHeading = (text: string): boolean => /^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(text);
+    const under = (entries: Array<{ text: string }>): string[] => {
+      let current = '';
+      return entries.map((entry) => {
+        if (isHeading(entry.text)) current = entry.text;
+        return current;
+      });
+    };
+    const hadUnder = under(had);
+    const hasUnder = under(has);
     let at = 0;
-    for (const piece of has) {
+    for (const [index, piece] of has.entries()) {
       const from = at;
-      while (at < had.length && had[at].text !== piece.text) at += 1;
+      while (at < had.length && (had[at].text !== piece.text || hadUnder[at] !== hasUnder[index])) at += 1;
       if (at === had.length) return false;
       // Between its own break and the strongest break among whatever was cut before it.
       const strongest = Math.max(...had.slice(from, at + 1).map((entry) => entry.gap));
