@@ -91,6 +91,21 @@ export function resultForRun(candidate: SearchResultCandidate, doiChecksOn: bool
 }
 
 /**
+ * Metadata a person sent with a request to ingest something, as it may be
+ * stored. A DOI under `bibliographic` is kept only when DOI checks are on: with
+ * the switch off, no route stores the new field.
+ */
+export function requestMetadataForStorage(metadata: Record<string, unknown> | undefined, doiChecksOn: boolean): Record<string, unknown> {
+  const out = { ...(metadata ?? {}) };
+  const record = out.bibliographic;
+  if (!doiChecksOn && record && typeof record === 'object' && !Array.isArray(record) && 'doi' in record) {
+    const { doi: _doi, ...rest } = record as Record<string, unknown>;
+    out.bibliographic = rest;
+  }
+  return out;
+}
+
+/**
  * The candidate a run keeps. With the citation lock on for the run it keeps the
  * provider's reference details; with it off it is the candidate as it always was,
  * so nothing new is stored, logged or queued.

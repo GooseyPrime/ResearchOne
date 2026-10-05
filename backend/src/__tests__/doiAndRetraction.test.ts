@@ -26,9 +26,10 @@ import { applyDoiChecks, formatLockedContext, issuePassages, stripUnstatedRetrac
 import { finalizeLockedReportForSave } from '../services/reasoning/reportGenerator';
 import { recordDoiChecks } from '../services/reasoning/citationBinding';
 import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { fullestBibliographic, resultForRun } from '../services/discovery/providerTypes';
+import { fullestBibliographic, requestMetadataForStorage, resultForRun } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { scoreDoiResolution } from '../services/eval/scoreReport';
+import { STORED_CITATION_SQL } from '../services/eval/runHarness';
 
 const orchestratorSource = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
 
@@ -257,6 +258,13 @@ describe('a provider DOI with the switch off', () => {
     const found = { url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC1/', title: 't', snippet: '', score: 1, rank: 1, provider: 'pubmed_central', sourceQuery: 'q', bibliographic: { publisher: 'Journal', doi: '10.1000/bad' } };
     expect(resultForRun(found, false).bibliographic).toEqual({ publisher: 'Journal' });
     expect(resultForRun(found, true).bibliographic).toEqual({ publisher: 'Journal', doi: '10.1000/bad' });
+    // The same at the door people use: a DOI sent with a request is not stored with the switch off.
+    expect(requestMetadataForStorage({ tag: 'x', bibliographic: { publisher: 'Journal', doi: '10.1000/bad' } }, false)).toEqual({ tag: 'x', bibliographic: { publisher: 'Journal' } });
+    expect(requestMetadataForStorage({ bibliographic: { doi: '10.1000/bad' } }, true)).toEqual({ bibliographic: { doi: '10.1000/bad' } });
+    expect(requestMetadataForStorage(undefined, false)).toEqual({});
+    const route = readFileSync(join(__dirname, '../api/routes/ingestion.ts'), 'utf8');
+    expect(route.match(/requestMetadataForStorage\(/g)).toHaveLength(5);
+    expect(route).not.toMatch(/metadata \?\? \{\}/);
     const discovery = readFileSync(join(__dirname, '../services/discovery/discoveryOrchestrator.ts'), 'utf8');
     expect(discovery).toContain('const r = resultForRun(found, doiResolveEnabled());');
   });
@@ -269,7 +277,11 @@ describe('the harness score', () => {
     expect(scoreDoiResolution({ resolved: 3, unresolved: 1 })).toBe(0.75);
     expect(scoreDoiResolution({ resolved: 0, unresolved: 0 })).toBeNull();
     expect(scoreDoiResolution(null)).toBeNull();
-    expect(orchestratorSource).toContain("unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved').length,");
+    // A lookup with no answer is not an answered "unresolved".
+    expect(orchestratorSource).toContain("unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved' && !outcome.networkFailure).length,");
+    // The query the harness runs is whole: every quoted alias is closed.
+    expect((STORED_CITATION_SQL.match(/"/g) ?? []).length % 2).toBe(0);
+    expect(STORED_CITATION_SQL).toMatch(/AS "claimText"\s+FROM report_citations rc/);
     expect(orchestratorSource).toContain('...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {})');
     const harness = readFileSync(join(__dirname, '../services/eval/runHarness.ts'), 'utf8');
     expect(harness).toContain("corpus_after->'doiChecks' AS doi_checks");

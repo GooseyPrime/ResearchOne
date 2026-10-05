@@ -2393,8 +2393,11 @@ async function runResearchJobInner(
             const outcomes = [...checked.values()];
             doiCheckRecord = {
               resolved: outcomes.filter((outcome) => outcome.status === 'resolved').length,
-              unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved').length,
-              unknown: outcomes.filter((outcome) => outcome.status === 'unknown').length,
+              // "Unresolved" in the score means the resolver said so. A lookup
+              // that got no answer leaves its source out all the same, and is
+              // counted with the unknowns.
+              unresolved: outcomes.filter((outcome) => outcome.status === 'unresolved' && !outcome.networkFailure).length,
+              unknown: outcomes.filter((outcome) => outcome.status === 'unknown' || (outcome.status === 'unresolved' && outcome.networkFailure)).length,
               retracted: outcomes.filter((outcome) => outcome.notice?.kind === 'retracted').length,
             };
             const applied = applyDoiChecks(allChunks, referenceSources, checked, doiByPassage);

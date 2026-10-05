@@ -114,7 +114,7 @@ function secondsBetween(startedAt: string | null, completedAt: string | null): n
 }
 
 export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
-            rc.chunk_id AS "chunkId", rc.citation_text AS "citationText", cl.claim_text AS "claimText""
+            rc.chunk_id AS "chunkId", rc.citation_text AS "citationText", cl.claim_text AS "claimText"
      FROM report_citations rc
      JOIN reports r ON r.id = rc.report_id
      LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
