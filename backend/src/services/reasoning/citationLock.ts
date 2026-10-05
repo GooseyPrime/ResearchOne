@@ -409,7 +409,7 @@ export function guardLockedRepair(
     // A section that had something to say still says something: a heading
     // with nothing under it is not content.
     const substance = (entries: Array<{ text: string }>): number =>
-      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text) && !/\n[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(entry.text)).length;
+      entries.filter((entry) => /[\p{L}\p{N}]/u.test(entry.text.replace(new RegExp(MARKER_GROUP.source, 'gi'), '')) && !/^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(entry.text) && !/\n[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(entry.text)).length;
     if (substance(had) > 0 && substance(has) === 0) return false;
     // Cuts are taken only from plain writing: sentences, simple bullets and
     // "#" sub-headings, with citation markers. Anything else Markdown can do
