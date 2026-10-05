@@ -326,23 +326,10 @@ export function keepRewritesThatPreserveMarkers<T extends { content: string }>(
   });
 }
 
-/**
- * Everything in a section that renders as a link or as a heading the section
- * splitter does not see: inline links, reference links and their definitions,
- * autolinks, bare web addresses, and headings written with an underline.
- */
-const LINK_OR_HEADING_FORMS: readonly RegExp[] = [
-  /\[[^\]\n]*\]\([^)\n]*\)/g,
-  /\[[^\]\n]+\]\[[^\]\n]*\]/g,
-  /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*\S.*$/gm,
-  /<[a-z][a-z0-9+.-]*:[^>\s]+>/gi,
-  /https?:\/\/[^\s)>\]]+/g,
-  /^[^\n#>\-*+ \t][^\n]*\n[ \t]{0,3}(?:=+|-+)[ \t]*$/gm,
-];
-
-function linkAndHeadingForms(text: string): string[] {
-  return LINK_OR_HEADING_FORMS.flatMap((form) => text.match(form) ?? []);
-}
+/** What can make a link in rendered Markdown: a bracket, an angle bracket, a scheme, a bare "www." host or a mail address. */
+const LINK_SYNTAX = /[[\]<>]|:\/\/|\bwww\.|\S@\S/i;
+/** A heading line of any level, or the underline that turns the line above it into one. */
+const HEADING_LINE = /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|=+[ \t]*$|-{2,}[ \t]*$)/;
 
 /** Told to a repair of a report written with the citation lock. */
 export const LOCKED_REPAIR_RULE =
@@ -379,16 +366,25 @@ export function guardLockedRepair(
   /** Sentences that carry no citation. A repair may reword or cut one; a section that has more of them than before has gained material. */
   const uncited = (text: string): number =>
     sentencePieces(text).filter((piece) => /\p{L}/u.test(piece.text) && !/^\s*#{1,6}\s/.test(piece.text) && !marker.test(piece.text)).length;
-  const addsNoForm = (was: string, now: string): boolean => {
-    const had = linkAndHeadingForms(was);
-    return linkAndHeadingForms(now).every((form) => {
-      const at = had.indexOf(form);
-      if (at === -1) return false;
-      had.splice(at, 1);
-      return true;
+  const flat = (text: string): string => text.replace(new RegExp(MARKER_GROUP.source, 'gi'), ' ').replace(/\s+/g, ' ').trim();
+  /**
+   * A repair may reword plain sentences. A sentence that carries anything
+   * able to render as a link, and any heading line below the section's own,
+   * must be one the section already had, word for word: that ties every link
+   * to the statement it was on and leaves no Markdown form to enumerate.
+   */
+  const addsNoLinkOrHeading = (was: string, now: string): boolean => {
+    const body = (text: string): string => text.split('\n').slice(1).join('\n');
+    const hadSentences = new Set(sentencePieces(body(was)).map((piece) => flat(piece.text)));
+    const hadLines = new Set(body(was).split('\n').map((line) => line.trim()));
+    const linesNow = body(now).split('\n');
+    const headingsKept = linesNow.every((line) => !HEADING_LINE.test(line) || hadLines.has(line.trim()));
+    const linksKept = sentencePieces(body(now)).every((piece) => {
+      const sentence = flat(piece.text);
+      return !LINK_SYNTAX.test(sentence) || hadSentences.has(sentence);
     });
+    return headingsKept && linksKept;
   };
-  const subheadings = (text: string): string[] => [...text.matchAll(/^#{3,6}[ \t]+(.+?)[ \t#]*$/gm)].map((match) => key(match[1]));
   const beforeBlocks = splitTopLevelSections(before);
   const afterBlocks = splitTopLevelSections(after);
   if (beforeBlocks.length === 0) return { markdown: before, restored: [], dropped: afterBlocks.map((block) => block.heading) };
@@ -415,11 +411,9 @@ export function guardLockedRepair(
       // had none marks a sentence the repair wrote itself.
       markersPreserved(block.text, now, { allowRemoval: true }) &&
       uncited(now) <= uncited(block.text) &&
-      // A new or renamed sub-heading is a new section by another name.
-      subheadings(now).every((heading) => subheadings(block.text).includes(heading)) &&
-      // Nor a link or an underlined heading the section did not already have,
-      // occurrence for occurrence: the repair was shown no source to link to.
-      addsNoForm(block.text, now);
+      // No link of any form and no heading the section did not already have:
+      // the repair was shown no source to link to and may not add a section.
+      addsNoLinkOrHeading(block.text, now);
     if (sound) return now as string;
     restored.push(block.heading);
     return block.text;

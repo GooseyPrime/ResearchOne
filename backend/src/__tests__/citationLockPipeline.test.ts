@@ -440,13 +440,21 @@ describe('citation lock helpers', () => {
       const reference = guardLockedRepair(before, before.replace('The FDA approved Casgevy', '[The FDA approved Casgevy][new]').replace('long-term follow-up.', 'long-term follow-up.\n\n[new]: /invented-source'));
       expect(reference.restored).toEqual(['Summary', 'Limits of this report']);
       expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up <https://example.org/x>.')).restored).toEqual(['Limits of this report']);
+      // A top-level heading inside a section, a shortcut reference, a bare host and a mail address.
+      expect(guardLockedRepair(before, before.replace('The sources do not cover', '# Invented section\nThe sources do not cover')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up, says [agency].')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up; see www.example.org for more.')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(before, before.replace('long-term follow-up.', 'long-term follow-up; write to press@example.org for more.')).restored).toEqual(['Limits of this report']);
       const setext = guardLockedRepair(before, before.replace('The sources do not cover long-term follow-up.', 'Added section\n---\nInvented statement.'));
       expect(setext.restored).toEqual(['Limits of this report']);
     });
 
     it('keeps a link the section already had, and puts the section back when the link moves to another statement', () => {
       const linkedBefore = before.replace('The sources do not cover long-term follow-up.', 'The sources do not cover long-term follow-up. See [the agency](https://www.fda.gov/casgevy) for updates.');
-      expect(guardLockedRepair(linkedBefore, linkedBefore.replace('for updates', 'for later updates')).restored).toEqual([]);
+      // The linked sentence stays as it was while another sentence is reworded.
+      expect(guardLockedRepair(linkedBefore, linkedBefore.replace('The sources do not cover long-term follow-up.', 'Long-term follow-up is outside the sources.')).restored).toEqual([]);
+      // The same link moved onto other words in the same section is not the link the report had.
+      expect(guardLockedRepair(linkedBefore, linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'Ask [the agency](https://www.fda.gov/casgevy) about pricing.')).restored).toEqual(['Limits of this report']);
       const moved = linkedBefore.replace('See [the agency](https://www.fda.gov/casgevy) for updates.', 'See the agency for updates.').replace('The sources do not cover', '[The sources](https://www.fda.gov/casgevy) do not cover');
       expect(guardLockedRepair(linkedBefore, moved).restored).toEqual(['Limits of this report']);
     });
