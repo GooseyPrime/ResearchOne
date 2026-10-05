@@ -4,7 +4,7 @@ import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService'
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, unknownMarkers, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
-import { firstSentences, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
+import { firstSentences, fitToTotal, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
   CLAIM_CLASS_SOURCING_BURDEN,
@@ -1847,7 +1847,16 @@ ${layer1
     }
     return { ...section, content };
   };
-  const cleaned = layer1 ? removeRepeatedSentences(prepared).map(sized) : prepared;
+  // Section by section first, then the whole: a report is not longer than its
+  // length because each of its sections was allowed to run a little over.
+  const cleaned = layer1
+    ? fitToTotal(
+        removeRepeatedSentences(prepared).map(sized),
+        targetWordCount,
+        sectionWords,
+        (key) => isSizedReaderSection(key) && !isLimitsSection(key) && key !== 'key_findings'
+      )
+    : prepared;
   // With the citation lock on, markers stay as issued. The caller numbers them
   // and adds the reference list and closing note just before the report is saved,
   // after verification and repair, so those steps cannot break the binding.

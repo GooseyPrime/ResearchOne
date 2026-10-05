@@ -13,10 +13,12 @@ let bodyIsLong = false;
 let bulletsNeverCome = false;
 let limitsAsList = false;
 let limitsIsLong = false;
+let everySectionLong = false;
 
 const sentence = (n: number, marker: string) => `Finding number ${n} adds one more separate detail about the construction programme ${marker}.`;
 const LONG_BODY = Array.from({ length: 120 }, (_, index) => sentence(index + 1, '[P2]')).join(' ');
 const SHORT_BODY = Array.from({ length: 6 }, (_, index) => sentence(index + 1, '[P2]')).join(' ');
+const longText = (subject: string, marker: string) => Array.from({ length: 120 }, (_, index) => `Detail ${index + 1} about ${subject} is one more separate point in the record ${marker}.`).join(' ');
 const TAIL = 'reporting that costs fell by half between the first reactor and the later builds [P3].';
 
 vi.mock('../services/openrouter/openrouterService', () => ({
@@ -35,6 +37,8 @@ vi.mock('../services/openrouter/openrouterService', () => ({
       if (keyFindingsAsParagraph && (bulletsNeverCome || !asksBullets)) return reply('The comparative analysis reveals three factors. Regulation changed during construction [P1]. Designs were not repeated [P2].');
       return reply(Array.from({ length: 9 }, (_, index) => `- Point ${index + 1} about the programme is stated once here [P1].`).join('\n'));
     }
+    if (everySectionLong && first.includes('Section to draft: Standard designs built in series')) return reply(longText('repeated designs', '[P3]'));
+    if (everySectionLong && first.includes('Section to draft: Where sources disagree')) return reply(longText('the disputed figures', '[P1]'));
     if (first.includes('Section to draft: Regulatory change during construction')) {
       if (bodyIsLong && !(asksShorter && shortenWorks)) return reply(LONG_BODY);
       return reply(SHORT_BODY);
@@ -101,6 +105,7 @@ describe('section size and shape on the Layer 1 report path', () => {
     bulletsNeverCome = false;
     limitsAsList = false;
     limitsIsLong = false;
+    everySectionLong = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -202,6 +207,21 @@ describe('section size and shape on the Layer 1 report path', () => {
     expect(call?.text).toContain('target: ~90 words');
     expect(call?.text).toContain('Write two to four sentences that name only real limits');
     expect(splitSentences(report.sections.find((entry) => entry.key === 'limitations')?.content ?? '')).toHaveLength(4);
+  });
+
+  it('keeps the whole report inside its length when several sections each run over', async () => {
+    bodyIsLong = true;
+    shortenWorks = false;
+    everySectionLong = true;
+    const report = await write();
+    const total = report.sections.reduce((sum, entry) => sum + wordCount(entry.content), 0);
+    // Each section alone was inside its allowance (1,053 + 1,053 + 297 words); together they were over 2,200.
+    expect(total).toBeLessThanOrEqual(2200);
+    expect(total).toBeGreaterThan(2000);
+    // Whole sentences only, and the short sections are as they were.
+    for (const key of ['topic_0', 'topic_1', 'disagreement']) expect(section(report, key).endsWith('].')).toBe(true);
+    expect(section(report, 'key_findings').split('\n')).toHaveLength(7);
+    expect(splitSentences(section(report, 'limits'))).toHaveLength(4);
   });
 
   it('asks once for a shorter draft when a section runs far past its share, and uses it', async () => {
@@ -373,9 +393,13 @@ describe('helpers behind section size and shape', () => {
     expect(trimToWords(`One two three four five.\n\n${table}\n\nA closing paragraph that is dropped.`, 8)).toBe(`One two three four five.\n\n${table}`);
   });
 
-  it('keeps the first four items of a limits list whole, wrapped lines and all', () => {
+  it('keeps a limits list to four sentences in all, each kept item whole, wrapped lines and all', () => {
     const wrapped = ['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.', '- Fifth.'].join('\n');
-    expect(firstSentences(wrapped, 4)).toBe(['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.'].join('\n'));
+    // Two sentences in the first item and two in the second: that is the four.
+    expect(firstSentences(wrapped, 4)).toBe(['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.'].join('\n'));
+    expect(firstSentences('- One. Two. Three.\n- Four. Five.\n- Six.', 4)).toBe('- One. Two. Three.');
+    // The first item is kept even when it alone is over.
+    expect(firstSentences('- One. Two. Three. Four. Five.\n- Six.', 4)).toBe('- One. Two. Three. Four. Five.');
     // A closing line after the list never replaces the limits themselves.
     expect(firstSentences('- One.\n- Two.\n- Three.\n\nThese constraints should guide interpretation.', 4)).toBe('- One.\n- Two.\n- Three.');
     expect(firstSentences('- One.\n- Two.\n- Three.\n\nA closing paragraph.', 2)).toBe('- One.\n- Two.');

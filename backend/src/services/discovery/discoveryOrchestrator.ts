@@ -41,10 +41,12 @@ import {
   DiscoveryPlan,
   DiscoveryRunSummary,
   DiscoverySource,
+  BibliographicDetails,
   SearchResultCandidate,
   bibliographicMetadata,
   candidateForRun,
-  withFullerBibliographic,
+  fullestBibliographic,
+  providerRecord,
 } from './providerTypes';
 import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
@@ -399,6 +401,8 @@ async function runDiscoveryOrchestratorInner(args: {
   const seenUrls = new Set<string>();
   /** Where each kept candidate sits in `allCandidates`, by normalised address. */
   const candidateAt = new Map<string, number>();
+  /** Every provider's own reference record for an address, kept so the choice between them never depends on arrival order. */
+  const recordsFor = new Map<string, BibliographicDetails[]>();
   const queriesExecuted: string[] = [];
   let roundsExecuted = 0;
   // Total query budget shared across all discovery rounds.
@@ -437,13 +441,18 @@ async function runDiscoveryOrchestratorInner(args: {
               // With the citation lock on it keeps the fuller reference record of
               // the two, whichever provider answered first.
               const at = candidateAt.get(key);
-              if (citationLockEnabled() && at !== undefined) {
-                allCandidates[at] = withFullerBibliographic(allCandidates[at], r);
+              const record = citationLockEnabled() ? providerRecord(r) : undefined;
+              if (record && at !== undefined) {
+                const records = [...(recordsFor.get(key) ?? []), record];
+                recordsFor.set(key, records);
+                allCandidates[at] = { ...allCandidates[at], bibliographic: fullestBibliographic(records) };
               }
               continue;
             }
             seenUrls.add(key);
             candidateAt.set(key, allCandidates.length);
+            const firstRecord = citationLockEnabled() ? providerRecord(r) : undefined;
+            if (firstRecord) recordsFor.set(key, [firstRecord]);
             // Reference details travel with a candidate only when the citation lock
             // is on for this run. With it off a candidate is exactly what it was.
             allCandidates.push(candidateForRun(r, citationLockEnabled()));

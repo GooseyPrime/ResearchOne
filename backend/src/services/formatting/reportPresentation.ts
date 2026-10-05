@@ -22,14 +22,23 @@ const ROLE_NAME_PATTERN = REASONING_MODEL_ROLES.map((role) => role.split('_').jo
 const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\]`, 'gi');
 
 /**
- * The same role names written into a sentence without brackets ("as noted by
- * the quantitative quality auditor"). Only names of two or more words are read:
- * a one-word role ("planner", "verifier") is also an ordinary word.
+ * The same role names written into a sentence as the one who said something
+ * ("as noted by the quantitative quality auditor", "the contract auditor
+ * flagged"). Only names of two or more words are read: a one-word role
+ * ("planner", "verifier") is also an ordinary word. And only where the sentence
+ * credits the role with a finding: several of these names are real occupations,
+ * and a report about what a contract auditor or a market scout does must be
+ * able to say so. The match is the role name alone, so it can be replaced in place.
  */
 const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes('_'))
   .map((role) => role.split('_').join('[_ ]'))
   .join('|');
-export const SPOKEN_ROLE_NAME = new RegExp(`\\b(?:the\\s+)?(?:${SPOKEN_ROLE_PATTERN})\\b`, 'gi');
+const ROLE_SAYS =
+  '(?:notes?|noted|finds?|found|flags?|flagged|identifie[sd]|reports?|reported|observe[sd]|concludes?|concluded|states?|stated|determine[sd]|confirms?|confirmed|warns?|warned|raise[sd]|points?\\s+out|pointed\\s+out|highlights?|highlighted|cautions?|cautioned|verifie[sd]|agent|stage|step|pass)';
+export const SPOKEN_ROLE_NAME = new RegExp(
+  `(?:(?<=\\b(?:by|from|per|according\\s+to)\\s)the\\s+(?:${SPOKEN_ROLE_PATTERN})\\b|\\bthe\\s+(?:${SPOKEN_ROLE_PATTERN})\\b(?=\\s+${ROLE_SAYS}\\b))`,
+  'gi'
+);
 
 /**
  * "Claim" in the sense the report standard bans: a word for what a source or
@@ -39,8 +48,18 @@ export const SPOKEN_ROLE_NAME = new RegExp(`\\b(?:the\\s+)?(?:${SPOKEN_ROLE_PATT
  */
 const CLAIM_AS_SUBJECT_TERM =
   '(?:(?:[\\p{L}]+-)*(?:patent|insurance|health|nutrition|warranty|tax|land|territorial|benefits?|expenses?|damages?|compensation|legal|court|medical|disability|unemployment|refund|asylum|mining|small|copyright|trademark|liability|injury|negligence|malpractice|fraud|defamation|libel|pension|welfare|accident|property|title|ownership|sovereignty|maritime|wage|discrimination|harassment|antitrust|breach|contract|civil|action|creditors?|bankruptcy|debt|estate|inheritance|treaty|medicare|medicaid|advertising|infringement|indemnity|salvage|water|native|aboriginal))';
+const CLAIM_OBJECT = '(?:adjusters?|forms?|numbers?|a\\s+refund|damages|compensation|asylum|benefits)';
+/** After "claims that": the words that make "that" a relative pronoun ("insurance claims that were denied"), so "claims" is still the noun. */
+const RELATIVE_AFTER_THAT = '(?:were|was|are|is|have|has|had|remain|remains|could|would|may|might|can|will|did|do|does)';
 export const CLAIM_WORD = new RegExp(
-  `(?<!\\b${CLAIM_AS_SUBJECT_TERM}\\s)\\bclaim(?:s|ed|ing)?\\b(?!\\s+(?:adjusters?|forms?|numbers?|a\\s+refund|damages|compensation|asylum|benefits))`,
+  '(?:' +
+    // The noun, unless it is one of the subject's own compounds.
+    `(?<!\\b${CLAIM_AS_SUBJECT_TERM}\\s)\\bclaims?\\b(?!\\s+${CLAIM_OBJECT})` +
+    // The verb is never part of a compound: "the contract claims that the price
+    // is fixed" and "the fraud claimed that" are the report saying what a source says.
+    `|(?<=\\b${CLAIM_AS_SUBJECT_TERM}\\s)claims?\\b(?=\\s+that\\b(?!\\s+${RELATIVE_AFTER_THAT}\\b))` +
+    `|\\bclaim(?:ed|ing)\\b(?!\\s+${CLAIM_OBJECT})` +
+    ')',
   'giu'
 );
 

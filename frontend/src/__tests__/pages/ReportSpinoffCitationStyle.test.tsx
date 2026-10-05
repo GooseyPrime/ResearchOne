@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mocks = vi.hoisted(() => ({
@@ -94,5 +94,28 @@ describe('citation style on a follow-up report', () => {
     fireEvent.change(await styleSelect(), { target: { value: 'harvard' } });
     const sent = await submit();
     expect(sent.citationStyle).toBe('harvard');
+  });
+
+  it('drops the last parent\'s style when another report without one is opened in the same page', async () => {
+    mocks.fetchSpinoffPrefill.mockImplementation(async (reportId: string) =>
+      reportId === 'report-1'
+        ? { query: 'A follow-up question about costs', citationStyle: 'mla' }
+        : { query: 'A second follow-up question', citationStyle: null }
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/app/reports/report-1/spinoff']}>
+          <Link to="/app/reports/report-2/spinoff">other report</Link>
+          <Routes>
+            <Route path="/app/reports/:reportId/spinoff" element={<ReportSpinoffPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await waitFor(async () => expect((await styleSelect()).value).toBe('mla'));
+    fireEvent.click(screen.getByText('other report'));
+    await waitFor(() => expect(screen.getByDisplayValue('A second follow-up question')).toBeTruthy());
+    expect((await styleSelect()).value).toBe('automatic');
   });
 });

@@ -105,28 +105,32 @@ function detailCount(details: BibliographicDetails): number {
   }).length;
 }
 
+/** A candidate's reference record with the provider it came from, or undefined when it has none. */
+export function providerRecord(candidate: SearchResultCandidate): BibliographicDetails | undefined {
+  if (!candidate.bibliographic) return undefined;
+  return { ...candidate.bibliographic, provider: candidate.bibliographic.provider ?? candidate.provider };
+}
+
 /**
- * One address found by two providers: the candidate already kept, with the
- * fuller of the two reference records. Which record wins does not depend on
- * which provider answered first: the one with more details, and on a tie the
- * provider whose name sorts first. What the winner lacks the other fills. The
- * record is stamped with the provider it came from, since the kind it names is
- * that provider's wording. A later candidate without details changes nothing.
+ * One reference record from the records several providers hold for one address.
+ * The choice is made over the providers' own records, never over a record
+ * already merged, so it cannot depend on which provider answered first: the
+ * record with the most details wins, a tie goes to the provider whose name
+ * sorts first, and what the winner lacks is filled from the others in that same
+ * order. The result carries the winner's provider, since the kind it names is
+ * that provider's wording.
  */
-export function withFullerBibliographic(kept: SearchResultCandidate, later: SearchResultCandidate): SearchResultCandidate {
-  if (!later.bibliographic) return kept;
-  const laterRecord = { ...later.bibliographic, provider: later.bibliographic.provider ?? later.provider };
-  if (!kept.bibliographic) return { ...kept, bibliographic: laterRecord };
-  const keptRecord = { ...kept.bibliographic, provider: kept.bibliographic.provider ?? kept.provider };
-  const difference = detailCount(laterRecord) - detailCount(keptRecord);
-  const laterWins = difference > 0 || (difference === 0 && laterRecord.provider < keptRecord.provider);
-  const [winner, other] = laterWins ? [laterRecord, keptRecord] : [keptRecord, laterRecord];
-  const merged: BibliographicDetails = { ...winner };
-  if (!merged.authors?.length && other.authors?.length) merged.authors = other.authors;
-  if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
-  if (!merged.kind && other.kind) merged.kind = other.kind;
-  if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
-  return { ...kept, bibliographic: merged };
+export function fullestBibliographic(records: ReadonlyArray<BibliographicDetails>): BibliographicDetails | undefined {
+  if (records.length === 0) return undefined;
+  const ordered = [...records].sort((a, b) => detailCount(b) - detailCount(a) || (a.provider ?? '').localeCompare(b.provider ?? '') || JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const merged: BibliographicDetails = { ...ordered[0] };
+  for (const other of ordered.slice(1)) {
+    if (!merged.authors?.length && other.authors?.length) merged.authors = other.authors;
+    if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
+    if (!merged.kind && other.kind) merged.kind = other.kind;
+    if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
+  }
+  return merged;
 }
 
 export interface DiscoverySource {

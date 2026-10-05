@@ -9,7 +9,7 @@ import {
   sourceKindInWords,
   type ReferenceSource,
 } from '../services/formatting/referenceList';
-import { plainClaimWords } from '../services/reasoning/reportGenerator';
+import { plainClaimWords, removeBannedWording } from '../services/reasoning/reportGenerator';
 import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
 
 const STUDY: ReferenceSource = {
@@ -189,6 +189,15 @@ describe('the reference list and the wording check', () => {
     const subject = 'Copyright claims increased [1]. A product-liability claim followed [2]. The class-action claims were settled [3].';
     expect(readerFacingLabelHits(subject)).toEqual([]);
     expect(plainClaimWords(subject)).toBe(subject);
+    // After one of those terms the verb is still the report saying what a source says.
+    expect(readerFacingLabelHits('The contract claims that the price is fixed [1].')).toContain('claims wording');
+    expect(plainClaimWords('The contract claims that the price is fixed [1]. The fraud claimed that the totals changed [2].')).toBe(
+      'The contract states that the price is fixed [1]. The fraud stated that the totals changed [2].'
+    );
+    // "that" as a relative pronoun leaves the noun a noun.
+    const relative = 'Insurance claims that were denied rose by a third [1].';
+    expect(readerFacingLabelHits(relative)).toEqual([]);
+    expect(plainClaimWords(relative)).toBe(relative);
     expect(readerFacingLabelHits('As noted by the quantitative quality auditor, samples differ [4].')).toContain('internal step');
     expect(readerFacingLabelHits('The evidence establishes that costs rose [1].')).toContain('courtroom');
     expect(readerFacingLabelHits('The planner at the utility chose one design [1].')).toEqual([]);
@@ -207,5 +216,19 @@ describe('fields that come from outside', () => {
     expect(entry).not.toMatch(/<[a-z!/]/i);
     expect(entry).toContain('Costs by country');
     expect(entry).toContain('Energy bad() Policy');
+  });
+});
+
+describe('a pipeline role named in a sentence', () => {
+  it('is found where the sentence credits it with a finding', () => {
+    expect(readerFacingLabelHits('The figures are uncertain, as noted by the quantitative quality auditor [1].')).toContain('internal step');
+    expect(readerFacingLabelHits('The contract auditor flagged two gaps in the sources [1].')).toContain('internal step');
+    expect(removeBannedWording('The figures are uncertain, as noted by the quantitative quality auditor [1].')).toBe('The figures are uncertain, as noted by this analysis [1].');
+  });
+
+  it('is left alone where it is the subject matter', () => {
+    const subject = 'A contract auditor checks invoices against the agreed terms [1]. Hiring a market scout or a data analysis specialist costs more [2]. The work of the contract auditor is set by statute [3].';
+    expect(readerFacingLabelHits(subject)).toEqual([]);
+    expect(removeBannedWording(subject)).toBe(subject);
   });
 });

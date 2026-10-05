@@ -9,7 +9,7 @@ export interface UsedSource {
   url?: string | null;
   /** Who wrote it, when the source says. */
   authors?: string[] | null;
-  /** What kind of source it is, in words: "peer-reviewed study", "web page". */
+  /** What kind of source it is, in words: "journal article", "web page". */
   kind?: string | null;
   /** The day it was read, as YYYY-MM-DD. */
   accessed?: string | null;
@@ -547,12 +547,25 @@ function listItems(content: string): { items: string[]; whole: boolean } | null 
 
 /**
  * The first `max` sentences of a section, for a note that must stay a note. A
- * note that opens with a list keeps its first `max` items, each whole; a closing
- * line after the list is dropped, not kept in place of the limits themselves.
+ * note that opens with a list keeps whole items up to `max` sentences in all; a
+ * closing line after the list is dropped, not kept in place of the limits themselves.
  */
 export function firstSentences(content: string, max: number): string {
   const list = listItems(content);
-  if (list) return list.items.slice(0, max).join('\n');
+  if (list) {
+    // The limit is on sentences, however they are set out: items are kept whole
+    // while the sentences in them stay within it, and the first is always kept.
+    const kept: string[] = [];
+    let sentences = 0;
+    for (const item of list.items) {
+      const text = item.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '').replace(/\s*\n\s*/g, ' ').trim();
+      const count = Math.max(1, splitSentences(text).length);
+      if (kept.length > 0 && sentences + count > max) break;
+      kept.push(item);
+      sentences += count;
+    }
+    return kept.join('\n');
+  }
   const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
   const out: string[] = [];
   for (const block of blocks) {
@@ -563,4 +576,32 @@ export function firstSentences(content: string, max: number): string {
     }
   }
   return out.length > 0 ? out.join(' ') : content;
+}
+
+/**
+ * Sections brought back inside the length of the report. Each section may run
+ * a little past its own share, and several doing so at once put a report well
+ * past its length. When the whole is over `target`, the sections that are past
+ * their share give up what they are over by, in proportion, at a sentence end.
+ * A section inside its share is never touched, and neither is one `mayTrim`
+ * excludes (the steps of a how-to, a section a request named).
+ */
+export function fitToTotal<T extends { key: string; content: string }>(
+  sections: T[],
+  target: number,
+  shareOf: (key: string) => number,
+  mayTrim: (key: string) => boolean
+): T[] {
+  const words = sections.map((section) => wordCount(section.content));
+  const over = words.reduce((sum, count) => sum + count, 0) - target;
+  if (over <= 0) return sections;
+  const excess = sections.map((section, index) => (mayTrim(section.key) ? Math.max(0, words[index] - shareOf(section.key)) : 0));
+  const totalExcess = excess.reduce((sum, count) => sum + count, 0);
+  if (totalExcess === 0) return sections;
+  const share = Math.min(1, over / totalExcess);
+  return sections.map((section, index) => {
+    if (excess[index] === 0) return section;
+    const content = trimToWords(section.content, Math.round(words[index] - excess[index] * share));
+    return content === section.content ? section : { ...section, content };
+  });
 }

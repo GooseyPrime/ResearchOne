@@ -101,10 +101,19 @@ describe('POST /api/runs/:runId/plan/refine', () => {
     expect(mocks.seenInside).toEqual([{ baseline: false, lock: false }]);
   });
 
-  it('still revises the plan when the recorded switches cannot be read', async () => {
-    database(new Error('connection reset'));
+  it('revises under the process settings on a database that has no table for recorded switches', async () => {
+    database(Object.assign(new Error('relation "eval_run_overrides" does not exist'), { code: '42P01' }));
     const res = await refine();
     expect(res.status).toBe(200);
     expect(mocks.seenInside).toEqual([{ baseline: false, lock: false }]);
+  });
+
+  it('does not revise the plan when the recorded switches cannot be read', async () => {
+    // Revising under the process settings here, while the run later starts under
+    // its own switches, would give a plan sized for one and a run under the other.
+    database(new Error('connection reset'));
+    const res = await refine();
+    expect(res.status).toBe(500);
+    expect(mocks.refinePlan).not.toHaveBeenCalled();
   });
 });

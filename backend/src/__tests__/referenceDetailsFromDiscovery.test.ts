@@ -9,7 +9,7 @@ import { openAlexBibliographic } from '../services/discovery/providers/openAlexS
 import { arxivBibliographic } from '../services/discovery/providers/arxivSearch';
 import { formatReference } from '../services/formatting/referenceList';
 import { pmcAuthorName, pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { bibliographicMetadata, candidateForRun, withFullerBibliographic, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
+import { bibliographicMetadata, candidateForRun, fullestBibliographic, providerRecord, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
 import { citationLockEnabled, runWithFlags } from '../config';
 
@@ -122,34 +122,35 @@ describe('what a run keeps', () => {
     expect(formatReference({ title: 'Exa-cel for sickle cell disease', authors: [pmcAuthorName('Frangoul H')], date: '2021-01-21' }, 'apa')).toMatch(/^Frangoul, H\. \(2021/);
   });
 
-  describe('one address found by two providers', () => {
+  describe('one address found by several providers', () => {
     const web: SearchResultCandidate = { url: 'https://doi.org/10.1/x', title: 'A study', snippet: '', score: 0.9, rank: 1, provider: 'tavily', sourceQuery: 'q' };
-    const openAlex: SearchResultCandidate = { ...web, provider: 'openalex', rank: 4, bibliographic: { authors: ['Jessica R. Lovering'], kind: 'journal article' } };
-    const crossref: SearchResultCandidate = { ...web, provider: 'crossref', rank: 7, bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01' } };
+    const openAlex = providerRecord({ ...web, provider: 'openalex', bibliographic: { authors: ['Jessica R. Lovering'], kind: 'journal article' } })!;
+    const crossref = providerRecord({ ...web, provider: 'crossref', bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01' } })!;
 
-    it('gives a candidate without details the record a later provider has, stamped with that provider', () => {
-      const merged = withFullerBibliographic(web, crossref);
-      expect(merged.provider).toBe('tavily');
-      expect(merged.rank).toBe(1);
-      expect(bibliographicMetadata(merged)).toEqual({ bibliographic: { ...crossref.bibliographic, provider: 'crossref' } });
+    it('stamps a record with its provider, and a candidate without details has none', () => {
+      expect(providerRecord(web)).toBeUndefined();
+      expect(crossref.provider).toBe('crossref');
+      expect(fullestBibliographic([])).toBeUndefined();
     });
 
-    it('keeps the same record whichever provider answered first', () => {
-      const oneWay = bibliographicMetadata(withFullerBibliographic(withFullerBibliographic(web, openAlex), crossref));
-      const otherWay = bibliographicMetadata(withFullerBibliographic(withFullerBibliographic(web, crossref), openAlex));
-      expect(oneWay).toEqual(otherWay);
-      // The fuller record wins and the other fills what it lacks.
-      expect(oneWay).toEqual({
-        bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01', kind: 'journal article', provider: 'crossref' },
+    it('takes the fullest record and fills what it lacks from the others', () => {
+      expect(fullestBibliographic([openAlex, crossref])).toEqual({
+        authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01', kind: 'journal article', provider: 'crossref',
       });
     });
 
-    it('breaks a tie by provider name and ignores a later candidate without details', () => {
-      const a: SearchResultCandidate = { ...web, provider: 'arxiv', bibliographic: { authors: ['A'] } };
-      const b: SearchResultCandidate = { ...web, provider: 'pmc', bibliographic: { authors: ['B'] } };
-      expect(withFullerBibliographic(a, b).bibliographic).toEqual({ authors: ['A'], provider: 'arxiv' });
-      expect(withFullerBibliographic(b, a).bibliographic).toEqual({ authors: ['A'], provider: 'arxiv' });
-      expect(withFullerBibliographic(crossref, web)).toBe(crossref);
+    it('gives the same record in every order the providers can answer in', () => {
+      // One field, one field, two fields: merged pairwise, the first two together
+      // looked as full as the third and kept the wrong author.
+      const a = { authors: ['A'], provider: 'arxiv' };
+      const b = { publisher: 'B', provider: 'brave' };
+      const c = { authors: ['C'], publishedAt: '2020-01-02', provider: 'crossref' };
+      const orders = [[a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a]];
+      for (const order of orders) {
+        expect(fullestBibliographic(order)).toEqual({ authors: ['C'], publishedAt: '2020-01-02', publisher: 'B', provider: 'crossref' });
+      }
+      // A tie goes to the provider whose name sorts first.
+      expect(fullestBibliographic([{ authors: ['B'], provider: 'pmc' }, { authors: ['A'], provider: 'arxiv' }])).toEqual({ authors: ['A'], provider: 'arxiv' });
     });
   });
 

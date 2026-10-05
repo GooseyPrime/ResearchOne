@@ -92,9 +92,9 @@ export default function ReportSpinoffPage() {
     if (prefill.researchObjective) {
       setResearchObjective(prefill.researchObjective as ResearchObjective);
     }
-    if (prefill.citationStyle) {
-      setCitationStyle(prefill.citationStyle as CitationStyleSlug);
-    }
+    // Every parent sets the style, including one that had none: a style left
+    // over from the last report opened here would be sent without being chosen.
+    setCitationStyle((prefill.citationStyle as CitationStyleSlug | null | undefined) ?? 'automatic');
     if (prefill.filterTags?.length) {
       setFilterTags(prefill.filterTags.join(', '));
     }

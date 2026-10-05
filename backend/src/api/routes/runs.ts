@@ -154,11 +154,11 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
     // A switch an admin turned on for this run applies to its plan too. The first
     // plan is written by the worker inside the run's switches; a revision written
     // here without them was sized and shaped as if they were off.
-    const runFlags = await loadRunFlags(runId).catch((flagErr: unknown) => {
-      // The plan can still be revised under the process settings; the run itself reads its switches again when it starts.
-      logger.warn('plan_refine_run_flags_unavailable', { runId, err: flagErr });
-      return null;
-    });
+    // A run with no recorded switches, or a database without the table, reads
+    // as none. Any other failure fails this request: revising the plan under the
+    // process settings while the run later starts under its own switches is the
+    // mismatch this is here to prevent, and the request can simply be sent again.
+    const runFlags = await loadRunFlags(runId);
     const { revisedPlan, diffSummary, intentChange } = await runWithFlags(runFlags, () =>
       refinePlan({
         currentPlan: gatePlan.plan_payload as PlanPayload,
