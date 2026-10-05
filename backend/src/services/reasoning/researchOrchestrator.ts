@@ -952,6 +952,8 @@ export interface LockedSourceRow {
   provider: string | null;
   /** What the provider's record says the work is, in words, when it said. */
   kind?: string | null;
+  /** The work's DOI from the provider's record, when the address is not a DOI address. */
+  doi?: string | null;
 }
 
 /** A retrieved source with what its stored record adds for the reference list. Missing details stay missing. */
@@ -2338,7 +2340,8 @@ async function runResearchJobInner(
           sourceRows = await query<LockedSourceRow>(
             `SELECT c.id, c.source_id, s.authors, s.publication, s.url, s.original_filename, s.retrieval_timestamp,
                     s.metadata->'bibliographic'->>'provider' AS provider,
-                    s.metadata->'bibliographic'->>'kind' AS kind
+                    s.metadata->'bibliographic'->>'kind' AS kind,
+                    s.metadata->'bibliographic'->>'doi' AS doi
                FROM chunks c
                LEFT JOIN sources s ON s.id = c.source_id
               WHERE c.id = ANY($1::uuid[])`,
@@ -2365,8 +2368,11 @@ async function runResearchJobInner(
         let lockChecked: Array<{ status: string; notice: string | null } | null> = [];
         if (doiResolveEnabled()) {
           try {
-            const dois = referenceSources.map((source) => doiOf(source.url)).filter((doi): doi is string => Boolean(doi));
-            const applied = applyDoiChecks(allChunks, referenceSources, await checkDois(dois), doiOf);
+            // The provider's record first: a PubMed Central source's address is
+            // PubMed Central's page, and its DOI is only in the record.
+            const doiByPassage = allChunks.map((chunk, index) => doiOf(detailByChunk.get(chunk.id)?.doi) ?? doiOf(referenceSources[index]?.url));
+            const dois = doiByPassage.filter((doi): doi is string => Boolean(doi));
+            const applied = applyDoiChecks(allChunks, referenceSources, await checkDois(dois), doiByPassage);
             // With every passage gone there is nothing to write from. That is a
             // judgement about the check, not the sources: keep them all.
             if (applied.chunks.length > 0) {

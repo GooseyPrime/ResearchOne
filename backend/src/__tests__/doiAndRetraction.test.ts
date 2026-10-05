@@ -25,6 +25,13 @@ import { checkDois, doiOf, editorialNoticeFrom, type DoiHttp } from '../services
 import { applyDoiChecks, formatLockedContext, issuePassages, stripUnstatedRetractions, unstatedRetractions, type LockedPassage } from '../services/reasoning/citationLock';
 import { finalizeLockedReportForSave } from '../services/reasoning/reportGenerator';
 import { recordDoiChecks } from '../services/reasoning/citationBinding';
+import { pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
+import { fullestBibliographic } from '../services/discovery/providerTypes';
+import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
+import { scoreDoiResolution } from '../services/eval/scoreReport';
+import { STORED_CITATION_SQL } from '../services/eval/runHarness';
+
+const orchestratorSource = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
 
 const RETRACTED_RECORD = { message: { 'updated-by': [{ type: 'retraction', label: 'Retraction' }] } };
 
@@ -123,13 +130,13 @@ const checks = new Map([
 ]);
 
 function passages(): LockedPassage[] {
-  const applied = applyDoiChecks(chunks, sources, checks, doiOf);
+  const applied = applyDoiChecks(chunks, sources, checks, sources.map((source) => doiOf(source.url)));
   return issuePassages(applied.chunks, applied.sources).map((passage, index) => ({ ...passage, retracted: applied.retracted[index], doiCheck: applied.checked[index] }));
 }
 
 describe('what a locked report may cite after the link check', () => {
   it('leaves out a source whose DOI does not resolve, so no marker exists for it', () => {
-    const applied = applyDoiChecks(chunks, sources, checks, doiOf);
+    const applied = applyDoiChecks(chunks, sources, checks, sources.map((source) => doiOf(source.url)));
     expect(applied.dropped).toBe(1);
     expect(applied.chunks.map((chunk) => chunk.id)).toEqual(['c1', 'c2', 'c3']);
     const shown = passages();
@@ -146,7 +153,7 @@ describe('what a locked report may cite after the link check', () => {
 
   it('changes nothing when the check was unavailable or the source has no DOI', () => {
     const unknown = new Map([['10.1000/ok', { status: 'unknown', notice: null }], ['10.1000/bad', { status: 'unknown', notice: null }], ['10.1000/gone', { status: 'unknown', notice: null }]]);
-    const applied = applyDoiChecks(chunks, sources, unknown, doiOf);
+    const applied = applyDoiChecks(chunks, sources, unknown, sources.map((source) => doiOf(source.url)));
     expect(applied.chunks).toHaveLength(4);
     expect(applied.retracted).toEqual([false, false, false, false]);
     expect(applied.checked[2]).toBeNull();
@@ -163,6 +170,11 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('Costs rose [P1]. The trial found a large effect [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('Costs rose [P1]. A trial, since retracted, found a large effect [P2].', shown)).toEqual([]);
     expect(unstatedRetractions('The paper was later withdrawn [P2].', shown)).toEqual([]);
+    expect(unstatedRetractions('After the retraction of the paper, the effect is unproven [P2].', shown)).toEqual([]);
+    expect(unstatedRetractions('The retracted trial had reported a large effect [P2].', shown)).toEqual([]);
+    // The word as a topic is not a statement about the cited work.
+    expect(unstatedRetractions('Retraction rates were low, while the trial reported benefit [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('Journals retract few papers; the trial reported benefit [P2].', shown)).toEqual(['P2']);
     // Saying so in a neighbouring sentence is not saying so in the sentence.
     expect(unstatedRetractions('One study was retracted. The trial found a large effect [P2].', shown)).toEqual(['P2']);
   });
@@ -187,6 +199,31 @@ describe('what a locked report may cite after the link check', () => {
     const text = 'The trial found a large effect [P2].';
     expect(unstatedRetractions(text, plain)).toEqual([]);
     expect(stripUnstatedRetractions(text, plain)).toBe(text);
+  });
+});
+
+describe('a DOI that is only in the provider record', () => {
+  it('is checked even though the address is the provider page', () => {
+    const pmcSources = [{ title: 'Trial', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC1/' }];
+    const dois = [doiOf('10.1000/bad') ?? doiOf(pmcSources[0].url)];
+    const applied = applyDoiChecks([chunks[1]], pmcSources, checks, dois);
+    expect(applied.retracted).toEqual([true]);
+    expect(pmcBibliographic({ doi: '10.1000/BAD', fulljournalname: 'Journal' } as never)?.doi).toBe('10.1000/bad');
+    expect(pmcBibliographic({ doi: 'not a doi', fulljournalname: 'Journal' } as never)?.doi).toBeUndefined();
+    expect(bibliographicRecord(storedBibliographic({ bibliographic: { doi: '10.1000/bad' } })!)).toEqual({ doi: '10.1000/bad' });
+    expect(fullestBibliographic([{ provider: 'crossref', authors: ['A'] }, { provider: 'pmc', doi: '10.1000/bad' }])?.doi).toBe('10.1000/bad');
+    expect(orchestratorSource).toMatch(/doiOf\(detailByChunk\.get\(chunk\.id\)\?\.doi\) \?\? doiOf\(referenceSources\[index\]\?\.url\)/);
+    expect(orchestratorSource).toContain("s.metadata->'bibliographic'->>'doi' AS doi");
+  });
+});
+
+describe('the harness score', () => {
+  it('is the share of answered checks that resolved, and nothing when none was checked', () => {
+    const cite = (resolveStatus: string | null) => ({ alias: 'E1', chunkQuote: 'q', chunkText: 'q', resolveStatus });
+    expect(scoreDoiResolution([cite('resolved'), cite('resolved')])).toBe(1);
+    expect(scoreDoiResolution([cite('resolved'), cite('unresolved'), cite(null), cite('unknown')])).toBe(0.5);
+    expect(scoreDoiResolution([cite(null), cite('unknown')])).toBeNull();
+    expect(STORED_CITATION_SQL).toContain(`to_jsonb(rc)->>'resolve_status' AS "resolveStatus"`);
   });
 });
 

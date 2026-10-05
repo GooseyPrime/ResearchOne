@@ -172,8 +172,21 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
 export const RETRACTED_LABEL =
   '(RETRACTED by its publisher. Cite it only in a sentence that itself says the work was retracted, for example "a 2019 study, since retracted, reported …".)';
 
-/** A sentence says a source was retracted when it uses one of these words. */
-const SAYS_RETRACTED = /\bretract(?:ed|ion|ions)?\b|\bwithdrawn\b/i;
+/**
+ * A sentence says the work it cites was retracted when it describes a work
+ * that way: "since retracted", "was later withdrawn", "the retracted trial",
+ * "the retraction of the paper". The bare topic ("retraction rates were low")
+ * is not that, and does not let a retracted source through as standing evidence.
+ */
+const WORK = '(?:study|studies|paper|article|trial|work|report|publication|review|analysis|findings?|results?|source|preprint|letter)';
+const SAYS_RETRACTED = new RegExp(
+  [
+    '\\b(?:since|later|subsequently|now|was|were|been|is|are|being|then|eventually|formally)\\s+(?:\\w+\\s+){0,2}(?:retracted|withdrawn)\\b',
+    `\\b(?:retracted|withdrawn)\\s+(?:\\w+\\s+){0,2}${WORK}\\b`,
+    `\\bretraction\\s+of\\s+(?:the|this|that|its|their)\\b`,
+  ].join('|'),
+  'i'
+);
 
 /**
  * Markers of retracted sources cited in a sentence that does not say the work
@@ -222,13 +235,13 @@ export function stripUnstatedRetractions(text: string, shown: LockedPassage[]): 
  * writer, so it cannot be cited or counted as support for anything. A source
  * its publisher retracted stays, flagged, because a report may need to say that
  * a finding was withdrawn. "Unknown" (the check itself was unavailable) changes
- * nothing. `doiOfSource` reads a source's DOI from its address.
+ * nothing. `dois` gives each passage's DOI, or null, in passage order.
  */
-export function applyDoiChecks<Chunk, Source extends { url?: string | null }>(
+export function applyDoiChecks<Chunk, Source>(
   chunks: Chunk[],
   sources: Source[],
   checks: ReadonlyMap<string, { status: string; notice: { kind: string; text: string } | null }>,
-  doiOfSource: (url: string | null | undefined) => string | null
+  dois: ReadonlyArray<string | null>
 ): { chunks: Chunk[]; sources: Source[]; retracted: boolean[]; checked: Array<{ status: string; notice: string | null } | null>; dropped: number } {
   const keptChunks: Chunk[] = [];
   const keptSources: Source[] = [];
@@ -236,7 +249,7 @@ export function applyDoiChecks<Chunk, Source extends { url?: string | null }>(
   const checked: Array<{ status: string; notice: string | null } | null> = [];
   let dropped = 0;
   chunks.forEach((chunk, index) => {
-    const doi = doiOfSource(sources[index]?.url);
+    const doi = dois[index] ?? null;
     const check = doi ? checks.get(doi) : undefined;
     if (check?.status === 'unresolved') {
       dropped += 1;

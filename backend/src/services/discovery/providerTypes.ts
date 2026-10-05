@@ -40,6 +40,8 @@ export interface BibliographicDetails {
   kind?: string;
   /** YYYY-MM-DD. Left out when the record gives less than a full day, or a day that does not exist. */
   publishedAt?: string;
+  /** The work's DOI when the provider's record gives one, as "10.xxxx/…". Kept apart from the address, which may be the provider's own page. */
+  doi?: string;
   /**
    * The provider whose record these details came from, when that is not the
    * provider of the candidate carrying them: the same address found by two
@@ -129,6 +131,7 @@ export function fullestBibliographic(records: ReadonlyArray<BibliographicDetails
     if (!merged.publisher && other.publisher) merged.publisher = other.publisher;
     if (!merged.kind && other.kind) merged.kind = other.kind;
     if (!merged.publishedAt && other.publishedAt) merged.publishedAt = other.publishedAt;
+    if (!merged.doi && other.doi) merged.doi = other.doi;
   }
   return merged;
 }

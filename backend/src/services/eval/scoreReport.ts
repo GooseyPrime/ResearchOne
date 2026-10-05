@@ -8,6 +8,19 @@ export interface EvalCitation {
   chunkId?: string | null;
   citationText?: string | null;
   claimText?: string | null;
+  /** What the link check recorded for the citation's source; null when it was not checked. */
+  resolveStatus?: string | null;
+}
+
+/**
+ * Of the citations whose source's DOI was checked and got an answer, the share
+ * whose DOI resolves. Null when none was checked: with the switch off, or for a
+ * report with no DOI sources, there is nothing to score.
+ */
+export function scoreDoiResolution(citations: EvalCitation[]): number | null {
+  const answered = citations.filter((citation) => citation.resolveStatus === 'resolved' || citation.resolveStatus === 'unresolved');
+  if (answered.length === 0) return null;
+  return answered.filter((citation) => citation.resolveStatus === 'resolved').length / answered.length;
 }
 
 export interface ContradictionLink {
@@ -37,7 +50,7 @@ export interface EvalScores {
   quote_supports: number | null;
   quote_supports_not_judged: number | null;
   authority_share: null;
-  doi_resolution: null;
+  doi_resolution: number | null;
   contradiction_retention: number | null;
   anomaly_retained: number | null;
   time_to_report: number | null;
@@ -118,7 +131,7 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
     quote_supports: input.quoteSupports ?? null,
     quote_supports_not_judged: input.quoteSupportsNotJudged ?? null,
     authority_share: null,
-    doi_resolution: null,
+    doi_resolution: scoreDoiResolution(input.citations),
     contradiction_retention: input.fixtureSides
       ? scoreContradictionRetention(input.contradictionLinks ?? [], input.fixtureSides)
       : null,

@@ -212,7 +212,7 @@ interface IngestFetchedWebPageParams {
  */
 export function storedBibliographic(
   metadata: Record<string, unknown> | undefined
-): { authors: string[] | null; publisher: string | null; publishedAt: string | null; kind: string | null; provider: string | null } | null {
+): { authors: string[] | null; publisher: string | null; publishedAt: string | null; kind: string | null; provider: string | null; doi?: string | null } | null {
   const raw = metadata?.bibliographic;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
@@ -229,8 +229,10 @@ export function storedBibliographic(
   const kind = /^[a-z][a-z -]{2,39}$/.test(kindText) ? kindText : null;
   const providerText = typeof record.provider === 'string' ? record.provider.trim().toLowerCase() : '';
   const provider = /^[a-z][a-z0-9_-]{1,39}$/.test(providerText) ? providerText : null;
-  if (authors.length === 0 && !publisher && !publishedAt && !kind) return null;
-  return { authors: authors.length > 0 ? authors : null, publisher, publishedAt, kind, provider };
+  const doiText = typeof record.doi === 'string' ? record.doi.trim().toLowerCase() : '';
+  const doi = /^10\.\d{4,9}\/\S{1,200}$/.test(doiText) ? doiText : null;
+  if (authors.length === 0 && !publisher && !publishedAt && !kind && !doi) return null;
+  return { authors: authors.length > 0 ? authors : null, publisher, publishedAt, kind, provider, ...(doi ? { doi } : {}) };
 }
 
 /** The checked details as they are kept under a source's metadata, without empty fields. */
@@ -241,6 +243,7 @@ export function bibliographicRecord(details: NonNullable<ReturnType<typeof store
   if (details.authors) out.authors = details.authors;
   if (details.publisher) out.publisher = details.publisher;
   if (details.publishedAt) out.publishedAt = details.publishedAt;
+  if (details.doi) out.doi = details.doi;
   return out;
 }
 
