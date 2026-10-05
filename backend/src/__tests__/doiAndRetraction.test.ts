@@ -192,6 +192,7 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('Journals retract few papers; the trial reported benefit [P2].', shown)).toEqual(['P2']);
     // A denial presents the work as standing.
     expect(unstatedRetractions('The study was not retracted [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('The trial was not retracted and showed benefit [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('No retraction of the paper was issued [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('The trial was never withdrawn [P2].', shown)).toEqual(['P2']);
     // Saying so in a neighbouring sentence is not saying so in the sentence.
@@ -227,6 +228,10 @@ describe('a DOI that is only in the provider record', () => {
     const dois = [doiOf('10.1000/bad') ?? doiOf(pmcSources[0].url)];
     const applied = applyDoiChecks([chunks[1]], pmcSources, checks, dois);
     expect(applied.retracted).toEqual([true]);
+    // The shape ESummary answers in: identifiers as a list, the DOI one of them.
+    const summary = { uid: '1', title: 'Trial', fulljournalname: 'Journal', articleids: [{ idtype: 'pmid', value: '123' }, { idtype: 'doi', value: '10.1000/BAD' }, { idtype: 'pmcid', value: 'PMC1' }] };
+    expect(pmcBibliographic(summary as never)?.doi).toBe('10.1000/bad');
+    expect(pmcBibliographic({ fulljournalname: 'Journal', articleids: [{ idtype: 'pmid', value: '123' }] } as never)?.doi).toBeUndefined();
     expect(pmcBibliographic({ doi: '10.1000/BAD', fulljournalname: 'Journal' } as never)?.doi).toBe('10.1000/bad');
     expect(pmcBibliographic({ doi: 'not a doi', fulljournalname: 'Journal' } as never)?.doi).toBeUndefined();
     expect(bibliographicRecord(storedBibliographic({ bibliographic: { doi: '10.1000/bad' } })!)).toEqual({ doi: '10.1000/bad' });
