@@ -179,8 +179,14 @@ export const RETRACTED_LABEL =
  * is not that, and does not let a retracted source through as standing evidence.
  */
 const WORK = '(?:study|studies|paper|article|trial|work|report|publication|review|analysis|findings?|results?|source|preprint|letter)';
-/** "was not retracted", "no retraction of the paper was issued", "never withdrawn": a denial, which presents the work as standing. */
-const DENIES_RETRACTION = /\b(?:not|never|no|nor|neither|without|n't|n\u2019t|unretracted)\b[^.;:!?]{0,60}\b(?:retract\w*|withdraw\w*)|\b(?:retract\w*|withdraw\w*)\b[^.;:!?]{0,30}\b(?:not|never)\b/i;
+/**
+ * "was not retracted", "no retraction was issued", "never withdrawn": a denial,
+ * which presents the work as standing. Only a negative that governs the
+ * retraction counts: "the retracted study was not reliable" says the work was
+ * retracted, and denies something else.
+ */
+const DENIES_RETRACTION =
+  /\b(?:not|never|n't|n\u2019t)\s+(?:(?:been|yet|ever|later|since|formally|subsequently|actually)\s+){0,3}(?:retracted|withdrawn)\b|\bno\s+(?:\w+\s+)?(?:retraction|withdrawal)s?\b|\b(?:without|nor|neither)\s+(?:\w+\s+){0,2}(?:retraction|retracted|withdrawn)\b|\bunretracted\b/i;
 const AFFIRMS_RETRACTION = new RegExp(
   [
     '\\b(?:since|later|subsequently|now|was|were|been|is|are|being|then|eventually|formally)\\s+(?:\\w+\\s+){0,2}(?:retracted|withdrawn)\\b',

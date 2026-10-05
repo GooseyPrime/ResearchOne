@@ -202,6 +202,11 @@ describe('what a locked report may cite after the link check', () => {
     expect(unstatedRetractions('The trial was not retracted and showed benefit [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('No retraction of the paper was issued [P2].', shown)).toEqual(['P2']);
     expect(unstatedRetractions('The trial was never withdrawn [P2].', shown)).toEqual(['P2']);
+    expect(unstatedRetractions('The paper has not yet been retracted [P2].', shown)).toEqual(['P2']);
+    // A negative about something else is not a denial of the retraction.
+    expect(unstatedRetractions('The retracted study was not reliable [P2].', shown)).toEqual([]);
+    expect(unstatedRetractions('No benefit was found in the retracted study [P2].', shown)).toEqual([]);
+    expect(unstatedRetractions('The trial, since retracted, never reached its enrolment target [P2].', shown)).toEqual([]);
     // One statement covers one retracted work.
     const two = shown.map((passage) => (passage.marker === 'P3' ? { ...passage, retracted: true } : passage));
     expect(unstatedRetractions('Study A, since retracted, found X [P2], while Study B found Y [P3].', two)).toEqual(['P2', 'P3']);
