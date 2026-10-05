@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { exportErrorMessage } from '@/utils/exportErrorMessage';
 import { Download, AlertCircle, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
 
@@ -149,8 +150,7 @@ export default function ReportExportButton({ reportId, runCitationStyle }: Repor
         setOpen(false);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(await exportErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

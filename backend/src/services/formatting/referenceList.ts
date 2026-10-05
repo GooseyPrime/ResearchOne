@@ -58,12 +58,27 @@ export function decodeHtmlEntities(text: string): string {
 }
 
 /**
+ * A title, name or publisher from a provider's record as plain text. Entities
+ * are decoded, markup is taken out ("<i>In vivo</i>" reads "In vivo"), and an
+ * angle bracket that is left is written as an entity. The reference list is
+ * Markdown, which carries raw HTML into an HTML export, so a field that came
+ * from outside must never be able to open a tag.
+ */
+export function plainFieldText(text: string): string {
+  return decodeHtmlEntities(text)
+    .replace(/<\/?[a-z][^<>]*>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
  * A stored title as a reader should see it. Markup entities are decoded, the
  * name of the program that saved a file ("Microsoft Word - ") and a trailing
  * file extension are taken off, and the text is kept to one line.
  */
 export function cleanSourceTitle(title: string): string {
-  return decodeHtmlEntities(title)
+  return plainFieldText(title)
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^(?:Microsoft (?:Word|PowerPoint|Excel)|Adobe Acrobat)\s*[-–—:]\s*/i, '')
@@ -140,7 +155,7 @@ function initials(given: string | undefined): string {
 
 function parsedAuthors(source: ReferenceSource): CslAuthor[] {
   return (source.authors ?? [])
-    .map((author) => (typeof author === 'string' ? parseAuthor(author) : null))
+    .map((author) => (typeof author === 'string' ? parseAuthor(plainFieldText(author)) : null))
     .filter((author): author is CslAuthor => author !== null);
 }
 

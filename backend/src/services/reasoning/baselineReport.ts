@@ -515,11 +515,13 @@ export function sentencesAsBullets(content: string, max = 7): string {
  * The items of a section that is a list and nothing else, each with the lines
  * that continue it, or null when the section is not such a list. A line that
  * does not open an item continues the one above it; after a blank line it must
- * be indented to do so, as Markdown requires. Anything else is prose.
+ * be indented to do so, as Markdown requires. `whole` is false when prose
+ * follows the list. Null when the section does not open with a list.
  */
-function listItems(content: string): string[] | null {
+function listItems(content: string): { items: string[]; whole: boolean } | null {
   const items: string[][] = [];
   let afterBlank = false;
+  let whole = true;
   for (const line of content.split('\n')) {
     if (!line.trim()) {
       afterBlank = true;
@@ -529,19 +531,28 @@ function listItems(content: string): string[] | null {
       items.push([line]);
     } else {
       const current = items[items.length - 1];
-      if (!current || line.trim().startsWith('```') || (afterBlank && !/^\s{2,}\S/.test(line))) return null;
+      if (!current) return null;
+      if (line.trim().startsWith('```') || (afterBlank && !/^\s{2,}\S/.test(line))) {
+        // Prose after the list: the items read so far are the note.
+        whole = false;
+        break;
+      }
       if (afterBlank) current.push('');
       current.push(line);
     }
     afterBlank = false;
   }
-  return items.length > 0 ? items.map((lines) => lines.join('\n')) : null;
+  return items.length > 0 ? { items: items.map((lines) => lines.join('\n')), whole } : null;
 }
 
-/** The first `max` sentences of a section, for a note that must stay a note. A note written as a list keeps its first `max` items, each whole. */
+/**
+ * The first `max` sentences of a section, for a note that must stay a note. A
+ * note that opens with a list keeps its first `max` items, each whole; a closing
+ * line after the list is dropped, not kept in place of the limits themselves.
+ */
 export function firstSentences(content: string, max: number): string {
-  const items = listItems(content);
-  if (items) return items.slice(0, max).join('\n');
+  const list = listItems(content);
+  if (list) return list.items.slice(0, max).join('\n');
   const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
   const out: string[] = [];
   for (const block of blocks) {

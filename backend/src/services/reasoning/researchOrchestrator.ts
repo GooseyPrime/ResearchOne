@@ -30,6 +30,7 @@ import {
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
   finalizeLockedReportForSave,
+  cleanLayer1WordingForSave,
 } from './reportGenerator';
 import { cleanReaderMetadata } from '../formatting/reportPresentation';
 import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
@@ -2906,6 +2907,21 @@ ${reportForGates(generatedReport.markdown)}`,
       lockedOccurrences = finalized.occurrences;
       if (finalized.removed > 0) {
         logger.warn(`[${runId}] ${finalized.removed} citation marker(s) named no passage and were removed`);
+      }
+    }
+
+    // A Layer 1 report without the lock gets the same last wording check: the
+    // repair pass above runs after the writer's own check and can put banned
+    // wording back. Nothing else about the text changes here.
+    if (!lockedPassages && layer1Run && typeof generatedReport?.markdown === 'string') {
+      const checked = cleanLayer1WordingForSave(generatedReport.markdown);
+      generatedReport.markdown = checked.markdown;
+      if (checked.wordingAfter.length > 0) {
+        logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: checked.wordingAfter });
+        await query(
+          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+          [JSON.stringify({ presentationIssues: checked.wordingAfter }), runId]
+        );
       }
     }
 

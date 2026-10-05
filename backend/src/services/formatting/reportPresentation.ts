@@ -38,10 +38,10 @@ export const SPOKEN_ROLE_NAME = new RegExp(`\\b(?:the\\s+)?(?:${SPOKEN_ROLE_PATT
  * the subject's own terms and are left alone.
  */
 const CLAIM_AS_SUBJECT_TERM =
-  '(?:patent|insurance|health|nutrition|warranty|tax|land|territorial|benefits?|expenses?|damages?|compensation|legal|court|medical|disability|unemployment|refund|asylum|mining|small)';
+  '(?:(?:[\\p{L}]+-)*(?:patent|insurance|health|nutrition|warranty|tax|land|territorial|benefits?|expenses?|damages?|compensation|legal|court|medical|disability|unemployment|refund|asylum|mining|small|copyright|trademark|liability|injury|negligence|malpractice|fraud|defamation|libel|pension|welfare|accident|property|title|ownership|sovereignty|maritime|wage|discrimination|harassment|antitrust|breach|contract|civil|action|creditors?|bankruptcy|debt|estate|inheritance|treaty|medicare|medicaid|advertising|infringement|indemnity|salvage|water|native|aboriginal))';
 export const CLAIM_WORD = new RegExp(
   `(?<!\\b${CLAIM_AS_SUBJECT_TERM}\\s)\\bclaim(?:s|ed|ing)?\\b(?!\\s+(?:adjusters?|forms?|numbers?|a\\s+refund|damages|compensation|asylum|benefits))`,
-  'gi'
+  'giu'
 );
 
 /** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
@@ -325,16 +325,21 @@ export function readerFacingLabelHits(text: string): string[] {
   // Only prose is checked: a code sample or a link that happens to contain a
   // label is not a leak, and the clean-up that removes labels never touches it.
   // Fragments are kept apart, so text on either side of a code span cannot join into a false match.
-  let prose = '';
-  mapCitationProse(text, (part) => {
-    prose += `${part}\uE004`;
-    return part;
-  });
-  // The label of a link is read by the reader too; its destination is not.
-  const outsideCode = mapOutsideCode(text, (part) => part, () => '\uE004');
-  for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
-  // Likewise the label of a reference-style link ("[label][ref]").
-  for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+  const proseOf = (source: string): string => {
+    let prose = '';
+    mapCitationProse(source, (part) => {
+      prose += `${part}\uE004`;
+      return part;
+    });
+    // The label of a link is read by the reader too; its destination is not.
+    const outsideCode = mapOutsideCode(source, (part) => part, () => '\uE004');
+    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+    // Likewise the label of a reference-style link ("[label][ref]").
+    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+    return prose;
+  };
+  // Labels and markers are a leak wherever they are printed, the reference list included.
+  const prose = proseOf(text);
   if (new RegExp(TIER_ONLY_BRACKET.source, 'i').test(prose) || new RegExp(SNAKE_TIER_TOKEN.source, 'i').test(prose)) hits.push('grade label');
   if (new RegExp(INTERNAL_STEP_NAME.source, 'i').test(prose)) hits.push('internal step');
   // Passage markers are how the writer and the pipeline refer to retrieved text.
@@ -343,13 +348,15 @@ export function readerFacingLabelHits(text: string): string[] {
   // Closed or not: "[P1" left open is still a marker on the page.
   if (/\[\s*P\d+\b/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
+  // Every check of wording reads the report's own sentences. A reference entry
+  // is a source's title and publisher, which the report did not write: a source
+  // called "The Case for Nuclear Power" is not courtroom wording.
+  const own = withoutReferenceList(text);
+  const body = readerVisibleText(own);
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
-  const seen = `${prose}\uE004${readerVisibleText(text)}`;
+  const seen = `${proseOf(own)}\uE004${body}`;
   if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
-  // The two checks below read the report's own sentences. A reference entry is
-  // a source's title and publisher, which the report did not write.
-  const body = readerVisibleText(withoutReferenceList(text));
   // A role named in a sentence is an internal step on the page, brackets or not.
   if (new RegExp(SPOKEN_ROLE_NAME.source, 'i').test(body) && !hits.includes('internal step')) hits.push('internal step');
   // What a source says in its own words stays as it said it; the report's own wording is checked.
@@ -358,7 +365,7 @@ export function readerFacingLabelHits(text: string): string[] {
     ownWords += `${part}\uE004`;
     return part;
   });
-  if (new RegExp(CLAIM_WORD.source, 'i').test(ownWords)) hits.push('claims wording');
+  if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
   if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
   return hits;
 }

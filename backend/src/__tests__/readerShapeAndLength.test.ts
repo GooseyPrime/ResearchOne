@@ -376,8 +376,11 @@ describe('helpers behind section size and shape', () => {
   it('keeps the first four items of a limits list whole, wrapped lines and all', () => {
     const wrapped = ['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.', '- Fifth.'].join('\n');
     expect(firstSentences(wrapped, 4)).toBe(['- First limit, which runs', '  onto a second line. It has two sentences.', '- Second limit.', '', '  A further paragraph of the second limit.', '- Third.', '- Fourth.'].join('\n'));
-    // A list followed by a paragraph is not a list and nothing else: it is read as prose, as before.
-    expect(firstSentences('- One.\n- Two.\n\nA closing paragraph. With two sentences. And a third.', 2)).toBe('A closing paragraph. With two sentences.');
+    // A closing line after the list never replaces the limits themselves.
+    expect(firstSentences('- One.\n- Two.\n- Three.\n\nThese constraints should guide interpretation.', 4)).toBe('- One.\n- Two.\n- Three.');
+    expect(firstSentences('- One.\n- Two.\n- Three.\n\nA closing paragraph.', 2)).toBe('- One.\n- Two.');
+    // Prose that opens the note is read as prose.
+    expect(firstSentences('One limit. Another limit. A third.\n\n- A stray item.', 2)).toBe('One limit. Another limit.');
   });
 
   it('holds only the sections whose length is the writer\'s to manage', () => {

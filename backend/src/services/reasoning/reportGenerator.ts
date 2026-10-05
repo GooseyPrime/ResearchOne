@@ -1009,6 +1009,40 @@ export function finalizeLockedReportForSave(
   return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
 }
 
+const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label']);
+
+/**
+ * The same last check for a Layer 1 report written without the citation lock.
+ * Verification and contract repair run after the writer's own check and can put
+ * banned wording back; it is put into plain words here, before the save. The
+ * generated reference list, the last section named References, is the sources'
+ * own titles and is left exactly as it is. `wordingAfter` lists what is still
+ * on the page.
+ */
+export function cleanLayer1WordingForSave(markdown: string): { markdown: string; wordingAfter: string[] } {
+  const wording = (text: string): string[] => presentationFailures(text).filter((hit) => WORDING_HITS.has(hit));
+  if (wording(markdown).length === 0) return { markdown, wordingAfter: [] };
+  const lines = markdown.split('\n');
+  let listStart = -1;
+  lines.forEach((line, index) => {
+    if (/^#{1,6}[ \t]+References[ \t#]*$/i.test(line)) listStart = index;
+  });
+  let listEnd = lines.length;
+  if (listStart !== -1) {
+    for (let index = listStart + 1; index < lines.length; index += 1) {
+      if (/^#{1,6}[ \t]+\S/.test(lines[index])) {
+        listEnd = index;
+        break;
+      }
+    }
+  }
+  const cleaned =
+    listStart === -1
+      ? removeBannedWording(markdown)
+      : [removeBannedWording(lines.slice(0, listStart).join('\n')), ...lines.slice(listStart, listEnd), removeBannedWording(lines.slice(listEnd).join('\n'))].join('\n');
+  return { markdown: cleaned, wordingAfter: wording(cleaned) };
+}
+
 /** Told to every Layer 1 section writer. The check before saving looks for the same things. */
 const READER_WORDING_RULE =
   'Never use the words claim or claims for what a source or this report says; write says, reports, states or finds. Never name a research step, a reviewer or a passage label (such as P12) in a sentence; cite with the marker only.';
@@ -1863,8 +1897,11 @@ ${layer1
     // that still fails; citations stay where they are. Only prose is touched:
     // code and link destinations are left exactly as written, as the check
     // that found the wording never read them.
+    // The reference list is the sources' own titles, never reworded.
     sectionsOut = sectionsOut.map((section) =>
-      readerFailures(`${section.title}\n\n${section.content}`).length > 0 ? { ...section, content: removeBannedWording(section.content) } : section
+      section.key !== 'references' && readerFailures(`${section.title}\n\n${section.content}`).length > 0
+        ? { ...section, content: removeBannedWording(section.content) }
+        : section
     );
   }
   if (layer1) {

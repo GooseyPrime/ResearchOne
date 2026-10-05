@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   cleanSourceTitle,
   decodeHtmlEntities,
-  formatReference,
+  formatReference, plainFieldText,
   formatReferenceList,
   resolveReferenceStyle,
   siteName,
   sourceKindInWords,
   type ReferenceSource,
 } from '../services/formatting/referenceList';
+import { plainClaimWords } from '../services/reasoning/reportGenerator';
 import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
 
 const STUDY: ReferenceSource = {
@@ -184,8 +185,27 @@ describe('the reference list and the wording check', () => {
   it('reads the report\'s own words, not a direct quotation or a term of the subject', () => {
     expect(readerFacingLabelHits('The group said "these claims are false" [2].')).toEqual([]);
     expect(readerFacingLabelHits('The first patent claim covers the method [1]. Insurance claims rose [2].')).toEqual([]);
+    // Other subjects' own terms, hyphenated or not, are left as written.
+    const subject = 'Copyright claims increased [1]. A product-liability claim followed [2]. The class-action claims were settled [3].';
+    expect(readerFacingLabelHits(subject)).toEqual([]);
+    expect(plainClaimWords(subject)).toBe(subject);
     expect(readerFacingLabelHits('As noted by the quantitative quality auditor, samples differ [4].')).toContain('internal step');
     expect(readerFacingLabelHits('The evidence establishes that costs rose [1].')).toContain('courtroom');
     expect(readerFacingLabelHits('The planner at the utility chose one design [1].')).toEqual([]);
+  });
+});
+
+describe('fields that come from outside', () => {
+  it('cannot open a tag in the reference list', () => {
+    expect(plainFieldText('&lt;script&gt;alert(1)&lt;/script&gt; Costs')).toBe('alert(1) Costs');
+    expect(plainFieldText('<i>In vivo</i> editing of <sub>2</sub> genes')).toBe('In vivo editing of 2 genes');
+    expect(plainFieldText('Costs where p &lt; 0.05 and n > 30')).toBe('Costs where p &lt; 0.05 and n &gt; 30');
+    const entry = formatReference(
+      { title: 'Costs &lt;img src=x onerror=alert(1)&gt; by country', authors: ['Smith, <b>Jane</b>', '&lt;script&gt;x&lt;/script&gt; Group'], publisher: 'Energy <script>bad()</script> Policy', date: '2016-04-01' },
+      'numeric'
+    );
+    expect(entry).not.toMatch(/<[a-z!/]/i);
+    expect(entry).toContain('Costs by country');
+    expect(entry).toContain('Energy bad() Policy');
   });
 });
