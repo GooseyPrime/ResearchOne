@@ -447,10 +447,15 @@ export function guardLockedRepair(
     // may go only with everything beneath it.
     const isHeading = (text: string): boolean => /^[ \t]{0,3}#{1,6}(?:[ \t]|$)/.test(text);
     const under = (entries: Array<{ text: string }>): string[] => {
-      let current = '';
+      // The whole line of headings above it, by level: a parent cannot go while its child stays.
+      const stack: Array<{ level: number; text: string }> = [];
       return entries.map((entry) => {
-        if (isHeading(entry.text)) current = entry.text;
-        return current;
+        if (isHeading(entry.text)) {
+          const level = (/#+/.exec(entry.text)?.[0] ?? '#').length;
+          while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+          stack.push({ level, text: entry.text });
+        }
+        return stack.map((heading) => heading.text).join('\n');
       });
     };
     const hadUnder = under(had);
@@ -483,7 +488,9 @@ export function guardLockedRepair(
   // can neither leave a section out nor rename one away.
   const restored: string[] = [];
   const kept = beforeBlocks.map((block) => {
-    const now = repaired.get(key(block.heading));
+    // Two sections of one name cannot be told apart in what the repair returned, so neither is taken from it.
+    const twice = beforeBlocks.filter((other) => key(other.heading) === key(block.heading)).length > 1;
+    const now = twice ? undefined : repaired.get(key(block.heading));
     // Citations stay on the statements they were written for, and the repair
     // has only cut.
     const sound = now !== undefined && markersPreserved(block.text, now, { allowRemoval: true }) && onlyCuts(block.text, now);

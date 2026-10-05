@@ -505,6 +505,20 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(nested, nested.replace('\nThe sources do not cover long-term follow-up [P2].', '')).restored).toEqual(['Limits of this report']);
     });
 
+    it('takes neither of two sections that share a name from the repair', () => {
+      const twin = `${before}\n\n## Key findings\n- The approval came on 8 December 2023 [P1].\n- A second point stands here [P2].`;
+      const guarded = guardLockedRepair(twin, twin.replace('\n\n## Key findings\n- The approval came on 8 December 2023 [P1].\n- A second point stands here [P2].', '').replace('- Eligible patients have recurrent crises [P2].\n', ''));
+      expect(guarded.restored).toEqual(['Key findings', 'Key findings']);
+      expect(guarded.markdown).toContain('- A second point stands here [P2].');
+      expect(guarded.markdown).toContain('- Eligible patients have recurrent crises [P2].');
+    });
+
+    it('does not let a parent sub-heading go while its child stays', () => {
+      const tree = before.replace('The sources do not cover long-term follow-up.', '### Parent\nAn introduction [P1].\n#### Child\nA detail [P2].');
+      expect(guardLockedRepair(tree, tree.replace('### Parent\nAn introduction [P1].\n', '')).restored).toEqual(['Limits of this report']);
+      expect(guardLockedRepair(tree, tree.replace('\n#### Child\nA detail [P2].', '')).restored).toEqual([]);
+    });
+
     it('does not let a heading the section has be written twice', () => {
       const withSub = before.replace('## Limits of this report\n', '## Limits of this report\n### Scope\n');
       expect(guardLockedRepair(withSub, withSub).restored).toEqual([]);
