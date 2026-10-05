@@ -393,6 +393,10 @@ export function guardLockedRepair(
     const had = pieces(was);
     const has = pieces(now);
     if (had.length > 0 && has.length === 0) return false;
+    // A code fence is cut with its partner or not at all: one left open turns
+    // everything after it, the reference list included, into code.
+    const fences = (text: string): number => (body(text).match(/^[ \t]{0,3}(?:```|~~~)/gm) ?? []).length;
+    if (fences(now) % 2 !== fences(was) % 2) return false;
     let at = 0;
     for (const piece of has) {
       const from = at;

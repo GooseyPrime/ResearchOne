@@ -538,6 +538,14 @@ describe('citation lock helpers', () => {
       expect(guardLockedRepair(before, before.replace('The FDA approved Casgevy on 8 December 2023 [P1]. ', '')).restored).toEqual([]);
     });
 
+    it('does not accept a code block left open by a cut', () => {
+      const coded = before.replace('The sources do not cover long-term follow-up.', 'The command is this.\n\n```text\nrun --all.\n```\n\nNothing else is covered.');
+      expect(guardLockedRepair(coded, coded).restored).toEqual([]);
+      expect(guardLockedRepair(coded, coded.replace('run --all.\n```\n', 'run --all.\n')).restored).toEqual(['Limits of this report']);
+      // The whole block cut with both its fences is a cut.
+      expect(guardLockedRepair(coded, coded.replace('```text\nrun --all.\n```\n\n', '')).restored).toEqual([]);
+    });
+
     it('is the step a locked repair goes through in a run, and an unlocked repair does not', () => {
       const source = readFileSync(resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'), 'utf8');
       const repair = source.slice(source.indexOf('const beforeRepair = generatedReport.markdown;'), source.indexOf('ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);', source.indexOf('const beforeRepair = generatedReport.markdown;')));
