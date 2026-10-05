@@ -1,5 +1,5 @@
 import { RESEARCH_OBJECTIVE_OPTIONS } from '@/constants/researchObjectives';
-import { CITATION_STYLE_OPTIONS, type CitationStyleSlug } from '@/utils/api';
+import { CITATION_STYLE_OPTIONS, type CitationStyleChoice } from '@/utils/api';
 import clsx from 'clsx';
 
 export type ResearchOutputObjectiveValue = 'AUTO' | (typeof RESEARCH_OBJECTIVE_OPTIONS)[number]['value'];
@@ -40,8 +40,8 @@ export interface ResearchOutputControlsProps {
   onReportLengthPresetChange: (v: ResearchOutputControlsProps['reportLengthPreset']) => void;
   reportLengthCustom: number;
   onReportLengthCustomChange: (v: number) => void;
-  citationStyle?: CitationStyleSlug;
-  onCitationStyleChange?: (v: CitationStyleSlug) => void;
+  citationStyle?: CitationStyleChoice;
+  onCitationStyleChange?: (v: CitationStyleChoice) => void;
   disabled?: boolean;
   compact?: boolean;
 }
@@ -186,9 +186,10 @@ export default function ResearchOutputControls({
             <select
               className={clsx('input mt-1 w-full', compact && 'xl:max-w-xs')}
               value={citationStyle}
-              onChange={(e) => onCitationStyleChange(e.target.value as CitationStyleSlug)}
+              onChange={(e) => onCitationStyleChange(e.target.value as CitationStyleChoice)}
               disabled={disabled}
             >
+              <option value="automatic">Report default</option>
               {CITATION_STYLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}

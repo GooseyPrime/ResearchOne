@@ -34,13 +34,15 @@ import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
-import { config } from '../../config';
+import { citationLockEnabled, config } from '../../config';
 import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
   DiscoveryRunSummary,
   DiscoverySource,
   SearchResultCandidate,
+  bibliographicMetadata,
+  candidateForRun,
 } from './providerTypes';
 import { SearchProvider } from './providers/searchProvider';
 import { GenericWebSearchProvider } from './providers/genericWebSearch';
@@ -427,7 +429,9 @@ async function runDiscoveryOrchestratorInner(args: {
             const isExcluded = exclusionPatterns.some((pat) => key.includes(pat));
             if (isExcluded || seenUrls.has(key)) continue;
             seenUrls.add(key);
-            allCandidates.push(r);
+            // Reference details travel with a candidate only when the citation lock
+            // is on for this run. With it off a candidate is exactly what it was.
+            allCandidates.push(candidateForRun(r, citationLockEnabled()));
             newCount++;
           }
 
@@ -647,7 +651,7 @@ async function runDiscoveryOrchestratorInner(args: {
         url: finalUrl,
         sourceType: 'web_url',
         tags: [],
-        metadata: { discovery_run_id: runId },
+        metadata: { discovery_run_id: runId, ...bibliographicMetadata(candidate) },
         importedVia: 'autonomous_discovery',
         discoveredByRunId: runId,
         discoveryQuery: candidate.sourceQuery,

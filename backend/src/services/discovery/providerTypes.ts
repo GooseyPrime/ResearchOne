@@ -25,6 +25,56 @@ export interface SearchResultCandidate {
   sourceQuery: string;
   /** Optional content hash if content was already fetched */
   contentHash?: string;
+  /**
+   * Who wrote and published the work and when, where the provider's record
+   * says. Used for the reference list. Carried into storage only when the
+   * citation lock is on for the run.
+   */
+  bibliographic?: BibliographicDetails;
+}
+
+export interface BibliographicDetails {
+  authors?: string[];
+  publisher?: string;
+  /** YYYY-MM-DD. Left out when the record gives less than a full day. */
+  publishedAt?: string;
+}
+
+/** [year, month, day] as YYYY-MM-DD. A record that gives less than a full day gives no date: none is made up. */
+export function isoFromParts(parts: ReadonlyArray<number> | undefined): string | undefined {
+  if (!parts || parts.length < 3) return undefined;
+  const [year, month, day] = parts;
+  if (!Number.isInteger(year) || year < 1000 || year > 9999) return undefined;
+  if (!Number.isInteger(month) || month < 1 || month > 12) return undefined;
+  if (!Number.isInteger(day) || day < 1 || day > 31) return undefined;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** The candidate as it was before reference details existed. */
+export function withoutBibliographic(candidate: SearchResultCandidate): SearchResultCandidate {
+  if (!('bibliographic' in candidate)) return candidate;
+  const { bibliographic: _dropped, ...rest } = candidate;
+  return rest;
+}
+
+/**
+ * The candidate a run keeps. With the citation lock on for the run it keeps the
+ * provider's reference details; with it off it is the candidate as it always was,
+ * so nothing new is stored, logged or queued.
+ */
+export function candidateForRun(candidate: SearchResultCandidate, citationLockOn: boolean): SearchResultCandidate {
+  return citationLockOn ? candidate : withoutBibliographic(candidate);
+}
+
+/**
+ * What goes with a discovered source into storage for its reference entry: the
+ * provider that found it, and whatever the provider's record says about who
+ * wrote and published it. Empty when the candidate carries none, which is every
+ * candidate of a run without the citation lock.
+ */
+export function bibliographicMetadata(candidate: SearchResultCandidate): { bibliographic?: BibliographicDetails & { provider: string } } {
+  if (!candidate.bibliographic) return {};
+  return { bibliographic: { ...candidate.bibliographic, provider: candidate.provider } };
 }
 
 export interface DiscoverySource {

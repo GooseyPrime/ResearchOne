@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { XMLParser } from 'fast-xml-parser';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -10,6 +10,8 @@ interface ArxivEntry {
   title?: string;
   summary?: string;
   'arxiv:doi'?: string;
+  published?: string;
+  author?: Array<{ name?: string }> | { name?: string };
   link?: Array<{ '@_href'?: string; '@_type'?: string }> | { '@_href'?: string; '@_type'?: string };
 }
 
@@ -31,6 +33,17 @@ function arxivIdFromAbsUrl(absUrl: string): string {
   return absUrl
     .replace(/^https?:\/\/arxiv\.org\/abs\//i, '')
     .replace(/v\d+$/, '');
+}
+
+/** What the feed entry says about who wrote the paper and when it was posted. */
+export function arxivBibliographic(entry: ArxivEntry): BibliographicDetails | undefined {
+  const list = Array.isArray(entry.author) ? entry.author : entry.author ? [entry.author] : [];
+  const authors = list.map((author) => (typeof author?.name === 'string' ? author.name.replace(/\s+/g, ' ').trim() : '')).filter(Boolean);
+  const out: BibliographicDetails = { publisher: 'arXiv' };
+  if (authors.length > 0) out.authors = authors;
+  const day = /^(\d{4}-\d{2}-\d{2})/.exec(typeof entry.published === 'string' ? entry.published.trim() : '')?.[1];
+  if (day) out.publishedAt = day;
+  return out;
 }
 
 export class ArxivSearchProvider implements SearchProvider {
@@ -89,6 +102,7 @@ export class ArxivSearchProvider implements SearchProvider {
             provider: this.name,
             sourceQuery: query.text,
             contentHash: arxivId || undefined,
+            bibliographic: arxivBibliographic(entry),
           };
         });
     } catch (err) {

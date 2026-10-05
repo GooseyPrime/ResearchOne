@@ -28,7 +28,7 @@ import {
   getResearchV2EnsemblePresets,
   listSavedOrchestrationProfiles,
   startResearch,
-  type CitationStyleSlug,
+  type CitationStyleChoice,
   type ResearchObjective,
 } from '../../utils/api';
 import { objectivesForTier, type EntitlementTierKey } from '@/constants/researchObjectives';
@@ -148,7 +148,7 @@ export default function ResearchRequestForm() {
   const [reportFormats, setReportFormats] = useState<string[]>(['automatic']);
   const [reportLengthPreset, setReportLengthPreset] = useState<ReportLengthPreset>('automatic');
   const [reportLengthCustom, setReportLengthCustom] = useState(2200);
-  const [citationStyle, setCitationStyle] = useState<CitationStyleSlug>('apa');
+  const [citationStyle, setCitationStyle] = useState<CitationStyleChoice>('automatic');
 
   // ── Everything the Lab used to hold ─────────────────────────────────────
   const [filterTags, setFilterTags] = useState('');
@@ -211,7 +211,7 @@ export default function ResearchRequestForm() {
     setFilterTags(slice.filterTags);
 
     setObjective(slice.researchObjective ?? 'AUTO');
-    setCitationStyle(slice.citationStyle ?? 'apa');
+    setCitationStyle(slice.citationStyle ?? 'automatic');
     setReportFormats(slice.requestedFormats?.length ? slice.requestedFormats : ['automatic']);
     if (typeof slice.targetWordCount === 'number') {
       setReportLengthPreset('custom');
@@ -284,7 +284,8 @@ export default function ResearchRequestForm() {
           urls.length > 0 ? { siteCrawl: siteCrawlEnabled, crawlLayers } : undefined,
         requestedFormats,
         targetWordCount,
-        citationStyle,
+        // A style is sent only when one was chosen; "Automatic" leaves it to the report.
+        citationStyle: citationStyle === 'automatic' ? undefined : citationStyle,
         savedOrchestrationProfileId: savedOrchestrationProfileId || undefined,
         addons: selectedAddonsForSubmit.length > 0 ? selectedAddonsForSubmit : undefined,
       });

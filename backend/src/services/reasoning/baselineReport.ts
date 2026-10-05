@@ -1,11 +1,18 @@
 import { baselineLayerEnabled } from '../../config';
 import { readerFacingLabelHits } from '../formatting/reportPresentation';
+import { formatReferenceList, type ReferenceStyle } from '../formatting/referenceList';
 
 export interface UsedSource {
   title: string;
   publisher?: string | null;
   date?: string | null;
   url?: string | null;
+  /** Who wrote it, when the source says. */
+  authors?: string[] | null;
+  /** What kind of source it is, in words: "peer-reviewed study", "web page". */
+  kind?: string | null;
+  /** The day it was read, as YYYY-MM-DD. */
+  accessed?: string | null;
 }
 
 const STRUCTURAL_HEADING =
@@ -125,7 +132,7 @@ export function repeatedSentences(sections: Array<{ content: string }>): string[
   const repeated: string[] = [];
   for (const section of sections) {
     for (const block of proseBlocks(section.content)) {
-      for (const sentence of block.split(/(?<=[.!?])\s+/)) {
+      for (const sentence of splitSentences(block)) {
         const key = sentenceKey(sentence);
         if (key.length < 40 || /^\[(?:e)?\d+\]$/.test(key)) continue;
         if (seen.has(key)) repeated.push(sentence.trim());
@@ -162,7 +169,7 @@ export function removeRepeatedSentences<T extends { content: string }>(sections:
         });
         return lines.join('\n');
       }
-      const sentences = part.split(/(?<=[.!?])\s+/);
+      const sentences = splitSentences(part);
       const kept: string[] = [];
       for (const sentence of sentences) {
         const key = sentenceKey(sentence);
@@ -212,14 +219,10 @@ export function isoDay(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
-export function buildReferences(sources: UsedSource[]): string {
+/** The numbered reference list, in the style the user chose or the numbered default. */
+export function buildReferences(sources: UsedSource[], style: ReferenceStyle = 'numeric'): string {
   if (sources.length === 0) return '';
-  return sources
-    .map((source, index) => {
-      const parts = [source.publisher, source.title, source.date].filter(Boolean);
-      return `${index + 1}. ${parts.join(', ')}${source.url ? ` ${source.url}` : ''}`;
-    })
-    .join('\n');
+  return formatReferenceList(sources, style);
 }
 
 export function formatReadDate(date = new Date()): string {
@@ -303,4 +306,152 @@ export function parseRewrittenSections<T extends { title: string; content: strin
 export function sectionsToMarkdown(sections: Array<{ title: string; content: string }>, title?: string): string {
   const body = sections.map((section) => `## ${section.title}\n${section.content}`).join('\n\n');
   return title ? `# ${title}\n\n${body}` : body;
+}
+
+/**
+ * Sentences of a paragraph. A full stop after an abbreviation or an initial
+ * ("et al.", "U.S.", "Dr.") does not end a sentence, and neither does one
+ * followed by a lower-case letter: no sentence starts that way. Reading a
+ * boundary where there is none cuts a sentence in two, and the half that
+ * repeats an earlier sentence is then removed from the middle of its own.
+ * Scripts without letter case are split at every full stop, as before.
+ */
+const ABBREVIATION_END = /(?:\b(?:et al|e\.g|i\.e|vs|etc|cf|Mr|Mrs|Ms|Dr|Prof|St|Inc|Ltd|Co|No|Fig|approx)|\b\p{Lu})\.$/u;
+
+export function splitSentences(text: string): string[] {
+  const out: string[] = [];
+  for (const piece of text.split(/(?<=[.!?])\s+/)) {
+    const last = out[out.length - 1];
+    if (last !== undefined && (ABBREVIATION_END.test(last) || /^\p{Ll}/u.test(piece))) out[out.length - 1] = `${last} ${piece}`;
+    else out.push(piece);
+  }
+  return out;
+}
+
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Sections whose size does not depend on the subject (report standard): the
+ * summary, the key findings, the note on disagreement and the limits. Together
+ * they take at most this share of a report, so the body is never squeezed out.
+ */
+const FIXED_SECTION_WORDS: Readonly<Record<string, number>> = { summary: 150, key_findings: 180, disagreement: 220, limits: 90 };
+const FIXED_SHARE_CEILING = 0.4;
+const BODY_SECTION_FLOOR = 80;
+
+/**
+ * Words each drafted section may use. The fixed sections keep their own size
+ * (scaled down in a short report); the subject sections share what is left.
+ * An even split gave a 150-word summary and a 90-word limits note the same
+ * 600 words as a subject section, and the writer filled them.
+ */
+export function readerSectionBudgets(totalWords: number, plan: ReadonlyArray<{ key: string }>): Map<string, number> {
+  const fixed = plan.filter((section) => FIXED_SECTION_WORDS[section.key] !== undefined);
+  const body = plan.filter((section) => FIXED_SECTION_WORDS[section.key] === undefined);
+  const budgets = new Map<string, number>();
+  const fixedWanted = fixed.reduce((sum, section) => sum + FIXED_SECTION_WORDS[section.key], 0);
+  if (body.length === 0) {
+    const scale = fixedWanted > 0 ? Math.min(1, totalWords / fixedWanted) : 1;
+    for (const section of fixed) budgets.set(section.key, Math.max(1, Math.round(FIXED_SECTION_WORDS[section.key] * scale)));
+    return budgets;
+  }
+  const fixedShare = Math.min(fixedWanted, totalWords * FIXED_SHARE_CEILING);
+  const scale = fixedWanted > 0 ? fixedShare / fixedWanted : 0;
+  for (const section of fixed) budgets.set(section.key, Math.max(1, Math.round(FIXED_SECTION_WORDS[section.key] * scale)));
+  const perBody = Math.max(BODY_SECTION_FLOOR, Math.round((totalWords - fixedShare) / body.length));
+  for (const section of body) budgets.set(section.key, perBody);
+  return budgets;
+}
+
+/** What each fixed section must look like, told to the writer in the words of the report standard. */
+export function readerSectionRule(key: string): string {
+  if (key === 'key_findings') {
+    return 'Write 3 to 7 bullet points and nothing else. Each bullet starts with "- ", is one sentence, and ends with its citation. No introduction, no paragraphs, no closing line.';
+  }
+  if (key === 'limits') {
+    return 'Write two to four sentences that name only real limits of this report, such as a period the sources do not cover or a point they leave unsettled. Do not restate findings. Do not describe what the report chose not to do.';
+  }
+  if (key === 'summary') return '';
+  return 'The summary and key findings are already written. Do not retell them; give the detail they leave out. State each fact once in this report.';
+}
+
+/**
+ * Sections whose length is the writer's to manage and may be held to a share of
+ * the report: the key findings, the subject sections, the note on disagreement
+ * and the limits. The steps of a how-to and the table of a comparison are as
+ * long as their subject makes them, and a section a request asked for by name
+ * (one per item, a named deliverable) is sized by that request; none of those
+ * is shortened here.
+ */
+export function isSizedReaderSection(key: string): boolean {
+  return /^(?:key_findings|limits|disagreement|established|contested|open_questions|topic_\d+)$/.test(key);
+}
+
+/** A list and nothing else: every non-empty line is a bullet. */
+export function isBulletList(content: string): boolean {
+  const lines = content.split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => /^[-*+]\s+\S/.test(line));
+}
+
+/** Keep the first `max` bullets of a list. Anything that is not a list is returned as written. */
+export function capBullets(content: string, max = 7): string {
+  if (!isBulletList(content)) return content;
+  const lines = content.split('\n').filter((line) => line.trim().length > 0);
+  return lines.slice(0, max).join('\n');
+}
+
+/**
+ * Cut a section to a word limit at a boundary a reader would accept: whole
+ * paragraphs first, then whole sentences or list lines. A table or a code block
+ * is never cut and never dropped. At least the opening sentence always stays. A
+ * citation sits inside its sentence, so it leaves only with the sentence.
+ */
+export function trimToWords(content: string, maxWords: number): string {
+  if (wordCount(content) <= maxWords) return content;
+  const blocks = content.split(/\n{2,}/);
+  const kept: string[] = [];
+  let used = 0;
+  for (const block of blocks) {
+    const size = wordCount(block);
+    if (used + size <= maxWords) {
+      kept.push(block);
+      used += size;
+      continue;
+    }
+    const whole = block.trim().startsWith('```') || block.includes('|');
+    if (!whole) {
+      const list = isListBlock(block);
+      const units = list ? block.split('\n') : splitSentences(block);
+      const part: string[] = [];
+      for (const unit of units) {
+        const unitSize = wordCount(unit);
+        if (used + unitSize > maxWords && (kept.length > 0 || part.length > 0)) break;
+        part.push(unit);
+        used += unitSize;
+      }
+      if (part.length > 0) kept.push(part.join(list ? '\n' : ' '));
+    } else {
+      // A table or a code sample is the content the section exists for. It is
+      // never cut and never dropped; the section ends with it instead.
+      kept.push(block);
+    }
+    break;
+  }
+  return kept.join('\n\n').trim();
+}
+
+/** The first `max` sentences of a section, for a note that must stay a note. */
+export function firstSentences(content: string, max: number): string {
+  const blocks = content.split(/\n{2,}/).filter((block) => block.trim().length > 0);
+  const out: string[] = [];
+  for (const block of blocks) {
+    if (block.trim().startsWith('```') || block.includes('|') || isListBlock(block)) continue;
+    for (const sentence of splitSentences(block.replace(/\s*\n\s*/g, ' ').trim())) {
+      if (out.length >= max) return out.join(' ');
+      if (sentence.trim()) out.push(sentence.trim());
+    }
+  }
+  return out.length > 0 ? out.join(' ') : content;
 }

@@ -105,6 +105,12 @@ export type CitationStyleSlug =
   | 'ieee'
   | 'harvard';
 
+/**
+ * What the request form offers. "Automatic" sends no style: the report then
+ * carries the default reference list, and a style is sent only when one is chosen.
+ */
+export type CitationStyleChoice = CitationStyleSlug | 'automatic';
+
 export const CITATION_STYLE_OPTIONS: { value: CitationStyleSlug; label: string }[] = [
   { value: 'mla', label: 'MLA (9th ed.)' },
   { value: 'apa', label: 'APA (7th ed.)' },

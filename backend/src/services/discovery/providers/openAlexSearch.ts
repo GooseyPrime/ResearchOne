@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -12,6 +12,20 @@ interface OpenAlexWork {
   abstract_inverted_index?: Record<string, number[]>;
   cited_by_count?: number;
   relevance_score?: number;
+  authorships?: Array<{ author?: { display_name?: string } }>;
+  primary_location?: { source?: { display_name?: string } | null } | null;
+  publication_date?: string;
+}
+
+/** What the record says about who wrote and published the work. */
+export function openAlexBibliographic(work: OpenAlexWork): BibliographicDetails | undefined {
+  const authors = (work.authorships ?? []).map((entry) => (entry.author?.display_name ?? '').trim()).filter(Boolean);
+  const publisher = (work.primary_location?.source?.display_name ?? '').trim();
+  const out: BibliographicDetails = {};
+  if (authors.length > 0) out.authors = authors;
+  if (publisher) out.publisher = publisher;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(work.publication_date ?? '')) out.publishedAt = work.publication_date;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 interface OpenAlexResponse {
@@ -76,6 +90,7 @@ export class OpenAlexSearchProvider implements SearchProvider {
             provider: this.name,
             sourceQuery: query.text,
             contentHash: doiPath,
+            bibliographic: openAlexBibliographic(w),
           };
         });
     } catch (err) {

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { BibliographicDetails, SearchQuery, SearchResultCandidate, isoFromParts } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -10,6 +10,26 @@ interface CrossrefItem {
   abstract?: string;
   score?: number;
   URL?: string;
+  author?: Array<{ given?: string; family?: string; name?: string }>;
+  publisher?: string;
+  'container-title'?: string[];
+  issued?: { 'date-parts'?: number[][] };
+}
+
+/** What the record says about who wrote and published the work. Nothing is invented for a field it leaves out. */
+export function crossrefBibliographic(item: CrossrefItem): BibliographicDetails | undefined {
+  const authors = (item.author ?? [])
+    .map((author) => (author.family ? [author.family, author.given].filter(Boolean).join(', ') : (author.name ?? '')).trim())
+    .filter(Boolean);
+  const journal = Array.isArray(item['container-title']) ? item['container-title'][0] : undefined;
+  const parts = item.issued?.['date-parts']?.[0];
+  const out: BibliographicDetails = {};
+  if (authors.length > 0) out.authors = authors;
+  const publisher = (journal || item.publisher || '').trim();
+  if (publisher) out.publisher = publisher;
+  const published = isoFromParts(parts);
+  if (published) out.publishedAt = published;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 interface CrossrefResponse {
@@ -61,6 +81,7 @@ export class CrossrefSearchProvider implements SearchProvider {
             provider: this.name,
             sourceQuery: query.text,
             contentHash: doi,
+            bibliographic: crossrefBibliographic(item),
           };
         });
     } catch (err) {

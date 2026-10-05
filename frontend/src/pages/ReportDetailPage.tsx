@@ -85,6 +85,13 @@ function buildReportMarkdown(report: {
 }
 
 
+/** The style a report's own reference list was saved in, when the report records one. */
+function savedReferenceStyle(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const style = (metadata as { reference_style?: unknown }).reference_style;
+  return typeof style === 'string' && style ? style : null;
+}
+
 function getReaderFrontMatter(metadata?: Record<string, unknown>): {
   overall_summary?: string;
   conclusions_nutshell?: string;
@@ -722,7 +729,7 @@ export default function ReportDetailPage() {
       <ReportActionBar
         className="print:hidden"
         reportId={report.id}
-        runCitationStyle={sourceRun?.citation_style ?? null}
+        runCitationStyle={savedReferenceStyle(report.metadata) ?? sourceRun?.citation_style ?? null}
         onPrint={handlePrint}
         onShare={handleShare}
         onDownload={handleDownload}

@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../../db/pool';
+import { loadRunFlags } from '../eval/runFlagStore';
 import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
@@ -28,6 +29,7 @@ import {
   synthesisLengthArgs,
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
+  finalizeLockedReportForSave,
 } from './reportGenerator';
 import { cleanReaderMetadata } from '../formatting/reportPresentation';
 import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
@@ -46,10 +48,11 @@ import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, runWithFlags } from '../../config';
+import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
 import { assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers, type CitationOccurrence, type LockedPassage } from './citationLock';
 import { writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
-import { distinctSourceCount, isoDay } from './baselineReport';
+import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -934,29 +937,33 @@ export async function runResearchJob(
   );
 }
 
-/**
- * Switches an admin recorded for this one run. Read once, before the job starts,
- * so the whole run sees one consistent set. No record, or a database that does
- * not have the table yet, means the process settings apply unchanged.
- */
-export async function loadRunFlags(runId: string): Promise<Record<string, boolean> | null> {
-  try {
-    const row = await queryOne<{ flags: unknown }>(`SELECT flags FROM eval_run_overrides WHERE run_id = $1`, [runId]);
-    const raw = row?.flags;
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-    const flags: Record<string, boolean> = {};
-    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof value === 'boolean') flags[name] = value;
-    }
-    return Object.keys(flags).length > 0 ? flags : null;
-  } catch (err) {
-    if ((err as { code?: string }).code === '42P01') {
-      logger.debug(`[${runId}] No per-run switch table yet; using process settings`);
-      return null;
-    }
-    throw err;
-  }
+export interface LockedSourceRow {
+  id: string;
+  source_id: string | null;
+  authors: string[] | null;
+  publication: string | null;
+  url: string | null;
+  original_filename: string | null;
+  retrieval_timestamp: unknown;
+  provider: string | null;
 }
+
+/** A retrieved source with what its stored record adds for the reference list. Missing details stay missing. */
+export function referenceDetails(source: UsedSource | undefined, row: LockedSourceRow | undefined): UsedSource {
+  const base: UsedSource = source ?? { title: 'Untitled source' };
+  if (!row) return base;
+  const authors = Array.isArray(row.authors) ? row.authors.filter((author) => typeof author === 'string' && author.trim().length > 0) : [];
+  const url = base.url ?? row.url ?? null;
+  return {
+    ...base,
+    publisher: base.publisher ?? row.publication ?? null,
+    authors: authors.length > 0 ? authors : null,
+    kind: sourceKindInWords({ provider: row.provider, url, hasFile: Boolean(row.original_filename) }),
+    accessed: isoDay(row.retrieval_timestamp),
+  };
+}
+
+export { loadRunFlags } from '../eval/runFlagStore';
 
 async function runResearchJobInner(
   data: ResearchJobData,
@@ -2282,6 +2289,8 @@ async function runResearchJobInner(
     let plannedItemTitles: ReadonlySet<string> = new Set<string>();
     let generatedReport: { markdown: string };
     let lockedPassages: LockedPassage[] | null = null;
+    // A style the user chose governs the reference list; with none chosen it is the numbered default.
+    const referenceStyle = resolveReferenceStyle(citationStyle);
     /**
      * The text the gates judge. With the citation lock on, the working draft
      * still carries the writer's markers and has no reference list or closing
@@ -2292,7 +2301,7 @@ async function runResearchJobInner(
      */
     const reportForGates = (markdown: string): string =>
       lockedPassages
-        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages).markdown
+        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle).markdown
         : markdown;
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
@@ -2317,11 +2326,30 @@ async function runResearchJobInner(
       // passages are available, and the model-based mapper stays off.
       if (citationLockEnabled() && layer1Run) {
         // One reader number per stored source, so look the sources up by passage.
-        const sourceRows = await query<{ id: string; source_id: string | null }>(
-          `SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`,
-          [allChunks.map((chunk) => chunk.id)]
-        );
-        lockedPassages = issuePassages(allChunks, usedSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
+        const chunkIds = allChunks.map((chunk) => chunk.id);
+        let sourceRows: LockedSourceRow[];
+        try {
+          sourceRows = await query<LockedSourceRow>(
+            `SELECT c.id, c.source_id, s.authors, s.publication, s.url, s.original_filename, s.retrieval_timestamp,
+                    s.metadata->'bibliographic'->>'provider' AS provider
+               FROM chunks c
+               LEFT JOIN sources s ON s.id = c.source_id
+              WHERE c.id = ANY($1::uuid[])`,
+            [chunkIds]
+          );
+        } catch (detailErr) {
+          // Reference details are an addition. Without them the list still names
+          // each source by title, date and link, and numbering needs only the
+          // source of each passage, which this narrower read gives.
+          logger.warn(`[${runId}] Reference details could not be read; the reference list will show title, date and link only`, { err: detailErr });
+          const plain = await query<{ id: string; source_id: string | null }>(`SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`, [chunkIds]);
+          sourceRows = plain.map((row) => ({ ...row, authors: null, publication: null, url: null, original_filename: null, retrieval_timestamp: null, provider: null }));
+        }
+        // Who wrote each source, what kind it is and when it was read: what a
+        // reference entry needs beyond the title and date retrieval already carries.
+        const detailByChunk = new Map(sourceRows.map((row) => [row.id, row]));
+        const referenceSources = allChunks.map((chunk, index) => referenceDetails(usedSources[index], detailByChunk.get(chunk.id)));
+        lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id])));
         // Recorded on the run, so anything that scores it later knows how it was
         // written without having to guess from its own settings.
         await query(
@@ -2862,8 +2890,15 @@ ${reportForGates(generatedReport.markdown)}`,
       // Finalize the text that will be saved. The save removes prompt echo and
       // internal labels; doing that first means each citation is bound to the
       // sentence a reader will see, and the save's own pass then changes nothing.
-      const toSave = stripInternalLabelsFromReport(stripPromptEchoFromReport(generatedReport.markdown, researchQuery));
-      const finalized = finalizeLockedCitations(toSave, lockedPassages);
+      const { finalized, wordingAfter } = finalizeLockedReportForSave(generatedReport.markdown, researchQuery, lockedPassages, referenceStyle);
+      if (wordingAfter.length > 0) {
+        // Never shipped silently: what could not be removed is recorded on the run.
+        logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: wordingAfter });
+        await query(
+          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+          [JSON.stringify({ presentationIssues: wordingAfter }), runId]
+        );
+      }
       generatedReport.markdown = finalized.markdown;
       lockedOccurrences = finalized.occurrences;
       if (finalized.removed > 0) {
@@ -3005,6 +3040,9 @@ ${reportForGates(generatedReport.markdown)}`,
         // Phase B — contract audit result stored as metadata (null when skipped)
         contract_audit: contractAuditResult,
         report_gate_status: reportStatus,
+        // The style the reference list was written in. Recorded only for a report
+        // written with the citation lock, whose list is part of the saved text.
+        ...(lockedOccurrences ? { reference_style: referenceStyle } : {}),
       },
     });
     await saveRunCheckpoint({

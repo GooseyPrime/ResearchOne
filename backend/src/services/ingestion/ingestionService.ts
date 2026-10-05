@@ -204,6 +204,28 @@ interface IngestFetchedWebPageParams {
   onProgress: ProgressCallback;
 }
 
+/**
+ * Reference details a discovery job carried, checked before they are stored: a
+ * list of author names, a publisher, and a date Postgres can read. A value of
+ * the wrong shape is dropped, not coerced. Returns null when the job carried none.
+ */
+export function storedBibliographic(
+  metadata: Record<string, unknown> | undefined
+): { authors: string[] | null; publisher: string | null; publishedAt: string | null } | null {
+  const raw = metadata?.bibliographic;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const authors = Array.isArray(record.authors)
+    ? record.authors.filter((author): author is string => typeof author === 'string' && author.trim().length > 0).map((author) => author.trim().slice(0, 200)).slice(0, 50)
+    : [];
+  const publisher = typeof record.publisher === 'string' && record.publisher.trim() ? record.publisher.trim().slice(0, 300) : null;
+  const date = typeof record.publishedAt === 'string' ? record.publishedAt.trim() : '';
+  // A full day or nothing: a year alone would have to be stored as a day nobody published on.
+  const publishedAt = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date)) ? date : null;
+  if (authors.length === 0 && !publisher && !publishedAt) return null;
+  return { authors: authors.length > 0 ? authors : null, publisher, publishedAt };
+}
+
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
 async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
   sourceId: string;
@@ -241,8 +263,21 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     'SELECT id FROM sources WHERE content_hash=$1',
     [contentHash]
   );
+  const bibliographic = storedBibliographic(metadata);
 
   if (existing) {
+    // The page is already stored. Reference details a provider now supplies fill
+    // what the stored record lacks; nothing already recorded is overwritten.
+    if (bibliographic) {
+      await query(
+        `UPDATE sources
+            SET authors = COALESCE(authors, $2::text[]),
+                publication = COALESCE(publication, $3),
+                published_at = COALESCE(published_at, $4::timestamptz)
+          WHERE id = $1`,
+        [existing.id, bibliographic.authors, bibliographic.publisher, bibliographic.publishedAt]
+      );
+    }
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
@@ -263,9 +298,9 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
          url, title, source_type, raw_content, content_hash, tags, metadata,
          discovered_by_run_id, discovery_query, source_rank, imported_via,
          original_mime_type, original_filename, fetch_method, canonical_url,
-         retrieval_timestamp
+         retrieval_timestamp, authors, publication, published_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::text[], $18, $19::timestamptz)
        RETURNING id`,
       [
         pageUrl || null,
@@ -286,6 +321,10 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
         fetchMetadata.retrieval_timestamp
           ? new Date(fetchMetadata.retrieval_timestamp as string)
           : new Date(),
+        // Null unless the job carried reference details, as these columns were before.
+        bibliographic?.authors ?? null,
+        bibliographic?.publisher ?? null,
+        bibliographic?.publishedAt ?? null,
       ]
     );
     sourceId = sourceResult.rows[0].id;

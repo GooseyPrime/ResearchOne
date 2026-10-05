@@ -22,6 +22,44 @@ const ROLE_NAME_PATTERN = REASONING_MODEL_ROLES.map((role) => role.split('_').jo
 const INTERNAL_STEP_NAME = new RegExp(`\\s?\\[\\s*(?:${ROLE_NAME_PATTERN})\\s*\\]`, 'gi');
 
 /**
+ * The same role names written into a sentence without brackets ("as noted by
+ * the quantitative quality auditor"). Only names of two or more words are read:
+ * a one-word role ("planner", "verifier") is also an ordinary word.
+ */
+const SPOKEN_ROLE_PATTERN = REASONING_MODEL_ROLES.filter((role) => role.includes('_'))
+  .map((role) => role.split('_').join('[_ ]'))
+  .join('|');
+export const SPOKEN_ROLE_NAME = new RegExp(`\\b(?:the\\s+)?(?:${SPOKEN_ROLE_PATTERN})\\b`, 'gi');
+
+/**
+ * "Claim" in the sense the report standard bans: a word for what a source or
+ * the report says. The same word names other things a report may be about (a
+ * patent claim, an insurance claim, a land claim, to claim a refund); those are
+ * the subject's own terms and are left alone.
+ */
+const CLAIM_AS_SUBJECT_TERM =
+  '(?:patent|insurance|health|nutrition|warranty|tax|land|territorial|benefits?|expenses?|damages?|compensation|legal|court|medical|disability|unemployment|refund|asylum|mining|small)';
+export const CLAIM_WORD = new RegExp(
+  `(?<!\\b${CLAIM_AS_SUBJECT_TERM}\\s)\\bclaim(?:s|ed|ing)?\\b(?!\\s+(?:adjusters?|forms?|numbers?|a\\s+refund|damages|compensation|asylum|benefits))`,
+  'gi'
+);
+
+/** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
+const QUOTED_SPAN = /"[^"\n]{1,600}"|\u201C[^\u201D\n]{1,600}\u201D/g;
+
+/** Apply a change to everything outside double quotation marks. */
+export function mapOutsideQuotes(text: string, change: (part: string) => string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of text.matchAll(QUOTED_SPAN)) {
+    const start = match.index ?? 0;
+    out += change(text.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + change(text.slice(cursor));
+}
+
+/**
  * Left exactly as written:
  * - fenced code with any fence length (```, ````, ~~~ ...), indented up to three
  *   spaces, closed by the same fence or running to the end of the text;
@@ -259,6 +297,17 @@ function readerVisibleText(text: string): string {
     .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
 }
 
+/** The text without its reference list: from a "References" heading to the next heading. */
+function withoutReferenceList(text: string): string {
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of text.split('\n')) {
+    if (/^#{1,6}[ \t]+\S/.test(line)) skipping = /^#{1,6}[ \t]+References[ \t#]*$/i.test(line);
+    if (!skipping) kept.push(line);
+  }
+  return kept.join('\n');
+}
+
 export function readerFacingLabelHits(text: string): string[] {
   const hits: string[] = [];
   // Only prose is checked: a code sample or a link that happens to contain a
@@ -285,7 +334,19 @@ export function readerFacingLabelHits(text: string): string[] {
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
   const seen = `${prose}\uE004${readerVisibleText(text)}`;
-  if (/\b(?:verdict|case for|case against|falsified|adjudicate)\b/i.test(seen)) hits.push('courtroom');
+  if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
+  // The two checks below read the report's own sentences. A reference entry is
+  // a source's title and publisher, which the report did not write.
+  const body = readerVisibleText(withoutReferenceList(text));
+  // A role named in a sentence is an internal step on the page, brackets or not.
+  if (new RegExp(SPOKEN_ROLE_NAME.source, 'i').test(body) && !hits.includes('internal step')) hits.push('internal step');
+  // What a source says in its own words stays as it said it; the report's own wording is checked.
+  let ownWords = '';
+  mapOutsideQuotes(body, (part) => {
+    ownWords += `${part}\uE004`;
+    return part;
+  });
+  if (new RegExp(CLAIM_WORD.source, 'i').test(ownWords)) hits.push('claims wording');
   if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
   return hits;
 }
