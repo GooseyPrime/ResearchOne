@@ -1,0 +1,25 @@
+{
+  "promptSha256": "fb1cbd84b7730e4aac3f7bc82e9c3873a9ee1422c45733ed4932d84a75e9cea4",
+  "replies": {
+    "clean": {
+      "model": "deepseek/deepseek-v3.2",
+      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 5,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+    },
+    "grade-labels": {
+      "model": "deepseek/deepseek-v3.2",
+      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 4,\n    \"plain_neutral_prose\": 4,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 4\n}"
+    },
+    "chunk-citations": {
+      "model": "deepseek/deepseek-v3.2",
+      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+    },
+    "repeated-fact": {
+      "model": "deepseek/deepseek-v3.2",
+      "reply": "{\n  \"answer_first\": 3,\n  \"readable_structure\": 3,\n  \"plain_neutral_prose\": 2,\n  \"citation_clarity\": 3,\n  \"honest_disagreement\": 4,\n  \"appropriate_length\": 2\n}"
+    },
+    "no-citations": {
+      "model": "deepseek/deepseek-v3.2",
+      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 1,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+    }
+  }
+}
