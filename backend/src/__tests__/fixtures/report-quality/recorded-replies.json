@@ -1,25 +1,30 @@
 {
-  "promptSha256": "fb1cbd84b7730e4aac3f7bc82e9c3873a9ee1422c45733ed4932d84a75e9cea4",
+  "promptSha256": "98b655f379814fd3cae8a161397bfe49f7b691901d5f60ead834165159e09c05",
   "replies": {
     "clean": {
+      "reportSha256": "19de55990c905c33a038ac6eb23368831728b6a7c0338a29b35a9ac576739dc1",
       "model": "deepseek/deepseek-v3.2",
-      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 5,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+      "reply": "```json\n{\n    \"defects\": [],\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 5,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}\n```"
     },
     "grade-labels": {
+      "reportSha256": "029dd3e9535580ffccb94eb5bc707549af641a49fe4478813e10e6c240a16de9",
       "model": "deepseek/deepseek-v3.2",
-      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 4,\n    \"plain_neutral_prose\": 4,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 4\n}"
+      "reply": "```json\n{\n    \"defects\": [\"answer_first: Background and method details appear before the main conclusion\", \"plain_neutral_prose: Contains evidence tiers (Tier 1, Tier 2), grades (Grade A, Grade B), verifier status, and confidence numbers\", \"citation_clarity: Citations use internal bracketed numbers but are not consistently applied to all factual statements\", \"honest_disagreement: Limitations are presented but the grading and verifier framing may obscure the honest presentation of uncertainty\", \"appropriate_length: Some repetition of concepts and slightly padded structure\", \"readable_structure: Structure is logical but headings are somewhat generic and sections could be more distinct\"],\n    \"answer_first\": 2,\n    \"readable_structure\": 3,\n    \"plain_neutral_prose\": 1,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 2,\n    \"appropriate_length\": 2\n}\n```"
     },
     "chunk-citations": {
+      "reportSha256": "b3095a4d4fafa6d71642981f76e02052920c2f78b57cc4eeec1e22cb24d4dc4b",
       "model": "deepseek/deepseek-v3.2",
-      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+      "reply": "```json\n{\n    \"defects\": [\"citation_clarity: citations use internal form [Chunk X] instead of numbered references\", \"appropriate_length: report is quite brief and could benefit from more detailed explanation of mechanisms and trial design\"],\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 2,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 3\n}\n```"
     },
     "repeated-fact": {
+      "reportSha256": "22f1081f1900d41ebbe36d2970a68c0e170765e05a0cac413534d6871690a939",
       "model": "deepseek/deepseek-v3.2",
-      "reply": "{\n  \"answer_first\": 3,\n  \"readable_structure\": 3,\n  \"plain_neutral_prose\": 2,\n  \"citation_clarity\": 3,\n  \"honest_disagreement\": 4,\n  \"appropriate_length\": 2\n}"
+      "reply": "```json\n{\n    \"defects\": [\"answer_first: report opens with background/approval date rather than main finding\", \"plain_neutral_prose: repetitive statement of FDA approval date appears four times\", \"appropriate_length: excessive repetition of FDA approval date (stated four times) without adding new information\", \"readable_structure: repetitive content across sections weakens structure\"],\n    \"answer_first\": 2,\n    \"readable_structure\": 3,\n    \"plain_neutral_prose\": 2,\n    \"citation_clarity\": 5,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 2\n}\n```"
     },
     "no-citations": {
+      "reportSha256": "b5faec8c879b7791543d8d30c9caaa6909a63cf73253a46ace2df341d4cec3e9",
       "model": "deepseek/deepseek-v3.2",
-      "reply": "{\n    \"answer_first\": 5,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 1,\n    \"honest_disagreement\": 5,\n    \"appropriate_length\": 5\n}"
+      "reply": "```json\n{\n    \"defects\": [\"answer_first: The report opens with background about FDA approval rather than the main finding about efficacy or safety.\", \"citation_clarity: No citations are provided for factual statements such as trial results, and there is no reference list.\", \"honest_disagreement: The 'Limits of the evidence' section appropriately notes trial limitations, but the main findings are presented without qualification, potentially overstating certainty.\"],\n    \"answer_first\": 2,\n    \"readable_structure\": 5,\n    \"plain_neutral_prose\": 5,\n    \"citation_clarity\": 1,\n    \"honest_disagreement\": 3,\n    \"appropriate_length\": 5\n}\n```"
     }
   }
 }

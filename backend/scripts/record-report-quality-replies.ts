@@ -20,7 +20,7 @@ import { FIXTURE_DIR, VARIANT_NAMES, loadVariants } from '../src/__tests__/fixtu
 
 async function main(): Promise<void> {
   const variants = loadVariants();
-  const replies: Record<string, { model: string; reply: string }> = {};
+  const replies: Record<string, { reportSha256: string; model: string; reply: string }> = {};
   for (const name of VARIANT_NAMES) {
     let heard: { model: string; reply: string } | null = null;
     const listening: typeof callRoleModel = async (options) => {
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     };
     const judgment = await judgeReportQuality(variants[name], listening);
     if (!judgment || !heard) throw new Error(`The judge gave no usable score for "${name}"`);
-    replies[name] = heard;
+    replies[name] = { reportSha256: createHash('sha256').update(variants[name]).digest('hex'), ...(heard as { model: string; reply: string }) };
     console.log(`${name}: mean ${judgment.mean.toFixed(2)} ${JSON.stringify(judgment.subScores)}`);
   }
   const recording = {

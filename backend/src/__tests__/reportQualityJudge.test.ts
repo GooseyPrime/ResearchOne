@@ -14,7 +14,7 @@ import { FIXTURE_DIR, VARIANT_NAMES, loadVariants, type VariantName } from './fi
 
 interface Recording {
   promptSha256: string;
-  replies: Record<VariantName, { model: string; reply: string }>;
+  replies: Record<VariantName, { reportSha256: string; model: string; reply: string }>;
 }
 
 const recording = JSON.parse(readFileSync(join(FIXTURE_DIR, 'recorded-replies.json'), 'utf8')) as Recording;
@@ -45,10 +45,11 @@ const FAULT_POINT: Record<Exclude<VariantName, 'clean'>, QualityPoint> = {
 const SPOILED = Object.keys(FAULT_POINT) as Array<Exclude<VariantName, 'clean'>>;
 
 describe('report quality judge (B3)', () => {
-  it('was recorded with the prompt and the model the judge uses now', () => {
+  it('was recorded with the prompt, the model and the reports used now', () => {
     expect(recording.promptSha256).toBe(createHash('sha256').update(REPORT_QUALITY_PROMPT).digest('hex'));
     for (const name of VARIANT_NAMES) {
       expect([REPORT_QUALITY_MODEL, REPORT_QUALITY_FALLBACK]).toContain(recording.replies[name].model);
+      expect(recording.replies[name].reportSha256, name).toBe(createHash('sha256').update(variants[name]).digest('hex'));
     }
   });
 
