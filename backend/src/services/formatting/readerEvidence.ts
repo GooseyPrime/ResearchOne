@@ -39,18 +39,26 @@ export interface ReaderStatus {
 
 const GATE_STATUSES: ReadonlySet<string> = new Set(['completed', 'completed_degraded', 'contract_failed', 'verification_failed', 'no_evidence']);
 
-/** The status a person reads. Never an enum value. */
+/**
+ * The status a person reads. Never an enum value.
+ *
+ * What went wrong is looked at first: a check the report did not pass, then a
+ * run that did not finish. A report row can say "finalized" while its run
+ * failed afterwards, and a draft can belong to a run that already failed;
+ * neither is "Ready" or "In progress". Only then does the report's own state
+ * decide. (The same order as `resolveRunDisplayState`.)
+ */
 export function readerStatus(args: { reportStatus: string | null; runStatus?: string | null; gateStatus?: string | null }): ReaderStatus {
   const gate = args.gateStatus && GATE_STATUSES.has(args.gateStatus) ? (args.gateStatus as ReportGateStatus) : null;
-  if (args.reportStatus === 'finalized' && (!gate || gate === 'completed')) return { word: 'Ready', reason: null };
-  if (args.reportStatus === 'draft' || args.reportStatus === 'generating') return { word: 'In progress', reason: 'This report is still being written.' };
   if (gate && gate !== 'completed') {
     const reason = describeGateFailure(gate);
     // A report that exists but did not pass a check is kept for review; one with nothing to show failed.
     return gate === 'no_evidence' ? { word: 'Failed', reason } : { word: 'Needs review', reason };
   }
-  if (args.reportStatus === 'under_review') return { word: 'Needs review', reason: 'This report did not pass every check. It has been kept for review rather than finalised.' };
   if (args.runStatus === 'failed' || args.runStatus === 'aborted') return { word: 'Failed', reason: 'The run that wrote this report did not finish.' };
+  if (args.runStatus === 'cancelled') return { word: 'Failed', reason: 'The run that wrote this report was cancelled before it finished.' };
+  if (args.reportStatus === 'draft' || args.reportStatus === 'generating') return { word: 'In progress', reason: 'This report is still being written.' };
+  if (args.reportStatus === 'under_review') return { word: 'Needs review', reason: 'This report did not pass every check. It has been kept for review rather than finalised.' };
   return { word: 'Ready', reason: null };
 }
 
@@ -150,28 +158,24 @@ export function buildReaderEvidence(args: {
       sourceId: row.source_id,
     });
   }
-  const quotesByChunk = new Map<string, string[]>();
-  const quotesByClaim = new Map<string, string[]>();
-  const push = (map: Map<string, string[]>, key: string | null, quote: string | null): void => {
-    if (!key || !quote) return;
-    const held = map.get(key) ?? [];
-    if (!held.includes(quote)) held.push(quote);
-    map.set(key, held);
-  };
-  for (const row of ordered) {
-    push(quotesByChunk, row.chunk_id, row.chunk_quote?.trim() || null);
-    push(quotesByClaim, row.claim_id, row.chunk_quote?.trim() || null);
-  }
-  const findings: ReaderFinding[] = args.claimRows
-    .filter((claim) => claim.claim_text.trim().length > 0)
-    .map((claim) => ({
+  // A finding belongs on the Evidence tab only when a citation of THIS report
+  // is bound to it: by the finding itself, or by the passage it was drawn
+  // from. Its sources and passages are those citations', nothing else. A
+  // revision keeps its base report's run, so the run's findings are not all
+  // the revision's; its own citations decide. Another finding from a cited
+  // source, drawn from a passage the report never cites, is not listed.
+  const findings: ReaderFinding[] = [];
+  for (const claim of args.claimRows) {
+    if (!claim.claim_text.trim()) continue;
+    const bound = ordered.filter((row) => row.claim_id === claim.id || (claim.chunk_id !== null && row.chunk_id === claim.chunk_id));
+    if (bound.length === 0) continue;
+    findings.push({
       text: stripInternalLabelsFromReport(claim.claim_text.trim()),
       strength: strengthInWords(claim.evidence_tier),
-      sourceIds: claim.source_id && sources.has(claim.source_id) ? [claim.source_id] : [],
-      quotes: [...new Set([...(quotesByClaim.get(claim.id) ?? []), ...(claim.chunk_id ? quotesByChunk.get(claim.chunk_id) ?? [] : [])])],
-    }))
-    // A finding is listed with what backs it. One the report does not cite has nothing to show here.
-    .filter((finding) => finding.sourceIds.length > 0 || finding.quotes.length > 0);
+      sourceIds: [...new Set(bound.map((row) => row.source_id).filter((id): id is string => Boolean(id) && sources.has(id as string)))],
+      quotes: [...new Set(bound.map((row) => row.chunk_quote?.trim() || '').filter(Boolean))],
+    });
+  }
   return { status: args.status, sources: [...sources.values()], citations, findings };
 }
 

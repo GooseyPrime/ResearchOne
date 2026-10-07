@@ -132,6 +132,17 @@ describe('citations', () => {
     expect(marker.getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('stays open while keyboard focus moves from the number to the link in its card, and closes when focus leaves both', () => {
+    render(<ReaderView report={report} evidence={evidence} />);
+    const marker = screen.getAllByRole('button', { name: /Citation 2/ })[0];
+    fireEvent.focus(marker);
+    const link = within(screen.getByRole('tooltip')).getByRole('link', { name: 'Go to reference 2' });
+    fireEvent.blur(marker, { relatedTarget: link });
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+    fireEvent.blur(link, { relatedTarget: document.body });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('a second tap closes the card it opened', () => {
     render(<ReaderView report={report} evidence={evidence} />);
     const marker = screen.getAllByRole('button', { name: /Citation 2/ })[0];
@@ -145,6 +156,18 @@ describe('citations', () => {
     render(<ReaderView report={report} evidence={evidence} />);
     expect(document.getElementById('reference-1')?.textContent).toContain('IFP. Why does construction cost so much?');
     expect(document.getElementById('reference-2')?.textContent).toContain('Vox.');
+  });
+});
+
+describe('an older report with no stored sections', () => {
+  it('gives its summary the same citation handling: no "Chunk", numbers open their passage', () => {
+    const bare: Report = { ...report, sections: [], executive_summary: 'Costs rose after 1979 [1]. An old label [Chunk 4] too.' };
+    const summaryCitations: ReaderEvidence = { ...evidence, citations: [{ sectionId: null, number: 1, order: 0, quote: 'costs rose sharply after 1979', sourceId: 'src1' }] };
+    render(<ReaderView report={bare} evidence={summaryCitations} />);
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.textContent).not.toMatch(/chunk/i);
+    fireEvent.focus(within(panel).getByRole('button', { name: /Citation 1/ }));
+    expect(screen.getByRole('tooltip').textContent).toContain('costs rose sharply after 1979');
   });
 });
 
@@ -171,6 +194,10 @@ describe('the page shows one view or the other', () => {
       expect(page.slice(reader, legacy)).not.toContain(card);
     }
     expect(page).toContain('{!readerView && generationTrace}');
+    // The old citation list prints stored grade and stance values; a reader-view report never renders it.
+    const oldList = page.indexOf('References and citations');
+    expect(page.slice(page.lastIndexOf('{!readerView && (', oldList), oldList)).toMatch(/^\{!readerView && \(\s*<div className="card p-5 space-y-3 print:hidden">\s*<h2[^>]*>$/);
+    expect(page.match(/tier: \{c\.evidence_tier/g)).toHaveLength(1);
   });
 });
 

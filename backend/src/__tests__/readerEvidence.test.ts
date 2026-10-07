@@ -34,6 +34,15 @@ describe('the status a person reads', () => {
     expect(readerStatus({ reportStatus: null, runStatus: 'failed' }).word).toBe('Failed');
   });
 
+  it('a run that failed after its report was finalised is not Ready, and one that failed mid-draft is not In progress', () => {
+    expect(readerStatus({ reportStatus: 'finalized', runStatus: 'failed', gateStatus: 'completed' }).word).toBe('Failed');
+    expect(readerStatus({ reportStatus: 'finalized', runStatus: 'aborted' }).word).toBe('Failed');
+    expect(readerStatus({ reportStatus: 'finalized', runStatus: 'cancelled' }).word).toBe('Failed');
+    expect(readerStatus({ reportStatus: 'generating', runStatus: 'failed' }).word).toBe('Failed');
+    expect(readerStatus({ reportStatus: 'draft', gateStatus: 'contract_failed' }).word).toBe('Needs review');
+    expect(readerStatus({ reportStatus: 'generating', runStatus: 'running' }).word).toBe('In progress');
+  });
+
   it.each([
     { reportStatus: 'under_review', gateStatus: 'verification_failed' },
     { reportStatus: 'under_review', gateStatus: 'not_a_gate' },
@@ -75,6 +84,10 @@ describe('the reading page data', () => {
     claimRows: [
       { id: 'claim1', claim_text: 'The trial met its endpoint [strong_evidence].', evidence_tier: 'strong_evidence', source_id: 'src1', chunk_id: 'c1' },
       { id: 'claim2', claim_text: 'An uncited aside.', evidence_tier: 'inference', source_id: 'elsewhere', chunk_id: 'c9' },
+      // From a source the report cites, but drawn from a passage it never cites: not this report's finding.
+      { id: 'claim3', claim_text: 'Another statement from the same article.', evidence_tier: 'testimony', source_id: 'src1', chunk_id: 'c7' },
+      // Bound by its passage alone, to a citation of a different source record.
+      { id: 'claim4', claim_text: 'A finding cited through its passage.', evidence_tier: 'established_fact', source_id: 'elsewhere', chunk_id: 'c2' },
     ],
   });
 
@@ -93,13 +106,17 @@ describe('the reading page data', () => {
     ]);
   });
 
-  it('gives each cited finding its strength in words, its passages and its source, cleaned of labels', () => {
-    expect(built.findings).toHaveLength(1);
-    expect(built.findings[0].text).not.toContain('strong_evidence');
-    expect(built.findings[0].text).toContain('The trial met its endpoint');
-    expect(built.findings[0].strength).toBe(strengthInWords('strong_evidence'));
-    expect(built.findings[0].sourceIds).toEqual(['src1']);
-    expect(built.findings[0].quotes).toEqual(['a later passage', 'the quoted passage']);
+  it('lists a finding only when a citation of this report is bound to it, with those citations as its sources and passages', () => {
+    expect(built.findings.map((finding) => finding.text)).toEqual(['The trial met its endpoint.', 'A finding cited through its passage.']);
+    const [first, second] = built.findings;
+    expect(first.text).not.toContain('strong_evidence');
+    expect(first.strength).toBe(strengthInWords('strong_evidence'));
+    // Bound by the finding itself (the later citation) and by its passage (the first one).
+    expect(first.sourceIds).toEqual(['src1']);
+    expect(first.quotes).toEqual(['the quoted passage', 'a later passage']);
+    // Its sources are the citations', not the record the finding was extracted under.
+    expect(second.sourceIds).toEqual(['src2']);
+    expect(second.strength).toBe(strengthInWords('established_fact'));
   });
 
   it('holds no stored grade or status anywhere', () => {

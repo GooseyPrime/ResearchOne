@@ -101,7 +101,7 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
   const references = referenceSection ? parseReferences(referenceSection.content) : [];
   const about = sections.find((_, index) => role(index) === 'about');
   const sourceById = new Map(evidence.sources.map((source) => [source.id, source]));
-  const link = (content: string, sectionId: string): string => linkCitations(content, sectionId, evidence.citations, legacyNumbers);
+  const link = (content: string, sectionId: string | null): string => linkCitations(content, sectionId, evidence.citations, legacyNumbers);
 
   return (
     <article className="space-y-5">
@@ -147,7 +147,8 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
               ) : null
             )}
             {sections.every((_, index) => role(index) !== 'report') && report.executive_summary && (
-              <Prose markdown={report.executive_summary} evidence={evidence} />
+              // An older report with no stored sections: its summary gets the same citation handling.
+              <Prose markdown={link(report.executive_summary, null)} evidence={evidence} />
             )}
             {references.length > 0 && (
               <section className="space-y-2">

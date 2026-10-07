@@ -46,6 +46,10 @@ export default function CitationMarker({
       className="relative inline-block align-baseline"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => !pinned && setOpen(false)}
+      // Focus may move from the number to the link inside the card; the card closes only when focus leaves both.
+      onBlur={(event) => {
+        if (!pinned && !event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
     >
       <button
         type="button"
@@ -54,7 +58,6 @@ export default function CitationMarker({
         aria-expanded={open}
         aria-describedby={open ? cardId : undefined}
         onFocus={() => setOpen(true)}
-        onBlur={() => !pinned && setOpen(false)}
         onClick={() => {
           // A tap has no hover: one tap opens the card and keeps it open, the next closes it.
           const next = !pinned;

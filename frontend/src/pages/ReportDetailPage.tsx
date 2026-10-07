@@ -766,22 +766,25 @@ export default function ReportDetailPage() {
         </button>
       </div>
 
-      <div className="card p-5 space-y-3 print:hidden">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">References and citations</h2>
-        {citations.length === 0 ? (
-          <p className="text-xs text-slate-500">No mapped citations available for this report revision yet.</p>
-        ) : (
-          <ul className="space-y-2 text-xs">
-            {citations.map((c, idx) => (
-              <li key={c.id} className="rounded border border-indigo-900/20 bg-surface-200 p-2 space-y-1">
-                <div className="text-slate-300">[{idx + 1}] {c.source_title || c.source_url || 'Untitled source'}</div>
-                {c.citation_text && <div className="text-slate-400">{c.citation_text}</div>}
-                <div className="text-slate-500">tier: {c.evidence_tier || 'unknown'} · stance: {c.stance || 'unknown'}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* The reader view has its own Sources and Evidence tabs; this card shows stored grade values. */}
+      {!readerView && (
+        <div className="card p-5 space-y-3 print:hidden">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">References and citations</h2>
+          {citations.length === 0 ? (
+            <p className="text-xs text-slate-500">No mapped citations available for this report revision yet.</p>
+          ) : (
+            <ul className="space-y-2 text-xs">
+              {citations.map((c, idx) => (
+                <li key={c.id} className="rounded border border-indigo-900/20 bg-surface-200 p-2 space-y-1">
+                  <div className="text-slate-300">[{idx + 1}] {c.source_title || c.source_url || 'Untitled source'}</div>
+                  {c.citation_text && <div className="text-slate-400">{c.citation_text}</div>}
+                  <div className="text-slate-500">tier: {c.evidence_tier || 'unknown'} · stance: {c.stance || 'unknown'}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <ReportActionBar
         className="print:hidden"
