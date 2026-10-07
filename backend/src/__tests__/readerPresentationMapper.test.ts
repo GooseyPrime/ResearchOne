@@ -39,6 +39,14 @@ describe('presentForReader', () => {
     expect(run).toEqual({ title: LABELLED, display_title: CLEAN, sources: [{ title: LABELLED }] });
   });
 
+  it("in a response that mixes the two, cleans the title of the report it holds and no other", () => {
+    const dossier = presentForReader(
+      { request: { title: LABELLED }, report: { reportId: 'r1', title: LABELLED }, sources: [{ title: LABELLED }], displayTitle: LABELLED },
+      { title: 'not-report', reportTitleUnder: ['report'] }
+    );
+    expect(dossier).toEqual({ request: { title: LABELLED }, report: { reportId: 'r1', title: CLEAN }, sources: [{ title: LABELLED }], displayTitle: CLEAN });
+  });
+
   it('cleans the lists a report shows as written: open questions and suggested searches', () => {
     const report = presentForReader({ unresolved_questions: [LABELLED], recommended_queries: [LABELLED, 'plain'] });
     expect(report).toEqual({ unresolved_questions: [CLEAN], recommended_queries: [CLEAN, 'plain'] });
@@ -116,9 +124,15 @@ describe('every route that returns report text to a reader goes through the mapp
     }
   });
 
-  it('the dossier routes, the run list and run detail, and the citation list leave a title that is not the report\'s alone', () => {
+  it("a title is cleaned where it is a report's and left alone where it is a question's or a source's", () => {
     const dossiers = readFileSync(join(__dirname, '../api/routes/dossiers.ts'), 'utf8');
-    expect(dossiers.match(/forReader\(/g)).toHaveLength(dossiers.match(/forReader\([a-z]+, \{ title: 'not-report' \}\)/g)?.length ?? -1);
+    // The report link and the report history hold report titles.
+    expect(dossiers).toContain('res.json(forReader(link));');
+    expect(dossiers).toContain('res.json(forReader(history));');
+    // The whole dossier holds a report beside a request.
+    expect(dossiers).toContain("res.json(forReader(dossier, { title: 'not-report', reportTitleUnder: ['report'] }));");
+    // Sources carry the publisher's title.
+    expect(dossiers).toContain("res.json(forReader(sources, { title: 'not-report' }));");
     const runs = readFileSync(join(__dirname, '../api/routes/research.ts'), 'utf8');
     expect(runs).toContain("res.json(forReader(rows, { title: 'not-report' }));");
     expect(runs).toContain("res.json(forReader(rows[0], { title: 'not-report' }));");
@@ -133,7 +147,8 @@ describe('a revision is stored clean when the switch is on, and as before when i
 
   it('is what the revision save path writes: the report row, its sections, and both sides of the kept history', () => {
     const source = readFileSync(join(__dirname, '../services/reasoning/reportRevisionService.ts'), 'utf8');
-    expect(source).toContain('const storeClean = readerViewEnabled();');
+    expect(source).toContain('const storeCleanForRun = await readerViewForRun((baseReport as { run_id?: unknown }).run_id);');
+    expect(source).toContain('const storeClean = storeCleanForRun;');
     expect(source).toContain('const sectionsToStore = storeClean ? revisedSections.map(cleanSectionForStorage) : revisedSections;');
     expect(source).toContain('asStored(baseReport.title),');
     // Every insert of section text reads the stored copy; none reads the revised sections directly.
@@ -161,6 +176,6 @@ describe('READER_VIEW_ENABLED', () => {
   it("travels with the report, read as the report's own run recorded it", () => {
     const source = readFileSync(join(__dirname, '../api/routes/reports.ts'), 'utf8');
     expect(source).toContain('reader_view: await readerViewForRun(stored.run_id)');
-    expect(source).toContain('return runWithFlags(await loadRunFlags(runId), () => readerViewEnabled());');
+    expect(readFileSync(join(__dirname, '../services/eval/readerView.ts'), 'utf8')).toContain('return runWithFlags(await loadRunFlags(runId), () => readerViewEnabled());');
   });
 });

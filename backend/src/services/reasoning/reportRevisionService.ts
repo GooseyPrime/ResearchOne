@@ -1,5 +1,5 @@
 import { query, withTransaction } from '../../db/pool';
-import { readerViewEnabled } from '../../config';
+import { readerViewForRun } from '../eval/readerView';
 import { cleanSectionForStorage, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
@@ -397,6 +397,8 @@ async function createReportRevisionInner(args: {
     throw new Error('Report not found');
   }
   const baseReport = reportRows[0];
+  // A revision is stored the way its report's run was set: the reader-view switch as that run recorded it.
+  const storeCleanForRun = await readerViewForRun((baseReport as { run_id?: unknown }).run_id);
   const baseSections = await query<ReportSectionRow>(
     'SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order',
     [args.reportId]
@@ -796,8 +798,8 @@ Return strict JSON.`,
 
     // Stored clean, not only shown clean (slice 5, item 11): the report row,
     // its sections, and the before and after text kept as revision history.
-    // With the switch off every row is written as it was before the slice.
-    const storeClean = readerViewEnabled();
+    // With the switch off for the report's run every row is written as it was before the slice.
+    const storeClean = storeCleanForRun;
     const asStored = (text: string): string => (storeClean ? stripInternalLabelsFromReport(text) : text);
     const sectionsToStore = storeClean ? revisedSections.map(cleanSectionForStorage) : revisedSections;
 

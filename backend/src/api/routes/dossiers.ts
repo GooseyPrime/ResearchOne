@@ -146,7 +146,7 @@ router.get('/:id/report', async (req: Request, res: Response, next: NextFunction
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(forReader(link, { title: 'not-report' }));
+    res.json(forReader(link));
   } catch (e) {
     next(e);
   }
@@ -194,7 +194,7 @@ router.get('/:id/report-history', async (req: Request, res: Response, next: Next
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(forReader(history, { title: 'not-report' }));
+    res.json(forReader(history));
   } catch (e) {
     next(e);
   }
@@ -266,7 +266,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(forReader(dossier, { title: 'not-report' }));
+    res.json(forReader(dossier, { title: 'not-report', reportTitleUnder: ['report'] }));
   } catch (e) {
     next(e);
   }
