@@ -1516,6 +1516,8 @@ async function runResearchJobInner(
     const linkCheckByChunk = new Map<string, { status: string; notice: string | null; retracted: boolean }>();
     /** Each address is asked about once per run; null is "asked, none found". */
     const unstatedAsked = new Map<string, string | null>();
+    /** DOIs read from an address this run, which the resolver has already answered for. */
+    const knownToResolve = new Set<string>();
     const usableAfterLinkCheck = async (chunks: RetrievedChunk[]): Promise<RetrievedChunk[]> => {
       if (chunks.length === 0 || !doiResolveEnabled()) return chunks;
       try {
@@ -1537,10 +1539,11 @@ async function runResearchJobInner(
         const addressOf = (chunk: RetrievedChunk): string | null => rowById.get(chunk.id)?.url ?? chunk.source_url ?? null;
         const statedDoi = (chunk: RetrievedChunk): string | null => doiOf(rowById.get(chunk.id)?.doi) ?? doiOf(rowById.get(chunk.id)?.url) ?? doiOf(chunk.source_url);
         const unstated = await findUnstatedDois(unseen.filter((chunk) => !statedDoi(chunk)).map(addressOf).filter((address) => !address || !unstatedAsked.has(address)));
-        for (const chunk of unseen) { const address = addressOf(chunk); if (address && !unstatedAsked.has(address)) unstatedAsked.set(address, unstated.get(address) ?? null); }
+        for (const chunk of unseen) { const address = addressOf(chunk); if (address && !unstatedAsked.has(address)) unstatedAsked.set(address, unstated.byAddress.get(address) ?? null); }
+        for (const doi of unstated.knownToResolve) knownToResolve.add(doi);
         const doiByChunk = new Map(unseen.map((chunk) => [chunk.id, statedDoi(chunk) ?? unstatedAsked.get(addressOf(chunk) ?? '') ?? null]));
         const toAsk = [...new Set([...doiByChunk.values()].filter((doi): doi is string => Boolean(doi) && !linkCheckByDoi.has(doi as string)))];
-        for (const [doi, found] of await checkDois(toAsk)) linkCheckByDoi.set(doi, found);
+        for (const [doi, found] of await checkDois(toAsk, undefined, knownToResolve)) linkCheckByDoi.set(doi, found);
         const applied = applyDoiChecks(unseen, unseen, linkCheckByDoi, unseen.map((chunk) => doiByChunk.get(chunk.id) ?? null));
         const leftOut = new Set<string>();
         unseen.forEach((chunk, index) => {
