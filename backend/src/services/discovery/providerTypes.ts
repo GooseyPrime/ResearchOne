@@ -31,6 +31,12 @@ export interface SearchResultCandidate {
    * citation lock is on for the run.
    */
   bibliographic?: BibliographicDetails;
+  /**
+   * Slice 6. The source's authority tier, 1 to 4, worked out from the provider's
+   * record when the result came in. Set only when AUTHORITY_TIERS_ENABLED is on
+   * for the run; with it off a candidate does not carry the field.
+   */
+  authorityTier?: number;
 }
 
 export interface BibliographicDetails {
@@ -69,6 +75,11 @@ export function isoFromParts(parts: ReadonlyArray<number> | undefined): string |
   if (![year, month, day].every((part) => Number.isInteger(part))) return undefined;
   const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   return isCalendarDay(iso) ? iso : undefined;
+}
+
+/** The candidate with its tier, or unchanged when there is none to give. */
+export function withAuthorityTier(candidate: SearchResultCandidate, tier: number | null): SearchResultCandidate {
+  return tier === null ? candidate : { ...candidate, authorityTier: tier };
 }
 
 /** The candidate as it was before reference details existed. */

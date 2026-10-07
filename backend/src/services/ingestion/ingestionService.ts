@@ -1,4 +1,5 @@
 import { isCalendarDay } from '../discovery/providerTypes';
+import { authorityTierFor, authorityTiersEnabled, storedAuthorityTier, type AuthoritySignals, type AuthorityTier } from '../authority/authorityTier';
 import axios from 'axios';
 import crypto from 'crypto';
 import { query, queryOne, withTransaction } from '../../db/pool';
@@ -31,6 +32,13 @@ export interface IngestionJobData {
   sourceRank?: number;
   importedVia?: 'manual_upload' | 'manual_url' | 'autonomous_discovery' | 'corpus_sync';
   fetchMethod?: string;
+  /**
+   * Slice 6. The tier discovery worked out for this source, from the provider's
+   * own record. Present only when AUTHORITY_TIERS_ENABLED was on for the run
+   * that queued the job: a run's switches do not reach this worker, and the
+   * provider's record is not otherwise carried here.
+   */
+  authorityTier?: number;
   /** When true, crawl same-origin links up to `crawlLayers` depth (manual URL ingest only). */
   siteCrawl?: boolean;
   /** Layer count: 1 = seed page only; 2 = seed + pages it links to; etc. */
@@ -274,6 +282,32 @@ export async function fillReferenceDetails(
   );
 }
 
+/**
+ * Slice 6. Records a source's authority tier. A tier already recorded is kept.
+ * Its own statement, after the source is stored, so a database without
+ * migration 060 loses the tier and never the source. Callers decide whether the
+ * switch is on; with it off this is never reached with a tier.
+ */
+export async function recordAuthorityTier(sourceId: string, tier: AuthorityTier | null): Promise<void> {
+  if (tier === null) return;
+  try {
+    await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
+  } catch (err) {
+    logger.warn('ingestion: could not record the authority tier of a source', { sourceId, tier, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
+ * The tier to record for an ingested source. A job queued by discovery carries
+ * the tier that run worked out. Any other job (an upload, a supplied address)
+ * is judged here, and only when the switch is on for this process.
+ */
+export function tierForIngest(data: Pick<IngestionJobData, 'authorityTier'>, signals: AuthoritySignals): AuthorityTier | null {
+  const carried = storedAuthorityTier(data.authorityTier);
+  if (carried !== null) return carried;
+  return authorityTiersEnabled() ? authorityTierFor(signals) : null;
+}
+
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
 async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
   sourceId: string;
@@ -331,6 +365,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
         logger.warn('ingestion: could not add reference details to a stored source', { sourceId: existing.id, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    // A source stored before tiers were recorded gains one now; a recorded tier is kept.
+    await recordAuthorityTier(existing.id, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
@@ -396,6 +432,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     );
     documentId = docResult.rows[0].id;
   });
+
+  await recordAuthorityTier(sourceId, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
 
   onProgress({ stage: 'chunk', percent: 50, message: 'Chunking document...' });
 

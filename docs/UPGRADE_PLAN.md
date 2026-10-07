@@ -33,12 +33,13 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 1. One presentation mapper | Done | PR #256. Item 11, and the `READER_VIEW_ENABLED` switch sent with the report. See "Delivered in parts" under slice 5. |
 | Slice 5, part 2. Reading page | Done | PR #257. Items 1 to 6, 9 and 10. See "Built in part 2" under slice 5. |
 | Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
-| Slice 5, part 4. App wording and the gate | Built, in review | Item 8. See "Built in part 4" under slice 5. |
-| Slices 6 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
+| Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
+| Slice 6, part 1. Tier rules and the stored tier | Built, in review | Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
+| Slices 7 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 0, 3, 4 and slice 5 changed. Slice 5's last part is in review. When it is merged and production is confirmed healthy, slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Then slice 6. S6 governs each move.
+**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is in review. S6 governs each move.
 
 ---
 
@@ -543,7 +544,7 @@ Acceptance:
 - A fixture retracted source cannot be cited without the retraction in the sentence.
 - Harness: `citation_bound` and `quote_verbatim` 1.0, `quote_supports` at least 0.90, `doi_resolution` 1.0, `structure_complete` 1.0.
 
-### Slice 5. Reading page and exports (part 4 in review)
+### Slice 5. Reading page and exports (done)
 
 **Delivered in parts (7 Oct 2026).** Part 1: the presentation mapper (item 11) and the switch. Part 2: the reading page (items 1 to 6, 9, 10). Part 3: exports (item 7). Part 4: app wording and the jargon gate (item 8). The acceptance lines belong to the part that builds what they test.
 
@@ -600,7 +601,7 @@ Acceptance:
 - The jargon gate fails on a reader-facing string containing "claims".
 - Harness: `pairwise_vs_reference` at least 0.5 on tasks with a reference report; `report_quality` at least 4.0.
 
-### Slice 6. Source authority (not started)
+### Slice 6. Source authority (part 1 in review)
 
 Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4.
 
@@ -625,6 +626,25 @@ Acceptance:
 - A tier 4 source that is the only source for a point is still cited.
 - No tier number ("tier 1" to "tier 4", "T1") and no tier word used as a label appears in report text or beside a citation. Source type in words is allowed in the reference list and hover card. `presentation_clean` stays 1.0.
 - Harness: `authority_share` rises on factual tasks; `answer_correct` and `report_quality` do not fall.
+
+**Delivered in parts.**
+
+1. Tier rules and the stored tier (this part). The column, the rules file, the function that reads them, and the write at ingest.
+2. Retrieval order and the writer's instruction. Layer 1 orders by relevance, then tier; the writer prefers the higher tier where sources conflict and says so in words.
+3. Where the reader sees it: source type in words in the reference list, the hover card and the Evidence tab; the `authority_share` measure in the harness.
+
+**Built in part 1.**
+
+- Migration 060 adds `sources.authority_tier`, nullable, 1 to 4.
+- `backend/src/config/authorityTiers.ts` holds every rule. Rules are read top to bottom and the first match decides. A rule matches on one thing: what the provider recorded the work to be, which provider returned it, or the address it was read at, in that order, so a journal article hosted on a government site is a journal article. Each rule carries an example, and the test runs every example, so a rule cannot be added untested.
+- With the switch on, the tier is written in a statement of its own after the source is stored. A tier already recorded is kept. With the switch off no statement names the column and no job carries a tier.
+- Discovery decides the tier, inside the run, and sends it with the ingestion job. Two reasons, both found in review: a run's switches do not reach the ingestion worker, and the provider's record of what a work is gets dropped before the job is queued when the citation lock is off. When several providers return one address, the record matched by the earliest rule decides, so the tier does not depend on which provider answered first.
+- An upload or a supplied address has no run behind it. It is judged in the worker, and only when the switch is on for the whole process.
+- Decisions made while building, open to change:
+  - A catalogue entry or DOI link with no recorded kind is tier 3, not 2. A DOI shows a work was published, not that it was peer reviewed.
+  - A source with no web address, no provider and no recorded kind (an uploaded file) gets no tier. It is unranked, not ranked last.
+  - Wikipedia is not in the reference-work list and falls to tier 4. Edited reference works (Britannica, the Stanford Encyclopedia of Philosophy) are tier 3.
+  - Sources stored before the switch was on have no stored tier. Parts 2 and 3 work the tier out from the same rules when the column is empty, so a run with the switch on for that run alone still orders and labels every source.
 
 ### Slice 7. Provider routing by request (not started)
 

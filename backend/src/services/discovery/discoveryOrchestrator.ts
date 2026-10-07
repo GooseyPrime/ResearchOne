@@ -27,7 +27,8 @@ import {
 } from './deterministicDiscoveryQueries';
 import { query, queryOne } from '../../db/pool';
 import { ingestionQueue } from '../../queue/queues';
-import { fillReferenceDetails, storedBibliographic } from '../ingestion/ingestionService';
+import { fillReferenceDetails, recordAuthorityTier, storedBibliographic } from '../ingestion/ingestionService';
+import { authorityTierOfResults, authorityTiersEnabled, storedAuthorityTier } from '../authority/authorityTier';
 import { selectByRelevance } from './candidateRelevance';
 import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
@@ -44,6 +45,7 @@ import {
   BibliographicDetails,
   SearchResultCandidate,
   bibliographicMetadata,
+  withAuthorityTier,
   candidateForRun,
   resultForRun,
   fullestBibliographic,
@@ -404,6 +406,8 @@ async function runDiscoveryOrchestratorInner(args: {
   const candidateAt = new Map<string, number>();
   /** Every provider's own reference record for an address, kept so the choice between them never depends on arrival order. */
   const recordsFor = new Map<string, BibliographicDetails[]>();
+  /** Every provider result seen for an address, kept only with authority tiers on. */
+  const resultsFor = new Map<string, SearchResultCandidate[]>();
   const queriesExecuted: string[] = [];
   let roundsExecuted = 0;
   // Total query budget shared across all discovery rounds.
@@ -443,6 +447,12 @@ async function runDiscoveryOrchestratorInner(args: {
               // With the citation lock on it keeps the fuller reference record of
               // the two, whichever provider answered first.
               const at = candidateAt.get(key);
+              if (authorityTiersEnabled() && at !== undefined) {
+                // A second provider may record what the work is where the first did not.
+                const seen = [...(resultsFor.get(key) ?? []), r];
+                resultsFor.set(key, seen);
+                allCandidates[at] = withAuthorityTier(allCandidates[at], authorityTierOfResults(seen));
+              }
               const record = citationLockEnabled() ? providerRecord(r) : undefined;
               if (record && at !== undefined) {
                 const records = [...(recordsFor.get(key) ?? []), record];
@@ -457,7 +467,15 @@ async function runDiscoveryOrchestratorInner(args: {
             if (firstRecord) recordsFor.set(key, [firstRecord]);
             // Reference details travel with a candidate only when the citation lock
             // is on for this run. With it off a candidate is exactly what it was.
-            allCandidates.push(candidateForRun(r, citationLockEnabled()));
+            // The tier is worked out here, from the provider's own record, because
+            // that record is dropped below when the citation lock is off and the
+            // run's switches do not reach the worker that stores the source.
+            if (authorityTiersEnabled()) resultsFor.set(key, [r]);
+            allCandidates.push(
+              authorityTiersEnabled()
+                ? withAuthorityTier(candidateForRun(r, citationLockEnabled()), authorityTierOfResults([r]))
+                : candidateForRun(r, citationLockEnabled())
+            );
             newCount++;
           }
 
@@ -655,6 +673,8 @@ async function runDiscoveryOrchestratorInner(args: {
           logger.warn(`[discovery:${runId}] could not add reference details to a stored source: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+      // A source stored before tiers were recorded gains one; a recorded tier is kept.
+      if (authorityTiersEnabled()) await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
       skipped.push({
         ...candidate,
         selectionRationale: 'already in corpus',
@@ -695,6 +715,7 @@ async function runDiscoveryOrchestratorInner(args: {
         discoveryQuery: candidate.sourceQuery,
         sourceRank: candidate.rank,
         fetchMethod: 'http_get',
+        ...(authorityTiersEnabled() && candidate.authorityTier ? { authorityTier: candidate.authorityTier } : {}),
       });
 
       selected.push({
