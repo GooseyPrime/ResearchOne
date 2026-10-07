@@ -1,4 +1,4 @@
-import { baselineLayerEnabled } from '../../config';
+import { baselineLayerEnabled, runWithFlags } from '../../config';
 /**
  * the orchestration-profile pass — resolve canonical orchestration profile for a running job
  * and merge planner-visible plan fields from `orchestrationProfiles.ts`.
@@ -65,4 +65,16 @@ export function mergePlanPayloadWithCanonicalProfile(plan: PlanPayload): PlanPay
     },
     executionPlan,
   };
+}
+
+/**
+ * The confirmed plan as a run reads it, merged under that run's own switches.
+ *
+ * A run resumed after its plan was confirmed loads the plan before the job's
+ * switch scope exists. Merged there, a run whose Layer 1 switch was turned on
+ * for it alone lost the planner's length and got the report type's standard
+ * range: a one-line question was sized as a 3,600-word report.
+ */
+export function mergePlanPayloadForRun(plan: PlanPayload, runFlags: Record<string, boolean> | null | undefined): PlanPayload {
+  return runWithFlags(runFlags, () => mergePlanPayloadWithCanonicalProfile(plan));
 }

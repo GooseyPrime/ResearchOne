@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { mergePlanPayloadWithCanonicalProfile } from '../../services/planning/orchestrationRuntime';
+import { mergePlanPayloadForRun, mergePlanPayloadWithCanonicalProfile } from '../../services/planning/orchestrationRuntime';
+import { resolveReportWordTarget } from '../../services/reasoning/reportGenerator';
 import type { PlanPayload } from '../../services/planning/planTypes';
 
 function basePlan(intent: PlanPayload['intent']['id']): PlanPayload {
@@ -72,5 +75,29 @@ describe('orchestrationRuntime canonical execution plan', () => {
     expect(runRoster).not.toContain('retrieval');
     // REVERT-CHECK: orchestrationRuntime.ts — if stage ids are mixed back into
     // agentsWillRun, reference_lookup preview falsely advertises non-agent stages.
+  });
+});
+
+describe('a plan confirmed for a run whose Layer 1 switch is on for that run alone', () => {
+  const sized = (): PlanPayload => {
+    const plan = basePlan('factual_report');
+    return { ...plan, outputShape: { ...plan.outputShape, estimatedLength: { minWords: 80, maxWords: 150 } } };
+  };
+
+  it("keeps the planner's length when the plan is merged under the run's switches", () => {
+    const merged = mergePlanPayloadForRun(sized(), { BASELINE_LAYER_ENABLED: true });
+    expect(merged.outputShape.estimatedLength).toEqual({ minWords: 80, maxWords: 150 });
+    expect(resolveReportWordTarget({ estimatedLength: merged.outputShape.estimatedLength })).toEqual({ target: 115, source: 'planner' });
+  });
+
+  it("takes the report type's standard range when the run has no such switch", () => {
+    const merged = mergePlanPayloadForRun(sized(), null);
+    expect(merged.outputShape.estimatedLength).toEqual({ minWords: 1200, maxWords: 6000 });
+  });
+
+  it('is merged that way when the run resumes after confirmation', () => {
+    const orchestrator = readFileSync(join(__dirname, '../../services/reasoning/researchOrchestrator.ts'), 'utf8');
+    expect(orchestrator).toContain('mergePlanPayloadForRun(rawPlan as PlanPayload, await loadRunFlags(runId))');
+    expect(orchestrator).not.toContain('mergePlanPayloadWithCanonicalProfile(');
   });
 });
