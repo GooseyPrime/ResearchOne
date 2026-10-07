@@ -9,6 +9,7 @@ import {
 } from '../../db/tenantScope';
 import { config } from '../../config';
 import { readerViewForRun } from '../../services/eval/readerView';
+import { loadReaderEvidence } from '../../services/formatting/readerEvidence';
 import { forReader, notReportText } from '../readerResponse';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
@@ -699,6 +700,31 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       return;
     }
     res.json(forReader(cleanRevisionForReader(revision)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/:id/reader - what the reading page shows beside the report text (slice 5)
+router.get('/:id/reader', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const orgId = req.auth?.orgId ?? null;
+    let rows: Array<{ id: string; status: string | null; run_id: string | null }>;
+    try {
+      rows = await query(
+        `SELECT id, status, run_id FROM reports WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
+        [req.params.id, userId, orgId]
+      );
+    } catch (scopeErr) {
+      rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/reader');
+    }
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    // Source titles are the publisher's; findings are cleaned where they are built.
+    res.json(forReader(await loadReaderEvidence(rows[0]), { title: 'not-report' }));
   } catch (err) {
     next(err);
   }

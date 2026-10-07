@@ -30,13 +30,14 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 4, part 3. DOI and retraction | Merged | Link check and retraction rule behind `DOI_RESOLVE_ENABLED`. See "Built in part 3" under slice 4. |
 | Slice 4, part 4. Quality judge | Merged | PR #254. The judge now scores a clean report above each of the four spoiled copies. |
 | Slice 4. Third live samples and their two fixes | Done | PR #255. Confirmed on production 7 Oct 2026: a single-fact question was answered in about 140 words, and both confirmation runs recorded link-check counts. See "What the third samples showed" under slice 4. |
-| Slice 5, part 1. One presentation mapper | Built, in review | Item 11, and the `READER_VIEW_ENABLED` switch sent with the report. See "Delivered in parts" under slice 5. |
-| Slice 5, parts 2 to 4 | Not started | Reading page; exports; app wording and the jargon gate. |
+| Slice 5, part 1. One presentation mapper | Done | PR #256. Item 11, and the `READER_VIEW_ENABLED` switch sent with the report. See "Delivered in parts" under slice 5. |
+| Slice 5, part 2. Reading page | Built, in review | Items 1 to 6, 9 and 10. See "Built in part 2" under slice 5. |
+| Slice 5, parts 3 and 4 | Not started | Exports; app wording and the jargon gate. |
 | Slices 6 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 0, 3 and slice 5 changed. Slice 4 is done. Slice 5 is delivered in four parts, one pull request each; part 1 is in review. S6 governs each move.
+**Your task now:** read this whole document again; sections 0, 3, 4 and slice 5 changed. Slice 5 is delivered in four parts, one pull request each; part 2 is in review. After part 2 is merged, open one report written with `READER_VIEW_ENABLED` on for its run and look at every tab before starting part 3. S6 governs each move.
 
 ---
 
@@ -541,13 +542,25 @@ Acceptance:
 - A fixture retracted source cannot be cited without the retraction in the sentence.
 - Harness: `citation_bound` and `quote_verbatim` 1.0, `quote_supports` at least 0.90, `doi_resolution` 1.0, `structure_complete` 1.0.
 
-### Slice 5. Reading page and exports (part 1 in review)
+### Slice 5. Reading page and exports (part 2 in review)
 
 **Delivered in parts (7 Oct 2026).** Part 1: the presentation mapper (item 11) and the switch. Part 2: the reading page (items 1 to 6, 9, 10). Part 3: exports (item 7). Part 4: app wording and the jargon gate (item 8). The acceptance lines belong to the part that builds what they test.
 
 **Built in part 1.** `presentForReader` in `formatting/reportPresentation.ts` walks a response and cleans the fields a reader is shown, by name, wherever they sit, including the open-questions and suggested-searches lists. What a person typed is never touched, and a `title` is cleaned only where it is the report's own: a run's title is the question and a source's title is the publisher's. Routes send report text through `forReader` (`api/readerResponse.ts`), which is that mapper with `READER_VIEW_ENABLED` on and nothing with it off, so with the switch off every response and every stored row is what it was before the slice (S1). The report and revision detail routes keep the clean-up PR #242 gave them. A response with no report text is marked `notReportText`, and a test reads the report and dossier route files and fails on any successful response that is neither. With the switch on, a revision's report row, its sections and both sides of its kept history are cleaned before they are stored, and a spinoff is given the earlier report clean. The switch is sent with a report as `reader_view`, read as the report's own run recorded it, so it can be turned on for one run like the others; nothing reads `reader_view` yet.
 
 Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with the report payload. New slice. Today's reading page (`frontend/src/pages/ReportDetailPage.tsx`) shows the machine's view of a run. This slice makes it show the section 2a report.
+
+**Built in part 2.** A report whose `reader_view` is true is shown by `ReaderView` (`frontend/src/components/reports/reader/`); any other report is shown exactly as before.
+
+- Report tab: title, the report's sections in order, the reference list with one anchor per entry, and "About this report" in small print. The contradictions, counterevidence, evidence-coverage, report-status and run-reference cards, the "Falsification criteria" block, the open-questions and suggested-searches cards and the generation trace are in the branch a reader-view report never renders.
+- Citations: each bracketed number is a button. Hover, keyboard focus or a tap opens a card with the source title, publisher, date, any editorial notice and the quoted passage, and a link to the reference entry. The k-th time a number appears in a section it is the k-th saved citation with that number in that section, so two uses of one source show two different passages.
+- Evidence, Sources, How this was researched, and Challenge tabs. Evidence lists each cited finding with its strength in words, or each cited passage with its source when the run stored no findings. The Challenge tab exists only when the report has a Challenge section.
+- Status: "Ready", "Needs review" or "Failed" with the plain reason from `runStatusDisplay.ts`.
+- Older reports: `[Chunk N]`, `(Chunks 3, 7)` and bare `Chunk N` become reader numbers where the saved citations map them and are taken out where they do not. The old mapper saved no number with a citation, so the backend works it out: "Chunk N" was the N-th passage of the run (`research_runs.retrieval_ids`), and a citation's number is its source's place in the order sources are first cited.
+- Revision, spinoff, monitoring and retention controls sit below the report. Copy and export are unchanged.
+- New endpoint `GET /api/reports/:id/reader` (`formatting/readerEvidence.ts`) gives the page its citations, sources, findings and status. It returns no stored grade or status value.
+- No existing test was changed (item 9).
+- Not done here: the open-questions and suggested-searches lists have no place in the reader view yet; they remain in the old view.
 
 1. **Report tab, the default.** Shows only the section 2a report: title, summary, key findings, body, disagreements, limits, references, "About this report".
    - Remove from this view: the contradictions card, the counterevidence and falsification card, the evidence-coverage card, the report-status card, the run-reference card, the "Falsification criteria" block, raw status values, duplicated headings, and the generation trace.
