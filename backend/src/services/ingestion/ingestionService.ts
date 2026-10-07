@@ -1,4 +1,5 @@
 import { isCalendarDay } from '../discovery/providerTypes';
+import { authorityTierFor, authorityTiersEnabled, type AuthoritySignals } from '../authority/authorityTier';
 import axios from 'axios';
 import crypto from 'crypto';
 import { query, queryOne, withTransaction } from '../../db/pool';
@@ -274,6 +275,24 @@ export async function fillReferenceDetails(
   );
 }
 
+/**
+ * Slice 6. With AUTHORITY_TIERS_ENABLED on, records the source's authority tier
+ * from its kind, provider and address. With the switch off nothing is written
+ * and the column stays NULL, as it was before the switch existed. A tier
+ * already recorded is kept. Its own statement, after the source is stored, so
+ * a database without migration 060 loses the tier and never the source.
+ */
+export async function recordAuthorityTier(sourceId: string, signals: AuthoritySignals): Promise<void> {
+  if (!authorityTiersEnabled()) return;
+  const tier = authorityTierFor(signals);
+  if (tier === null) return;
+  try {
+    await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
+  } catch (err) {
+    logger.warn('ingestion: could not record the authority tier of a source', { sourceId, tier, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
 async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise<{
   sourceId: string;
@@ -331,6 +350,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
         logger.warn('ingestion: could not add reference details to a stored source', { sourceId: existing.id, error: err instanceof Error ? err.message : String(err) });
       }
     }
+    // A source stored before tiers were recorded gains one now; a recorded tier is kept.
+    await recordAuthorityTier(existing.id, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl });
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
@@ -396,6 +417,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     );
     documentId = docResult.rows[0].id;
   });
+
+  await recordAuthorityTier(sourceId, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl });
 
   onProgress({ stage: 'chunk', percent: 50, message: 'Chunking document...' });
 
