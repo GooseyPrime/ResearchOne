@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import ReaderView from '../../components/reports/reader/ReaderView';
-import { legacyNumbersFrom, linkCitations, parseReferences, sectionRole, tabsFor, type ReaderEvidence } from '../../components/reports/reader/readerModel';
+import { buildReaderMarkdown, legacyNumbersFrom, linkCitations, parseReferences, sectionRole, tabsFor, type ReaderEvidence } from '../../components/reports/reader/readerModel';
 import type { Report } from '../../utils/api';
 
 afterEach(cleanup);
@@ -295,5 +295,37 @@ describe('the model', () => {
   it('links grouped numbers, leaves code and unknown numbers alone', () => {
     const linked = linkCitations('Both agree [1, 2]. Code `[1]` stays. Unknown [9].', 's1', evidence.citations);
     expect(linked).toBe('Both agree [1](#cite-0)[2](#cite-1). Code `[1]` stays. Unknown [9].');
+  });
+});
+
+describe('the Markdown download in the reader view', () => {
+  it('is the Report tab: title once, sections, references and the closing note; no Challenge, no request line', () => {
+    const markdown = buildReaderMarkdown(report);
+    expect(markdown.startsWith(`# ${report.title}\n\n## Summary\n\nCosts rose after 1979 [1].`)).toBe(true);
+    expect(markdown.match(new RegExp(report.title, 'g'))).toHaveLength(1);
+    expect(markdown).toContain('## References\n\n1. IFP.');
+    expect(markdown).toContain('## About this report\n\n2 sources were read on 6 Oct 2026.');
+    expect(markdown).not.toContain('strongest objection');
+    expect(markdown).not.toContain('Research query');
+  });
+
+  it('carries no passage label: mapped ones become numbers, the rest are taken out', () => {
+    const old: Report = { ...report, sections: [section(1, 'Findings', 'It opened in 1932 [Chunk 7]. It closed in 1960 (Chunk 3).')] };
+    expect(buildReaderMarkdown(old, new Map([[7, 1]]))).toBe(`# ${report.title}\n\n## Findings\n\nIt opened in 1932 [1]. It closed in 1960.\n`);
+  });
+
+  it('gives a heading the same handling as its body', () => {
+    const old: Report = { ...report, sections: [section(1, 'Findings [Chunk 7]', 'Text (Chunk 3).')] };
+    expect(buildReaderMarkdown(old, new Map([[7, 1]]))).toBe(`# ${report.title}\n\n## Findings [1]\n\nText.\n`);
+  });
+
+  it('is what the page downloads in the reader view, and the old text otherwise', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const page = readFileSync(join(__dirname, '../../pages/ReportDetailPage.tsx'), 'utf8');
+    expect(page).toContain('md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));');
+    expect(page).toContain('md = buildReportMarkdown(report);');
+    // The labels are numbered from the page's data, fetched in the action when it has not arrived.
+    expect(page).toContain('evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;');
   });
 });

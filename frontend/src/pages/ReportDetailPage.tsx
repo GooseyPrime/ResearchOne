@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReportMarkdown from '../components/reports/ReportMarkdown';
 import ReaderView from '../components/reports/reader/ReaderView';
-import { legacyNumbersFrom, type ReaderEvidence } from '../components/reports/reader/readerModel';
+import { buildReaderMarkdown, legacyNumbersFrom, legacyNumbersOf, type ReaderEvidence } from '../components/reports/reader/readerModel';
 import api, {
   getReport,
   getReportRevision,
@@ -356,9 +356,26 @@ export default function ReportDetailPage() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!report) return;
-    const md = buildReportMarkdown(report);
+    // The download is the view the reader is in. An older report's passage
+    // labels are numbered from the page's data; if that has not arrived yet it
+    // is fetched here, so a quick click does not save a file with its
+    // citations missing.
+    let md: string;
+    if (readerView) {
+      let evidence = readerEvidence;
+      if (!evidence) {
+        try {
+          evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;
+        } catch {
+          evidence = undefined;
+        }
+      }
+      md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));
+    } else {
+      md = buildReportMarkdown(report);
+    }
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

@@ -191,3 +191,23 @@ export function linkSection(title: string, content: string, sectionId: string | 
   const at = linked.indexOf('\n');
   return at === -1 ? { heading: linked, body: '' } : { heading: linked.slice(0, at), body: linked.slice(at + 1) };
 }
+
+/**
+ * The report as Markdown, as the Report tab shows it: for the download and
+ * copy actions. The title once, the report's own sections, the reference list
+ * and the closing note. No passage labels, and nothing from the other tabs.
+ */
+export function buildReaderMarkdown(report: { title: string; sections?: ReportSection[]; executive_summary?: string }, legacyNumbers: ReadonlyMap<number, number> = new Map()): string {
+  const sections = [...(report.sections ?? [])].sort((a, b) => a.section_order - b.section_order);
+  const lines: string[] = [`# ${report.title}`, ''];
+  // With no saved citations to link to, linkCitations leaves numbers as written and only removes or renumbers labels.
+  const plain = (text: string): string => linkCitations(text, null, [], legacyNumbers);
+  const shown = sections.filter((section) => {
+    const role = sectionRole(section, report.title);
+    return role !== 'title' && role !== 'challenge';
+  });
+  // The heading gets the same handling as the body, as it does on the page.
+  for (const section of shown) lines.push(`## ${plain(section.title).trim()}`, '', plain(section.content).trim(), '');
+  if (shown.length === 0 && report.executive_summary) lines.push(plain(report.executive_summary).trim(), '');
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
+}
