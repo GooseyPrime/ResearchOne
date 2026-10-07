@@ -314,10 +314,18 @@ describe('the Markdown download in the reader view', () => {
     expect(buildReaderMarkdown(old, new Map([[7, 1]]))).toBe(`# ${report.title}\n\n## Findings\n\nIt opened in 1932 [1]. It closed in 1960.\n`);
   });
 
+  it('gives a heading the same handling as its body', () => {
+    const old: Report = { ...report, sections: [section(1, 'Findings [Chunk 7]', 'Text (Chunk 3).')] };
+    expect(buildReaderMarkdown(old, new Map([[7, 1]]))).toBe(`# ${report.title}\n\n## Findings [1]\n\nText.\n`);
+  });
+
   it('is what the page downloads in the reader view, and the old text otherwise', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const page = readFileSync(join(__dirname, '../../pages/ReportDetailPage.tsx'), 'utf8');
-    expect(page).toContain('const md = readerView ? buildReaderMarkdown(report, new Map([...legacyNumbersOf(readerEvidence), ...legacyNumbers])) : buildReportMarkdown(report);');
+    expect(page).toContain('md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));');
+    expect(page).toContain('md = buildReportMarkdown(report);');
+    // The labels are numbered from the page's data, fetched in the action when it has not arrived.
+    expect(page).toContain('evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;');
   });
 });

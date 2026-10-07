@@ -206,7 +206,8 @@ export function buildReaderMarkdown(report: { title: string; sections?: ReportSe
     const role = sectionRole(section, report.title);
     return role !== 'title' && role !== 'challenge';
   });
-  for (const section of shown) lines.push(`## ${section.title.trim()}`, '', plain(section.content).trim(), '');
+  // The heading gets the same handling as the body, as it does on the page.
+  for (const section of shown) lines.push(`## ${plain(section.title).trim()}`, '', plain(section.content).trim(), '');
   if (shown.length === 0 && report.executive_summary) lines.push(plain(report.executive_summary).trim(), '');
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }

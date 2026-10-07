@@ -207,7 +207,10 @@ export function buildReaderEvidence(args: {
 /** Columns added by later migrations; a database that lacks one is read without it. */
 const isMissingColumn = (err: unknown): boolean => (err as { code?: string })?.code === '42703' || (err as { code?: string })?.code === '42P01';
 
-export async function loadReaderEvidence(report: { id: string; status: string | null; run_id: string | null }): Promise<ReaderEvidence> {
+/** How rows are read. The page reads as the signed-in person; an export job reads with the job's own access. */
+type Read = <T>(sql: string, params: unknown[]) => Promise<T[]>;
+
+export async function loadReaderEvidence(report: { id: string; status: string | null; run_id: string | null }, read: Read = query as Read): Promise<ReaderEvidence> {
   const select = (extra: string): string =>
     `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.citation_order, rc.chunk_quote${extra},
             s.title AS source_title, s.url AS source_url, s.authors AS source_authors, s.publication AS source_publication,
@@ -217,17 +220,17 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
       WHERE rc.report_id = $1`;
   let citationRows: CitationRow[];
   try {
-    citationRows = await query<CitationRow>(select(', rc.editorial_notice'), [report.id]);
+    citationRows = await read<CitationRow>(select(', rc.editorial_notice'), [report.id]);
   } catch (err) {
     if (!isMissingColumn(err)) throw err;
     logger.debug(`[reader:${report.id}] Reading citations without the editorial notice (deploy skew)`);
-    citationRows = await query<CitationRow>(select(''), [report.id]);
+    citationRows = await read<CitationRow>(select(''), [report.id]);
   }
   let claimRows: Array<{ id: string; claim_text: string; evidence_tier: string | null; source_id: string | null; chunk_id: string | null }> = [];
   let run: { status: string | null; gate_status: string | null; retrieval_ids: string[] | null } | undefined;
   if (report.run_id) {
     try {
-      claimRows = await query(
+      claimRows = await read(
         `SELECT id, claim_text, evidence_tier::text AS evidence_tier, source_id, chunk_id
            FROM claims WHERE run_id = $1 AND claim_text IS NOT NULL ORDER BY created_at ASC LIMIT 200`,
         [report.run_id]
@@ -236,7 +239,7 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
       if (!isMissingColumn(err)) throw err;
       logger.debug(`[reader:${report.id}] Findings could not be read (deploy skew); the Evidence tab lists cited passages`);
     }
-    const runs = await query<{ status: string | null; gate_status: string | null; retrieval_ids: string[] | null }>(
+    const runs = await read<{ status: string | null; gate_status: string | null; retrieval_ids: string[] | null }>(
       `SELECT status, failure_meta->>'gate_status' AS gate_status, retrieval_ids FROM research_runs WHERE id = $1`,
       [report.run_id]
     );
