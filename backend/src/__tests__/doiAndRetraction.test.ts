@@ -21,7 +21,7 @@ vi.mock('../db/pool', () => ({
   adminQuery: vi.fn(async () => []),
 }));
 
-import { checkDois, doiOf, editorialNoticeFrom, type DoiHttp } from '../services/verification/doiResolve';
+import { checkDois, doiGuessesFrom, doiOf, editorialNoticeFrom, findUnstatedDois, ncbiArticleOf, type DoiHttp } from '../services/verification/doiResolve';
 import { applyDoiChecks, formatLockedContext, issuePassages, stripUnstatedRetractions, unstatedRetractions, type LockedPassage } from '../services/reasoning/citationLock';
 import { finalizeLockedReportForSave } from '../services/reasoning/reportGenerator';
 import { recordDoiChecks } from '../services/reasoning/citationBinding';
@@ -414,5 +414,126 @@ describe('the switch', () => {
   it('holds every draft and the saved report to the retraction rule', () => {
     expect(writer.match(/unstatedRetractions\(/g)?.length).toBeGreaterThanOrEqual(3);
     expect(writer).toMatch(/const toSave = stripUnstatedRetractions\(/);
+  });
+});
+
+describe('a source found by web search that states no DOI', () => {
+  const NEJM = 'https://www.ovid.com/journals/nejm/fulltext/10.1056/nejmoa2309673~exagamglogene-autotemcel-for-severe-sickle-cell-disease';
+  const SPRINGER = 'https://link.springer.com/article/10.1186/s43042-025-00806-4';
+  const PUBMED = 'https://pubmed.ncbi.nlm.nih.gov/38657265';
+  const PMC = 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10112499';
+  const NEWS = 'https://www.hcplive.com/view/exa-cel-shows-long-term-clinical-benefit';
+
+  /** NCBI's summary answer for the ids asked, and doi.org's answer per DOI. */
+  function web(known: string[], ncbi: Record<string, string> = {}): DoiHttp & { asked: string[] } {
+    const asked: string[] = [];
+    return {
+      asked,
+      async status(method, url) {
+        asked.push(`${method} ${url}`);
+        return known.some((doi) => url === `https://doi.org/${doi}`) ? 302 : 404;
+      },
+      async json(url) {
+        asked.push(`JSON ${url}`);
+        const ids = new URL(url).searchParams.get('id')?.split(',') ?? [];
+        return { result: Object.fromEntries(ids.filter((id) => ncbi[id]).map((id) => [id, { articleids: [{ idtype: 'pubmed', value: id }, { idtype: 'doi', value: ncbi[id] }] }])) };
+      },
+    };
+  }
+
+  it('reads the DOI an article address carries, without the words after it', () => {
+    expect(doiGuessesFrom(NEJM)[0]).toBe('10.1056/nejmoa2309673');
+    expect(doiGuessesFrom(SPRINGER)).toEqual(['10.1186/s43042-025-00806-4']);
+    expect(doiGuessesFrom('https://onlinelibrary.wiley.com/doi/10.1002/ajh.26543/full')[0]).toBe('10.1002/ajh.26543');
+    expect(doiGuessesFrom('https://www.nejm.org/doi/full/10.1056/NEJMoa2309673')).toEqual(['10.1056/nejmoa2309673']);
+    expect(doiGuessesFrom('https://example.org/files/report-10.pdf')).toEqual([]);
+    expect(doiGuessesFrom('https://doi.org/10.1000/abc')).toEqual([]);
+    expect(doiGuessesFrom(NEWS)).toEqual([]);
+    expect(doiGuessesFrom('not an address')).toEqual([]);
+  });
+
+  it("does not read a DOI that may be another work's: only where the address is the article's own", () => {
+    // A page about a paper, a reference list, a search: the DOI in the path is not the page's.
+    expect(doiGuessesFrom('https://news.example.org/coverage/10.1056/nejmoa2309673')).toEqual([]);
+    expect(doiGuessesFrom('https://example.org/cited-by/10.1056/nejmoa2309673')).toEqual([]);
+    expect(doiGuessesFrom('https://example.org/article/10.1056/nejmoa2309673/comments/42')).not.toContain('10.1056/nejmoa2309673');
+    expect(doiGuessesFrom('https://example.org/search?q=/article/10.1056/nejmoa2309673')).toEqual([]);
+  });
+
+  it('knows a PubMed or PubMed Central page for the article it is', () => {
+    expect(ncbiArticleOf(PUBMED)).toEqual({ db: 'pubmed', id: '38657265' });
+    expect(ncbiArticleOf(`${PMC}/`)).toEqual({ db: 'pmc', id: '10112499' });
+    expect(ncbiArticleOf('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10112499/')).toEqual({ db: 'pmc', id: '10112499' });
+    expect(ncbiArticleOf('https://pubmed.ncbi.nlm.nih.gov/?term=casgevy')).toBeNull();
+    expect(ncbiArticleOf(NEWS)).toBeNull();
+  });
+
+  it('finds the DOI from the article address and from the NCBI record', async () => {
+    const http = web(['10.1056/nejmoa2309673', '10.1186/s43042-025-00806-4'], { '38657265': '10.1056/NEJMoa2309673', '10112499': '10.1097/01.HS9.0000928144.02414.84' });
+    const found = (await findUnstatedDois([NEJM, SPRINGER, PUBMED, PMC, NEWS, null], http, 0)).byAddress;
+    expect(found.get(NEJM)).toBe('10.1056/nejmoa2309673');
+    expect(found.get(SPRINGER)).toBe('10.1186/s43042-025-00806-4');
+    expect(found.get(PUBMED)).toBe('10.1056/nejmoa2309673');
+    expect(found.get(PMC)).toBe('10.1097/01.hs9.0000928144.02414.84');
+    expect(found.has(NEWS)).toBe(false);
+  });
+
+  it('tells NCBI who is asking, and asks one request at a time', async () => {
+    const http = web([], { '38657265': '10.1056/NEJMoa2309673', '10112499': '10.1097/x' });
+    let open = 0;
+    let most = 0;
+    const json = http.json.bind(http);
+    http.json = async (url) => {
+      open += 1;
+      most = Math.max(most, open);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      open -= 1;
+      return json(url);
+    };
+    await Promise.all([findUnstatedDois([PUBMED], http, 0), findUnstatedDois([PMC], http, 0), findUnstatedDois([PUBMED, PMC], http, 0)]);
+    expect(most).toBe(1);
+    const asked = http.asked.filter((line) => line.startsWith('JSON '));
+    expect(asked.length).toBeGreaterThan(0);
+    for (const line of asked) expect(line).toMatch(/&tool=researchone&email=[^&]+$/);
+  });
+
+  it('drops a DOI read from an address when the resolver does not know it, so the source is never set aside for it', async () => {
+    const found = await findUnstatedDois([NEJM, SPRINGER], web([]), 0);
+    expect(found.byAddress.size).toBe(0);
+    expect(found.knownToResolve.size).toBe(0);
+    // With no DOI, the check leaves the source exactly as it was.
+    const applied = applyDoiChecks([chunks[0]], [{ title: 'Trial', url: NEJM }], await checkDois([], web([])), [found.byAddress.get(NEJM) ?? null]);
+    expect(applied.chunks).toHaveLength(1);
+    expect(applied.dropped).toBe(0);
+  });
+
+  it('does not ask the resolver a second time about a DOI it has just answered for', async () => {
+    const http = web(['10.1186/s43042-025-00806-4']);
+    const found = await findUnstatedDois([SPRINGER], http, 0);
+    expect([...found.knownToResolve]).toEqual(['10.1186/s43042-025-00806-4']);
+    // The resolver stops answering between the two steps.
+    const silent: DoiHttp & { asked: string[] } = { asked: [], status: async (method, url) => { silent.asked.push(`${method} ${url}`); throw new Error('timeout'); }, json: async () => RETRACTED_RECORD };
+    const checked = await checkDois(['10.1186/s43042-025-00806-4'], silent, found.knownToResolve);
+    expect(silent.asked).toEqual([]);
+    expect(checked.get('10.1186/s43042-025-00806-4')).toMatchObject({ status: 'resolved', networkFailure: false, notice: { kind: 'retracted' } });
+    // Without that, the same silence would have set the source aside.
+    expect((await checkDois(['10.1186/s43042-025-00806-4'], silent)).get('10.1186/s43042-025-00806-4')?.status).toBe('unresolved');
+  });
+
+  it('never throws and finds nothing when no lookup answers', async () => {
+    const dead: DoiHttp = { status: async () => { throw new Error('timeout'); }, json: async () => { throw new Error('timeout'); } };
+    expect((await findUnstatedDois([NEJM, PUBMED], dead, 0)).byAddress.size).toBe(0);
+  });
+
+  it('does not ask about an address that already states its DOI', async () => {
+    const http = web(['10.1000/abc']);
+    expect((await findUnstatedDois(['https://doi.org/10.1000/abc'], http, 0)).byAddress.size).toBe(0);
+    expect(http.asked).toEqual([]);
+  });
+
+  it('is what the run asks for sources with no stated DOI, once per address', () => {
+    expect(orchestratorSource).toContain('await findUnstatedDois(unseen.filter((chunk) => !statedDoi(chunk)).map(addressOf).filter((address) => !address || !unstatedAsked.has(address)))');
+    expect(orchestratorSource).toContain("statedDoi(chunk) ?? unstatedAsked.get(addressOf(chunk) ?? '') ?? null");
+    expect(orchestratorSource).toContain('await checkDois(toAsk, undefined, knownToResolve)');
   });
 });
