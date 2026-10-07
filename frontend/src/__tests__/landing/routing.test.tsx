@@ -21,7 +21,7 @@ describe('App routing structure', () => {
 
   it('renders the public sample report route under SSR', () => {
     const html = renderToString(<App initialEntries={['/sample-report']} />);
-    expect(html).toContain('AI Governance Frameworks: Comparative Analysis');
+    expect(html).toContain('How the European Union and the United States govern artificial intelligence');
   });
 
   it('does not render signed-in research chrome when visiting /app/research signed out', () => {

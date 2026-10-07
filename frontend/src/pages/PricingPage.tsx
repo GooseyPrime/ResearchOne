@@ -42,7 +42,7 @@ const ADD_ONS: AddOn[] = [
   {
     name: 'Patent & IP Diligence',
     price: '$2,500 per engagement',
-    description: 'Base floor for patent landscape, freedom-to-operate, and prior art analysis. Delivered as a structured report with cited claim mappings.',
+    description: 'Base floor for patent landscape, freedom-to-operate, and prior art analysis. Delivered as a structured report with cited patent mappings.',
   },
 ];
 

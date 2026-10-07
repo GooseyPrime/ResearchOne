@@ -31,6 +31,7 @@
  *    produced. This page now reads the API row directly and shows only facts
  *    the row actually carries.
  */
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -275,7 +276,7 @@ export function LiveRunPanel() {
               <span className="r1-mono-label mb-4 block text-[10px]">RUN_STATUS</span>
               <dl className="space-y-3 text-sm">
                 <Fact label="Status" value={<span className={tone.text}>{display.label}</span>} />
-                <Fact label="Stage" value={currentStage.replace(/_/g, ' ')} />
+                <Fact label="Stage" value={readerStageLabel(currentStage)} />
                 {!isTerminal && <Fact label="Progress" value={`${percent}%`} />}
                 {startedAt && <Fact label="Started" value={startedAt} />}
                 {run.run_ref && (

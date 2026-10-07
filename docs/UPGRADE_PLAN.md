@@ -32,13 +32,13 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 4. Third live samples and their two fixes | Done | PR #255. Confirmed on production 7 Oct 2026: a single-fact question was answered in about 140 words, and both confirmation runs recorded link-check counts. See "What the third samples showed" under slice 4. |
 | Slice 5, part 1. One presentation mapper | Done | PR #256. Item 11, and the `READER_VIEW_ENABLED` switch sent with the report. See "Delivered in parts" under slice 5. |
 | Slice 5, part 2. Reading page | Done | PR #257. Items 1 to 6, 9 and 10. See "Built in part 2" under slice 5. |
-| Slice 5, part 3. Exports | Built, in review | Item 7. See "Built in part 3" under slice 5. |
-| Slice 5, part 4 | Not started | App wording and the jargon gate. |
+| Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
+| Slice 5, part 4. App wording and the gate | Built, in review | Item 8. See "Built in part 4" under slice 5. |
 | Slices 6 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 0, 3, 4 and slice 5 changed. Slice 5 is delivered in four parts, one pull request each; part 3 is in review, part 4 follows. S6 governs each move.
+**Your task now:** read this whole document again; sections 0, 3, 4 and slice 5 changed. Slice 5's last part is in review. When it is merged and production is confirmed healthy, slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Then slice 6. S6 governs each move.
 
 ---
 
@@ -543,7 +543,7 @@ Acceptance:
 - A fixture retracted source cannot be cited without the retraction in the sentence.
 - Harness: `citation_bound` and `quote_verbatim` 1.0, `quote_supports` at least 0.90, `doi_resolution` 1.0, `structure_complete` 1.0.
 
-### Slice 5. Reading page and exports (part 3 in review)
+### Slice 5. Reading page and exports (part 4 in review)
 
 **Delivered in parts (7 Oct 2026).** Part 1: the presentation mapper (item 11) and the switch. Part 2: the reading page (items 1 to 6, 9, 10). Part 3: exports (item 7). Part 4: app wording and the jargon gate (item 8). The acceptance lines belong to the part that builds what they test.
 
@@ -564,6 +564,8 @@ Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with th
 - Not done here: the open-questions and suggested-searches lists have no place in the reader view yet; they remain in the old view.
 
 **Built in part 3.** For a report in the reader view, the Markdown handed to Pandoc for PDF, Word and Markdown is the section 2a report (`formatting/readerExport.ts`): the title once (a locked report stores its title as a first, heading-only section, which would print it twice), the sections, the numbered citations and the reference list, with passage labels taken out. A test asserts on that Markdown for each format, for a locked report and an older one. With the reader view off for the report's run an export is what it was. The page's Markdown download follows the view the reader is in: in the reader view it is the Report tab's content, without the request line or the Challenge.
+
+**Built in part 4.** Reader-facing app text says "findings" (or "statement", where it is about checking what someone said), not "claims"; tier numbers and grade labels are gone from the landing pages, the corpus and graph pages and the sidebar counter. The public sample report is now shown with the reading page itself (`content/sampleReaderReport.ts`): a hand-written illustration citing four public documents, quoting none. The live progress view names stages in reader words (`lib/researchone/stageLabels.ts`); an unknown stage is "Working". The gate is a frontend test (`__tests__/wording/`): it reads every non-test source file with the TypeScript parser, looks only at text a person sees (JSX text and prose string literals, never identifiers, keys, class names or routes) and fails on "claim(s)", a tier number, a grade label or a raw status. Its two exceptions are named with their reason: legal wording in the terms, and "patent claims". Unlike the marketing gate it covers the whole app, not a manifest. Two tests that pinned old wording were updated under grant G (the sample report's title; three "Claim n" labels). Not covered: text built at run time from API values, and backend-written text such as notifications.
 
 1. **Report tab, the default.** Shows only the section 2a report: title, summary, key findings, body, disagreements, limits, references, "About this report".
    - Remove from this view: the contradictions card, the counterevidence and falsification card, the evidence-coverage card, the report-status card, the run-reference card, the "Falsification criteria" block, raw status values, duplicated headings, and the generation trace.

@@ -46,7 +46,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'DEEP RESEARCH PLATFORM',
     headline: 'Deep research that adapts to the question.',
     subhead:
-      'Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or claim verification. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.',
+      'Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or fact check. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited report with uncertainty and contradictions made visible.',
     ctas: [
       { label: 'Open a sample report', to: '/sample-report', variant: 'primary' },
       { label: 'See the methodology', to: '/methodology', variant: 'secondary' },
@@ -97,7 +97,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'For literature work that has to hold up',
     headline: 'Citation-grade reports without the hallucinated bibliography.',
     subhead:
-      'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every claim ' +
+      'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every finding ' +
       'to a source card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',
     ctas: [
       { label: 'Student plan \u2014 coming soon', to: '/pricing#student',  variant: 'primary' },

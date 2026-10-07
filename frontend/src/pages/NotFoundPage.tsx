@@ -40,7 +40,7 @@ export default function NotFoundPage() {
     <div className="min-h-screen bg-r1-bg text-r1-text">
       <LandingHeader />
       <main className="mx-auto max-w-2xl px-4 py-20 text-center sm:px-6">
-        <h1 className="font-serif text-3xl text-r1-text">This claim could not be sourced.</h1>
+        <h1 className="font-serif text-3xl text-r1-text">This page could not be sourced.</h1>
         <p className="mt-3 text-r1-text-muted">
           The page you requested is not in our index. Try the methodology, a sample report, or the Living Report demo.
         </p>

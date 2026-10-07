@@ -1,3 +1,4 @@
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -34,9 +35,8 @@ import { runDisplayTitle } from '../../utils/runDisplayTitle';
 const EMPTY_RUNS: ResearchRun[] = [];
 
 function stageLabel(run: ResearchRun): string {
-  if (run.status === 'plan_pending_confirmation') return 'plan review';
-  const stage = run.progress_stage || run.status || 'running';
-  return stage.replace(/_/g, ' ');
+  if (run.status === 'plan_pending_confirmation') return readerStageLabel('plan_pending_confirmation');
+  return readerStageLabel(run.progress_stage || run.status || 'running');
 }
 
 function percentLabel(run: ResearchRun): string {

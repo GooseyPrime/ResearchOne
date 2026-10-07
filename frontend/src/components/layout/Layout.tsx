@@ -67,7 +67,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/app/corpus', label: 'Corpus', icon: Database, desc: 'Browse sources (admin)', requireAdmin: true },
   { to: '/app/atlas', label: 'Atlas', icon: Layers, desc: 'Embedding export (admin)', requireAdmin: true },
   { to: '/app/embedding-viz', label: 'Embedding Viz', icon: LayoutGrid, desc: 'In-browser vector atlas (admin)', requireAdmin: true },
-  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Claims & source graph (admin)', requireAdmin: true },
+  { to: '/app/knowledge-graph', label: 'Knowledge Graph', icon: Network, desc: 'Findings & source graph (admin)', requireAdmin: true },
   { to: '/app/ingest', label: 'Ingest', icon: Upload, desc: 'Private corpus ingest', requirePrivateCorpus: true },
   { to: '/app/guide', label: 'Guide', icon: HelpCircle, desc: 'How to use' },
   { to: '/app/billing', label: 'Account', icon: Wallet, desc: 'Account and subscription' },
@@ -286,7 +286,7 @@ export default function Layout() {
             <div className="grid grid-cols-2 gap-2">
               <StatPill label="Sources" value={stats.source_count} />
               <StatPill label="Chunks" value={stats.chunk_count} />
-              <StatPill label="Claims" value={stats.claim_count} />
+              <StatPill label="Findings" value={stats.claim_count} />
               <StatPill label="Reports" value={stats.finalized_report_count} />
             </div>
             {stats.active_run_count > 0 && (

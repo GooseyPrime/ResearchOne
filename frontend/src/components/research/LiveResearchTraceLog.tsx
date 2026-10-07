@@ -1,3 +1,4 @@
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 import type { LegacyRef, Ref } from 'react';
 import clsx from 'clsx';
 import type { ResearchProgressEvent } from '../../utils/api';
@@ -85,11 +86,11 @@ export default function LiveResearchTraceLog({
 
               <span
                 className={clsx(
-                  'flex-shrink-0 w-[12ch] truncate',
+                  'flex-shrink-0 w-[26ch] truncate',
                   isError ? 'text-red-400' : isDone ? 'text-green-400' : isResumed ? 'text-blue-400' : 'text-indigo-400'
                 )}
               >
-                {evt.stage.replace(/_/g, ' ')}
+                {readerStageLabel(evt.stage)}
               </span>
 
               <span className="text-slate-600 flex-shrink-0 w-[5ch] tabular-nums text-right">{evt.percent}%</span>

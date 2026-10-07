@@ -18,8 +18,8 @@ describe('SourceProvenancePanel', () => {
   });
 
   it('has accessible focus targets (buttons with aria-label)', () => {
-    expect(html).toContain('aria-label="Claim 1');
-    expect(html).toContain('aria-label="Claim 2');
-    expect(html).toContain('aria-label="Claim 3');
+    expect(html).toContain('aria-label="Finding 1');
+    expect(html).toContain('aria-label="Finding 2');
+    expect(html).toContain('aria-label="Finding 3');
   });
 });

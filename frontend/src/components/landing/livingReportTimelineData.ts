@@ -22,18 +22,18 @@ export const LIVING_REPORT_VERSIONS: readonly LivingVersionDef[] = [
   {
     label: 'v0.25',
     date: 'Day 2',
-    badges: [{ type: 'citation', text: 'First claim bound to primary source span.' }],
+    badges: [{ type: 'citation', text: 'First finding bound to primary source span.' }],
     citationCount: 1,
     showContradiction: false,
-    tierLabel: 'Tier 2 lead',
+    tierLabel: 'Supporting source',
   },
   {
     label: 'v0.4',
     date: 'Day 5',
-    badges: [{ type: 'sourceUpgrade', text: 'Key claim upgraded after Tier-1 RCT added.' }],
+    badges: [{ type: 'sourceUpgrade', text: 'Key finding strengthened after a randomised trial was added.' }],
     citationCount: 2,
     showContradiction: false,
-    tierLabel: 'Tier 1 anchor',
+    tierLabel: 'Strongest source',
   },
   {
     label: 'v0.55',
@@ -41,7 +41,7 @@ export const LIVING_REPORT_VERSIONS: readonly LivingVersionDef[] = [
     badges: [{ type: 'contradiction', text: 'Opposing trial surfaced; contradiction flagged.' }],
     citationCount: 2,
     showContradiction: true,
-    tierLabel: 'Tier 1 + conflict',
+    tierLabel: 'Strongest source, with a conflict',
   },
   {
     label: 'v0.7',
@@ -49,7 +49,7 @@ export const LIVING_REPORT_VERSIONS: readonly LivingVersionDef[] = [
     badges: [{ type: 'synthesis', text: 'Synthesis revised to name both lines of sources.' }],
     citationCount: 3,
     showContradiction: true,
-    tierLabel: 'Tier 1 + conflict',
+    tierLabel: 'Strongest source, with a conflict',
   },
   {
     label: 'v0.85',
@@ -63,7 +63,7 @@ export const LIVING_REPORT_VERSIONS: readonly LivingVersionDef[] = [
     label: 'v1.0',
     date: 'Published',
     badges: [
-      { type: 'citation', text: 'Final citation pass: every claim carries a span.' },
+      { type: 'citation', text: 'Final citation pass: every finding carries its passage.' },
       { type: 'synthesis', text: 'Closing prose locked for audit export.' },
     ],
     citationCount: 3,

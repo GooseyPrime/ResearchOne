@@ -64,12 +64,12 @@ export default function MethodologyPage() {
               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
                 Every report is argued against before it concludes. The challenge pass presses on the
                 draft's important conclusions, looks for weak corroboration, and surfaces alternative
-                interpretations. How hard it presses is decided from the request: a claim to be
+                interpretations. How hard it presses is decided from the request: a statement to be
                 verified gets a harder pass than a how-to guide.
               </p>
               <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
                 {[
-                'Challenges claim confidence levels',
+                'Challenges how confident each finding is',
                 'Identifies unsupported assertions',
                 'Flags potential confirmation bias',
                 'Surfaces contradictory evidence'].map((item, i) =>

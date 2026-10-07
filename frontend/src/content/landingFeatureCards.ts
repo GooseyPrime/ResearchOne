@@ -21,19 +21,19 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: Layers,
     headline: 'Source-corroboration tiers, surfaced',
     description: 'Each source carries its tier (1–4). Tier upgrades appear in the version history.',
-    metric: 'Tier 1 → Tier 4',
+    metric: 'Strongest to weakest',
   },
   {
     icon: Scale,
     headline: 'Source disagreements, visible',
     description:
-      'We do not silently smooth disagreement. Conflicting claims stay attributed and available for review.',
+      'We do not silently smooth disagreement. Conflicting findings stay attributed and available for review.',
     metric: '0 silent rewrites',
   },
   {
     icon: Bookmark,
-    headline: 'Citations bound to claims',
-    description: 'Every claim binds to its source span. Break a claim, the citation goes with it.',
+    headline: 'Citations bound to findings',
+    description: 'Every finding binds to its source passage. Change a finding and its citation moves with it.',
     metric: '100% bound',
   },
   {

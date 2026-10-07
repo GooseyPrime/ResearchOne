@@ -270,7 +270,7 @@ export default function IngestPage() {
           <div className="space-y-3 border-t border-indigo-900/30 pt-4">
             <h3 className="text-sm font-medium text-slate-300">Clear entire corpus</h3>
             <p className="text-xs text-slate-500">
-              Deletes all sources, chunks, embeddings (via cascade), all claims, and all ingestion job history.
+              Deletes all sources, chunks, embeddings (via cascade), all findings, and all ingestion job history.
             </p>
             <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
               <input

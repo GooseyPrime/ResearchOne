@@ -20,7 +20,7 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 const TIER_LABELS: Record<string, string> = {
-  established_fact: 'Established Fact',
+  established_fact: 'Well established',
   strong_evidence: 'Strong corroboration',
   testimony: 'Testimony',
   inference: 'Inference',
@@ -71,7 +71,7 @@ export default function CorpusPage() {
           <Database className="text-accent" size={24} />
           Corpus Intelligence
         </h1>
-        <p className="text-slate-400 text-sm mt-1">Browse evidence, claims, and contradictions in the research corpus.</p>
+        <p className="text-slate-400 text-sm mt-1">Browse evidence, findings, and contradictions in the research corpus.</p>
       </div>
 
       {/* Stats cards. node-postgres returns bigint as string by default,
@@ -83,7 +83,7 @@ export default function CorpusPage() {
           <StatCard label="Sources" value={Number(stats.source_count ?? 0)} icon={Database} />
           <StatCard label="Chunks" value={Number(stats.chunk_count ?? 0)} icon={Layers} />
           <StatCard label="Embeddings" value={Number(stats.embedding_count ?? 0)} icon={BarChart2} />
-          <StatCard label="Claims" value={Number(stats.claim_count ?? 0)} icon={Tag} />
+          <StatCard label="Findings" value={Number(stats.claim_count ?? 0)} icon={Tag} />
           <StatCard label="Contradictions" value={Number(stats.open_contradiction_count ?? 0)} icon={AlertTriangle} color="text-amber-400" />
         </div>
       )}
@@ -152,7 +152,7 @@ export default function CorpusPage() {
               </div>
             ))}
             <div className="pt-3 border-t border-indigo-900/20 text-xs text-slate-500">
-              Source corroboration tiers reflect how strongly sources back each claim. Never treat inferences as facts.
+              Source corroboration tiers reflect how strongly sources back each finding. Never treat inferences as facts.
             </div>
           </div>
         </div>
@@ -163,7 +163,7 @@ export default function CorpusPage() {
           <div className="flex gap-3">
             <input
               className="input flex-1"
-              placeholder="Search claims..."
+              placeholder="Search findings..."
               value={claimSearch}
               onChange={e => setClaimSearch(e.target.value)}
             />
@@ -192,7 +192,7 @@ export default function CorpusPage() {
               </div>
             ))}
             {claims.length === 0 && (
-              <p className="text-slate-500 text-sm text-center py-8">No claims found.</p>
+              <p className="text-slate-500 text-sm text-center py-8">No findings found.</p>
             )}
           </div>
         </div>
@@ -228,11 +228,11 @@ export default function CorpusPage() {
                 <p className="text-sm text-slate-300">{c.description}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-surface-200 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Claim A</div>
+                    <div className="text-xs text-slate-500 mb-1">Finding A</div>
                     <p className="text-xs text-slate-300">{c.claim_a_text}</p>
                   </div>
                   <div className="bg-surface-200 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Claim B</div>
+                    <div className="text-xs text-slate-500 mb-1">Finding B</div>
                     <p className="text-xs text-slate-300">{c.claim_b_text}</p>
                   </div>
                 </div>

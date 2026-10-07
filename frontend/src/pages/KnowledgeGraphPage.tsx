@@ -59,7 +59,7 @@ type SimEdge = D3LinkDatum<SimNode> & { id: string; type: string; weight?: numbe
 
 const TYPE_LABELS: Record<GraphNode['type'], string> = {
   source: 'Source / publisher',
-  claim: 'Claim',
+  claim: 'Finding',
 };
 
 export default function KnowledgeGraphPage() {
@@ -433,7 +433,7 @@ export default function KnowledgeGraphPage() {
           <h1 className="text-base font-bold text-white">Knowledge Graph</h1>
           {nodeCount > 0 && (
             <span className="text-xs text-slate-500 truncate">
-              {sourceCount} publishers · {nodeCount - sourceCount} claims · {edgeCount} edges
+              {sourceCount} publishers · {nodeCount - sourceCount} findings · {edgeCount} edges
               {contradictionCount > 0 && (
                 <span className="text-red-400 ml-1">· {contradictionCount} conflicts</span>
               )}
@@ -454,7 +454,7 @@ export default function KnowledgeGraphPage() {
             >
               <option value="domain">By publisher</option>
               <option value="type">By node type</option>
-              <option value="tier">By claim tier</option>
+              <option value="tier">By finding strength</option>
             </select>
           </label>
           <label className="flex items-center gap-1 text-xs text-slate-400">
@@ -546,7 +546,7 @@ export default function KnowledgeGraphPage() {
           {!isLoading && !isError && nodeCount === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
               <GitFork size={32} className="opacity-30" />
-              <p className="text-sm">No corpus data yet. Run research to populate claims and sources.</p>
+              <p className="text-sm">No corpus data yet. Run research to populate findings and sources.</p>
             </div>
           )}
 
@@ -579,7 +579,7 @@ export default function KnowledgeGraphPage() {
             </div>
             <div className="flex items-center gap-2 text-[10px] text-slate-400">
               <span className="inline-block w-3 h-3 rounded-full bg-violet-400/80 border border-slate-900" />
-              Claim
+              Finding
             </div>
             {colorMode === 'domain' && domainLegend.length > 0 && (
               <>
@@ -600,7 +600,7 @@ export default function KnowledgeGraphPage() {
             {colorMode === 'tier' && (
               <>
                 <div className="border-t border-surface-100/20 pt-1.5 text-[9px] uppercase tracking-widest text-slate-600">
-                  Claim tiers
+                  Finding strength
                 </div>
                 {Object.entries(TIER_COLORS).map(([tier, color]) => (
                   <div key={tier} className="flex items-center gap-1.5">
@@ -709,7 +709,7 @@ export default function KnowledgeGraphPage() {
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-600 p-6 text-center">
               <Info size={20} className="opacity-40" />
               <p className="text-xs leading-relaxed">
-                Sources appear as rectangles (colored by publisher). Claims are circles. Use Fit to fill the canvas
+                Sources appear as rectangles (colored by publisher). Findings are circles. Use Fit to fill the canvas
                 without manual zoom. Hover to highlight a stakeholder neighborhood.
               </p>
             </div>

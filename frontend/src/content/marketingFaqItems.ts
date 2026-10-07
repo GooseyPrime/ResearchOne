@@ -8,7 +8,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'What does the challenge pass actually do?',
     answer:
-      'The challenge pass argues against the draft: it surfaces counter-sources, stress-tests claims, and preserves contradictions as named outputs rather than smoothing them away.',
+      'The challenge pass argues against the draft: it surfaces counter-sources, stress-tests findings, and preserves contradictions as named outputs rather than smoothing them away.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -18,7 +18,7 @@ export const MARKETING_FAQ_ITEMS = [
   {
     question: 'Can ResearchOne forge or hallucinate a citation?',
     answer:
-      'Every claim is bound to a source span in the Verifier and Citation Bind stages. If a span cannot be verified, the claim is blocked or downgraded — we do not ship uncited assertions as cited.',
+      'Every finding is bound to a source passage in the Verifier and Citation Bind stages. If a span cannot be verified, the finding is blocked or downgraded — we do not ship uncited assertions as cited.',
   },
   {
     question: 'How do Living updates work — will my old report change under me?',
@@ -47,7 +47,7 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'What does the challenge pass actually do?',
     answer:
-      'It receives the draft report and argues against it: searches for counter-sources, stress-tests claims, and returns counter-claims with contradictions preserved for the Citation Bind stage.',
+      'It receives the draft report and argues against it: searches for counter-sources, stress-tests findings, and returns opposing findings with contradictions preserved for the Citation Bind stage.',
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -57,7 +57,7 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
   {
     question: 'Can ResearchOne forge or hallucinate a citation?',
     answer:
-      'Claims without a verified source span do not ship as cited. The Verifier gate blocks or downgrades them first.',
+      'Findings without a verified source passage do not ship as cited. The Verifier gate blocks or downgrades them first.',
   },
   {
     question: 'How do Living updates work — will my old report change under me?',

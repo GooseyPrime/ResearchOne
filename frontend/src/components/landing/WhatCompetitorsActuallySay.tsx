@@ -42,7 +42,7 @@ const QUOTES: readonly QuoteCard[] = [
     attribution: 'Stanford STORM project team, methodology page.',
     url: 'https://storm-project.stanford.edu/research/storm/',
     counterLine:
-      'Honest self-criticism is essential. ResearchOne preserves contradictions and uses stronger verification paths when source quality or claim risk requires it.',
+      'Honest self-criticism is essential. ResearchOne preserves contradictions and uses stronger verification paths when source quality or the stakes require it.',
   },
 ];
 

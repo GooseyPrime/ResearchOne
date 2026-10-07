@@ -1,5 +1,5 @@
 const PILLARS = [
-  'Source-corroboration tiers · Tier 1 → Tier 4',
+  'Source strength, from strongest to weakest',
   'Verification depth adapts to the request',
   'Living, versioned reports',
 ] as const;
