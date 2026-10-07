@@ -7,7 +7,9 @@ import {
   buildOwnershipSql,
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
-import { config, readerViewEnabled } from '../../config';
+import { config, readerViewEnabled, runWithFlags } from '../../config';
+import { loadRunFlags } from '../../services/eval/runFlagStore';
+import { forReader, notReportText } from '../readerResponse';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
   createReportRevision,
@@ -20,7 +22,7 @@ import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport, type RequestedExportStyle } from '../../services/formatting/exportOrchestrator';
 import {
   cleanReaderMetadata,
-  presentForReader,
+  cleanRevisionForReader,
   stripInternalLabelsFromReport,
 } from '../../services/formatting/reportPresentation';
 import {
@@ -30,6 +32,20 @@ import {
 } from '../../services/formatting/pandocRunner';
 import { reportExportQueue } from '../../queue/queues';
 import { resolveLocalExportDiskPath } from '../../services/formatting/exportStorage';
+
+/**
+ * Whether this report is shown in the reader view: the switch as recorded for
+ * the run that wrote it, else the process setting. A sample written with the
+ * switch on for that run alone is read the same way.
+ */
+async function readerViewForRun(runId: unknown): Promise<boolean> {
+  if (typeof runId !== 'string' || !runId) return readerViewEnabled();
+  try {
+    return runWithFlags(await loadRunFlags(runId), () => readerViewEnabled());
+  } catch {
+    return readerViewEnabled();
+  }
+}
 
 const router = Router();
 
@@ -213,13 +229,13 @@ router.post('/:id/publish-featured', requireAdmin, async (req, res, next) => {
       commitMessage,
     });
 
-    res.json({
+    res.json(notReportText({
       ok: true,
       repo: `${config.featuredReportGithub.owner}/${config.featuredReportGithub.repo}`,
       path: pathInRepo,
       branch,
       commitUrl: result.commitUrl ?? null,
-    });
+    }));
   } catch (err) {
     next(err);
   }
@@ -237,13 +253,13 @@ router.use(requireAuth);
 router.get('/exports/engine-status', async (_req, res, next) => {
   try {
     const avail = await pandocAvailable();
-    res.json({
+    res.json(notReportText({
       available: avail.available,
       version: avail.version,
       detail: avail.available
         ? 'Pandoc export engine is available.'
         : 'Pandoc export engine is unavailable. Install pandoc and texlive-xetex on the backend host.',
-    });
+    }));
   } catch (err) {
     next(err);
   }
@@ -367,7 +383,7 @@ router.get('/exports/:exportId', async (req, res, next) => {
       res.status(404).json({ error: 'export not found' });
       return;
     }
-    res.json(presentForReader(rows[0]));
+    res.json(notReportText(rows[0]));
   } catch (err) {
     next(err);
   }
@@ -438,7 +454,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
-    res.json(presentForReader(rows));
+    res.json(forReader(rows));
   } catch (err) {
     next(err);
   }
@@ -454,7 +470,7 @@ router.get('/:id/spinoff/prefill', async (req, res, next) => {
       res.status(404).json({ error: 'Report not found' });
       return;
     }
-    res.json(presentForReader(prefill));
+    res.json(forReader(prefill));
   } catch (err) {
     next(err);
   }
@@ -523,7 +539,7 @@ router.get('/:id', async (req, res, next) => {
       metadata: cleanReaderMetadata(stored.metadata),
     };
 
-    res.json(presentForReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: readerViewEnabled() }));
+    res.json(forReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: await readerViewForRun(stored.run_id) }));
   } catch (err) {
     next(err);
   }
@@ -635,7 +651,7 @@ router.post(
       io?.to(`job:revision:${req.params.id}`).emit('revision:completed', responsePayload);
       io?.to(`job:${req.params.id}`).emit('revision:completed', responsePayload); // see emitProgress — do not join both rooms in one client
       io?.to('reports').emit('reports:updated', {});
-      res.status(202).json(responsePayload);
+      res.status(202).json(forReader(responsePayload));
     } catch (err) {
       next(err);
     }
@@ -664,7 +680,7 @@ router.get('/:id/revisions', async (req, res, next) => {
     }
 
     const revisions = await listReportRevisions(req.params.id);
-    res.json(presentForReader(revisions));
+    res.json(forReader(revisions));
   } catch (err) {
     next(err);
   }
@@ -696,7 +712,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       res.status(404).json({ error: 'Revision not found' });
       return;
     }
-    res.json(presentForReader(revision));
+    res.json(forReader(cleanRevisionForReader(revision)));
   } catch (err) {
     next(err);
   }
@@ -722,7 +738,7 @@ router.get('/:id/citations', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/citations');
     }
 
-    res.json(presentForReader(citations));
+    res.json(forReader(citations, { title: 'not-report' }));
   } catch (err) {
     next(err);
   }
@@ -790,11 +806,11 @@ router.post('/:id/export', async (req, res, next) => {
 
     const avail = await pandocAvailable();
     if (!avail.available) {
-      res.json({
+      res.json(notReportText({
         available: false,
         reason: 'pandoc_not_installed',
         detail: 'Pandoc is not installed on this server. Contact your administrator.',
-      });
+      }));
       return;
     }
 
@@ -857,11 +873,11 @@ router.post('/:id/export', async (req, res, next) => {
       }
     );
 
-    res.status(202).json({
+    res.status(202).json(notReportText({
       exportId,
       status: 'queued',
       pollUrl: `/api/reports/exports/${exportId}`,
-    });
+    }));
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,4 @@
-import { presentForReader } from '../../services/formatting/reportPresentation';
+import { forReader } from '../readerResponse';
 import { Router } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
@@ -687,7 +687,7 @@ router.get('/', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');
     }
 
-    res.json(presentForReader(rows));
+    res.json(forReader(rows, { title: 'not-report' }));
   } catch (err) {
     next(err);
   }
@@ -713,7 +713,7 @@ router.get('/:id', async (req, res, next) => {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
-    res.json(presentForReader(rows[0]));
+    res.json(forReader(rows[0], { title: 'not-report' }));
   } catch (err) {
     next(err);
   }

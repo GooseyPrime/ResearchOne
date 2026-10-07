@@ -550,7 +550,6 @@ export function cleanRevisionForReader<T>(revision: T): T {
  * Returns a copy; the stored rows are not rewritten.
  */
 const READER_TEXT_FIELDS: ReadonlySet<string> = new Set([
-  'title',
   'report_title',
   'reportTitle',
   'display_title',
@@ -567,9 +566,18 @@ const READER_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'overall_summary',
   'conclusions_nutshell',
 ]);
-/** Fields whose every text value is reader text, whatever its key. */
-const READER_TEXT_GROUPS: ReadonlySet<string> = new Set(['metric_glosses']);
+/** Fields whose every text value is reader text, whatever its key: lists a report shows as written. */
+const READER_TEXT_GROUPS: ReadonlySet<string> = new Set(['metric_glosses', 'unresolved_questions', 'recommended_queries']);
 const PRESENT_DEPTH = 8;
+
+export interface PresentOptions {
+  /**
+   * What `title` holds in this response. A report's and a section's title is
+   * report text. A run's title is the question as the person typed it, and a
+   * source's title is the publisher's: neither is ours to rewrite.
+   */
+  title: 'report' | 'not-report';
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false;
@@ -577,21 +585,22 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-function presentValue(value: unknown, depth: number, everyString: boolean): unknown {
+function presentValue(value: unknown, depth: number, everyString: boolean, options: PresentOptions): unknown {
   if (typeof value === 'string') return everyString ? stripInternalLabelsFromReport(value) : value;
   if (depth >= PRESENT_DEPTH) return value;
-  if (Array.isArray(value)) return value.map((item) => presentValue(item, depth + 1, everyString));
+  if (Array.isArray(value)) return value.map((item) => presentValue(item, depth + 1, everyString, options));
   if (!isPlainRecord(value)) return value;
   const out: Record<string, unknown> = {};
   for (const [key, held] of Object.entries(value)) {
-    if (typeof held === 'string') out[key] = everyString || READER_TEXT_FIELDS.has(key) ? stripInternalLabelsFromReport(held) : held;
-    else out[key] = presentValue(held, depth + 1, everyString || READER_TEXT_GROUPS.has(key));
+    const readerText = READER_TEXT_FIELDS.has(key) || (key === 'title' && options.title === 'report');
+    if (typeof held === 'string') out[key] = everyString || readerText ? stripInternalLabelsFromReport(held) : held;
+    else out[key] = presentValue(held, depth + 1, everyString || READER_TEXT_GROUPS.has(key), options);
   }
   return out;
 }
 
-export function presentForReader<T>(response: T): T {
-  return presentValue(response, 0, false) as T;
+export function presentForReader<T>(response: T, options: PresentOptions = { title: 'report' }): T {
+  return presentValue(response, 0, false, options) as T;
 }
 
 /** A revised section as it is stored: the same clean-up, applied on write. */
