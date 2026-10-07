@@ -7,7 +7,7 @@ import {
   buildOwnershipSql,
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
-import { config } from '../../config';
+import { config, readerViewEnabled } from '../../config';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
   createReportRevision,
@@ -20,7 +20,7 @@ import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport, type RequestedExportStyle } from '../../services/formatting/exportOrchestrator';
 import {
   cleanReaderMetadata,
-  cleanRevisionForReader,
+  presentForReader,
   stripInternalLabelsFromReport,
 } from '../../services/formatting/reportPresentation';
 import {
@@ -367,7 +367,7 @@ router.get('/exports/:exportId', async (req, res, next) => {
       res.status(404).json({ error: 'export not found' });
       return;
     }
-    res.json(rows[0]);
+    res.json(presentForReader(rows[0]));
   } catch (err) {
     next(err);
   }
@@ -438,7 +438,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
-    res.json(rows);
+    res.json(presentForReader(rows));
   } catch (err) {
     next(err);
   }
@@ -454,7 +454,7 @@ router.get('/:id/spinoff/prefill', async (req, res, next) => {
       res.status(404).json({ error: 'Report not found' });
       return;
     }
-    res.json(prefill);
+    res.json(presentForReader(prefill));
   } catch (err) {
     next(err);
   }
@@ -523,7 +523,7 @@ router.get('/:id', async (req, res, next) => {
       metadata: cleanReaderMetadata(stored.metadata),
     };
 
-    res.json({ ...report, sections, has_active_living_report: hasActiveLivingReport });
+    res.json(presentForReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: readerViewEnabled() }));
   } catch (err) {
     next(err);
   }
@@ -664,7 +664,7 @@ router.get('/:id/revisions', async (req, res, next) => {
     }
 
     const revisions = await listReportRevisions(req.params.id);
-    res.json(revisions);
+    res.json(presentForReader(revisions));
   } catch (err) {
     next(err);
   }
@@ -696,7 +696,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       res.status(404).json({ error: 'Revision not found' });
       return;
     }
-    res.json(cleanRevisionForReader(revision));
+    res.json(presentForReader(revision));
   } catch (err) {
     next(err);
   }
@@ -722,7 +722,7 @@ router.get('/:id/citations', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/citations');
     }
 
-    res.json(citations);
+    res.json(presentForReader(citations));
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,5 @@
 import { query, withTransaction } from '../../db/pool';
+import { cleanSectionForStorage, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
   formatRetrievedChunksForPrompt,
@@ -794,13 +795,13 @@ Return strict JSON.`,
 
     const revisionReportBaseParams = [
       baseReport.id,
-      baseReport.title,
+      stripInternalLabelsFromReport(baseReport.title),
       baseReport.query,
-      revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? '',
-      revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? '',
-      revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ??
-        baseReport.falsification_criteria ??
-        '',
+      stripInternalLabelsFromReport(revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? ''),
+      stripInternalLabelsFromReport(revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? ''),
+      stripInternalLabelsFromReport(
+        revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ?? baseReport.falsification_criteria ?? ''
+      ),
       baseReport.unresolved_questions ?? [],
       baseReport.recommended_queries ?? [],
       baseReport.contradiction_count,
@@ -867,7 +868,9 @@ Return strict JSON.`,
     // type put every citation of an ordinary report on its last section, because
     // most of its sections share one type.
     const insertedSections = new Map<string, string>();
-    for (const section of revisedSections) {
+    for (const revised of revisedSections) {
+      // Stored clean, not only shown clean (slice 5, item 11).
+      const section = cleanSectionForStorage(revised);
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO report_sections (report_id, section_type, title, content, section_order)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,

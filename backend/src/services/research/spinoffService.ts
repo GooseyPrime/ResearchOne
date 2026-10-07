@@ -1,3 +1,4 @@
+import { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { query } from '../../db/pool';
 import { buildOwnershipSql, rejectUnscopedReadOnScopeError } from '../../db/tenantScope';
 
@@ -100,12 +101,13 @@ export async function buildPriorReportContextBlock(reportId: string): Promise<st
     [reportId]
   );
   const parts: string[] = [
-    `${SPINOFF_PRIOR_REPORT_MARKER} — report "${title}"]`,
+    `${SPINOFF_PRIOR_REPORT_MARKER} — report "${stripInternalLabelsFromReport(title)}"]`,
     '',
   ];
   for (const sec of sections) {
-    parts.push(`## ${sec.title}`);
-    parts.push(sec.content ?? '');
+    // The next report is written from this text: it is given clean, as a reader would see it.
+    parts.push(`## ${stripInternalLabelsFromReport(sec.title ?? '')}`);
+    parts.push(stripInternalLabelsFromReport(sec.content ?? ''));
     parts.push('');
   }
   return parts.join('\n').slice(0, PRIOR_REPORT_CONTEXT_MAX_CHARS);

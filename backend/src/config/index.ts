@@ -568,6 +568,10 @@ export { runWithFlags, switchEnabled } from './runFlags';
 export function citationLockEnabled(): boolean {
   return switchEnabled('CITATION_LOCK_ENABLED') && switchEnabled('BASELINE_LAYER_ENABLED');
 }
+/** Slice 5. Unset is off. Sent to the reading page with each report; the page shows the reader view when it is on. */
+export function readerViewEnabled(): boolean {
+  return switchEnabled('READER_VIEW_ENABLED');
+}
 export function baselineLayerEnabled(): boolean {
   return switchEnabled('BASELINE_LAYER_ENABLED');
 }
