@@ -51,7 +51,8 @@ const GATE_STATUSES: ReadonlySet<string> = new Set(['completed', 'completed_degr
 export function readerStatus(args: { reportStatus: string | null; runStatus?: string | null; gateStatus?: string | null }): ReaderStatus {
   const gate = args.gateStatus && GATE_STATUSES.has(args.gateStatus) ? (args.gateStatus as ReportGateStatus) : null;
   if (gate && gate !== 'completed') {
-    const reason = describeGateFailure(gate);
+    // The stored explanation for this one names pipeline parts; a reader is told what it meant for them.
+    const reason = gate === 'no_evidence' ? 'The search found no sources this report could cite, so no report was written.' : describeGateFailure(gate);
     // A report that exists but did not pass a check is kept for review; one with nothing to show failed.
     return gate === 'no_evidence' ? { word: 'Failed', reason } : { word: 'Needs review', reason };
   }
@@ -96,6 +97,12 @@ export interface ReaderEvidence {
   sources: ReaderSource[];
   citations: ReaderCitation[];
   findings: ReaderFinding[];
+  /**
+   * For a report written before citations were numbered: the passage label in
+   * its text ("Chunk 7" is 7) and the reader number it becomes. A label with no
+   * saved citation is absent, and the page takes it out.
+   */
+  legacyLabels: Record<string, number>;
 }
 
 interface CitationRow {
@@ -133,6 +140,8 @@ export function buildReaderEvidence(args: {
   status: ReaderStatus;
   citationRows: CitationRow[];
   claimRows: Array<{ id: string; claim_text: string; evidence_tier: string | null; source_id: string | null; chunk_id: string | null }>;
+  /** The run's passages in the order the writer was shown them: an older report's "Chunk N" is the N-th. */
+  passageOrder?: string[];
 }): ReaderEvidence {
   const sources = new Map<string, ReaderSource>();
   const citations: ReaderCitation[] = [];
@@ -150,9 +159,13 @@ export function buildReaderEvidence(args: {
         notice: row.editorial_notice?.trim() || null,
       });
     }
+    // A citation saved before numbers existed carries none. It takes its
+    // source's place in the order sources are first cited, which is the order
+    // the Sources tab lists them in.
+    const sourceNumber = row.source_id ? [...sources.keys()].indexOf(row.source_id) + 1 : 0;
     citations.push({
       sectionId: row.section_id,
-      number: numberOf(row.citation_text),
+      number: numberOf(row.citation_text) ?? (sourceNumber > 0 ? sourceNumber : null),
       order: row.citation_order ?? index,
       quote: row.chunk_quote?.trim() || null,
       sourceId: row.source_id,
@@ -176,7 +189,19 @@ export function buildReaderEvidence(args: {
       quotes: [...new Set(bound.map((row) => row.chunk_quote?.trim() || '').filter(Boolean))],
     });
   }
-  return { status: args.status, sources: [...sources.values()], citations, findings };
+  const legacyLabels: Record<string, number> = {};
+  if (ordered.some((row) => numberOf(row.citation_text) === null)) {
+    const numberByChunk = new Map<string, number>();
+    ordered.forEach((row, index) => {
+      const number = citations[index].number;
+      if (row.chunk_id && number !== null && !numberByChunk.has(row.chunk_id)) numberByChunk.set(row.chunk_id, number);
+    });
+    (args.passageOrder ?? []).forEach((chunkId, index) => {
+      const number = numberByChunk.get(chunkId);
+      if (number !== undefined) legacyLabels[String(index + 1)] = number;
+    });
+  }
+  return { status: args.status, sources: [...sources.values()], citations, findings, legacyLabels };
 }
 
 /** Columns added by later migrations; a database that lacks one is read without it. */
@@ -199,7 +224,7 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
     citationRows = await query<CitationRow>(select(''), [report.id]);
   }
   let claimRows: Array<{ id: string; claim_text: string; evidence_tier: string | null; source_id: string | null; chunk_id: string | null }> = [];
-  let run: { status: string | null; gate_status: string | null } | undefined;
+  let run: { status: string | null; gate_status: string | null; retrieval_ids: string[] | null } | undefined;
   if (report.run_id) {
     try {
       claimRows = await query(
@@ -211,8 +236,8 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
       if (!isMissingColumn(err)) throw err;
       logger.debug(`[reader:${report.id}] Findings could not be read (deploy skew); the Evidence tab lists cited passages`);
     }
-    const runs = await query<{ status: string | null; gate_status: string | null }>(
-      `SELECT status, failure_meta->>'gate_status' AS gate_status FROM research_runs WHERE id = $1`,
+    const runs = await query<{ status: string | null; gate_status: string | null; retrieval_ids: string[] | null }>(
+      `SELECT status, failure_meta->>'gate_status' AS gate_status, retrieval_ids FROM research_runs WHERE id = $1`,
       [report.run_id]
     );
     run = runs[0];
@@ -221,5 +246,6 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
     status: readerStatus({ reportStatus: report.status, runStatus: run?.status, gateStatus: run?.gate_status }),
     citationRows,
     claimRows,
+    passageOrder: Array.isArray(run?.retrieval_ids) ? run.retrieval_ids.map(String) : [],
   });
 }

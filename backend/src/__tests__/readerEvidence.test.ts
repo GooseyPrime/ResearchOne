@@ -31,6 +31,9 @@ describe('the status a person reads', () => {
 
   it('is Failed when there was nothing to write from, or the run did not finish', () => {
     expect(readerStatus({ reportStatus: 'under_review', gateStatus: 'no_evidence' }).word).toBe('Failed');
+    // The stored explanation names the corpus gate and synthesis; a reader is told it plainly.
+    expect(readerStatus({ reportStatus: 'under_review', gateStatus: 'no_evidence' }).reason).toBe('The search found no sources this report could cite, so no report was written.');
+    expect(readerStatus({ reportStatus: 'under_review', gateStatus: 'no_evidence' }).reason).not.toMatch(/corpus|gate|synthesis/i);
     expect(readerStatus({ reportStatus: null, runStatus: 'failed' }).word).toBe('Failed');
   });
 
@@ -128,5 +131,33 @@ describe('the reading page data', () => {
     expect(lookup.findings).toEqual([]);
     expect(lookup.citations[0].quote).toBe('the quoted passage');
     expect(lookup.sources[0].title).toBe('A study');
+  });
+});
+
+describe('a report written before citations were numbered', () => {
+  const legacy = buildReaderEvidence({
+    status: { word: 'Ready', reason: null },
+    // The old mapper saved the passage, its source and its order, and no number.
+    citationRows: [
+      row({ citation_text: null, citation_order: 0, chunk_id: 'chunk-g', source_id: 'srcA', source_title: 'First cited' }),
+      row({ citation_text: null, citation_order: 1, chunk_id: 'chunk-b', source_id: 'srcB', source_title: 'Second cited' }),
+      row({ citation_text: null, citation_order: 2, chunk_id: 'chunk-h', source_id: 'srcA', source_title: 'First cited' }),
+    ] as never,
+    claimRows: [],
+    passageOrder: ['chunk-a', 'chunk-b', 'chunk-c', 'chunk-d', 'chunk-e', 'chunk-f', 'chunk-g', 'chunk-h'],
+  });
+
+  it("numbers each citation by its source's place in the order sources are first cited", () => {
+    expect(legacy.citations.map((citation) => citation.number)).toEqual([1, 2, 1]);
+    expect(legacy.sources.map((source) => source.title)).toEqual(['First cited', 'Second cited']);
+  });
+
+  it('maps a passage label to that number through the passage the label stood for, and omits a label nothing cites', () => {
+    // "Chunk 7" was the seventh passage shown, cited from the first source; "Chunk 2" the second.
+    expect(legacy.legacyLabels).toEqual({ '2': 2, '7': 1, '8': 1 });
+  });
+
+  it('a numbered report has no labels to map', () => {
+    expect(buildReaderEvidence({ status: { word: 'Ready', reason: null }, citationRows: [row({})] as never, claimRows: [], passageOrder: ['c1'] }).legacyLabels).toEqual({});
   });
 });

@@ -159,6 +159,40 @@ describe('citations', () => {
   });
 });
 
+describe('a citation in a section heading', () => {
+  it('opens its passage like any other, and the body numbers that follow keep theirs', () => {
+    const headed: Report = { ...report, sections: [section(1, 'What the trial found [1]', 'The same source again [1].')] };
+    const cited: ReaderEvidence = {
+      ...evidence,
+      citations: [
+        { sectionId: 's1', number: 1, order: 0, quote: 'the passage behind the heading', sourceId: 'src1' },
+        { sectionId: 's1', number: 1, order: 1, quote: 'the passage behind the sentence', sourceId: 'src1' },
+      ],
+    };
+    render(<ReaderView report={headed} evidence={cited} />);
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading.textContent).toBe('What the trial found [1]');
+    fireEvent.focus(within(heading).getByRole('button', { name: /Citation 1/ }));
+    expect(screen.getByRole('tooltip').textContent).toContain('the passage behind the heading');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.focus(screen.getAllByRole('button', { name: /Citation 1/ })[1]);
+    expect(screen.getByRole('tooltip').textContent).toContain('the passage behind the sentence');
+  });
+});
+
+describe("an older report's passage labels, as the backend maps them", () => {
+  it('become reader numbers where mapped and are taken out where not', () => {
+    const old: Report = { ...report, sections: [section(1, 'Findings', 'It opened in 1932 [Chunk 7]. It closed in 1960 (Chunk 3).')] };
+    const mapped: ReaderEvidence = { ...evidence, citations: [{ sectionId: 's1', number: 1, order: 0, quote: 'opened in 1932', sourceId: 'src1' }], legacyLabels: { '7': 1 } };
+    render(<ReaderView report={old} evidence={mapped} />);
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.textContent).toContain('It opened in 1932 [1]. It closed in 1960.');
+    expect(panel.textContent).not.toMatch(/chunk/i);
+    fireEvent.focus(within(panel).getByRole('button', { name: /Citation 1/ }));
+    expect(screen.getByRole('tooltip').textContent).toContain('opened in 1932');
+  });
+});
+
 describe('an older report with no stored sections', () => {
   it('gives its summary the same citation handling: no "Chunk", numbers open their passage', () => {
     const bare: Report = { ...report, sections: [], executive_summary: 'Costs rose after 1979 [1]. An old label [Chunk 4] too.' };

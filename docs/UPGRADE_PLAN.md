@@ -556,7 +556,7 @@ Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with th
 - Citations: each bracketed number is a button. Hover, keyboard focus or a tap opens a card with the source title, publisher, date, any editorial notice and the quoted passage, and a link to the reference entry. The k-th time a number appears in a section it is the k-th saved citation with that number in that section, so two uses of one source show two different passages.
 - Evidence, Sources, How this was researched, and Challenge tabs. Evidence lists each cited finding with its strength in words, or each cited passage with its source when the run stored no findings. The Challenge tab exists only when the report has a Challenge section.
 - Status: "Ready", "Needs review" or "Failed" with the plain reason from `runStatusDisplay.ts`.
-- Older reports: `[Chunk N]`, `(Chunks 3, 7)` and bare `Chunk N` become reader numbers where the saved citations map them and are taken out where they do not.
+- Older reports: `[Chunk N]`, `(Chunks 3, 7)` and bare `Chunk N` become reader numbers where the saved citations map them and are taken out where they do not. The old mapper saved no number with a citation, so the backend works it out: "Chunk N" was the N-th passage of the run (`research_runs.retrieval_ids`), and a citation's number is its source's place in the order sources are first cited.
 - Revision, spinoff, monitoring and retention controls sit below the report. Copy and export are unchanged.
 - New endpoint `GET /api/reports/:id/reader` (`formatting/readerEvidence.ts`) gives the page its citations, sources, findings and status. It returns no stored grade or status value.
 - No existing test was changed (item 9).

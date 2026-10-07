@@ -8,7 +8,9 @@ import {
   CITE_HREF,
   TAB_LABELS,
   citationCard,
+  legacyNumbersOf,
   linkCitations,
+  linkSection,
   parseReferences,
   readableDay,
   referenceAnchor,
@@ -29,12 +31,15 @@ const STATUS_TONE: Record<string, string> = {
   'In progress': 'bg-accent/10 text-accent border-accent/30',
 };
 
-function Prose({ markdown, evidence }: { markdown: string; evidence: ReaderEvidence }): JSX.Element {
+function Prose({ markdown, evidence, inline }: { markdown: string; evidence: ReaderEvidence; inline?: boolean }): JSX.Element {
+  const Wrap = inline ? 'span' : 'div';
   return (
-    <div className="prose prose-invert max-w-none prose-p:leading-relaxed">
+    <Wrap className={inline ? undefined : 'prose prose-invert max-w-none prose-p:leading-relaxed'}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // A heading is one line: its paragraph wrapper would break the heading element.
+          ...(inline ? { p: ({ children }: { children?: ReactNode }) => <>{children}</> } : {}),
           a: ({ href, children }) => {
             if (href?.startsWith(CITE_HREF)) {
               const card = citationCard(Number(href.slice(CITE_HREF.length)), evidence);
@@ -56,7 +61,7 @@ function Prose({ markdown, evidence }: { markdown: string; evidence: ReaderEvide
       >
         {markdown}
       </ReactMarkdown>
-    </div>
+    </Wrap>
   );
 }
 
@@ -101,7 +106,10 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
   const references = referenceSection ? parseReferences(referenceSection.content) : [];
   const about = sections.find((_, index) => role(index) === 'about');
   const sourceById = new Map(evidence.sources.map((source) => [source.id, source]));
-  const link = (content: string, sectionId: string | null): string => linkCitations(content, sectionId, evidence.citations, legacyNumbers);
+  // Labels the backend mapped for an older report, with any the caller adds.
+  const labels = useMemo(() => new Map([...legacyNumbersOf(evidence), ...(legacyNumbers ?? [])]), [evidence, legacyNumbers]);
+  const link = (content: string, sectionId: string | null): string => linkCitations(content, sectionId, evidence.citations, labels);
+  const linked = (section: { id: string; title: string; content: string }) => linkSection(section.title, section.content, section.id, evidence.citations, labels);
 
   return (
     <article className="space-y-5">
@@ -141,8 +149,10 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
             {sections.map((section, index) =>
               role(index) === 'report' ? (
                 <section key={section.id} className="space-y-2">
-                  <h2 className="text-xl font-semibold text-white">{section.title.trim()}</h2>
-                  <Prose markdown={link(section.content, section.id)} evidence={evidence} />
+                  <h2 className="text-xl font-semibold text-white">
+                    <Prose inline markdown={linked(section).heading} evidence={evidence} />
+                  </h2>
+                  <Prose markdown={linked(section).body} evidence={evidence} />
                 </section>
               ) : null
             )}
@@ -253,8 +263,10 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
           sections.map((section, index) =>
             role(index) === 'challenge' ? (
               <section key={section.id} className="space-y-2">
-                <h2 className="text-xl font-semibold text-white">{section.title.trim()}</h2>
-                <Prose markdown={link(section.content, section.id)} evidence={evidence} />
+                <h2 className="text-xl font-semibold text-white">
+                  <Prose inline markdown={linked(section).heading} evidence={evidence} />
+                </h2>
+                <Prose markdown={linked(section).body} evidence={evidence} />
               </section>
             ) : null
           )}

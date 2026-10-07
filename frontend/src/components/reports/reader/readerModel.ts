@@ -35,6 +35,8 @@ export interface ReaderEvidence {
   sources: ReaderSource[];
   citations: ReaderCitation[];
   findings: ReaderFinding[];
+  /** An older report's passage labels and the reader numbers they become. */
+  legacyLabels?: Record<string, number>;
 }
 
 export type SectionRole = 'title' | 'references' | 'about' | 'challenge' | 'report';
@@ -171,4 +173,21 @@ export function readableDay(iso: string | null): string | null {
   if (!match) return iso;
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${Number(match[3])} ${months[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+/** The labels the backend mapped, as the lookup `linkCitations` takes. */
+export function legacyNumbersOf(evidence: Pick<ReaderEvidence, 'legacyLabels'> | undefined): Map<number, number> {
+  return new Map(Object.entries(evidence?.legacyLabels ?? {}).map(([label, number]) => [Number(label), number]));
+}
+
+/**
+ * A section's heading and body with their citations linked together. A number
+ * in a heading is a citation like any other, saved before the body's, so the
+ * two are numbered in one pass and then parted again.
+ */
+export function linkSection(title: string, content: string, sectionId: string | null, citations: ReaderCitation[], legacyNumbers?: ReadonlyMap<number, number>): { heading: string; body: string } {
+  const heading = title.replace(/\s+/g, ' ').trim();
+  const linked = linkCitations(`${heading}\n${content}`, sectionId, citations, legacyNumbers);
+  const at = linked.indexOf('\n');
+  return at === -1 ? { heading: linked, body: '' } : { heading: linked.slice(0, at), body: linked.slice(at + 1) };
 }
