@@ -42,7 +42,9 @@ function matches(rule: AuthorityRule, kind: string, provider: string, address: A
   if (!address) return false;
   const onHost = (rule.hosts ?? []).some((name) => isOrUnder(address.host, name));
   // A suffix is whole labels: "nrc.gov" ends with "gov"; "gov.example.com" does not.
-  const onSuffix = (rule.hostSuffixes ?? []).some((suffix) => address.host.endsWith(`.${suffix}`));
+  // A suffix of more than one label is a site in its own right ("canada.ca",
+  // "europa.eu"), so the bare name matches too. A bare top-level name ("gov") does not.
+  const onSuffix = (rule.hostSuffixes ?? []).some((suffix) => address.host.endsWith(`.${suffix}`) || (suffix.includes('.') && address.host === suffix));
   if (!onHost && !onSuffix) return false;
   return rule.path ? rule.path.test(address.path) : true;
 }
@@ -65,6 +67,36 @@ export function authorityTierFor(signals: AuthoritySignals): AuthorityTier | nul
   if (rule) return rule.tier;
   const known = addressOf(signals.url) || (signals.provider ?? '').trim() || (signals.kind ?? '').trim();
   return known ? DEFAULT_AUTHORITY_TIER : null;
+}
+
+/** What one discovery result says about a source: the provider that returned it and the kind it recorded. */
+export interface DiscoveredSignals {
+  provider?: string | null;
+  url?: string | null;
+  bibliographic?: { kind?: string | null; provider?: string | null } | null;
+}
+
+const signalsOf = (result: DiscoveredSignals): AuthoritySignals => ({
+  kind: result.bibliographic?.kind,
+  provider: result.bibliographic?.provider ?? result.provider,
+  url: result.url,
+});
+
+/**
+ * The tier of an address that one or more providers returned. Each provider's
+ * record is read against the rules, and the record matched by the earliest rule
+ * decides: rule order is precedence, so a record that says what the work is
+ * outranks one that only names where it was found.
+ */
+export function authorityTierOfResults(results: readonly DiscoveredSignals[]): AuthorityTier | null {
+  let best: { tier: AuthorityTier | null; at: number } | null = null;
+  for (const result of results) {
+    const signals = signalsOf(result);
+    const rule = authorityRuleFor(signals);
+    const at = rule ? AUTHORITY_RULES.indexOf(rule) : AUTHORITY_RULES.length;
+    if (!best || at < best.at) best = { tier: authorityTierFor(signals), at };
+  }
+  return best?.tier ?? null;
 }
 
 /** A stored value read back: 1 to 4, or null for anything else. */

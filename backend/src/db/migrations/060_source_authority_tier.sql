@@ -13,10 +13,10 @@ ALTER TABLE sources
 DO $$
 BEGIN
   IF NOT EXISTS (
+    -- Matched on the table altered above, not on a table of the same name in another schema.
     SELECT 1
       FROM pg_constraint con
-      JOIN pg_class rel ON rel.oid = con.conrelid
-     WHERE rel.relname = 'sources'
+     WHERE con.conrelid = 'sources'::regclass
        AND con.conname = 'sources_authority_tier_range'
   ) THEN
     ALTER TABLE sources

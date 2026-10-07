@@ -637,7 +637,9 @@ Acceptance:
 
 - Migration 060 adds `sources.authority_tier`, nullable, 1 to 4.
 - `backend/src/config/authorityTiers.ts` holds every rule. Rules are read top to bottom and the first match decides. A rule matches on one thing: what the provider recorded the work to be, which provider returned it, or the address it was read at, in that order, so a journal article hosted on a government site is a journal article. Each rule carries an example, and the test runs every example, so a rule cannot be added untested.
-- With the switch on, ingest writes the tier in a statement of its own after the source is stored. A tier already recorded is kept. With the switch off no statement names the column.
+- With the switch on, the tier is written in a statement of its own after the source is stored. A tier already recorded is kept. With the switch off no statement names the column and no job carries a tier.
+- Discovery decides the tier, inside the run, and sends it with the ingestion job. Two reasons, both found in review: a run's switches do not reach the ingestion worker, and the provider's record of what a work is gets dropped before the job is queued when the citation lock is off. When several providers return one address, the record matched by the earliest rule decides, so the tier does not depend on which provider answered first.
+- An upload or a supplied address has no run behind it. It is judged in the worker, and only when the switch is on for the whole process.
 - Decisions made while building, open to change:
   - A catalogue entry or DOI link with no recorded kind is tier 3, not 2. A DOI shows a work was published, not that it was peer reviewed.
   - A source with no web address, no provider and no recorded kind (an uploaded file) gets no tier. It is unranked, not ranked last.

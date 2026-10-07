@@ -32,15 +32,16 @@ vi.mock('../db/pool', () => ({
 vi.mock('../queue/queues', () => ({ embeddingQueue: { add: vi.fn() }, ingestionQueue: { add: vi.fn() } }));
 
 import { runWithFlags } from '../config/runFlags';
-import { recordAuthorityTier, runIngestionJob } from '../services/ingestion/ingestionService';
+import { recordAuthorityTier, runIngestionJob, tierForIngest } from '../services/ingestion/ingestionService';
 
-const job = () =>
+const job = (extra: Record<string, unknown> = {}) =>
   runIngestionJob(
     {
       ingestionJobId: 'job-1',
       sourceType: 'text',
       text: 'Costs rose after 1979 in the United States.',
       metadata: { bibliographic: { authors: ['Lovering, Jessica R.'], kind: 'journal article', provider: 'crossref' } },
+      ...extra,
     } as Parameters<typeof runIngestionJob>[0],
     () => undefined
   );
@@ -100,10 +101,26 @@ describe('recording a source\'s authority tier at ingest', () => {
     expect(h.queries.filter((entry) => /SET status='failed'/.test(entry.sql))).toHaveLength(0);
   });
 
-  it('writes nothing for a source with nothing to judge by', async () => {
-    await on(() => recordAuthorityTier(STORED_ID, { url: '' }));
+  it('records the tier a discovery job carries, with no switch on in this worker', async () => {
+    // A run's switches do not reach the ingestion worker; the job brings the tier.
+    h.stored = false;
+    await job({ authorityTier: 1, metadata: {} });
+    expect(tierWrites()).toHaveLength(1);
+    expect(tierWrites()[0].params).toEqual([NEW_ID, 1]);
+  });
+
+  it('ignores a carried value that is not a tier', async () => {
+    h.stored = false;
+    await job({ authorityTier: 9, metadata: {} });
     expect(tierWrites()).toHaveLength(0);
-    await on(() => recordAuthorityTier(STORED_ID, { url: 'https://www.nrc.gov/x' }));
-    expect(tierWrites()[0].params).toEqual([STORED_ID, 1]);
+  });
+
+  it('judges a job that carries no tier only with the switch on, and writes nothing for a source with nothing to judge by', async () => {
+    expect(tierForIngest({}, { url: 'https://www.nrc.gov/x' })).toBeNull();
+    expect(on(() => tierForIngest({}, { url: 'https://www.nrc.gov/x' }))).toBe(1);
+    expect(on(() => tierForIngest({}, { url: '' }))).toBeNull();
+    expect(tierForIngest({ authorityTier: 3 }, { url: 'https://www.nrc.gov/x' })).toBe(3);
+    await recordAuthorityTier(STORED_ID, null);
+    expect(tierWrites()).toHaveLength(0);
   });
 });

@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { AUTHORITY_RULES } from '../config/authorityTiers';
-import { authorityRuleFor, authorityTierFor, storedAuthorityTier } from '../services/authority/authorityTier';
+import { authorityRuleFor, authorityTierFor, authorityTierOfResults, storedAuthorityTier } from '../services/authority/authorityTier';
 
 describe('each authority rule', () => {
   it('has an id of its own', () => {
@@ -75,6 +75,27 @@ describe('order and edges', () => {
     expect(authorityTierFor({ url: 'https://gov/page' })).toBe(4);
   });
 
+  it('a site named whole in the suffix list matches at its bare name too', () => {
+    expect(authorityTierFor({ url: 'https://www.canada.ca/en/health-canada.html' })).toBe(1);
+    expect(authorityTierFor({ url: 'https://europa.eu/european-union/index_en' })).toBe(1);
+    expect(authorityTierFor({ url: 'https://www.nhs.uk/conditions/x/' })).toBe(1);
+    expect(authorityTierFor({ url: 'https://health.canada.ca/x' })).toBe(1);
+    // A bare top-level name is not a site.
+    expect(authorityTierFor({ url: 'https://gov/page' })).toBe(4);
+    expect(authorityTierFor({ url: 'https://int/page' })).toBe(4);
+  });
+
+  it('several providers: the record that says what the work is decides', () => {
+    const web = { provider: 'tavily', url: 'https://doi.org/10.1/x' };
+    const catalogue = { provider: 'openalex', url: 'https://doi.org/10.1/x', bibliographic: { kind: 'journal article' } };
+    expect(authorityTierOfResults([web])).toBe(3);
+    expect(authorityTierOfResults([web, catalogue])).toBe(2);
+    expect(authorityTierOfResults([catalogue, web])).toBe(2);
+    // A preprint record is not overruled by the journal site that hosts it.
+    expect(authorityTierOfResults([{ provider: 'brave', url: 'https://www.nature.com/articles/x' }, { provider: 'crossref', url: 'https://www.nature.com/articles/x', bibliographic: { kind: 'preprint' } }])).toBe(3);
+    expect(authorityTierOfResults([])).toBeNull();
+  });
+
   it('ignores "www.", letter case and a trailing dot', () => {
     expect(authorityTierFor({ url: 'HTTPS://WWW.Reuters.com./business/x' })).toBe(3);
     expect(authorityTierFor({ provider: ' CrossRef ', kind: ' Journal Article ' })).toBe(2);
@@ -105,8 +126,9 @@ describe('migration 060', () => {
   it('adds a nullable column that can be applied twice', () => {
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS authority_tier SMALLINT NULL/);
     expect(sql).toContain('authority_tier BETWEEN 1 AND 4');
-    // The constraint check is scoped to the table it is added to.
-    expect(sql).toContain("rel.relname = 'sources'");
+    // The constraint check is on the table altered, not any table of that name in another schema.
+    expect(sql).toContain("con.conrelid = 'sources'::regclass");
+    expect(sql).not.toContain('rel.relname');
     expect(sql).not.toMatch(/NOT NULL|DEFAULT/);
   });
 });
