@@ -75,7 +75,7 @@ export const pipelineStages: PipelineStage[] = [
   {
     id: 'reasoner',
     name: 'Reasoner',
-    description: 'Structures findings into claims with citation chains',
+    description: 'Builds cited findings with full source chains',
   },
   {
     id: 'skeptic',
@@ -162,7 +162,7 @@ export const capabilities: Capability[] = [
   {
     id: 'citations',
     title: 'Citation-Backed Dossiers',
-    description: 'Every claim links to verifiable sources. Full audit trail from conclusion to primary source.',
+    description: 'Every finding links to verifiable sources. Full audit trail from conclusion to primary source.',
     icon: 'FileCheck',
   },
   {
@@ -174,7 +174,7 @@ export const capabilities: Capability[] = [
   {
     id: 'corroboration',
     title: 'Source Corroboration',
-    description: 'Claims are strengthened through independent source verification with quantified corroboration scores.',
+    description: 'Findings are strengthened through independent source verification with quantified corroboration scores.',
     icon: 'CheckCheck',
   },
   {
@@ -222,20 +222,20 @@ export const featureBlocks: FeatureBlock[] = [
     number: '05',
     title: 'Reasoning & Correlation',
     subtitle: 'CLAIM_DRAFT · LINK_CHAIN',
-    description: 'Findings are structured into claims with citation chains and correlation mapping.',
+    description: 'Each finding carries its citation chain and correlation mapping.',
   },
   {
     number: '06',
     title: 'Challenge Pass',
     subtitle: 'CHALLENGE · WEAKNESS_SCAN',
-    description: 'Optional critique personas argue against every conclusion before publication, exposing logical gaps and unsupported claims.',
+    description: 'Optional critique personas argue against every conclusion before publication, exposing logical gaps and unsupported findings.',
     isSkeptic: true,
   },
   {
     number: '07',
     title: 'Contradiction Preservation',
     subtitle: 'CONFLICT_TRACK · PRESERVE',
-    description: 'Contradictory findings are tracked and preserved. Conflicting claims are surfaced, not silently resolved.',
+    description: 'Contradictory findings are tracked and preserved. Conflicting findings are surfaced, not silently resolved.',
   },
   {
     number: '08',

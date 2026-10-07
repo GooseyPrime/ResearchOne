@@ -27,7 +27,7 @@ const EVIDENCE_CARDS = [
   },
   {
     claimId: 'claim-3',
-    tier: 'Speculation',
+    tier: 'Tentative',
     tierColor: 'bg-tier-speculation',
     sourceType: 'Mechanism',
     sourceClass: 'consensus_collapsed' as const,
@@ -55,9 +55,9 @@ function ConfidenceDots({ filled }: { filled: number }) {
 export default function SourceProvenancePanel() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-      <h2 className="font-serif text-3xl">Every claim has a source. Every source has a reason.</h2>
+      <h2 className="font-serif text-3xl">Every finding has a source. Every source has a reason.</h2>
       <p className="mt-3 text-r1-text-muted">
-        Citation integrity isn&apos;t a feature — it&apos;s the contract. Each claim maps to a source card.
+        Citation integrity isn&apos;t a feature — it&apos;s the contract. Each finding maps to a source card.
       </p>
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -67,7 +67,7 @@ export default function SourceProvenancePanel() {
           <p>
             <button
               className="peer/claim1 group/claim1 inline cursor-default rounded bg-tier-strong_evidence/10 px-1 text-r1-text underline decoration-tier-strong_evidence/40 transition hover:bg-tier-strong_evidence/20 focus:bg-tier-strong_evidence/20 focus:outline-none focus:ring-1 focus:ring-tier-strong_evidence"
-              aria-label="Claim 1: performance gains on reasoning benchmarks — Strong corroboration"
+              aria-label="Finding 1: performance gains on reasoning benchmarks — Strong corroboration"
               type="button"
             >
               {CLAIMS[0].text}
@@ -75,7 +75,7 @@ export default function SourceProvenancePanel() {
             {', though '}
             <button
               className="peer/claim2 group/claim2 inline cursor-default rounded bg-tier-testimony/10 px-1 text-r1-text underline decoration-tier-testimony/40 transition hover:bg-tier-testimony/20 focus:bg-tier-testimony/20 focus:outline-none focus:ring-1 focus:ring-tier-testimony"
-              aria-label="Claim 2: contradictory findings on generalization — Contradiction"
+              aria-label="Finding 2: contradictory findings on generalization — Contradiction"
               type="button"
             >
               {CLAIMS[1].text}
@@ -83,7 +83,7 @@ export default function SourceProvenancePanel() {
             {'. '}
             <button
               className="peer/claim3 group/claim3 inline cursor-default rounded bg-tier-speculation/10 px-1 text-r1-text underline decoration-tier-speculation/40 transition hover:bg-tier-speculation/20 focus:bg-tier-speculation/20 focus:outline-none focus:ring-1 focus:ring-tier-speculation"
-              aria-label="Claim 3: mechanism under-characterized — Speculation"
+              aria-label="Finding 3: mechanism under-characterized — Tentative"
               type="button"
             >
               {CLAIMS[2].text}

@@ -28,16 +28,16 @@ const MODES: Array<{
     icon: Search,
     color: 'text-accent',
     definition:
-      'The default. Rigorous, reasoning-first research on any topic: it analyses the claims, extracts citations, and compiles a balanced report without assuming anything is being deliberately hidden.',
+      'The default. Rigorous, reasoning-first research on any topic: it analyses what the sources say, extracts citations, and compiles a balanced report without assuming anything is being deliberately hidden.',
     capabilities: [
       'Exhaustive literature review',
       'Multi-step query generation',
-      'Precise claim extraction',
+      'Precise extraction of findings',
       'Contradiction mapping',
       'Strict citation integrity checking',
     ],
     reportOutput: [
-      'A comprehensive, heavily cited, and balanced report detailing the factual landscape, core claims, and logical structure of the requested topic.',
+      'A comprehensive, heavily cited, and balanced report detailing the factual landscape, core findings, and logical structure of the requested topic.',
     ],
   },
   {
@@ -47,7 +47,7 @@ const MODES: Array<{
     definition:
       'A deep-dive historical and investigative type designed to trace origins, institutional gaps, and fragmentation of contested data or overlooked technologies.',
     capabilities: [
-      'Maps historical claims',
+      'Maps the historical record',
       'Identifies contradictory public narratives',
       'Highlights systemic biases in mainstream data',
       'Surfaces coordinated information gaps',

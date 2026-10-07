@@ -13,7 +13,7 @@
 export const CHALLENGE_PERSPECTIVE_OPTIONS = [
   { id: 'fda', label: 'FDA Compliance Officer', description: 'Regulatory scrutiny focus' },
   { id: 'peer', label: 'Hostile Peer Reviewer', description: 'Academic rigor challenge' },
-  { id: 'defense', label: 'Defense Attorney', description: 'Cross-examination of every claim' },
+  { id: 'defense', label: 'Defense Attorney', description: 'Cross-examination of every finding' },
   { id: 'investor', label: 'Due-diligence Investor', description: 'Due diligence perspective' },
   { id: 'journalist', label: 'Investigative Journalist', description: 'Source verification focus' },
   { id: 'custom', label: 'Custom perspective', description: 'Describe your own' },

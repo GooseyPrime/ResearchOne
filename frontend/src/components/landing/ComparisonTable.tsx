@@ -3,12 +3,12 @@ import { Check, CircleDot, Minus } from 'lucide-react';
 type Cell = 'yes' | 'no' | 'partial';
 
 const ROWS: Array<{ capability: string; researchOne: Cell; generalPurpose: Cell }> = [
-  { capability: 'Per-claim citations', researchOne: 'yes', generalPurpose: 'no' },
+  { capability: 'A citation for every finding', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Source tier disclosure', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Challenge pass', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Preserved contradictions', researchOne: 'yes', generalPurpose: 'no' },
   { capability: 'Versioned, living updates', researchOne: 'yes', generalPurpose: 'partial' },
-  { capability: 'Cited counter-claims', researchOne: 'yes', generalPurpose: 'partial' },
+  { capability: 'Cited opposing findings', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'Auditable citation-and-source chain', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'BYOK / sovereign tier', researchOne: 'yes', generalPurpose: 'no' },
 ];

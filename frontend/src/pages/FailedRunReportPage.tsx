@@ -357,7 +357,7 @@ export default function FailedRunReportPage() {
         />
         <StatCard
           icon={<Brain size={16} className="text-purple-400" />}
-          label="Claims extracted"
+          label="Findings extracted"
           value={artifactsLoading ? '…' : String(claimsTotal)}
         />
         <StatCard
@@ -523,7 +523,7 @@ export default function FailedRunReportPage() {
       {claimCount > 0 && (
         <CollapsibleSection
           icon={<Brain size={15} className="text-purple-400" />}
-          title={`Claims extracted (${claimCount}${claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})`}
+          title={`Findings extracted (${claimCount}${claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})`}
         >
           <div className="space-y-2">
             {artifacts!.claims.map((c) => (

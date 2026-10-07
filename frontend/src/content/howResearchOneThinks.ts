@@ -42,7 +42,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
     heading: 'Reasoning-first pipeline',
     body:
       'Sources are retrieved and read before any reasoning is written. The reasoning agent then drafts ' +
-      'findings grounded in those sources, with a citation for every claim. A separate challenge step ' +
+      'findings grounded in those sources, with a citation for every finding. A separate challenge step ' +
       '(the challenge pass) then argues against the draft — catching unsupported assertions, weak corroboration, ' +
       'and potential confirmation bias — before synthesis. This means conclusions go through an internal ' +
       'challenge review before you see them.',
@@ -61,7 +61,7 @@ export const HOW_RESEARCHONE_THINKS_SECTIONS: readonly HowResearchOneThinksSecti
     heading: 'Source disagreements stay visible',
     body:
       'When sources genuinely disagree, ResearchOne preserves that disagreement in a source-disagreement ledger. ' +
-      'Conflicting claims survive into the final report with full source attribution and severity levels. ' +
+      'Conflicting findings survive into the final report with full source attribution and severity levels. ' +
       'The system never silently rewrites, smooths, or collapses genuine conflict into a false consensus. ' +
       'You can inspect every preserved disagreement and its supporting sources.',
   },
@@ -150,13 +150,13 @@ export const INTENT_HELP_TEXT: Record<string, string> = {
   factual_report:
     'Closed-record encyclopedic answer. The pipeline retrieves established sources and synthesizes a factual summary. No dedicated challenge step.',
   survey:
-    'Layered exposition across multiple sub-topics or viewpoints. Neutral posture; the pipeline maps the terrain rather than adjudicating claims.',
+    'Layered exposition across multiple sub-topics or viewpoints. Neutral posture; the pipeline maps the terrain rather than ruling on them.',
   adjudication:
-    'Fact-check a specific claim or proposition. Challenge posture: the pipeline argues for and against the claim before delivering a verdict with evidence.',
+    'Fact-check a specific statement or proposition. Challenge posture: the pipeline argues for and against the statement before delivering a verdict with evidence.',
   investigation:
     'Symmetric deep-dive on a complex topic. Challenge posture with supporting and opposing evidence gathered side by side.',
   story_verification:
-    'Verify a specific narrative or reported account claim-by-claim. Challenge posture with source disagreements kept visible.',
+    'Verify a specific narrative or reported account statement by statement. Challenge posture with source disagreements kept visible.',
   opportunity_discovery:
     'Surface under-served problems, market gaps, or domain opportunities. Neutral-to-survey posture focused on pattern recognition.',
   feasibility:
@@ -197,7 +197,7 @@ export interface IntentOverrideOption {
 export const INTENT_OVERRIDE_OPTIONS: readonly IntentOverrideOption[] = [
   { id: 'factual_report', label: 'Factual report', shortDescription: 'Encyclopedic answer for a closed-record topic.' },
   { id: 'survey', label: 'Survey', shortDescription: 'Layered overview of a broad topic.' },
-  { id: 'adjudication', label: 'Adjudication / fact-check', shortDescription: 'Verify a specific claim or proposition.' },
+  { id: 'adjudication', label: 'Adjudication / fact-check', shortDescription: 'Verify a specific statement or proposition.' },
   { id: 'investigation', label: 'Investigation', shortDescription: 'Symmetric deep-dive on a contested topic.' },
   { id: 'story_verification', label: 'Story verification', shortDescription: 'Verify a specific narrative account.' },
   { id: 'opportunity_discovery', label: 'Opportunity discovery', shortDescription: 'Surface market or domain opportunities.' },

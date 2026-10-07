@@ -41,7 +41,7 @@ const GUIDE_SECTIONS: readonly GuideSection[] = [
     bullets: [
       'Explain: Explain municipal bond insurance for finance leaders and summarize the current market.',
       'Compare: Compare three EHR products for a 40-person clinic with a 12-month budget horizon.',
-      'Verify: Evaluate key factual claims in this article and separate confirmed, contradicted, unsupported, and unresolved claims.',
+      'Verify: Evaluate the key factual statements in this article and separate the confirmed, the contradicted, the unsupported and the unresolved.',
       'Opportunity: Identify underserved problems in residential heat-pump installation in the US Northeast.',
       'Implementation: Create an evidence-based SOC 2 readiness implementation plan for a seed-stage SaaS startup.',
       'Quantitative: Extract reported metrics from these studies and compare outcomes on a normalized basis.',

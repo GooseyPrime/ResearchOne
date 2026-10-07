@@ -8,7 +8,7 @@ describe('SourceProvenancePanel', () => {
   it('renders all 3 source-corroboration tier badges', () => {
     expect(html).toContain('Strong corroboration');
     expect(html).toContain('Contradiction');
-    expect(html).toContain('Speculation');
+    expect(html).toContain('Tentative');
   });
 
   it('renders the sample excerpt', () => {
@@ -18,8 +18,8 @@ describe('SourceProvenancePanel', () => {
   });
 
   it('has accessible focus targets (buttons with aria-label)', () => {
-    expect(html).toContain('aria-label="Claim 1');
-    expect(html).toContain('aria-label="Claim 2');
-    expect(html).toContain('aria-label="Claim 3');
+    expect(html).toContain('aria-label="Finding 1');
+    expect(html).toContain('aria-label="Finding 2');
+    expect(html).toContain('aria-label="Finding 3');
   });
 });

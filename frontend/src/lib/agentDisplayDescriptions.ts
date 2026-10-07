@@ -11,9 +11,9 @@ export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; descript
   retriever: { name: 'Source Investigator', description: 'Searches and evaluates sources across the public web.' },
   reasoner: { name: 'Evidence Reasoner', description: 'Weighs evidence and builds the analytical framework.' },
   synthesizer: { name: 'Report Writer', description: 'Drafts your deliverables from the confirmed plan.' },
-  verifier: { name: 'Citation Verifier', description: 'Confirms every claim is supported by an accessible source.' },
+  verifier: { name: 'Citation Verifier', description: 'Confirms every finding is supported by an accessible source.' },
   contract_auditor: { name: 'Contract Auditor', description: 'Checks that every requested deliverable was actually delivered.' },
-  skeptic: { name: 'Challenge', description: 'Argues against the draft to catch weak or unsupported claims.' },
+  skeptic: { name: 'Challenge', description: 'Argues against the draft to catch weak or unsupported findings.' },
 };
 
 /**

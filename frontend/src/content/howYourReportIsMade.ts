@@ -5,8 +5,8 @@ export const HOW_YOUR_REPORT_IS_MADE_HEADING = 'How your report is made';
 export const HOW_YOUR_REPORT_IS_MADE_STEPS = [
   'We turn your question into a research plan and show it to you to approve before anything runs—including the detected intent and how the research will be checked.',
   'We find and rank relevant sources, then read them.',
-  'We draft findings with a citation for every claim.',
-  'A challenge step argues against the draft to catch weak or unsupported claims; investigation paths also gather supporting and opposing evidence for comparison.',
+  'We draft findings with a citation for every finding.',
+  'A challenge step argues against the draft to catch weak or unsupported findings; investigation paths also gather supporting and opposing evidence for comparison.',
   'We keep genuine disagreements between sources visible instead of hiding them.',
   'We verify every citation before finalizing, and you can export the report.',
 ] as const;

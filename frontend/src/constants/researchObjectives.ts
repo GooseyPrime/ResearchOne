@@ -36,7 +36,7 @@ export const RESEARCH_OBJECTIVE_OPTIONS: ResearchObjectiveOption[] = [
   {
     value: 'PATENT_GAP_ANALYSIS',
     label: 'Patent Research and Whitespace Mapping',
-    description: 'Prior-art landscape, claim boundaries, and novelty gaps.',
+    description: 'Prior-art landscape, the scope of existing patents, and novelty gaps.',
   },
   {
     value: 'ANOMALY_CORRELATION',

@@ -8,8 +8,8 @@ export default function Hero() {
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-r1-accent">DEEP RESEARCH PLATFORM</p>
         <h1 className="font-serif text-4xl leading-tight text-r1-text sm:text-6xl">Deep research that adapts to the question.</h1>
         <p className="max-w-xl text-base text-r1-text-muted sm:text-lg">
-          Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or claim
-          verification. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited
+          Ask for an explanation, comparison, evidence review, opportunity map, implementation plan, or fact
+          check. ResearchOne builds a plan, gathers sources, selects the right specialists, and produces a cited
           report with uncertainty and contradictions made visible.
         </p>
         <div className="flex flex-wrap gap-3">

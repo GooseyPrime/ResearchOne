@@ -117,7 +117,7 @@ export function MethodologyPipeline() {
         {/* Disclaimer */}
         <div data-ev-id="ev_cd72f40668" className="mt-16 w-full">
           <p data-ev-id="ev_c086f371fd" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '0 auto' }} className="text-sm text-r1-muted border border-r1-border rounded-lg p-4 bg-r1-panel text-center">
-            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not claim to detect absolute truth. It structures data, keeps source disagreements visible, and runs challenge review when needed to strengthen the final report.
+            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not promise absolute truth. It structures data, keeps source disagreements visible, and runs challenge review when needed to strengthen the final report.
           </p>
         </div>
       </div>

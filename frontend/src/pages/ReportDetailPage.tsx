@@ -635,7 +635,7 @@ export default function ReportDetailPage() {
             <MetaStat
               label="Report status"
               value={report.status}
-              narrative="Finalized means this revision passed all gates and has persisted its claims, sources, and citations."
+              narrative="Finalized means this revision passed all gates and has saved its findings, sources, and citations."
             />
             {sourceRun?.run_ref && (
               // The reference support asks for. Shown here as well as on the run
