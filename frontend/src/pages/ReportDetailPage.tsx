@@ -1,6 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReportMarkdown from '../components/reports/ReportMarkdown';
+import ReaderView from '../components/reports/reader/ReaderView';
+import { legacyNumbersFrom, type ReaderEvidence } from '../components/reports/reader/readerModel';
 import api, {
   getReport,
   getReportRevision,
@@ -215,10 +217,19 @@ export default function ReportDetailPage() {
     queryFn: async () => {
       const { default: api } = await import('../utils/api');
       const res = await api.get(`/reports/${id}/citations`);
-      return res.data as Array<{ id: string; citation_text?: string; source_title?: string; source_url?: string; evidence_tier?: string; stance?: string }>;
+      return res.data as Array<{ id: string; citation_text?: string; source_title?: string; source_url?: string; evidence_tier?: string; stance?: string; source_id?: string | null; citation_order?: number | null }>;
     },
     enabled: !!id,
   });
+
+  // Slice 5: the reader view, when the backend says this report is shown in it.
+  const readerView = report?.reader_view === true;
+  const { data: readerEvidence } = useQuery({
+    queryKey: ['report-reader', id],
+    queryFn: async () => (await api.get(`/reports/${id}/reader`)).data as ReaderEvidence,
+    enabled: Boolean(id) && readerView,
+  });
+  const legacyNumbers = useMemo(() => legacyNumbersFrom(citations), [citations]);
 
   const frontMatter = getReaderFrontMatter(report?.metadata as Record<string, unknown> | undefined);
   const metricGlosses = frontMatter.metric_glosses;
@@ -375,6 +386,113 @@ export default function ReportDetailPage() {
     );
   }
 
+  const retentionNotices = (
+    <>
+        {(report.retention_status === 'living_active' || report.has_active_living_report) && (
+          <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2">
+            <AlertTriangle size={14} className="text-accent mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-slate-300">Living Report active — source set and monitoring state retained while active.</p>
+          </div>
+        )}
+        {report.workspace_purged_at && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
+            <AlertTriangle size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-slate-300">
+              The temporary research workspace for this report has been cleared. The final report and citations remain available
+              {report.report_expires_at ? ` until ${format(new Date(report.report_expires_at), 'MMM d, yyyy')}` : ''}.
+            </p>
+          </div>
+        )}
+        {report.report_expires_at && report.status === 'finalized' && !report.has_active_living_report && report.retention_status !== 'living_active' && !report.workspace_purged_at && (
+          <div className="flex items-start gap-2 rounded-lg border border-indigo-900/20 bg-surface-200/50 px-3 py-2">
+            <FileText size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-r1-text-muted">
+              Available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}. Export or convert to a Living Report to keep monitoring active.
+            </p>
+          </div>
+        )}
+    </>
+  );
+
+  const originalRequest = (
+      <div className="print:hidden">
+        <button
+          type="button"
+          className="flex items-center gap-2 text-sm text-accent hover:underline mt-1"
+          onClick={() => setRequestPromptOpen((o) => !o)}
+        >
+          <MessageSquareText size={14} />
+          {requestPromptOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          Original research request
+          {researchRequestSnapshot.attachments.length > 0 && (
+            <span className="text-xs text-slate-500">
+              ({researchRequestSnapshot.attachments.length} supplemental item
+              {researchRequestSnapshot.attachments.length === 1 ? '' : 's'})
+            </span>
+          )}
+        </button>
+        {requestPromptOpen && (
+          <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200 p-4 space-y-3 text-sm">
+            <div>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Prompt</span>
+              <p className="text-slate-200 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.query}</p>
+            </div>
+            {researchRequestSnapshot.supplemental ? (
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Supplemental text</span>
+                <p className="text-slate-300 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.supplemental}</p>
+              </div>
+            ) : null}
+            {researchRequestSnapshot.attachments.length > 0 ? (
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  Supplemental URLs and files (ingested into corpus)
+                </span>
+                <ul className="mt-2 space-y-2">
+                  {researchRequestSnapshot.attachments.map((a, i) => (
+                    <li key={`${a.ingestion_job_id}-${i}`} className="text-slate-300 flex flex-col gap-0.5">
+                      {a.kind === 'url' && a.url ? (
+                        <>
+                          <span className="text-xs text-slate-500">URL</span>
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent break-all hover:underline"
+                          >
+                            {a.url}
+                          </a>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs text-slate-500">File</span>
+                          <span>
+                            {a.filename ?? 'file'}
+                            {a.mimetype ? <span className="text-slate-500 text-xs"> ({a.mimetype})</span> : null}
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+  );
+
+  const generationTrace = sourceRun ? (
+      <div className="print:hidden space-y-2">
+        <RunGenerationTracePanel
+          runSummary={runSummary}
+          run={sourceRun}
+          plan={(runArtifacts?.plan as Record<string, unknown> | null | undefined) ?? (sourceRun.plan ?? null)}
+          traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
+        />
+      </div>
+  ) : null;
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6 print:px-4">
       <button className="btn-ghost text-sm print:hidden" onClick={() => navigate('/app/dossiers')}>
@@ -382,6 +500,37 @@ export default function ReportDetailPage() {
         Back to dossiers
       </button>
 
+      {readerView ? (
+        <>
+          <ReaderView
+            report={report}
+            evidence={readerEvidence}
+            legacyNumbers={legacyNumbers}
+            method={
+              <div className="space-y-4">
+                {originalRequest}
+                {sourceRun?.run_ref && (
+                  <p className="text-sm text-slate-300">
+                    Run reference: <span className="font-mono">{sourceRun.run_ref}</span>. Quote it to support.
+                  </p>
+                )}
+                {generationTrace}
+              </div>
+            }
+          />
+          <div className="space-y-3 print:hidden">
+            <MonitorToggle reportId={report.id} reportStatus={report.status} />
+            {retentionNotices}
+          </div>
+          {currentRevisionEntry && currentRevisionDetail && (
+            <RevisionDiffPanel
+              revisionEntry={currentRevisionEntry as { id: string; revision_number?: number; rationale?: string; created_at?: string }}
+              revisionDetail={currentRevisionDetail as { rationale?: string; sections: Array<{ id: string; section_type?: string; section_title: string; change_type?: string; before_content: string; after_content: string }> }}
+            />
+          )}
+        </>
+      ) : (
+        <>
       <div className="card-glow p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold text-white leading-tight">{report.title}</h1>
@@ -426,95 +575,9 @@ export default function ReportDetailPage() {
 
         <MonitorToggle reportId={report.id} reportStatus={report.status} />
 
-        {(report.retention_status === 'living_active' || report.has_active_living_report) && (
-          <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2">
-            <AlertTriangle size={14} className="text-accent mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-slate-300">Living Report active — source set and monitoring state retained while active.</p>
-          </div>
-        )}
-        {report.workspace_purged_at && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-800/30 bg-amber-900/10 px-3 py-2">
-            <AlertTriangle size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-slate-300">
-              The temporary research workspace for this report has been cleared. The final report and citations remain available
-              {report.report_expires_at ? ` until ${format(new Date(report.report_expires_at), 'MMM d, yyyy')}` : ''}.
-            </p>
-          </div>
-        )}
-        {report.report_expires_at && report.status === 'finalized' && !report.has_active_living_report && report.retention_status !== 'living_active' && !report.workspace_purged_at && (
-          <div className="flex items-start gap-2 rounded-lg border border-indigo-900/20 bg-surface-200/50 px-3 py-2">
-            <FileText size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-r1-text-muted">
-              Available until {format(new Date(report.report_expires_at), 'MMM d, yyyy')}. Export or convert to a Living Report to keep monitoring active.
-            </p>
-          </div>
-        )}
+        {retentionNotices}
 
-        <div className="print:hidden">
-          <button
-            type="button"
-            className="flex items-center gap-2 text-sm text-accent hover:underline mt-1"
-            onClick={() => setRequestPromptOpen((o) => !o)}
-          >
-            <MessageSquareText size={14} />
-            {requestPromptOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            Original research request
-            {researchRequestSnapshot.attachments.length > 0 && (
-              <span className="text-xs text-slate-500">
-                ({researchRequestSnapshot.attachments.length} supplemental item
-                {researchRequestSnapshot.attachments.length === 1 ? '' : 's'})
-              </span>
-            )}
-          </button>
-          {requestPromptOpen && (
-            <div className="mt-3 rounded-lg border border-indigo-900/30 bg-surface-200 p-4 space-y-3 text-sm">
-              <div>
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Prompt</span>
-                <p className="text-slate-200 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.query}</p>
-              </div>
-              {researchRequestSnapshot.supplemental ? (
-                <div>
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Supplemental text</span>
-                  <p className="text-slate-300 whitespace-pre-wrap mt-1 leading-relaxed">{researchRequestSnapshot.supplemental}</p>
-                </div>
-              ) : null}
-              {researchRequestSnapshot.attachments.length > 0 ? (
-                <div>
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Supplemental URLs and files (ingested into corpus)
-                  </span>
-                  <ul className="mt-2 space-y-2">
-                    {researchRequestSnapshot.attachments.map((a, i) => (
-                      <li key={`${a.ingestion_job_id}-${i}`} className="text-slate-300 flex flex-col gap-0.5">
-                        {a.kind === 'url' && a.url ? (
-                          <>
-                            <span className="text-xs text-slate-500">URL</span>
-                            <a
-                              href={a.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-accent break-all hover:underline"
-                            >
-                              {a.url}
-                            </a>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-xs text-slate-500">File</span>
-                            <span>
-                              {a.filename ?? 'file'}
-                              {a.mimetype ? <span className="text-slate-500 text-xs"> ({a.mimetype})</span> : null}
-                            </span>
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
+        {originalRequest}
 
         <div className="pt-2 border-t border-indigo-900/20 space-y-3">
           {(frontMatter.overall_summary || frontMatter.conclusions_nutshell) && (
@@ -648,16 +711,10 @@ export default function ReportDetailPage() {
         </div>
       )}
 
-      {sourceRun && (
-        <div className="print:hidden space-y-2">
-          <RunGenerationTracePanel
-            runSummary={runSummary}
-            run={sourceRun}
-            plan={(runArtifacts?.plan as Record<string, unknown> | null | undefined) ?? (sourceRun.plan ?? null)}
-            traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
-          />
-        </div>
+        </>
       )}
+
+      {!readerView && generationTrace}
 
       <ReportForkActions
         reportId={report.id}
