@@ -27,7 +27,7 @@ const EVIDENCE_CARDS = [
   },
   {
     claimId: 'claim-3',
-    tier: 'Speculation',
+    tier: 'Tentative',
     tierColor: 'bg-tier-speculation',
     sourceType: 'Mechanism',
     sourceClass: 'consensus_collapsed' as const,
@@ -83,7 +83,7 @@ export default function SourceProvenancePanel() {
             {'. '}
             <button
               className="peer/claim3 group/claim3 inline cursor-default rounded bg-tier-speculation/10 px-1 text-r1-text underline decoration-tier-speculation/40 transition hover:bg-tier-speculation/20 focus:bg-tier-speculation/20 focus:outline-none focus:ring-1 focus:ring-tier-speculation"
-              aria-label="Finding 3: mechanism under-characterized — Speculation"
+              aria-label="Finding 3: mechanism under-characterized — Tentative"
               type="button"
             >
               {CLAIMS[2].text}

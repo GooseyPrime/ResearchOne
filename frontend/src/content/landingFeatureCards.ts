@@ -19,8 +19,8 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
   },
   {
     icon: Layers,
-    headline: 'Source-corroboration tiers, surfaced',
-    description: 'Each source carries its tier (1–4). Tier upgrades appear in the version history.',
+    headline: 'Source strength, shown',
+    description: 'Each source is ranked by how strongly it is corroborated. When a ranking changes, the version history shows it.',
     metric: 'Strongest to weakest',
   },
   {

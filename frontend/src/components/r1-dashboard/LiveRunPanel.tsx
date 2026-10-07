@@ -164,6 +164,10 @@ export function LiveRunPanel() {
   const titleIsReference = isReferenceTitle(run);
   const percent = Math.max(0, Math.min(100, Math.round(latest?.percent ?? run.progress_percent ?? 0)));
   const currentStage = mapApiRunStage(latest?.stage ?? run.progress_stage);
+  // The diagram folds stages it has no box for into the nearest one. The words
+  // a person reads come from the stage as the run reported it, so writing and
+  // checking are not both shown as the stage before them.
+  const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : latest?.stage ?? run.progress_stage ?? run.status;
   const currentStageIndex = pipelineStages.findIndex((s) => s.id === currentStage);
   const isTerminal = !isInFlightRunStatus(run.status);
   const startedAt = formatStarted(run);
@@ -276,7 +280,7 @@ export function LiveRunPanel() {
               <span className="r1-mono-label mb-4 block text-[10px]">RUN_STATUS</span>
               <dl className="space-y-3 text-sm">
                 <Fact label="Status" value={<span className={tone.text}>{display.label}</span>} />
-                <Fact label="Stage" value={readerStageLabel(currentStage)} />
+                <Fact label="Stage" value={readerStageLabel(stageAsReported)} />
                 {!isTerminal && <Fact label="Progress" value={`${percent}%`} />}
                 {startedAt && <Fact label="Started" value={startedAt} />}
                 {run.run_ref && (

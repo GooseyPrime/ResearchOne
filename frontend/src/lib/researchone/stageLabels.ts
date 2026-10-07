@@ -28,6 +28,8 @@ const STAGE_WORDS: Record<string, string> = {
   epistemic_persistence: 'Saving the findings',
   running: 'Working',
   completed: 'Done',
+  // The stage the pipeline emits with its last, 100% event.
+  done: 'Done',
   failed: 'Stopped',
   aborted: 'Stopped',
   cancelled: 'Cancelled',

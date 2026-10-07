@@ -26,14 +26,27 @@ const SRC = join(__dirname, '../..');
  * file is still checked.
  */
 const ALLOWED: Array<{ file: string; phrase: RegExp; why: string }> = [
-  { file: 'pages/TermsPage.tsx', phrase: /We do not claim|ALL CLAIMS ARISING|against any claims/, why: 'legal wording: a claim in law, not a finding of a report' },
+  { file: 'pages/TermsPage.tsx', phrase: /We do not claim|ALL CLAIMS ARISING|PRECEDING THE CLAIM|against any claims/, why: 'legal wording: a claim in law, not a finding of a report' },
   { file: 'pages/ResearchV2GuidePage.tsx', phrase: /patent claims/, why: 'a patent claim is the legal term for what a patent protects' },
 ];
 
+const allowedFor = (file: string): RegExp[] => ALLOWED.filter((entry) => entry.file === file).map((entry) => entry.phrase);
+
+/** A throwaway source tree, for showing what the gate does and does not flag. */
+function tree(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'wording-'));
+  for (const [name, text] of Object.entries(files)) {
+    mkdirSync(join(dir, name, '..'), { recursive: true });
+    writeFileSync(join(dir, name), text);
+  }
+  return dir;
+}
+const lines = (...text: string[]): string => text.join('\n');
+const found = (dir: string, allowed?: (file: string) => readonly RegExp[]): string[] => scanReaderWording(dir, allowed).map((hit) => `${hit.line} ${hit.word}`);
+
 describe('the reader-wording gate', () => {
   it('finds no reader-facing string in the app that says claim, a tier number, a grade label or a raw status', () => {
-    const hits = scanReaderWording(SRC).filter((hit) => !ALLOWED.some((allowed) => allowed.file === hit.file && allowed.phrase.test(hit.text)));
-    expect(hits.map((hit) => `${hit.file}:${hit.line} [${hit.word}] ${hit.text}`)).toEqual([]);
+    expect(scanReaderWording(SRC, allowedFor).map((hit) => `${hit.file}:${hit.line} [${hit.word}] ${hit.text}`)).toEqual([]);
   });
 
   it('every allowed exception is still there, so the list cannot hide a deleted file or a fixed line', () => {
@@ -44,11 +57,8 @@ describe('the reader-wording gate', () => {
   });
 
   it('fails on a reader-facing string containing "claims", and passes over identifiers and keys', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'wording-'));
-    mkdirSync(join(dir, 'components'));
-    writeFileSync(
-      join(dir, 'components/Bad.tsx'),
-      [
+    const dir = tree({
+      'components/Bad.tsx': lines(
         'export function Bad({ stats }: { stats: { claim_count: number } }) {',
         '  const key = "claims";',
         '  const label = "Claims";',
@@ -56,21 +66,59 @@ describe('the reader-wording gate', () => {
         '    <div className="claims-table flex gap-2" data-testid="claims" title="Every claim has a source">',
         '      <p>Unsupported claims are flagged. {stats.claim_count}</p>',
         '      <span>{key === "claims" ? label : "Tier 2 lead"}</span>',
-        '      <b>{`Status: ${"under_review"} for this report`}</b>',
         '    </div>',
         '  );',
-        '}',
-      ].join('\n')
-    );
-    const hits = scanReaderWording(dir);
-    expect(hits.map((hit) => `${hit.line} ${hit.word} ${hit.text}`)).toEqual([
-      '3 claim Claims',
-      '5 claim Every claim has a source',
-      '6 claim Unsupported claims are flagged.',
-      '7 tier number Tier 2 lead',
-    ]);
-    // Not flagged: the lowercase key "claims", `claim_count`, the class name, the test id.
-    expect(hits.some((hit) => hit.line === 2)).toBe(false);
+        '}'
+      ),
+    });
+    expect(found(dir)).toEqual(['3 claim', '5 claim', '6 claim', '7 tier number']);
+  });
+
+  it('flags a value rendered between tags exactly as written, and a custom prop that is shown', () => {
+    const dir = tree({
+      'components/Rendered.tsx': lines(
+        'export function Rendered() {',
+        '  return (',
+        '    <dl>',
+        "      <dd>{'claims'}</dd>",
+        "      <dd>{'under_review'}</dd>",
+        '      <b>{`Status: ${"under_review"} for this report`}</b>',
+        '      <Fact label="Stage" value="Claims" />',
+        '      <option value="claims">Findings</option>',
+        '    </dl>',
+        '  );',
+        '}'
+      ),
+    });
+    // Line 8: a lowercase attribute value on its own is a form value, not text.
+    expect(found(dir)).toEqual(['4 claim', '5 raw status', '6 raw status', '7 claim']);
+  });
+
+  it('flags every tier form and a grade word used as a label, and leaves the same word alone in a sentence', () => {
+    const dir = tree({
+      'content/copy.ts': lines(
+        "export const a = 'Each source carries its tier (1–4).';",
+        "export const b = 'Tier 1–4 sources';",
+        "export const c = { tier: 'Speculation' };",
+        "export const d = 'Finding 3: mechanism unclear — Speculation';",
+        "export const e = 'Testimony';",
+        "export const f = 'This is an inference from the data, not speculation.';",
+        "export const g = 'The Sovereign tier keeps every byte in your tenancy.';"
+      ),
+    });
+    expect(found(dir)).toEqual(['1 tier number', '2 tier number', '3 grade label', '4 grade label', '5 grade label']);
+  });
+
+  it('excuses only the allowed phrase: a banned word beside it is still found, and so is a second use of the same word', () => {
+    const dir = tree({
+      'pages/Guide.tsx': lines(
+        'export function Guide() {',
+        '  return <p>Boundaries for new patent claims with Tier 2 support, and other claims too.</p>;',
+        '}'
+      ),
+    });
+    expect(found(dir, () => [/patent claims/])).toEqual(['2 tier number', '2 claim']);
+    expect(found(dir)).toEqual(['2 claim', '2 tier number', '2 claim']);
   });
 });
 
@@ -121,7 +169,21 @@ describe('the live progress view', () => {
     expect(readerStageLabel('retriever_analysis')).toBe('Reading the passages');
     expect(readerStageLabel('synthesis')).toBe('Writing the report');
     expect(readerStageLabel('discovery')).toBe('Searching sources');
+    // The stage the pipeline emits with its final event.
+    expect(readerStageLabel('done')).toBe('Done');
     expect(readerStageLabel('some_new_stage')).toBe('Working');
     expect(readerStageLabel(null)).toBe('Working');
+  });
+});
+
+describe('the live run panel', () => {
+  it("words the stage from what the run reported, not from the diagram's nearest box", async () => {
+    const { readFileSync } = await import('node:fs');
+    const panel = readFileSync(join(SRC, 'components/r1-dashboard/LiveRunPanel.tsx'), 'utf8');
+    expect(panel).toContain("const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : latest?.stage ?? run.progress_stage ?? run.status;");
+    expect(panel).toContain('<Fact label="Stage" value={readerStageLabel(stageAsReported)} />');
+    // Stages the diagram folds together read differently to a person.
+    expect(readerStageLabel('synthesis')).not.toBe(readerStageLabel('reasoner'));
+    expect(readerStageLabel('verification')).not.toBe(readerStageLabel('reasoner'));
   });
 });

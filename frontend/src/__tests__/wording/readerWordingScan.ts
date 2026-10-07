@@ -19,12 +19,20 @@ export interface WordingHit {
 
 /** Words a reader never sees, with the reason in the name. */
 export const BANNED: Array<{ name: string; pattern: RegExp }> = [
-  { name: 'claim', pattern: /\bclaims?\b/i },
-  { name: 'counter-claim', pattern: /\bcounter-?claims?\b/i },
-  { name: 'tier number', pattern: /\btier[ -]?[1-4]\b/i },
-  { name: 'grade label', pattern: /\b(established[_ ]fact|strong[_ ]evidence|testimony[- ]tier)\b/i },
-  { name: 'raw status', pattern: /\b(under_review|plan_pending_confirmation|contract_failed|verification_failed|completed_degraded)\b/ },
+  { name: 'counter-claim', pattern: /\bcounter-?claims?\b/gi },
+  { name: 'claim', pattern: /\bclaims?\b/gi },
+  // "Tier 2", "Tier-1", "Tier 1–4", "tier (1–4)".
+  { name: 'tier number', pattern: /\btiers?[ -]?\(?[1-4]\b/gi },
+  { name: 'grade label', pattern: /\b(established[_ ]fact|strong[_ ]evidence|testimony[- ]tier)\b/gi },
+  { name: 'raw status', pattern: /\b(under_review|plan_pending_confirmation|contract_failed|verification_failed|completed_degraded)\b/g },
 ];
+
+/**
+ * A grade word used as a label: the whole text, or the tag after a dash or a
+ * dot ("Finding 3: … — Speculation"). In a sentence these are ordinary words
+ * ("an inference from the data") and are not read as labels.
+ */
+const GRADE_LABEL = /^(?:.*[—–·:|-]\s*)?(Testimony|Inference|Speculation)$/;
 
 /** A string literal a person reads: it has a space in it, or it is a capitalised word on its own (a label). */
 function isProse(text: string): boolean {
@@ -34,22 +42,65 @@ function isProse(text: string): boolean {
   return /^[A-Z][a-z]+s?$/.test(trimmed);
 }
 
-/** Tailwind class lists, selectors and the like: spaces, but nobody reads them. */
-function isMarkup(node: ts.Node, text: string): boolean {
+/** Attributes that are never shown: structure, styling and wiring. */
+const MARKUP_ATTRIBUTE = /^(className|class|style|id|key|href|to|src|srcSet|d|viewBox|fill|stroke|role|type|name|htmlFor|rel|target|method|action|variant|size|color|tone|mode|kind|as|lang|dir|autoComplete|inputMode|pattern|accept|data-.+|on[A-Z].*)$/;
+/** Attributes that are always shown, whatever their value looks like. */
+const DISPLAY_ATTRIBUTE = /^(aria-label|aria-description|title|alt|placeholder|label|description|narrative|caption|heading|subheading|tooltip|helperText|emptyText|text)$/;
+
+type Context = 'rendered' | 'display' | 'maybe' | 'markup';
+
+/**
+ * Where a string literal sits.
+ *  - rendered: a child of an element (`{'claims'}`), shown exactly as written.
+ *  - display: an attribute that is always shown (`aria-label`, `label`).
+ *  - maybe: another attribute or an ordinary value; shown only if it reads as prose (`value="Claims"`).
+ *  - markup: a class list, a key, a comparison, a route: never shown.
+ */
+function contextOf(node: ts.Node, text: string): Context {
   let parent: ts.Node | undefined = node.parent;
   if (parent && ts.isJsxAttribute(parent)) {
     const name = parent.name.getText();
-    return !/^(aria-label|aria-description|title|alt|placeholder|label|description|narrative|caption|heading|subheading|tooltip|helperText|emptyText|text)$/.test(name);
+    if (DISPLAY_ATTRIBUTE.test(name)) return 'display';
+    return MARKUP_ATTRIBUTE.test(name) ? 'markup' : 'maybe';
   }
-  // clsx('…'), cn('…'), className template pieces, querySelector('…'), test ids.
-  while (parent && (ts.isConditionalExpression(parent) || ts.isBinaryExpression(parent) || ts.isParenthesizedExpression(parent) || ts.isTemplateSpan(parent) || ts.isTemplateExpression(parent))) parent = parent.parent;
-  if (parent && ts.isCallExpression(parent) && /^(clsx|cn|classNames|twMerge|querySelector|querySelectorAll|getElementById|invalidateQueries|setQueryData|getQueryData|navigate|subscribeToJob|emit|on|off|startsWith|endsWith|includes|test|match|replace|split|indexOf)$/.test(parent.expression.getText().split('.').pop() ?? '')) return true;
-  if (parent && ts.isJsxExpression(parent) && parent.parent && ts.isJsxAttribute(parent.parent)) return isMarkup(parent, text);
-  // An object key, a comparison value, a type, an import path.
-  if (parent && (ts.isImportDeclaration(parent) || ts.isLiteralTypeNode(parent) || ts.isCaseClause(parent))) return true;
-  if (parent && ts.isPropertyAssignment(parent) && parent.name === node) return true;
-  if (parent && ts.isBinaryExpression(parent) && /^(===|!==|==|!=)$/.test(parent.operatorToken.getText())) return true;
-  return /^[a-z0-9:/[\]_.%-]+( [a-z0-9:/[\]_.%!-]+)+$/.test(text.trim()) && /(^| )(flex|grid|text-|bg-|border|px-|py-|mt-|mb-|rounded|hover:|w-|h-|gap-|items-|font-)/.test(text);
+  // A comparison value, a type, an import path, an object key: read by code, not by people.
+  if (parent && ts.isBinaryExpression(parent) && /^(===|!==|==|!=)$/.test(parent.operatorToken.getText())) return 'markup';
+  if (parent && (ts.isImportDeclaration(parent) || ts.isLiteralTypeNode(parent) || ts.isCaseClause(parent))) return 'markup';
+  if (parent && ts.isPropertyAssignment(parent) && parent.name === node) return 'markup';
+  if (parent && ts.isElementAccessExpression(parent)) return 'markup';
+  // Through the expressions a value passes on its way to the page.
+  while (parent && (ts.isConditionalExpression(parent) || ts.isBinaryExpression(parent) || ts.isParenthesizedExpression(parent) || ts.isTemplateSpan(parent) || ts.isTemplateExpression(parent))) {
+    if (ts.isBinaryExpression(parent) && /^(===|!==|==|!=)$/.test(parent.operatorToken.getText())) return 'markup';
+    parent = parent.parent;
+  }
+  // clsx('…'), querySelector('…'), string tests: arguments nobody reads.
+  if (parent && ts.isCallExpression(parent) && /^(clsx|cn|classNames|twMerge|querySelector|querySelectorAll|getElementById|invalidateQueries|setQueryData|getQueryData|navigate|subscribeToJob|emit|on|off|startsWith|endsWith|includes|test|match|replace|split|indexOf|get|has|set|append|setAttribute|getAttribute)$/.test(parent.expression.getText().split('.').pop() ?? '')) return 'markup';
+  if (parent && ts.isJsxExpression(parent)) {
+    const holder = parent.parent;
+    if (holder && ts.isJsxAttribute(holder)) return contextOf(parent, text);
+    // `{'claims'}` between tags.
+    if (holder && (ts.isJsxElement(holder) || ts.isJsxFragment(holder))) return 'rendered';
+  }
+  if (/^[a-z0-9:/[\]_.%-]+( [a-z0-9:/[\]_.%!-]+)+$/.test(text.trim()) && /(^| )(flex|grid|text-|bg-|border|px-|py-|mt-|mb-|rounded|hover:|w-|h-|gap-|items-|font-)/.test(text)) return 'markup';
+  return 'maybe';
+}
+
+/** Every banned use in a text, after the allowed phrases are set aside. */
+function bannedIn(text: string, allowed: readonly RegExp[]): Array<{ word: string; index: number; length: number }> {
+  let rest = text;
+  // An allowed phrase is blanked in place, so what stands beside it is still read.
+  for (const phrase of allowed) rest = rest.replace(new RegExp(phrase.source, phrase.flags.includes('g') ? phrase.flags : `${phrase.flags}g`), (found) => ' '.repeat(found.length));
+  const found: Array<{ word: string; index: number; length: number }> = [];
+  for (const banned of BANNED) {
+    for (const match of rest.matchAll(new RegExp(banned.pattern.source, banned.pattern.flags))) {
+      const at = match.index ?? 0;
+      // "counter-claims" is one use, not a counter-claim and a claim.
+      if (!found.some((earlier) => at >= earlier.index && at < earlier.index + earlier.length)) found.push({ word: banned.name, index: at, length: match[0].length });
+    }
+  }
+  const label = GRADE_LABEL.exec(rest.trim());
+  if (label) found.push({ word: 'grade label', index: rest.lastIndexOf(label[1]), length: label[1].length });
+  return found.sort((a, b) => a.index - b.index);
 }
 
 function filesUnder(dir: string): string[] {
@@ -66,26 +117,30 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
-export function scanReaderWording(srcDir: string, skip: (file: string) => boolean = () => false): WordingHit[] {
+/**
+ * Scan the source tree. `allowed` names, per file, phrases that use a banned
+ * word in a sense the rule is not about; only that phrase is excused, and the
+ * rest of the text it sits in is still read.
+ */
+export function scanReaderWording(srcDir: string, allowed: (file: string) => readonly RegExp[] = () => []): WordingHit[] {
   const hits: WordingHit[] = [];
   for (const path of filesUnder(srcDir)) {
     const file = relative(srcDir, path).replace(/\\/g, '/');
-    if (skip(file)) continue;
+    const excused = allowed(file);
     const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, path.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     const visit = (node: ts.Node): void => {
       let text: string | null = null;
       if (ts.isJsxText(node)) text = node.text;
-      else if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) && !isMarkup(node, node.text) && isProse(node.text)) text = node.text;
+      else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+        const context = contextOf(node, node.text);
+        if (context === 'rendered' || context === 'display' || (context === 'maybe' && isProse(node.text))) text = node.text;
+      }
       if (text) {
-        for (const banned of BANNED) {
-          const flat = text.replace(/\s+/g, ' ').trim();
-          const found = banned.pattern.exec(flat);
-          if (found) {
-            // The words around the match, so a long paragraph is reported by the part that matters.
-            const from = Math.max(0, found.index - 60);
-            hits.push({ file, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1, text: flat.slice(from, found.index + found[0].length + 60), word: banned.name });
-            break;
-          }
+        const flat = text.replace(/\s+/g, ' ').trim();
+        for (const found of bannedIn(flat, excused)) {
+          // The words around the match, so a long paragraph is reported by the part that matters.
+          const from = Math.max(0, found.index - 60);
+          hits.push({ file, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1, text: flat.slice(from, found.index + found.length + 60), word: found.word });
         }
       }
       ts.forEachChild(node, visit);

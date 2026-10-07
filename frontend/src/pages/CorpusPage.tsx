@@ -22,9 +22,9 @@ const TIER_COLORS: Record<string, string> = {
 const TIER_LABELS: Record<string, string> = {
   established_fact: 'Well established',
   strong_evidence: 'Strong corroboration',
-  testimony: 'Testimony',
-  inference: 'Inference',
-  speculation: 'Speculation',
+  testimony: 'First-hand account',
+  inference: 'Reasoned from sources',
+  speculation: 'Tentative',
 };
 
 export default function CorpusPage() {
