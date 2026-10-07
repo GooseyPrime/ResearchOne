@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReportMarkdown from '../components/reports/ReportMarkdown';
 import ReaderView from '../components/reports/reader/ReaderView';
-import { legacyNumbersFrom, type ReaderEvidence } from '../components/reports/reader/readerModel';
+import { buildReaderMarkdown, legacyNumbersFrom, legacyNumbersOf, type ReaderEvidence } from '../components/reports/reader/readerModel';
 import api, {
   getReport,
   getReportRevision,
@@ -358,7 +358,8 @@ export default function ReportDetailPage() {
 
   const handleDownload = () => {
     if (!report) return;
-    const md = buildReportMarkdown(report);
+    // The download is the view the reader is in.
+    const md = readerView ? buildReaderMarkdown(report, new Map([...legacyNumbersOf(readerEvidence), ...legacyNumbers])) : buildReportMarkdown(report);
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

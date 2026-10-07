@@ -24,6 +24,8 @@ import { runPandoc, PandocError, type ExportFormat, type ExportStyle } from './p
 import { runScope } from '../telemetry';
 import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
+import { readerExportBody } from './readerExport';
+import { readerViewForRun } from '../eval/readerView';
 import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
 import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
 
@@ -84,8 +86,10 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
 
   // A report written with the citation lock is exported as it was saved:
   // its numbers and its reference list are already in the text.
-  const locked = await loadLockedReportState(reportId);
-  if (locked) return exportLockedReport(input, locked.savedStyle);
+  const state = await loadLockedReportState(reportId);
+  // Slice 5: a report in the reader view is exported as the reader view shows it.
+  const readerView = await readerViewForRun(state?.runId);
+  if (state?.savedStyle) return exportLockedReport(input, state.savedStyle, readerView);
 
   // 2. Assign / load evidence aliases for this report.
   const aliases = await assignEvidenceAliases(reportId);
@@ -96,7 +100,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   // 3. Rewrite the report body to use pandoc citation syntax.
   //    Input:  "... as shown in [E1] ..."
   //    Output: "... as shown in [@E1] ..."
-  const rewrittenBody = rewriteAliasesForPandoc(bodyMarkdown);
+  const rewrittenBody = rewriteAliasesForPandoc(readerView ? readerExportBody(title, bodyMarkdown) : bodyMarkdown);
 
   // 4. Wrap the body in a minimal title-block so pandoc can produce
   //    a proper document.
@@ -128,15 +132,17 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
 
 /**
  * Whether the report's run wrote it with the citation lock, and the reference
- * style it was saved in. Null for every other report, and for a database that
- * does not have the columns this reads: those reports export as they always did.
+ * style it was saved in, with the run that wrote it. `savedStyle` is null for
+ * every other report. Null altogether for a database that does not have the
+ * columns this reads: those reports export as they always did.
  */
-async function loadLockedReportState(reportId: string): Promise<{ savedStyle: ReferenceStyle } | null> {
+async function loadLockedReportState(reportId: string): Promise<{ savedStyle: ReferenceStyle | null; runId: string | null } | null> {
   try {
-    const rows = await adminQuery<{ locked: string | null; reference_style: string | null; citation_style: string | null }>(
+    const rows = await adminQuery<{ locked: string | null; reference_style: string | null; citation_style: string | null; run_id?: string | null }>(
       `SELECT rr.corpus_after->>'citationLock' AS locked,
               r.metadata->>'reference_style' AS reference_style,
-              rr.citation_style
+              rr.citation_style,
+              r.run_id
          FROM reports r
          LEFT JOIN research_runs rr ON rr.id = r.run_id
         WHERE r.id = $1
@@ -144,8 +150,11 @@ async function loadLockedReportState(reportId: string): Promise<{ savedStyle: Re
       [reportId]
     );
     const row = Array.isArray(rows) ? rows[0] : undefined;
-    if (!row || row.locked !== 'true') return null;
-    return { savedStyle: resolveReferenceStyle(row.reference_style ?? row.citation_style) };
+    if (!row) return null;
+    const runId = typeof row.run_id === 'string' ? row.run_id : null;
+    // `savedStyle` is set only for a report written with the citation lock.
+    if (row.locked !== 'true') return { savedStyle: null, runId };
+    return { savedStyle: resolveReferenceStyle(row.reference_style ?? row.citation_style), runId };
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code === '42703' || code === '42P01') {
@@ -156,7 +165,7 @@ async function loadLockedReportState(reportId: string): Promise<{ savedStyle: Re
   }
 }
 
-async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceStyle): Promise<ExportJobOutput> {
+async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceStyle, readerView: boolean): Promise<ExportJobOutput> {
   const { reportId, format, style } = input;
   const metaRows = await adminQuery<ReportMetaRow>(`SELECT title, executive_summary, conclusion FROM reports WHERE id = $1 LIMIT 1`, [reportId]);
   if (metaRows.length === 0) throw new PandocError(`report not found: ${reportId}`, 'validation_error');
@@ -195,9 +204,10 @@ async function exportLockedReport(input: ExportJobInput, savedStyle: ReferenceSt
   }
 
   const title = metaRows[0].title ?? null;
-  const body = sections
+  const assembled = sections
     .map((section) => `## ${stripInternalLabelsFromReport(section.title)}\n\n${stripInternalLabelsFromReport(section.content)}`)
     .join('\n\n');
+  const body = readerView ? readerExportBody(title, assembled) : assembled;
   const titleBlock = title ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n` : '';
   const pandocResult = await runPandoc({
     markdown: `${titleBlock}${body}\n`,
