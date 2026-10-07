@@ -539,3 +539,78 @@ export function cleanRevisionForReader<T>(revision: T): T {
     ...(Array.isArray(source.diffs) ? { diffs: source.diffs.map(cleanContentFields) } : {}),
   } as T;
 }
+
+/**
+ * One mapper for every reader-facing projection of a report (slice 5, item 11).
+ *
+ * Any response that carries report text to a reader goes through this: the
+ * report, its list row, a dossier card, a revision, a spinoff prefill. It walks
+ * the response and cleans the fields a reader is shown, by name, wherever they
+ * sit. What a person typed (the question, their notes) is never touched.
+ * Returns a copy; the stored rows are not rewritten.
+ */
+const READER_TEXT_FIELDS: ReadonlySet<string> = new Set([
+  'report_title',
+  'reportTitle',
+  'display_title',
+  'displayTitle',
+  'run_display_title',
+  'runDisplayTitle',
+  'executive_summary',
+  'conclusion',
+  'falsification_criteria',
+  'content',
+  'section_title',
+  'before_content',
+  'after_content',
+  'plain_language_markdown',
+  'overall_summary',
+  'conclusions_nutshell',
+]);
+/** Fields whose every text value is reader text, whatever its key: lists a report shows as written. */
+const READER_TEXT_GROUPS: ReadonlySet<string> = new Set(['metric_glosses', 'unresolved_questions', 'recommended_queries']);
+const PRESENT_DEPTH = 8;
+
+export interface PresentOptions {
+  /**
+   * What `title` holds in this response. A report's and a section's title is
+   * report text. A run's title is the question as the person typed it, and a
+   * source's title is the publisher's: neither is ours to rewrite.
+   */
+  title: 'report' | 'not-report';
+  /**
+   * Where a response mixes the two: keys that hold a report (or a list of
+   * them), under which a `title` is the report's even though elsewhere in the
+   * response it is not.
+   */
+  reportTitleUnder?: readonly string[];
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value) as unknown;
+  return proto === Object.prototype || proto === null;
+}
+
+function presentValue(value: unknown, depth: number, everyString: boolean, options: PresentOptions, titleIsReports: boolean): unknown {
+  if (typeof value === 'string') return everyString ? stripInternalLabelsFromReport(value) : value;
+  if (depth >= PRESENT_DEPTH) return value;
+  if (Array.isArray(value)) return value.map((item) => presentValue(item, depth + 1, everyString, options, titleIsReports));
+  if (!isPlainRecord(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, held] of Object.entries(value)) {
+    const readerText = READER_TEXT_FIELDS.has(key) || (key === 'title' && titleIsReports);
+    if (typeof held === 'string') out[key] = everyString || readerText ? stripInternalLabelsFromReport(held) : held;
+    else out[key] = presentValue(held, depth + 1, everyString || READER_TEXT_GROUPS.has(key), options, titleIsReports || (options.reportTitleUnder?.includes(key) ?? false));
+  }
+  return out;
+}
+
+export function presentForReader<T>(response: T, options: PresentOptions = { title: 'report' }): T {
+  return presentValue(response, 0, false, options, options.title === 'report') as T;
+}
+
+/** A revised section as it is stored: the same clean-up, applied on write. */
+export function cleanSectionForStorage<S extends { title: string; content: string }>(section: S): S {
+  return { ...section, title: stripInternalLabelsFromReport(section.title), content: stripInternalLabelsFromReport(section.content) };
+}

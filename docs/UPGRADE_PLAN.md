@@ -29,12 +29,14 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 4, part 2. Second live samples | Done | Produced 5 Oct 2026. The broad report met the length, shape, numbering and wording points. The single-fact report lost its citations in a repair pass; fixed in the pull request that adds this row. See "What the second samples showed" under slice 4. |
 | Slice 4, part 3. DOI and retraction | Merged | Link check and retraction rule behind `DOI_RESOLVE_ENABLED`. See "Built in part 3" under slice 4. |
 | Slice 4, part 4. Quality judge | Merged | PR #254. The judge now scores a clean report above each of the four spoiled copies. |
-| Slice 4. Third live samples and their two fixes | Built, in review | Produced 6 Oct 2026. See "What the third samples showed" under slice 4. |
-| Slices 5 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
+| Slice 4. Third live samples and their two fixes | Done | PR #255. Confirmed on production 7 Oct 2026: a single-fact question was answered in about 140 words, and both confirmation runs recorded link-check counts. See "What the third samples showed" under slice 4. |
+| Slice 5, part 1. One presentation mapper | Built, in review | Item 11, and the `READER_VIEW_ENABLED` switch sent with the report. See "Delivered in parts" under slice 5. |
+| Slice 5, parts 2 to 4 | Not started | Reading page; exports; app wording and the jargon gate. |
+| Slices 6 to 10 | Not started | Do not begin any of them until the slice before it is merged and Brandon confirms production healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; sections 0 and slice 4 changed. Slice 4 is merged in four parts. The pull request that adds "What the third samples showed" is in review. Once it is merged and its deploy is confirmed healthy, produce one sample on a question answered by journal literature, with the per-run admin overrides and all three switches on, and confirm the run record shows link-check counts and a single-fact question gets a short answer. Name the report type in the extra-context field, or a plain single-fact question is planned as a reference lookup. Then slice 5. S6 governs the move.
+**Your task now:** read this whole document again; sections 0, 3 and slice 5 changed. Slice 4 is done. Slice 5 is delivered in four parts, one pull request each; part 1 is in review. S6 governs each move.
 
 ---
 
@@ -149,9 +151,9 @@ The upgrade is built so that nothing changes for any user until Brandon turns a 
 - **S1. Flag off means identical.** Every slice from 3 onward ships a parity test: with that slice's flag off, a fixture run sends the same model messages, calls the same providers and writes the same rows as before the slice. New code is unreachable with the flag off.
 - **S2. Flags default off.** Read them through `config/index.ts`. Unset is off. An unrecognized value is off.
 - **S3. Migrations cannot hurt a running system.** Additive only. Nullable columns, no defaults that rewrite a table, `IF NOT EXISTS` everywhere, no renames, no drops, no backfills, no recreating a view. The code on `main` before your PR must run correctly against the schema after your migration. The whole migration chain must be applied to a clean Postgres 16 with pgvector, then the migrator run a second time doing nothing. CI does not do this today and the agent sandbox has no Docker, so slice 2 adds a CI job that does exactly this on every PR (see slice 2). From slice 2 on, that job being green is the proof. If you can also install Postgres 16 and pgvector natively in your sandbox, do it and paste the output; if not, say so.
-- **S4. You never touch production.** You do not change production environment variables, turn on a flag in production, run anything against the production database, trigger the deploy workflow, or merge. Brandon does all of those.
+- **S4. You never touch production directly.** You do not change production environment variables, turn on a flag in production, run anything against the production database, or trigger the deploy workflow by hand. Brandon does those. Merging is the one exception, from 7 Oct 2026: Brandon has delegated the merge of a rebuild pull request, and the health check after it, to the agent driving the rebuild, on the terms in S6. A merge deploys; nothing else the agent does may.
 - **S5. A failure in new code stays contained.** Enrichment code (authority tiers, DOI lookups, provider routing, the tree) catches its own failure, logs it with the run id, and falls back to the pre-slice path. Enforcement code (citation lock, verifier checks) fails the section or run through the existing gate statuses with a plain reason. Nothing new may crash a worker, hang a queue, or affect another run. No silent failures: every fallback is logged.
-- **S6. One slice in flight.** Do not start slice N+1 until Brandon has merged slice N and told you production is healthy.
+- **S6. One slice in flight.** Do not start slice N+1, or the next part of a slice, until the one before is merged and production is confirmed healthy. From 7 Oct 2026 Brandon has delegated the merge and the health check to the agent driving the rebuild: merge only with every check green and every review comment answered, then confirm the deployed backend reports ready before starting the next part.
 - **S7. Existing tests are a tripwire.** You may change only the existing tests this document names (`challengePassUniform.test.ts`, the routing-gap assertion in `intentFidelityMatrix.test.ts`, the golden suite's variant dimension, the two label cases in `supabaseOpsJobs.test.ts` in slice 2, `researchEnsemblePresets.test.ts` only in a grant B model change, the tests grant G names, and the tests grant K names). If any other existing test fails, your change is wrong. Stop and report. Do not edit the test.
 - **S8. Stay inside the slice.** No refactors, renames, dependency upgrades or formatting sweeps outside what the slice needs.
 - **S9. Every PR description carries three things:** what a user will notice with the flag on, how to turn it off, and what you could not test.
@@ -539,7 +541,11 @@ Acceptance:
 - A fixture retracted source cannot be cited without the retraction in the sentence.
 - Harness: `citation_bound` and `quote_verbatim` 1.0, `quote_supports` at least 0.90, `doi_resolution` 1.0, `structure_complete` 1.0.
 
-### Slice 5. Reading page and exports (not started)
+### Slice 5. Reading page and exports (part 1 in review)
+
+**Delivered in parts (7 Oct 2026).** Part 1: the presentation mapper (item 11) and the switch. Part 2: the reading page (items 1 to 6, 9, 10). Part 3: exports (item 7). Part 4: app wording and the jargon gate (item 8). The acceptance lines belong to the part that builds what they test.
+
+**Built in part 1.** `presentForReader` in `formatting/reportPresentation.ts` walks a response and cleans the fields a reader is shown, by name, wherever they sit, including the open-questions and suggested-searches lists. What a person typed is never touched, and a `title` is cleaned only where it is the report's own: a run's title is the question and a source's title is the publisher's. Routes send report text through `forReader` (`api/readerResponse.ts`), which is that mapper with `READER_VIEW_ENABLED` on and nothing with it off, so with the switch off every response and every stored row is what it was before the slice (S1). The report and revision detail routes keep the clean-up PR #242 gave them. A response with no report text is marked `notReportText`, and a test reads the report and dossier route files and fails on any successful response that is neither. With the switch on, a revision's report row, its sections and both sides of its kept history are cleaned before they are stored, and a spinoff is given the earlier report clean. The switch is sent with a report as `reader_view`, read as the report's own run recorded it, so it can be turned on for one run like the others; nothing reads `reader_view` yet.
 
 Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with the report payload. New slice. Today's reading page (`frontend/src/pages/ReportDetailPage.tsx`) shows the machine's view of a run. This slice makes it show the section 2a report.
 

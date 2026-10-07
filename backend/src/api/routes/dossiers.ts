@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
+import { forReader } from '../readerResponse';
 import {
   getDossierById,
   getDossierPlan,
@@ -53,7 +54,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       { page, pageSize, intent, status, search, dateFrom, dateTo, sortBy },
       ctx,
     );
-    res.json(result);
+    res.json(forReader(result, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -73,7 +74,7 @@ router.get('/timeline', async (req: Request, res: Response, next: NextFunction) 
     }
     const { page, pageSize, search, status, dateFrom, dateTo } = q.data;
     const result = await listTimelineEvents({ page, pageSize, search, status, dateFrom, dateTo }, ctx);
-    res.json(result);
+    res.json(forReader(result, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -97,7 +98,7 @@ router.get('/:id/request', async (req: Request, res: Response, next: NextFunctio
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(section);
+    res.json(forReader(section, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -121,7 +122,7 @@ router.get('/:id/plan', async (req: Request, res: Response, next: NextFunction) 
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(section);
+    res.json(forReader(section, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -145,7 +146,7 @@ router.get('/:id/report', async (req: Request, res: Response, next: NextFunction
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(link);
+    res.json(forReader(link));
   } catch (e) {
     next(e);
   }
@@ -169,7 +170,7 @@ router.get('/:id/stats', async (req: Request, res: Response, next: NextFunction)
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(stats);
+    res.json(forReader(stats, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -193,7 +194,7 @@ router.get('/:id/report-history', async (req: Request, res: Response, next: Next
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(history);
+    res.json(forReader(history));
   } catch (e) {
     next(e);
   }
@@ -217,7 +218,7 @@ router.get('/:id/spinoffs', async (req: Request, res: Response, next: NextFuncti
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(spinoffs);
+    res.json(forReader(spinoffs, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -241,7 +242,7 @@ router.get('/:id/sources', async (req: Request, res: Response, next: NextFunctio
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(sources);
+    res.json(forReader(sources, { title: 'not-report' }));
   } catch (e) {
     next(e);
   }
@@ -265,7 +266,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       res.status(404).json({ error: 'Dossier not found' });
       return;
     }
-    res.json(dossier);
+    res.json(forReader(dossier, { title: 'not-report', reportTitleUnder: ['report'] }));
   } catch (e) {
     next(e);
   }

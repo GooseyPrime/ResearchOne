@@ -8,6 +8,8 @@ import {
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
 import { config } from '../../config';
+import { readerViewForRun } from '../../services/eval/readerView';
+import { forReader, notReportText } from '../readerResponse';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
 import {
   createReportRevision,
@@ -213,13 +215,13 @@ router.post('/:id/publish-featured', requireAdmin, async (req, res, next) => {
       commitMessage,
     });
 
-    res.json({
+    res.json(notReportText({
       ok: true,
       repo: `${config.featuredReportGithub.owner}/${config.featuredReportGithub.repo}`,
       path: pathInRepo,
       branch,
       commitUrl: result.commitUrl ?? null,
-    });
+    }));
   } catch (err) {
     next(err);
   }
@@ -237,13 +239,13 @@ router.use(requireAuth);
 router.get('/exports/engine-status', async (_req, res, next) => {
   try {
     const avail = await pandocAvailable();
-    res.json({
+    res.json(notReportText({
       available: avail.available,
       version: avail.version,
       detail: avail.available
         ? 'Pandoc export engine is available.'
         : 'Pandoc export engine is unavailable. Install pandoc and texlive-xetex on the backend host.',
-    });
+    }));
   } catch (err) {
     next(err);
   }
@@ -367,7 +369,7 @@ router.get('/exports/:exportId', async (req, res, next) => {
       res.status(404).json({ error: 'export not found' });
       return;
     }
-    res.json(rows[0]);
+    res.json(notReportText(rows[0]));
   } catch (err) {
     next(err);
   }
@@ -438,7 +440,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
-    res.json(rows);
+    res.json(forReader(rows));
   } catch (err) {
     next(err);
   }
@@ -454,7 +456,7 @@ router.get('/:id/spinoff/prefill', async (req, res, next) => {
       res.status(404).json({ error: 'Report not found' });
       return;
     }
-    res.json(prefill);
+    res.json(forReader(prefill));
   } catch (err) {
     next(err);
   }
@@ -523,7 +525,7 @@ router.get('/:id', async (req, res, next) => {
       metadata: cleanReaderMetadata(stored.metadata),
     };
 
-    res.json({ ...report, sections, has_active_living_report: hasActiveLivingReport });
+    res.json(forReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: await readerViewForRun(stored.run_id) }));
   } catch (err) {
     next(err);
   }
@@ -635,7 +637,7 @@ router.post(
       io?.to(`job:revision:${req.params.id}`).emit('revision:completed', responsePayload);
       io?.to(`job:${req.params.id}`).emit('revision:completed', responsePayload); // see emitProgress — do not join both rooms in one client
       io?.to('reports').emit('reports:updated', {});
-      res.status(202).json(responsePayload);
+      res.status(202).json(forReader(responsePayload));
     } catch (err) {
       next(err);
     }
@@ -664,7 +666,7 @@ router.get('/:id/revisions', async (req, res, next) => {
     }
 
     const revisions = await listReportRevisions(req.params.id);
-    res.json(revisions);
+    res.json(forReader(revisions));
   } catch (err) {
     next(err);
   }
@@ -696,7 +698,7 @@ router.get('/:id/revisions/:revisionId', async (req, res, next) => {
       res.status(404).json({ error: 'Revision not found' });
       return;
     }
-    res.json(cleanRevisionForReader(revision));
+    res.json(forReader(cleanRevisionForReader(revision)));
   } catch (err) {
     next(err);
   }
@@ -722,7 +724,7 @@ router.get('/:id/citations', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/reports/:id/citations');
     }
 
-    res.json(citations);
+    res.json(forReader(citations, { title: 'not-report' }));
   } catch (err) {
     next(err);
   }
@@ -790,11 +792,11 @@ router.post('/:id/export', async (req, res, next) => {
 
     const avail = await pandocAvailable();
     if (!avail.available) {
-      res.json({
+      res.json(notReportText({
         available: false,
         reason: 'pandoc_not_installed',
         detail: 'Pandoc is not installed on this server. Contact your administrator.',
-      });
+      }));
       return;
     }
 
@@ -857,11 +859,11 @@ router.post('/:id/export', async (req, res, next) => {
       }
     );
 
-    res.status(202).json({
+    res.status(202).json(notReportText({
       exportId,
       status: 'queued',
       pollUrl: `/api/reports/exports/${exportId}`,
-    });
+    }));
   } catch (err) {
     next(err);
   }

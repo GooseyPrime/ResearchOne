@@ -9,6 +9,7 @@ export const HARNESS_FLAG_NAMES = [
   'RESEARCH_TREE_ENABLED',
   'OUTLINE_OPS_ENABLED',
   'QUANT_CHECK_ENABLED',
+  'READER_VIEW_ENABLED',
 ] as const;
 
 export type HarnessFlagName = (typeof HARNESS_FLAG_NAMES)[number];
@@ -24,6 +25,7 @@ export function harnessFlagDefaults(): Record<HarnessFlagName, boolean> {
     RESEARCH_TREE_ENABLED: false,
     OUTLINE_OPS_ENABLED: false,
     QUANT_CHECK_ENABLED: false,
+    READER_VIEW_ENABLED: false,
   };
 }
 

@@ -1,4 +1,6 @@
 import { query, withTransaction } from '../../db/pool';
+import { readerViewForRun } from '../eval/readerView';
+import { cleanSectionForStorage, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
   formatRetrievedChunksForPrompt,
@@ -395,6 +397,8 @@ async function createReportRevisionInner(args: {
     throw new Error('Report not found');
   }
   const baseReport = reportRows[0];
+  // A revision is stored the way its report's run was set: the reader-view switch as that run recorded it.
+  const storeCleanForRun = await readerViewForRun((baseReport as { run_id?: unknown }).run_id);
   const baseSections = await query<ReportSectionRow>(
     'SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order',
     [args.reportId]
@@ -792,15 +796,20 @@ Return strict JSON.`,
     const rootReportId = baseReport.root_report_id ?? baseReport.id;
     const newVersion = currentVersion + 1;
 
+    // Stored clean, not only shown clean (slice 5, item 11): the report row,
+    // its sections, and the before and after text kept as revision history.
+    // With the switch off for the report's run every row is written as it was before the slice.
+    const storeClean = storeCleanForRun;
+    const asStored = (text: string): string => (storeClean ? stripInternalLabelsFromReport(text) : text);
+    const sectionsToStore = storeClean ? revisedSections.map(cleanSectionForStorage) : revisedSections;
+
     const revisionReportBaseParams = [
       baseReport.id,
-      baseReport.title,
+      asStored(baseReport.title),
       baseReport.query,
-      revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? '',
-      revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? '',
-      revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ??
-        baseReport.falsification_criteria ??
-        '',
+      asStored(revisedSections.find((s) => s.section_type === 'executive_summary')?.content ?? baseReport.executive_summary ?? ''),
+      asStored(revisedSections.find((s) => s.section_type === 'conclusion')?.content ?? baseReport.conclusion ?? ''),
+      asStored(revisedSections.find((s) => s.section_type === 'falsification_criteria')?.content ?? baseReport.falsification_criteria ?? ''),
       baseReport.unresolved_questions ?? [],
       baseReport.recommended_queries ?? [],
       baseReport.contradiction_count,
@@ -867,7 +876,7 @@ Return strict JSON.`,
     // type put every citation of an ordinary report on its last section, because
     // most of its sections share one type.
     const insertedSections = new Map<string, string>();
-    for (const section of revisedSections) {
+    for (const section of sectionsToStore) {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO report_sections (report_id, section_type, title, content, section_order)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -968,10 +977,12 @@ Return strict JSON.`,
     revisionId = revision.rows[0].id;
 
     const baseByType = new Map(baseSections.map((section) => [section.section_type, section]));
-    for (const section of revisedSections) {
+    for (const [at, section] of sectionsToStore.entries()) {
       const before = baseByType.get(section.section_type);
-      const changed = !before || before.content !== section.content;
+      // Whether a section changed is decided on the text as revised, before any clean-up.
+      const changed = !before || before.content !== revisedSections[at].content;
       if (!changed) continue;
+      const beforeContent = asStored(before?.content ?? '');
       await client.query(
         `INSERT INTO report_revision_sections (
            revision_id, revised_report_id, section_type, section_title, section_order,
@@ -983,7 +994,7 @@ Return strict JSON.`,
           section.section_type,
           section.title,
           section.section_order,
-          before?.content ?? '',
+          beforeContent,
           section.content,
           before ? 'rewrite' : 'insertion',
         ]
@@ -994,7 +1005,7 @@ Return strict JSON.`,
         [
           revisionId,
           section.section_type,
-          before?.content ?? '',
+          beforeContent,
           section.content,
           JSON.stringify({
             changed,
