@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import PlanCheckoutOptions, { type SubscriptionOption } from '../../components/billing/PlanCheckoutOptions';
 import MonitorTokenPurchaseOptions from '../../components/billing/MonitorTokenPurchaseOptions';
+import { resolvePlanIntentNotice } from '../../lib/billing/planIntent';
 
 const PRO: SubscriptionOption = {
   tier: 'pro',
@@ -51,8 +52,7 @@ describe('PlanCheckoutOptions', () => {
 
   it('shows buttons for a configured plan and the note for the other', () => {
     const html = plans({ options: [BYOK] });
-    expect(planBox(html, 'byok')).toContain('Monthly');
-    expect(planBox(html, 'byok')).not.toContain('Not yet available');
+    expect(planBox(html, 'byok')).toContain('>Monthly<');
     expect(planBox(html, 'pro')).toContain('Not yet available');
     expect(planBox(html, 'pro')).not.toContain('<button');
   });
@@ -62,8 +62,10 @@ describe('PlanCheckoutOptions', () => {
     expect(planBox(html, 'pro')).toContain('Monthly');
     expect(planBox(html, 'pro')).toContain('Annual');
     expect(planBox(html, 'byok')).toContain('Monthly');
-    expect(planBox(html, 'byok')).not.toContain('Annual');
-    expect(html).not.toContain('Not yet available');
+    expect(planBox(html, 'byok')).not.toContain('Annual (save');
+    // BYOK quotes a yearly price it cannot sell here, so that period says so.
+    expect(planBox(html, 'byok')).toContain('Annual billing: </span>Not yet available');
+    expect(planBox(html, 'pro')).not.toContain('Not yet available');
   });
 
   it('treats an option with no price ids as not available', () => {
@@ -91,7 +93,17 @@ describe('PlanCheckoutOptions', () => {
 function tokens(props: Partial<Parameters<typeof MonitorTokenPurchaseOptions>[0]>): string {
   return renderToStaticMarkup(
     <MemoryRouter>
-      <MonitorTokenPurchaseOptions packages={[]} isLoading={false} eligible onBuy={vi.fn()} {...props} />
+      <MonitorTokenPurchaseOptions
+        packages={[]}
+        advertised={PACKS}
+        isLoading={false}
+        errorMessage={null}
+        onRetry={vi.fn()}
+        eligibility="eligible"
+        onRetryEligibility={vi.fn()}
+        onBuy={vi.fn()}
+        {...props}
+      />
     </MemoryRouter>,
   );
 }
@@ -116,10 +128,58 @@ describe('MonitorTokenPurchaseOptions', () => {
     expect(html).not.toContain('Not yet available');
   });
 
+  it('names each listed pack that has no price, beside the ones that can be bought', () => {
+    const html = tokens({ packages: [PACKS[0]] });
+    expect(html.match(/<button/g) ?? []).toHaveLength(1);
+    expect(html).toContain('5 tokens — $25: </span>Not yet available');
+    expect(html).toContain('10 tokens — $40: </span>Not yet available');
+  });
+
   it('shows the plan requirement, not buttons, to a user without an eligible plan', () => {
-    const html = tokens({ packages: PACKS, eligible: false });
+    const html = tokens({ packages: PACKS, eligibility: 'ineligible' });
     expect(html).not.toContain('<button');
     expect(html).toContain('require an active Pro, BYOK, Team, or Sovereign subscription');
     expect(html).toContain('href="/app/billing?intent=pro"');
+  });
+
+  it('offers no purchase while the plan could not be read, only a retry', () => {
+    const html = tokens({ packages: PACKS, eligibility: 'unknown' });
+    expect(html).toContain('Could not confirm your plan');
+    expect(html.match(/<button/g) ?? []).toHaveLength(1);
+    expect(html).toContain('Retry');
+    expect(html).not.toContain('5 tokens — $25');
+  });
+
+  it('reports a failed pack request as a failure with a retry, not as "Not yet available"', () => {
+    const html = tokens({ packages: [], errorMessage: 'Network Error' });
+    expect(html).toContain('Could not load token packs. Network Error');
+    expect(html).toContain('Retry');
+    expect(html).not.toContain('Not yet available');
+  });
+});
+
+describe('resolvePlanIntentNotice', () => {
+  const base = { hasActiveSubscription: false, effectiveTier: 'free_demo', subscriptionResolved: true };
+
+  it('invites a user with no subscription to continue to checkout', () => {
+    expect(resolvePlanIntentNotice({ ...base, intent: 'byok' })).toEqual({ kind: 'continue', plan: 'byok' });
+  });
+
+  it('does not tell a Pro subscriber to "continue below" for BYOK, where no button exists', () => {
+    expect(
+      resolvePlanIntentNotice({ intent: 'byok', hasActiveSubscription: true, effectiveTier: 'pro', subscriptionResolved: true }),
+    ).toEqual({ kind: 'switch_not_available', plan: 'byok', currentTier: 'pro' });
+  });
+
+  it('tells a subscriber who is already on the chosen plan', () => {
+    expect(
+      resolvePlanIntentNotice({ intent: 'byok', hasActiveSubscription: true, effectiveTier: 'byok', subscriptionResolved: true }),
+    ).toEqual({ kind: 'already_on_plan', plan: 'byok' });
+  });
+
+  it('says nothing before the subscription has been read, or for an unknown plan', () => {
+    expect(resolvePlanIntentNotice({ ...base, intent: 'pro', subscriptionResolved: false })).toBeNull();
+    expect(resolvePlanIntentNotice({ ...base, intent: 'student' })).toBeNull();
+    expect(resolvePlanIntentNotice({ ...base, intent: null })).toBeNull();
   });
 });

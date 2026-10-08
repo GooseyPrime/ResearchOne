@@ -25,9 +25,13 @@ vi.mock('../../utils/clerkSession', () => ({
 import PricingPage from '../../pages/PricingPage';
 import { parsePurchaseAvailability } from '../../lib/billing/availability';
 
+const BOTH = { monthly: true, annual: true };
+const NEITHER = { monthly: false, annual: false };
+const ALL_PACKS = { pack_1: true, pack_5: true, pack_10: true };
+const NO_PACKS = { pack_1: false, pack_5: false, pack_10: false };
 const ALL = {
-  plans: { pro: true, byok: true },
-  addons: { living_report: true, reverse_citation_watch: true },
+  plans: { pro: BOTH, byok: BOTH },
+  addons: { living_report: ALL_PACKS, reverse_citation_watch: true },
 };
 
 function renderPage() {
@@ -74,7 +78,7 @@ describe('PricingPage with server availability', () => {
   });
 
   it('replaces the BYOK button with "Not yet available" when its price is not set', async () => {
-    mocks.get.mockResolvedValue({ data: { ...ALL, plans: { pro: true, byok: false } } });
+    mocks.get.mockResolvedValue({ data: { ...ALL, plans: { pro: BOTH, byok: NEITHER } } });
     renderPage();
 
     await waitFor(() => expect(card('BYOK').textContent).toContain('Not yet available'));
@@ -86,7 +90,7 @@ describe('PricingPage with server availability', () => {
   });
 
   it('replaces the Pro button with "Not yet available" when its price is not set', async () => {
-    mocks.get.mockResolvedValue({ data: { ...ALL, plans: { pro: false, byok: true } } });
+    mocks.get.mockResolvedValue({ data: { ...ALL, plans: { pro: NEITHER, byok: BOTH } } });
     renderPage();
 
     await waitFor(() => expect(card('Pro').textContent).toContain('Not yet available'));
@@ -95,7 +99,7 @@ describe('PricingPage with server availability', () => {
 
   it('replaces each add-on button with "Not yet available" when its price is not set', async () => {
     mocks.get.mockResolvedValue({
-      data: { ...ALL, addons: { living_report: false, reverse_citation_watch: false } },
+      data: { ...ALL, addons: { living_report: NO_PACKS, reverse_citation_watch: false } },
     });
     renderPage();
 
@@ -110,11 +114,50 @@ describe('PricingPage with server availability', () => {
 
   it('handles the two add-ons independently', async () => {
     mocks.get.mockResolvedValue({
-      data: { ...ALL, addons: { living_report: true, reverse_citation_watch: false } },
+      data: { ...ALL, addons: { living_report: ALL_PACKS, reverse_citation_watch: false } },
     });
     renderPage();
 
     await waitFor(() => expect(card('Reverse-Citation Watch').textContent).toContain('Not yet available'));
+    expect(links(card('Living Reports'))).toContain('/app/billing#monitor-tokens');
+  });
+
+  it('names the annual price as not available when only monthly Pro can be bought', async () => {
+    mocks.get.mockResolvedValue({
+      data: { ...ALL, plans: { pro: { monthly: true, annual: false }, byok: BOTH } },
+    });
+    renderPage();
+
+    await waitFor(() => expect(card('Pro').textContent).toContain('Annual billing: Not yet available'));
+    // Pro itself can still be bought, monthly.
+    expect(links(card('Pro'))).toContain('/sign-up?tier=pro');
+    expect(card('Pro').textContent).not.toContain('Monthly billing');
+  });
+
+  it('names the monthly BYOK price as not available when only annual can be bought', async () => {
+    mocks.get.mockResolvedValue({
+      data: { ...ALL, plans: { pro: BOTH, byok: { monthly: false, annual: true } } },
+    });
+    renderPage();
+
+    await waitFor(() => expect(card('BYOK').textContent).toContain('Monthly billing: Not yet available'));
+    expect(links(card('BYOK'))).toContain('/sign-up?tier=byok');
+  });
+
+  it('names each token pack that cannot be bought while another can', async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        ...ALL,
+        addons: { living_report: { pack_1: true, pack_5: false, pack_10: false }, reverse_citation_watch: true },
+      },
+    });
+    renderPage();
+
+    await waitFor(() =>
+      expect(card('Living Reports').textContent).toContain('5 tokens — $25: Not yet available'),
+    );
+    expect(card('Living Reports').textContent).toContain('10 tokens — $40: Not yet available');
+    expect(card('Living Reports').textContent).not.toContain('1 token — $10: Not yet available');
     expect(links(card('Living Reports'))).toContain('/app/billing#monitor-tokens');
   });
 
@@ -138,7 +181,7 @@ describe('PricingPage with server availability', () => {
 
   it('never leaves a price without a way forward or a note', async () => {
     mocks.get.mockResolvedValue({
-      data: { plans: { pro: false, byok: false }, addons: { living_report: false, reverse_citation_watch: false } },
+      data: { plans: { pro: NEITHER, byok: NEITHER }, addons: { living_report: NO_PACKS, reverse_citation_watch: false } },
     });
     const { container } = renderPage();
     await waitFor(() => expect(card('BYOK').textContent).toContain('Not yet available'));
@@ -158,7 +201,15 @@ describe('parsePurchaseAvailability', () => {
     expect(parsePurchaseAvailability(ALL)).toEqual(ALL);
   });
 
-  it.each([null, 'nope', {}, { plans: {} }, { plans: { pro: 'yes', byok: true }, addons: ALL.addons }])(
+  it.each([
+    null,
+    'nope',
+    {},
+    { plans: {} },
+    { plans: { pro: true, byok: true }, addons: ALL.addons },
+    { plans: ALL.plans, addons: { living_report: true, reverse_citation_watch: true } },
+    { plans: ALL.plans, addons: { living_report: { pack_1: true }, reverse_citation_watch: true } },
+  ])(
     'treats %j as unknown',
     (raw) => {
       expect(parsePurchaseAvailability(raw)).toBeNull();
