@@ -2,6 +2,7 @@ import { readerStageLabel } from '@/lib/researchone/stageLabels';
 import type { LegacyRef, Ref } from 'react';
 import clsx from 'clsx';
 import type { ResearchProgressEvent } from '../../utils/api';
+import { plainProgressText } from '@/lib/researchone/plainWords';
 
 function formatShortTime(iso?: string): string {
   if (!iso) return '';
@@ -96,9 +97,9 @@ export default function LiveResearchTraceLog({
               <span className="text-slate-600 flex-shrink-0 w-[5ch] tabular-nums text-right">{evt.percent}%</span>
 
               <span className="flex-1 min-w-0 text-slate-300 break-words">
-                {evt.message}
+                {plainProgressText(evt.message)}
                 {evt.detail ? (
-                  <span className="mt-0.5 block text-[10px] text-slate-500 whitespace-pre-wrap break-words">{evt.detail}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500 whitespace-pre-wrap break-words">{plainProgressText(evt.detail)}</span>
                 ) : null}
                 {retryBadge && (
                   <span
@@ -125,8 +126,7 @@ export default function LiveResearchTraceLog({
                     {typeof evt.sourceCount === 'number' ? `${evt.sourceCount} sources` : ''}
                   </span>
                 )}
-                {evt.failure?.errorMessage && <span className="ml-1 text-red-300/90">{evt.failure.errorMessage}</span>}
-                {evt.substep && <span className="ml-1 text-slate-500">({evt.substep})</span>}
+                {evt.failure?.errorMessage && <span className="ml-1 text-red-300/90">{plainProgressText(evt.failure.errorMessage)}</span>}
               </span>
             </div>
           );
