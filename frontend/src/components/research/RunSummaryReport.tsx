@@ -3,6 +3,8 @@ import { Copy, CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react';
 import clsx from 'clsx';
 import type { ResearchRun, ResearchProgressEvent } from '../../utils/api';
 import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
+import { plainLabel, plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 // Shape emitted by the backend run:summary Socket.IO event and the
 // orchestrator's final summary payload.
@@ -205,7 +207,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
       lines.push('PHASE TIMINGS');
       lines.push(hr);
       for (const [phase, ms] of Object.entries(phaseDurations).sort(([, a], [, b]) => b - a)) {
-        lines.push(`  ${phase.padEnd(32)} ${fmtMs(ms)}`);
+        lines.push(`  ${plainLabel(phase).padEnd(32)} ${fmtMs(ms)}`);
       }
       lines.push('');
     }
@@ -214,7 +216,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
       lines.push('MODEL USAGE PER ROLE');
       lines.push(hr);
       for (const u of modelUsage) {
-        lines.push(`  ${u.role.padEnd(32)} ${u.model}`);
+        lines.push(`  ${plainLabel(u.role).padEnd(32)} ${u.model}`);
         lines.push(`  ${''.padEnd(32)} ${fmtNum(u.promptTokens)}p + ${fmtNum(u.completionTokens)}c tok  |  ${fmtMs(u.durationMs)}`);
       }
       lines.push('');
@@ -223,8 +225,8 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
     if (failedStage || errorMessage || fmeta) {
       lines.push('FAILURE DETAILS');
       lines.push(hr);
-      if (failedStage) lines.push(`  Stage        : ${failedStage}`);
-      if (errorMessage) lines.push(`  Error        : ${errorMessage}`);
+      if (failedStage) lines.push(`  Stage        : ${readerStageLabel(failedStage)}`);
+      if (errorMessage) lines.push(`  Error        : ${plainProgressText(errorMessage)}`);
       if (fmeta) {
         for (const [k, v] of Object.entries(fmeta)) {
           if (v == null || v === '') continue;
@@ -246,9 +248,8 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
         const ts = evt.timestamp ? new Date(evt.timestamp).toISOString() : '';
         const tok = evt.tokenUsage ? `  [${evt.tokenUsage.prompt}p+${evt.tokenUsage.completion}c]` : '';
         const model = evt.model ? `  <${evt.model}>` : '';
-        const substep = evt.substep ? `  (${evt.substep})` : '';
-        lines.push(`${ts}  ${String(evt.percent).padStart(3)}%  ${evt.stage.padEnd(20)}  ${evt.message}${tok}${model}${substep}`);
-        if (evt.failure?.errorMessage) lines.push(`  ERROR: ${evt.failure.errorMessage}`);
+        lines.push(`${ts}  ${String(evt.percent).padStart(3)}%  ${readerStageLabel(evt.stage).padEnd(36)}  ${plainProgressText(evt.message)}${tok}${model}`);
+        if (evt.failure?.errorMessage) lines.push(`  ERROR: ${plainProgressText(evt.failure.errorMessage)}`);
       }
       lines.push('');
     }
@@ -345,7 +346,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
               .sort(([, a], [, b]) => b - a)
               .map(([phase, ms]) => (
                 <div key={phase} className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 truncate">{phase.replace(/_/g, ' ')}</span>
+                  <span className="text-slate-400 truncate">{plainLabel(phase)}</span>
                   <span className="text-slate-300 tabular-nums ml-2 flex-shrink-0">{fmtMs(ms)}</span>
                 </div>
               ))}
@@ -360,7 +361,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
           <div className="space-y-1">
             {modelUsage.map((u, i) => (
               <div key={`${u.role}-${i}`} className="flex items-center gap-3 text-xs">
-                <span className="text-slate-500 w-32 truncate flex-shrink-0">{u.role.replace(/_/g, ' ')}</span>
+                <span className="text-slate-500 w-32 truncate flex-shrink-0">{plainLabel(u.role)}</span>
                 <span className="text-indigo-400/80 truncate flex-1 min-w-0">{u.model}</span>
                 <span className="text-slate-500 tabular-nums flex-shrink-0">
                   {fmtNum(u.promptTokens)}p+{fmtNum(u.completionTokens)}c
@@ -377,7 +378,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
         <div className="px-4 py-3 border-b border-surface-100/20 bg-red-950/10">
           <div className="text-[10px] uppercase tracking-wide text-red-400/70 mb-2">Failure details</div>
           {failedStage && (
-            <p className="text-xs text-slate-400"><span className="text-slate-500">Stage:</span> {failedStage}</p>
+            <p className="text-xs text-slate-400"><span className="text-slate-500">Stage:</span> {readerStageLabel(failedStage)}</p>
           )}
           {errorMessage && (
             <p className="text-xs text-red-300 mt-1 leading-snug">{errorMessage}</p>
