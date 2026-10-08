@@ -48,12 +48,13 @@ import { finalizeLockedCitations, issuePassages, type LockedPassage } from '../s
 import { formatReadDate, presentationFailures } from '../services/reasoning/baselineReport';
 import {
   boundedReportForAudit,
+  closingNoteOf,
   describeSearchScope,
   mergeSearchRecords,
   reportStatesSearchScope,
   searchScopeGateContext,
   searchScopeNoteFor,
-  withSearchScopeRestored,
+  withClosingNoteRestored,
 } from '../services/reasoning/searchScope';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 
@@ -256,31 +257,44 @@ describe('a literature review says what was searched', () => {
     expect(closing.trim()).toBe(`${STATEMENT} 2 sources were read on ${formatReadDate()}.`);
   });
 
-  it('puts the statement back when a later rewrite of the whole report changed or dropped it', () => {
+  it('holds every later version of a report to the closing note as code wrote it', () => {
     const body = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## References\n1. The Lancet.\n\n## About this report\n';
-    const intact = `${body}${STATEMENT} 2 sources were read on 8 Oct 2026.`;
-    expect(withSearchScopeRestored(intact, STATEMENT)).toBe(intact);
-    expect(withSearchScopeRestored(`${body}We searched several databases. 2 sources were read on 8 Oct 2026.`, STATEMENT)).toBe(intact);
-    expect(withSearchScopeRestored(`${body}2 sources were read on 8 Oct 2026.`, STATEMENT)).toBe(intact);
-    // A report that used no sources says only that, and a run with no statement is left alone.
-    expect(withSearchScopeRestored(`${body}No sources were used.`, STATEMENT)).toBe(`${body}No sources were used.`);
-    expect(withSearchScopeRestored(`${body}Reworded by a repair.`, '')).toBe(`${body}Reworded by a repair.`);
-    expect(withSearchScopeRestored('# A review\n\n## Summary\nNo closing note here.', STATEMENT)).toBe('# A review\n\n## Summary\nNo closing note here.');
+    const written = `${STATEMENT} 2 sources were read on 8 Oct 2026.`;
+    const intact = `${body}${written}`;
+    expect(closingNoteOf(intact)).toBe(written);
+    expect(withClosingNoteRestored(intact, written)).toBe(intact);
+    // Reworded, or cut down to the count.
+    expect(withClosingNoteRestored(`${body}We searched several databases. 2 sources were read on 8 Oct 2026.`, written)).toBe(intact);
+    expect(withClosingNoteRestored(`${body}2 sources were read on 8 Oct 2026.`, written)).toBe(intact);
+    // Replaced by a statement that is false: the report still cites its sources.
+    expect(withClosingNoteRestored(`${body}No sources were used.`, written)).toBe(intact);
+    // The heading renamed or the section removed by a rewrite of the whole report: the note is put back at the end.
+    const renamed = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## References\n1. The Lancet.\n\n## Methodology\nWe searched widely.\n';
+    expect(withClosingNoteRestored(renamed, written)).toBe(`${renamed.trimEnd()}\n\n## About this report\n${written}`);
+    const removed = '# A review\n\n## Summary\nInterleukin-6 fell [1].';
+    expect(withClosingNoteRestored(removed, written).endsWith(`\n\n## About this report\n${written}`)).toBe(true);
+    expect(statesItsSearch(withClosingNoteRestored(removed, written))).toBe(true);
+    // A report that truly used no sources is held to that, and a run with no note to keep is left alone.
+    expect(withClosingNoteRestored(`${body}Something else.`, 'No sources were used.')).toBe(`${body}No sources were used.`);
+    expect(withClosingNoteRestored(`${body}Reworded by a repair.`, '')).toBe(`${body}Reworded by a repair.`);
+    expect(closingNoteOf(removed)).toBe('');
   });
 
-  it('keeps a section a repair appended after the closing note when it puts the statement back', () => {
+  it('keeps a section a repair appended after the closing note when it puts the note back', () => {
     const head = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## About this report\n';
+    const written = `${STATEMENT} 2 sources were read on 8 Oct 2026.`;
     const appended = '## Discussion of patterns\nTwo cohorts agree on the direction of change [1].\n\n### A sub-heading\nMore detail.';
     const reworded = `${head}We looked in a few places. 2 sources were read on 8 Oct 2026.\n\n${appended}`;
-    const restored = withSearchScopeRestored(reworded, STATEMENT);
-    expect(restored).toBe(`${head}${STATEMENT} 2 sources were read on 8 Oct 2026.\n\n${appended}`);
+    const restored = withClosingNoteRestored(reworded, written);
+    expect(restored).toBe(`${head}${written}\n\n${appended}`);
     // Already in place, with a section after it: nothing changes.
-    expect(withSearchScopeRestored(restored, STATEMENT)).toBe(restored);
+    expect(withClosingNoteRestored(restored, written)).toBe(restored);
+    expect(closingNoteOf(restored)).toBe(written);
     // The contract check is given the note itself, not whatever follows it.
-    const long = `${head.replace('Interleukin-6 fell [1].', 'Interleukin-6 fell [1]. '.repeat(3000))}${STATEMENT} 2 sources were read on 8 Oct 2026.\n\n${appended}`;
+    const long = `${head.replace('Interleukin-6 fell [1].', 'Interleukin-6 fell [1]. '.repeat(3000))}${written}\n\n${appended}`;
     const given = boundedReportForAudit(long, 60000, STATEMENT);
     expect(given.length).toBeLessThanOrEqual(60000);
-    expect(given.endsWith(`## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`)).toBe(true);
+    expect(given.endsWith(`## About this report\n${written}`)).toBe(true);
   });
 
   it('shows the contract check the closing note of a report longer than the check can be given', () => {
@@ -320,8 +334,9 @@ describe('a literature review says what was searched', () => {
     expect(source).toContain('`${gateContext}RESEARCH_BRIEF:');
     // Without the lock the note is put back before the checks read the report and before it is saved,
     // and the contract check is given the closing note of a long report.
-    expect(source).toContain(': withSearchScopeRestored(markdown, searchScopeNote);');
-    expect(source).toContain('generatedReport.markdown = withSearchScopeRestored(checked.markdown, searchScopeNote);');
+    expect(source).toContain('if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);');
+    expect(source).toContain(': withClosingNoteRestored(markdown, writtenClosingNote);');
+    expect(source).toContain('generatedReport.markdown = withClosingNoteRestored(checked.markdown, writtenClosingNote);');
     expect(source).toContain('${boundedReportForAudit(markdown, 60000, searchScopeNote)}');
   });
 });

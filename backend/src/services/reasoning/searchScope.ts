@@ -233,22 +233,32 @@ function closingNoteAt(markdown: string): { heading: number; body: number; end: 
 }
 
 /**
- * The report with the statement back in its closing note, if a rewrite took it
- * out or changed it. The note is code's, not the writer's: without the citation
- * lock a redraft or a repair is handed the whole report and can return the note
- * reworded. Only the note's own text is replaced; a section that follows it is
- * kept. With no statement to keep, or a report that used no sources, the text is
- * returned as it is.
+ * The text of the closing note as code wrote it, taken from a report before any
+ * model is handed that report to rewrite. Empty when the report has no closing
+ * note. This is what a later rewrite is held to.
  */
-export function withSearchScopeRestored(markdown: string, scopeNote: string): string {
-  if (!scopeNote) return markdown;
+export function closingNoteOf(markdown: string): string {
   const at = closingNoteAt(markdown);
-  if (!at) return markdown;
-  const body = markdown.slice(at.body, at.end);
-  if (body.includes(scopeNote) || /\bNo sources were used\./.test(body)) return markdown;
-  const read = /\d+ sources? (?:was|were) read on [^.\n]+\./.exec(body)?.[0] ?? '';
+  return at ? markdown.slice(at.body, at.end).trim() : '';
+}
+
+/**
+ * The report with its closing note as code wrote it. The note is code's, not
+ * the writer's: without the citation lock a redraft or a repair is handed the
+ * whole report and can return the note reworded, replaced with a statement that
+ * no sources were used, or gone with its heading. Whatever came back, the note
+ * is put back from `writtenNote`, the text taken before any rewrite, and not
+ * worked out from what the rewrite left. Only the note's own text is replaced;
+ * a section that follows it is kept; a report whose note is gone gets it back
+ * at the end. With nothing to hold the report to, the text is returned as it is.
+ */
+export function withClosingNoteRestored(markdown: string, writtenNote: string): string {
+  if (!writtenNote) return markdown;
+  const at = closingNoteAt(markdown);
+  if (!at) return `${markdown.trimEnd()}\n\n## About this report\n${writtenNote}`;
+  if (markdown.slice(at.body, at.end).trim() === writtenNote) return markdown;
   const rest = markdown.slice(at.end);
-  return `${markdown.slice(0, at.body)}\n${read ? `${scopeNote} ${read}` : scopeNote}${rest ? `\n\n${rest}` : ''}`;
+  return `${markdown.slice(0, at.body)}\n${writtenNote}${rest ? `\n\n${rest}` : ''}`;
 }
 
 const AUDIT_GAP = '\n\n[Part of the report is left out here for length.]\n\n';
