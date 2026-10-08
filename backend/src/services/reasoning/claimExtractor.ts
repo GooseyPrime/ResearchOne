@@ -102,20 +102,26 @@ async function loadCitedPassages(runId: string, reportId: string): Promise<Map<s
 
 /** Passages shown to the extraction when the report has no saved citations, and the share left for uncited ones when it has. */
 const PASSAGES_SHOWN = 30;
-/** A hard bound on cited passages shown, so one call stays a bounded size. Far above what a report cites. */
-const CITED_PASSAGES_SHOWN_MAX = 120;
+/** Cited passages shown in one call. A report that cites more is read in further calls, so none is left out. */
+const CITED_PASSAGES_PER_CALL = 60;
 
 /**
- * The passages the extraction is shown. With no saved citations: the first
- * thirty, as always. With saved citations: every passage the report cites, so no
- * citation is left without its passage, then uncited ones only while fewer than
- * thirty are shown. The limit is on uncited context, never on what was cited.
+ * The passages the extraction is shown, one list per model call. With no saved
+ * citations: one call with the first thirty, as always. With saved citations:
+ * every passage the report cites, sixty to a call, so no citation is left
+ * without its passage however many the report cites. Uncited passages fill the
+ * first call only, and only while it holds fewer than thirty. The limit is on
+ * uncited context, never on what was cited.
  */
-export function passagesForExtraction<T extends { id: string }>(chunks: T[], cited: ReadonlySet<string>): T[] {
-  if (cited.size === 0) return chunks.slice(0, PASSAGES_SHOWN);
-  const citedPassages = chunks.filter((chunk) => cited.has(idKey(chunk.id))).slice(0, CITED_PASSAGES_SHOWN_MAX);
-  const uncited = chunks.filter((chunk) => !cited.has(idKey(chunk.id))).slice(0, Math.max(0, PASSAGES_SHOWN - citedPassages.length));
-  return [...citedPassages, ...uncited];
+export function passagesForExtraction<T extends { id: string }>(chunks: T[], cited: ReadonlySet<string>): T[][] {
+  if (cited.size === 0) return [chunks.slice(0, PASSAGES_SHOWN)];
+  const citedPassages = chunks.filter((chunk) => cited.has(idKey(chunk.id)));
+  const batches: T[][] = [];
+  for (let at = 0; at < citedPassages.length; at += CITED_PASSAGES_PER_CALL) batches.push(citedPassages.slice(at, at + CITED_PASSAGES_PER_CALL));
+  if (batches.length === 0) batches.push([]);
+  const uncited = chunks.filter((chunk) => !cited.has(idKey(chunk.id))).slice(0, Math.max(0, PASSAGES_SHOWN - batches[0].length));
+  batches[0] = [...batches[0], ...uncited];
+  return batches;
 }
 
 /**
@@ -138,6 +144,9 @@ export function resolveFindingPassages(
   const chunkId = kept.find((id) => cited.has(idKey(id))) ?? kept[0] ?? null;
   return { chunkId, sourceId: chunkId ? cited.get(idKey(chunkId))?.sourceId ?? null : null, supporting: kept };
 }
+
+/** Told to a call after the first, which is shown further cited passages of the same report. */
+const LATER_CALL_NOTE = 'These are further chunks the same report cites. Extract only claims these chunks support.\n\n';
 
 const CITED_PASSAGES_NOTE =
   'The report cites the chunks marked "Cited in the report". Extract what the report states with those citations first, and for each claim list in supporting_chunk_ids the id of every chunk that supports it, copied exactly from the chunk header.\n\n';
@@ -167,40 +176,52 @@ export async function extractAndPersistClaims(args: {
 
   const cited = await loadCitedPassages(runId, reportId);
   const citedIds = new Set(cited.keys());
-  const chunkContext = passagesForExtraction(chunks, citedIds)
-    .map(c => {
-      const quotes = cited.get(idKey(c.id))?.quotes ?? [];
-      const citedLine = cited.has(idKey(c.id)) ? `\nCited in the report${quotes.length > 0 ? `, which quotes: ${quotes.map((quote) => `"${quote}"`).join(' ')}` : ''}` : '';
-      return `[CHUNK ${c.id}] Source: ${c.source_url || c.source_title || 'unknown'}\n${c.content.slice(0, 300)}${citedLine}`;
-    })
-    .join('\n---\n');
+  const batches = passagesForExtraction(chunks, citedIds);
 
-  let claims: ExtractedClaim[] = [];
+  const claims: ExtractedClaim[] = [];
+  const seenClaims = new Set<string>();
 
-  try {
-    const result = await callRoleModel({
-      role: 'verifier', // Use verifier role for structured extraction
-      engineVersion: args.engineVersion,
-      researchObjective: args.researchObjective,
-      allowFallbackByRole: args.allowFallbackByRole,
-      byokApiKeyOverride: args.byokApiKeyOverride,
-      messages: [
-        { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
-        {
-          role: 'user',
-          content: `Research Query: ${researchQuery}\n\nEvidence Chunks:\n${chunkContext}\n\nReasoner Output:\n${reasonerOutput.slice(0, MAX_REASONER_CONTEXT_CHARS)}\n\nSynthesizer Output:\n${synthesizerOutput.slice(0, MAX_SYNTHESIZER_CONTEXT_CHARS)}\n\n${cited.size > 0 ? CITED_PASSAGES_NOTE : ''}Extract all discrete claims. Output JSON array only.`,
-        },
-      ],
-      maxTokens: 4096,
-    });
+  for (const [index, batch] of batches.entries()) {
+    const chunkContext = batch
+      .map(c => {
+        const quotes = cited.get(idKey(c.id))?.quotes ?? [];
+        const citedLine = cited.has(idKey(c.id)) ? `\nCited in the report${quotes.length > 0 ? `, which quotes: ${quotes.map((quote) => `"${quote}"`).join(' ')}` : ''}` : '';
+        return `[CHUNK ${c.id}] Source: ${c.source_url || c.source_title || 'unknown'}\n${c.content.slice(0, 300)}${citedLine}`;
+      })
+      .join('\n---\n');
 
-    const parsed = extractJsonArray<ExtractedClaim>(result.content, { context: `claims:${runId}` });
-    if (parsed) {
-      claims = parsed.filter(c => c.claim_text && c.evidence_tier && typeof c.confidence === 'number');
+    try {
+      const result = await callRoleModel({
+        role: 'verifier', // Use verifier role for structured extraction
+        engineVersion: args.engineVersion,
+        researchObjective: args.researchObjective,
+        allowFallbackByRole: args.allowFallbackByRole,
+        byokApiKeyOverride: args.byokApiKeyOverride,
+        messages: [
+          { role: 'system', content: withPreamble(CLAIM_EXTRACTOR_PROMPT) },
+          {
+            role: 'user',
+            content: `Research Query: ${researchQuery}\n\nEvidence Chunks:\n${chunkContext}\n\nReasoner Output:\n${reasonerOutput.slice(0, MAX_REASONER_CONTEXT_CHARS)}\n\nSynthesizer Output:\n${synthesizerOutput.slice(0, MAX_SYNTHESIZER_CONTEXT_CHARS)}\n\n${cited.size > 0 ? CITED_PASSAGES_NOTE : ''}${index > 0 ? LATER_CALL_NOTE : ''}Extract all discrete claims. Output JSON array only.`,
+          },
+        ],
+        maxTokens: 4096,
+      });
+
+      const parsed = extractJsonArray<ExtractedClaim>(result.content, { context: `claims:${runId}` });
+      for (const claim of parsed ?? []) {
+        if (!(claim.claim_text && claim.evidence_tier && typeof claim.confidence === 'number')) continue;
+        // A later call reads further passages of the same report and may restate a finding already taken.
+        const key = batches.length > 1 ? claim.claim_text.trim().toLowerCase() : '';
+        if (key && seenClaims.has(key)) continue;
+        if (key) seenClaims.add(key);
+        claims.push(claim);
+      }
+    } catch (err) {
+      logger.warn(`[claims:${runId}] Claim extraction failed${batches.length > 1 ? ` (call ${index + 1} of ${batches.length})` : ''}:`, err);
+      // The first call failing is what it always was: no findings. A later call
+      // failing costs the findings of its own passages and keeps the rest.
+      if (index === 0) return [];
     }
-  } catch (err) {
-    logger.warn(`[claims:${runId}] Claim extraction failed:`, err);
-    return [];
   }
 
   if (claims.length === 0) {

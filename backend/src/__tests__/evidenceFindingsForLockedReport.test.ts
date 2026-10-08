@@ -214,6 +214,58 @@ describe('findings of a report written with the citation lock', () => {
   });
 });
 
+describe('a report that cites more passages than one call is shown', () => {
+  const MANY: RetrievedChunk[] = Array.from({ length: 130 }, (_, index) => ({ ...CHUNKS[0], id: uuid(1000 + index), content: `Passage ${index + 1}.`, source_title: `Source ${index + 1}` }));
+  const finding = (text: string, chunkId: string) => ({ claim_text: text, evidence_tier: 'strong_evidence', confidence: 0.9, supporting_chunk_ids: [chunkId], source_ids: [], tags: [], is_conclusion_critical: false });
+  const reply = (findings: unknown[]) => ({ ...modelReply, content: JSON.stringify(findings) });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.inserts.length = 0;
+    mocks.query.mockImplementation(async (sql: string) =>
+      sql.includes('FROM report_citations') ? MANY.map((chunk) => ({ chunk_id: chunk.id, source_id: 'source-a', chunk_quote: `Quoted from ${chunk.source_title}.` })) : []
+    );
+  });
+
+  const extractMany = () => extractAndPersistClaims({ runId: 'run-2', reportId: 'report-2', researchQuery: 'q', chunks: MANY, reasonerOutput: '', synthesizerOutput: '' });
+
+  it('reads every cited passage, in further calls, and files the findings of each', async () => {
+    mocks.callRoleModel
+      .mockResolvedValueOnce(reply([finding('A finding from the first passages.', MANY[0].id)]))
+      .mockResolvedValueOnce(reply([finding('A finding from the 61st passage.', MANY[60].id), finding('a finding from the first passages.', MANY[0].id)]))
+      .mockResolvedValueOnce(reply([finding('A finding from the last passage.', MANY[129].id)]));
+    const findings = await extractMany();
+    expect(mocks.callRoleModel).toHaveBeenCalledTimes(3);
+    const prompts: string[] = mocks.callRoleModel.mock.calls.map((call) => call[0].messages[1].content);
+    expect(prompts.map((prompt) => (prompt.match(/\[CHUNK /g) ?? []).length)).toEqual([60, 60, 10]);
+    // The passage past the hundred-and-twentieth is shown, marked, with its quote.
+    expect(prompts[2]).toContain(`[CHUNK ${MANY[129].id}]`);
+    expect(prompts[2]).toContain('"Quoted from Source 130."');
+    expect(prompts[0]).not.toContain('These are further chunks the same report cites.');
+    expect(prompts[1]).toContain('These are further chunks the same report cites.');
+    // A finding restated by a later call is taken once.
+    expect(findings.map((entry) => entry.claim_text)).toEqual(['A finding from the first passages.', 'A finding from the 61st passage.', 'A finding from the last passage.']);
+    expect(storedFindings().map((row) => row.chunk_id)).toEqual([MANY[0].id, MANY[60].id, MANY[129].id]);
+  });
+
+  it('keeps the findings it has when a later call fails', async () => {
+    mocks.callRoleModel
+      .mockResolvedValueOnce(reply([finding('A finding from the first passages.', MANY[0].id)]))
+      .mockRejectedValueOnce(new Error('provider unavailable'))
+      .mockResolvedValueOnce(reply([finding('A finding from the last passage.', MANY[129].id)]));
+    const findings = await extractMany();
+    expect(findings.map((entry) => entry.claim_text)).toEqual(['A finding from the first passages.', 'A finding from the last passage.']);
+    expect(mocks.inserts).toHaveLength(2);
+  });
+
+  it('stores nothing when the first call fails, as before', async () => {
+    mocks.callRoleModel.mockRejectedValueOnce(new Error('provider unavailable'));
+    expect(await extractMany()).toEqual([]);
+    expect(mocks.callRoleModel).toHaveBeenCalledTimes(1);
+    expect(mocks.inserts).toHaveLength(0);
+  });
+});
+
 describe('a report with no saved citations when findings are extracted', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -248,27 +300,33 @@ describe('a report with no saved citations when findings are extracted', () => {
 });
 
 describe('the two rules on their own', () => {
-  it('shows cited passages first, and with none cited the first thirty as before', () => {
+  it('shows cited passages first, and with none cited the first thirty in one call as before', () => {
     const list = [{ id: 'a' }, { id: 'B' }, { id: 'c' }];
-    expect(passagesForExtraction(list, new Set(['b', 'c'])).map((entry) => entry.id)).toEqual(['B', 'c', 'a']);
-    expect(passagesForExtraction(list, new Set())).toEqual(list);
+    expect(passagesForExtraction(list, new Set(['b', 'c'])).map((batch) => batch.map((entry) => entry.id))).toEqual([['B', 'c', 'a']]);
+    expect(passagesForExtraction(list, new Set())).toEqual([list]);
     const forty = Array.from({ length: 40 }, (_, n) => ({ id: `p${n}` }));
-    expect(passagesForExtraction(forty, new Set()).map((entry) => entry.id)).toEqual(forty.slice(0, 30).map((entry) => entry.id));
+    expect(passagesForExtraction(forty, new Set())).toEqual([forty.slice(0, 30)]);
+    // Citations saved for passages the run no longer holds: the uncited context is still shown.
+    expect(passagesForExtraction(list, new Set(['gone']))).toEqual([list]);
   });
 
   it('shows every passage the report cites, however many, and limits only the uncited ones', () => {
     const fifty = Array.from({ length: 50 }, (_, n) => ({ id: `p${n}` }));
     // Thirty-six cited, scattered through the run's passages: more than the thirty shown before.
     const cited = new Set(fifty.filter((_, n) => n % 4 !== 0).slice(0, 36).map((entry) => entry.id));
-    const shown = passagesForExtraction(fifty, cited).map((entry) => entry.id);
-    expect(shown).toHaveLength(36);
-    expect(new Set(shown)).toEqual(cited);
+    const [only, ...more] = passagesForExtraction(fifty, cited);
+    expect(more).toEqual([]);
+    expect(only).toHaveLength(36);
+    expect(new Set(only.map((entry) => entry.id))).toEqual(cited);
     // Ten cited: all ten, then uncited ones up to thirty in all.
     const ten = new Set(fifty.slice(40).map((entry) => entry.id));
-    const mixed = passagesForExtraction(fifty, ten).map((entry) => entry.id);
-    expect(mixed).toHaveLength(30);
-    expect(mixed.slice(0, 10)).toEqual(fifty.slice(40).map((entry) => entry.id));
-    expect(mixed.slice(10)).toEqual(fifty.slice(0, 20).map((entry) => entry.id));
+    const [mixed] = passagesForExtraction(fifty, ten);
+    expect(mixed.map((entry) => entry.id)).toEqual([...fifty.slice(40), ...fifty.slice(0, 20)].map((entry) => entry.id));
+    // A hundred and fifty cited: three calls of sixty, sixty and thirty, every one of them shown once.
+    const many = Array.from({ length: 170 }, (_, n) => ({ id: `q${n}` }));
+    const batches = passagesForExtraction(many, new Set(many.slice(0, 150).map((entry) => entry.id)));
+    expect(batches.map((batch) => batch.length)).toEqual([60, 60, 30]);
+    expect(batches.flat().map((entry) => entry.id)).toEqual(many.slice(0, 150).map((entry) => entry.id));
   });
 
   it('prefers a cited passage, falls back to one the run holds, and drops what it does not hold', () => {
