@@ -77,6 +77,18 @@ export function isSelfServeSubscriptionTier(tier: string): tier is 'pro' | 'byok
   return tier === 'pro' || tier === 'byok';
 }
 
+/**
+ * Plans that are no longer sold. The tier names stay valid everywhere else,
+ * so an account already on one keeps working; what is refused is buying one
+ * or switching to one.
+ */
+export function isRemovedPlanTier(tier: string): tier is 'team' | 'sovereign' {
+  const name = tier.trim().toLowerCase();
+  return name === 'team' || name === 'sovereign';
+}
+
+export const REMOVED_PLAN_MESSAGE = 'That plan is not available.';
+
 export function getSubscriptionPriceOptions(): SubscriptionPriceOption[] {
   const ids = config.stripe.priceIds;
   const options: SubscriptionPriceOption[] = [];
