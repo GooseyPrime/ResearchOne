@@ -207,6 +207,16 @@ describe('a source ranked by tier in the report text', () => {
     expect(removeBannedWording('T1\nevidence points the other way.')).toBe('evidence points the other way.');
   });
 
+  it('takes out a rating when the rating or the source is a link, keeping the source\'s link', () => {
+    expect(removeBannedWording('The regulator is a [tier 1](https://example.org/tiers) source.')).toBe('The regulator is a source.');
+    expect(removeBannedWording('The regulator is a tier 1 [source](https://example.org/nrc).')).toBe('The regulator is a [source](https://example.org/nrc).');
+    expect(removeBannedWording('Two [sources](https://example.org/s) in tier 2 disagree.')).toBe('Two [sources](https://example.org/s) disagree.');
+    for (const text of ['The regulator is a [tier 1](https://example.org/tiers) source.', 'The regulator is a tier 1 [source](https://example.org/nrc).', 'Two [sources](https://example.org/s) in tier 2 disagree.']) {
+      expect(readerFacingLabelHits(text)).toContain('source rank');
+      expect(readerFacingLabelHits(removeBannedWording(text))).not.toContain('source rank');
+    }
+  });
+
   it('keeps a quotation whole when it runs across a link', () => {
     const text = 'The regulator is a tier 1 source; the agency says "a tier 1 source of [data](https://example.org/tier-1-source)".';
     expect(removeBannedWording(text)).toBe('The regulator is a source; the agency says "a tier 1 source of [data](https://example.org/tier-1-source)".');

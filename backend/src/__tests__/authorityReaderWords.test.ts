@@ -35,7 +35,7 @@ describe('a source named in words by where it was read', () => {
     const regulator = { url: 'https://www.nrc.gov/reactors/x.html' };
     expect(sourceKindInWords(regulator)).toBe('web page');
     expect(sourceKindInWords({ ...regulator, authorityWords: true })).toBe('government page');
-    expect(sourceKindInWords({ url: 'https://www.reuters.com/x', authorityWords: true })).toBe('news article');
+    expect(sourceKindInWords({ url: 'https://www.reuters.com/x', authorityWords: true })).toBe('news site page');
     // What the provider recorded stays.
     expect(sourceKindInWords({ kind: 'dataset', url: 'https://data.gov/x', authorityWords: true })).toBe('dataset');
     // An unknown site stays a web page.
@@ -81,8 +81,18 @@ describe('review fixes for where the reader sees authority', () => {
   });
 
   it('a named research institution is not called a university page', () => {
-    expect(sourceKindInWords({ url: 'https://www.brookings.edu/articles/x/', authorityWords: true })).toBe('institutional report');
+    expect(sourceKindInWords({ url: 'https://www.brookings.edu/articles/x/', authorityWords: true })).toBe('research institution page');
     expect(sourceKindInWords({ url: 'https://energy.mit.edu/x', authorityWords: true })).toBe('university page');
+  });
+
+  it('a host names the site, never a document type it cannot know', () => {
+    // A publisher's book list, a news homepage and a preprint server's front page are not articles.
+    expect(sourceKindInWords({ url: 'https://www.cambridge.org/core/books', authorityWords: true })).toBe('journal publisher page');
+    expect(sourceKindInWords({ url: 'https://www.reuters.com/', authorityWords: true })).toBe('news site page');
+    expect(sourceKindInWords({ url: 'https://www.biorxiv.org/', authorityWords: true })).toBe('preprint server page');
+    for (const rule of AUTHORITY_RULES) {
+      if (rule.readerWords) expect(rule.readerWords).not.toMatch(/\barticle\b|\breport\b|^preprint$|\bstandard$/i);
+    }
   });
 
   it('a renamed web page keeps its access date in every style', async () => {

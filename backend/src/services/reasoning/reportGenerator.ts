@@ -932,14 +932,22 @@ export { stripInternalLabelsFromReport };
  * "authority level" becomes "standing". "Tier 2 cities" is prose and is kept.
  * Applied only outside quotations: a source's own words are left as it said them.
  */
+const RANKED_NOUN = '(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)';
+const RATING = '(?:authority[- ])?(?:tier|level)[- ]?[1-4]';
+const LINK_TAIL = '\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)';
+
 export function withoutSourceRank(text: string): string {
-  // The same whitespace the check accepts, so a soft line break inside a phrase is matched too.
+  // The same whitespace the check accepts, so a soft line break inside a phrase
+  // is matched too. The reader sees a link's label in place, so a rating or a
+  // source noun that is a link's label counts as well: a linked rating is taken
+  // out with its link, a linked noun keeps its link.
   return text
-    .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4]\s+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
-    .replace(/\s+(?:of|at|in|from)\s+(?:authority\s+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
-      /\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)$/i.test(whole.slice(0, offset)) ? '' : phrase
+    .replace(new RegExp(`\\[${RATING}${LINK_TAIL}\\s+(?=\\[?${RANKED_NOUN}\\b)`, 'gi'), '')
+    .replace(new RegExp(`\\b${RATING}\\s+(?=\\[?${RANKED_NOUN}\\b)`, 'gi'), '')
+    .replace(new RegExp(`\\s+(?:of|at|in|from)\\s+(?:authority\\s+)?(?:\\[${RATING}${LINK_TAIL}|(?:tier|level)[- ]?[1-4]\\b)`, 'gi'), (phrase, offset: number, whole: string) =>
+      new RegExp(`\\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)(?:${LINK_TAIL})?$`, 'i').test(whole.slice(0, offset)) ? '' : phrase
     )
-    .replace(/\bT[1-4]\s+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/gi, '')
+    .replace(new RegExp(`\\bT[1-4]\\s+(?=\\[?(?:sources?|evidence|records?|stud(?:y|ies))\\b)`, 'gi'), '')
     .replace(/\bauthority\s+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
 }
 

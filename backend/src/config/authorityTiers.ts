@@ -54,6 +54,8 @@ export interface AuthorityRule {
   /**
    * What a reader is told the source is, when the provider recorded nothing
    * more specific than a web page. Address rules only. Words, never a tier.
+   * A host says where a page was read, not what document it is, so these name
+   * the site ("news site page"), never a document type ("news article").
    */
   readerWords?: string;
   example: AuthoritySignals;
@@ -131,7 +133,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Where it was read: scholarly hosts before government hosts ───────────────
   {
     id: 'host-preprint-server',
-    readerWords: 'preprint',
+    readerWords: 'preprint server page',
     tier: 3,
     what: 'a preprint server',
     hosts: ['arxiv.org', 'biorxiv.org', 'medrxiv.org', 'chemrxiv.org', 'ssrn.com', 'osf.io', 'researchsquare.com', 'preprints.org', 'nber.org'],
@@ -139,7 +141,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pubmed',
-    readerWords: 'journal article',
+    readerWords: 'PubMed page',
     tier: 2,
     what: 'an article page on PubMed or PubMed Central',
     hosts: ['pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'europepmc.org'],
@@ -147,7 +149,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pmc-path',
-    readerWords: 'journal article',
+    readerWords: 'PubMed Central page',
     tier: 2,
     what: 'a PubMed Central article at its older address',
     hosts: ['ncbi.nlm.nih.gov'],
@@ -156,7 +158,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-journal',
-    readerWords: 'journal article',
+    readerWords: 'journal publisher page',
     tier: 2,
     what: 'a site that publishes peer-reviewed journals',
     hosts: [
@@ -207,7 +209,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-registry',
-    readerWords: 'registry record',
+    readerWords: 'registry page',
     tier: 1,
     what: 'an official registry of trials, patents or filings',
     hosts: ['clinicaltrials.gov', 'patents.google.com', 'epo.org', 'isrctn.com'],
@@ -217,7 +219,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Established news, reference works, institutions ──────────────────────────
   {
     id: 'host-news',
-    readerWords: 'news article',
+    readerWords: 'news site page',
     tier: 3,
     what: 'an established news organization',
     hosts: [
@@ -229,7 +231,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-reference-work',
-    readerWords: 'reference work entry',
+    readerWords: 'reference work page',
     tier: 3,
     what: 'an edited reference work',
     hosts: ['britannica.com', 'plato.stanford.edu', 'oxfordreference.com', 'merriam-webster.com'],
@@ -237,7 +239,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-research-institution',
-    readerWords: 'institutional report',
+    readerWords: 'research institution page',
     tier: 3,
     what: 'a recognized research institution that publishes reports',
     hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],

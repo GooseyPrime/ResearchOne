@@ -218,11 +218,14 @@ export async function loadReaderEvidence(
   options: { authorityWords?: boolean } = {}
 ): Promise<ReaderEvidence> {
   const select = (extra: string): string =>
-    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.citation_order, rc.chunk_quote${extra},
+    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, COALESCE(rc.source_id, c.source_id) AS source_id, rc.citation_text, rc.citation_order, rc.chunk_quote${extra},
             s.title AS source_title, s.url AS source_url, s.authors AS source_authors, s.publication AS source_publication,
             s.published_at AS source_published_at, s.original_filename AS source_filename,
             s.metadata->'bibliographic'->>'kind' AS source_kind, s.metadata->'bibliographic'->>'provider' AS source_provider
-       FROM report_citations rc LEFT JOIN sources s ON s.id = rc.source_id
+       FROM report_citations rc
+       LEFT JOIN chunks c ON c.id = rc.chunk_id
+       -- A citation saved without the old mapper's source id still names its passage, whose source is known.
+       LEFT JOIN sources s ON s.id = COALESCE(rc.source_id, c.source_id)
       WHERE rc.report_id = $1`;
   let citationRows: CitationRow[];
   try {

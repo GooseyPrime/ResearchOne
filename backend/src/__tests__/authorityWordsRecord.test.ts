@@ -55,3 +55,12 @@ describe('the harness reads a citation\'s source through its passage when it has
     expect(STORED_CITATION_SQL.indexOf('LEFT JOIN chunks c')).toBeLessThan(STORED_CITATION_SQL.indexOf('LEFT JOIN sources src'));
   });
 });
+
+describe('the reading page finds a citation\'s source through its passage when it has no source id', () => {
+  it('selects and joins the source through the passage', () => {
+    const source = readFileSync(resolve(__dirname, '../services/formatting/readerEvidence.ts'), 'utf8');
+    expect(source).toContain('COALESCE(rc.source_id, c.source_id) AS source_id');
+    expect(source).toContain('LEFT JOIN sources s ON s.id = COALESCE(rc.source_id, c.source_id)');
+    expect(source.indexOf('LEFT JOIN chunks c ON c.id = rc.chunk_id')).toBeLessThan(source.indexOf('LEFT JOIN sources s ON s.id = COALESCE'));
+  });
+});
