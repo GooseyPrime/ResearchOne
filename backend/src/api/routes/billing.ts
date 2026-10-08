@@ -41,6 +41,11 @@ import {
 } from '../../services/billing/addonEligibility';
 import { getPurchaseAvailability } from '../../services/billing/purchaseAvailability';
 import {
+  PLAN_SWITCH_REFUSAL_HTTP_STATUS,
+  PLAN_SWITCH_REFUSAL_MESSAGE,
+  switchSubscriptionPlan,
+} from '../../services/billing/planSwitch';
+import {
   isSheerIdProgramConfigured,
   isStudentDevBypassAvailable,
   isStudentVerified,
@@ -358,6 +363,41 @@ router.post('/checkout/subscription', async (req, res, next) => {
     );
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * A subscriber moves between Pro and BYOK (monthly or annual). Their existing
+ * subscription is changed in place; no Checkout, no second subscription. The
+ * body carries only the price to move to. Which subscription is changed is
+ * decided from the signed-in user, never from the request.
+ */
+router.post('/subscription/switch', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const priceId = String(req.body?.priceId ?? '').trim();
+    if (!priceId) {
+      res.status(400).json({ error: 'priceId is required' });
+      return;
+    }
+
+    const result = await switchSubscriptionPlan({ userId, priceId });
+    if (!result.ok) {
+      res.status(PLAN_SWITCH_REFUSAL_HTTP_STATUS[result.reason]).json({
+        error: PLAN_SWITCH_REFUSAL_MESSAGE[result.reason],
+        code: `PLAN_SWITCH_${result.reason.toUpperCase()}`,
+      });
+      return;
+    }
+
+    res.json({ switched: true, tier: result.tier });
   } catch (err) {
     next(err);
   }

@@ -11,11 +11,12 @@ import api, {
   type ReportMonitorRow,
 } from '../utils/api';
 import PlanCheckoutOptions, { type SubscriptionOption } from '../components/billing/PlanCheckoutOptions';
+import PlanSwitchOptions, { type PendingPlanSwitch } from '../components/billing/PlanSwitchOptions';
 import MonitorTokenPurchaseOptions, {
   type AddonEligibilityState,
 } from '../components/billing/MonitorTokenPurchaseOptions';
 import { TOKEN_PACKS } from '../lib/billing/availability';
-import { PLAN_LABEL, resolvePlanIntentNotice } from '../lib/billing/planIntent';
+import { PLAN_LABEL, isSwitchablePlan, resolvePlanIntentNotice } from '../lib/billing/planIntent';
 import { startMonitorTokenCheckoutRedirect } from '../lib/billing/checkout';
 import { parseStripeCheckoutReturnSessionId, startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
@@ -99,6 +100,10 @@ export default function BillingPage() {
   const [legacyCheckoutWarning, setLegacyCheckoutWarning] = useState(false);
   /** Set only when the checkout just confirmed was a BYOK plan, so that subscriber is pointed at the key step. */
   const [byokJustActivated, setByokJustActivated] = useState(false);
+  /** The plan a subscriber has picked in the switch block and not yet confirmed. */
+  const [pendingSwitch, setPendingSwitch] = useState<PendingPlanSwitch | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const [switchedTo, setSwitchedTo] = useState<PendingPlanSwitch | null>(null);
   const { hash } = useLocation();
 
   const billingIntent = searchParams.get('intent');
@@ -225,6 +230,33 @@ export default function BillingPage() {
     },
   });
 
+  // The server changes the subscription in Stripe and returns. The plan shown
+  // here changes when Stripe's event has been handled, usually within seconds,
+  // so the subscription is read again a few times rather than once.
+  const switchMutation = useMutation({
+    mutationFn: async (choice: PendingPlanSwitch) => {
+      await api.post<{ switched: boolean; tier: string }>('/billing/subscription/switch', {
+        priceId: choice.priceId,
+      });
+      return choice;
+    },
+    onSuccess: (choice) => {
+      setSwitchError(null);
+      setPendingSwitch(null);
+      setSwitchedTo(choice);
+      // Keeps reading for the full minute the message below promises.
+      for (const delayMs of [0, 2000, 5000, 10000, 20000, 40000, 60000]) {
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
+          void queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
+        }, delayMs);
+      }
+    },
+    onError: (err: unknown) => {
+      setSwitchError(extractApiError(err));
+    },
+  });
+
   const balance = useMemo(() => ((walletQuery.data?.balanceCents ?? 0) / 100).toFixed(2), [walletQuery.data]);
 
   const subRow = subQuery.data;
@@ -234,6 +266,13 @@ export default function BillingPage() {
       subRow.stripeSubscriptionId,
   );
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
+  // Only Pro and BYOK subscriptions can be switched from this page, and not one
+  // already set to end or with a payment outstanding (the server refuses both).
+  const paidUp = subRow?.status === 'active' || subRow?.status === 'trialing';
+  const switchableTier =
+    hasActiveSubscription && paidUp && !subRow?.cancelAtPeriodEnd && isSwitchablePlan(subRow?.tier)
+      ? subRow.tier
+      : null;
 
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
   const { hasProAccess, tierGateUnknown } = useHasProAccess();
@@ -249,6 +288,7 @@ export default function BillingPage() {
     intent: billingIntent,
     hasActiveSubscription,
     effectiveTier,
+    subscriptionTier: switchableTier ?? undefined,
     subscriptionResolved: Boolean(subQuery.data),
   });
 
@@ -325,6 +365,32 @@ export default function BillingPage() {
             </>
           ) : null}
         </p>
+      ) : null}
+      {intentNotice?.kind === 'switch_below' ? (
+        <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
+          You have an active {PLAN_LABEL[intentNotice.currentTier]} subscription. To move to{' '}
+          {PLAN_LABEL[intentNotice.plan]}, use{' '}
+          <a href="#switch-plan" className="underline hover:text-white">
+            Switch plan
+          </a>{' '}
+          below. Your subscription is changed, not doubled.
+        </p>
+      ) : null}
+      {switchedTo ? (
+        <div className="mt-4 rounded-md border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+          <p className="font-medium">
+            Your subscription is now {PLAN_LABEL[switchedTo.tier]}, {switchedTo.period} billing.
+          </p>
+          <p className="mt-1 text-emerald-100/80">
+            The plan shown on this page updates within a minute. Any difference in price is on your next bill, or
+            was billed today if you changed between monthly and annual billing.
+          </p>
+          {switchedTo.tier === 'byok' ? (
+            <Link to="/app/byok" className="mt-2 inline-block underline hover:text-white">
+              Add your model keys
+            </Link>
+          ) : null}
+        </div>
       ) : null}
       {intentNotice?.kind === 'switch_not_available' ? (
         <div className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
@@ -554,6 +620,31 @@ export default function BillingPage() {
               </>
             )}
           </div>
+        ) : null}
+
+        {switchableTier ? (
+          <PlanSwitchOptions
+            currentTier={switchableTier}
+            options={subscriptionOptionsQuery.data?.options ?? []}
+            isLoading={subscriptionOptionsQuery.isLoading}
+            errorMessage={subscriptionOptionsQuery.isError ? extractApiError(subscriptionOptionsQuery.error) : null}
+            onRetry={() => void subscriptionOptionsQuery.refetch()}
+            pending={pendingSwitch}
+            onSelect={(choice) => {
+              setSwitchError(null);
+              setSwitchedTo(null);
+              setPendingSwitch(choice);
+            }}
+            onConfirm={() => {
+              if (pendingSwitch) switchMutation.mutate(pendingSwitch);
+            }}
+            onCancel={() => {
+              setSwitchError(null);
+              setPendingSwitch(null);
+            }}
+            isSwitching={switchMutation.isPending}
+            switchError={switchError}
+          />
         ) : null}
 
         {!hasActiveSubscription ? (
