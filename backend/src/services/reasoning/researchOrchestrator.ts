@@ -57,7 +57,7 @@ import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, 
 import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
-import { searchScopeGateContext, searchScopeNoteFor, type SearchPassSummary } from './searchScope';
+import { boundedReportForAudit, searchScopeGateContext, searchScopeNoteFor, withSearchScopeRestored, type SearchPassSummary } from './searchScope';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -2405,7 +2405,7 @@ async function runResearchJobInner(
     const reportForGates = (markdown: string): string =>
       lockedPassages
         ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle, searchScopeNote).markdown
-        : markdown;
+        : withSearchScopeRestored(markdown, searchScopeNote);
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -2717,7 +2717,7 @@ ${reportForGates(generatedReport.markdown)}`,
         await progress('verification', 93, 'Auditing deliverable contract...');
         const auditUserContent = [
           `${gateContext}RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
-          `\nGENERATED_REPORT:\n${markdown.slice(0, 60000)}`,
+          `\nGENERATED_REPORT:\n${boundedReportForAudit(markdown, 60000, searchScopeNote)}`,
         ].join('\n');
 
         const auditModelResult = await callRoleModel({
@@ -3039,7 +3039,8 @@ ${reportForGates(generatedReport.markdown)}`,
     // wording back. Nothing else about the text changes here.
     if (!lockedPassages && layer1Run && typeof generatedReport?.markdown === 'string') {
       const checked = cleanLayer1WordingForSave(generatedReport.markdown);
-      generatedReport.markdown = checked.markdown;
+      // A repair may have reworded the closing note; the statement of the search is put back as recorded.
+      generatedReport.markdown = withSearchScopeRestored(checked.markdown, searchScopeNote);
       if (checked.wordingAfter.length > 0) {
         logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: checked.wordingAfter });
         await query(
@@ -3546,7 +3547,6 @@ ${reportForGates(generatedReport.markdown)}`,
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
       }
     }
-
     // Best-effort: set workspace retention expiry for the terminal run.
     // Deploy-skew safe — markRunTerminalRetention catches 42703.
     try {
