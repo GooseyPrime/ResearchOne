@@ -133,6 +133,9 @@ describe('recording a source\'s authority tier at ingest', () => {
     const job = { importedVia: 'autonomous_discovery' as const, authorityTier: 2 };
     // Same address: this job's tier stands.
     expect(tierForStoredDuplicate(job, { url: 'https://doi.org/10.1/x' }, 'https://doi.org/10.1/x')).toBe(2);
+    // Discovery's idea of the same address: a trailing slash, a fragment or the host's case do not change it.
+    expect(tierForStoredDuplicate(job, { url: 'https://Host.example.org/x' }, 'https://host.example.org/x/')).toBe(2);
+    expect(tierForStoredDuplicate(job, { url: 'https://host.example.org/x#section-2' }, 'https://host.example.org/x')).toBe(2);
     // Another address: the carried tier is about this job's copy, not the stored one.
     expect(tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x')).toBeNull();
     expect(on(() => tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x'))).toBe(4);

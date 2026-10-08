@@ -1,4 +1,4 @@
-import { isCalendarDay } from '../discovery/providerTypes';
+import { isCalendarDay, normalizeDiscoveryUrl } from '../discovery/providerTypes';
 import { authorityTierFor, authorityTiersEnabled, storedAuthorityTier, type AuthoritySignals, type AuthorityTier } from '../authority/authorityTier';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -331,7 +331,10 @@ export function tierForStoredDuplicate(
   signals: AuthoritySignals,
   storedUrl: string | null | undefined
 ): AuthorityTier | null {
-  const same = (storedUrl ?? '').trim() !== '' && (storedUrl ?? '').trim() === (signals.url ?? '').trim();
+  // The same address as discovery judges it: a fragment or a trailing slash does not make a new one.
+  const stored = (storedUrl ?? '').trim();
+  const read = (signals.url ?? '').trim();
+  const same = stored !== '' && read !== '' && normalizeDiscoveryUrl(stored) === normalizeDiscoveryUrl(read);
   if (same) return tierForIngest(data, signals);
   return authorityTiersEnabled() ? authorityTierFor({ url: storedUrl }) : null;
 }
