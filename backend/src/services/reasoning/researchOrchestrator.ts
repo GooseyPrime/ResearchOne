@@ -57,7 +57,7 @@ import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, 
 import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
-import { boundedReportForAudit, searchScopeGateContext, searchScopeNoteFor, withSearchScopeRestored, type SearchPassSummary } from './searchScope';
+import { boundedReportForAudit, closingNoteOf, searchScopeGateContext, searchScopeNoteFor, withClosingNoteRestored, type SearchPassSummary } from './searchScope';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -2402,10 +2402,14 @@ async function runResearchJobInner(
     // from the run's record, in the closing note. Empty for every other run.
     const searchScopeNote = searchScopeNoteFor({ layer1Run, intentId: orchProfile.intent, summaries: searchPasses });
     const gateContext = searchScopeGateContext(searchScopeNote);
+    // Without the citation lock the closing note is already in the report the
+    // writer returns, and later rewrites are handed that whole report. The note
+    // as written is kept here and every later version is held to it.
+    let writtenClosingNote = '';
     const reportForGates = (markdown: string): string =>
       lockedPassages
         ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle, searchScopeNote).markdown
-        : withSearchScopeRestored(markdown, searchScopeNote);
+        : withClosingNoteRestored(markdown, writtenClosingNote);
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -2538,6 +2542,7 @@ async function runResearchJobInner(
         );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
+      if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
       const refSynth = await callRoleModel({
@@ -3040,7 +3045,7 @@ ${reportForGates(generatedReport.markdown)}`,
     if (!lockedPassages && layer1Run && typeof generatedReport?.markdown === 'string') {
       const checked = cleanLayer1WordingForSave(generatedReport.markdown);
       // A repair may have reworded the closing note; the statement of the search is put back as recorded.
-      generatedReport.markdown = withSearchScopeRestored(checked.markdown, searchScopeNote);
+      generatedReport.markdown = withClosingNoteRestored(checked.markdown, writtenClosingNote);
       if (checked.wordingAfter.length > 0) {
         logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: checked.wordingAfter });
         await query(
