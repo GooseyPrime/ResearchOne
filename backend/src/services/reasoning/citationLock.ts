@@ -42,8 +42,8 @@ export interface CitationOccurrence {
 // A model may write the marker in either case; `[p3]` is the same citation as `[P3]`.
 // A model also groups them in ways it was not asked to: "[P1/P2]", "[P1 and P2]",
 // "[P1, 2]", "[P1–P3]". Every such bracket is read, so none reaches a reader raw.
-const MARKER_GROUP = /\[\s*(P\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*P?\d+)*)\s*\]/gi;
-const MARKER_TOKEN = /P?(\d+)|([–—-]|\bto\b)/gi;
+const MARKER_GROUP = /\[\s*(P\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*)\s*\]/gi;
+const MARKER_TOKEN = /P?(\d+)|([\u2013\u2014-]|\bto\b)/gi;
 /** Any bracket that opens with a passage marker, whatever follows it. */
 // A bracket the model never closed ("Claim [P1") is still a marker a reader
 // would see. Only the opening token is taken, not the words after it.
@@ -55,7 +55,7 @@ const CHUNK_MARKER = /[ \t]*[[(]\s*(?:see\s+)?chunks?\s+\d+(?:\s*(?:,|and)\s*\d+
 /** The export engine's alias form. It is assigned after a report is saved; a writer that emits it has cited nothing. */
 const EXPORT_ALIAS = /[ \t]*\[\s*E\d+(?:\s*[,;]\s*E\d+)*\s*\]/gi;
 /** A number in brackets the lock did not issue, alone or grouped ("[1, 2]", "[1 and 2]", "[1-3]"). */
-const BARE_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*\d+)*\s*\](?!\()/g;
+const BARE_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?!\()/g;
 /** A range wider than this is not expanded; its two ends are kept. */
 const RANGE_LIMIT = 12;
 
@@ -187,7 +187,7 @@ const WORK = '(?:study|studies|paper|article|trial|work|report|publication|revie
  * retracted, and denies something else.
  */
 const DENIES_RETRACTION =
-  /\b(?:not|never|n't|n’t)\s+(?:(?:been|yet|ever|later|since|formally|subsequently|actually)\s+){0,3}(?:retracted|withdrawn)\b|\bno\s+(?:\w+\s+)?(?:retraction|withdrawal)s?\b|\b(?:without|nor|neither)\s+(?:\w+\s+){0,2}(?:retraction|retracted|withdrawn)\b|\bunretracted\b/i;
+  /\b(?:not|never|n't|n\u2019t)\s+(?:(?:been|yet|ever|later|since|formally|subsequently|actually)\s+){0,3}(?:retracted|withdrawn)\b|\bno\s+(?:\w+\s+)?(?:retraction|withdrawal)s?\b|\b(?:without|nor|neither)\s+(?:\w+\s+){0,2}(?:retraction|retracted|withdrawn)\b|\bunretracted\b/i;
 const AFFIRMS_RETRACTION = new RegExp(
   [
     '\\b(?:since|later|subsequently|now|was|were|been|is|are|being|then|eventually|formally)\\s+(?:\\w+\\s+){0,2}(?:retracted|withdrawn)\\b',
@@ -270,9 +270,9 @@ export function stripUnstatedRetractions(text: string, shown: LockedPassage[]): 
           piece.text
             .replace(MARKER_GROUP, (_full, inner: string) => {
               const kept = markersOf(inner).filter((marker) => !unstated.has(marker));
-              return kept.length > 0 ? `[${kept.join(', ')}]` : '';
+              return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
             })
-            .replace(/[ \t]*/g, '')
+            .replace(/[ \t]*\uE002/g, '')
         );
       })
       .join('')
@@ -731,11 +731,11 @@ export function stripUnsupportedMarkers(originalMarkdown: string, repairedMarkdo
             removed += 1;
           }
         }
-        return kept.length > 0 ? `[${kept.join(', ')}]` : '';
+        return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
       });
     })
     .join('');
-  return { markdown: mapProse(out, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*/g, ''))), removed };
+  return { markdown: mapProse(out, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, ''))), removed };
 }
 
 /** Apply a change to prose only. Code in every Markdown form, links and URLs are returned untouched. */
@@ -779,9 +779,9 @@ export function stripUnknownMarkers(text: string, shown: LockedPassage[]): strin
       prose
         .replace(MARKER_GROUP, (_full, inner: string) => {
           const kept = markersOf(inner).filter((marker) => allowed.has(marker));
-          return kept.length > 0 ? `[${kept.join(', ')}]` : '';
+          return kept.length > 0 ? `[${kept.join(', ')}]` : '\uE002';
         })
-        .replace(/[ \t]*/g, '')
+        .replace(/[ \t]*\uE002/g, '')
     )
   );
 }
@@ -1047,12 +1047,12 @@ export function finalizeLockedCitations(
         occurrences.push({ number, chunkId: passage.chunkId, quote: bestQuote(passage.text, sentence) });
         numbers.push(number);
       }
-      return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '';
+      return numbers.length > 0 ? numbers.map((number) => `[${number}]`).join('') : '\uE002';
     });
     // Anything still shaped like a passage marker was not a citation the lock could read.
     const leftover = rewritten.match(PASSAGE_LOOKING) ?? [];
     removed += leftover.length;
-    const unmarked = rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*/g, '');
+    const unmarked = rewritten.replace(PASSAGE_LOOKING, '').replace(/[ \t]*\uE002/g, '');
     // A label of a passage that was issued, written into the sentence itself.
     const spoken = unmarked.replace(SPOKEN_PASSAGE_LABEL, (label: string, digits: string, offset: number) => {
       if (!byMarker.has(`P${digits}`)) return label;
@@ -1132,7 +1132,7 @@ export function countShortfallSetsStatus(layer1Run: boolean): boolean {
 
 const READER_NUMBER = /\[\d+\](?!\()/g;
 /** Two or more numbers in one bracket: "[1, 2]", "[1 and 2]", "[1-3]". */
-const GROUPED_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*\d+)+\s*\](?!\()/g;
+const GROUPED_NUMBERS = /[ \t]*\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)+\s*\](?!\()/g;
 
 /**
  * Carry a locked report's citations into a revision of it.
@@ -1198,7 +1198,7 @@ export function rebindRevisedCitations<T>(
     const content = mapProse(unwrapCitationLinks(section.content), (prose) => {
       for (const form of [GROUPED_NUMBERS, PASSAGE_LOOKING, CHUNK_MARKER, EXPORT_ALIAS]) {
         removed += (prose.match(form) ?? []).length;
-        prose = prose.replace(form, '');
+        prose = prose.replace(form, '\uE002');
       }
       return prose.replace(/\[\s*(\d+)\s*\](?!\()/g, '[$1]');
     });
@@ -1217,14 +1217,14 @@ export function rebindRevisedCitations<T>(
           if (match) match.used = true;
           if (!match || !carriable(match.row)) {
             removed += 1;
-            return '';
+            return '\uE002';
           }
           kept.push({ sectionIndex, row: match.row });
           return full;
         });
       })
       .join('');
-    return mapProse(rewritten, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*/g, '')));
+    return mapProse(rewritten, (prose) => tidyAfterRemoval(prose.replace(/[ \t]*\uE002/g, '')));
   });
   return { contents, kept, removed };
 }
