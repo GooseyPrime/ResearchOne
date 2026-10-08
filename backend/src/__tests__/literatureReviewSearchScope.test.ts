@@ -85,7 +85,7 @@ const SECOND_PASS = {
   sources: [kept('crossref'), toppedUp('crossref'), overCap('crossref')],
 };
 const STATEMENT =
-  'The search used 3 queries: “long COVID biomarkers recovery”; “interleukin-6 long COVID cohort”; “T cell recovery long COVID”. The results considered came from the open web, OpenAlex, PubMed Central and Crossref. Results were ranked by how closely they matched the question, and the closest were taken first. Of 10 results considered, 5 were added and read for this report and 2 were already held from earlier research. 1 of those added matched the question only loosely and was kept so that the report had enough sources to draw on.';
+  'The search used 3 queries: “long COVID biomarkers recovery”; “interleukin-6 long COVID cohort”; “T cell recovery long COVID”. The results considered came from the open web, OpenAlex, PubMed Central and Crossref. Results were ranked by how closely they matched the question, and the closest were taken first. Of 10 results considered, 5 were chosen to be read and 2 were already held from earlier research. 1 of those chosen matched the question only loosely and was kept so that the report had enough sources to draw on.';
 
 async function writeReview(searchScopeNote?: string, locked = true) {
   return generateIterativeReport({
@@ -140,7 +140,7 @@ describe('a literature review says what was searched', () => {
       queries: ['long COVID biomarkers recovery', 'interleukin-6 long COVID cohort', 'T cell recovery long COVID'],
       providers: ['tavily', 'openalex', 'pmc', 'brave', 'crossref'],
       considered: 10,
-      added: 5,
+      chosen: 5,
       reused: 2,
       looselyMatched: 1,
     });
@@ -160,7 +160,12 @@ describe('a literature review says what was searched', () => {
     // It names where the considered results came from. It does not say which services were asked:
     // the record keeps no trace of one that returned nothing new.
     expect(STATEMENT).not.toMatch(/\bcovered\b|\bsearched\b/);
-    // None of the results was newly added or held: the count is given and no more.
+    // A result is marked when it is queued to be fetched. One whose fetch then failed, or had not finished,
+    // is still marked, so the statement says "chosen to be read" and leaves the number read to the note's own count.
+    const queued = describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['q one two'], sources: [kept('openalex'), { ...kept('openalex'), ingestionJobId: 'a-job-that-failed' }] }]));
+    expect(queued).toContain('Of 2 results considered, 2 were chosen to be read.');
+    expect(STATEMENT).not.toMatch(/added and read|were read for this report/);
+    // None of the results was chosen or held: the count is given and no more.
     expect(describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['q one two'], sources: [overCap('arxiv')] }]))).toContain('taken first. 1 result was considered.');
   });
 
@@ -181,18 +186,18 @@ describe('a literature review says what was searched', () => {
       queries: ['disputed claims about long COVID', 'long COVID `markers` | recovery', 'what [P2] says about long COVID', 'strong_evidence long COVID', 'long COVID recovery time'],
       providers: ['url_fetch', 'an_unknown_provider'],
       considered: 0,
-      added: 0,
+      chosen: 0,
       reused: 0,
       looselyMatched: 0,
     });
     expect(note).toBe('The search used 5 queries, among them “long COVID markers recovery”; “long COVID recovery time”.');
     expect(presentationFailures(note)).toEqual([]);
     // No more than five are listed, however many ran. A provider with no name a reader knows is not named.
-    const many = describeSearchScope({ queries: Array.from({ length: 9 }, (_, n) => `long COVID study ${n + 1}`), providers: ['url_fetch'], considered: 4, added: 4, reused: 0, looselyMatched: 0 });
+    const many = describeSearchScope({ queries: Array.from({ length: 9 }, (_, n) => `long COVID study ${n + 1}`), providers: ['url_fetch'], considered: 4, chosen: 4, reused: 0, looselyMatched: 0 });
     expect(many.match(/“/g)).toHaveLength(5);
     expect(many.startsWith('The search used 9 queries, among them ')).toBe(true);
     expect(many).not.toContain('came from');
-    expect(many).toContain('Of 4 results considered, 4 were added and read for this report.');
+    expect(many).toContain('Of 4 results considered, 4 were chosen to be read.');
   });
 
   it('puts the statement in the text the checks read and in the text that is saved', async () => {
@@ -263,6 +268,21 @@ describe('a literature review says what was searched', () => {
     expect(withSearchScopeRestored('# A review\n\n## Summary\nNo closing note here.', STATEMENT)).toBe('# A review\n\n## Summary\nNo closing note here.');
   });
 
+  it('keeps a section a repair appended after the closing note when it puts the statement back', () => {
+    const head = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## About this report\n';
+    const appended = '## Discussion of patterns\nTwo cohorts agree on the direction of change [1].\n\n### A sub-heading\nMore detail.';
+    const reworded = `${head}We looked in a few places. 2 sources were read on 8 Oct 2026.\n\n${appended}`;
+    const restored = withSearchScopeRestored(reworded, STATEMENT);
+    expect(restored).toBe(`${head}${STATEMENT} 2 sources were read on 8 Oct 2026.\n\n${appended}`);
+    // Already in place, with a section after it: nothing changes.
+    expect(withSearchScopeRestored(restored, STATEMENT)).toBe(restored);
+    // The contract check is given the note itself, not whatever follows it.
+    const long = `${head.replace('Interleukin-6 fell [1].', 'Interleukin-6 fell [1]. '.repeat(3000))}${STATEMENT} 2 sources were read on 8 Oct 2026.\n\n${appended}`;
+    const given = boundedReportForAudit(long, 60000, STATEMENT);
+    expect(given.length).toBeLessThanOrEqual(60000);
+    expect(given.endsWith(`## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`)).toBe(true);
+  });
+
   it('shows the contract check the closing note of a report longer than the check can be given', () => {
     const long = `# A review\n\n## Summary\n${'Interleukin-6 fell in patients who recovered [1]. '.repeat(1600)}\n\n## References\n1. The Lancet.\n\n## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`;
     expect(long.length).toBeGreaterThan(60000);
@@ -271,7 +291,7 @@ describe('a literature review says what was searched', () => {
     const given = boundedReportForAudit(long, 60000, STATEMENT);
     expect(given.length).toBeLessThanOrEqual(60000);
     expect(given.startsWith('# A review\n\n## Summary\nInterleukin-6 fell')).toBe(true);
-    expect(given).toContain('[The middle of the report is left out here for length.]');
+    expect(given).toContain('[Part of the report is left out here for length.]');
     expect(given.endsWith(`## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`)).toBe(true);
     expect(statesItsSearch(given)).toBe(true);
     // A report inside the limit is given whole, and a run with no statement is cut exactly as before.

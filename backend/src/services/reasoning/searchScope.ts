@@ -24,11 +24,16 @@ export interface SearchRecord {
   providers: string[];
   /** Results left to consider once duplicates and off-topic results were set aside. */
   considered: number;
-  /** Results newly stored and read for this run. */
-  added: number;
+  /**
+   * Results chosen to be read: queued to be fetched and stored for this run.
+   * Discovery marks a result when it queues it, so one whose fetch later failed
+   * is still counted here. How many sources were in fact read is the closing
+   * note's own count, which comes from the passages the run retrieved.
+   */
+  chosen: number;
   /** Results the library already held from earlier research. */
   reused: number;
-  /** Results added although they matched the question only loosely, to give the run enough sources. */
+  /** Results chosen although they matched the question only loosely, to give the run enough sources. */
   looselyMatched: number;
 }
 
@@ -66,7 +71,7 @@ export function mergeSearchRecords(summaries: ReadonlyArray<SearchPassSummary | 
   const providers: string[] = [];
   const seenQueries = new Set<string>();
   let considered = 0;
-  let added = 0;
+  let chosen = 0;
   let reused = 0;
   let looselyMatched = 0;
   for (const summary of summaries) {
@@ -88,7 +93,7 @@ export function mergeSearchRecords(summaries: ReadonlyArray<SearchPassSummary | 
       considered += 1;
       if (typeof source.provider === 'string' && source.provider.trim() && !providers.includes(source.provider.trim())) providers.push(source.provider.trim());
       if (source.ingested === true) {
-        added += 1;
+        chosen += 1;
         // Discovery records a result it kept only to give the run enough sources.
         if (typeof source.selectionRationale === 'string' && source.selectionRationale.includes('off-topic')) looselyMatched += 1;
       } else if (source.skipReason === 'already_in_corpus') {
@@ -96,7 +101,7 @@ export function mergeSearchRecords(summaries: ReadonlyArray<SearchPassSummary | 
       }
     }
   }
-  return { queries, providers, considered, added, reused, looselyMatched };
+  return { queries, providers, considered, chosen, reused, looselyMatched };
 }
 
 /** Where each provider's results come from, in the name a reader would know. Several providers search the open web. */
@@ -167,7 +172,7 @@ export function describeSearchScope(record: SearchRecord): string {
   }
   if (places.length > 0) sentences.push(`The results considered came from ${listInWords(places)}.`);
   const outcome: string[] = [];
-  if (record.added > 0) outcome.push(`${record.added} ${record.added === 1 ? 'was' : 'were'} added and read for this report`);
+  if (record.chosen > 0) outcome.push(`${record.chosen} ${record.chosen === 1 ? 'was' : 'were'} chosen to be read`);
   if (record.reused > 0) outcome.push(`${record.reused} ${record.reused === 1 ? 'was' : 'were'} already held from earlier research`);
   sentences.push(
     `Results were ranked by how closely they matched the question, and the closest were taken first. ${
@@ -176,7 +181,7 @@ export function describeSearchScope(record: SearchRecord): string {
   );
   if (record.looselyMatched > 0) {
     sentences.push(
-      `${record.looselyMatched} of those added matched the question only loosely and ${record.looselyMatched === 1 ? 'was' : 'were'} kept so that the report had enough sources to draw on.`
+      `${record.looselyMatched} of those chosen matched the question only loosely and ${record.looselyMatched === 1 ? 'was' : 'were'} kept so that the report had enough sources to draw on.`
     );
   }
   return sentences.join(' ');
@@ -212,43 +217,53 @@ export function searchScopeGateContext(scopeNote: string): string {
 
 const CLOSING_HEADING = /^## About this report[ \t]*$/gm;
 
-/** Where the last "About this report" heading starts and where its text begins, or null when the report has none. */
-function closingNoteAt(markdown: string): { heading: number; body: number } | null {
+/**
+ * The last "About this report" section: where its heading starts, where its
+ * text begins, and where it ends, which is the next heading or the end of the
+ * report. A repair can append a section after the closing note, and that
+ * section is not part of the note.
+ */
+function closingNoteAt(markdown: string): { heading: number; body: number; end: number } | null {
   let last: RegExpExecArray | null = null;
   for (const match of markdown.matchAll(CLOSING_HEADING)) last = match;
-  return last ? { heading: last.index, body: last.index + last[0].length } : null;
+  if (!last) return null;
+  const body = last.index + last[0].length;
+  const next = /^#{1,6}[ \t]+\S/m.exec(markdown.slice(body));
+  return { heading: last.index, body, end: next ? body + next.index : markdown.length };
 }
 
 /**
  * The report with the statement back in its closing note, if a rewrite took it
  * out or changed it. The note is code's, not the writer's: without the citation
  * lock a redraft or a repair is handed the whole report and can return the note
- * reworded. With no statement to keep, or a report that used no sources, the
- * text is returned as it is.
+ * reworded. Only the note's own text is replaced; a section that follows it is
+ * kept. With no statement to keep, or a report that used no sources, the text is
+ * returned as it is.
  */
 export function withSearchScopeRestored(markdown: string, scopeNote: string): string {
   if (!scopeNote) return markdown;
   const at = closingNoteAt(markdown);
   if (!at) return markdown;
-  const body = markdown.slice(at.body);
+  const body = markdown.slice(at.body, at.end);
   if (body.includes(scopeNote) || /\bNo sources were used\./.test(body)) return markdown;
   const read = /\d+ sources? (?:was|were) read on [^.\n]+\./.exec(body)?.[0] ?? '';
-  return `${markdown.slice(0, at.body)}\n${read ? `${scopeNote} ${read}` : scopeNote}`;
+  const rest = markdown.slice(at.end);
+  return `${markdown.slice(0, at.body)}\n${read ? `${scopeNote} ${read}` : scopeNote}${rest ? `\n\n${rest}` : ''}`;
 }
 
-const AUDIT_GAP = '\n\n[The middle of the report is left out here for length.]\n\n';
+const AUDIT_GAP = '\n\n[Part of the report is left out here for length.]\n\n';
 
 /**
  * The report as the contract check is given it, inside a size limit. The
- * statement of what was searched is in the closing note, at the very end, so a
- * long report cut at the limit would lose exactly what the check looks for. When
- * there is a statement, the cut is taken from the middle and the closing note
- * kept. With none, the report is cut at the limit as before.
+ * statement of what was searched is in the closing note, near the very end, so
+ * a long report cut at the limit would lose exactly what the check looks for.
+ * When there is a statement, the report is cut earlier and the closing note is
+ * given after the cut. With none, the report is cut at the limit as before.
  */
 export function boundedReportForAudit(markdown: string, limit: number, scopeNote: string): string {
   if (!scopeNote || markdown.length <= limit) return markdown.slice(0, limit);
   const at = closingNoteAt(markdown);
-  const closing = at ? markdown.slice(at.heading) : '';
+  const closing = at ? markdown.slice(at.heading, at.end).trimEnd() : '';
   if (!closing || closing.length + AUDIT_GAP.length >= limit / 2) return markdown.slice(0, limit);
   return `${markdown.slice(0, limit - closing.length - AUDIT_GAP.length)}${AUDIT_GAP}${closing}`;
 }
