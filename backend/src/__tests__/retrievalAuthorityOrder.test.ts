@@ -31,7 +31,7 @@ const SOURCE_STATS = DOMAINS.flatMap((name, d) =>
   }))
 );
 
-const hit = (id: string, url: string, similarity: number) => ({
+const hit = (id: string, url: string, similarity: number): Record<string, unknown> & { id: string; source_url: string } => ({
   id,
   content: `Passage ${id}`,
   chunk_index: 0,
@@ -51,17 +51,17 @@ const HITS = [
   hit('lower', 'https://www.nrc.gov/other.html', 0.7),
 ];
 
-const state = { tierColumn: true as boolean, tierReadFails: false };
+const state = { tierColumn: true as boolean, tierReadFails: false, hits: HITS };
 
 function answer() {
   queryMock.mockImplementation(async (sql: string) => {
     if (sql.includes('partition_key') && sql.includes('chunk_count')) return SOURCE_STATS;
     if (sql.includes('COUNT(DISTINCT s.id)::int AS total_sources')) return [{ total_sources: SOURCE_STATS.length + 10, total_chunks: 1400 }];
-    if (sql.includes('FROM embeddings e')) return HITS;
+    if (sql.includes('FROM embeddings e')) return state.hits;
     if (sql.includes('FROM chunks c') && sql.includes('JOIN sources s')) {
       if (state.tierReadFails) throw new Error('connection lost');
       if (sql.includes('authority_tier') && !state.tierColumn) throw Object.assign(new Error('column "authority_tier" does not exist'), { code: '42703' });
-      return HITS.map((h) => ({ chunk_id: h.id, url: h.source_url, imported_via: 'autonomous_discovery', kind: null, provider: null }));
+      return state.hits.map((h) => ({ chunk_id: h.id, url: h.source_url }));
     }
     return [];
   });
@@ -78,6 +78,7 @@ describe('Layer 1 retrieval order', () => {
     generateEmbeddingsMock.mockResolvedValue([[0.1, 0.2, 0.3]]);
     state.tierColumn = true;
     state.tierReadFails = false;
+    state.hits = HITS;
     answer();
   });
   afterEach(() => vi.restoreAllMocks());
@@ -102,6 +103,20 @@ describe('Layer 1 retrieval order', () => {
     expect(await order({ AUTHORITY_TIERS_ENABLED: true })).toEqual(['regulator', 'blog', 'lower']);
   });
 
+  it('takes the citable passages after the independence check, so a set-aside one takes no citable place', async () => {
+    // The requester's own supplied government page is as relevant as the blog and ranks above it.
+    const own = { ...hit('own-upload', 'https://www.energy.gov/mine', 0.8305), owner_user_id: 'user-1', imported_via: 'manual_url' };
+    state.hits = [HITS[0], own, HITS[1], HITS[2]];
+    const audit = (topK: number) =>
+      runWithFlags({ AUTHORITY_TIERS_ENABLED: true }, () =>
+        retrieveChunksWithAudit({ query: 'reactor licensing', intentId: 'opportunity_discovery', userId: 'user-1', hybridSearch: false, topK })
+      );
+    const result = await audit(2);
+    // Two citable passages, as asked; the supplied page is kept as background.
+    expect(result.citableChunks.map((chunk) => chunk.id)).toEqual(['regulator', 'blog']);
+    expect(result.backgroundChunks.map((chunk) => chunk.id)).toEqual(['own-upload']);
+  });
+
   it('falls back to relevance when the tiers cannot be read', async () => {
     state.tierReadFails = true;
     expect(await order({ AUTHORITY_TIERS_ENABLED: true })).toEqual(['blog', 'regulator', 'lower']);
@@ -120,11 +135,11 @@ describe('ordering and stored tiers', () => {
     expect(orderByRelevanceThenAuthority([c('only', 0.6, 4)]).map((x) => x.id)).toEqual(['only']);
   });
 
-  it('reads the recorded tier first, then works one out; an upload by its address alone', () => {
+  it('reads the recorded tier first, then judges by the address alone', () => {
     expect(tierOfStoredSource({ authority_tier: 3, url: 'https://www.nrc.gov/x' })).toBe(3);
     expect(tierOfStoredSource({ url: 'https://www.nrc.gov/x' })).toBe(1);
-    expect(tierOfStoredSource({ imported_via: 'autonomous_discovery', kind: 'journal article', url: 'https://doi.org/10.1/x' })).toBe(2);
-    expect(tierOfStoredSource({ imported_via: 'manual_upload', kind: 'journal article', url: 'https://doi.org/10.1/x' })).toBe(3);
-    expect(tierOfStoredSource({ imported_via: 'manual_upload', kind: 'journal article', url: null })).toBeNull();
+    // A stored kind is never read: a later upload of the same content may have filled it in.
+    expect(tierOfStoredSource({ url: 'https://doi.org/10.1/x', ...({ kind: 'journal article' } as object) })).toBe(3);
+    expect(tierOfStoredSource({ url: null })).toBeNull();
   });
 });

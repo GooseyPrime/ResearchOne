@@ -3,6 +3,7 @@
  * imports so the generator, the read route and the exporters can all use it.
  */
 import { REASONING_MODEL_ROLES } from '../reasoning/reasoningModelPolicy';
+import { STANDING_FOR_WRITER } from '../authority/authorityTier';
 
 const TIER_WORD = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)';
 /** "[Strong_Evidence - Chunk 3]" -> "[Chunk 3]"; keeps the chunk reference the citation mapper reads. */
@@ -436,10 +437,16 @@ const REMOVED = '\uE000';
 
 /**
  * Slice 6. The line the writer is shown above each passage ("Kind of source:
- * a peer-reviewed study"). It is an instruction to the writer, so a copy of it
- * in the report is removed whole.
+ * peer-reviewed scholarly work"). It is an instruction to the writer, so a copy
+ * of it in the report is removed whole. Only the exact lines the writer is
+ * shown match, with or without a list marker, so a sentence of the report that
+ * happens to begin "Kind of source:" is kept.
  */
-const WRITER_SOURCE_KIND_LINE = /^[ \t]*(?:[-*>][ \t]*)?Kind of source:[^\n]*(?:\n|$)/gim;
+const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const WRITER_SOURCE_KIND_LINE = new RegExp(
+  `^[ \\t]*(?:(?:[-*+>]|\\d+[.)])[ \\t]+)?Kind of source:[ \\t]*(?:${Object.values(STANDING_FOR_WRITER).map(escapeForPattern).join('|')})[ \\t]*\\.?[ \\t]*(?:\\n|$)`,
+  'gim'
+);
 
 function cleanProse(text: string): string {
   return (

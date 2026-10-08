@@ -109,24 +109,30 @@ export function storedAuthorityTier(value: unknown): AuthorityTier | null {
 export interface StoredSourceSignals {
   authority_tier?: unknown;
   url?: string | null;
-  kind?: string | null;
-  provider?: string | null;
-  imported_via?: string | null;
 }
 
 /**
- * The tier of a stored source. The recorded tier when there is one; otherwise
- * worked out from the same rules, so a source stored before tiers were recorded,
- * or whose write failed, is still ranked. The kind and provider kept under a
- * source's metadata count only for a source discovery found: a person can send
- * any metadata with an upload, so an upload is judged by its address alone.
+ * The tier of a stored source. The recorded tier when there is one: it was
+ * worked out at ingest from signals that were trusted then. Otherwise the
+ * source is judged by its address alone. The kind and provider kept under a
+ * source's metadata are not used here: a later upload of the same content can
+ * fill them in, and nothing records who supplied them.
  */
 export function tierOfStoredSource(row: StoredSourceSignals): AuthorityTier | null {
-  const recorded = storedAuthorityTier(row.authority_tier);
-  if (recorded !== null) return recorded;
-  const fromDiscovery = (row.imported_via ?? '').trim().toLowerCase() === 'autonomous_discovery';
-  return authorityTierFor(fromDiscovery ? { kind: row.kind, provider: row.provider, url: row.url } : { url: row.url });
+  return storedAuthorityTier(row.authority_tier) ?? authorityTierFor({ url: row.url });
 }
+
+/**
+ * What the writer is told about a source's standing, by tier: each covers its
+ * whole group, so the writer is never told a source is a kind it is not.
+ * Words for the writer, not labels for the reader.
+ */
+export const STANDING_FOR_WRITER: Readonly<Record<AuthorityTier, string>> = {
+  1: 'an official or primary record',
+  2: 'peer-reviewed scholarly work',
+  3: 'published work that is not peer reviewed (such as a preprint, book, thesis, news report or reference work)',
+  4: 'a source of unestablished standing',
+};
 
 /**
  * Two passages count as equally relevant when their scores agree to this many

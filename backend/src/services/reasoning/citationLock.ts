@@ -15,7 +15,7 @@ import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPrese
 import { splitTopLevelSections } from './targetedRepair';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 import type { ReferenceStyle } from '../formatting/referenceList';
-import type { AuthorityTier } from '../authority/authorityTier';
+import { STANDING_FOR_WRITER, type AuthorityTier } from '../authority/authorityTier';
 
 export interface LockedPassage {
   /** `P1`, `P2`, … in the order the passages were retrieved. */
@@ -36,20 +36,14 @@ export interface LockedPassage {
   standing?: AuthorityTier | null;
 }
 
-/** What the writer is told about a source's standing, by tier. Words for the writer, not labels for the reader. */
-export const STANDING_FOR_WRITER: Readonly<Record<AuthorityTier, string>> = {
-  1: 'an official or primary record',
-  2: 'a peer-reviewed study',
-  3: 'a preprint, news report, reference work or institutional report',
-  4: 'another kind of source',
-};
-
 /**
  * Slice 6. Added to the writer's instructions when its passages carry a
  * standing. Sources are preferred, never dropped, and the order is never
  * written into the report as a rating.
  */
-export const AUTHORITY_INSTRUCTION = `Each passage says what kind of source it comes from. Where sources disagree on a point, prefer the one higher in this order: official or primary records, then peer-reviewed studies, then preprints, news reports, reference works and institutional reports, then other sources. Say in plain words which source you relied on and why, for example "the regulator's own figures put it at" or "a peer-reviewed study found, while a news report gave". A source lower in the order that is the only one for a point is still used and cited. Do not grade or rank sources in the text: never write "tier", "authority level" or a rating, and do not copy the "Kind of source" lines.`;
+export { STANDING_FOR_WRITER };
+
+export const AUTHORITY_INSTRUCTION = `Each passage says what kind of source it comes from. Where sources disagree on a point, prefer the one higher in this order: official or primary records, then peer-reviewed scholarly work, then published work that is not peer reviewed, then sources of unestablished standing. Say in plain words which source you relied on and why, for example "the regulator's own figures put it at" or "a peer-reviewed study found, while a news report gave". A source lower in the order that is the only one for a point is still used and cited. Do not grade or rank sources in the text: never write "tier", "authority level" or a rating, and do not copy the "Kind of source" lines.`;
 
 export interface CitationOccurrence {
   /** Reader number shown in the text. */

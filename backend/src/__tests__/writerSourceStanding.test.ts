@@ -136,10 +136,28 @@ describe('the writer and source standing', () => {
     ]);
   });
 
-  it('takes a copied standing line out of the report', () => {
-    const copied = 'The FDA authorized it in December [P1].\nKind of source: an official or primary record\n- Kind of source: another kind of source\nIt edits stem cells [P2].';
+  it('takes a copied standing line out of the report, and only that', () => {
+    const copied = [
+      'The FDA authorized it in December [P1].',
+      `Kind of source: ${STANDING_FOR_WRITER[1]}`,
+      `- Kind of source: ${STANDING_FOR_WRITER[4]}`,
+      `+ Kind of source: ${STANDING_FOR_WRITER[2]}.`,
+      `2. Kind of source: ${STANDING_FOR_WRITER[3]}`,
+      'It edits stem cells [P2].',
+    ].join('\n');
     expect(stripInternalLabelsFromReport(copied)).toBe('The FDA authorized it in December [P1].\nIt edits stem cells [P2].');
-    // Ordinary prose that mentions a kind of source is left alone.
+    // A sentence of the report that begins the same way is kept.
+    const prose = 'Kind of source: oral history interview conducted in 1990 [P1].';
+    expect(stripInternalLabelsFromReport(prose)).toBe(prose);
     expect(stripInternalLabelsFromReport('This kind of source is rare.')).toBe('This kind of source is rare.');
+  });
+
+  it('describes each tier\'s whole group, never a narrower kind', () => {
+    // A book or thesis is tier 3; the words for tier 3 must cover it.
+    expect(STANDING_FOR_WRITER[3]).toMatch(/not peer reviewed/);
+    expect(STANDING_FOR_WRITER[3]).toMatch(/book/);
+    expect(STANDING_FOR_WRITER[3]).toMatch(/thesis/);
+    // Conference and review articles are tier 2: the words do not say "study".
+    expect(STANDING_FOR_WRITER[2]).toBe('peer-reviewed scholarly work');
   });
 });

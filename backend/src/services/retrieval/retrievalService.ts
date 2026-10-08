@@ -95,7 +95,7 @@ function deriveSourceOrigin(
 
 /**
  * Slice 6. Each passage with its source's authority tier: the recorded tier, or
- * one worked out from the source's address and record when none is recorded.
+ * one worked out from the source's address alone when none is recorded.
  * A database without migration 060 has no recorded tiers, so the read is made
  * again without the column. Any other failure leaves the passages unranked:
  * the order falls back to relevance, and no passage is lost.
@@ -105,10 +105,7 @@ export async function withAuthorityTiers(chunks: RetrievedChunk[]): Promise<Retr
   const ids = chunks.map((chunk) => chunk.id);
   const read = (withColumn: boolean) =>
     query<StoredSourceSignals & { chunk_id: string }>(
-      `SELECT c.id AS chunk_id, s.url, s.imported_via,
-              ${withColumn ? 's.authority_tier,' : ''}
-              s.metadata->'bibliographic'->>'kind' AS kind,
-              s.metadata->'bibliographic'->>'provider' AS provider
+      `SELECT c.id AS chunk_id, s.url${withColumn ? ', s.authority_tier' : ''}
          FROM chunks c
          JOIN sources s ON s.id = c.source_id
         WHERE c.id = ANY($1::uuid[])`,
@@ -398,15 +395,20 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
   }
 
   const candidates = Array.from(results.values());
-  // Slice 6. With the switch off the order is relevance alone, as it always was.
-  const sorted = (authorityTiersEnabled()
+  const tiersOn = authorityTiersEnabled();
+  // Slice 6. With the switch off the order is relevance alone and the top K are
+  // taken before the independence filter, as they always were. With it on the
+  // order also weighs tier, so the filter runs first and the K citable passages
+  // are taken after it: a passage that would be set aside cannot take the place
+  // of an equally relevant one that is citable.
+  const ordered = tiersOn
     ? orderByRelevanceThenAuthority(await withAuthorityTiers(candidates))
-    : candidates.sort((a, b) => b.similarity - a.similarity)
-  ).slice(0, topK);
+    : candidates.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
 
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];
-  for (const chunk of sorted) {
+  for (const chunk of ordered) {
+    if (tiersOn && citableChunks.length >= topK) break;
     // Independence is decided in one place, shared with the corpus gate.
     // Excluding only `researchone_generated` here let a requester's own
     // uploads and supplied URLs be cited back to them as independent external
