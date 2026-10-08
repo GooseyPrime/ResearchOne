@@ -165,10 +165,22 @@ describe('resolvePlanIntentNotice', () => {
     expect(resolvePlanIntentNotice({ ...base, intent: 'byok' })).toEqual({ kind: 'continue', plan: 'byok' });
   });
 
-  it('does not tell a Pro subscriber to "continue below" for BYOK, where no button exists', () => {
+  it('points a Pro subscriber who chose BYOK at the switch block, never at a second checkout', () => {
     expect(
-      resolvePlanIntentNotice({ intent: 'byok', hasActiveSubscription: true, effectiveTier: 'pro', subscriptionResolved: true }),
-    ).toEqual({ kind: 'switch_not_available', plan: 'byok', currentTier: 'pro' });
+      resolvePlanIntentNotice({
+        intent: 'byok',
+        hasActiveSubscription: true,
+        effectiveTier: 'pro',
+        subscriptionTier: 'pro',
+        subscriptionResolved: true,
+      }),
+    ).toEqual({ kind: 'switch_below', plan: 'byok', currentTier: 'pro' });
+  });
+
+  it('still sends a Team subscriber to the mail address, since Team cannot be switched from the page', () => {
+    expect(
+      resolvePlanIntentNotice({ intent: 'byok', hasActiveSubscription: true, effectiveTier: 'team', subscriptionResolved: true }),
+    ).toEqual({ kind: 'switch_not_available', plan: 'byok', currentTier: 'team' });
   });
 
   it('tells a subscriber who is already on the chosen plan', () => {
