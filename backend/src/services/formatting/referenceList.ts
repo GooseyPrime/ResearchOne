@@ -31,6 +31,11 @@ export interface ReferenceSource {
   kind?: string | null;
   /** The day the source was read, as YYYY-MM-DD. Shown for web pages. */
   accessed?: string | null;
+  /**
+   * Slice 6. A web page named by where it was read ("government page"). It is
+   * still a page that was read, so its access date is still shown.
+   */
+  readFromWeb?: boolean;
 }
 
 /** A style the user chose, or the numbered default when none was chosen or the value is not one we know. */
@@ -106,15 +111,22 @@ export function siteName(url: string | null | undefined): string | null {
  * journal article is called a journal article.
  */
 export function sourceKindInWords(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean; authorityWords?: boolean }): string {
+  return describeSourceKind(input).words;
+}
+
+/**
+ * The words for a source's kind, and whether it is a page that was read on the
+ * web. With authority tiers on, a source recorded only as a web page is named
+ * by where it was read ("government page", "news article"), from the same rules
+ * that give it its tier; it stays a web page for its reference entry.
+ */
+export function describeSourceKind(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean; authorityWords?: boolean }): { words: string; readFromWeb: boolean } {
   const kind = baseSourceKind(input);
-  // Slice 6. With authority tiers on, a source the provider recorded only as a
-  // web page is named by where it was read ("government page", "news article"),
-  // from the same rules that give it its tier. Words, never the tier itself.
   if (input.authorityWords && kind === 'web page') {
     const rule = authorityRuleFor({ url: input.url });
-    if (rule?.readerWords) return rule.readerWords;
+    if (rule?.readerWords) return { words: rule.readerWords, readFromWeb: true };
   }
-  return kind;
+  return { words: kind, readFromWeb: kind === 'web page' };
 }
 
 function baseSourceKind(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean }): string {
@@ -206,6 +218,8 @@ interface Resolved {
   accessed: DayParts | null;
   url: string | null;
   kind: string | null;
+  /** A page that was read on the web, whatever it is called: its access date is shown. */
+  webPage: boolean;
 }
 
 function resolve(source: ReferenceSource): Resolved {
@@ -221,6 +235,7 @@ function resolve(source: ReferenceSource): Resolved {
     accessed: dayParts(source.accessed),
     url,
     kind: source.kind?.trim() || null,
+    webPage: source.kind?.trim() === 'web page' || source.readFromWeb === true,
   };
 }
 
@@ -237,7 +252,7 @@ function numericEntry(r: Resolved): string {
   if (r.kind) parts.push(closed(sentenceCase(r.kind)));
   if (r.url) parts.push(r.url);
   // A page can change after it is read; the day it was read is part of the reference.
-  if (r.accessed && r.kind === 'web page') parts.push(`Accessed ${dayMonthYear(r.accessed)}.`);
+  if (r.accessed && r.webPage) parts.push(`Accessed ${dayMonthYear(r.accessed)}.`);
   return parts.join(' ');
 }
 
@@ -252,7 +267,7 @@ function apaEntry(r: Resolved): string {
   parts.push(closed(r.title));
   if (names.length > 0 && r.publisher) parts.push(closed(r.publisher));
   // A page can change after it is read, so the day it was read is given with its address.
-  if (r.url) parts.push(r.accessed && r.kind === 'web page' ? `Retrieved ${monthDayYear(r.accessed)}, from ${r.url}` : r.url);
+  if (r.url) parts.push(r.accessed && r.webPage ? `Retrieved ${monthDayYear(r.accessed)}, from ${r.url}` : r.url);
   return parts.join(' ');
 }
 
@@ -270,7 +285,7 @@ function mlaEntry(r: Resolved): string {
   parts.push(`"${closed(r.title)}"`);
   const tail = [r.publisher, r.published ? `${r.published.day} ${shortMonth(r.published)}. ${r.published.year}` : r.publishedText, r.url].filter(Boolean).join(', ');
   if (tail) parts.push(closed(tail));
-  if (r.accessed && r.kind === 'web page') parts.push(`Accessed ${r.accessed.day} ${shortMonth(r.accessed)}. ${r.accessed.year}.`);
+  if (r.accessed && r.webPage) parts.push(`Accessed ${r.accessed.day} ${shortMonth(r.accessed)}. ${r.accessed.year}.`);
   return parts.join(' ');
 }
 
@@ -287,14 +302,14 @@ function chicagoAuthorDateEntry(r: Resolved): string {
   parts.push(`"${closed(r.title)}"`);
   if (r.authors.length > 0 && r.publisher) parts.push(closed(r.publisher));
   if (r.published) parts.push(closed(`${longMonth(r.published)} ${r.published.day}`));
-  if (r.accessed && r.kind === 'web page') parts.push(`Accessed ${monthDayYear(r.accessed)}.`);
+  if (r.accessed && r.webPage) parts.push(`Accessed ${monthDayYear(r.accessed)}.`);
   if (r.url) parts.push(closed(r.url));
   return parts.join(' ');
 }
 
 function chicagoNoteEntry(r: Resolved): string {
   const names = joinNames(r.authors.map(givenFamily));
-  const accessed = r.accessed && r.kind === 'web page' ? `accessed ${monthDayYear(r.accessed)}` : null;
+  const accessed = r.accessed && r.webPage ? `accessed ${monthDayYear(r.accessed)}` : null;
   const pieces = [names || null, `"${r.title},"`, r.publisher, r.published ? monthDayYear(r.published) : r.publishedText, accessed, r.url].filter(Boolean) as string[];
   // The title carries its own comma inside the quotation mark.
   return closed(pieces.join(', ').replace(/,",/g, ',"').replace(/,"$/, '."'));
@@ -305,7 +320,7 @@ function ieeeEntry(r: Resolved): string {
   const head = [names || r.publisher, `"${r.title},"`].filter(Boolean).join(', ');
   const middle = [names ? r.publisher : null, r.published ? `${shortMonth(r.published)}. ${r.published.day}, ${r.published.year}` : r.publishedText].filter(Boolean).join(', ');
   const parts = [closed(`${head}${middle ? ` ${middle}` : ''}`.replace(/,"\s*$/, '."'))];
-  if (r.url && r.accessed && r.kind === 'web page') parts.push(`Accessed: ${shortMonth(r.accessed)}. ${r.accessed.day}, ${r.accessed.year}.`);
+  if (r.url && r.accessed && r.webPage) parts.push(`Accessed: ${shortMonth(r.accessed)}. ${r.accessed.day}, ${r.accessed.year}.`);
   if (r.url) parts.push(`[Online]. Available: ${r.url}`);
   return parts.join(' ');
 }
@@ -317,7 +332,7 @@ function harvardEntry(r: Resolved): string {
   const parts: string[] = [[lead, year].filter(Boolean).join(' '), closed(r.title)];
   if (names && r.publisher) parts.push(closed(r.publisher));
   if (r.url) parts.push(`Available at: ${r.url}`);
-  if (r.accessed && r.kind === 'web page') parts.push(`(Accessed: ${r.accessed.day} ${longMonth(r.accessed)} ${r.accessed.year}).`);
+  if (r.accessed && r.webPage) parts.push(`(Accessed: ${r.accessed.day} ${longMonth(r.accessed)} ${r.accessed.year}).`);
   return parts.join(' ');
 }
 

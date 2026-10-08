@@ -74,3 +74,28 @@ describe('authority share in the harness', () => {
     expect(scoreAuthorityShare([c(undefined), c(undefined)])).toBeNull();
   });
 });
+
+describe('review fixes for where the reader sees authority', () => {
+  it('a standards body\'s own site is a standards body page, not a published standard', () => {
+    expect(sourceKindInWords({ url: 'https://www.w3.org/', authorityWords: true })).toBe('standards body page');
+  });
+
+  it('a named research institution is not called a university page', () => {
+    expect(sourceKindInWords({ url: 'https://www.brookings.edu/articles/x/', authorityWords: true })).toBe('institutional report');
+    expect(sourceKindInWords({ url: 'https://energy.mit.edu/x', authorityWords: true })).toBe('university page');
+  });
+
+  it('a renamed web page keeps its access date in every style', async () => {
+    const { formatReferenceList } = await import('../services/formatting/referenceList');
+    const rows = [{ citation_text: '[1]', title: 'New reactors', authors: null, publication: 'NRC', published_at: null, url: 'https://www.nrc.gov/x', original_filename: null, retrieval_timestamp: '2026-10-04T12:00:00Z', provider: null }];
+    const sources = sourcesByNumber(rows, { authorityWords: true });
+    expect(sources?.[0].kind).toBe('government page');
+    for (const style of ['numeric', 'apa', 'mla', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'] as const) {
+      const plain = formatReferenceList(sourcesByNumber(rows) ?? [], style);
+      const renamed = formatReferenceList(sources ?? [], style);
+      // The same dated entry, only the kind named differently where the style names it.
+      expect(/2026|Oct|October/.test(renamed)).toBe(/2026|Oct|October/.test(plain));
+      expect(/2026|Oct|October/.test(plain)).toBe(true);
+    }
+  });
+});

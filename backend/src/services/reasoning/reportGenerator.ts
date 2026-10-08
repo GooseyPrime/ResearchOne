@@ -1,4 +1,4 @@
-import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
+import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOutsideCode, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { logger } from '../../utils/logger';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
@@ -933,13 +933,14 @@ export { stripInternalLabelsFromReport };
  * Applied only outside quotations: a source's own words are left as it said them.
  */
 export function withoutSourceRank(text: string): string {
+  // The same whitespace the check accepts, so a soft line break inside a phrase is matched too.
   return text
-    .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
-    .replace(/[ \t]+(?:of|at|in|from)[ \t]+(?:authority[ \t]+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
+    .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4]\s+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
+    .replace(/\s+(?:of|at|in|from)\s+(?:authority\s+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
       /\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)$/i.test(whole.slice(0, offset)) ? '' : phrase
     )
-    .replace(/\bT[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/gi, '')
-    .replace(/\bauthority[ \t]+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
+    .replace(/\bT[1-4]\s+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/gi, '')
+    .replace(/\bauthority\s+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
 }
 
 export function removeBannedWording(content: string): string {
@@ -974,9 +975,13 @@ export function removeBannedWording(content: string): string {
     );
 
   // The report's own wording only: a direct quotation keeps the source's words.
-  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), (part) => plainClaimWords(withoutSourceRank(part)));
+  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
+  // A tier rating of a source is taken out first, over whole text outside code,
+  // so a quotation that runs across a link keeps its words. The rating forms
+  // need spaces between words, so a link destination never matches.
+  const unrated = mapOutsideCode(content, (part) => mapOutsideQuotes(part, withoutSourceRank), (code) => code);
   // A link's label is prose the reader sees; its destination is not.
-  return mapCitationProse(mapLinkLabels(content, cleanOwnWords), cleanOwnWords);
+  return mapCitationProse(mapLinkLabels(unrated, cleanOwnWords), cleanOwnWords);
 }
 
 /** Words that follow "claim(s)" when it is a noun: "claims about", "claims are", "claim is". */

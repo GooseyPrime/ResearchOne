@@ -201,6 +201,17 @@ describe('a source ranked by tier in the report text', () => {
     );
   });
 
+  it('matches a phrase broken across a soft line break, as the check does', () => {
+    expect(removeBannedWording('The regulator is a tier 1\nsource.')).toBe('The regulator is a source.');
+    expect(removeBannedWording('Two sources in\ntier 2 disagree.')).toBe('Two sources disagree.');
+    expect(removeBannedWording('T1\nevidence points the other way.')).toBe('evidence points the other way.');
+  });
+
+  it('keeps a quotation whole when it runs across a link', () => {
+    const text = 'The regulator is a tier 1 source; the agency says "a tier 1 source of [data](https://example.org/tier-1-source)".';
+    expect(removeBannedWording(text)).toBe('The regulator is a source; the agency says "a tier 1 source of [data](https://example.org/tier-1-source)".');
+  });
+
   it('is cleaned in the last check before an unlocked report is saved', () => {
     const saved = cleanLayer1WordingForSave('## Findings\n\nThe regulator is a tier 1 source [1].');
     expect(saved.markdown).toContain('The regulator is a source [1].');

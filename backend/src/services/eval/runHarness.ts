@@ -115,13 +115,14 @@ function secondsBetween(startedAt: string | null, completedAt: string | null): n
 }
 
 export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
-            rc.source_id AS "sourceId", src.url AS "sourceUrl",
+            COALESCE(rc.source_id, c.source_id) AS "sourceId", src.url AS "sourceUrl",
             rc.chunk_id AS "chunkId", rc.citation_text AS "citationText", cl.claim_text AS "claimText"
      FROM report_citations rc
      JOIN reports r ON r.id = rc.report_id
-     LEFT JOIN sources src ON src.id = rc.source_id
      LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
      LEFT JOIN chunks c ON c.id = rc.chunk_id
+     -- A citation saved without the old mapper's source id still names its passage, whose source is known.
+     LEFT JOIN sources src ON src.id = COALESCE(rc.source_id, c.source_id)
      LEFT JOIN claims cl ON cl.id = rc.claim_id
      LEFT JOIN report_sections s ON s.id = rc.section_id
      WHERE r.run_id = $1

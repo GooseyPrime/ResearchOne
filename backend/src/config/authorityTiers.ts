@@ -199,7 +199,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-standards-body',
-    readerWords: 'published standard',
+    readerWords: 'standards body page',
     tier: 1,
     what: 'a standards body',
     hosts: ['iso.org', 'iec.ch', 'ietf.org', 'rfc-editor.org', 'w3.org', 'astm.org', 'standards.ieee.org'],
@@ -236,6 +236,14 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
     example: { url: 'https://www.britannica.com/technology/nuclear-reactor' },
   },
   {
+    id: 'host-research-institution',
+    readerWords: 'institutional report',
+    tier: 3,
+    what: 'a recognized research institution that publishes reports',
+    hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],
+    example: { url: 'https://www.pewresearch.org/science/2024/01/01/example/' },
+  },
+  {
     id: 'host-university',
     readerWords: 'university page',
     tier: 3,
@@ -243,14 +251,6 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
     hostSuffixes: ['edu', 'ac.uk', 'edu.au', 'ac.jp', 'ac.in', 'edu.cn', 'ac.nz', 'ac.za', 'edu.sg'],
     hosts: ['mpg.de', 'cnrs.fr', 'ethz.ch', 'epfl.ch', 'cern.ch'],
     example: { url: 'https://energy.mit.edu/research/future-nuclear-energy-carbon-constrained-world/' },
-  },
-  {
-    id: 'host-research-institution',
-    readerWords: 'institutional report',
-    tier: 3,
-    what: 'a recognized research institution that publishes reports',
-    hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],
-    example: { url: 'https://www.pewresearch.org/science/2024/01/01/example/' },
   },
 ];
 

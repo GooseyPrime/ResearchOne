@@ -660,9 +660,10 @@ Acceptance:
 
 **Built in part 3.**
 
-- With the switch on for the run that wrote a report, a source its provider recorded only as a web page is named by where it was read: "government page", "intergovernmental organization page", "published standard", "registry record", "news article", "reference work entry", "university page", "institutional report", "journal article", "preprint". The words live on the address rules in the same rules file; a test runs each rule's example. What a provider recorded ("dataset", "journal article") stays. Never a tier number.
+- With the switch on for the run that wrote a report, a source its provider recorded only as a web page is named by where it was read: "government page", "intergovernmental organization page", "standards body page", "registry record", "news article", "reference work entry", "university page", "institutional report", "journal article", "preprint". The words live on the address rules in the same rules file; a test runs each rule's example. What a provider recorded ("dataset", "journal article") stays. Never a tier number. A renamed page is still a page that was read, so its access date stays in every reference style. A named research institution comes before the general university rule, so Brookings is an institutional report.
+- Whether a report is worded this way is recorded on its run when the report is written, so turning the switch on or off later never changes how an existing report reads. Reports written before the record existed read as before.
 - The same words reach the reference list the writer's run produces, the citation card (now "Government page · publisher · date"), the Sources and Evidence tabs, and a reference list rebuilt for export in another style. A run without the switch is worded as before.
-- Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. Null with no citations. A source without a tier counts as outside the top two.
+- Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. A citation saved without a source id is traced to its source through its passage. Null with no citations. A source without a tier counts as outside the top two.
 
 ### Slice 7. Provider routing by request (not started)
 

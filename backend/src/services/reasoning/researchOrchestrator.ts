@@ -51,7 +51,7 @@ import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
 import { checkDois, doiOf, findUnstatedDois, type DoiCheck } from '../verification/doiResolve';
-import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
+import { resolveReferenceStyle, describeSourceKind } from '../formatting/referenceList';
 import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
   guardLockedRepair,
   LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
@@ -963,13 +963,15 @@ export function referenceDetails(source: UsedSource | undefined, row: LockedSour
   if (!row) return base;
   const authors = Array.isArray(row.authors) ? row.authors.filter((author) => typeof author === 'string' && author.trim().length > 0) : [];
   const url = base.url ?? row.url ?? null;
+  const described = describeSourceKind({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename), authorityWords: authorityTiersEnabled() });
   return {
     ...base,
     publisher: base.publisher ?? row.publication ?? null,
     authors: authors.length > 0 ? authors : null,
     // Slice 6. With authority tiers on, a plain web page is named by where it was read.
-    kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename), authorityWords: authorityTiersEnabled() }),
+    kind: described.words,
     accessed: isoDay(row.retrieval_timestamp),
+    ...(described.readFromWeb && described.words !== 'web page' ? { readFromWeb: true } : {}),
   };
 }
 
@@ -2478,6 +2480,13 @@ async function runResearchJobInner(
           `UPDATE research_runs SET corpus_after = corpus_after - 'citationLock' WHERE id=$1 AND corpus_after ? 'citationLock'`,
           [runId]
         );
+      }
+      // Slice 6. Recorded on the run, so a report keeps naming its sources the way it
+      // was written however the switch is set later. Cleared on a retry without it.
+      if (authorityTiersEnabled()) {
+        await query(`UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || '{"authorityTiers": true}'::jsonb WHERE id=$1`, [runId]);
+      } else {
+        await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
       }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,

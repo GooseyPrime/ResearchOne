@@ -11,7 +11,7 @@
  * saved in, only the reference list is written again, in that style, from the
  * sources behind the saved citations. The numbers in the text do not change.
  */
-import { formatReferenceList, sourceKindInWords, type ReferenceSource, type ReferenceStyle } from './referenceList';
+import { formatReferenceList, describeSourceKind, type ReferenceSource, type ReferenceStyle } from './referenceList';
 
 export interface LockedCitationSourceRow {
   /** The reader number as saved: "[3]". */
@@ -48,14 +48,16 @@ export function sourcesByNumber(rows: LockedCitationSourceRow[], options: { auth
     const number = Number(match[1]);
     if (byNumber.has(number)) continue;
     const authors = Array.isArray(row.authors) ? row.authors.filter((author) => typeof author === 'string' && author.trim().length > 0) : [];
+    const described = describeSourceKind({ kind: row.kind, provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename), authorityWords: options.authorityWords === true });
     byNumber.set(number, {
       title: (row.title ?? '').replace(/\s+/g, ' ').replace(/\[/g, '(').replace(/\]/g, ')').replace(/^#+\s*/, '').trim() || row.url || 'Untitled source',
       authors: authors.length > 0 ? authors : null,
       publisher: row.publication,
       date: isoDayOf(row.published_at),
       url: row.url,
-      kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename), authorityWords: options.authorityWords === true }),
+      kind: described.words,
       accessed: isoDayOf(row.retrieval_timestamp),
+      ...(described.readFromWeb && described.words !== 'web page' ? { readFromWeb: true } : {}),
     });
   }
   const out: ReferenceSource[] = [];

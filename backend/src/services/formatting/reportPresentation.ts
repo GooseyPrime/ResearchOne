@@ -315,7 +315,7 @@ export function unwrapCitationLinks(markdown: string): string {
  * list is prose, so it is read too, with any inline code inside it still kept.
  * `code` says what a code segment becomes; by default it is left as written.
  */
-function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
+export function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(CODE_ONLY)) {

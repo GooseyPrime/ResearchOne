@@ -13,6 +13,8 @@ export interface UsedSource {
   kind?: string | null;
   /** The day it was read, as YYYY-MM-DD. */
   accessed?: string | null;
+  /** Slice 6. A web page named by where it was read: still dated as a page that was read. */
+  readFromWeb?: boolean;
 }
 
 const STRUCTURAL_HEADING =
