@@ -29,10 +29,32 @@ describe('PricingPage', () => {
 
   it('marks Student and Team as unavailable without exposing checkout controls', () => {
     const html = render();
-    expect((html.match(/Not yet available/g) ?? [])).toHaveLength(2);
+    // Student and Team plans, plus the two priced add-ons that are not sold through checkout.
+    expect((html.match(/Not yet available/g) ?? [])).toHaveLength(4);
     expect(html).not.toContain('Verify and start');
     expect(html).toContain('mailto:hello@researchone.io?subject=Team%20tier%20inquiry');
     expect(html).toContain('Team inquiry');
+  });
+
+  it('gives BYOK a Subscribe path through sign-up, then the key step', () => {
+    const html = render();
+    expect(html).toContain('href="/sign-up?tier=byok"');
+    expect(html).toContain('href="/sign-up?tier=pro"');
+    expect(html).toContain('You add your model keys right after checkout.');
+    // The old card offered only a link to the BYOK explainer.
+    expect(html).not.toContain('>Configure keys<');
+  });
+
+  it('gives each purchasable add-on a buy path into the app', () => {
+    const html = render();
+    expect(html).toMatch(/href="\/app\/billing#monitor-tokens"[^>]*>Buy tokens</);
+    expect(html).toMatch(/href="\/app\/add-ons"[^>]*>Add to a report</);
+  });
+
+  it('marks priced add-ons that are not sold through checkout, with a way to ask', () => {
+    const html = render();
+    expect(html).toContain('Score%20API%20Pro%20inquiry');
+    expect(html).toContain('Patent%20%26%20IP%20diligence%20inquiry');
   });
 
   it('shows add-on pricing for Living Reports and Reverse-Citation Watch', () => {
