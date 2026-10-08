@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { retryResearchRunFromFailure } from '../../utils/api';
 import { formatFailureReason } from '../../utils/researchFailureFormat';
 import { failureCardHeadline, isResumeAvailable, type LiveStatus } from '../../utils/researchLiveStatus';
-import { plainLabel } from '@/lib/researchone/plainWords';
+import { plainLabel, plainProgressText } from '@/lib/researchone/plainWords';
 import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 export interface ResearchRunFailureSocketPayload {
@@ -134,7 +134,7 @@ export default function ResearchRunFailureCard({
             </span>
           ) : null}
         </p>
-        <p className="opacity-90">{reason}</p>
+        <p className="opacity-90">{plainProgressText(reason)}</p>
         {typeof retryAttempts === 'number' && typeof retryBudget === 'number' && (
           <p className="text-slate-400">
             Retries used: <span className="text-slate-300">{retryAttempts}</span> of{' '}

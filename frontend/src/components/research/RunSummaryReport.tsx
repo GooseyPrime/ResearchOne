@@ -381,7 +381,7 @@ export default function RunSummaryReport({ summary, run, plan, traceEvents, fail
             <p className="text-xs text-slate-400"><span className="text-slate-500">Stage:</span> {readerStageLabel(failedStage)}</p>
           )}
           {errorMessage && (
-            <p className="text-xs text-red-300 mt-1 leading-snug">{errorMessage}</p>
+            <p className="text-xs text-red-300 mt-1 leading-snug">{plainProgressText(errorMessage)}</p>
           )}
           {fmeta && Object.entries(fmeta).filter(([, v]) => v != null && v !== '').length > 0 && (
             <div className="mt-2 space-y-0.5">

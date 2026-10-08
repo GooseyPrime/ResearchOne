@@ -173,10 +173,12 @@ describe('the reader-wording gate: role nicknames and step codes', () => {
         'export function Trace({ evt }: { evt: { eventType: string } }) {',
         "  const done = evt.eventType === 'run_completed';",
         '  return <p>Reasoning across sources... (reasoner_started) {done ? "Done" : "Now at steelman_started"}</p>;',
+        '  // Every ending a step code has, not only _started and _completed.',
+        '  const more = <p>Skipped (stage_skipped), then query_done and discovery_ingest_ready; saved under discovered_by_run_id.</p>;',
         '}'
       ),
     });
-    expect(found(dir)).toEqual(['3 raw step code', '3 role nickname']);
+    expect(found(dir)).toEqual(['3 raw step code', '3 role nickname', '5 raw step code', '5 raw step code', '5 raw step code']);
   });
 
   it('the one line another change is removing is the only banned phrase excused, and only in its own file', () => {
@@ -224,6 +226,7 @@ describe('plain words for what the pipeline reports', () => {
     }
     expect(plainProgressText('Model call failed for role skeptic (skeptic_started)')).toBe('Model call failed for role challenge pass');
     expect(plainProgressText('Executing specialist: market_scout')).toBe('Executing specialist: market scout');
+    expect(plainProgressText('Devil’s Advocate Review queued')).toBe('Challenge pass queued');
     expect(plainProgressText(null)).toBe('');
   });
 

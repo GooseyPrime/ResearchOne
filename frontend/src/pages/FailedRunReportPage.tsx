@@ -300,7 +300,7 @@ export default function FailedRunReportPage() {
               <div className="rounded-lg bg-black/30 border border-red-900/30 p-3">
                 <div className="text-[10px] uppercase tracking-widest text-red-500/70 mb-1">Error</div>
                 <p className="text-xs text-red-300/90 leading-relaxed font-mono whitespace-pre-wrap break-words">
-                  {run.error_message}
+                  {plainProgressText(run.error_message)}
                 </p>
               </div>
             )}

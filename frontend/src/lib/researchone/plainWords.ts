@@ -42,7 +42,7 @@ const EARLIER_MESSAGES: Array<[RegExp, string]> = [
 
 /** A nickname for a role or a pass, and the plain words that take its place. */
 const NICKNAMES: Array<[RegExp, string]> = [
-  [/\bdevil'?s[- ]advocate(?: (?:review|pass))?/gi, 'challenge pass'],
+  [/\bdevil['’]?s[- ]advocate(?: (?:review|pass))?/gi, 'challenge pass'],
   [/\bred[- ]?team(?:ing|ed|s)?(?: (?:review|pass))?/gi, 'challenge pass'],
   [/\bsteel[- ]?man(?:ning|ned|s)?(?: pass)?/gi, 'strongest-form restatement'],
   [/\bstraw[- ]?m[ae]n(?:ning)?/gi, 'weaker version'],
@@ -59,9 +59,10 @@ const STEP_CODE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g;
 const sentenceCase = (text: string): string => (text ? text.charAt(0).toUpperCase() + text.slice(1) : text);
 
 /**
- * Text that came from the pipeline (a progress message, an error line, a
- * detail), with nicknames replaced and step codes taken out. Text that has
- * neither comes back unchanged.
+ * Text the pipeline wrote (a progress message, an error line), with nicknames
+ * replaced and step codes taken out. Text that has neither comes back
+ * unchanged. It is for the pipeline's own words only: a reader's question or
+ * search words are theirs and are shown as written, never passed through here.
  */
 export function plainProgressText(text: string | null | undefined): string {
   const original = (text ?? '').trim();

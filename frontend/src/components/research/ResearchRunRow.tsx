@@ -238,7 +238,7 @@ export default function ResearchRunRow({
             {showError ? 'Hide error' : 'Show error'}
           </button>
           {showError ? (
-            <p className="text-xs text-red-300/90 mt-1 whitespace-pre-wrap">{run.error_message}</p>
+            <p className="text-xs text-red-300/90 mt-1 whitespace-pre-wrap">{plainProgressText(run.error_message)}</p>
           ) : null}
         </div>
       )}
