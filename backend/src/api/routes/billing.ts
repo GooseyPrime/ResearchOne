@@ -5,7 +5,9 @@ import {
   getTopupAmountForPrice,
   getSubscriptionPriceOptions,
   getTierForSubscriptionPrice,
+  isRemovedPlanTier,
   isSelfServeSubscriptionTier,
+  REMOVED_PLAN_MESSAGE,
 } from '../../services/billing/stripeClient';
 import {
   buildMonitorTokenCheckoutSessionCreateParams,
@@ -328,6 +330,13 @@ router.post('/checkout/subscription', async (req, res, next) => {
     }
 
     const catalogTier = getTierForSubscriptionPrice(priceId);
+    // Team and Sovereign are not sold. Refused by the plan named and by the
+    // plan the price belongs to, so neither a hand-made request nor a price
+    // id left in the settings can start a checkout for one.
+    if (isRemovedPlanTier(tier) || (catalogTier !== null && isRemovedPlanTier(catalogTier))) {
+      res.status(409).json({ error: REMOVED_PLAN_MESSAGE, code: 'PLAN_NOT_AVAILABLE' });
+      return;
+    }
     if (!catalogTier) {
       res.status(400).json({ error: 'Unknown subscription price' });
       return;
