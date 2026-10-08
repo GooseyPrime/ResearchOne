@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import NotYetAvailable from './NotYetAvailable';
 import type { SubscriptionOption } from './PlanCheckoutOptions';
 
@@ -61,6 +62,15 @@ export default function PlanSwitchOptions({
   isSwitching,
   switchError,
 }: PlanSwitchOptionsProps) {
+  // The confirmation appears below the plan boxes. Focus moves to it so a
+  // keyboard or screen-reader user is taken to the question, not left on the
+  // button they pressed.
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const pendingPriceId = pending?.priceId ?? null;
+  useEffect(() => {
+    if (pendingPriceId) confirmRef.current?.focus();
+  }, [pendingPriceId]);
+
   if (isLoading) {
     return <p className="mt-4 text-sm text-slate-500">Loading plans…</p>;
   }
@@ -147,12 +157,15 @@ export default function PlanSwitchOptions({
 
       {pending ? (
         <div
+          ref={confirmRef}
+          tabIndex={-1}
           role="alertdialog"
-          aria-label="Confirm plan switch"
-          className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100"
+          aria-labelledby="plan-switch-confirm-title"
+          aria-describedby="plan-switch-confirm-detail"
+          className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
         >
-          <p className="font-medium">Switch to {pendingLabel}?</p>
-          <p className="mt-1 text-amber-100/90">
+          <p id="plan-switch-confirm-title" className="font-medium">Switch to {pendingLabel}?</p>
+          <p id="plan-switch-confirm-detail" className="mt-1 text-amber-100/90">
             The change takes effect now. You keep one subscription; it moves to the new plan. The difference in
             price for the rest of your current billing period is credited or charged on your next bill.
           </p>
