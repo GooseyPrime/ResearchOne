@@ -23,7 +23,7 @@ vi.mock('../services/formatting/pandocRunner', () => ({
 vi.mock('../services/telemetry', () => ({
   runScope: { run: <T>(_ctx: unknown, fn: () => T): T => fn() },
 }));
-vi.mock('../services/eval/readerView', () => ({ readerViewForRun: mocks.readerViewMock }));
+vi.mock('../services/eval/readerView', () => ({ readerViewForRun: mocks.readerViewMock, authorityWordsForRun: async () => false }));
 
 import { exportReport } from '../services/formatting/exportOrchestrator';
 import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody } from '../services/formatting/readerExport';

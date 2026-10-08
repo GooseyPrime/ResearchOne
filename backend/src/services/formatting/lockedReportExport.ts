@@ -40,7 +40,7 @@ function isoDayOf(value: unknown): string | null {
  * Null when the numbers are not exactly 1 to N, in which case nothing can be
  * rebuilt safely and the saved list is kept.
  */
-export function sourcesByNumber(rows: LockedCitationSourceRow[]): ReferenceSource[] | null {
+export function sourcesByNumber(rows: LockedCitationSourceRow[], options: { authorityWords?: boolean } = {}): ReferenceSource[] | null {
   const byNumber = new Map<number, ReferenceSource>();
   for (const row of rows) {
     const match = /^\[(\d+)\]$/.exec((row.citation_text ?? '').trim());
@@ -54,7 +54,7 @@ export function sourcesByNumber(rows: LockedCitationSourceRow[]): ReferenceSourc
       publisher: row.publication,
       date: isoDayOf(row.published_at),
       url: row.url,
-      kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename) }),
+      kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url: row.url, hasFile: Boolean(row.original_filename), authorityWords: options.authorityWords === true }),
       accessed: isoDayOf(row.retrieval_timestamp),
     });
   }

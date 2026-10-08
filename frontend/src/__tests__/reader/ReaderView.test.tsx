@@ -111,7 +111,8 @@ describe('citations', () => {
     fireEvent.mouseEnter(markers[1].parentElement!);
     const card = screen.getByRole('tooltip');
     expect(card.textContent).toContain('approximately $8,000 per kilowatt');
-    expect(card.textContent).toContain('IFP · 1 May 2023');
+    // The kind of source in words comes first.
+    expect(card.textContent).toContain('Web page · IFP · 1 May 2023');
     expect(within(card).getByRole('link', { name: 'Go to reference 1' }).getAttribute('href')).toBe('#reference-1');
     fireEvent.mouseLeave(markers[1].parentElement!);
     expect(screen.queryByRole('tooltip')).toBeNull();

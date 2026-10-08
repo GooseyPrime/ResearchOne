@@ -38,7 +38,9 @@ export default function CitationMarker({
     };
   }, [open]);
 
-  const details = [source?.publisher, readableDay(source?.date ?? null)].filter(Boolean).join(' · ');
+  // What kind of source it is, in words, first: "Government page · Nuclear Regulatory Commission · 8 Dec 2023".
+  const kind = source?.kind ? source.kind[0].toUpperCase() + source.kind.slice(1) : null;
+  const details = [kind, source?.publisher, readableDay(source?.date ?? null)].filter(Boolean).join(' · ');
 
   return (
     <span

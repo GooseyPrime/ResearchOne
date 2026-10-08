@@ -35,12 +35,12 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
 | Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
 | Slice 6, part 1. Tier rules and the stored tier | Done | PR #260, with the last review's findings closed in a follow-up pull request. Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
-| Slice 6, part 2. Retrieval order and the writer's instruction | Built, in review | Same switch. See "Built in part 2" under slice 6. |
+| Slice 6, parts 2 and 3. Retrieval order, the writer's instruction, source type in words, the harness measure | Built, in review | One pull request. Same switch. See "Built in part 2" and "Built in part 3" under slice 6. |
 | Slices 7 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged and part 2 is in review. S6 governs each move.
+**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged; parts 2 and 3 are in review together. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
 
 ---
 
@@ -602,7 +602,7 @@ Acceptance:
 - The jargon gate fails on a reader-facing string containing "claims".
 - Harness: `pairwise_vs_reference` at least 0.5 on tasks with a reference report; `report_quality` at least 4.0.
 
-### Slice 6. Source authority (part 2 in review)
+### Slice 6. Source authority (parts 2 and 3 in review)
 
 Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4.
 
@@ -657,6 +657,12 @@ Acceptance:
 - With the citation lock on, the writer sees one line under each ranked passage naming its kind of source in words that cover its whole group ("an official or primary record", "peer-reviewed scholarly work", "published work not established as peer reviewed (such as a preprint, book, thesis, news report or reference work)", "a source of unestablished standing"), and an instruction: a passage without that line has no stated standing and is not to be guessed at or ranked; prefer the higher source where two sources with stated standings disagree, say in plain words which was relied on and why, still cite a lower source that is the only one for a point, and never grade or rank sources in the text. Without the lock the writer's prompt is unchanged in this part.
 - A tier number tied to a source in report text ("a tier 1 source", "sources in tier 2", "T1 evidence", "authority level") is a presentation failure, so it lowers `presentation_clean` and sends the report through the existing redraft, whose word-level fallback takes the rating out and keeps the sentence. "Tier 2 cities" and a "tier 1 supplier" are prose; quoted source text and code are not checked.
 - A copied "Kind of source" line is removed from report text by the same clean-up that removes tier labels. Only whole lines that are exactly what the writer is shown match, with or without a list marker, judged on the whole text with every form of code blanked out first; a sentence of the report that begins "Kind of source:", or goes on past a link, is kept.
+
+**Built in part 3.**
+
+- With the switch on for the run that wrote a report, a source its provider recorded only as a web page is named by where it was read: "government page", "intergovernmental organization page", "published standard", "registry record", "news article", "reference work entry", "university page", "institutional report", "journal article", "preprint". The words live on the address rules in the same rules file; a test runs each rule's example. What a provider recorded ("dataset", "journal article") stays. Never a tier number.
+- The same words reach the reference list the writer's run produces, the citation card (now "Government page · publisher · date"), the Sources and Evidence tabs, and a reference list rebuilt for export in another style. A run without the switch is worded as before.
+- Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. Null with no citations. A source without a tier counts as outside the top two.
 
 ### Slice 7. Provider routing by request (not started)
 

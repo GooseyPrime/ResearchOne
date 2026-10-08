@@ -15,6 +15,7 @@
  * Pure functions: no database, no clock, no model.
  */
 import { parseAuthor, type CslAuthor } from './cslConverter';
+import { authorityRuleFor } from '../authority/authorityTier';
 
 export const REFERENCE_STYLES = ['numeric', 'apa', 'mla', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'] as const;
 export type ReferenceStyle = (typeof REFERENCE_STYLES)[number];
@@ -102,10 +103,21 @@ export function siteName(url: string | null | undefined): string | null {
  * work is comes first ("journal article", "preprint", "book chapter"). Without
  * one it is read from where the source came from. Nothing here says a work was
  * peer reviewed: a catalogue entry or a DOI does not establish that, and a
- * journal article is called a journal article. Ranking sources by authority is
- * slice 6.
+ * journal article is called a journal article.
  */
-export function sourceKindInWords(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean }): string {
+export function sourceKindInWords(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean; authorityWords?: boolean }): string {
+  const kind = baseSourceKind(input);
+  // Slice 6. With authority tiers on, a source the provider recorded only as a
+  // web page is named by where it was read ("government page", "news article"),
+  // from the same rules that give it its tier. Words, never the tier itself.
+  if (input.authorityWords && kind === 'web page') {
+    const rule = authorityRuleFor({ url: input.url });
+    if (rule?.readerWords) return rule.readerWords;
+  }
+  return kind;
+}
+
+function baseSourceKind(input: { kind?: string | null; provider?: string | null; url?: string | null; hasFile?: boolean }): string {
   const recorded = (input.kind ?? '').trim().toLowerCase();
   if (/^[a-z][a-z -]{2,39}$/.test(recorded)) return recorded;
   const provider = (input.provider ?? '').toLowerCase();

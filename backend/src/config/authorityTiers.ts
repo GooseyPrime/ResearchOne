@@ -51,6 +51,11 @@ export interface AuthorityRule {
   hostSuffixes?: readonly string[];
   /** With `hosts` or `hostSuffixes`: the path must match as well. */
   path?: RegExp;
+  /**
+   * What a reader is told the source is, when the provider recorded nothing
+   * more specific than a web page. Address rules only. Words, never a tier.
+   */
+  readerWords?: string;
   example: AuthoritySignals;
 }
 
@@ -126,6 +131,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Where it was read: scholarly hosts before government hosts ───────────────
   {
     id: 'host-preprint-server',
+    readerWords: 'preprint',
     tier: 3,
     what: 'a preprint server',
     hosts: ['arxiv.org', 'biorxiv.org', 'medrxiv.org', 'chemrxiv.org', 'ssrn.com', 'osf.io', 'researchsquare.com', 'preprints.org', 'nber.org'],
@@ -133,6 +139,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pubmed',
+    readerWords: 'journal article',
     tier: 2,
     what: 'an article page on PubMed or PubMed Central',
     hosts: ['pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'europepmc.org'],
@@ -140,6 +147,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pmc-path',
+    readerWords: 'journal article',
     tier: 2,
     what: 'a PubMed Central article at its older address',
     hosts: ['ncbi.nlm.nih.gov'],
@@ -148,6 +156,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-journal',
+    readerWords: 'journal article',
     tier: 2,
     what: 'a site that publishes peer-reviewed journals',
     hosts: [
@@ -169,6 +178,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Primary and official ─────────────────────────────────────────────────────
   {
     id: 'host-government',
+    readerWords: 'government page',
     tier: 1,
     what: 'a government, military or court site',
     hostSuffixes: [
@@ -180,6 +190,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-intergovernmental',
+    readerWords: 'intergovernmental organization page',
     tier: 1,
     what: 'an intergovernmental body or its statistical service',
     hostSuffixes: ['int'],
@@ -188,6 +199,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-standards-body',
+    readerWords: 'published standard',
     tier: 1,
     what: 'a standards body',
     hosts: ['iso.org', 'iec.ch', 'ietf.org', 'rfc-editor.org', 'w3.org', 'astm.org', 'standards.ieee.org'],
@@ -195,6 +207,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-registry',
+    readerWords: 'registry record',
     tier: 1,
     what: 'an official registry of trials, patents or filings',
     hosts: ['clinicaltrials.gov', 'patents.google.com', 'epo.org', 'isrctn.com'],
@@ -204,6 +217,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Established news, reference works, institutions ──────────────────────────
   {
     id: 'host-news',
+    readerWords: 'news article',
     tier: 3,
     what: 'an established news organization',
     hosts: [
@@ -215,6 +229,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-reference-work',
+    readerWords: 'reference work entry',
     tier: 3,
     what: 'an edited reference work',
     hosts: ['britannica.com', 'plato.stanford.edu', 'oxfordreference.com', 'merriam-webster.com'],
@@ -222,6 +237,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-university',
+    readerWords: 'university page',
     tier: 3,
     what: 'a university or research institute',
     hostSuffixes: ['edu', 'ac.uk', 'edu.au', 'ac.jp', 'ac.in', 'edu.cn', 'ac.nz', 'ac.za', 'edu.sg'],
@@ -230,6 +246,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-research-institution',
+    readerWords: 'institutional report',
     tier: 3,
     what: 'a recognized research institution that publishes reports',
     hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],

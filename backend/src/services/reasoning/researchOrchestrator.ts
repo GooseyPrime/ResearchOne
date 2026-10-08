@@ -1,5 +1,6 @@
 import { query, queryOne, withTransaction } from '../../db/pool';
 import { loadRunFlags } from '../eval/runFlagStore';
+import { authorityTiersEnabled } from '../authority/authorityTier';
 import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
@@ -966,7 +967,8 @@ export function referenceDetails(source: UsedSource | undefined, row: LockedSour
     ...base,
     publisher: base.publisher ?? row.publication ?? null,
     authors: authors.length > 0 ? authors : null,
-    kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename) }),
+    // Slice 6. With authority tiers on, a plain web page is named by where it was read.
+    kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename), authorityWords: authorityTiersEnabled() }),
     accessed: isoDay(row.retrieval_timestamp),
   };
 }
