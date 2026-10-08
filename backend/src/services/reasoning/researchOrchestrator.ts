@@ -58,6 +58,7 @@ import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, 
 import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
 import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
+import { boundedReportForAudit, closingNoteOf, searchScopeGateContext, searchScopeNoteFor, withClosingNoteRestored, type SearchPassSummary } from './searchScope';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -1395,6 +1396,8 @@ async function runResearchJobInner(
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
     let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
+    // Every search pass this run makes, for a report that must say what was searched.
+    const searchPasses: SearchPassSummary[] = [];
     if (shouldRunPipelineStage(orchProfile, 'discovery')) {
       await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
 
@@ -1452,6 +1455,7 @@ async function runResearchJobInner(
       snapshot: { discoverySummary },
     });
 
+    searchPasses.push(discoverySummary);
     logger.info(`[${runId}] Discovery: ingested=${discoverySummary.sourcesIngested}, skipped=${discoverySummary.sourcesSkipped}`);
 
     const discoveryIngestBarrier = await waitForDiscoveryIngestReadiness({
@@ -1967,6 +1971,7 @@ async function runResearchJobInner(
           });
         },
       });
+      searchPasses.push(rediscoverySummary);
       const rediscoveryBarrier = await waitForDiscoveryIngestReadiness({
         sources: Array.isArray(rediscoverySummary.sources) ? rediscoverySummary.sources : [],
         timeoutMs: config.discovery.queryableWaitTimeoutMs,
@@ -2135,6 +2140,7 @@ async function runResearchJobInner(
         });
         // Discovery only queues ingestion. Wait until what it found can be
         // retrieved, or the second judgement re-reads the same material.
+        searchPasses.push(materialDiscoverySummary);
         const materialDiscoveryBarrier = await waitForDiscoveryIngestReadiness({
           sources: Array.isArray(materialDiscoverySummary.sources) ? materialDiscoverySummary.sources : [],
           timeoutMs: config.discovery.queryableWaitTimeoutMs,
@@ -2396,10 +2402,18 @@ async function runResearchJobInner(
      * reference list is not failed for one that is about to be added. Repairs
      * still work on the marker draft.
      */
+    // A report type whose rules ask for a stated search scope gets that statement
+    // from the run's record, in the closing note. Empty for every other run.
+    const searchScopeNote = searchScopeNoteFor({ layer1Run, intentId: orchProfile.intent, summaries: searchPasses });
+    const gateContext = searchScopeGateContext(searchScopeNote);
+    // Without the citation lock the closing note is already in the report the
+    // writer returns, and later rewrites are handed that whole report. The note
+    // as written is kept here and every later version is held to it.
+    let writtenClosingNote = '';
     const reportForGates = (markdown: string): string =>
       lockedPassages
-        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle).markdown
-        : markdown;
+        ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle, searchScopeNote).markdown
+        : withClosingNoteRestored(markdown, writtenClosingNote);
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -2512,6 +2526,7 @@ async function runResearchJobInner(
         isAdjudicative,
         usedSources,
         lockedPassages: lockedPassages ?? undefined,
+        ...(searchScopeNote ? { searchScopeNote } : {}),
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
           await progress('synthesis', Math.min(90, 80 + Math.floor((index / total) * 10)), `Report section ${index}/${total}: ${title}`, {
@@ -2547,6 +2562,7 @@ async function runResearchJobInner(
         );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
+      if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);
     } else {
       await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
       const refSynth = await callRoleModel({
@@ -2615,7 +2631,7 @@ async function runResearchJobInner(
           { role: 'system', content: intentVerifierPrompt },
           {
             role: 'user',
-            content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
+            content: `${gateContext}Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
           },
         ],
       });
@@ -2725,8 +2741,8 @@ ${reportForGates(generatedReport.markdown)}`,
       try {
         await progress('verification', 93, 'Auditing deliverable contract...');
         const auditUserContent = [
-          `RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
-          `\nGENERATED_REPORT:\n${markdown.slice(0, 60000)}`,
+          `${gateContext}RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
+          `\nGENERATED_REPORT:\n${boundedReportForAudit(markdown, 60000, searchScopeNote)}`,
         ].join('\n');
 
         const auditModelResult = await callRoleModel({
@@ -2984,7 +3000,7 @@ ${reportForGates(generatedReport.markdown)}`,
               { role: 'system', content: intentVerifierPrompt },
               {
                 role: 'user',
-                content: `Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
+                content: `${gateContext}Verify this research report meets epistemic standards:\n\n${reportForGates(generatedReport.markdown)}`,
               },
             ],
           });
@@ -3027,7 +3043,7 @@ ${reportForGates(generatedReport.markdown)}`,
       // Finalize the text that will be saved. The save removes prompt echo and
       // internal labels; doing that first means each citation is bound to the
       // sentence a reader will see, and the save's own pass then changes nothing.
-      const { finalized, wordingAfter } = finalizeLockedReportForSave(generatedReport.markdown, researchQuery, lockedPassages, referenceStyle);
+      const { finalized, wordingAfter } = finalizeLockedReportForSave(generatedReport.markdown, researchQuery, lockedPassages, referenceStyle, undefined, searchScopeNote);
       if (wordingAfter.length > 0) {
         // Never shipped silently: what could not be removed is recorded on the run.
         logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: wordingAfter });
@@ -3048,7 +3064,8 @@ ${reportForGates(generatedReport.markdown)}`,
     // wording back. Nothing else about the text changes here.
     if (!lockedPassages && layer1Run && typeof generatedReport?.markdown === 'string') {
       const checked = cleanLayer1WordingForSave(generatedReport.markdown);
-      generatedReport.markdown = checked.markdown;
+      // A repair may have reworded the closing note; the statement of the search is put back as recorded.
+      generatedReport.markdown = withClosingNoteRestored(checked.markdown, writtenClosingNote);
       if (checked.wordingAfter.length > 0) {
         logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: checked.wordingAfter });
         await query(
