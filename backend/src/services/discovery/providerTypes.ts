@@ -77,6 +77,22 @@ export function isoFromParts(parts: ReadonlyArray<number> | undefined): string |
   return isCalendarDay(iso) ? iso : undefined;
 }
 
+/**
+ * One address in the form discovery compares addresses in: no fragment, no
+ * trailing slash, scheme and host in lower case. Text that is not an address is
+ * compared trimmed and in lower case. Shared by discovery and ingestion so both
+ * agree on when two addresses are the same.
+ */
+export function normalizeDiscoveryUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    u.hash = '';
+    return u.toString().replace(/\/$/, '');
+  } catch {
+    return raw.toLowerCase().trim();
+  }
+}
+
 /** The candidate with its tier, or unchanged when there is none to give. */
 export function withAuthorityTier(candidate: SearchResultCandidate, tier: number | null): SearchResultCandidate {
   return tier === null ? candidate : { ...candidate, authorityTier: tier };

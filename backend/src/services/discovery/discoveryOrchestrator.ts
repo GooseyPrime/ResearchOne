@@ -46,6 +46,7 @@ import {
   SearchResultCandidate,
   bibliographicMetadata,
   withAuthorityTier,
+  normalizeDiscoveryUrl,
   candidateForRun,
   resultForRun,
   fullestBibliographic,
@@ -179,15 +180,7 @@ function isSensitiveTopic(text: string): boolean {
 }
 
 /** Normalise a URL for deduplication (remove fragment, trailing slash, lowercase scheme+host) */
-function normalizeUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    u.hash = '';
-    return u.toString().replace(/\/$/, '');
-  } catch {
-    return raw.toLowerCase().trim();
-  }
-}
+const normalizeUrl = normalizeDiscoveryUrl;
 
 /**
  * Public entry. Wraps the discovery body in a nested telemetry scope
@@ -674,6 +667,7 @@ async function runDiscoveryOrchestratorInner(args: {
         }
       }
       // A source stored before tiers were recorded gains one; a recorded tier is kept.
+      // Never fails the run: a write that keeps failing is logged and the run goes on.
       if (authorityTiersEnabled()) await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
       skipped.push({
         ...candidate,

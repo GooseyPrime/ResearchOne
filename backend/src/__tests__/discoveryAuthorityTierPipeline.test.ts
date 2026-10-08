@@ -20,11 +20,13 @@ const h = vi.hoisted(() => ({
   queries: [] as Array<{ sql: string; params: unknown[] }>,
   queued: [] as Array<Record<string, unknown>>,
   delays: { tavily: 0, crossref: 0, openalex: 0 } as Record<string, number>,
+  failTier: false,
 }));
 
 vi.mock('../db/pool', () => ({
   query: vi.fn(async (sql: string, params: unknown[] = []) => {
     h.queries.push({ sql, params });
+    if (h.failTier && /authority_tier/.test(sql)) throw new Error('connection lost');
     return [];
   }),
   queryOne: vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -128,6 +130,7 @@ describe('the authority tier through discovery', () => {
     h.queries.length = 0;
     h.queued.length = 0;
     h.delays = { tavily: 0, crossref: 0, openalex: 0 };
+    h.failTier = false;
     (config.discovery as Settings).enabled = true;
     (config.discovery as Settings).provider = 'tavily';
     (config.discovery as Settings).ingestionWaitTimeoutMs = 0;
@@ -162,6 +165,15 @@ describe('the authority tier through discovery', () => {
     expect(tierWrites()).toHaveLength(1);
     expect(tierWrites()[0].params).toEqual([STORED_ID, 2]);
     expect(tierWrites()[0].sql).toContain('COALESCE(authority_tier,');
+  });
+
+  it('goes on with the run when a stored source\'s tier cannot be written', async () => {
+    h.failTier = true;
+    const summary = await runWithFlags(TIERS_ON, discover);
+    // Tried three times, then logged.
+    expect(tierWrites()).toHaveLength(3);
+    expect(h.queued).toHaveLength(1);
+    expect(summary.sources.find((source) => source.url === STORED_URL)?.skipReason).toBe('already_in_corpus');
   });
 
   it('sends and writes nothing about tiers with the switch off', async () => {

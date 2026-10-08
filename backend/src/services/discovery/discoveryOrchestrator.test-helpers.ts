@@ -4,18 +4,10 @@
  * Not imported by production code.
  */
 
-import { SearchResultCandidate } from './providerTypes';
+import { SearchResultCandidate, normalizeDiscoveryUrl } from './providerTypes';
 
-/** Normalise a URL for deduplication (same logic as discoveryOrchestrator.ts) */
-export function normalizeUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    u.hash = '';
-    return u.toString().replace(/\/$/, '');
-  } catch {
-    return raw.toLowerCase().trim();
-  }
-}
+/** Normalise a URL for deduplication: the one discoveryOrchestrator.ts uses. */
+export const normalizeUrl = normalizeDiscoveryUrl;
 
 /** Deduplicate candidates by normalised URL — first occurrence wins */
 export function dedupeByUrl(candidates: SearchResultCandidate[]): SearchResultCandidate[] {

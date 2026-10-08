@@ -1,4 +1,4 @@
-import { isCalendarDay } from '../discovery/providerTypes';
+import { isCalendarDay, normalizeDiscoveryUrl } from '../discovery/providerTypes';
 import { authorityTierFor, authorityTiersEnabled, storedAuthorityTier, type AuthoritySignals, type AuthorityTier } from '../authority/authorityTier';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -284,28 +284,89 @@ export async function fillReferenceDetails(
 
 /**
  * Slice 6. Records a source's authority tier. A tier already recorded is kept.
- * Its own statement, after the source is stored, so a database without
- * migration 060 loses the tier and never the source. Callers decide whether the
- * switch is on; with it off this is never reached with a tier.
+ * Its own statement, after the source is stored.
+ *
+ * The tier is never worth the source. A database without migration 060 answers
+ * with an unknown column: the tier is skipped. Any other failure is tried again
+ * twice, a moment apart; if it still fails it is logged as an error and the job
+ * goes on. Failing the job instead would mark it failed, and discovery stops
+ * waiting for a failed job and drops a source that is in fact stored. A tier
+ * that is missing is not lost: it follows from the same rules and the stored
+ * address, and is worked out again wherever it is read.
  */
-export async function recordAuthorityTier(sourceId: string, tier: AuthorityTier | null): Promise<void> {
+export const AUTHORITY_TIER_RETRY_DELAYS_MS = [250, 1000] as const;
+
+export async function recordAuthorityTier(
+  sourceId: string,
+  tier: AuthorityTier | null,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<void> {
   if (tier === null) return;
-  try {
-    await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
-  } catch (err) {
-    logger.warn('ingestion: could not record the authority tier of a source', { sourceId, tier, error: err instanceof Error ? err.message : String(err) });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
+      return;
+    } catch (err) {
+      if ((err as { code?: string })?.code === '42703') {
+        logger.warn('ingestion: the authority tier column is not there yet; the tier was not recorded', { sourceId, tier });
+        return;
+      }
+      const delay = AUTHORITY_TIER_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        logger.error('ingestion: could not record the authority tier of a source', {
+          sourceId,
+          tier,
+          attempts: attempt + 1,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      await wait(delay);
+    }
   }
 }
 
 /**
- * The tier to record for an ingested source. A job queued by discovery carries
- * the tier that run worked out. Any other job (an upload, a supplied address)
- * is judged here, and only when the switch is on for this process.
+ * The tier to record for an ingested source.
+ *
+ * Only discovery's own jobs are trusted to carry a tier or a provider's record:
+ * discovery works the tier out inside the run from what the search providers
+ * returned. A person's upload or supplied address can send any metadata it
+ * likes, so it is judged by its address alone, and only when the switch is on
+ * for this process. Nothing a person sends can raise a source's tier.
  */
-export function tierForIngest(data: Pick<IngestionJobData, 'authorityTier'>, signals: AuthoritySignals): AuthorityTier | null {
-  const carried = storedAuthorityTier(data.authorityTier);
+export function tierForIngest(
+  data: Pick<IngestionJobData, 'authorityTier' | 'importedVia'>,
+  signals: AuthoritySignals
+): AuthorityTier | null {
+  const fromDiscovery = data.importedVia === 'autonomous_discovery';
+  const carried = fromDiscovery ? storedAuthorityTier(data.authorityTier) : null;
   if (carried !== null) return carried;
-  return authorityTiersEnabled() ? authorityTierFor(signals) : null;
+  if (!authorityTiersEnabled()) return null;
+  return authorityTierFor(fromDiscovery ? signals : { url: signals.url });
+}
+
+/**
+ * The tier for a source this job found already stored under the same content.
+ * The tier belongs to where the stored source was read. When this job read the
+ * same content at another address, its own signals say nothing about the stored
+ * source, so the stored address is judged instead.
+ */
+export function tierForStoredDuplicate(
+  data: Pick<IngestionJobData, 'authorityTier' | 'importedVia'>,
+  signals: AuthoritySignals,
+  storedUrl: string | null | undefined
+): AuthorityTier | null {
+  // The same address as discovery judges it: a fragment or a trailing slash does not make a new one.
+  const stored = (storedUrl ?? '').trim();
+  const read = (signals.url ?? '').trim();
+  const same = stored !== '' && read !== '' && normalizeDiscoveryUrl(stored) === normalizeDiscoveryUrl(read);
+  if (same) return tierForIngest(data, signals);
+  // A tier discovery sent is also the sign that tiers were on for its run, whose
+  // switches do not reach this worker. Its value describes this job's copy, so
+  // only the sign is used, and the stored address is judged.
+  const runHadTiers = data.importedVia === 'autonomous_discovery' && storedAuthorityTier(data.authorityTier) !== null;
+  return runHadTiers || authorityTiersEnabled() ? authorityTierFor({ url: storedUrl }) : null;
 }
 
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
@@ -348,8 +409,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
 
   const contentHash = crypto.createHash('sha256').update(rawContent).digest('hex');
 
-  const existing = await queryOne<{ id: string }>(
-    'SELECT id FROM sources WHERE content_hash=$1',
+  const existing = await queryOne<{ id: string; url?: string | null }>(
+    'SELECT id, url FROM sources WHERE content_hash=$1',
     [contentHash]
   );
   const bibliographic = checkedBibliographic;
@@ -366,7 +427,7 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
       }
     }
     // A source stored before tiers were recorded gains one now; a recorded tier is kept.
-    await recordAuthorityTier(existing.id, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
+    await recordAuthorityTier(existing.id, tierForStoredDuplicate(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }, existing.url));
     if (linkJobSource && data.ingestionJobId) {
       await query(
         `UPDATE ingestion_jobs SET source_id=$1 WHERE id=$2`,
@@ -433,8 +494,6 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     documentId = docResult.rows[0].id;
   });
 
-  await recordAuthorityTier(sourceId, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
-
   onProgress({ stage: 'chunk', percent: 50, message: 'Chunking document...' });
 
   const chunks = chunkText(rawContent, {
@@ -465,6 +524,8 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
     chunkIds,
   });
 
+  // Last, once the source, its passages and their embedding job are all in place.
+  await recordAuthorityTier(sourceId, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
   return { sourceId, chunkCount: chunks.length, duplicate: false };
 }
 
