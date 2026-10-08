@@ -952,6 +952,22 @@ export function withoutSourceRank(text: string): string {
     .replace(/\bauthority\s+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
 }
 
+/**
+ * Takes out tier ratings from the report's own words only. Code is set aside
+ * first, whole, so a quoted string inside code cannot split it; quotations are
+ * then found on what is left, so one that runs across code or a link keeps its
+ * words. The code comes back exactly as it was.
+ */
+export function withoutSourceRankOutsideCodeAndQuotes(content: string): string {
+  const code: string[] = [];
+  const held = mapOutsideCode(content, (part) => part, (segment) => {
+    code.push(segment);
+    return `\uE010${code.length - 1}\uE011`;
+  });
+  const cleaned = mapOutsideQuotes(held, withoutSourceRank);
+  return cleaned.replace(/\uE010(\d+)\uE011/g, (_token, index: string) => code[Number(index)] ?? '');
+}
+
 export function removeBannedWording(content: string): string {
   // Each word is swapped for a plain one that fits the same place in the
   // sentence, so the sentence still reads. A grade token is a label, not a
@@ -988,8 +1004,7 @@ export function removeBannedWording(content: string): string {
   // A tier rating of a source is taken out first, over the whole text, so a
   // quotation that runs across a link or code keeps its words. The rating forms
   // need spaces between words, so a link destination never matches.
-  // Quotations first, over the whole text, so one that runs across code keeps its words; code is never changed.
-  const unrated = mapOutsideQuotes(content, (part) => mapOutsideCode(part, withoutSourceRank, (code) => code));
+  const unrated = withoutSourceRankOutsideCodeAndQuotes(content);
   // A link's label is prose the reader sees; its destination is not.
   return mapCitationProse(mapLinkLabels(unrated, cleanOwnWords), cleanOwnWords);
 }
