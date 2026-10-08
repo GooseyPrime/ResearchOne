@@ -1,5 +1,5 @@
-import { config } from '../../config';
 import type { MonitorKind } from '../monitoring/parallelMonitorService';
+import { getPurchaseAvailability } from './purchaseAvailability';
 
 export type AddonBillingModel =
   | 'report_subscription'
@@ -25,7 +25,12 @@ export type AddonCatalogEntry = {
 };
 
 function buildCatalog(): AddonCatalogEntry[] {
-  const rcwPrice = Boolean(config.stripe.priceIds.reverseCitationWatchMonthly);
+  const availability = getPurchaseAvailability();
+  const rcwPrice = availability.addons.reverse_citation_watch;
+  // Living Reports are sold as token packs: purchasable when at least one pack
+  // has its Stripe price set. This was hard-coded to false, so the catalog
+  // could not tell a configured deployment from an unconfigured one.
+  const livingReportTokens = availability.addons.living_report;
 
   return [
     {
@@ -39,7 +44,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       monitorKind: 'living_report',
       managePath: '/app/billing#monitor-tokens',
       comingSoon: false,
-      stripeConfigured: false,
+      stripeConfigured: livingReportTokens,
     },
     {
       id: 'reverse_citation_watch',
