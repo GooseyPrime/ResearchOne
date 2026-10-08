@@ -4,7 +4,7 @@
  * shows no grade label, tier number or raw stage id. This is the gate: it
  * fails on a reader-facing string that uses one of those words.
  */
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ import { scanReaderWording } from './readerWordingScan';
 import { SampleReportView } from '../../components/r1-reports/SampleReportView';
 import ComparisonTable from '../../components/landing/ComparisonTable';
 import { READER_STAGE_WORDS, readerStageLabel } from '../../lib/researchone/stageLabels';
+import { PLAIN_ROLE_WORDS, plainLabel, plainProgressText } from '../../lib/researchone/plainWords';
 import { sampleReaderEvidence, sampleReaderReport } from '../../content/sampleReaderReport';
 
 afterEach(cleanup);
@@ -30,7 +31,17 @@ const ALLOWED: Array<{ file: string; phrase: RegExp; why: string }> = [
   { file: 'pages/ResearchV2GuidePage.tsx', phrase: /patent claims/, why: 'a patent claim is the legal term for what a patent protects' },
 ];
 
-const allowedFor = (file: string): RegExp[] => ALLOWED.filter((entry) => entry.file === file).map((entry) => entry.phrase);
+/**
+ * A banned phrase in a file that another change is removing at the same time
+ * (RJ-012 owns the pricing, billing and add-ons pages). It is excused only
+ * while it is still there; once that change lands the entry excuses nothing,
+ * and the phrase cannot be written anywhere else.
+ */
+const OWNED_ELSEWHERE: Array<{ file: string; phrase: RegExp; why: string }> = [
+  { file: 'pages/PricingPage.tsx', phrase: /Devil's Advocate Review: Included in Sovereign/, why: 'RJ-012 removes this line from the pricing page' },
+];
+
+const allowedFor = (file: string): RegExp[] => [...ALLOWED, ...OWNED_ELSEWHERE].filter((entry) => entry.file === file).map((entry) => entry.phrase);
 
 /** A throwaway source tree, for showing what the gate does and does not flag. */
 function tree(files: Record<string, string>): string {
@@ -45,7 +56,7 @@ const lines = (...text: string[]): string => text.join('\n');
 const found = (dir: string, allowed?: (file: string) => readonly RegExp[]): string[] => scanReaderWording(dir, allowed).map((hit) => `${hit.line} ${hit.word}`);
 
 describe('the reader-wording gate', () => {
-  it('finds no reader-facing string in the app that says claim, a tier number, a grade label or a raw status', () => {
+  it('finds no reader-facing string in the app that says claim, a tier number, a grade label, a raw status, a role nickname or a step code', () => {
     expect(scanReaderWording(SRC, allowedFor).map((hit) => `${hit.file}:${hit.line} [${hit.word}] ${hit.text}`)).toEqual([]);
   });
 
@@ -122,6 +133,117 @@ describe('the reader-wording gate', () => {
   });
 });
 
+/** RJ-013: the words for a pipeline role or pass that no person is shown. */
+const ROLE_NICKNAME = /steel[- ]?man|straw[- ]?m[ae]n|s[kc]eptic|devil['’]?s[- ]advocate|red[- ]?team|contrarian|adversar|gadfl/i;
+const STEP_CODE = /\b[a-z][a-z0-9]*(_[a-z0-9]+)+\b/;
+
+describe('the reader-wording gate: role nicknames and step codes', () => {
+  it('fails on every banned nickname in text a person reads, and passes over identifiers, keys and comparisons', () => {
+    const dir = tree({
+      'components/Roles.tsx': lines(
+        "import type { Run } from './types';",
+        'export function Roles({ run, skepticMode }: { run: Run; skepticMode: string }) {',
+        "  const steelmanMode = run.steelman_mode === 'as_product' ? 'steelman' : 'off';",
+        '  return (',
+        '    <ul data-emphasis="skeptic" title="Steelman pass">',
+        '      <li>Steelman pass: strengthening formulations before critique</li>',
+        '      <li>A steel-man of each option, never a strawman</li>',
+        '      <li>The Skeptic argues against the draft; a sceptic would too</li>',
+        "      <li>Devil's Advocate Review, with red-teaming by a contrarian</li>",
+        '      <li>The adversarial pass, run by an adversary and a gadfly</li>',
+        '      <li>{skepticMode === "gate" ? "Challenge pass" : steelmanMode}</li>',
+        '    </ul>',
+        '  );',
+        '}'
+      ),
+    });
+    expect(found(dir)).toEqual([
+      '5 role nickname',
+      '6 role nickname',
+      '7 role nickname', '7 role nickname',
+      '8 role nickname', '8 role nickname',
+      '9 role nickname', '9 role nickname', '9 role nickname',
+      '10 role nickname', '10 role nickname', '10 role nickname',
+    ]);
+  });
+
+  it('fails on an internal step code written as text', () => {
+    const dir = tree({
+      'components/Trace.tsx': lines(
+        'export function Trace({ evt }: { evt: { eventType: string } }) {',
+        "  const done = evt.eventType === 'run_completed';",
+        '  return <p>Reasoning across sources... (reasoner_started) {done ? "Done" : "Now at steelman_started"}</p>;',
+        '}'
+      ),
+    });
+    expect(found(dir)).toEqual(['3 raw step code', '3 role nickname']);
+  });
+
+  it('the one line another change is removing is the only banned phrase excused, and only in its own file', () => {
+    for (const owned of OWNED_ELSEWHERE) {
+      const others = scanReaderWording(SRC, (file) => (file === owned.file ? [] : allowedFor(file))).filter((hit) => hit.word === 'role nickname' || hit.word === 'raw step code');
+      expect(others.every((hit) => hit.file === owned.file && owned.phrase.test(hit.text)), owned.why).toBe(true);
+    }
+  });
+
+  it('no screen prints the step code that came with a progress event', () => {
+    const files = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return name === '__tests__' ? [] : files(path);
+      return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : [];
+    });
+    const printed = files(SRC).filter((path) => /[>(]\s*\(?\$?\{\s*\w+(\?)?\.substep\s*\}/.test(readFileSync(path, 'utf8')));
+    expect(printed.map((path) => path.slice(SRC.length + 1))).toEqual([]);
+  });
+});
+
+describe('plain words for what the pipeline reports', () => {
+  it('the two lines from the live progress screen read in plain words, with no code after them', () => {
+    expect(plainProgressText('Reasoning across sources...')).toBe('Reasoning across sources...');
+    expect(plainProgressText('Reasoning across sources... (reasoner_started)')).toBe('Reasoning across sources...');
+    expect(plainProgressText('Steelman pass: strengthening formulations before critique...')).toBe('Restating each finding in its strongest form before checking it...');
+    expect(plainProgressText('Steelman pass: strengthening formulations before critique...(steelman_started)')).toBe('Restating each finding in its strongest form before checking it...');
+  });
+
+  it('a stored message from an earlier version never shows a nickname or a code', () => {
+    const earlier = [
+      'Worker picked up the run; preparing planner...',
+      'Skeptic pass failed: provider timeout',
+      'Model call failed for role skeptic (skeptic_started)',
+      "Devil's Advocate Review queued",
+      'Red-team review of the adversarial twin',
+      'Executing specialist: market_scout',
+      'Attack the steelman, not a strawman',
+      'A contrarian gadfly',
+    ];
+    for (const message of earlier) {
+      const plain = plainProgressText(message);
+      expect(plain, message).not.toMatch(ROLE_NICKNAME);
+      expect(plain, message).not.toMatch(STEP_CODE);
+      expect(plain.length, message).toBeGreaterThan(0);
+    }
+    expect(plainProgressText('Model call failed for role skeptic (skeptic_started)')).toBe('Model call failed for role challenge pass');
+    expect(plainProgressText('Executing specialist: market_scout')).toBe('Executing specialist: market scout');
+    expect(plainProgressText(null)).toBe('');
+  });
+
+  it('a role, a cost phase and a saved checkpoint are named in plain words, never by id', () => {
+    expect(plainLabel('steelman')).toBe('Strongest-form restatement');
+    expect(plainLabel('skeptic')).toBe('Challenge pass');
+    expect(plainLabel('Skeptic')).toBe('Challenge pass');
+    expect(plainLabel('skeptic_output')).toBe('Challenge pass: saved result');
+    expect(plainLabel('retriever_analysis')).toBe('Reading the passages');
+    expect(plainLabel('some_new_role')).toBe('Some new role');
+    expect(plainLabel('adversarial_twin')).toBe('Challenge pass');
+    expect(plainLabel(undefined)).toBe('');
+    for (const [role, words] of Object.entries(PLAIN_ROLE_WORDS)) {
+      expect(plainLabel(role)).toBe(words);
+      expect(words, role).not.toMatch(ROLE_NICKNAME);
+      expect(words, role).not.toMatch(/_/);
+    }
+  });
+});
+
 describe('the public sample report', () => {
   it('is a section 2a report shown with the reading page: no table of claims, no grade tags', () => {
     render(<SampleReportView />);
@@ -171,6 +293,8 @@ describe('the live progress view', () => {
     expect(readerStageLabel('discovery')).toBe('Searching sources');
     // The stage the pipeline emits with its final event.
     expect(readerStageLabel('done')).toBe('Done');
+    expect(readerStageLabel('challenge')).toBe('Challenge pass');
+    expect(readerStageLabel('skeptic')).toBe('Challenge pass');
     expect(readerStageLabel('some_new_stage')).toBe('Working');
     expect(readerStageLabel(null)).toBe('Working');
   });
