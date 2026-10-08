@@ -285,6 +285,10 @@ const config = {
     maxResults: parseInt(process.env.MAX_EXTERNAL_DISCOVERY_RESULTS || '25', 10),
     maxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '10', 10),
     maxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '5', 10),
+    // Slice 7. The defaults a run uses with PROVIDER_ROUTING_ENABLED on. A value
+    // set in the environment wins either way; the ceiling in sourceBudget.ts holds.
+    routedMaxIngestPerRun: parseInt(process.env.MAX_EXTERNAL_INGEST_PER_RUN || '24', 10),
+    routedMaxQueriesPerRun: parseInt(process.env.MAX_DISCOVERY_QUERIES_PER_RUN || '12', 10),
     ingestionWaitTimeoutMs: parseInt(process.env.DISCOVERY_INGEST_TIMEOUT_MS || '90000', 10),
     queryableWaitTimeoutMs: parseInt(process.env.DISCOVERY_QUERYABLE_TIMEOUT_MS || '120000', 10),
     parallelApiKey: process.env.PARALLEL_API_KEY || '',
@@ -582,6 +586,22 @@ export function baselineLayerEnabled(): boolean {
  */
 export function doiResolveEnabled(): boolean {
   return switchEnabled('DOI_RESOLVE_ENABLED') && citationLockEnabled();
+}
+/**
+ * Slice 7. Search providers chosen by what the request is about. Unset is off:
+ * discovery then uses the configured web provider plus the specialist mapping,
+ * with the old query and source defaults.
+ */
+export function providerRoutingEnabled(): boolean {
+  return switchEnabled('PROVIDER_ROUTING_ENABLED');
+}
+/** How many queries discovery may send in one run. */
+export function discoveryQueryBudget(): number {
+  return providerRoutingEnabled() ? config.discovery.routedMaxQueriesPerRun : config.discovery.maxQueriesPerRun;
+}
+/** The fewest sources an ordinary run may ingest; a larger request raises it (`resolveSourceIngestBudget`). */
+export function discoveryIngestFloor(): number {
+  return providerRoutingEnabled() ? config.discovery.routedMaxIngestPerRun : config.discovery.maxIngestPerRun;
 }
 export { retentionConfig } from './retention';
 export type { RetentionConfig } from './retention';

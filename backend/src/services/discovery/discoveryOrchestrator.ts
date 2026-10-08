@@ -21,6 +21,7 @@ import axios from 'axios';
 import {
   buildDeterministicDiscoveryQueries,
   capForPlannerPrompt,
+  searchSeedFor,
   redactQueryEcho,
   MAX_PLANNER_QUERY_CHARS,
   MAX_PLANNER_PLAN_CHARS,
@@ -36,7 +37,15 @@ import { runScope } from '../telemetry';
 import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
-import { citationLockEnabled, config, doiResolveEnabled } from '../../config';
+import {
+  citationLockEnabled,
+  config,
+  discoveryIngestFloor,
+  discoveryQueryBudget,
+  doiResolveEnabled,
+  providerRoutingEnabled,
+} from '../../config';
+import { coverageHintsFor, selectProviders, type ProviderKey, type ProviderSelection } from './providerRouting';
 import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
@@ -64,7 +73,7 @@ import { UsptoSearchProvider } from './providers/usptoSearch';
 import { ClinicalTrialsSearchProvider } from './providers/clinicalTrialsSearch';
 import { ParallelSearchProvider } from './providers/parallelSearch';
 
-const PROVIDER_BUILDERS = {
+const PROVIDER_BUILDERS: Record<ProviderKey, () => SearchProvider> = {
   tavily: () => new TavilySearchProvider(),
   brave: () => new BraveSearchProvider(),
   generic: () => new GenericWebSearchProvider(),
@@ -75,9 +84,7 @@ const PROVIDER_BUILDERS = {
   pmc: () => new PubmedCentralSearchProvider(),
   uspto: () => new UsptoSearchProvider(),
   clinicaltrials: () => new ClinicalTrialsSearchProvider(),
-} as const;
-
-type ProviderKey = keyof typeof PROVIDER_BUILDERS;
+};
 const providerCache = new Map<ProviderKey, SearchProvider>();
 
 function provider(key: ProviderKey): SearchProvider {
@@ -147,7 +154,21 @@ Output JSON with this exact schema:
   "exclusion_patterns": ["string", ...]
 }`;
 
-/** Get the configured search provider(s) */
+/** The general web providers the server is configured with, in cascade order. */
+function webProviderKeys(): ProviderKey[] {
+  switch (config.discovery.provider) {
+    case 'cascade':
+      return ['tavily', 'brave', 'generic'];
+    case 'brave':
+      return ['brave'];
+    case 'generic':
+      return ['generic'];
+    default:
+      return ['tavily'];
+  }
+}
+
+/** Get the configured search provider(s). With PROVIDER_ROUTING_ENABLED on, `selectProviders` decides instead. */
 function getSearchProviders(specialistAgentIds: readonly string[] = []): SearchProvider[] {
   const connectorKeys = new Set<ProviderKey>();
   for (const specialistId of specialistAgentIds) {
@@ -207,6 +228,11 @@ export async function runDiscoveryOrchestrator(args: {
   byokApiKeyOverride?: string;
   userId?: string;
   specialistAgentIds?: string[];
+  /**
+   * Slice 7. What the request is about, for choosing providers with
+   * PROVIDER_ROUTING_ENABLED on. Ignored with it off.
+   */
+  routingBrief?: { intent?: string | null; layer2: boolean };
   /** Per-run add-on override (parallel_search → higher ingest cap). */
   maxIngestCapOverride?: number;
   minUsableSources?: number;
@@ -241,6 +267,7 @@ async function runDiscoveryOrchestratorInner(args: {
   byokApiKeyOverride?: string;
   userId?: string;
   specialistAgentIds?: string[];
+  routingBrief?: { intent?: string | null; layer2: boolean };
   maxIngestCapOverride?: number;
   minUsableSources?: number;
   maxCoverageRounds?: number;
@@ -258,6 +285,7 @@ async function runDiscoveryOrchestratorInner(args: {
     byokApiKeyOverride,
     userId,
     specialistAgentIds,
+    routingBrief,
     maxIngestCapOverride,
     minUsableSources,
     maxCoverageRounds,
@@ -380,7 +408,7 @@ async function runDiscoveryOrchestratorInner(args: {
   const budgetFloor =
     typeof maxIngestCapOverride === 'number' && maxIngestCapOverride > 0
       ? maxIngestCapOverride
-      : config.discovery.maxIngestPerRun;
+      : discoveryIngestFloor();
   const maxIngest = effectiveIngestCap({
     budgetFloor,
     plannerRequest: discoveryPlan.max_sources_to_ingest,
@@ -389,7 +417,33 @@ async function runDiscoveryOrchestratorInner(args: {
   logger.info(`[discovery:${runId}] Discovery round 1 needed. Queries: ${discoveryPlan.discovery_queries.join(' | ')}`);
 
   // ─── Step 2: Execute search queries ─────────────────────────────────────────
-  const providers = getSearchProviders(specialistAgentIds ?? []);
+  // Slice 7. With routing on the request decides the providers and the
+  // specialist mapping is not consulted: one routing system at a time.
+  const routing: ProviderSelection | null = providerRoutingEnabled()
+    ? selectProviders(
+        {
+          researchQuery,
+          intent: routingBrief?.intent ?? null,
+          researchObjective: researchObjective ?? null,
+          layer2: routingBrief?.layer2 === true,
+          seed: searchSeedFor(researchQuery, discoveryPlan.discovery_queries),
+        },
+        { webProviders: webProviderKeys(), braveKeyed: Boolean(config.discovery.providerApiKey) }
+      )
+    : null;
+  if (routing) {
+    logger.info(`[discovery:${runId}] Routes ${routing.routes.join(', ')}; providers ${routing.providers.join(', ')}`);
+    await persistDiscoveryEvent(runId, 'routing', 'router', researchQuery, 0, 0, {
+      routes: routing.routes,
+      providers: routing.providers,
+      extra_queries: routing.extraQueries.map(({ text, purpose, providers: to }) => ({ text, purpose, providers: to })),
+    });
+  }
+  const providers = routing ? routing.providers.map((key) => provider(key)) : getSearchProviders(specialistAgentIds ?? []);
+  /** Queries sent only to some providers (slice 7 extra queries). Others go to every provider. */
+  const queryProviders = new Map<string, ReadonlySet<string>>(
+    (routing?.extraQueries ?? []).map((extra) => [extra.text, new Set<string>(extra.providers)])
+  );
   const orderedProviders = isSensitiveTopic(researchQuery)
     ? [...providers].sort((a, b) => (a.name === 'brave' ? -1 : b.name === 'brave' ? 1 : 0))
     : providers;
@@ -404,7 +458,7 @@ async function runDiscoveryOrchestratorInner(args: {
   const queriesExecuted: string[] = [];
   let roundsExecuted = 0;
   // Total query budget shared across all discovery rounds.
-  const totalQueryBudget = config.discovery.maxQueriesPerRun;
+  const totalQueryBudget = discoveryQueryBudget();
 
   /** Execute one round of search queries against the configured providers,
    *  deduplicating against `seenUrls` and persisting per-query audit events. */
@@ -422,8 +476,10 @@ async function runDiscoveryOrchestratorInner(args: {
       // Fan out configured providers in parallel for this query. Dedup via `seenUrls` /
       // `allCandidates` is still safe: each provider processes its results in one synchronous
       // block before awaiting `persistDiscoveryEvent`, so no interleaved double-insert races.
+      const only = queryProviders.get(searchQuery);
+      const searchers = only ? orderedProviders.filter((candidate) => only.has(candidate.name)) : orderedProviders;
       const providerResults = await Promise.allSettled(
-        orderedProviders.map(async (provider) => {
+        searchers.map(async (provider) => {
           const results = await provider.search({
             text: searchQuery,
             maxResults: config.discovery.maxResults,
@@ -484,12 +540,20 @@ async function runDiscoveryOrchestratorInner(args: {
         })
       );
 
-      for (const pr of providerResults) {
+      for (const [at, pr] of providerResults.entries()) {
         if (pr.status === 'fulfilled') {
           roundNewCandidates += pr.value;
         } else {
           const reason = pr.reason;
           logger.error(`[discovery:${runId}] r${roundNumber} provider fan-out search failed:`, reason);
+          // Slice 7. One provider failing does not fail the run; it is recorded with the run.
+          if (routing) {
+            await persistDiscoveryEvent(runId, 'provider_error', searchers[at].name, searchQuery, 0, 0, {
+              round: roundNumber,
+              query: searchQuery,
+              ...providerErrorRecord(reason),
+            });
+          }
         }
       }
     }
@@ -498,7 +562,9 @@ async function runDiscoveryOrchestratorInner(args: {
   };
 
   // ─── Round 1: initial query set ─────────────────────────────────────────────
-  const round1Queries = discoveryPlan.discovery_queries.slice(0, totalQueryBudget);
+  const round1Queries = routing
+    ? withExtraQueries(discoveryPlan.discovery_queries, routing.extraQueries.map((extra) => extra.text), totalQueryBudget)
+    : discoveryPlan.discovery_queries.slice(0, totalQueryBudget);
   const round1New = await runSearchRound(1, round1Queries, discoveryPlan.exclusion_patterns);
   logger.info(`[discovery:${runId}] Round 1 complete: +${round1New} candidates (total ${allCandidates.length})`);
   try { await onRoundComplete?.({ round: 1, candidatesAfter: allCandidates.length }); } catch { /* non-fatal */ }
@@ -579,14 +645,16 @@ async function runDiscoveryOrchestratorInner(args: {
   ) {
     const remainingBudget = Math.max(0, totalQueryBudget - queriesExecuted.length);
     if (remainingBudget <= 0) break;
-    const uncoveredHint = [
-      'demand signals',
-      'competitor reality',
-      'technical feasibility',
-      'regulatory constraints',
-      'monetization',
-      'acquisition',
-    ];
+    const uncoveredHint = routing
+      ? coverageHintsFor(routing.routes)
+      : [
+          'demand signals',
+          'competitor reality',
+          'technical feasibility',
+          'regulatory constraints',
+          'monetization',
+          'acquisition',
+        ];
     const seed = discoveryPlan.discovery_queries[nextRound % discoveryPlan.discovery_queries.length] ?? researchQuery;
     const extraQueries = uncoveredHint
       .map((hint) => `${seed} ${hint}`)
@@ -862,6 +930,27 @@ export async function fetchIngestionJobOutcomes(jobIds: string[]): Promise<Inges
 }
 
 /** Persist a discovery audit event */
+/**
+ * Slice 7. Round 1 with the route's extra queries kept inside the query budget.
+ * At least one planned query always runs; extras that would not fit are dropped.
+ */
+export function withExtraQueries(planned: readonly string[], extras: readonly string[], budget: number): string[] {
+  const fresh = extras.filter((text, at) => !planned.includes(text) && extras.indexOf(text) === at);
+  const reserved = Math.min(fresh.length, Math.max(0, budget - 1));
+  return [...planned.slice(0, Math.max(0, budget - reserved)), ...fresh.slice(0, reserved)];
+}
+
+/**
+ * What is kept about a provider failure: the kind of error and the HTTP status.
+ * Not the message, which can carry a request address and, with it, a key.
+ */
+export function providerErrorRecord(reason: unknown): { error_kind: string; http_status?: number } {
+  const err = (reason ?? {}) as { code?: unknown; name?: unknown; response?: { status?: unknown } };
+  const kind = typeof err.code === 'string' && err.code ? err.code : typeof err.name === 'string' && err.name ? err.name : 'unknown';
+  const status = typeof err.response?.status === 'number' ? err.response.status : undefined;
+  return status === undefined ? { error_kind: kind } : { error_kind: kind, http_status: status };
+}
+
 async function persistDiscoveryEvent(
   runId: string,
   phase: string,

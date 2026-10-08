@@ -35,12 +35,13 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
 | Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
 | Slice 6, part 1. Tier rules and the stored tier | Done | PR #260, with the last review's findings closed in a follow-up pull request. Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
-| Slice 6, parts 2 and 3. Retrieval order, the writer's instruction, source type in words, the harness measure | Built, in review | One pull request. Same switch. See "Built in part 2" and "Built in part 3" under slice 6. |
-| Slices 7 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
+| Slice 6, parts 2 and 3. Retrieval order, the writer's instruction, source type in words, the harness measure | Done | PR #262. Same switch. Production confirmed healthy 8 Oct 2026. See "Built in part 2" and "Built in part 3" under slice 6. |
+| Slice 7. Provider routing by request | Built, in review | One pull request. Behind `PROVIDER_ROUTING_ENABLED`, unset by default. See "As built" under slice 7. |
+| Slices 8 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged; parts 2 and 3 are in review together. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
+**Your task now:** read this whole document again; section 0 and slice 7 changed. Slices 5 and 6 are built behind `READER_VIEW_ENABLED` and `AUTHORITY_TIERS_ENABLED`; turning either on for customers is Brandon's decision (S4). Slice 7 is in review as one pull request. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
 
 ---
 
@@ -667,7 +668,7 @@ Acceptance:
 - Follow-up, not built: a Layer 1 report written without the citation lock has a reference list of title, publisher, date and link only; it has never carried a source kind. Its reading page shows the words. Enriching that list is a change to the unlocked path's references.
 - Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. A citation saved without a source id is traced to its source through its passage. Null with no citations. A source without a tier counts as outside the top two.
 
-### Slice 7. Provider routing by request (not started)
+### Slice 7. Provider routing by request (built, in review)
 
 Flag `PROVIDER_ROUTING_ENABLED`. This was slice 6; unchanged except for numbering.
 
@@ -689,6 +690,19 @@ Acceptance:
 - A market question does not call arXiv or PubMed Central.
 - A Layer 2 question includes the anomaly template.
 - With the flag on, a run that schedules a data-analysis specialist on a market question still does not call the academic providers. Test through the orchestrator.
+
+As built:
+
+- `discovery/providerRouting.ts` holds `selectProviders(brief, environment)` and the routing table. A request's routes come from its report type, its research objective and its own words; every route it is relevant to contributes its providers, so a market question that is also technical reaches the scholarly indexes through the scientific route and one that is not never does. The default route applies only when no other route is relevant. "General web" is the configured web provider or cascade (`SEARCH_PROVIDER`).
+- With the switch on the discovery orchestrator calls `selectProviders` and does not read `SPECIALIST_CONNECTOR_KEYS`. The mapping stays in the file only for runs with the switch off; it is removed with the switch when the switch is retired.
+- A challenge run (`isAdjudicative`: the three challenge report types, the PolicyOne method, or no report type) adds Brave when `SEARCH_PROVIDER_API_KEY` is set and the anomaly query (`anomalyQueryFor` in `deterministicDiscoveryQueries.ts`) to every provider it searches.
+- The extra queries (official records for the default route, `site:github.com` for the code route, the anomaly query) go into round 1 inside the query budget, after the planned queries, and only to the providers named for them. At least one planned query always runs.
+- Later coverage rounds add hints that fit the route (`coverageHintsFor`). With the switch off every run still gets the market hints.
+- Each run writes one `routing` row to `discovery_events` with the routes, providers and extra queries. A provider that fails writes a `provider_error` row with the kind of error and the HTTP status, never the message, which can carry a request address and a key. The run goes on with the other providers.
+- `discoveryQueryBudget()` and `discoveryIngestFloor()` in `config/index.ts` give 12 queries and a 24-source floor with the switch on, and 5 and 10 with it off. A value set in `MAX_DISCOVERY_QUERIES_PER_RUN` or `MAX_EXTERNAL_INGEST_PER_RUN` wins either way. The ceiling of 40 does not change.
+- Reference lookups: `writesThroughReportWriter` in `planning/orchestrationProfiles.ts`. With this switch and the Layer 1 switch both on, a profile that skips synthesis (the reference lookup) is written by `generateIterativeReport` and gets the reader layout, bound citations with the citation lock, the reference list and the closing note. Its discovery and reasoning stages stay skipped. With either switch off it keeps the short dossier.
+- Tests: `providerRoutingPipeline.test.ts` runs whole discovery passes with only the providers replaced (clinical, market with a data-analysis specialist, challenge, code, a failing provider, budgets, switch off). `providerRouting.test.ts` covers the table, the extra queries and the lookup rule. `baselinePipeline.test.ts` shows a switched-on lookup in the reader layout.
+- Known gap: the plan screen's stage list is built when the plan is made and still says synthesis is skipped for a lookup that the switch sends through the writer.
 
 ### Slice 8. Challenge layer (not started)
 

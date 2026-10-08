@@ -149,3 +149,36 @@ function salientTerms(text: string): string[] {
     .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
     .map(([word]) => word);
 }
+
+/**
+ * Slice 7. What extra queries are built from: the first planned query when it
+ * is a usable search string, else the salient terms of the request's topic.
+ */
+export function searchSeedFor(researchQuery: string, plannedQueries: readonly string[] = []): string {
+  const planned = plannedQueries.map((q) => q.replace(/\s+/g, ' ').trim()).find((q) => q.length >= 8 && q.length <= 120);
+  if (planned) return planned;
+  const topic = extractTopicLine(researchQuery) ?? researchQuery;
+  const terms = salientTerms(topic).slice(0, 6);
+  return (terms.length >= 2 ? terms.join(' ') : topic.replace(/[*_`#]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 120);
+}
+
+/**
+ * The anomaly template (slice 7). A challenge run also looks for reports that do
+ * not fit the usual account, so a marginal or outlying source can be found and
+ * examined. What it finds is examined like any other source; it is not a finding.
+ */
+export const ANOMALY_QUERY_SUFFIX = 'anomalous unexplained or contradicting reports';
+export function anomalyQueryFor(seed: string): string {
+  return `${seed} ${ANOMALY_QUERY_SUFFIX}`;
+}
+
+/** The default route's extra query, aimed at official and primary records. */
+export const OFFICIAL_RECORD_QUERY_SUFFIX = 'official records and primary sources';
+export function officialRecordQueryFor(seed: string): string {
+  return `${seed} ${OFFICIAL_RECORD_QUERY_SUFFIX}`;
+}
+
+/** The code route's extra query, limited to GitHub. */
+export function repositoryQueryFor(seed: string): string {
+  return `${seed} site:github.com`;
+}

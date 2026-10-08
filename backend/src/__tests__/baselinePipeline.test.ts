@@ -98,6 +98,27 @@ describe('baseline report pipeline', () => {
     expect(plan.skipReasons.discovery).toBe('Skipped by canonical intent profile.');
   });
 
+  it('writes a switched-on reference lookup in the reader layout, not the short dossier (slice 7, issue #244)', async () => {
+    const report = await generateIterativeReport({
+      query: 'When did the FDA authorize the first CRISPR therapy?',
+      plan: {},
+      sourceContext: 'The FDA authorized Casgevy in December 2023.',
+      retrieverAnalysis: '',
+      reasoningChains: '',
+      challenges: '',
+      intentId: 'reference_lookup',
+      outputTemplateId: 'intent_reference_lookup',
+      skipChallenger: true,
+      usedSources: [{ title: 'FDA Casgevy authorization', publisher: 'US Food and Drug Administration', date: 'December 2023', url: 'https://www.fda.gov/casgevy' }],
+    });
+    expect(report.markdown).toContain('## Summary');
+    expect(report.markdown).toContain('## References');
+    expect(report.markdown).toContain('1. US Food and Drug Administration. FDA Casgevy authorization. December 2023. https://www.fda.gov/casgevy');
+    expect(report.markdown).toContain('## About this report');
+    expect(report.markdown).toContain('[1]');
+    for (const dossier of ['Executive Summary', 'Supporting Detail', '# Source', '# Confidence']) expect(report.markdown).not.toContain(dossier);
+  });
+
   it('writes only the short answer when the plan fits a single fact', async () => {
     const report = await generateIterativeReport({
       query: 'When did the FDA authorize the first CRISPR therapy?',
