@@ -130,7 +130,7 @@ export function tierOfStoredSource(row: StoredSourceSignals): AuthorityTier | nu
 export const STANDING_FOR_WRITER: Readonly<Record<AuthorityTier, string>> = {
   1: 'an official or primary record',
   2: 'peer-reviewed scholarly work',
-  3: 'published work that is not peer reviewed (such as a preprint, book, thesis, news report or reference work)',
+  3: 'published work not established as peer reviewed (such as a preprint, book, thesis, news report or reference work)',
   4: 'a source of unestablished standing',
 };
 

@@ -43,7 +43,7 @@ export interface LockedPassage {
  */
 export { STANDING_FOR_WRITER };
 
-export const AUTHORITY_INSTRUCTION = `Each passage says what kind of source it comes from. Where sources disagree on a point, prefer the one higher in this order: official or primary records, then peer-reviewed scholarly work, then published work that is not peer reviewed, then sources of unestablished standing. Say in plain words which source you relied on and why, for example "the regulator's own figures put it at" or "a peer-reviewed study found, while a news report gave". A source lower in the order that is the only one for a point is still used and cited. Do not grade or rank sources in the text: never write "tier", "authority level" or a rating, and do not copy the "Kind of source" lines.`;
+export const AUTHORITY_INSTRUCTION = `Each passage says what kind of source it comes from. Where sources disagree on a point, prefer the one higher in this order: official or primary records, then peer-reviewed scholarly work, then published work not established as peer reviewed, then sources of unestablished standing. Say in plain words which source you relied on and why, for example "the regulator's own figures put it at" or "a peer-reviewed study found, while a news report gave". A source lower in the order that is the only one for a point is still used and cited. Do not grade or rank sources in the text: never write "tier", "authority level" or a rating, and do not copy the "Kind of source" lines.`;
 
 export interface CitationOccurrence {
   /** Reader number shown in the text. */

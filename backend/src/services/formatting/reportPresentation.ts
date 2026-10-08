@@ -444,14 +444,30 @@ const REMOVED = '\uE000';
  */
 const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const WRITER_SOURCE_KIND_LINE = new RegExp(
-  `^[ \\t]*(?:(?:[-*+>]|\\d+[.)])[ \\t]+)?Kind of source:[ \\t]*(?:${Object.values(STANDING_FOR_WRITER).map(escapeForPattern).join('|')})[ \\t]*\\.?[ \\t]*(?:\\n|$)`,
-  'gim'
+  `^[ \\t]*(?:(?:[-*+>]|\\d+[.)])[ \\t]+)?Kind of source:[ \\t]*(?:${Object.values(STANDING_FOR_WRITER).map(escapeForPattern).join('|')})[ \\t]*\\.?[ \\t]*$`,
+  'i'
 );
+
+/**
+ * Removes whole copied standing lines. Judged line by line on the whole text,
+ * not on the pieces between links and code, so a line that merely starts the
+ * same way and goes on past a link is kept. Lines inside fenced code are kept.
+ */
+function dropWriterSourceKindLines(markdown: string): string {
+  if (!/Kind of source:/i.test(markdown)) return markdown;
+  let fenced = false;
+  return markdown
+    .split('\n')
+    .filter((line) => {
+      if (/^[ \t]*(```|~~~)/.test(line)) fenced = !fenced;
+      return fenced || !WRITER_SOURCE_KIND_LINE.test(line);
+    })
+    .join('\n');
+}
 
 function cleanProse(text: string): string {
   return (
     text
-      .replace(WRITER_SOURCE_KIND_LINE, '')
       .replace(TIER_INSIDE_BRACKET, '[')
       .replace(TIER_ONLY_BRACKET, REMOVED)
       .replace(SNAKE_TIER_TOKEN, REMOVED)
@@ -472,7 +488,8 @@ function cleanProse(text: string): string {
  * references ("[Chunk 3]") are kept, because citation mapping reads them.
  * Code in every Markdown form, links and URLs are never changed.
  */
-export function stripInternalLabelsFromReport(markdown: string): string {
+export function stripInternalLabelsFromReport(text: string): string {
+  const markdown = dropWriterSourceKindLines(text);
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {

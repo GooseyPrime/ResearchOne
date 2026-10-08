@@ -150,11 +150,20 @@ describe('the writer and source standing', () => {
     const prose = 'Kind of source: oral history interview conducted in 1990 [P1].';
     expect(stripInternalLabelsFromReport(prose)).toBe(prose);
     expect(stripInternalLabelsFromReport('This kind of source is rare.')).toBe('This kind of source is rare.');
+    // A line that goes on past a link is prose, judged as one whole line.
+    const linked = `Kind of source: ${STANDING_FOR_WRITER[2]} [article](https://example.org/article) on reactor safety [P1].`;
+    expect(stripInternalLabelsFromReport(linked)).toBe(linked);
+    // Inside fenced code nothing is removed.
+    const code = ['```', `Kind of source: ${STANDING_FOR_WRITER[1]}`, '```'].join('\n');
+    expect(stripInternalLabelsFromReport(code)).toBe(code);
   });
 
   it('describes each tier\'s whole group, never a narrower kind', () => {
     // A book or thesis is tier 3; the words for tier 3 must cover it.
-    expect(STANDING_FOR_WRITER[3]).toMatch(/not peer reviewed/);
+    // Tier 3 includes DOI links of unknown kind: the words must not say they were not peer reviewed.
+    expect(STANDING_FOR_WRITER[3]).toMatch(/not established as peer reviewed/);
+    expect(AUTHORITY_INSTRUCTION).toMatch(/not established as peer reviewed/);
+    expect(AUTHORITY_INSTRUCTION).not.toMatch(/that is not peer reviewed/);
     expect(STANDING_FOR_WRITER[3]).toMatch(/book/);
     expect(STANDING_FOR_WRITER[3]).toMatch(/thesis/);
     // Conference and review articles are tier 2: the words do not say "study".
