@@ -20,19 +20,21 @@ import { presentationFailures } from './baselineReport';
 export interface SearchRecord {
   /** The search queries that were run, in order, without repeats. */
   queries: string[];
-  /** The providers that returned a result the run considered. */
+  /** The providers whose results the run went on to consider. A provider that returned nothing new is not in the record. */
   providers: string[];
-  /** Results considered after off-topic ones were set aside. */
-  found: number;
-  /** Results chosen to be read. */
-  selected: number;
+  /** Results left to consider once duplicates and off-topic results were set aside. */
+  considered: number;
+  /** Results newly stored and read for this run. */
+  added: number;
+  /** Results the library already held from earlier research. */
+  reused: number;
+  /** Results added although they matched the question only loosely, to give the run enough sources. */
+  looselyMatched: number;
 }
 
 /** The part of a discovery summary this reads. A skipped stage records a number where the list would be. */
 export interface SearchPassSummary {
   queriesExecuted?: unknown;
-  candidatesFound?: unknown;
-  candidatesSelected?: unknown;
   sources?: unknown;
 }
 
@@ -58,15 +60,15 @@ export function withSearchScope(about: string, scopeNote: string, readCount: num
   return scopeNote && readCount > 0 ? `${scopeNote} ${about}` : about;
 }
 
-const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
-
 /** One record from every search pass a run made: the first search, a targeted second one, a search the material check asked for. */
 export function mergeSearchRecords(summaries: ReadonlyArray<SearchPassSummary | null | undefined>): SearchRecord {
   const queries: string[] = [];
   const providers: string[] = [];
   const seenQueries = new Set<string>();
-  let found = 0;
-  let selected = 0;
+  let considered = 0;
+  let added = 0;
+  let reused = 0;
+  let looselyMatched = 0;
   for (const summary of summaries) {
     if (!summary) continue;
     if (Array.isArray(summary.queriesExecuted)) {
@@ -79,19 +81,25 @@ export function mergeSearchRecords(summaries: ReadonlyArray<SearchPassSummary | 
         queries.push(text);
       }
     }
-    if (Array.isArray(summary.sources)) {
-      for (const source of summary.sources) {
-        const provider = (source as { provider?: unknown } | null)?.provider;
-        if (typeof provider === 'string' && provider.trim() && !providers.includes(provider.trim())) providers.push(provider.trim());
+    if (!Array.isArray(summary.sources)) continue;
+    for (const entry of summary.sources) {
+      if (!entry || typeof entry !== 'object') continue;
+      const source = entry as { provider?: unknown; ingested?: unknown; skipReason?: unknown; selectionRationale?: unknown };
+      considered += 1;
+      if (typeof source.provider === 'string' && source.provider.trim() && !providers.includes(source.provider.trim())) providers.push(source.provider.trim());
+      if (source.ingested === true) {
+        added += 1;
+        // Discovery records a result it kept only to give the run enough sources.
+        if (typeof source.selectionRationale === 'string' && source.selectionRationale.includes('off-topic')) looselyMatched += 1;
+      } else if (source.skipReason === 'already_in_corpus') {
+        reused += 1;
       }
     }
-    found += count(summary.candidatesFound);
-    selected += count(summary.candidatesSelected);
   }
-  return { queries, providers, found, selected };
+  return { queries, providers, considered, added, reused, looselyMatched };
 }
 
-/** Where each provider searches, in the name a reader would know. Several providers search the open web. */
+/** Where each provider's results come from, in the name a reader would know. Several providers search the open web. */
 const PLACE_BY_PROVIDER: Readonly<Record<string, string>> = {
   tavily: 'the open web',
   brave: 'the open web',
@@ -132,30 +140,46 @@ function showableQuery(query: string): string | null {
   return presentationFailures(shown).length === 0 ? shown : null;
 }
 
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
 /**
  * The statement itself. Empty when the run recorded no search, so a report is
- * never given a sentence about a search that did not happen.
+ * never given a sentence about a search that did not happen. Each sentence says
+ * only what the record holds: the queries run, where the results that were
+ * considered came from, the order they were taken in, and what became of them.
  */
 export function describeSearchScope(record: SearchRecord): string {
   if (record.queries.length === 0) return '';
-  const places: string[] = [];
-  for (const provider of record.providers) {
-    const place = PLACE_BY_PROVIDER[provider.toLowerCase()];
-    if (place && !places.includes(place)) places.push(place);
-  }
   const total = record.queries.length;
   const shown = record.queries.map(showableQuery).filter((query): query is string => query !== null).slice(0, QUERIES_SHOWN);
-  const where = places.length > 0 ? `The search covered ${listInWords(places)}` : 'The search ran';
   const terms =
     shown.length === 0
       ? ''
       : shown.length === total
         ? `: ${shown.map((query) => `“${query}”`).join('; ')}`
         : `, among them ${shown.map((query) => `“${query}”`).join('; ')}`;
-  const first = `${where} with ${total} ${total === 1 ? 'query' : 'queries'}${terms}.`;
-  if (record.found <= 0 || record.selected <= 0 || record.selected > record.found) return first;
-  const results = `It returned ${record.found} ${record.found === 1 ? 'result' : 'results'} on the subject, of which ${record.selected} ${record.selected === 1 ? 'was' : 'were'} chosen to be read for ${record.selected === 1 ? 'its' : 'their'} bearing on the question.`;
-  return `${first} ${results}`;
+  const sentences = [`The search used ${plural(total, 'query', 'queries')}${terms}.`];
+  if (record.considered <= 0) return sentences[0];
+  const places: string[] = [];
+  for (const provider of record.providers) {
+    const place = PLACE_BY_PROVIDER[provider.toLowerCase()];
+    if (place && !places.includes(place)) places.push(place);
+  }
+  if (places.length > 0) sentences.push(`The results considered came from ${listInWords(places)}.`);
+  const outcome: string[] = [];
+  if (record.added > 0) outcome.push(`${record.added} ${record.added === 1 ? 'was' : 'were'} added and read for this report`);
+  if (record.reused > 0) outcome.push(`${record.reused} ${record.reused === 1 ? 'was' : 'were'} already held from earlier research`);
+  sentences.push(
+    `Results were ranked by how closely they matched the question, and the closest were taken first. ${
+      outcome.length > 0 ? `Of ${plural(record.considered, 'result', 'results')} considered, ${outcome.join(' and ')}.` : `${plural(record.considered, 'result was', 'results were')} considered.`
+    }`
+  );
+  if (record.looselyMatched > 0) {
+    sentences.push(
+      `${record.looselyMatched} of those added matched the question only loosely and ${record.looselyMatched === 1 ? 'was' : 'were'} kept so that the report had enough sources to draw on.`
+    );
+  }
+  return sentences.join(' ');
 }
 
 /**
@@ -184,4 +208,47 @@ export function searchScopeGateContext(scopeNote: string): string {
   return scopeNote
     ? 'The closing section "About this report" is written from the record of this research, not by the writer. It is the report\'s statement of what was searched and how sources were chosen.\n\n'
     : '';
+}
+
+const CLOSING_HEADING = /^## About this report[ \t]*$/gm;
+
+/** Where the last "About this report" heading starts and where its text begins, or null when the report has none. */
+function closingNoteAt(markdown: string): { heading: number; body: number } | null {
+  let last: RegExpExecArray | null = null;
+  for (const match of markdown.matchAll(CLOSING_HEADING)) last = match;
+  return last ? { heading: last.index, body: last.index + last[0].length } : null;
+}
+
+/**
+ * The report with the statement back in its closing note, if a rewrite took it
+ * out or changed it. The note is code's, not the writer's: without the citation
+ * lock a redraft or a repair is handed the whole report and can return the note
+ * reworded. With no statement to keep, or a report that used no sources, the
+ * text is returned as it is.
+ */
+export function withSearchScopeRestored(markdown: string, scopeNote: string): string {
+  if (!scopeNote) return markdown;
+  const at = closingNoteAt(markdown);
+  if (!at) return markdown;
+  const body = markdown.slice(at.body);
+  if (body.includes(scopeNote) || /\bNo sources were used\./.test(body)) return markdown;
+  const read = /\d+ sources? (?:was|were) read on [^.\n]+\./.exec(body)?.[0] ?? '';
+  return `${markdown.slice(0, at.body)}\n${read ? `${scopeNote} ${read}` : scopeNote}`;
+}
+
+const AUDIT_GAP = '\n\n[The middle of the report is left out here for length.]\n\n';
+
+/**
+ * The report as the contract check is given it, inside a size limit. The
+ * statement of what was searched is in the closing note, at the very end, so a
+ * long report cut at the limit would lose exactly what the check looks for. When
+ * there is a statement, the cut is taken from the middle and the closing note
+ * kept. With none, the report is cut at the limit as before.
+ */
+export function boundedReportForAudit(markdown: string, limit: number, scopeNote: string): string {
+  if (!scopeNote || markdown.length <= limit) return markdown.slice(0, limit);
+  const at = closingNoteAt(markdown);
+  const closing = at ? markdown.slice(at.heading) : '';
+  if (!closing || closing.length + AUDIT_GAP.length >= limit / 2) return markdown.slice(0, limit);
+  return `${markdown.slice(0, limit - closing.length - AUDIT_GAP.length)}${AUDIT_GAP}${closing}`;
 }

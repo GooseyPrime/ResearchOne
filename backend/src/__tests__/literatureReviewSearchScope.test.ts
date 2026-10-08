@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const calls: Array<{ role: string; text: string }> = [];
 /** Without the citation lock the writer cites a passage by its number. */
 let citeByNumber = false;
+/** A redraft that fixes the wording it was asked to fix and also rewrites the closing note. */
+let redraftRewordsClosingNote = false;
 
 vi.mock('../services/openrouter/openrouterService', () => ({
   callRoleModel: vi.fn(async (options: { role: string; messages: Array<{ role: string; content: string }> }) => {
@@ -27,11 +29,14 @@ vi.mock('../services/openrouter/openrouterService', () => ({
     if (options.role === 'outline_architect') {
       return reply('{"title":"Biomarkers of recovery from long COVID","outline":["Inflammatory markers","Markers of immune recovery"]}');
     }
+    if (redraftRewordsClosingNote && text.includes('Rewrite the report in plain encyclopedia prose')) {
+      return reply(last.replace(/verdict/gi, 'finding').replace(/(## About this report\n)[\s\S]*$/, '$1We searched several databases and read what we found.'));
+    }
     if (options.role !== 'section_drafter') return reply(last);
     if (text.includes('Section to draft: Summary')) return reply('Studies link falling interleukin-6 to recovery [P1].');
     if (text.includes('Section to draft: Key findings')) return reply('- Interleukin-6 fell in patients who recovered [P1].\n- T cell counts returned to normal within a year [P2].');
     if (text.includes('Section to draft: Where sources disagree')) return reply('The sources do not disagree.');
-    if (text.includes('Section to draft: Limits of this report')) return reply('Both studies followed patients for one year only.');
+    if (text.includes('Section to draft: Limits of this report')) return reply(redraftRewordsClosingNote ? 'The verdict of both studies rests on one year of follow-up.' : 'Both studies followed patients for one year only.');
     if (text.includes('Section to draft: Inflammatory markers')) return reply('Interleukin-6 was measured at three and twelve months [P1].');
     return reply('T cell counts were followed for twelve months [P2].');
   }),
@@ -40,13 +45,15 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 
 import { generateIterativeReport, finalizeLockedReportForSave, stripInternalLabelsFromReport, stripPromptEchoFromReport } from '../services/reasoning/reportGenerator';
 import { finalizeLockedCitations, issuePassages, type LockedPassage } from '../services/reasoning/citationLock';
-import { presentationFailures } from '../services/reasoning/baselineReport';
+import { formatReadDate, presentationFailures } from '../services/reasoning/baselineReport';
 import {
+  boundedReportForAudit,
   describeSearchScope,
   mergeSearchRecords,
   reportStatesSearchScope,
   searchScopeGateContext,
   searchScopeNoteFor,
+  withSearchScopeRestored,
 } from '../services/reasoning/searchScope';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 
@@ -64,21 +71,21 @@ const QUESTION = 'Literature review of biomarkers linked to long-COVID recovery.
 const textForChecks = (markdown: string, scopeNote: string): string =>
   finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, QUESTION)), passages(), '8 Oct 2026', 'numeric', scopeNote).markdown;
 
-/** What discovery records for a run: the queries it ran and the results it kept or set aside. */
+/** What discovery records for a run: the queries it ran and, for each result it considered, what became of it. */
+const kept = (provider: string) => ({ provider, ingested: true, selectionRationale: 'score=0.91, rank=1' });
+const reused = (provider: string) => ({ provider, ingested: false, skipReason: 'already_in_corpus', selectionRationale: 'already in corpus' });
+const overCap = (provider: string) => ({ provider, ingested: false, skipReason: 'max_reached', selectionRationale: 'max_sources_to_ingest reached' });
+const toppedUp = (provider: string) => ({ provider, ingested: true, selectionRationale: 'score=0.40, rank=9, off-topic for this request (kept: too few on-topic candidates)' });
 const FIRST_PASS = {
   queriesExecuted: ['long COVID biomarkers recovery', 'interleukin-6 long COVID cohort', 'long COVID biomarkers recovery'],
-  candidatesFound: 14,
-  candidatesSelected: 6,
-  sources: [{ provider: 'tavily' }, { provider: 'openalex' }, { provider: 'pmc' }, { provider: 'brave' }],
+  sources: [kept('tavily'), kept('openalex'), kept('pmc'), reused('brave'), reused('openalex'), overCap('tavily'), overCap('pmc')],
 };
 const SECOND_PASS = {
   queriesExecuted: ['T cell recovery long COVID'],
-  candidatesFound: 4,
-  candidatesSelected: 2,
-  sources: [{ provider: 'crossref' }],
+  sources: [kept('crossref'), toppedUp('crossref'), overCap('crossref')],
 };
 const STATEMENT =
-  'The search covered the open web, OpenAlex, PubMed Central and Crossref with 3 queries: “long COVID biomarkers recovery”; “interleukin-6 long COVID cohort”; “T cell recovery long COVID”. It returned 18 results on the subject, of which 8 were chosen to be read for their bearing on the question.';
+  'The search used 3 queries: “long COVID biomarkers recovery”; “interleukin-6 long COVID cohort”; “T cell recovery long COVID”. The results considered came from the open web, OpenAlex, PubMed Central and Crossref. Results were ranked by how closely they matched the question, and the closest were taken first. Of 10 results considered, 5 were added and read for this report and 2 were already held from earlier research. 1 of those added matched the question only loosely and was kept so that the report had enough sources to draw on.';
 
 async function writeReview(searchScopeNote?: string, locked = true) {
   return generateIterativeReport({
@@ -110,6 +117,7 @@ describe('a literature review says what was searched', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
     calls.length = 0;
     citeByNumber = false;
+    redraftRewordsClosingNote = false;
   });
   afterEach(() => {
     delete process.env.BASELINE_LAYER_ENABLED;
@@ -128,13 +136,32 @@ describe('a literature review says what was searched', () => {
 
   it('writes the statement from every search pass the run recorded', () => {
     const record = mergeSearchRecords([FIRST_PASS, null, SECOND_PASS]);
-    expect(record.queries).toEqual(['long COVID biomarkers recovery', 'interleukin-6 long COVID cohort', 'T cell recovery long COVID']);
-    expect(record.providers).toEqual(['tavily', 'openalex', 'pmc', 'brave', 'crossref']);
-    expect(record.found).toBe(18);
-    expect(record.selected).toBe(8);
+    expect(record).toEqual({
+      queries: ['long COVID biomarkers recovery', 'interleukin-6 long COVID cohort', 'T cell recovery long COVID'],
+      providers: ['tavily', 'openalex', 'pmc', 'brave', 'crossref'],
+      considered: 10,
+      added: 5,
+      reused: 2,
+      looselyMatched: 1,
+    });
     expect(describeSearchScope(record)).toBe(STATEMENT);
     expect(searchScopeNoteFor({ layer1Run: true, intentId: 'literature_review', summaries: [FIRST_PASS, SECOND_PASS] })).toBe(STATEMENT);
     expect(presentationFailures(STATEMENT)).toEqual([]);
+  });
+
+  it('says only what the record holds', () => {
+    // Every result was already held: nothing was added, and the statement still says what became of them.
+    const allReused = describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['long COVID recovery time'], sources: [reused('openalex'), reused('pmc'), reused('pmc')] }]));
+    expect(allReused).toBe(
+      'The search used 1 query: “long COVID recovery time”. The results considered came from OpenAlex and PubMed Central. Results were ranked by how closely they matched the question, and the closest were taken first. Of 3 results considered, 3 were already held from earlier research.'
+    );
+    // A search that left nothing to consider says so by saying nothing more: no place is named, no count given.
+    expect(describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['long COVID recovery time'], sources: [] }]))).toBe('The search used 1 query: “long COVID recovery time”.');
+    // It names where the considered results came from. It does not say which services were asked:
+    // the record keeps no trace of one that returned nothing new.
+    expect(STATEMENT).not.toMatch(/\bcovered\b|\bsearched\b/);
+    // None of the results was newly added or held: the count is given and no more.
+    expect(describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['q one two'], sources: [overCap('arxiv')] }]))).toContain('taken first. 1 result was considered.');
   });
 
   it('says nothing about a search that did not happen, and nothing for any other run', () => {
@@ -153,17 +180,19 @@ describe('a literature review says what was searched', () => {
     const note = describeSearchScope({
       queries: ['disputed claims about long COVID', 'long COVID `markers` | recovery', 'what [P2] says about long COVID', 'strong_evidence long COVID', 'long COVID recovery time'],
       providers: ['url_fetch', 'an_unknown_provider'],
-      found: 0,
-      selected: 0,
+      considered: 0,
+      added: 0,
+      reused: 0,
+      looselyMatched: 0,
     });
-    expect(note).toBe('The search ran with 5 queries, among them “long COVID markers recovery”; “long COVID recovery time”.');
+    expect(note).toBe('The search used 5 queries, among them “long COVID markers recovery”; “long COVID recovery time”.');
     expect(presentationFailures(note)).toEqual([]);
-    // No more than five are listed, however many ran.
-    const many = describeSearchScope({ queries: Array.from({ length: 9 }, (_, n) => `long COVID study ${n + 1}`), providers: ['arxiv'], found: 3, selected: 5 });
+    // No more than five are listed, however many ran. A provider with no name a reader knows is not named.
+    const many = describeSearchScope({ queries: Array.from({ length: 9 }, (_, n) => `long COVID study ${n + 1}`), providers: ['url_fetch'], considered: 4, added: 4, reused: 0, looselyMatched: 0 });
     expect(many.match(/“/g)).toHaveLength(5);
-    expect(many.startsWith('The search covered arXiv with 9 queries, among them ')).toBe(true);
-    // Counts that cannot both be true are left out.
-    expect(many).not.toContain('It returned');
+    expect(many.startsWith('The search used 9 queries, among them ')).toBe(true);
+    expect(many).not.toContain('came from');
+    expect(many).toContain('Of 4 results considered, 4 were added and read for this report.');
   });
 
   it('puts the statement in the text the checks read and in the text that is saved', async () => {
@@ -211,6 +240,45 @@ describe('a literature review says what was searched', () => {
     expect(statesItsSearch(report.markdown)).toBe(true);
   });
 
+  it('keeps the statement when a redraft of a review written without the lock rewords the closing note', async () => {
+    citeByNumber = true;
+    redraftRewordsClosingNote = true;
+    const report = await writeReview(STATEMENT, false);
+    // The redraft ran, and what it did to the report's own words was kept.
+    expect(calls.some((call) => call.text.includes('Rewrite the report in plain encyclopedia prose'))).toBe(true);
+    expect(report.markdown).not.toMatch(/\bverdict\b/i);
+    const closing = report.markdown.split(/^## About this report\s*$/m)[1] ?? '';
+    expect(closing.trim()).toBe(`${STATEMENT} 2 sources were read on ${formatReadDate()}.`);
+  });
+
+  it('puts the statement back when a later rewrite of the whole report changed or dropped it', () => {
+    const body = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## References\n1. The Lancet.\n\n## About this report\n';
+    const intact = `${body}${STATEMENT} 2 sources were read on 8 Oct 2026.`;
+    expect(withSearchScopeRestored(intact, STATEMENT)).toBe(intact);
+    expect(withSearchScopeRestored(`${body}We searched several databases. 2 sources were read on 8 Oct 2026.`, STATEMENT)).toBe(intact);
+    expect(withSearchScopeRestored(`${body}2 sources were read on 8 Oct 2026.`, STATEMENT)).toBe(intact);
+    // A report that used no sources says only that, and a run with no statement is left alone.
+    expect(withSearchScopeRestored(`${body}No sources were used.`, STATEMENT)).toBe(`${body}No sources were used.`);
+    expect(withSearchScopeRestored(`${body}Reworded by a repair.`, '')).toBe(`${body}Reworded by a repair.`);
+    expect(withSearchScopeRestored('# A review\n\n## Summary\nNo closing note here.', STATEMENT)).toBe('# A review\n\n## Summary\nNo closing note here.');
+  });
+
+  it('shows the contract check the closing note of a report longer than the check can be given', () => {
+    const long = `# A review\n\n## Summary\n${'Interleukin-6 fell in patients who recovered [1]. '.repeat(1600)}\n\n## References\n1. The Lancet.\n\n## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`;
+    expect(long.length).toBeGreaterThan(60000);
+    // Cut at the limit, as the check was given it before, the statement is gone.
+    expect(statesItsSearch(long.slice(0, 60000))).toBe(false);
+    const given = boundedReportForAudit(long, 60000, STATEMENT);
+    expect(given.length).toBeLessThanOrEqual(60000);
+    expect(given.startsWith('# A review\n\n## Summary\nInterleukin-6 fell')).toBe(true);
+    expect(given).toContain('[The middle of the report is left out here for length.]');
+    expect(given.endsWith(`## About this report\n${STATEMENT} 2 sources were read on 8 Oct 2026.`)).toBe(true);
+    expect(statesItsSearch(given)).toBe(true);
+    // A report inside the limit is given whole, and a run with no statement is cut exactly as before.
+    expect(boundedReportForAudit('short report', 60000, STATEMENT)).toBe('short report');
+    expect(boundedReportForAudit(long, 60000, '')).toBe(long.slice(0, 60000));
+  });
+
   it('tells the checks where the statement is and that the writer did not write it', () => {
     const context = searchScopeGateContext(STATEMENT);
     expect(context).toContain('"About this report"');
@@ -230,5 +298,10 @@ describe('a literature review says what was searched', () => {
     expect(source).toContain('finalizeLockedReportForSave(generatedReport.markdown, researchQuery, lockedPassages, referenceStyle, undefined, searchScopeNote)');
     expect(source.match(/\$\{gateContext\}Verify this research report meets epistemic standards/g)).toHaveLength(2);
     expect(source).toContain('`${gateContext}RESEARCH_BRIEF:');
+    // Without the lock the note is put back before the checks read the report and before it is saved,
+    // and the contract check is given the closing note of a long report.
+    expect(source).toContain(': withSearchScopeRestored(markdown, searchScopeNote);');
+    expect(source).toContain('generatedReport.markdown = withSearchScopeRestored(checked.markdown, searchScopeNote);');
+    expect(source).toContain('${boundedReportForAudit(markdown, 60000, searchScopeNote)}');
   });
 });
