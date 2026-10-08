@@ -14,6 +14,7 @@ import type {
 } from './agentCapabilityRegistry';
 import { normalizeDeterministicMetricChecks } from './deterministicQuant';
 import { logger } from '../../utils/logger';
+import { plainStepName } from './traceDisplay';
 import {
   buildScopedQueries,
   deriveRetrievalTopic,
@@ -270,7 +271,7 @@ export async function runSpecialistExecution(input: {
     }
     claimed.add(agent);
 
-    await input.onProgress?.(`Executing specialist: ${agent}`);
+    await input.onProgress?.(`Running specialist analysis: ${plainStepName(agent)}`);
     const deps = input.executionPlan.dependsOn[agent] ?? [];
     const depPayload: Record<string, unknown> = {};
     for (const dep of deps) {
@@ -292,7 +293,7 @@ export async function runSpecialistExecution(input: {
           if (scopedBlock) {
             const freshCount = chunks.filter((c) => !sharedIds.has(c.id)).length;
             await input.onProgress?.(
-              `Scoped sources for ${agent}: ${freshCount} chunk(s) appended (${chunks.length} retrieved)`
+              `Extra sources for ${plainStepName(agent)}: ${freshCount} new passage(s) added (${chunks.length} found)`
             );
           }
         }
