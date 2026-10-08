@@ -18,6 +18,8 @@ import {
   type ReportRevisionRequestState,
 } from '@/types/reportRevisionNavigation';
 import { useStore } from '@/store/useStore';
+import { plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 type RevisionProgressPayload = {
   reportId?: string;
@@ -37,7 +39,7 @@ function toTraceEvent(payload: RevisionProgressPayload): ResearchProgressEvent {
   return {
     stage: payload.stage || 'revision',
     percent: typeof payload.percent === 'number' ? payload.percent : 0,
-    message: payload.message || payload.stage || 'Update',
+    message: plainProgressText(payload.message) || readerStageLabel(payload.stage),
     timestamp: payload.timestamp || new Date().toISOString(),
   };
 }
