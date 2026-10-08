@@ -61,9 +61,9 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport } from '../services/reasoning/reportGenerator';
+import { generateIterativeReport, removeBannedWording } from '../services/reasoning/reportGenerator';
 import { AUTHORITY_INSTRUCTION, formatLockedContext, issuePassages, STANDING_FOR_WRITER, type LockedPassage } from '../services/reasoning/citationLock';
-import { stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
+import { readerFacingLabelHits, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
 
 const FDA = { title: 'FDA approves first gene therapies to treat sickle cell disease', publisher: 'US Food and Drug Administration', date: '2023-12-08', url: 'https://www.fda.gov/casgevy' };
 const BLOG = { title: 'My take on the new therapy', publisher: 'someones-blog.example.com', url: 'https://someones-blog.example.com/x' };
@@ -168,5 +168,47 @@ describe('the writer and source standing', () => {
     expect(STANDING_FOR_WRITER[3]).toMatch(/thesis/);
     // Conference and review articles are tier 2: the words do not say "study".
     expect(STANDING_FOR_WRITER[2]).toBe('peer-reviewed scholarly work');
+  });
+});
+
+describe('a source ranked by tier in the report text', () => {
+  it('is a presentation failure, and ordinary uses of the word are not', () => {
+    expect(readerFacingLabelHits('The regulator is a tier 1 source [P1].')).toContain('source rank');
+    expect(readerFacingLabelHits('Two sources in tier 2 disagree.')).toContain('source rank');
+    expect(readerFacingLabelHits('T1 evidence points the other way.')).toContain('source rank');
+    expect(readerFacingLabelHits('Its authority level is high.')).toContain('source rank');
+    expect(readerFacingLabelHits('Tier 2 cities grew fastest, and a tier 1 supplier failed.')).not.toContain('source rank');
+    expect(readerFacingLabelHits('Run `tier 1 source` to test it.')).not.toContain('source rank');
+    // A source quoted in its own words is left as it said it.
+    expect(readerFacingLabelHits('The agency calls itself "a tier 1 source of data".')).not.toContain('source rank');
+  });
+
+  it('has a fallback that takes the rating out and keeps the sentence', () => {
+    expect(removeBannedWording('The regulator is a tier 1 source [P1].')).toBe('The regulator is a source [P1].');
+    expect(removeBannedWording('Two sources in tier 2 disagree.')).toBe('Two sources disagree.');
+    expect(removeBannedWording('Tier 2 cities grew fastest.')).toBe('Tier 2 cities grew fastest.');
+  });
+});
+
+describe('passages without a stated standing', () => {
+  it('are not to be ranked or guessed at', () => {
+    expect(AUTHORITY_INSTRUCTION).toMatch(/A passage without that line has no stated standing: do not guess one, and do not rank it/);
+    expect(AUTHORITY_INSTRUCTION).not.toMatch(/^Each passage says/);
+  });
+
+  it('show no standing line, beside ranked ones that do', () => {
+    const mixed = passages(true).map((passage, i) => (i === 2 ? { ...passage, standing: null } : passage));
+    const text = formatLockedContext(mixed);
+    expect(text.match(/Kind of source:/g)).toHaveLength(2);
+  });
+});
+
+describe('copied standing lines and code', () => {
+  it('leaves every form of code alone', () => {
+    const line = `Kind of source: ${STANDING_FOR_WRITER[1]}`;
+    const indented = `Text.\n\n    ${line}\n\nMore.`;
+    expect(stripInternalLabelsFromReport(indented)).toBe(indented);
+    const longFence = ['````', '```', line, '```', '````'].join('\n');
+    expect(stripInternalLabelsFromReport(longFence)).toBe(longFence);
   });
 });

@@ -429,6 +429,7 @@ export function readerFacingLabelHits(text: string): string[] {
   });
   if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
   if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
+  if (SOURCE_RANK_LABEL.test(ownWords)) hits.push('source rank');
   return hits;
 }
 
@@ -451,19 +452,33 @@ const WRITER_SOURCE_KIND_LINE = new RegExp(
 /**
  * Removes whole copied standing lines. Judged line by line on the whole text,
  * not on the pieces between links and code, so a line that merely starts the
- * same way and goes on past a link is kept. Lines inside fenced code are kept.
+ * same way and goes on past a link is kept. Code in every form the shared
+ * matcher knows (fences of any length, inline spans, indented lines) is blanked
+ * out before judging, so a line that is code, or holds any code, is kept.
  */
 function dropWriterSourceKindLines(markdown: string): string {
   if (!/Kind of source:/i.test(markdown)) return markdown;
-  let fenced = false;
-  return markdown
-    .split('\n')
-    .filter((line) => {
-      if (/^[ \t]*(```|~~~)/.test(line)) fenced = !fenced;
-      return fenced || !WRITER_SOURCE_KIND_LINE.test(line);
-    })
-    .join('\n');
+  const lines = markdown.split('\n');
+  const outsideCode = markdown.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' ')).split('\n');
+  return lines.filter((line, at) => !(outsideCode[at] === line && WRITER_SOURCE_KIND_LINE.test(line))).join('\n');
 }
+
+/**
+ * Slice 6. A sentence that ranks a source by tier number ("a tier 1 source",
+ * "sources in tier 2", "T1 evidence"). A tier is never printed in report text
+ * (plan, slice 6); this is the check that it is not. Only a tier number tied
+ * to a source, a study, a record or evidence counts, so "tier 2 cities" or a
+ * "tier 1 supplier" is prose.
+ */
+const SOURCE_RANK_LABEL = new RegExp(
+  [
+    '\\b(?:authority[- ])?(?:tier|level)[- ]?[1-4]\\s+(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\\b',
+    '\\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)\\s+(?:of|at|in|from)\\s+(?:authority\\s+)?(?:tier|level)[- ]?[1-4]\\b',
+    '\\bT[1-4]\\s+(?:sources?|evidence|records?|stud(?:y|ies))\\b',
+    '\\bauthority\\s+(?:tier|level)\\b',
+  ].join('|'),
+  'i'
+);
 
 function cleanProse(text: string): string {
   return (

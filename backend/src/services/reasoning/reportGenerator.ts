@@ -951,6 +951,12 @@ export function removeBannedWording(content: string): string {
       })
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
       .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
+      // Slice 6. A tier number tied to a source is a rating the reader is never shown.
+      .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
+      .replace(/[ \t]+(?:of|at|in|from)[ \t]+(?:authority[ \t]+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
+        /\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)$/i.test(whole.slice(0, offset)) ? '' : phrase
+      )
+      .replace(/\bT[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/g, '')
       .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
       .replace(/\btestimony[- ]tier\b/gi, 'first-hand'),
       (sentenceStart) => (sentenceStart ? 'This analysis' : 'this analysis')
