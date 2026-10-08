@@ -506,7 +506,7 @@ export default function MonitorToggle({
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.
+        Add-ons require an active Pro or BYOK subscription.
       </p>
       {isLoading ? (
         <p className="text-xs text-slate-500">Loading monitor status…</p>
