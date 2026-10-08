@@ -11,7 +11,11 @@ import api, {
   type ReportMonitorRow,
 } from '../utils/api';
 import PlanCheckoutOptions, { type SubscriptionOption } from '../components/billing/PlanCheckoutOptions';
-import MonitorTokenPurchaseOptions from '../components/billing/MonitorTokenPurchaseOptions';
+import MonitorTokenPurchaseOptions, {
+  type AddonEligibilityState,
+} from '../components/billing/MonitorTokenPurchaseOptions';
+import { TOKEN_PACKS } from '../lib/billing/availability';
+import { PLAN_LABEL, resolvePlanIntentNotice } from '../lib/billing/planIntent';
 import { startMonitorTokenCheckoutRedirect } from '../lib/billing/checkout';
 import { parseStripeCheckoutReturnSessionId, startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
@@ -53,6 +57,11 @@ type TopupOption = {
   label: string;
 };
 
+/** `/billing/checkout/confirm` adds what the confirmed session bought. */
+type ConfirmedBillingSubscription = BillingSubscription & {
+  confirmedCheckout?: { kind: 'plan' | 'addon' | 'monitor_tokens' | 'topup'; tier: string | null };
+};
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '';
   try {
@@ -88,8 +97,8 @@ export default function BillingPage() {
   const [confirming, setConfirming] = useState<'idle' | 'in_progress' | 'error'>('idle');
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [legacyCheckoutWarning, setLegacyCheckoutWarning] = useState(false);
-  /** Set when a checkout has just been confirmed, so a new BYOK subscriber is pointed at the key step. */
-  const [justConfirmedCheckout, setJustConfirmedCheckout] = useState(false);
+  /** Set only when the checkout just confirmed was a BYOK plan, so that subscriber is pointed at the key step. */
+  const [byokJustActivated, setByokJustActivated] = useState(false);
   const { hash } = useLocation();
 
   const billingIntent = searchParams.get('intent');
@@ -101,7 +110,7 @@ export default function BillingPage() {
   }, [hash]);
 
   const applyCheckoutConfirmSuccess = useCallback(
-    async (data: BillingSubscription) => {
+    async (data: ConfirmedBillingSubscription) => {
       queryClient.setQueryData(BILLING_SUBSCRIPTION_QUERY_KEY, data);
       await queryClient.invalidateQueries({ queryKey: ['billing-wallet'] }, { cancelRefetch: false });
       await queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
@@ -109,7 +118,11 @@ export default function BillingPage() {
       await queryClient.invalidateQueries({ queryKey: MONITOR_TOKENS_QUERY_KEY }, { cancelRefetch: false });
       setConfirming('idle');
       setConfirmError(null);
-      setJustConfirmedCheckout(true);
+      // From what the session bought, not from the resulting tier: a BYOK
+      // subscriber returning from a top-up or a token pack activated nothing.
+      setByokJustActivated(
+        data.confirmedCheckout?.kind === 'plan' && data.confirmedCheckout.tier === 'byok',
+      );
       const next = new URLSearchParams(searchParams);
       next.delete('checkout');
       next.delete('session_id');
@@ -122,7 +135,7 @@ export default function BillingPage() {
     async (sessionId: string) => {
       setConfirming('in_progress');
       try {
-        const { data } = await api.post<BillingSubscription>('/billing/checkout/confirm', { sessionId });
+        const { data } = await api.post<ConfirmedBillingSubscription>('/billing/checkout/confirm', { sessionId });
         await applyCheckoutConfirmSuccess(data);
       } catch (e) {
         setConfirming('error');
@@ -223,7 +236,21 @@ export default function BillingPage() {
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
 
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
-  const { hasProAccess } = useHasProAccess();
+  const { hasProAccess, tierGateUnknown } = useHasProAccess();
+  // `hasProAccess` is deliberately permissive while the plan is unresolved, which
+  // is right for showing a page and wrong for offering a purchase the server
+  // will refuse. Buying needs a resolved answer.
+  const addonEligibility: AddonEligibilityState = tierGateUnknown
+    ? 'unknown'
+    : hasProAccess
+      ? 'eligible'
+      : 'ineligible';
+  const intentNotice = resolvePlanIntentNotice({
+    intent: billingIntent,
+    hasActiveSubscription,
+    effectiveTier,
+    subscriptionResolved: Boolean(subQuery.data),
+  });
 
   const monitorsQuery = useQuery({
     queryKey: ['billing-monitors'],
@@ -279,17 +306,46 @@ export default function BillingPage() {
         .
       </p>
 
-      {billingIntent === 'pro' ? (
+      {intentNotice?.kind === 'continue' ? (
         <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
-          Continue your Pro subscription below — checkout opens on Stripe.
+          {intentNotice.plan === 'byok'
+            ? 'Continue your BYOK subscription below — checkout opens on Stripe, then you add your model keys.'
+            : 'Continue your Pro subscription below — checkout opens on Stripe.'}
         </p>
       ) : null}
-      {billingIntent === 'byok' ? (
+      {intentNotice?.kind === 'already_on_plan' ? (
         <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
-          Continue your BYOK subscription below — checkout opens on Stripe, then you add your model keys.
+          You are already on the {PLAN_LABEL[intentNotice.plan]} plan. Nothing more to buy here.
+          {intentNotice.plan === 'byok' ? (
+            <>
+              {' '}
+              <Link to="/app/byok" className="underline hover:text-white">
+                Configure model keys
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : null}
-      {justConfirmedCheckout && effectiveTier === 'byok' ? (
+      {intentNotice?.kind === 'switch_not_available' ? (
+        <div className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          <p>
+            You have an active{' '}
+            <span className="capitalize">{intentNotice.currentTier.replace(/_/g, ' ')}</span> subscription.
+            Switching to {PLAN_LABEL[intentNotice.plan]} from this page: not yet available.
+          </p>
+          <p className="mt-1 text-amber-100/80">
+            To change plans, write to{' '}
+            <a
+              href={`mailto:hello@researchone.io?subject=${encodeURIComponent(`Switch plan to ${PLAN_LABEL[intentNotice.plan]}`)}`}
+              className="underline hover:text-white"
+            >
+              hello@researchone.io
+            </a>{' '}
+            and we will move your subscription without charging you twice.
+          </p>
+        </div>
+      ) : null}
+      {byokJustActivated && effectiveTier === 'byok' ? (
         <div className="mt-4 rounded-md border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
           <p className="font-medium">Your BYOK plan is active.</p>
           <p className="mt-1 text-emerald-100/80">One step left: add the model keys your research runs will use.</p>
@@ -540,8 +596,12 @@ export default function BillingPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <MonitorTokenPurchaseOptions
             packages={monitorPackagesQuery.data?.packages ?? []}
-            isLoading={monitorPackagesQuery.isLoading}
-            eligible={hasProAccess}
+            advertised={TOKEN_PACKS}
+            isLoading={monitorPackagesQuery.isLoading || subQuery.isLoading}
+            errorMessage={monitorPackagesQuery.isError ? extractApiError(monitorPackagesQuery.error) : null}
+            onRetry={() => void monitorPackagesQuery.refetch()}
+            eligibility={addonEligibility}
+            onRetryEligibility={() => void subQuery.refetch()}
             onBuy={(packageId) => {
               setCheckoutError(null);
               void startMonitorTokenCheckoutRedirect(packageId).catch((e) =>
