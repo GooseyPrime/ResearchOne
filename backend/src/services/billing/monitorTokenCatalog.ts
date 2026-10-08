@@ -22,7 +22,8 @@ export function listMonitorTokenPackages(): MonitorTokenPackage[] {
     label: def.label,
     tokenCount: def.tokenCount,
     priceCents: def.priceCents,
-    priceId: String(config.stripe.priceIds[def.priceIdKey] ?? ''),
+    // Trimmed: a whitespace-only setting is a missing setting, not a price id to send to Stripe.
+    priceId: String(config.stripe.priceIds[def.priceIdKey] ?? '').trim(),
   })).filter((p) => Boolean(p.priceId));
 }
 

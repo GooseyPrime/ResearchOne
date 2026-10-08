@@ -405,6 +405,18 @@ router.post('/checkout/confirm', async (req, res, next) => {
       return;
     }
 
+    // What this session bought, so the page can tell a new plan from a top-up
+    // or a token pack without inferring it from the resulting tier.
+    const sessionMeta = session.metadata ?? {};
+    const confirmedCheckout: { kind: 'plan' | 'addon' | 'monitor_tokens' | 'topup'; tier: string | null } =
+      session.mode === 'subscription'
+        ? sessionMeta.monitor_kind
+          ? { kind: 'addon', tier: null }
+          : { kind: 'plan', tier: sessionMeta.tier ?? null }
+        : sessionMeta.purchase_type === 'monitor_tokens' || sessionMeta.checkout_kind === 'monitor_tokens'
+          ? { kind: 'monitor_tokens', tier: null }
+          : { kind: 'topup', tier: null };
+
     if (session.mode === 'subscription') {
       if (session.status !== 'complete') {
         res.status(402).json({
@@ -474,7 +486,7 @@ router.post('/checkout/confirm', async (req, res, next) => {
 
     const view = await getBillingSubscriptionView(userId);
     const tokenBalance = await getMonitorTokenBalance(userId);
-    res.json({ ...view, monitorTokens: tokenBalance });
+    res.json({ ...view, monitorTokens: tokenBalance, confirmedCheckout });
   } catch (err) {
     next(err);
   }

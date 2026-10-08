@@ -41,6 +41,7 @@ type StripeEventData = Record<string, unknown>;
 interface CheckoutSessionData {
   id: string;
   mode?: string;
+  payment_status?: string | null;
   subscription?: string | StripeSubscriptionLike | null;
   metadata?: {
     userId?: string;
@@ -83,6 +84,16 @@ const handleCheckoutSessionCompleted: WebhookEventHandler<StripeEventData> = asy
       eventId,
       source: 'webhook',
     });
+    return;
+  }
+
+  // Delayed payment methods (bank debits and the like) complete the session
+  // before the money arrives: Stripe sends `checkout.session.completed` with
+  // `payment_status: 'unpaid'`, then `checkout.session.async_payment_succeeded`
+  // once it settles. Nothing is credited until it has. Both events route here,
+  // and each credit is keyed on the session id, so the pair credits once.
+  if (session.payment_status === 'unpaid') {
+    logger.info('stripe_checkout_payment_pending', { eventId, sessionId: session.id });
     return;
   }
 
@@ -336,6 +347,7 @@ const handleInvoicePaymentFailed: WebhookEventHandler<StripeEventData> = async (
  */
 const STRIPE_EVENT_HANDLERS: Record<string, WebhookEventHandler<StripeEventData>> = {
   'checkout.session.completed': handleCheckoutSessionCompleted,
+  'checkout.session.async_payment_succeeded': handleCheckoutSessionCompleted,
   'customer.subscription.created': handleSubscriptionCreatedOrUpdated,
   'customer.subscription.updated': handleSubscriptionCreatedOrUpdated,
   'customer.subscription.deleted': handleSubscriptionDeleted,
