@@ -664,6 +664,7 @@ Acceptance:
 - Whether a report is worded this way is recorded on its run before the writing stage (so a reference lookup, which skips the full writer, records it too), so turning the switch on or off later never changes how an existing report reads. Reports written before the record existed read as before.
 - A citation saved without a source id is traced to its source through its passage on the reading page too.
 - The same words reach the reference list the writer's run produces, the citation card (now "Government page · publisher · date"), the Sources and Evidence tabs, and a reference list rebuilt for export in another style. A run without the switch is worded as before.
+- Follow-up, not built: a Layer 1 report written without the citation lock has a reference list of title, publisher, date and link only; it has never carried a source kind. Its reading page shows the words. Enriching that list is a change to the unlocked path's references.
 - Harness: `authority_share` is the share of citations whose source is tier 1 or 2, by recorded tier or else address. A citation saved without a source id is traced to its source through its passage. Null with no citations. A source without a tier counts as outside the top two.
 
 ### Slice 7. Provider routing by request (not started)

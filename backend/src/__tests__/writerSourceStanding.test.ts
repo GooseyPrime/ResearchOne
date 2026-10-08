@@ -225,6 +225,13 @@ describe('a source ranked by tier in the report text', () => {
     expect(removeBannedWording('Two [sources][s] in tier 2 disagree.\n\n[s]: https://example.org/s')).toBe('Two [sources][s] disagree.\n\n[s]: https://example.org/s');
   });
 
+  it('never changes code, even code that holds a quoted string', () => {
+    const inline = 'The regulator is a tier 1 source. Run `const x = "ok"; // tier 1 source` to check.';
+    expect(removeBannedWording(inline)).toBe('The regulator is a source. Run `const x = "ok"; // tier 1 source` to check.');
+    const fenced = ['The regulator is a tier 1 source.', '', '```', 'const x = "ok"; // tier 1 source', '```'].join('\n');
+    expect(removeBannedWording(fenced)).toBe(['The regulator is a source.', '', '```', 'const x = "ok"; // tier 1 source', '```'].join('\n'));
+  });
+
   it('keeps a quotation whole when it runs across code', () => {
     const text = 'The first is a tier 1 source; the agency says "a tier 1 source with `data`".';
     expect(removeBannedWording(text)).toBe('The first is a source; the agency says "a tier 1 source with `data`".');
