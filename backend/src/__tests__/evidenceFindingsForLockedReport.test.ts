@@ -38,7 +38,7 @@ vi.mock('../db/pool', () => ({
 
 vi.mock('../utils/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { citedPassagesFirst, extractAndPersistClaims, resolveFindingPassages } from '../services/reasoning/claimExtractor';
+import { extractAndPersistClaims, passagesForExtraction, resolveFindingPassages } from '../services/reasoning/claimExtractor';
 import { buildReaderEvidence, loadReaderEvidence, type ReaderClaimRow } from '../services/formatting/readerEvidence';
 import type { RetrievedChunk } from '../services/retrieval/retrievalService';
 
@@ -149,6 +149,18 @@ describe('findings of a report written with the citation lock', () => {
     expect(prompt.match(/\[CHUNK /g)).toHaveLength(30);
   });
 
+  it('shows the extraction every cited passage when the report cites more than thirty', async () => {
+    const many = CHUNKS.slice(0, 33).map((chunk) => ({ chunk_id: chunk.id, source_id: 'source-a', chunk_quote: `Quoted from ${chunk.source_title}.` }));
+    mocks.query.mockImplementation(async (sql: string) => (sql.includes('FROM report_citations') ? many : []));
+    await extract();
+    const prompt: string = mocks.callRoleModel.mock.calls[0][0].messages[1].content;
+    expect(prompt.match(/\nCited in the report, which quotes: /g)).toHaveLength(33);
+    expect(prompt).toContain(`[CHUNK ${uuid(33)}]`);
+    expect(prompt).toContain('"Quoted from Source 33."');
+    // No room is taken by passages the report does not cite.
+    expect(prompt.match(/\[CHUNK /g)).toHaveLength(33);
+  });
+
   it('files each finding under a passage the report cites, and keeps only passages the run holds', async () => {
     await extract();
     expect(mocks.inserts).toHaveLength(3);
@@ -236,10 +248,27 @@ describe('a report with no saved citations when findings are extracted', () => {
 });
 
 describe('the two rules on their own', () => {
-  it('puts cited passages first and changes nothing when none is cited', () => {
+  it('shows cited passages first, and with none cited the first thirty as before', () => {
     const list = [{ id: 'a' }, { id: 'B' }, { id: 'c' }];
-    expect(citedPassagesFirst(list, new Set(['b', 'c'])).map((entry) => entry.id)).toEqual(['B', 'c', 'a']);
-    expect(citedPassagesFirst(list, new Set())).toBe(list);
+    expect(passagesForExtraction(list, new Set(['b', 'c'])).map((entry) => entry.id)).toEqual(['B', 'c', 'a']);
+    expect(passagesForExtraction(list, new Set())).toEqual(list);
+    const forty = Array.from({ length: 40 }, (_, n) => ({ id: `p${n}` }));
+    expect(passagesForExtraction(forty, new Set()).map((entry) => entry.id)).toEqual(forty.slice(0, 30).map((entry) => entry.id));
+  });
+
+  it('shows every passage the report cites, however many, and limits only the uncited ones', () => {
+    const fifty = Array.from({ length: 50 }, (_, n) => ({ id: `p${n}` }));
+    // Thirty-six cited, scattered through the run's passages: more than the thirty shown before.
+    const cited = new Set(fifty.filter((_, n) => n % 4 !== 0).slice(0, 36).map((entry) => entry.id));
+    const shown = passagesForExtraction(fifty, cited).map((entry) => entry.id);
+    expect(shown).toHaveLength(36);
+    expect(new Set(shown)).toEqual(cited);
+    // Ten cited: all ten, then uncited ones up to thirty in all.
+    const ten = new Set(fifty.slice(40).map((entry) => entry.id));
+    const mixed = passagesForExtraction(fifty, ten).map((entry) => entry.id);
+    expect(mixed).toHaveLength(30);
+    expect(mixed.slice(0, 10)).toEqual(fifty.slice(40).map((entry) => entry.id));
+    expect(mixed.slice(10)).toEqual(fifty.slice(0, 20).map((entry) => entry.id));
   });
 
   it('prefers a cited passage, falls back to one the run holds, and drops what it does not hold', () => {

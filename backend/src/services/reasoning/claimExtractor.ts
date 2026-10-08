@@ -100,10 +100,22 @@ async function loadCitedPassages(runId: string, reportId: string): Promise<Map<s
   return cited;
 }
 
-/** Cited passages first, in the order given, then the rest. The same passages either way. */
-export function citedPassagesFirst<T extends { id: string }>(chunks: T[], cited: ReadonlySet<string>): T[] {
-  if (cited.size === 0) return chunks;
-  return [...chunks.filter((chunk) => cited.has(idKey(chunk.id))), ...chunks.filter((chunk) => !cited.has(idKey(chunk.id)))];
+/** Passages shown to the extraction when the report has no saved citations, and the share left for uncited ones when it has. */
+const PASSAGES_SHOWN = 30;
+/** A hard bound on cited passages shown, so one call stays a bounded size. Far above what a report cites. */
+const CITED_PASSAGES_SHOWN_MAX = 120;
+
+/**
+ * The passages the extraction is shown. With no saved citations: the first
+ * thirty, as always. With saved citations: every passage the report cites, so no
+ * citation is left without its passage, then uncited ones only while fewer than
+ * thirty are shown. The limit is on uncited context, never on what was cited.
+ */
+export function passagesForExtraction<T extends { id: string }>(chunks: T[], cited: ReadonlySet<string>): T[] {
+  if (cited.size === 0) return chunks.slice(0, PASSAGES_SHOWN);
+  const citedPassages = chunks.filter((chunk) => cited.has(idKey(chunk.id))).slice(0, CITED_PASSAGES_SHOWN_MAX);
+  const uncited = chunks.filter((chunk) => !cited.has(idKey(chunk.id))).slice(0, Math.max(0, PASSAGES_SHOWN - citedPassages.length));
+  return [...citedPassages, ...uncited];
 }
 
 /**
@@ -155,8 +167,7 @@ export async function extractAndPersistClaims(args: {
 
   const cited = await loadCitedPassages(runId, reportId);
   const citedIds = new Set(cited.keys());
-  const chunkContext = citedPassagesFirst(chunks, citedIds)
-    .slice(0, 30) // limit context size
+  const chunkContext = passagesForExtraction(chunks, citedIds)
     .map(c => {
       const quotes = cited.get(idKey(c.id))?.quotes ?? [];
       const citedLine = cited.has(idKey(c.id)) ? `\nCited in the report${quotes.length > 0 ? `, which quotes: ${quotes.map((quote) => `"${quote}"`).join(' ')}` : ''}` : '';
