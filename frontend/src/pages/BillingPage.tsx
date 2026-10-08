@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import api, {
   extractApiError,
   listUserMonitors,
@@ -9,8 +9,9 @@ import api, {
   updateMonitorTokenPreferences,
   MONITOR_TOKENS_QUERY_KEY,
   type ReportMonitorRow,
-  type MonitorTokenPackage,
 } from '../utils/api';
+import PlanCheckoutOptions, { type SubscriptionOption } from '../components/billing/PlanCheckoutOptions';
+import MonitorTokenPurchaseOptions from '../components/billing/MonitorTokenPurchaseOptions';
 import { startMonitorTokenCheckoutRedirect } from '../lib/billing/checkout';
 import { parseStripeCheckoutReturnSessionId, startCheckoutRedirect } from '../lib/billing/checkout';
 import { stripeSubscriptionGrantsPaidPlan } from '../utils/stripeSubscriptionAccess';
@@ -52,15 +53,6 @@ type TopupOption = {
   label: string;
 };
 
-type SubscriptionOption = {
-  tier: string;
-  label: string;
-  monthlyPriceId: string;
-  annualPriceId: string;
-  monthlyAmountCents: number;
-  annualAmountCents: number;
-};
-
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '';
   try {
@@ -96,8 +88,17 @@ export default function BillingPage() {
   const [confirming, setConfirming] = useState<'idle' | 'in_progress' | 'error'>('idle');
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [legacyCheckoutWarning, setLegacyCheckoutWarning] = useState(false);
+  /** Set when a checkout has just been confirmed, so a new BYOK subscriber is pointed at the key step. */
+  const [justConfirmedCheckout, setJustConfirmedCheckout] = useState(false);
+  const { hash } = useLocation();
 
   const billingIntent = searchParams.get('intent');
+
+  // Links elsewhere point at /app/billing#monitor-tokens; the router does not scroll to a hash by itself.
+  useEffect(() => {
+    if (hash !== '#monitor-tokens') return;
+    document.getElementById('monitor-tokens')?.scrollIntoView({ block: 'start' });
+  }, [hash]);
 
   const applyCheckoutConfirmSuccess = useCallback(
     async (data: BillingSubscription) => {
@@ -108,6 +109,7 @@ export default function BillingPage() {
       await queryClient.invalidateQueries({ queryKey: MONITOR_TOKENS_QUERY_KEY }, { cancelRefetch: false });
       setConfirming('idle');
       setConfirmError(null);
+      setJustConfirmedCheckout(true);
       const next = new URLSearchParams(searchParams);
       next.delete('checkout');
       next.delete('session_id');
@@ -281,6 +283,23 @@ export default function BillingPage() {
         <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
           Continue your Pro subscription below — checkout opens on Stripe.
         </p>
+      ) : null}
+      {billingIntent === 'byok' ? (
+        <p className="mt-4 rounded-md border border-indigo-700/40 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
+          Continue your BYOK subscription below — checkout opens on Stripe, then you add your model keys.
+        </p>
+      ) : null}
+      {justConfirmedCheckout && effectiveTier === 'byok' ? (
+        <div className="mt-4 rounded-md border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+          <p className="font-medium">Your BYOK plan is active.</p>
+          <p className="mt-1 text-emerald-100/80">One step left: add the model keys your research runs will use.</p>
+          <Link
+            to="/app/byok"
+            className="mt-3 inline-flex rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500 transition-colors"
+          >
+            Configure keys
+          </Link>
+        </div>
       ) : null}
       {billingIntent === 'student' ? (
         <p className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
@@ -463,75 +482,42 @@ export default function BillingPage() {
                     Manage billing in Stripe
                   </button>
                 ) : null}
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-4">
                   <Link
                     to="/pricing"
                     className="text-sm text-indigo-400 hover:text-indigo-300"
                   >
                     Compare plans
                   </Link>
+                  {effectiveTier === 'byok' ? (
+                    <Link to="/app/byok" className="text-sm text-indigo-400 hover:text-indigo-300">
+                      Configure model keys
+                    </Link>
+                  ) : null}
                 </div>
               </>
             )}
           </div>
         ) : null}
 
-        {(!hasActiveSubscription && (subscriptionOptionsQuery.data?.options ?? []).length > 0) && (
-          <div className="mt-4">
-            <p className="text-sm text-slate-400 mb-3">Upgrade to a subscription plan:</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(subscriptionOptionsQuery.data?.options ?? []).map((option) => (
-                <div
-                  key={option.tier}
-                  className="rounded-lg border border-white/10 bg-slate-800/50 p-4"
-                >
-                  <h3 className="font-medium">{option.label}</h3>
-                  <p className="text-sm text-slate-400 mt-1">
-                    ${(option.monthlyAmountCents / 100).toFixed(0)}/mo or $
-                    {(option.annualAmountCents / 100).toFixed(0)}/yr
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    {option.monthlyPriceId && (
-                      <button
-                        className="rounded bg-indigo-600 px-3 py-1.5 text-sm hover:bg-indigo-500 transition-colors"
-                        onClick={() => {
-                          setCheckoutError(null);
-                          void startCheckoutRedirect('/billing/checkout/subscription', {
-                            priceId: option.monthlyPriceId,
-                            tier: option.tier,
-                          }).catch((e) =>
-                            setCheckoutError(e instanceof Error ? e.message : 'Checkout failed')
-                          );
-                        }}
-                      >
-                        Monthly
-                      </button>
-                    )}
-                    {option.annualPriceId && (
-                      <button
-                        className="rounded bg-emerald-600 px-3 py-1.5 text-sm hover:bg-emerald-500 transition-colors"
-                        onClick={() => {
-                          setCheckoutError(null);
-                          void startCheckoutRedirect('/billing/checkout/subscription', {
-                            priceId: option.annualPriceId,
-                            tier: option.tier,
-                          }).catch((e) =>
-                            setCheckoutError(e instanceof Error ? e.message : 'Checkout failed')
-                          );
-                        }}
-                      >
-                        Annual (save 17%)
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {!hasActiveSubscription ? (
+          <PlanCheckoutOptions
+            options={subscriptionOptionsQuery.data?.options ?? []}
+            isLoading={subscriptionOptionsQuery.isLoading}
+            errorMessage={subscriptionOptionsQuery.isError ? extractApiError(subscriptionOptionsQuery.error) : null}
+            onRetry={() => void subscriptionOptionsQuery.refetch()}
+            highlightTier={billingIntent}
+            onCheckout={(priceId, tier) => {
+              setCheckoutError(null);
+              void startCheckoutRedirect('/billing/checkout/subscription', { priceId, tier }).catch((e) =>
+                setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
+              );
+            }}
+          />
+        ) : null}
       </section>
 
-      <section className="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
+      <section id="monitor-tokens" className="mt-6 scroll-mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-4">
         <h2 className="text-lg font-medium">Living Report tokens</h2>
         <p className="mt-1 text-xs text-slate-500">
           One token activates monitoring on a single finalized report for 2 months. Separate from API
@@ -552,32 +538,17 @@ export default function BillingPage() {
         )}
         {checkoutError ? <p className="mt-2 text-sm text-red-400">{checkoutError}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          {monitorPackagesQuery.isLoading ? (
-            <p className="text-sm text-slate-500">Loading packages…</p>
-          ) : (monitorPackagesQuery.data?.packages ?? []).length > 0 ? (
-            (monitorPackagesQuery.data?.packages ?? []).map((pkg: MonitorTokenPackage) => (
-              <button
-                key={pkg.id}
-                type="button"
-                className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
-                onClick={() => {
-                  setCheckoutError(null);
-                  void startMonitorTokenCheckoutRedirect(pkg.id).catch((e) =>
-                    setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
-                  );
-                }}
-              >
-                {pkg.label}
-              </button>
-            ))
-          ) : (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100/90">
-              <p className="font-medium text-amber-200">Monitor token purchases are temporarily unavailable</p>
-              <p className="mt-1 text-amber-100/80">
-                Existing tokens and active monitors are unaffected. Please try again later or contact support.
-              </p>
-            </div>
-          )}
+          <MonitorTokenPurchaseOptions
+            packages={monitorPackagesQuery.data?.packages ?? []}
+            isLoading={monitorPackagesQuery.isLoading}
+            eligible={hasProAccess}
+            onBuy={(packageId) => {
+              setCheckoutError(null);
+              void startMonitorTokenCheckoutRedirect(packageId).catch((e) =>
+                setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
+              );
+            }}
+          />
         </div>
         <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
           <label className="flex items-center gap-2 text-sm text-slate-300">
