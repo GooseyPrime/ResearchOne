@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../utils/api';
 import { startCheckoutRedirect } from '../../lib/billing/checkout';
 import StudentVerificationPanel from './StudentVerificationPanel';
+import NotYetAvailable from './NotYetAvailable';
 
-export type SubscribeTier = 'pro' | 'student';
+export type SubscribeTier = 'pro' | 'student' | 'byok';
 
 type SubscriptionOption = {
   tier: string;
@@ -22,18 +23,24 @@ type SubscribeCTAProps = {
   featured?: boolean;
   /** Public pricing SSR: sign-up links only (no Clerk provider required). */
   marketingStatic?: boolean;
+  /**
+   * With `marketingStatic`: the visitor already has a session, so the link
+   * skips sign-up and goes to billing, where checkout for this plan starts.
+   */
+  signedIn?: boolean;
 };
 
 function SubscribeCTAMarketing({
   tier,
   cta,
   className,
-}: Pick<SubscribeCTAProps, 'tier' | 'cta' | 'className'>) {
+  signedIn = false,
+}: Pick<SubscribeCTAProps, 'tier' | 'cta' | 'className' | 'signedIn'>) {
   const ctaClass =
     className ??
     'mt-5 inline-flex rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep';
   return (
-    <Link to={`/sign-up?tier=${tier}`} className={ctaClass}>
+    <Link to={signedIn ? `/app/billing?intent=${tier}` : `/sign-up?tier=${tier}`} className={ctaClass}>
       {cta}
     </Link>
   );
@@ -43,8 +50,7 @@ function SubscribeCTAAuthenticated({
   tier,
   cta,
   className,
-  featured = false,
-}: Omit<SubscribeCTAProps, 'marketingStatic'>) {
+}: Omit<SubscribeCTAProps, 'marketingStatic' | 'signedIn' | 'featured'>) {
   const { isLoaded, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -78,6 +84,8 @@ function SubscribeCTAAuthenticated({
   }
 
   const option = (optionsQuery.data?.options ?? []).find((o) => o.tier === tier);
+  // Monthly when it exists; a plan sold only annually is still purchasable.
+  const priceId = option?.monthlyPriceId || option?.annualPriceId || '';
   const studentVerified = tier !== 'student' || Boolean(studentStatusQuery.data?.verified);
   const studentGateLoading = tier === 'student' && studentStatusQuery.isLoading;
 
@@ -94,13 +102,13 @@ function SubscribeCTAAuthenticated({
       <button
         type="button"
         className={ctaClass}
-        disabled={busy || optionsQuery.isLoading || studentGateLoading || !option?.monthlyPriceId || !studentVerified}
+        disabled={busy || optionsQuery.isLoading || studentGateLoading || !priceId || !studentVerified}
         onClick={() => {
-          if (!option?.monthlyPriceId || !studentVerified) return;
+          if (!option || !priceId || !studentVerified) return;
           setCheckoutError(null);
           setBusy(true);
           void startCheckoutRedirect('/billing/checkout/subscription', {
-            priceId: option.monthlyPriceId,
+            priceId,
             tier: option.tier,
           })
             .catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'))
@@ -113,9 +121,7 @@ function SubscribeCTAAuthenticated({
         <p className="mt-2 text-xs text-r1-text-muted">Complete student verification above to subscribe.</p>
       ) : null}
       {checkoutError ? <p className="mt-2 text-xs text-red-400">{checkoutError}</p> : null}
-      {featured && !option?.monthlyPriceId && !optionsQuery.isLoading ? (
-        <p className="mt-2 text-xs text-r1-text-muted">Subscription checkout is unavailable on this deployment.</p>
-      ) : null}
+      {!priceId && !optionsQuery.isLoading ? <NotYetAvailable tone="marketing" className="mt-2" /> : null}
     </div>
   );
 }
@@ -124,11 +130,11 @@ export default function SubscribeCTA({
   tier,
   cta,
   className,
-  featured = false,
   marketingStatic = false,
+  signedIn = false,
 }: SubscribeCTAProps) {
   if (marketingStatic) {
-    return <SubscribeCTAMarketing tier={tier} cta={cta} className={className} />;
+    return <SubscribeCTAMarketing tier={tier} cta={cta} className={className} signedIn={signedIn} />;
   }
 
   return (
@@ -136,7 +142,6 @@ export default function SubscribeCTA({
       tier={tier}
       cta={cta}
       className={className}
-      featured={featured}
     />
   );
 }
