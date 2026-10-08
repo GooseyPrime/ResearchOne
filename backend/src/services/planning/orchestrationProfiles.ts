@@ -287,3 +287,20 @@ export function shouldRunPipelineStage(
 ): boolean {
   return profile.agentsToRun.includes(stage);
 }
+
+/**
+ * Whether a run's report is written by the section writer (`generateIterativeReport`).
+ *
+ * A profile that skips synthesis (the reference lookup) used to get a short
+ * dossier from one model call: fixed headings, no bound citations, no reference
+ * list, no closing note (issue #244). Slice 7: with PROVIDER_ROUTING_ENABLED on
+ * and a Layer 1 run, it is written by the same writer as every other report and
+ * so has the reader layout. With either off it keeps the short dossier.
+ */
+export function writesThroughReportWriter(
+  profile: OrchestrationProfileDefinition,
+  layer1Run: boolean,
+  providerRouting: boolean,
+): boolean {
+  return shouldRunPipelineStage(profile, 'synthesis') || (layer1Run && providerRouting);
+}

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { SearchQuery, SearchResultCandidate, PROVIDER_NOT_CONFIGURED } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -22,6 +22,7 @@ export class TavilySearchProvider implements SearchProvider {
     const apiKey = config.discovery.tavilyApiKey;
     if (!apiKey) {
       logger.warn('[discovery] Tavily provider selected but TAVILY_API_KEY is missing');
+      searchQuery.onFailure?.(PROVIDER_NOT_CONFIGURED);
       return [];
     }
 
@@ -66,6 +67,7 @@ export class TavilySearchProvider implements SearchProvider {
         });
     } catch (err) {
       logger.error('[discovery] Tavily search failed:', err);
+      searchQuery.onFailure?.(err);
       return [];
     }
   }

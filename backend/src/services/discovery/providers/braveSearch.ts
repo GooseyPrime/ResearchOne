@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { SearchQuery, SearchResultCandidate, PROVIDER_NOT_CONFIGURED } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -23,6 +23,7 @@ export class BraveSearchProvider implements SearchProvider {
     const apiKey = config.discovery.providerApiKey;
     if (!apiKey) {
       logger.warn('[discovery] Brave provider selected but SEARCH_PROVIDER_API_KEY is missing');
+      searchQuery.onFailure?.(PROVIDER_NOT_CONFIGURED);
       return [];
     }
 
@@ -52,6 +53,7 @@ export class BraveSearchProvider implements SearchProvider {
         }));
     } catch (err) {
       logger.error('[discovery] Brave web search failed:', err);
+      searchQuery.onFailure?.(err);
       return [];
     }
   }

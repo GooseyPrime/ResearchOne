@@ -67,6 +67,7 @@ export class UsptoSearchProvider implements SearchProvider {
         });
     } catch (err) {
       logger.warn('[discovery] USPTO PatentsView search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }

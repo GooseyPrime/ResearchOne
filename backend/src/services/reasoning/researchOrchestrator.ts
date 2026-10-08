@@ -49,7 +49,7 @@ import {
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
+import { config, baselineLayerEnabled, citationLockEnabled, discoveryIngestFloor, doiResolveEnabled, providerRoutingEnabled, runWithFlags } from '../../config';
 import { checkDois, doiOf, findUnstatedDois, type DoiCheck } from '../verification/doiResolve';
 import { resolveReferenceStyle, describeSourceKind } from '../formatting/referenceList';
 import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
@@ -109,6 +109,7 @@ import {
   PIPELINE_STAGES,
   type OrchestrationProfileDefinition,
   shouldRunPipelineStage,
+  writesThroughReportWriter,
 } from '../planning/orchestrationProfiles';
 import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
 import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
@@ -1412,11 +1413,12 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
+        routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
         maxIngestCapOverride: resolveSourceIngestBudget({
-          configuredCap: config.discovery.maxIngestPerRun,
+          configuredCap: discoveryIngestFloor(),
           targetWordCount: data.targetWordCount,
           requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
             (artifact) => typeof artifact.exactCount === 'number'
@@ -1951,11 +1953,12 @@ async function runResearchJobInner(
         byokApiKeyOverride,
         userId: creditCtx?.userId,
         specialistAgentIds,
+        routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
         maxIngestCapOverride: resolveSourceIngestBudget({
-          configuredCap: config.discovery.maxIngestPerRun,
+          configuredCap: discoveryIngestFloor(),
           targetWordCount: data.targetWordCount,
           requestedArtifactCount: data.confirmedPlanPayload?.researchBrief?.requestedArtifacts?.find(
             (artifact) => typeof artifact.exactCount === 'number'
@@ -2130,8 +2133,9 @@ async function runResearchJobInner(
           byokApiKeyOverride,
           userId: creditCtx?.userId,
           specialistAgentIds,
+          routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
           maxIngestCapOverride: resolveSourceIngestBudget({
-            configuredCap: config.discovery.maxIngestPerRun,
+            configuredCap: discoveryIngestFloor(),
             targetWordCount: resolvedWordTarget,
             requestedArtifactCount,
             addonCapOverride: addonEffects.maxIngestCapOverride,
@@ -2431,7 +2435,9 @@ async function runResearchJobInner(
     } else {
       await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
     }
-    if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
+    // Slice 7: a lookup profile goes through the report writer with routing and Layer 1 on.
+    const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());
+    if (synthesisRuns) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       const usedSources = allChunks.map((chunk) => ({
@@ -3312,7 +3318,7 @@ ${reportForGates(generatedReport.markdown)}`,
       _intentId: orchProfile.intent,
     };
     for (const s of PIPELINE_STAGES) {
-      stageDurationPayload[s] = shouldRunPipelineStage(orchProfile, s)
+      stageDurationPayload[s] = (s === 'synthesis' ? synthesisRuns : shouldRunPipelineStage(orchProfile, s))
         ? Math.round(phaseDurations[s] ?? 0)
         : null;
     }
