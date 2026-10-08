@@ -14,6 +14,7 @@
 import { mapCitationProse, unwrapCitationLinks } from '../formatting/reportPresentation';
 import { splitTopLevelSections } from './targetedRepair';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
+import { withSearchScope } from './searchScope';
 import type { ReferenceStyle } from '../formatting/referenceList';
 
 export interface LockedPassage {
@@ -963,7 +964,9 @@ export function finalizeLockedCitations(
   markdown: string,
   passages: LockedPassage[],
   readOn = formatReadDate(),
-  style: ReferenceStyle = 'numeric'
+  style: ReferenceStyle = 'numeric',
+  /** What the run's record says was searched, for a report type that must state it. */
+  scopeNote = ''
 ): FinalizedCitations {
   const byMarker = new Map(passages.map((passage) => [passage.marker, passage]));
   const copyOf = sameArticleSources(passages);
@@ -1078,7 +1081,8 @@ export function finalizeLockedCitations(
       .filter((passage) => Boolean(passage.sourceId || sourceKey(passage.source)))
       .map(identity)
   ).size;
-  const about = buildAbout(cited.length === 0 ? 0 : readCount, readOn);
+  const shownCount = cited.length === 0 ? 0 : readCount;
+  const about = withSearchScope(buildAbout(shownCount, readOn), scopeNote, shownCount);
   const tail = `${references ? `\n\n## References\n${references}` : ''}\n\n## About this report\n${about}`;
   return { markdown: `${text}${tail}`, occurrences, cited, removed };
 }
