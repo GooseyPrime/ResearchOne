@@ -55,12 +55,12 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
 
   // ──────────────────────────────────────────────────────────────
   // OSINT / Investigative journalism.
-  // Anti-fluff, technical, emphasizes Devil's Advocate Review and FOIA/
+  // Anti-fluff, technical, emphasizes the challenge pass and FOIA/
   // Wayback source discovery per the strategic doc.
   // ──────────────────────────────────────────────────────────────
   osint: {
     eyebrow: 'For investigative work',
-    headline: 'Built to challenge stories that don\u2019t survive consensus.',
+    headline: 'Built to challenge stories that don’t survive consensus.',
     subhead:
       'A dedicated challenge pass. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',
@@ -68,7 +68,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       { label: 'See the Investigative mode', to: '/sample-report?topic=investigative', variant: 'primary' },
       { label: 'Pricing',                    to: '/pricing',                          variant: 'secondary' },
     ],
-    proofLine: 'Research policy \u00B7 Open-weight reasoning \u00B7 No corporate alignment filters on the critical path.',
+    proofLine: 'Research policy · Open-weight reasoning · No corporate alignment filters on the critical path.',
   },
 
   // ──────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
       { label: 'See an investigative report', to: '/sample-report?topic=investigative', variant: 'primary' },
       { label: 'How it works',                to: '/methodology',                  variant: 'secondary' },
     ],
-    proofLine: 'Specialist verification when needed \u00B7 Source-corroboration tiers stay visible \u00B7 You see the evidence trail, not just the verdict.',
+    proofLine: 'Specialist verification when needed · Source-corroboration tiers stay visible · You see the evidence trail, not just the verdict.',
   },
 
   // ──────────────────────────────────────────────────────────────
@@ -97,13 +97,13 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'For literature work that has to hold up',
     headline: 'Citation-grade reports without the hallucinated bibliography.',
     subhead:
-      'Industry-wide AI bibliographies hallucinate 26\u201360% of references. ResearchOne maps every finding ' +
-      'to a source card with a tier label \u2014 PRISMA-style traceability, defensible at peer review.',
+      'Industry-wide AI bibliographies hallucinate 26–60% of references. ResearchOne maps every finding ' +
+      'to a source card with a tier label — PRISMA-style traceability, defensible at peer review.',
     ctas: [
-      { label: 'Student plan \u2014 coming soon', to: '/pricing#student',  variant: 'primary' },
+      { label: 'Student plan — coming soon', to: '/pricing#student',  variant: 'primary' },
       { label: 'Methodology',               to: '/methodology',      variant: 'secondary' },
     ],
-    proofLine: 'Source-corroboration tiers \u00B7 Contradiction preservation \u00B7 Post-publication revision when the literature moves.',
+    proofLine: 'Source-corroboration tiers · Contradiction preservation · Post-publication revision when the literature moves.',
   },
 
   // ──────────────────────────────────────────────────────────────
@@ -115,13 +115,13 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
     eyebrow: 'For prior-art work that catches what others miss',
     headline: 'Non-consensus prior art and mechanism-gap analysis.',
     subhead:
-      'Patent / Technical Gap mode maps the prior-art landscape the same way an examiner does \u2014 ' +
+      'Patent / Technical Gap mode maps the prior-art landscape the same way an examiner does — ' +
       'but surfaces non-consensus and cross-discipline references the big patent databases miss.',
     ctas: [
       { label: 'See a Patent Gap report',  to: '/sample-report?topic=patent-gap', variant: 'primary' },
-      { label: 'Sovereign / on-prem',      to: '/sovereign',                  variant: 'secondary' },
+      { label: 'See pricing',              to: '/pricing',                    variant: 'secondary' },
     ],
-    proofLine: 'Citation Integrity Checker \u00B7 Lossless evidence aliases \u00B7 Source-diverse, not source-voluminous.',
+    proofLine: 'Citation Integrity Checker · Lossless evidence aliases · Source-diverse, not source-voluminous.',
   },
 };
 
