@@ -48,7 +48,8 @@ describe('sovereign deployment routing', () => {
       } catch (err) {
         const msg = (err as Error).message;
         expect(msg).not.toMatch(/InTellMe client is disabled/);
-        expect(msg === 'InTellMe client not configured: INTELLME_API_KEY and INTELLME_API_SECRET are required' || msg.includes('ENOTFOUND')).toBe(true);
+        // With no INTELLME_API_URL the real client is off and says so; it never falls back to a built-in address.
+        expect(msg).toBe('InTellMe client is off: INTELLME_API_URL is not set');
       }
     });
 

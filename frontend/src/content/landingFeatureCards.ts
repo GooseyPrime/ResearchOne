@@ -45,7 +45,7 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
   {
     icon: KeyRound,
     headline: 'Bring your own keys',
-    description: 'Run on your own model and search keys. Sovereign tier keeps every byte in your tenancy.',
-    metric: 'BYOK · Sovereign',
+    description: 'Run on your own model and search keys, billed by your own providers.',
+    metric: 'BYOK',
   },
 ];

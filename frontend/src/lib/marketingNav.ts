@@ -12,7 +12,6 @@ export const MARKETING_FOOTER_LINKS = {
     { to: '/pricing', label: 'Pricing' },
     { to: '/sample-report', label: 'Sample report' },
     { to: '/byok', label: 'BYOK' },
-    { to: '/sovereign', label: 'Sovereign' },
   ],
   methodology: [
     { to: '/methodology', label: 'How it works' },
