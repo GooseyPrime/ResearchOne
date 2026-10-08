@@ -764,7 +764,7 @@ export default function BillingPage() {
         {!hasProAccess ? (
           <div className="mt-3 rounded-md border border-white/5 bg-slate-800/30 p-3">
             <p className="text-sm text-slate-400">
-              Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.{' '}
+              Add-ons require an active Pro or BYOK subscription.{' '}
               <Link to="/pricing" className="text-indigo-400 hover:text-indigo-300">
                 Upgrade to unlock add-ons.
               </Link>
