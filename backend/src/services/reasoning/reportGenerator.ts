@@ -100,7 +100,7 @@ const ORDINAL_LABELS = [
  */
 const LEADING_ORDINAL = new RegExp(
   `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
-    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
+    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):–—-]\\s+)`,
   'i'
 );
 
@@ -1947,6 +1947,12 @@ ${layer1
         ? { ...section, content: removeBannedWording(section.content) }
         : section
     );
+  }
+  // The closing note is code's. A redraft is handed the whole report and may hand
+  // the note back reworded; a note that states the search is put back as written.
+  if (layer1 && args.searchScopeNote) {
+    const written = withSystem.find((section) => section.key === 'about');
+    if (written) sectionsOut = sectionsOut.map((section) => (section.key === 'about' ? written : section));
   }
   if (layer1) {
     sectionsOut = sectionsOut.map((section) => ({ ...section, content: stripMachineFiller(section.content) }));
