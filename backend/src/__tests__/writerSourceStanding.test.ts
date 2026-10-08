@@ -61,7 +61,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport, removeBannedWording } from '../services/reasoning/reportGenerator';
+import { cleanLayer1WordingForSave, generateIterativeReport, removeBannedWording } from '../services/reasoning/reportGenerator';
 import { AUTHORITY_INSTRUCTION, formatLockedContext, issuePassages, STANDING_FOR_WRITER, type LockedPassage } from '../services/reasoning/citationLock';
 import { readerFacingLabelHits, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
 
@@ -187,6 +187,24 @@ describe('a source ranked by tier in the report text', () => {
     expect(removeBannedWording('The regulator is a tier 1 source [P1].')).toBe('The regulator is a source [P1].');
     expect(removeBannedWording('Two sources in tier 2 disagree.')).toBe('Two sources disagree.');
     expect(removeBannedWording('Tier 2 cities grew fastest.')).toBe('Tier 2 cities grew fastest.');
+    // Every form the check flags is taken out, in any case.
+    expect(removeBannedWording('t1 evidence points the other way.')).toBe('evidence points the other way.');
+    expect(removeBannedWording('Its authority level is high.')).toBe('Its standing is high.');
+    for (const text of ['The regulator is a tier 1 source.', 't1 evidence points the other way.', 'Its authority level is high.']) {
+      expect(readerFacingLabelHits(removeBannedWording(text))).not.toContain('source rank');
+    }
+  });
+
+  it('leaves a source\'s own words inside a quotation as it said them', () => {
+    expect(removeBannedWording('The first is a tier 1 source; the agency calls itself "a tier 1 source of data".')).toBe(
+      'The first is a source; the agency calls itself "a tier 1 source of data".'
+    );
+  });
+
+  it('is cleaned in the last check before an unlocked report is saved', () => {
+    const saved = cleanLayer1WordingForSave('## Findings\n\nThe regulator is a tier 1 source [1].');
+    expect(saved.markdown).toContain('The regulator is a source [1].');
+    expect(saved.wordingAfter).toEqual([]);
   });
 });
 

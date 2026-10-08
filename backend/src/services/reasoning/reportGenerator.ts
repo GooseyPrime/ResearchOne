@@ -925,6 +925,23 @@ export { stripInternalLabelsFromReport };
  * plain wording, and take grade labels out; link labels included. Code in every Markdown form and link
  * destinations are not read and not changed.
  */
+/**
+ * Slice 6. Takes out a tier rating of a source, in every form the presentation
+ * check flags, and keeps the sentence: "a tier 1 source" becomes "a source",
+ * "sources in tier 2" becomes "sources", "T1 evidence" becomes "evidence", and
+ * "authority level" becomes "standing". "Tier 2 cities" is prose and is kept.
+ * Applied only outside quotations: a source's own words are left as it said them.
+ */
+export function withoutSourceRank(text: string): string {
+  return text
+    .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
+    .replace(/[ \t]+(?:of|at|in|from)[ \t]+(?:authority[ \t]+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
+      /\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)$/i.test(whole.slice(0, offset)) ? '' : phrase
+    )
+    .replace(/\bT[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/gi, '')
+    .replace(/\bauthority[ \t]+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
+}
+
 export function removeBannedWording(content: string): string {
   // Each word is swapped for a plain one that fits the same place in the
   // sentence, so the sentence still reads. A grade token is a label, not a
@@ -951,19 +968,13 @@ export function removeBannedWording(content: string): string {
       })
       .replace(/\bcase (for|against)\b/gi, 'argument $1')
       .replace(/\bthis report synthesizes evidence\b/gi, 'This report draws on evidence')
-      // Slice 6. A tier number tied to a source is a rating the reader is never shown.
-      .replace(/\b(?:authority[- ])?(?:tier|level)[- ]?[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\b)/gi, '')
-      .replace(/[ \t]+(?:of|at|in|from)[ \t]+(?:authority[ \t]+)?(?:tier|level)[- ]?[1-4]\b/gi, (phrase, offset: number, whole: string) =>
-        /\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)$/i.test(whole.slice(0, offset)) ? '' : phrase
-      )
-      .replace(/\bT[1-4][ \t]+(?=(?:sources?|evidence|records?|stud(?:y|ies))\b)/g, '')
       .replace(/\bthe evidence establishes\b/gi, (phrase) => (phrase[0] === 'T' ? 'The sources show' : 'the sources show'))
       .replace(/\btestimony[- ]tier\b/gi, 'first-hand'),
       (sentenceStart) => (sentenceStart ? 'This analysis' : 'this analysis')
     );
 
   // The report's own wording only: a direct quotation keeps the source's words.
-  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
+  const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), (part) => plainClaimWords(withoutSourceRank(part)));
   // A link's label is prose the reader sees; its destination is not.
   return mapCitationProse(mapLinkLabels(content, cleanOwnWords), cleanOwnWords);
 }
@@ -1020,7 +1031,7 @@ export function finalizeLockedReportForSave(
   return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
 }
 
-const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label']);
+const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label', 'source rank']);
 
 /**
  * The same last check for a Layer 1 report written without the citation lock.
