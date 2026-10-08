@@ -111,7 +111,8 @@ export default function PlanCheckoutOptions({
               </p>
               <p className="mt-1 text-xs text-slate-500">{plan.summary}</p>
               {purchasable ? (
-                <div className="mt-3 flex gap-2">
+                <>
+                  <div className="mt-3 flex gap-2">
                   {monthlyPriceId ? (
                     <button
                       type="button"
@@ -130,7 +131,11 @@ export default function PlanCheckoutOptions({
                       Annual (save 17%)
                     </button>
                   ) : null}
-                </div>
+                  </div>
+                  {/* Both prices are quoted above, so a period without one says so. */}
+                  {!monthlyPriceId ? <NotYetAvailable className="mt-2" subject="Monthly billing" /> : null}
+                  {!annualPriceId ? <NotYetAvailable className="mt-2" subject="Annual billing" /> : null}
+                </>
               ) : (
                 <NotYetAvailable className="mt-3" />
               )}

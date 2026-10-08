@@ -7,7 +7,10 @@ import NotYetAvailable from '../components/billing/NotYetAvailable';
 import {
   addonUnavailable,
   planUnavailable,
+  unavailablePlanPeriods,
+  unavailableTokenPacks,
   usePricingVisitorState,
+  type BillingPeriod,
   type PurchasableAddon,
 } from '../lib/billing/availability';
 
@@ -68,6 +71,11 @@ const ADD_ONS: AddOn[] = [
   },
 ];
 
+const PERIOD_LABEL: Record<BillingPeriod, string> = {
+  monthly: 'Monthly billing',
+  annual: 'Annual billing',
+};
+
 const BUY_LINK_CLASS =
   'mt-4 inline-flex rounded-md bg-r1-accent px-3 py-2 text-sm font-semibold text-r1-bg transition hover:bg-r1-accent-deep';
 
@@ -77,6 +85,11 @@ export default function PricingPage() {
   const { availability, signedIn } = usePricingVisitorState();
   const proUnavailable = planUnavailable(availability, 'pro');
   const byokUnavailable = planUnavailable(availability, 'byok');
+  // Each card quotes specific prices; a quoted price that cannot be bought is
+  // named, even when the plan or add-on as a whole still can be.
+  const proMissingPeriods = unavailablePlanPeriods(availability, 'pro', ['monthly', 'annual']);
+  const byokMissingPeriods = unavailablePlanPeriods(availability, 'byok', ['monthly']);
+  const missingTokenPacks = unavailableTokenPacks(availability);
 
   return (
     <div className="min-h-screen bg-r1-bg text-r1-text">
@@ -102,7 +115,14 @@ export default function PricingPage() {
             cta="Subscribe"
             featured
             comingSoon={proUnavailable}
-            ctaSlot={<SubscribeCTA tier="pro" cta="Subscribe" marketingStatic signedIn={signedIn} />}
+            ctaSlot={
+              <div>
+                <SubscribeCTA tier="pro" cta="Subscribe" marketingStatic signedIn={signedIn} />
+                {proMissingPeriods.map((period) => (
+                  <NotYetAvailable key={period} tone="marketing" className="mt-3" subject={PERIOD_LABEL[period]} />
+                ))}
+              </div>
+            }
           />
           <PricingCard
             title="Team"
@@ -120,6 +140,9 @@ export default function PricingPage() {
             ctaSlot={
               <div>
                 <SubscribeCTA tier="byok" cta="Subscribe" marketingStatic signedIn={signedIn} />
+                {byokMissingPeriods.map((period) => (
+                  <NotYetAvailable key={period} tone="marketing" className="mt-3" subject={PERIOD_LABEL[period]} />
+                ))}
                 <p className="mt-3 text-xs text-r1-text-muted">
                   You add your model keys right after checkout.{' '}
                   <Link to="/byok" className="text-r1-accent hover:underline">
@@ -168,9 +191,16 @@ export default function PricingPage() {
                   addonUnavailable(availability, addon.buy.addon) ? (
                     <NotYetAvailable tone="marketing" className="mt-4" />
                   ) : (
-                    <Link to={addon.buy.to} className={BUY_LINK_CLASS} data-addon-buy={addon.buy.addon}>
-                      {addon.buy.label}
-                    </Link>
+                    <div>
+                      <Link to={addon.buy.to} className={BUY_LINK_CLASS} data-addon-buy={addon.buy.addon}>
+                        {addon.buy.label}
+                      </Link>
+                      {addon.buy.addon === 'living_report'
+                        ? missingTokenPacks.map((pack) => (
+                            <NotYetAvailable key={pack} tone="marketing" className="mt-3" subject={pack} />
+                          ))
+                        : null}
+                    </div>
                   )
                 ) : null}
                 {addon.inquiry ? (
