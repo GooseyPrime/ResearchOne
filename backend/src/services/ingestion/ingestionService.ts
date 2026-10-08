@@ -284,27 +284,45 @@ export async function fillReferenceDetails(
 
 /**
  * Slice 6. Records a source's authority tier. A tier already recorded is kept.
- * Its own statement, after the source is stored. A database without migration
- * 060 answers with an unknown column: that loses the tier and never the source.
- * Any other failure is thrown, so a job that could not record the tier fails
- * and is retried rather than finishing with the tier quietly missing. Callers
- * decide whether the switch is on; with it off this is never reached with a tier.
+ * Its own statement, after the source is stored.
+ *
+ * The tier is never worth the source. A database without migration 060 answers
+ * with an unknown column: the tier is skipped. Any other failure is tried again
+ * twice, a moment apart; if it still fails it is logged as an error and the job
+ * goes on. Failing the job instead would mark it failed, and discovery stops
+ * waiting for a failed job and drops a source that is in fact stored. A tier
+ * that is missing is not lost: it follows from the same rules and the stored
+ * address, and is worked out again wherever it is read.
  */
-/** A tier that could not be written. Thrown past any handler that would treat it as one page failing. */
-export class AuthorityTierWriteError extends Error {
-  constructor(readonly sourceId: string, readonly cause: unknown) {
-    super(`could not record the authority tier of source ${sourceId}: ${cause instanceof Error ? cause.message : String(cause)}`);
-    this.name = 'AuthorityTierWriteError';
-  }
-}
+export const AUTHORITY_TIER_RETRY_DELAYS_MS = [250, 1000] as const;
 
-export async function recordAuthorityTier(sourceId: string, tier: AuthorityTier | null): Promise<void> {
+export async function recordAuthorityTier(
+  sourceId: string,
+  tier: AuthorityTier | null,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<void> {
   if (tier === null) return;
-  try {
-    await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
-  } catch (err) {
-    if ((err as { code?: string })?.code !== '42703') throw new AuthorityTierWriteError(sourceId, err);
-    logger.warn('ingestion: the authority tier column is not there yet; the tier was not recorded', { sourceId, tier });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
+      return;
+    } catch (err) {
+      if ((err as { code?: string })?.code === '42703') {
+        logger.warn('ingestion: the authority tier column is not there yet; the tier was not recorded', { sourceId, tier });
+        return;
+      }
+      const delay = AUTHORITY_TIER_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        logger.error('ingestion: could not record the authority tier of a source', {
+          sourceId,
+          tier,
+          attempts: attempt + 1,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      await wait(delay);
+    }
   }
 }
 
@@ -507,8 +525,6 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
   });
 
   // Last, once the source, its passages and their embedding job are all in place.
-  // A failure here fails the job; its retry finds the stored source and records
-  // the tier then, without storing anything twice.
   await recordAuthorityTier(sourceId, tierForIngest(data, { kind: bibliographic?.kind, provider: bibliographic?.provider, url: pageUrl }));
   return { sourceId, chunkCount: chunks.length, duplicate: false };
 }
@@ -601,9 +617,6 @@ async function runSiteCrawlIngestion(
       if (result.duplicate) skippedDuplicate += 1;
       else ingested += 1;
     } catch (err) {
-      // A page that was stored but whose tier could not be written fails the
-      // crawl, so the retry records it, instead of counting as one lost page.
-      if (err instanceof AuthorityTierWriteError) throw err;
       failed += 1;
       logger.warn('site_crawl_page_failed', {
         pageUrl,

@@ -170,7 +170,8 @@ describe('the authority tier through discovery', () => {
   it('goes on with the run when a stored source\'s tier cannot be written', async () => {
     h.failTier = true;
     const summary = await runWithFlags(TIERS_ON, discover);
-    expect(tierWrites()).toHaveLength(1);
+    // Tried three times, then logged.
+    expect(tierWrites()).toHaveLength(3);
     expect(h.queued).toHaveLength(1);
     expect(summary.sources.find((source) => source.url === STORED_URL)?.skipReason).toBe('already_in_corpus');
   });

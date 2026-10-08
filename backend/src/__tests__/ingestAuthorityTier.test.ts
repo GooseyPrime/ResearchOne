@@ -7,12 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const STORED_ID = '99999999-9999-4999-8999-999999999999';
 const NEW_ID = '11111111-1111-4111-8111-111111111111';
-const h = vi.hoisted(() => ({ queries: [] as Array<{ sql: string; params: unknown[] }>, stored: true, storedUrl: null as string | null, failTier: '' as '' | '42703' | 'other' }));
+const h = vi.hoisted(() => ({ queries: [] as Array<{ sql: string; params: unknown[] }>, stored: true, storedUrl: null as string | null, failTier: '' as '' | '42703' | 'other', failTimes: Infinity }));
 
 const record = (sql: string, params: unknown[] = []) => {
   h.queries.push({ sql, params });
   if (h.failTier === '42703' && /authority_tier/.test(sql)) throw Object.assign(new Error('column "authority_tier" does not exist'), { code: '42703' });
-  if (h.failTier === 'other' && /authority_tier/.test(sql)) throw Object.assign(new Error('permission denied for table sources'), { code: '42501' });
+  if (h.failTier === 'other' && /authority_tier/.test(sql) && h.failTimes-- > 0) throw Object.assign(new Error('connection reset'), { code: '08006' });
 };
 
 vi.mock('../db/pool', () => ({
@@ -36,7 +36,7 @@ vi.mock('../queue/queues', () => ({
 }));
 
 import { runWithFlags } from '../config/runFlags';
-import { recordAuthorityTier, runIngestionJob, tierForIngest, tierForStoredDuplicate } from '../services/ingestion/ingestionService';
+import { AUTHORITY_TIER_RETRY_DELAYS_MS, recordAuthorityTier, runIngestionJob, tierForIngest, tierForStoredDuplicate } from '../services/ingestion/ingestionService';
 
 const job = (extra: Record<string, unknown> = {}) =>
   runIngestionJob(
@@ -60,6 +60,7 @@ describe('recording a source\'s authority tier at ingest', () => {
     h.queries.length = 0;
     h.stored = true;
     h.failTier = '';
+    h.failTimes = Infinity;
     h.storedUrl = null;
     delete process.env.AUTHORITY_TIERS_ENABLED;
   });
@@ -110,19 +111,42 @@ describe('recording a source\'s authority tier at ingest', () => {
     expect(h.queries.filter((entry) => /SET status='failed'/.test(entry.sql))).toHaveLength(0);
   });
 
-  it('fails the job on any other failure, after everything else is stored, so a retry records the tier', async () => {
-    h.failTier = 'other';
+  it('writes the tier last, after the passages and their embedding job', async () => {
     h.stored = false;
-    await expect(on(job)).rejects.toThrow('permission denied');
-    // The passages were stored and queued before the tier was written.
+    await on(job);
     const order = h.queries.map((entry) => entry.sql);
     const lastChunk = order.map((sql, at) => (/INSERT INTO chunks/.test(sql) ? at : -1)).reduce((a, b) => Math.max(a, b), -1);
-    const tierAt = order.findIndex((sql) => /authority_tier/.test(sql));
     const queuedAt = order.indexOf('QUEUE embed-chunks');
+    const tierAt = order.findIndex((sql) => /authority_tier/.test(sql));
     expect(lastChunk).toBeGreaterThan(-1);
-    // Passages stored, then their embedding job queued, then the tier.
     expect(queuedAt).toBeGreaterThan(lastChunk);
     expect(tierAt).toBeGreaterThan(queuedAt);
+  });
+
+  it('tries a failed tier write again and records it when the database comes back', async () => {
+    h.failTier = 'other';
+    h.failTimes = 1;
+    h.stored = false;
+    await expect(on(job)).resolves.toMatchObject({ sourceId: NEW_ID });
+    expect(tierWrites()).toHaveLength(2);
+  });
+
+  it('never fails the job over the tier: after three tries it is logged and the job completes', async () => {
+    // A failed job would make discovery stop waiting and drop a source that is stored.
+    h.failTier = 'other';
+    h.stored = false;
+    await expect(on(job)).resolves.toMatchObject({ sourceId: NEW_ID, chunkCount: expect.any(Number) });
+    expect(tierWrites()).toHaveLength(3);
+    expect(h.queries.filter((entry) => /SET status='failed'/.test(entry.sql))).toHaveLength(0);
+    expect(h.queries.filter((entry) => /SET status='completed'/.test(entry.sql))).toHaveLength(1);
+  });
+
+  it('waits between tries and stops after the last', async () => {
+    h.failTier = 'other';
+    const waited: number[] = [];
+    await recordAuthorityTier(STORED_ID, 1, async (ms) => { waited.push(ms); });
+    expect(waited).toEqual([...AUTHORITY_TIER_RETRY_DELAYS_MS]);
+    expect(tierWrites()).toHaveLength(AUTHORITY_TIER_RETRY_DELAYS_MS.length + 1);
   });
 
   it('a person\'s upload cannot raise its own tier', async () => {
