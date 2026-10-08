@@ -135,11 +135,21 @@ function numberOf(citationText: string | null): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/** A stored finding: the passage it is filed under, and every passage recorded as supporting it. */
+export interface ReaderClaimRow {
+  id: string;
+  claim_text: string;
+  evidence_tier: string | null;
+  source_id: string | null;
+  chunk_id: string | null;
+  supporting_chunk_ids?: string[] | null;
+}
+
 /** Assemble the page's data from the stored rows. Kept apart from the reads so it can be tested without a database. */
 export function buildReaderEvidence(args: {
   status: ReaderStatus;
   citationRows: CitationRow[];
-  claimRows: Array<{ id: string; claim_text: string; evidence_tier: string | null; source_id: string | null; chunk_id: string | null }>;
+  claimRows: ReaderClaimRow[];
   /** The run's passages in the order the writer was shown them: an older report's "Chunk N" is the N-th. */
   passageOrder?: string[];
 }): ReaderEvidence {
@@ -172,15 +182,17 @@ export function buildReaderEvidence(args: {
     });
   }
   // A finding belongs on the Evidence tab only when a citation of THIS report
-  // is bound to it: by the finding itself, or by the passage it was drawn
-  // from. Its sources and passages are those citations', nothing else. A
+  // is bound to it: by the finding itself, or by a passage it was drawn
+  // from. A finding can rest on several passages and is filed under one; the
+  // report may cite any of them, so all of them are looked at. Its sources and passages are those citations', nothing else. A
   // revision keeps its base report's run, so the run's findings are not all
   // the revision's; its own citations decide. Another finding from a cited
   // source, drawn from a passage the report never cites, is not listed.
   const findings: ReaderFinding[] = [];
   for (const claim of args.claimRows) {
     if (!claim.claim_text.trim()) continue;
-    const bound = ordered.filter((row) => row.claim_id === claim.id || (claim.chunk_id !== null && row.chunk_id === claim.chunk_id));
+    const passages = new Set<string>([claim.chunk_id, ...(Array.isArray(claim.supporting_chunk_ids) ? claim.supporting_chunk_ids : [])].filter((id): id is string => typeof id === 'string' && id.length > 0));
+    const bound = ordered.filter((row) => row.claim_id === claim.id || (row.chunk_id !== null && passages.has(row.chunk_id)));
     if (bound.length === 0) continue;
     findings.push({
       text: stripInternalLabelsFromReport(claim.claim_text.trim()),
@@ -226,12 +238,12 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
     logger.debug(`[reader:${report.id}] Reading citations without the editorial notice (deploy skew)`);
     citationRows = await read<CitationRow>(select(''), [report.id]);
   }
-  let claimRows: Array<{ id: string; claim_text: string; evidence_tier: string | null; source_id: string | null; chunk_id: string | null }> = [];
+  let claimRows: ReaderClaimRow[] = [];
   let run: { status: string | null; gate_status: string | null; retrieval_ids: string[] | null } | undefined;
   if (report.run_id) {
     try {
       claimRows = await read(
-        `SELECT id, claim_text, evidence_tier::text AS evidence_tier, source_id, chunk_id
+        `SELECT id, claim_text, evidence_tier::text AS evidence_tier, source_id, chunk_id, supporting_chunk_ids
            FROM claims WHERE run_id = $1 AND claim_text IS NOT NULL ORDER BY created_at ASC LIMIT 200`,
         [report.run_id]
       );
