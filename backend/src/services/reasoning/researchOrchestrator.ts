@@ -3547,6 +3547,7 @@ ${reportForGates(generatedReport.markdown)}`,
         logger.error(`Research run ${runId}: fallback failure UPDATE also failed`, fallbackErr);
       }
     }
+
     // Best-effort: set workspace retention expiry for the terminal run.
     // Deploy-skew safe — markRunTerminalRetention catches 42703.
     try {
