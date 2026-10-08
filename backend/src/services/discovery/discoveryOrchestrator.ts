@@ -674,7 +674,14 @@ async function runDiscoveryOrchestratorInner(args: {
         }
       }
       // A source stored before tiers were recorded gains one; a recorded tier is kept.
-      if (authorityTiersEnabled()) await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
+      // Optional here: the source is stored and the run goes on without its tier.
+      if (authorityTiersEnabled()) {
+        try {
+          await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
+        } catch (err) {
+          logger.warn(`[discovery:${runId}] could not record the authority tier of a stored source: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       skipped.push({
         ...candidate,
         selectionRationale: 'already in corpus',

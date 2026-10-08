@@ -34,12 +34,12 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 2. Reading page | Done | PR #257. Items 1 to 6, 9 and 10. See "Built in part 2" under slice 5. |
 | Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
 | Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
-| Slice 6, part 1. Tier rules and the stored tier | Built, in review | Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
+| Slice 6, part 1. Tier rules and the stored tier | Done | PR #260, with the last review's findings closed in a follow-up pull request. Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
 | Slices 7 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is in review. S6 governs each move.
+**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged and part 2 is next. S6 governs each move.
 
 ---
 
@@ -601,7 +601,7 @@ Acceptance:
 - The jargon gate fails on a reader-facing string containing "claims".
 - Harness: `pairwise_vs_reference` at least 0.5 on tasks with a reference report; `report_quality` at least 4.0.
 
-### Slice 6. Source authority (part 1 in review)
+### Slice 6. Source authority (part 1 merged)
 
 Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4.
 
@@ -639,7 +639,9 @@ Acceptance:
 - `backend/src/config/authorityTiers.ts` holds every rule. Rules are read top to bottom and the first match decides. A rule matches on one thing: what the provider recorded the work to be, which provider returned it, or the address it was read at, in that order, so a journal article hosted on a government site is a journal article. Each rule carries an example, and the test runs every example, so a rule cannot be added untested.
 - With the switch on, the tier is written in a statement of its own after the source is stored. A tier already recorded is kept. With the switch off no statement names the column and no job carries a tier.
 - Discovery decides the tier, inside the run, and sends it with the ingestion job. Two reasons, both found in review: a run's switches do not reach the ingestion worker, and the provider's record of what a work is gets dropped before the job is queued when the citation lock is off. When several providers return one address, the record matched by the earliest rule decides, so the tier does not depend on which provider answered first.
-- An upload or a supplied address has no run behind it. It is judged in the worker, and only when the switch is on for the whole process.
+- An upload or a supplied address has no run behind it. It is judged in the worker, by its address alone, and only when the switch is on for the whole process. A person can send any metadata with an upload, so nothing they send (a claimed kind, provider or tier) can raise a source's tier; only discovery's own jobs carry a tier.
+- When a job finds its content already stored, the tier belongs to where the stored copy was read. The job's own tier is used only when it read the same address; otherwise the stored address is judged.
+- A missing column (migration 060 not yet applied) loses the tier and keeps the source. Any other failure to write the tier fails the job, after the source, its passages and their embedding job are stored, so the retry records the tier and stores nothing twice. In discovery, a failed tier write for an already-stored source is logged and the run goes on.
 - Decisions made while building, open to change:
   - A catalogue entry or DOI link with no recorded kind is tier 3, not 2. A DOI shows a work was published, not that it was peer reviewed.
   - A source with no web address, no provider and no recorded kind (an uploaded file) gets no tier. It is unranked, not ranked last.
