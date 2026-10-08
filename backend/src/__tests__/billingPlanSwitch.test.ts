@@ -154,6 +154,33 @@ describe('switching plans changes the existing subscription', () => {
     expect(params.proration_behavior).toBe('create_prorations');
   });
 
+  it('tells Stripe to refuse the change outright if the charge it needs does not complete', async () => {
+    await switchTo({ priceId: 'price_pro_y' });
+    const params = stripeMocks.subscriptionsUpdate.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(params.payment_behavior).toBe('error_if_incomplete');
+  });
+
+  it('reports a failed charge as a failure, not as a switch', async () => {
+    stripeMocks.subscriptionsUpdate.mockRejectedValue(
+      Object.assign(new Error('Your card was declined.'), { statusCode: 402, type: 'StripeCardError' }),
+    );
+    const res = await switchTo({ priceId: 'price_pro_y' });
+    expect(res.status).toBe(402);
+    expect(res.body.code).toBe('PLAN_SWITCH_PAYMENT_FAILED');
+    expect(res.body.error).toContain('nothing was changed');
+    expect(res.body.switched).toBeUndefined();
+  });
+
+  it('does not disguise other Stripe failures as a payment problem', async () => {
+    stripeMocks.subscriptionsUpdate.mockRejectedValue(
+      Object.assign(new Error('Stripe is unavailable'), { statusCode: 503, type: 'StripeAPIError' }),
+    );
+    const res = await switchTo({ priceId: 'price_byok_m' });
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.body.code).not.toBe('PLAN_SWITCH_PAYMENT_FAILED');
+    expect(res.body.switched).toBeUndefined();
+  });
+
   it('renames the plan kept on the subscription so the webhook cannot fall back to the old one', async () => {
     await switchTo({ priceId: 'price_byok_m' });
     const params = stripeMocks.subscriptionsUpdate.mock.calls[0]?.[1] as Record<string, unknown>;
@@ -166,6 +193,32 @@ describe('switching plans changes the existing subscription', () => {
     expect(res.body.tier).toBe('pro');
     const params = stripeMocks.subscriptionsUpdate.mock.calls[0]?.[1] as { items: unknown };
     expect(params.items).toEqual([{ id: 'si_plan', price: 'price_pro_y' }]);
+  });
+});
+
+describe('two switch requests at once', () => {
+  it('lets one through and refuses the other, so the subscription is updated once', async () => {
+    let release: (value: Record<string, unknown>) => void = () => undefined;
+    stripeMocks.subscriptionsRetrieve.mockImplementationOnce(
+      () => new Promise<Record<string, unknown>>((resolve) => { release = resolve; }),
+    );
+
+    const first = switchTo({ priceId: 'price_byok_m' }).then((r) => r);
+    await vi.waitFor(() => expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledTimes(1));
+    const second = await switchTo({ priceId: 'price_byok_y' });
+    release(stripeSubscription());
+    const firstRes = await first;
+
+    expect(firstRes.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe('PLAN_SWITCH_SWITCH_IN_PROGRESS');
+    expect(stripeMocks.subscriptionsUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a later switch once the first has finished', async () => {
+    await switchTo({ priceId: 'price_byok_m' });
+    const res = await switchTo({ priceId: 'price_pro_y' });
+    expect(res.status).toBe(200);
   });
 });
 
@@ -286,6 +339,30 @@ describe('subscriptions that are not switched', () => {
     const res = await switchTo({ priceId: 'price_byok_m' });
     expect(res.status).toBe(409);
     expect(stripeMocks.subscriptionsUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a subscription whose last payment failed, by our own record', async () => {
+    subscriptionMocks.getUserSubscription.mockResolvedValue(localRow({ status: 'past_due' }));
+    const res = await switchTo({ priceId: 'price_byok_m' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PLAN_SWITCH_PAYMENT_OVERDUE');
+    expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
+    expect(stripeMocks.subscriptionsUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a subscription whose last payment failed, by Stripe’s record, before any proration', async () => {
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(stripeSubscription({ status: 'past_due' }));
+    const res = await switchTo({ priceId: 'price_byok_m' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('PLAN_SWITCH_PAYMENT_OVERDUE');
+    expect(stripeMocks.subscriptionsUpdate).not.toHaveBeenCalled();
+  });
+
+  it('lets a subscriber on a trial switch', async () => {
+    subscriptionMocks.getUserSubscription.mockResolvedValue(localRow({ status: 'trialing' }));
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(stripeSubscription({ status: 'trialing' }));
+    const res = await switchTo({ priceId: 'price_byok_m' });
+    expect(res.status).toBe(200);
   });
 
   it('refuses a subscription that is set to end', async () => {

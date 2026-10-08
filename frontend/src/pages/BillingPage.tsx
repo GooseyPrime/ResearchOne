@@ -244,7 +244,8 @@ export default function BillingPage() {
       setSwitchError(null);
       setPendingSwitch(null);
       setSwitchedTo(choice);
-      for (const delayMs of [0, 2000, 5000, 10000, 20000]) {
+      // Keeps reading for the full minute the message below promises.
+      for (const delayMs of [0, 2000, 5000, 10000, 20000, 40000, 60000]) {
         window.setTimeout(() => {
           void queryClient.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
           void queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
@@ -265,9 +266,13 @@ export default function BillingPage() {
       subRow.stripeSubscriptionId,
   );
   const canCancel = hasActiveSubscription && !subQuery.data?.cancelAtPeriodEnd;
-  // Only Pro and BYOK subscriptions can be switched from this page, and not one already set to end.
+  // Only Pro and BYOK subscriptions can be switched from this page, and not one
+  // already set to end or with a payment outstanding (the server refuses both).
+  const paidUp = subRow?.status === 'active' || subRow?.status === 'trialing';
   const switchableTier =
-    hasActiveSubscription && !subRow?.cancelAtPeriodEnd && isSwitchablePlan(subRow?.tier) ? subRow.tier : null;
+    hasActiveSubscription && paidUp && !subRow?.cancelAtPeriodEnd && isSwitchablePlan(subRow?.tier)
+      ? subRow.tier
+      : null;
 
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
   const { hasProAccess, tierGateUnknown } = useHasProAccess();
@@ -377,7 +382,8 @@ export default function BillingPage() {
             Your subscription is now {PLAN_LABEL[switchedTo.tier]}, {switchedTo.period} billing.
           </p>
           <p className="mt-1 text-emerald-100/80">
-            The plan shown on this page updates within a minute. The difference in price appears on your next bill.
+            The plan shown on this page updates within a minute. Any difference in price is on your next bill, or
+            was billed today if you changed between monthly and annual billing.
           </p>
           {switchedTo.tier === 'byok' ? (
             <Link to="/app/byok" className="mt-2 inline-block underline hover:text-white">
