@@ -179,7 +179,7 @@ export async function extractAndPersistClaims(args: {
   const batches = passagesForExtraction(chunks, citedIds);
 
   const claims: ExtractedClaim[] = [];
-  const seenClaims = new Set<string>();
+  const seenClaims = new Map<string, ExtractedClaim>();
 
   for (const [index, batch] of batches.entries()) {
     const chunkContext = batch
@@ -211,9 +211,19 @@ export async function extractAndPersistClaims(args: {
       for (const claim of parsed ?? []) {
         if (!(claim.claim_text && claim.evidence_tier && typeof claim.confidence === 'number')) continue;
         // A later call reads further passages of the same report and may restate a finding already taken.
+        // It is kept once, and the passages the later call names for it are added to it:
+        // they are that finding's too, and the reading page lists a finding's passages from them.
         const key = batches.length > 1 ? claim.claim_text.trim().toLowerCase() : '';
-        if (key && seenClaims.has(key)) continue;
-        if (key) seenClaims.add(key);
+        const earlier = key ? seenClaims.get(key) : undefined;
+        if (earlier) {
+          const merged = Array.isArray(earlier.supporting_chunk_ids) ? [...earlier.supporting_chunk_ids] : [];
+          for (const id of Array.isArray(claim.supporting_chunk_ids) ? claim.supporting_chunk_ids : []) {
+            if (!merged.includes(id)) merged.push(id);
+          }
+          earlier.supporting_chunk_ids = merged;
+          continue;
+        }
+        if (key) seenClaims.set(key, claim);
         claims.push(claim);
       }
     } catch (err) {

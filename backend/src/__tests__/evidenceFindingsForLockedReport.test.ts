@@ -232,7 +232,7 @@ describe('a report that cites more passages than one call is shown', () => {
   it('reads every cited passage, in further calls, and files the findings of each', async () => {
     mocks.callRoleModel
       .mockResolvedValueOnce(reply([finding('A finding from the first passages.', MANY[0].id)]))
-      .mockResolvedValueOnce(reply([finding('A finding from the 61st passage.', MANY[60].id), finding('a finding from the first passages.', MANY[0].id)]))
+      .mockResolvedValueOnce(reply([finding('A finding from the 61st passage.', MANY[60].id), finding('a finding from the first passages.', MANY[70].id)]))
       .mockResolvedValueOnce(reply([finding('A finding from the last passage.', MANY[129].id)]));
     const findings = await extractMany();
     expect(mocks.callRoleModel).toHaveBeenCalledTimes(3);
@@ -243,9 +243,17 @@ describe('a report that cites more passages than one call is shown', () => {
     expect(prompts[2]).toContain('"Quoted from Source 130."');
     expect(prompts[0]).not.toContain('These are further chunks the same report cites.');
     expect(prompts[1]).toContain('These are further chunks the same report cites.');
-    // A finding restated by a later call is taken once.
+    // A finding restated by a later call is taken once, and keeps the passages both calls named for it.
     expect(findings.map((entry) => entry.claim_text)).toEqual(['A finding from the first passages.', 'A finding from the 61st passage.', 'A finding from the last passage.']);
     expect(storedFindings().map((row) => row.chunk_id)).toEqual([MANY[0].id, MANY[60].id, MANY[129].id]);
+    expect(storedFindings()[0].supporting_chunk_ids).toEqual([MANY[0].id, MANY[70].id]);
+    // So the reading page lists it with the passage cited on the far side of the call boundary as well.
+    const page = buildReaderEvidence({
+      status: { word: 'Ready', reason: null },
+      citationRows: [citationRow({ chunk_id: MANY[0].id, chunk_quote: 'Quoted from Source 1.' }), citationRow({ citation_order: 1, chunk_id: MANY[70].id, chunk_quote: 'Quoted from Source 71.' })] as never,
+      claimRows: storedFindings().slice(0, 1),
+    });
+    expect(page.findings[0].quotes).toEqual(['Quoted from Source 1.', 'Quoted from Source 71.']);
   });
 
   it('keeps the findings it has when a later call fails', async () => {
