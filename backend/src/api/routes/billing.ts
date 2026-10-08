@@ -36,6 +36,11 @@ import { getBillingHistory } from '../../services/billing/billingEventsService';
 import { isTierName } from '../../config/tierRules';
 import { getAddonCatalog } from '../../services/billing/addonCatalog';
 import {
+  ADDON_SUBSCRIPTION_REQUIRED_MESSAGE,
+  resolveAddonEligibility,
+} from '../../services/billing/addonEligibility';
+import { getPurchaseAvailability } from '../../services/billing/purchaseAvailability';
+import {
   isSheerIdProgramConfigured,
   isStudentDevBypassAvailable,
   isStudentVerified,
@@ -43,6 +48,16 @@ import {
 } from '../../services/billing/studentVerificationService';
 
 const router = Router();
+
+/**
+ * Public: which listed prices can be bought on this deployment. Registered
+ * before `requireAuth` on purpose, because the public pricing page asks it for
+ * signed-out visitors. It returns booleans only (no price ids, nothing about
+ * the caller), so there is nothing here to protect.
+ */
+router.get('/availability', (_req, res) => {
+  res.json(getPurchaseAvailability());
+});
 
 router.use(requireAuth);
 
@@ -146,7 +161,21 @@ router.post('/monitor-tokens/checkout', async (req, res, next) => {
     const packageId = String(req.body?.packageId ?? '').trim();
     const pkg = resolveMonitorTokenPackage(packageId);
     if (!pkg) {
-      res.status(400).json({ error: 'Invalid token package' });
+      // An unknown id and a pack whose Stripe price is not set on this
+      // deployment both land here; neither can be sold.
+      res.status(400).json({ error: 'Invalid token package', code: 'ADDON_NOT_AVAILABLE' });
+      return;
+    }
+
+    // Eligibility is decided before any Stripe customer or session is created,
+    // so a refused request leaves nothing behind in Stripe.
+    const eligibility = await resolveAddonEligibility(userId);
+    if (!eligibility.eligible) {
+      res.status(403).json({
+        error: ADDON_SUBSCRIPTION_REQUIRED_MESSAGE,
+        code: 'ADDON_SUBSCRIPTION_REQUIRED',
+        upgradePath: '/app/billing',
+      });
       return;
     }
 
@@ -376,6 +405,18 @@ router.post('/checkout/confirm', async (req, res, next) => {
       return;
     }
 
+    // What this session bought, so the page can tell a new plan from a top-up
+    // or a token pack without inferring it from the resulting tier.
+    const sessionMeta = session.metadata ?? {};
+    const confirmedCheckout: { kind: 'plan' | 'addon' | 'monitor_tokens' | 'topup'; tier: string | null } =
+      session.mode === 'subscription'
+        ? sessionMeta.monitor_kind
+          ? { kind: 'addon', tier: null }
+          : { kind: 'plan', tier: sessionMeta.tier ?? null }
+        : sessionMeta.purchase_type === 'monitor_tokens' || sessionMeta.checkout_kind === 'monitor_tokens'
+          ? { kind: 'monitor_tokens', tier: null }
+          : { kind: 'topup', tier: null };
+
     if (session.mode === 'subscription') {
       if (session.status !== 'complete') {
         res.status(402).json({
@@ -445,7 +486,7 @@ router.post('/checkout/confirm', async (req, res, next) => {
 
     const view = await getBillingSubscriptionView(userId);
     const tokenBalance = await getMonitorTokenBalance(userId);
-    res.json({ ...view, monitorTokens: tokenBalance });
+    res.json({ ...view, monitorTokens: tokenBalance, confirmedCheckout });
   } catch (err) {
     next(err);
   }

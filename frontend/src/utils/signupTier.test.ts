@@ -11,4 +11,9 @@ describe('signup tier availability', () => {
     expect(parseSignupTierFromSearch('?tier=pro')).toBe('pro');
     expect(onboardingRedirectFromSignupTierParam('pro')).toBe('/onboarding?tier=pro');
   });
+
+  it('carries a BYOK sign-up through onboarding to checkout', () => {
+    expect(parseSignupTierFromSearch('?tier=byok')).toBe('byok');
+    expect(onboardingRedirectFromSignupTierParam('byok')).toBe('/onboarding?tier=byok');
+  });
 });

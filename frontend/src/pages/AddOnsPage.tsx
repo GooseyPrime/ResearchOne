@@ -11,6 +11,7 @@ import api, {
 import { useHasProAccess } from '../hooks/useHasProAccess';
 import ReportSubscribeModal from '../components/addons/ReportSubscribeModal';
 import LivingReportSubscribeModal from '../components/addons/LivingReportSubscribeModal';
+import NotYetAvailable from '../components/billing/NotYetAvailable';
 import { RESEARCH_ADDONS_QUERY_KEY } from '../utils/researchRunAddons';
 
 export type AddonCatalogEntry = {
@@ -163,6 +164,7 @@ export default function AddOnsPage() {
                   ) : null}
                   {addon.comingSoon ? null : hasProAccess && addon.monitorKind ? (
                     addon.billingModel === 'token_pack' ? (
+                      <>
                       <button
                         type="button"
                         className="btn text-xs"
@@ -176,6 +178,16 @@ export default function AddOnsPage() {
                       >
                         Activate on a report
                       </button>
+                      {addon.stripeConfigured ? (
+                        <Link to="/app/billing#monitor-tokens" className="btn-ghost text-xs">
+                          Buy tokens
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          Token packs: <NotYetAvailable />
+                        </div>
+                      )}
+                      </>
                     ) : addon.stripeConfigured ? (
                       <button
                         type="button"
@@ -191,7 +203,7 @@ export default function AddOnsPage() {
                         Subscribe to a report
                       </button>
                     ) : (
-                      <span className="text-xs text-amber-400">Stripe price not configured on server</span>
+                      <NotYetAvailable className="self-center" />
                     )
                   ) : !hasProAccess ? (
                     <Link to="/app/billing" className="btn text-xs">
