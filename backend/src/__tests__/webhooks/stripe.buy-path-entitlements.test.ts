@@ -222,9 +222,11 @@ describe('BYOK plan', () => {
 });
 
 describe('Living Report token packs', () => {
-  const tokenSession = (pack: string, price: string, count: string) => ({
+  const tokenSession = (pack: string, price: string, count: string, paymentStatus = 'paid') => ({
     id: `cs_${pack}`,
     mode: 'payment',
+    status: 'complete',
+    payment_status: paymentStatus,
     client_reference_id: 'user_1',
     metadata: {
       user_id: 'user_1',
@@ -269,6 +271,44 @@ describe('Living Report token packs', () => {
       data: { object: tokenSession('pack_1', 'price_tok_1', '10') },
     });
     expect(h.creditMonitorTokens).toHaveBeenCalledWith(expect.objectContaining({ tokenCount: 1 }));
+  });
+
+  it('credits nothing while a delayed payment is still unpaid', async () => {
+    const out = await deliver({
+      id: 'evt_tok_unpaid',
+      type: 'checkout.session.completed',
+      data: { object: tokenSession('pack_5', 'price_tok_5', '5', 'unpaid') },
+    });
+    expect(out.body.status).toBe('processed');
+    expect(h.creditMonitorTokens).not.toHaveBeenCalled();
+    expect(h.creditWalletFromCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('credits once when the delayed payment later succeeds', async () => {
+    await deliver({
+      id: 'evt_tok_pending',
+      type: 'checkout.session.completed',
+      data: { object: tokenSession('pack_5', 'price_tok_5', '5', 'unpaid') },
+    });
+    const out = await deliver({
+      id: 'evt_tok_settled',
+      type: 'checkout.session.async_payment_succeeded',
+      data: { object: tokenSession('pack_5', 'price_tok_5', '5', 'paid') },
+    });
+    expect(out.body.status).toBe('processed');
+    expect(h.creditMonitorTokens).toHaveBeenCalledTimes(1);
+    expect(h.creditMonitorTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenCount: 5, idempotencyKey: 'stripe_monitor_tokens_cs_pack_5' }),
+    );
+  });
+
+  it('credits a fully discounted pack (nothing left to pay)', async () => {
+    await deliver({
+      id: 'evt_tok_free',
+      type: 'checkout.session.completed',
+      data: { object: tokenSession('pack_1', 'price_tok_1', '1', 'no_payment_required') },
+    });
+    expect(h.creditMonitorTokens).toHaveBeenCalledTimes(1);
   });
 
   it('a replayed event credits once', async () => {

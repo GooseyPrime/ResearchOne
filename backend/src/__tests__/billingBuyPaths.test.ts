@@ -33,13 +33,15 @@ vi.mock('../middleware/clerkAuth', async (importOriginal) => {
   };
 });
 
-const stripeMocks = vi.hoisted(() => ({ sessionsCreate: vi.fn() }));
+const stripeMocks = vi.hoisted(() => ({ sessionsCreate: vi.fn(), sessionsRetrieve: vi.fn() }));
 
 vi.mock('../services/billing/stripeClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/billing/stripeClient')>();
   return {
     ...actual,
-    getStripeClient: () => ({ checkout: { sessions: { create: stripeMocks.sessionsCreate } } }),
+    getStripeClient: () => ({
+      checkout: { sessions: { create: stripeMocks.sessionsCreate, retrieve: stripeMocks.sessionsRetrieve } },
+    }),
   };
 });
 
@@ -53,12 +55,35 @@ vi.mock('../services/users/ensureUserRow', () => ({
 const viewMocks = vi.hoisted(() => ({ getBillingSubscriptionView: vi.fn() }));
 vi.mock('../services/billing/billingSubscriptionView', () => viewMocks);
 
+const confirmMocks = vi.hoisted(() => ({
+  creditMonitorTokensFromCheckoutSession: vi.fn(),
+  syncStripeSubscriptionToUser: vi.fn(),
+  getMonitorTokenBalance: vi.fn(),
+}));
+vi.mock('../services/billing/checkoutMonitorTokens', () => ({
+  creditMonitorTokensFromCheckoutSession: confirmMocks.creditMonitorTokensFromCheckoutSession,
+}));
+vi.mock('../services/billing/syncStripeSubscription', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/billing/syncStripeSubscription')>()),
+  syncStripeSubscriptionToUser: confirmMocks.syncStripeSubscriptionToUser,
+}));
+vi.mock('../services/billing/monitorTokenService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/billing/monitorTokenService')>()),
+  getMonitorTokenBalance: confirmMocks.getMonitorTokenBalance,
+}));
+
 import request from 'supertest';
 import testApp from '../api/app';
 import { config } from '../config';
 
 const priceIds = config.stripe.priceIds as Record<string, string>;
 const original = { ...priceIds };
+const originalSecretKey = config.stripe.secretKey;
+
+const BOTH = { monthly: true, annual: true };
+const NEITHER = { monthly: false, annual: false };
+const ALL_PACKS = { pack_1: true, pack_5: true, pack_10: true };
+const NO_PACKS = { pack_1: false, pack_5: false, pack_10: false };
 
 function setPrices(overrides: Record<string, string>): void {
   for (const key of Object.keys(priceIds)) priceIds[key] = '';
@@ -84,6 +109,11 @@ beforeEach(() => {
   authState.userId = 'user_test';
   setPrices(ALL_PRICES);
   config.admin.userIds = [];
+  config.stripe.secretKey = 'sk_test_x';
+  stripeMocks.sessionsRetrieve.mockReset();
+  confirmMocks.creditMonitorTokensFromCheckoutSession.mockReset().mockResolvedValue(true);
+  confirmMocks.syncStripeSubscriptionToUser.mockReset().mockResolvedValue(undefined);
+  confirmMocks.getMonitorTokenBalance.mockReset().mockResolvedValue({ tokenBalance: 5 });
   stripeMocks.sessionsCreate.mockReset();
   stripeMocks.sessionsCreate.mockResolvedValue({ id: 'cs_test', url: 'https://checkout.stripe.com/test' });
   customerMocks.getOrCreateStripeCustomer.mockReset();
@@ -92,6 +122,7 @@ beforeEach(() => {
   userOnTier('pro');
   return () => {
     Object.assign(priceIds, original);
+    config.stripe.secretKey = originalSecretKey;
   };
 });
 
@@ -101,8 +132,8 @@ describe('GET /api/billing/availability', () => {
     const res = await request(testApp).get('/api/billing/availability');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      plans: { pro: true, byok: true },
-      addons: { living_report: true, reverse_citation_watch: true },
+      plans: { pro: BOTH, byok: BOTH },
+      addons: { living_report: ALL_PACKS, reverse_citation_watch: true },
     });
   });
 
@@ -117,24 +148,43 @@ describe('GET /api/billing/availability', () => {
     setPrices({ proMonthly: 'price_pro_m' });
     const res = await request(testApp).get('/api/billing/availability');
     expect(res.body).toEqual({
-      plans: { pro: true, byok: false },
-      addons: { living_report: false, reverse_citation_watch: false },
+      plans: { pro: { monthly: true, annual: false }, byok: NEITHER },
+      addons: { living_report: NO_PACKS, reverse_citation_watch: false },
     });
   });
 
   it('treats a whitespace-only setting as missing', async () => {
     authState.userId = null;
-    setPrices({ byokMonthly: '   ', reverseCitationWatchMonthly: ' ' });
+    setPrices({ byokMonthly: '   ', reverseCitationWatchMonthly: ' ', monitorTokenPack5: '  ' });
     const res = await request(testApp).get('/api/billing/availability');
-    expect(res.body.plans.byok).toBe(false);
+    expect(res.body.plans.byok).toEqual(NEITHER);
     expect(res.body.addons.reverse_citation_watch).toBe(false);
+    expect(res.body.addons.living_report).toEqual(NO_PACKS);
   });
 
-  it('counts a plan with only an annual price as available', async () => {
+  it('reports nothing as purchasable when the Stripe key itself is missing', async () => {
     authState.userId = null;
-    setPrices({ byokAnnual: 'price_byok_y' });
+    config.stripe.secretKey = '';
     const res = await request(testApp).get('/api/billing/availability');
-    expect(res.body.plans.byok).toBe(true);
+    expect(res.body).toEqual({
+      plans: { pro: NEITHER, byok: NEITHER },
+      addons: { living_report: NO_PACKS, reverse_citation_watch: false },
+    });
+  });
+
+  it('answers for each token pack separately', async () => {
+    authState.userId = null;
+    setPrices({ monitorTokenPack5: 'price_tok_5' });
+    const res = await request(testApp).get('/api/billing/availability');
+    expect(res.body.addons.living_report).toEqual({ pack_1: false, pack_5: true, pack_10: false });
+  });
+
+  it('answers for each billing period separately', async () => {
+    authState.userId = null;
+    setPrices({ byokAnnual: 'price_byok_y', proMonthly: 'price_pro_m' });
+    const res = await request(testApp).get('/api/billing/availability');
+    expect(res.body.plans.byok).toEqual({ monthly: false, annual: true });
+    expect(res.body.plans.pro).toEqual({ monthly: true, annual: false });
   });
 
   it('leaves the rest of the billing routes behind sign-in', async () => {
@@ -217,6 +267,18 @@ describe('missing price setting', () => {
     expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
   });
 
+  it('does not list or sell a token pack whose price setting is only whitespace', async () => {
+    setPrices({ ...ALL_PRICES, monitorTokenPack5: '   ' });
+    const list = await request(testApp).get('/api/billing/monitor-tokens/packages');
+    expect(list.body.packages.map((p: { id: string }) => p.id)).toEqual(['pack_1', 'pack_10']);
+
+    const res = await request(testApp)
+      .post('/api/billing/monitor-tokens/checkout')
+      .send({ packageId: 'pack_5' });
+    expect(res.status).toBe(400);
+    expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
+  });
+
   it('lists only the token packs that can be bought', async () => {
     setPrices({ monitorTokenPack10: 'price_tok_10' });
     const res = await request(testApp).get('/api/billing/monitor-tokens/packages');
@@ -276,5 +338,59 @@ describe('POST /api/billing/checkout/subscription — BYOK', () => {
       .send({ priceId: 'price_byok_m', tier: 'pro' });
     expect(res.status).toBe(400);
     expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/billing/checkout/confirm — what was bought', () => {
+  const planSession = (tier: string) => ({
+    id: 'cs_plan',
+    mode: 'subscription',
+    status: 'complete',
+    payment_status: 'paid',
+    client_reference_id: 'user_test',
+    metadata: { user_id: 'user_test', tier, checkout_kind: 'subscription' },
+    subscription: {
+      id: 'sub_1',
+      customer: 'cus_test',
+      status: 'active',
+      current_period_end: 1_800_000_000,
+      cancel_at_period_end: false,
+      metadata: { user_id: 'user_test', tier },
+      items: { data: [{ id: 'si_1', price: { id: 'price_byok_m', lookup_key: null } }] },
+    },
+  });
+
+  it('says a BYOK plan was bought, so the page can show the key step', async () => {
+    stripeMocks.sessionsRetrieve.mockResolvedValue(planSession('byok'));
+    userOnTier('byok');
+    const res = await request(testApp).post('/api/billing/checkout/confirm').send({ sessionId: 'cs_plan' });
+    expect(res.status).toBe(200);
+    expect(res.body.confirmedCheckout).toEqual({ kind: 'plan', tier: 'byok' });
+  });
+
+  it('does not report a plan purchase when a BYOK subscriber buys tokens', async () => {
+    stripeMocks.sessionsRetrieve.mockResolvedValue({
+      id: 'cs_tok',
+      mode: 'payment',
+      status: 'complete',
+      payment_status: 'paid',
+      client_reference_id: 'user_test',
+      metadata: { user_id: 'user_test', purchase_type: 'monitor_tokens', package_id: 'pack_5', token_amount: '5' },
+    });
+    userOnTier('byok');
+    const res = await request(testApp).post('/api/billing/checkout/confirm').send({ sessionId: 'cs_tok' });
+    expect(res.status).toBe(200);
+    expect(res.body.effectiveTier).toBe('byok');
+    expect(res.body.confirmedCheckout).toEqual({ kind: 'monitor_tokens', tier: null });
+  });
+
+  it('reports a per-report add-on subscription as an add-on, not a plan', async () => {
+    const session = planSession('pro');
+    stripeMocks.sessionsRetrieve.mockResolvedValue({
+      ...session,
+      metadata: { user_id: 'user_test', report_id: 'r1', monitor_kind: 'reverse_citation_watch' },
+    });
+    const res = await request(testApp).post('/api/billing/checkout/confirm').send({ sessionId: 'cs_plan' });
+    expect(res.body.confirmedCheckout).toEqual({ kind: 'addon', tier: null });
   });
 });
