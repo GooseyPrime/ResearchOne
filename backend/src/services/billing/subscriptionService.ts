@@ -200,6 +200,14 @@ export async function cancelSubscriptionAtPeriodEnd(userId: string): Promise<{ s
 
   try {
     const stripe = getStripeClient();
+    // A scheduled plan change is dropped first: the customer is leaving, so
+    // there is no next period to change, and Stripe does not let a
+    // subscription that a schedule manages be set to end directly.
+    const current = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+    const scheduleId = typeof current.schedule === 'string' ? current.schedule : current.schedule?.id;
+    if (scheduleId) {
+      await stripe.subscriptionSchedules.release(scheduleId);
+    }
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
