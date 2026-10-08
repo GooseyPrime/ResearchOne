@@ -8,7 +8,16 @@ export interface SearchQuery {
   tags?: string[];
   preferredSourceTypes?: string[];
   maxResults?: number;
+  /**
+   * Slice 7. Told when a provider could not search: a failed request, or no key
+   * configured. Providers still return [] so one failure never fails the run;
+   * this is how the run records it. Absent unless PROVIDER_ROUTING_ENABLED is on.
+   */
+  onFailure?: (failure: unknown) => void;
 }
+
+/** A provider with no key or address configured, reported through `onFailure`. */
+export const PROVIDER_NOT_CONFIGURED = Object.freeze({ code: 'not_configured' });
 
 export interface SearchResultCandidate {
   /** Normalised URL — used for deduplication */

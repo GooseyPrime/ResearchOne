@@ -107,6 +107,7 @@ export class ArxivSearchProvider implements SearchProvider {
         });
     } catch (err) {
       logger.warn('[discovery] arXiv search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }

@@ -18,7 +18,7 @@
 
 import axios from 'axios';
 import { SearchProvider } from './searchProvider';
-import { SearchQuery, SearchResultCandidate } from '../providerTypes';
+import { SearchQuery, SearchResultCandidate, PROVIDER_NOT_CONFIGURED } from '../providerTypes';
 import { config } from '../../../config';
 import { logger } from '../../../utils/logger';
 
@@ -44,6 +44,7 @@ export class GenericWebSearchProvider implements SearchProvider {
 
     if (!providerBaseUrl) {
       logger.warn('[discovery] SEARCH_PROVIDER_BASE_URL not configured — skipping external search');
+      searchQuery.onFailure?.(PROVIDER_NOT_CONFIGURED);
       return [];
     }
 
@@ -81,6 +82,7 @@ export class GenericWebSearchProvider implements SearchProvider {
       }));
     } catch (err) {
       logger.error('[discovery] Generic web search failed:', err);
+      searchQuery.onFailure?.(err);
       return [];
     }
   }

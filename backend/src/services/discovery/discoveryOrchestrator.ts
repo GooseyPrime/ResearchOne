@@ -45,7 +45,7 @@ import {
   doiResolveEnabled,
   providerRoutingEnabled,
 } from '../../config';
-import { coverageHintsFor, selectProviders, type ProviderKey, type ProviderSelection } from './providerRouting';
+import { selectProviders, sourceDescriptionsFor, type ProviderKey, type ProviderSelection } from './providerRouting';
 import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
@@ -62,29 +62,13 @@ import {
   providerRecord,
 } from './providerTypes';
 import { SearchProvider } from './providers/searchProvider';
-import { GenericWebSearchProvider } from './providers/genericWebSearch';
-import { BraveSearchProvider } from './providers/braveSearch';
-import { TavilySearchProvider } from './providers/tavilySearch';
-import { OpenAlexSearchProvider } from './providers/openAlexSearch';
-import { CrossrefSearchProvider } from './providers/crossrefSearch';
-import { ArxivSearchProvider } from './providers/arxivSearch';
-import { PubmedCentralSearchProvider } from './providers/pubmedCentralSearch';
-import { UsptoSearchProvider } from './providers/usptoSearch';
-import { ClinicalTrialsSearchProvider } from './providers/clinicalTrialsSearch';
-import { ParallelSearchProvider } from './providers/parallelSearch';
+import { PROVIDER_REGISTRY } from './providerRegistry';
 
-const PROVIDER_BUILDERS: Record<ProviderKey, () => SearchProvider> = {
-  tavily: () => new TavilySearchProvider(),
-  brave: () => new BraveSearchProvider(),
-  generic: () => new GenericWebSearchProvider(),
-  parallel: () => new ParallelSearchProvider(),
-  openalex: () => new OpenAlexSearchProvider(),
-  crossref: () => new CrossrefSearchProvider(),
-  arxiv: () => new ArxivSearchProvider(),
-  pmc: () => new PubmedCentralSearchProvider(),
-  uspto: () => new UsptoSearchProvider(),
-  clinicaltrials: () => new ClinicalTrialsSearchProvider(),
-};
+/** Built from the registry: adding a service there makes it available here. */
+const PROVIDER_BUILDERS: Record<ProviderKey, () => SearchProvider> = Object.fromEntries(
+  Object.entries(PROVIDER_REGISTRY).map(([key, entry]) => [key, entry.build])
+) as Record<ProviderKey, () => SearchProvider>;
+
 const providerCache = new Map<ProviderKey, SearchProvider>();
 
 function provider(key: ProviderKey): SearchProvider {
@@ -165,6 +149,100 @@ function webProviderKeys(): ProviderKey[] {
       return ['generic'];
     default:
       return ['tavily'];
+  }
+}
+
+/**
+ * Slice 7. Gap-filling rounds (round 3 on), planned by the model from what was
+ * actually found. Without routing these rounds append fixed phrases ("demand
+ * signals", "monetization") to a planned query, whatever the subject.
+ */
+const DISCOVERY_GAP_PROMPT = `You are a discovery GAP-FILLING planning agent for ResearchOne.
+Earlier search rounds have run. Your job is to find what the research request still needs that the material found so far does not cover, and to write new search queries aimed at exactly those gaps.
+
+CRITICAL RULES:
+- Read the research request and the titles and snippets found so far. Name the specific gaps: questions the request asks that nothing found answers, kinds of source that are missing (for example an official record, a primary document, a dataset, a dissenting account), periods, places or parties not yet covered.
+- Write each query about the request's own subject, in the words a good searcher would use for it. Do not add generic words that are not about the subject.
+- The searches go to the sources listed below. Write queries those sources can answer.
+
+SOURCES SEARCHED:
+{sources}
+- Do not repeat or lightly reword a query already run.
+- If what was found already covers the request, return "done": true and no queries.
+- Output valid JSON only.
+
+Output JSON with this exact schema:
+{
+  "gaps": ["string", ...],
+  "queries": ["string", ...],
+  "done": boolean
+}`;
+
+/**
+ * The next gap-filling round's queries, or null when the rounds should end:
+ * the planner judged the request covered, proposed nothing new, or could not
+ * be read on either model. Each outcome is logged and recorded with the run.
+ */
+export async function planGapQueries(args: {
+  runId: string;
+  round: number;
+  researchQuery: string;
+  /** What each searched source covers (`sourceDescriptionsFor`). */
+  sources: string;
+  queriesExecuted: readonly string[];
+  found: readonly SearchResultCandidate[];
+  maxQueries: number;
+  model: {
+    engineVersion?: string;
+    researchObjective?: ResearchObjective;
+    allowFallbackByRole?: Record<string, boolean>;
+    byokApiKeyOverride?: string;
+  };
+}): Promise<string[] | null> {
+  const sample = args.found.slice(0, 30).map((c, i) => ({
+    n: i + 1,
+    title: c.title,
+    url: c.url,
+    snippet: typeof c.snippet === 'string' ? c.snippet.slice(0, 220) : '',
+  }));
+  try {
+    const result = await callRoleModel({
+      role: 'planner',
+      ...args.model,
+      messages: [
+        { role: 'system', content: withPreamble(DISCOVERY_GAP_PROMPT.replace('{sources}', args.sources)) },
+        {
+          role: 'user',
+          content:
+            `Research Query: ${capForPlannerPrompt(args.researchQuery, MAX_PLANNER_QUERY_CHARS)}\n\n` +
+            `Found so far (${args.found.length} total, sample below):\n${JSON.stringify(sample, null, 2)}\n\n` +
+            `Queries already run (do not repeat):\n${args.queriesExecuted.map((q) => `- ${q}`).join('\n')}\n\n` +
+            `Write at most ${args.maxQueries} queries for the gaps. Output JSON only.`,
+        },
+      ],
+      maxTokens: 1024,
+    });
+    const match = result.content.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match?.[0] ?? result.content) as { gaps?: unknown; queries?: unknown; done?: unknown };
+    const gaps = Array.isArray(parsed.gaps) ? parsed.gaps.filter((gap): gap is string => typeof gap === 'string') : [];
+    const queries = (Array.isArray(parsed.queries) ? parsed.queries : [])
+      .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+      .map((q) => q.replace(/\s+/g, ' ').trim())
+      .filter((q, at, all) => !args.queriesExecuted.includes(q) && all.indexOf(q) === at)
+      .slice(0, Math.max(0, args.maxQueries));
+    const done = parsed.done === true || queries.length === 0;
+    await persistDiscoveryEvent(args.runId, `plan_round_${args.round}`, 'planner', args.researchQuery, 0, 0, { gaps, queries: done ? [] : queries, done });
+    if (done) {
+      logger.info(`[discovery:${args.runId}] Round ${args.round}: planner found no gaps to search`);
+      return null;
+    }
+    logger.info(`[discovery:${args.runId}] Round ${args.round} gap queries: ${queries.join(' | ')}`);
+    return queries;
+  } catch (err) {
+    // Rounds 1 and 2 have run; the extra rounds end, and that is recorded.
+    logger.warn(`[discovery:${args.runId}] Round ${args.round} gap planning failed; ending extra search rounds:`, err);
+    await persistDiscoveryEvent(args.runId, `plan_round_${args.round}`, 'planner', args.researchQuery, 0, 0, { failed: true, ...providerErrorRecord(err) });
+    return null;
   }
 }
 
@@ -428,7 +506,7 @@ async function runDiscoveryOrchestratorInner(args: {
           layer2: routingBrief?.layer2 === true,
           seed: searchSeedFor(researchQuery, discoveryPlan.discovery_queries),
         },
-        { webProviders: webProviderKeys(), braveKeyed: Boolean(config.discovery.providerApiKey) }
+        { webProviders: webProviderKeys() }
       )
     : null;
   if (routing) {
@@ -436,6 +514,7 @@ async function runDiscoveryOrchestratorInner(args: {
     await persistDiscoveryEvent(runId, 'routing', 'router', researchQuery, 0, 0, {
       routes: routing.routes,
       providers: routing.providers,
+      not_configured: routing.notConfigured,
       extra_queries: routing.extraQueries.map(({ text, purpose, providers: to }) => ({ text, purpose, providers: to })),
     });
   }
@@ -460,6 +539,9 @@ async function runDiscoveryOrchestratorInner(args: {
   // Total query budget shared across all discovery rounds.
   const totalQueryBudget = discoveryQueryBudget();
 
+  const recordProviderError = (name: string, searchQuery: string, round: number, reason: unknown) =>
+    persistDiscoveryEvent(runId, 'provider_error', name, searchQuery, 0, 0, { round, query: searchQuery, ...providerErrorRecord(reason) });
+
   /** Execute one round of search queries against the configured providers,
    *  deduplicating against `seenUrls` and persisting per-query audit events. */
   const runSearchRound = async (
@@ -480,9 +562,13 @@ async function runDiscoveryOrchestratorInner(args: {
       const searchers = only ? orderedProviders.filter((candidate) => only.has(candidate.name)) : orderedProviders;
       const providerResults = await Promise.allSettled(
         searchers.map(async (provider) => {
+          // Slice 7. Providers return [] when they cannot search, so a failure is
+          // told through `onFailure` rather than as a rejection. Switch off: not passed.
+          let failure: { reason: unknown } | null = null;
           const results = await provider.search({
             text: searchQuery,
             maxResults: config.discovery.maxResults,
+            ...(routing ? { onFailure: (reason: unknown) => { failure = { reason }; } } : {}),
           });
 
           let newCount = 0;
@@ -535,6 +621,8 @@ async function runDiscoveryOrchestratorInner(args: {
             new_count: newCount,
           });
 
+          if (failure) await recordProviderError(provider.name, searchQuery, roundNumber, (failure as { reason: unknown }).reason);
+
           logger.debug(`[discovery:${runId}] r${roundNumber} ${provider.name} "${searchQuery}": ${results.length} results, ${newCount} new`);
           return newCount;
         })
@@ -547,13 +635,7 @@ async function runDiscoveryOrchestratorInner(args: {
           const reason = pr.reason;
           logger.error(`[discovery:${runId}] r${roundNumber} provider fan-out search failed:`, reason);
           // Slice 7. One provider failing does not fail the run; it is recorded with the run.
-          if (routing) {
-            await persistDiscoveryEvent(runId, 'provider_error', searchers[at].name, searchQuery, 0, 0, {
-              round: roundNumber,
-              query: searchQuery,
-              ...providerErrorRecord(reason),
-            });
-          }
+          if (routing) await recordProviderError(searchers[at].name, searchQuery, roundNumber, reason);
         }
       }
     }
@@ -645,21 +727,37 @@ async function runDiscoveryOrchestratorInner(args: {
   ) {
     const remainingBudget = Math.max(0, totalQueryBudget - queriesExecuted.length);
     if (remainingBudget <= 0) break;
-    const uncoveredHint = routing
-      ? coverageHintsFor(routing.routes)
-      : [
-          'demand signals',
-          'competitor reality',
-          'technical feasibility',
-          'regulatory constraints',
-          'monetization',
-          'acquisition',
-        ];
-    const seed = discoveryPlan.discovery_queries[nextRound % discoveryPlan.discovery_queries.length] ?? researchQuery;
-    const extraQueries = uncoveredHint
-      .map((hint) => `${seed} ${hint}`)
-      .filter((q) => !queriesExecuted.includes(q))
-      .slice(0, Math.min(3, remainingBudget));
+    let extraQueries: string[];
+    if (routing) {
+      // Slice 7. The planner reads what was found and decides what is still
+      // missing; no fixed words are added to the request.
+      const planned = await planGapQueries({
+        runId,
+        round: nextRound,
+        researchQuery,
+        sources: sourceDescriptionsFor(routing.providers),
+        queriesExecuted,
+        found: allCandidates,
+        maxQueries: Math.min(3, remainingBudget),
+        model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      });
+      if (!planned) break;
+      extraQueries = planned;
+    } else {
+      const uncoveredHint = [
+        'demand signals',
+        'competitor reality',
+        'technical feasibility',
+        'regulatory constraints',
+        'monetization',
+        'acquisition',
+      ];
+      const seed = discoveryPlan.discovery_queries[nextRound % discoveryPlan.discovery_queries.length] ?? researchQuery;
+      extraQueries = uncoveredHint
+        .map((hint) => `${seed} ${hint}`)
+        .filter((q) => !queriesExecuted.includes(q))
+        .slice(0, Math.min(3, remainingBudget));
+    }
     if (extraQueries.length === 0) break;
     const roundNew = await runSearchRound(nextRound, extraQueries, discoveryPlan.exclusion_patterns);
     logger.info(`[discovery:${runId}] Round ${nextRound} complete: +${roundNew} candidates (total ${allCandidates.length})`);

@@ -73,6 +73,7 @@ export class ClinicalTrialsSearchProvider implements SearchProvider {
         .filter((r): r is NonNullable<typeof r> => r !== null);
     } catch (err) {
       logger.warn('[discovery] ClinicalTrials.gov search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }

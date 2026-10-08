@@ -6,10 +6,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  calls: [] as Array<{ provider: string; query: string }>,
+  calls: [] as Array<{ provider: string; query: string; hasOnFailure: boolean }>,
   events: [] as Array<{ phase: string; provider: string; query: string; payload: Record<string, unknown> }>,
   failing: new Set<string>(),
+  /** Providers that fail the way the shipped ones do: log, tell `onFailure`, return []. */
+  swallowing: new Set<string>(),
   plannerQueries: ['first planned query'] as string[],
+  /** The gap planner's answer; 'fail' throws, as a planner with both models down does. */
+  gapReply: '{"gaps":[],"queries":[],"done":true}' as string,
+  gapPrompts: [] as string[],
 }));
 
 vi.mock('../db/pool', () => ({
@@ -30,6 +35,11 @@ vi.mock('axios', () => {
 });
 vi.mock('../services/openrouter/openrouterService', () => ({
   callRoleModel: vi.fn(async (options: { messages: Array<{ content: string }> }) => {
+    if (options.messages.some((message) => message.content.includes('GAP-FILLING'))) {
+      h.gapPrompts.push(options.messages.map((message) => message.content).join('\n'));
+      if (h.gapReply === 'fail') throw new Error('both planner models failed');
+      return { content: h.gapReply, model: 'test', role: 'planner', promptTokens: 1, completionTokens: 1, durationMs: 1, usedFallback: false, primaryModel: 'test' };
+    }
     const followUp = options.messages.some((message) => message.content.includes('Round 1 candidates'));
     const content = followUp
       ? '{"rationale":"covered","follow_up_queries":[],"exclusion_patterns":[]}'
@@ -51,8 +61,12 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 function fakeProvider(name: string) {
   return class {
     readonly name = name;
-    async search(searchQuery: { text: string }) {
-      h.calls.push({ provider: name, query: searchQuery.text });
+    async search(searchQuery: { text: string; onFailure?: (failure: unknown) => void }) {
+      h.calls.push({ provider: name, query: searchQuery.text, hasOnFailure: 'onFailure' in searchQuery });
+      if (h.swallowing.has(name)) {
+        searchQuery.onFailure?.(Object.assign(new Error('timeout of 15000ms exceeded https://api.example.org/?key=secret-x'), { code: 'ECONNABORTED' }));
+        return [];
+      }
       if (h.failing.has(name)) throw Object.assign(new Error(`GET https://api.example.org/?key=secret-${name} failed`), { code: 'ECONNRESET' });
       return [];
     }
@@ -73,24 +87,27 @@ import { runDiscoveryOrchestrator } from '../services/discovery/discoveryOrchest
 import { config, discoveryIngestFloor, discoveryQueryBudget, runWithFlags } from '../config';
 import { ANOMALY_QUERY_SUFFIX } from '../services/discovery/deterministicDiscoveryQueries';
 
-type Settings = { enabled: boolean; provider: string; ingestionWaitTimeoutMs: number; providerApiKey: string };
+type Settings = { enabled: boolean; provider: string; ingestionWaitTimeoutMs: number; providerApiKey: string; tavilyApiKey: string; parallelApiKey: string; providerBaseUrl: string };
 const was: Settings = {
   enabled: config.discovery.enabled,
   provider: config.discovery.provider,
   ingestionWaitTimeoutMs: config.discovery.ingestionWaitTimeoutMs,
   providerApiKey: config.discovery.providerApiKey,
+  tavilyApiKey: config.discovery.tavilyApiKey,
+  parallelApiKey: config.discovery.parallelApiKey,
+  providerBaseUrl: config.discovery.providerBaseUrl,
 };
 const ROUTING_ON = { PROVIDER_ROUTING_ENABLED: true };
 const ACADEMIC = ['arxiv', 'pmc', 'uspto', 'clinicaltrials'];
 
-function discover(researchQuery: string, extra: { specialists?: string[]; intent?: string; layer2?: boolean } = {}) {
+function discover(researchQuery: string, extra: { specialists?: string[]; intent?: string; layer2?: boolean; rounds?: number } = {}) {
   return runDiscoveryOrchestrator({
     runId: '11111111-1111-4111-8111-111111111111',
     researchQuery,
     plan: {},
     specialistAgentIds: extra.specialists ?? [],
     routingBrief: { intent: extra.intent ?? 'factual_report', layer2: extra.layer2 === true },
-    maxCoverageRounds: 2,
+    maxCoverageRounds: extra.rounds ?? 2,
   });
 }
 const called = () => new Set(h.calls.map((call) => call.provider));
@@ -100,8 +117,19 @@ describe('choosing search providers by request', () => {
     h.calls.length = 0;
     h.events.length = 0;
     h.failing.clear();
+    h.swallowing.clear();
+    h.gapReply = '{"gaps":[],"queries":[],"done":true}';
+    h.gapPrompts.length = 0;
     h.plannerQueries = ['first planned query'];
-    Object.assign(config.discovery, { enabled: true, provider: 'tavily', ingestionWaitTimeoutMs: 0, providerApiKey: '' });
+    Object.assign(config.discovery, {
+      enabled: true,
+      provider: 'tavily',
+      ingestionWaitTimeoutMs: 0,
+      providerApiKey: '',
+      tavilyApiKey: 'test-tavily',
+      parallelApiKey: 'test-parallel',
+      providerBaseUrl: 'https://search.example.org',
+    });
   });
   afterEach(() => {
     Object.assign(config.discovery, was);
@@ -153,6 +181,7 @@ describe('choosing search providers by request', () => {
 
   it('sends the GitHub query for a code question only to the web providers', async () => {
     config.discovery.provider = 'cascade';
+    config.discovery.providerApiKey = 'brave-key';
     await runWithFlags(ROUTING_ON, () => discover('Which open-source libraries parse PDF tables well?'));
     const github = h.calls.filter((call) => call.query.endsWith('site:github.com'));
     expect(new Set(github.map((call) => call.provider))).toEqual(new Set(['tavily', 'brave', 'generic']));
@@ -171,6 +200,54 @@ describe('choosing search providers by request', () => {
     expect(summary.queriesExecuted.length).toBeGreaterThan(0);
   });
 
+  it('records a provider that reports its failure and returns nothing, as the shipped providers do', async () => {
+    h.swallowing.add('crossref');
+    await runWithFlags(ROUTING_ON, () => discover('What did the phase 3 clinical trials of semaglutide find?'));
+    const errors = h.events.filter((event) => event.phase === 'provider_error');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.every((event) => event.provider === 'crossref')).toBe(true);
+    expect(errors[0].payload).toMatchObject({ error_kind: 'ECONNABORTED' });
+    expect(JSON.stringify(errors)).not.toContain('secret-');
+  });
+
+  it('lets the planner choose the gap-filling queries from what was found, with no fixed words added', async () => {
+    h.gapReply = '{"gaps":["no trial in adolescents"],"queries":["semaglutide adolescent obesity trial results"],"done":false}';
+    await runWithFlags(ROUTING_ON, () => discover('What did the phase 3 clinical trials of semaglutide find?', { rounds: 3 }));
+    expect(h.gapPrompts).toHaveLength(1);
+    expect(h.gapPrompts[0]).toContain('PubMed Central: full-text biomedical');
+    expect(h.calls.some((call) => call.query === 'semaglutide adolescent obesity trial results')).toBe(true);
+    for (const fixed of ['monetization', 'demand signals', 'competitor reality']) expect(h.calls.some((call) => call.query.includes(fixed))).toBe(false);
+    expect(h.events.find((event) => event.phase === 'plan_round_3')?.payload).toMatchObject({ gaps: ['no trial in adolescents'], done: false });
+  });
+
+  it('ends the gap-filling rounds when the planner finds nothing missing, or cannot be read, and records why', async () => {
+    await runWithFlags(ROUTING_ON, () => discover('What did the phase 3 clinical trials of semaglutide find?', { rounds: 4 }));
+    expect(h.gapPrompts).toHaveLength(1);
+    expect(h.events.find((event) => event.phase === 'plan_round_3')?.payload).toMatchObject({ done: true });
+    h.events.length = 0;
+    h.gapPrompts.length = 0;
+    h.gapReply = 'fail';
+    const summary = await runWithFlags(ROUTING_ON, () => discover('What did the phase 3 clinical trials of semaglutide find?', { rounds: 4 }));
+    expect(h.gapPrompts).toHaveLength(1);
+    expect(h.events.find((event) => event.phase === 'plan_round_3')?.payload).toMatchObject({ failed: true });
+    expect(summary.queriesExecuted).toEqual(['first planned query']);
+  });
+
+  it('without the switch, the gap-filling rounds still add the fixed phrases and ask no planner', async () => {
+    await discover('What did the phase 3 clinical trials of semaglutide find?', { rounds: 3 });
+    expect(h.gapPrompts).toHaveLength(0);
+    expect(h.calls.some((call) => call.query === 'first planned query demand signals')).toBe(true);
+  });
+
+  it('leaves out a service with no key and records it as not configured', async () => {
+    config.discovery.parallelApiKey = '';
+    await runWithFlags(ROUTING_ON, () =>
+      discover('Which subscription box niches have growing demand?', { intent: 'opportunity_discovery' })
+    );
+    expect(called().has('parallel')).toBe(false);
+    expect(h.events.find((event) => event.phase === 'routing')?.payload.not_configured).toEqual(['parallel']);
+  });
+
   it('uses the raised query budget with the switch on, and the old one without it', async () => {
     h.plannerQueries = Array.from({ length: 20 }, (_, at) => `planned query number ${at + 1}`);
     const routed = await runWithFlags(ROUTING_ON, () => discover('What did the phase 3 clinical trials of semaglutide find?'));
@@ -187,5 +264,7 @@ describe('choosing search providers by request', () => {
     expect(h.events.some((event) => event.phase === 'routing' || event.phase === 'provider_error')).toBe(false);
     expect(summary.queriesExecuted).toEqual(['first planned query']);
     expect([...called()]).toEqual(['tavily']);
+    // The search request is the one it always was.
+    expect(h.calls.every((call) => !call.hasOnFailure)).toBe(true);
   });
 });

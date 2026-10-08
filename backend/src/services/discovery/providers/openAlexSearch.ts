@@ -112,6 +112,7 @@ export class OpenAlexSearchProvider implements SearchProvider {
         });
     } catch (err) {
       logger.warn('[discovery] OpenAlex search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }

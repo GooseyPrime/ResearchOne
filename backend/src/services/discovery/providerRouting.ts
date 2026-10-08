@@ -12,22 +12,15 @@
  * a key, so the choice can be tested without the outside world.
  */
 import { anomalyQueryFor, officialRecordQueryFor, repositoryQueryFor } from './deterministicDiscoveryQueries';
+import {
+  PROVIDER_KEYS,
+  PROVIDER_REGISTRY,
+  WEB_RANK,
+  type DiscoveryRoute,
+  type ProviderKey,
+} from './providerRegistry';
 
-export const PROVIDER_KEYS = [
-  'tavily',
-  'brave',
-  'generic',
-  'parallel',
-  'openalex',
-  'crossref',
-  'arxiv',
-  'pmc',
-  'uspto',
-  'clinicaltrials',
-] as const;
-export type ProviderKey = (typeof PROVIDER_KEYS)[number];
-
-export type DiscoveryRoute = 'scientific' | 'patent' | 'market' | 'code' | 'default';
+export { PROVIDER_KEYS, type DiscoveryRoute, type ProviderKey };
 
 export interface RoutingBrief {
   researchQuery: string;
@@ -41,10 +34,10 @@ export interface RoutingBrief {
 }
 
 export interface RoutingEnvironment {
-  /** The general web providers the server is configured with, in cascade order. */
+  /** The general web services the server is set to use (`SEARCH_PROVIDER`), in cascade order. */
   webProviders: readonly ProviderKey[];
-  /** Brave has a key on this server. */
-  braveKeyed: boolean;
+  /** Whether a service has what it needs configured. Defaults to the registry's own check. */
+  isConfigured?: (key: ProviderKey) => boolean;
 }
 
 export interface ExtraQuery {
@@ -59,6 +52,8 @@ export interface ProviderSelection {
   routes: DiscoveryRoute[];
   /** Every provider the run searches, in the order results are taken. */
   providers: ProviderKey[];
+  /** Providers the routes wanted that have no key or address set; they sit out. */
+  notConfigured: ProviderKey[];
   extraQueries: ExtraQuery[];
 }
 
@@ -68,13 +63,6 @@ const PATENT_CUES = /\b(patents?|patented|prior art|uspto|inventions?)\b/i;
 const MARKET_CUES =
   /\b(markets?|marketing|demand|competitors?|competition|pricing|revenue|customers?|startups?|niches?|monetiz\w*|monetis\w*|business(?:es)?|saas|tam|sales|buyers?|consumers?|industry)\b/i;
 const CODE_CUES = /\b(github|gitlab|repositor(?:y|ies)|repos?|open[- ]source|librar(?:y|ies)|npm|pypi|sdks?|source code|codebase)\b/i;
-
-const ROUTE_PROVIDERS: Record<Exclude<DiscoveryRoute, 'default' | 'code'>, readonly (ProviderKey | 'web')[]> = {
-  scientific: ['openalex', 'crossref', 'pmc', 'clinicaltrials', 'arxiv', 'web'],
-  patent: ['uspto', 'openalex', 'web'],
-  market: ['parallel', 'web'],
-};
-const DEFAULT_PROVIDERS: readonly (ProviderKey | 'web')[] = ['web', 'openalex', 'crossref'];
 
 /** The routes a request is relevant to, from its report type, objective and own words. */
 export function routesFor(brief: Pick<RoutingBrief, 'researchQuery' | 'intent' | 'researchObjective'>): DiscoveryRoute[] {
@@ -96,53 +84,46 @@ export function routesFor(brief: Pick<RoutingBrief, 'researchQuery' | 'intent' |
  * key and sends the anomaly query to every provider it searches.
  */
 export function selectProviders(brief: RoutingBrief, env: RoutingEnvironment): ProviderSelection {
+  const configured = env.isConfigured ?? ((key: ProviderKey) => PROVIDER_REGISTRY[key].isConfigured());
   const routes = routesFor(brief);
   const providers: ProviderKey[] = [];
+  const notConfigured: ProviderKey[] = [];
   const add = (key: ProviderKey) => {
-    if (!providers.includes(key)) providers.push(key);
+    if (providers.includes(key) || notConfigured.includes(key)) return;
+    if (configured(key)) providers.push(key);
+    else notConfigured.push(key);
   };
-  const addAll = (keys: readonly (ProviderKey | 'web')[]) => {
-    for (const key of keys) {
-      if (key === 'web') env.webProviders.forEach(add);
-      else add(key);
-    }
-  };
+  const web = () => env.webProviders.filter((key) => configured(key));
   const extraQueries: ExtraQuery[] = [];
 
   for (const route of routes) {
+    // The registry's services for this route by rank, with the web services at the route's web rank.
+    const ranked: Array<{ rank: number; keys: readonly ProviderKey[] }> = PROVIDER_KEYS.flatMap((key) => {
+      const rank = (PROVIDER_REGISTRY[key].routes as Partial<Record<DiscoveryRoute, number>>)[route];
+      return rank === undefined ? [] : [{ rank, keys: [key] }];
+    });
+    ranked.push({ rank: WEB_RANK[route], keys: env.webProviders });
+    ranked.sort((x, y) => x.rank - y.rank);
+    for (const { keys } of ranked) keys.forEach(add);
+
     if (route === 'default') {
-      addAll(DEFAULT_PROVIDERS);
-      extraQueries.push({ text: officialRecordQueryFor(brief.seed), providers: [...env.webProviders], purpose: 'official_record' });
+      extraQueries.push({ text: officialRecordQueryFor(brief.seed), providers: web(), purpose: 'official_record' });
     } else if (route === 'code') {
-      addAll(['web']);
-      extraQueries.push({ text: repositoryQueryFor(brief.seed), providers: [...env.webProviders], purpose: 'repository' });
-    } else {
-      addAll(ROUTE_PROVIDERS[route]);
+      extraQueries.push({ text: repositoryQueryFor(brief.seed), providers: web(), purpose: 'repository' });
     }
   }
 
   if (brief.layer2) {
-    if (env.braveKeyed) add('brave');
+    for (const key of PROVIDER_KEYS) {
+      if ((PROVIDER_REGISTRY[key] as { challengeRuns?: boolean }).challengeRuns && configured(key)) add(key);
+    }
     extraQueries.push({ text: anomalyQueryFor(brief.seed), providers: [...providers], purpose: 'anomaly' });
   }
 
-  return { routes, providers, extraQueries };
+  return { routes, providers, notConfigured, extraQueries };
 }
 
-const COVERAGE_HINTS: Record<DiscoveryRoute, readonly string[]> = {
-  scientific: ['systematic review', 'trial results', 'mechanism', 'replication'],
-  patent: ['prior art', 'patent claims', 'assignee'],
-  market: ['demand signals', 'competitor reality', 'technical feasibility', 'regulatory constraints', 'monetization', 'acquisition'],
-  code: ['repository', 'documentation', 'known issues'],
-  default: ['official report', 'statistics', 'history'],
-};
-
-/**
- * What later coverage rounds add to a query, by route. Without routing every run
- * got the market hints, so a clinical question searched for "monetization".
- */
-export function coverageHintsFor(routes: readonly DiscoveryRoute[]): string[] {
-  const hints: string[] = [];
-  for (const route of routes) for (const hint of COVERAGE_HINTS[route]) if (!hints.includes(hint)) hints.push(hint);
-  return hints;
+/** What each kind of source covers, from the registry, for the gap-filling planner. */
+export function sourceDescriptionsFor(keys: readonly ProviderKey[]): string {
+  return keys.map((key) => `${PROVIDER_REGISTRY[key].title}: ${PROVIDER_REGISTRY[key].covers}`).join('\n');
 }

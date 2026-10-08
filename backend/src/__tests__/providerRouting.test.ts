@@ -4,12 +4,15 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { coverageHintsFor, routesFor, selectProviders } from '../services/discovery/providerRouting';
+import { routesFor, selectProviders, sourceDescriptionsFor } from '../services/discovery/providerRouting';
+import { PROVIDER_KEYS, PROVIDER_REGISTRY } from '../services/discovery/providerRegistry';
 import { providerErrorRecord, withExtraQueries } from '../services/discovery/discoveryOrchestrator';
 import { anomalyQueryFor, searchSeedFor } from '../services/discovery/deterministicDiscoveryQueries';
 import { getOrchestrationProfileForIntent, writesThroughReportWriter } from '../services/planning/orchestrationProfiles';
 
-const WEB = { webProviders: ['tavily'] as const, braveKeyed: false };
+const unkeyed = new Set(['brave']);
+const WEB = { webProviders: ['tavily'] as const, isConfigured: (key: string) => !unkeyed.has(key) };
+const ALL_KEYED = { isConfigured: () => true };
 const brief = (researchQuery: string, extra: { intent?: string; objective?: string; layer2?: boolean } = {}) => ({
   researchQuery,
   intent: extra.intent ?? 'factual_report',
@@ -39,7 +42,7 @@ describe('routes', () => {
   });
 
   it('adds a GitHub query for a code question, for the web providers only', () => {
-    const chosen = selectProviders(brief('Compare open-source libraries for vector search'), { webProviders: ['tavily', 'brave', 'generic'], braveKeyed: true });
+    const chosen = selectProviders(brief('Compare open-source libraries for vector search'), { webProviders: ['tavily', 'brave', 'generic'], ...ALL_KEYED });
     expect(chosen.routes).toEqual(['code']);
     expect(chosen.extraQueries).toEqual([{ text: 'seed terms site:github.com', providers: ['tavily', 'brave', 'generic'], purpose: 'repository' }]);
   });
@@ -53,17 +56,40 @@ describe('routes', () => {
   });
 
   it('on a challenge run adds Brave when keyed and the anomaly query for every provider', () => {
-    const keyed = selectProviders(brief('Did the 1977 Wow! signal have a terrestrial origin?', { layer2: true }), { ...WEB, braveKeyed: true });
+    const keyed = selectProviders(brief('Did the 1977 Wow! signal have a terrestrial origin?', { layer2: true }), { ...WEB, ...ALL_KEYED });
     expect(keyed.providers).toContain('brave');
     const anomaly = keyed.extraQueries.find((extra) => extra.purpose === 'anomaly');
     expect(anomaly?.text).toBe(anomalyQueryFor('seed terms'));
     expect(anomaly?.providers).toEqual(keyed.providers);
     expect(selectProviders(brief('Same question', { layer2: true }), WEB).providers).not.toContain('brave');
   });
+});
 
-  it('gives later coverage rounds hints that fit the route', () => {
-    expect(coverageHintsFor(['scientific'])).not.toContain('monetization');
-    expect(coverageHintsFor(['market'])).toContain('monetization');
+describe('the provider registry', () => {
+  it('a service whose key is not set sits out and is listed as not configured', () => {
+    const chosen = selectProviders(brief('Which pet supplement niches have rising demand?', { intent: 'opportunity_discovery' }), {
+      webProviders: ['tavily'],
+      isConfigured: (key) => key !== 'parallel',
+    });
+    expect(chosen.providers).toEqual(['tavily']);
+    expect(chosen.notConfigured).toEqual(['parallel']);
+  });
+
+  it('every registered service is described in the provider guide', () => {
+    const guide = readFileSync(join(__dirname, '../../../docs/SEARCH_PROVIDERS.md'), 'utf8');
+    for (const key of PROVIDER_KEYS) {
+      const entry = PROVIDER_REGISTRY[key];
+      expect(guide, key).toContain(`### ${entry.title} (\`${key}\`)`);
+      for (const setting of entry.needs) expect(guide, key).toContain(setting);
+    }
+  });
+
+  it('every registered service can be built and searches under its own key', () => {
+    for (const key of PROVIDER_KEYS) expect(PROVIDER_REGISTRY[key].build().name).toBe(key);
+  });
+
+  it('tells the gap planner what each searched source covers', () => {
+    expect(sourceDescriptionsFor(['pmc'])).toBe(`PubMed Central: ${PROVIDER_REGISTRY.pmc.covers}`);
   });
 });
 

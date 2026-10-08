@@ -105,6 +105,7 @@ export class CrossrefSearchProvider implements SearchProvider {
         });
     } catch (err) {
       logger.warn('[discovery] Crossref search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }

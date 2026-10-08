@@ -135,6 +135,7 @@ export class PubmedCentralSearchProvider implements SearchProvider {
         .filter((r): r is NonNullable<typeof r> => r !== null);
     } catch (err) {
       logger.warn('[discovery] PubMed Central search failed:', err);
+      query.onFailure?.(err);
       return [];
     }
   }
