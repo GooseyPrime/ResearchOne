@@ -100,7 +100,7 @@ const ORDINAL_LABELS = [
  */
 const LEADING_ORDINAL = new RegExp(
   `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
-    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):–—-]\\s+)`,
+    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
   'i'
 );
 
