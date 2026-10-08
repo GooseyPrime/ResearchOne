@@ -30,7 +30,10 @@ vi.mock('../db/pool', () => ({
     })
   ),
 }));
-vi.mock('../queue/queues', () => ({ embeddingQueue: { add: vi.fn() }, ingestionQueue: { add: vi.fn() } }));
+vi.mock('../queue/queues', () => ({
+  embeddingQueue: { add: vi.fn(async () => { h.queries.push({ sql: 'QUEUE embed-chunks', params: [] }); }) },
+  ingestionQueue: { add: vi.fn() },
+}));
 
 import { runWithFlags } from '../config/runFlags';
 import { recordAuthorityTier, runIngestionJob, tierForIngest, tierForStoredDuplicate } from '../services/ingestion/ingestionService';
@@ -115,8 +118,11 @@ describe('recording a source\'s authority tier at ingest', () => {
     const order = h.queries.map((entry) => entry.sql);
     const lastChunk = order.map((sql, at) => (/INSERT INTO chunks/.test(sql) ? at : -1)).reduce((a, b) => Math.max(a, b), -1);
     const tierAt = order.findIndex((sql) => /authority_tier/.test(sql));
+    const queuedAt = order.indexOf('QUEUE embed-chunks');
     expect(lastChunk).toBeGreaterThan(-1);
-    expect(tierAt).toBeGreaterThan(lastChunk);
+    // Passages stored, then their embedding job queued, then the tier.
+    expect(queuedAt).toBeGreaterThan(lastChunk);
+    expect(tierAt).toBeGreaterThan(queuedAt);
   });
 
   it('a person\'s upload cannot raise its own tier', async () => {
@@ -136,10 +142,15 @@ describe('recording a source\'s authority tier at ingest', () => {
     // Discovery's idea of the same address: a trailing slash, a fragment or the host's case do not change it.
     expect(tierForStoredDuplicate(job, { url: 'https://Host.example.org/x' }, 'https://host.example.org/x/')).toBe(2);
     expect(tierForStoredDuplicate(job, { url: 'https://host.example.org/x#section-2' }, 'https://host.example.org/x')).toBe(2);
-    // Another address: the carried tier is about this job's copy, not the stored one.
-    expect(tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x')).toBeNull();
-    expect(on(() => tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x'))).toBe(4);
+    // Another address: the carried tier is about this job's copy, so the stored address is judged instead.
+    expect(tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x')).toBe(4);
+    expect(on(() => tierForStoredDuplicate({ importedVia: 'manual_url' }, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x'))).toBe(4);
+    expect(tierForStoredDuplicate({ importedVia: 'manual_url' }, { url: 'https://www.nature.com/x' }, 'https://copy.example.com/x')).toBeNull();
     expect(on(() => tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, null))).toBeNull();
+    // With the switch on only for the run, the carried tier is the sign it was on: the stored copy is still judged.
+    expect(tierForStoredDuplicate(job, { url: 'https://www.nature.com/x' }, 'https://www.nrc.gov/x')).toBe(1);
+    // A person's job cannot use that sign.
+    expect(tierForStoredDuplicate({ importedVia: 'manual_url', authorityTier: 2 }, { url: 'https://a.example/x' }, 'https://www.nrc.gov/x')).toBeNull();
   });
 
   it('records the tier a discovery job carries, with no switch on in this worker', async () => {

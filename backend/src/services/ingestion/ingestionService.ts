@@ -290,12 +290,20 @@ export async function fillReferenceDetails(
  * and is retried rather than finishing with the tier quietly missing. Callers
  * decide whether the switch is on; with it off this is never reached with a tier.
  */
+/** A tier that could not be written. Thrown past any handler that would treat it as one page failing. */
+export class AuthorityTierWriteError extends Error {
+  constructor(readonly sourceId: string, readonly cause: unknown) {
+    super(`could not record the authority tier of source ${sourceId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'AuthorityTierWriteError';
+  }
+}
+
 export async function recordAuthorityTier(sourceId: string, tier: AuthorityTier | null): Promise<void> {
   if (tier === null) return;
   try {
     await query(`UPDATE sources SET authority_tier = COALESCE(authority_tier, $2::smallint) WHERE id = $1`, [sourceId, tier]);
   } catch (err) {
-    if ((err as { code?: string })?.code !== '42703') throw err;
+    if ((err as { code?: string })?.code !== '42703') throw new AuthorityTierWriteError(sourceId, err);
     logger.warn('ingestion: the authority tier column is not there yet; the tier was not recorded', { sourceId, tier });
   }
 }
@@ -336,7 +344,11 @@ export function tierForStoredDuplicate(
   const read = (signals.url ?? '').trim();
   const same = stored !== '' && read !== '' && normalizeDiscoveryUrl(stored) === normalizeDiscoveryUrl(read);
   if (same) return tierForIngest(data, signals);
-  return authorityTiersEnabled() ? authorityTierFor({ url: storedUrl }) : null;
+  // A tier discovery sent is also the sign that tiers were on for its run, whose
+  // switches do not reach this worker. Its value describes this job's copy, so
+  // only the sign is used, and the stored address is judged.
+  const runHadTiers = data.importedVia === 'autonomous_discovery' && storedAuthorityTier(data.authorityTier) !== null;
+  return runHadTiers || authorityTiersEnabled() ? authorityTierFor({ url: storedUrl }) : null;
 }
 
 /** Persist one fetched web page: dedup, source row, chunks, embedding queue. */
@@ -589,6 +601,9 @@ async function runSiteCrawlIngestion(
       if (result.duplicate) skippedDuplicate += 1;
       else ingested += 1;
     } catch (err) {
+      // A page that was stored but whose tier could not be written fails the
+      // crawl, so the retry records it, instead of counting as one lost page.
+      if (err instanceof AuthorityTierWriteError) throw err;
       failed += 1;
       logger.warn('site_crawl_page_failed', {
         pageUrl,
