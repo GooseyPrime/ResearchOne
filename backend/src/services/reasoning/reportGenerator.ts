@@ -4,6 +4,7 @@ import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService'
 import { baselineLayerEnabled } from '../../config';
 import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, stripUnstatedRetractions, unknownMarkers, unstatedRetractions, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
+import { SEARCH_SCOPE_WRITER_RULE, withSearchScope } from './searchScope';
 import { firstSentences, fitToTotal, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import {
@@ -1003,14 +1004,16 @@ export function finalizeLockedReportForSave(
   query: string,
   passages: LockedPassage[],
   style: ReferenceStyle = 'numeric',
-  readOn?: string
+  readOn?: string,
+  /** What the run's record says was searched, for a report type that must state it. */
+  scopeNote = ''
 ): { finalized: FinalizedCitations; wordingAfter: string[] } {
   const cleaned = stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, query));
   const wordingBefore = presentationFailures(cleaned).filter((hit) => hit !== 'passage marker');
   // Last look, after every rewrite: a retracted source is never cited by a
   // sentence that does not say it was retracted.
   const toSave = stripUnstatedRetractions(wordingBefore.length > 0 ? removeBannedWording(cleaned) : cleaned, passages);
-  const finalized = finalizeLockedCitations(toSave, passages, readOn, style);
+  const finalized = finalizeLockedCitations(toSave, passages, readOn, style, scopeNote);
   return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
 }
 
@@ -1249,6 +1252,12 @@ export async function generateIterativeReport(args: {
    * reader numbers and builds the reference list before the report is saved.
    */
   lockedPassages?: LockedPassage[];
+  /**
+   * What the run's record says was searched. Given only for a Layer 1 report
+   * whose type must state it. The closing note carries it, and the writer is
+   * told not to describe a search of its own.
+   */
+  searchScopeNote?: string;
 }): Promise<{
   markdown: string;
   sections: ReportSectionDraft[];
@@ -1564,7 +1573,7 @@ ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
 ${useReaderHeadings || (layer1 && fixedSectionWords(section.key) !== undefined) ? readerSectionRule(section.key) : ''}
-${layer1 ? READER_WORDING_RULE : ''}
+${layer1 ? READER_WORDING_RULE : ''}${layer1 && args.searchScopeNote ? SEARCH_SCOPE_WRITER_RULE : ''}
 ${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },
@@ -1891,7 +1900,7 @@ ${layer1
     ? [
         ...numbered.sections.filter((section) => section.key !== 'references' && section.key !== 'about'),
         ...(references ? [{ key: 'references', title: 'References', content: references }] : []),
-        { key: 'about', title: 'About this report', content: buildAbout(cited.length === 0 ? 0 : readCount, formatReadDate()) },
+        { key: 'about', title: 'About this report', content: withSearchScope(buildAbout(cited.length === 0 ? 0 : readCount, formatReadDate()), args.searchScopeNote ?? '', cited.length === 0 ? 0 : readCount) },
       ]
     : cleaned;
   // While the lock is on the text still carries the writer's markers on purpose;
