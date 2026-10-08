@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { routesFor, selectProviders, sourceDescriptionsFor } from '../services/discovery/providerRouting';
 import { PROVIDER_KEYS, PROVIDER_REGISTRY } from '../services/discovery/providerRegistry';
+import { config } from '../config';
 import { providerErrorRecord, withExtraQueries } from '../services/discovery/discoveryOrchestrator';
 import { anomalyQueryFor, searchSeedFor } from '../services/discovery/deterministicDiscoveryQueries';
 import { getOrchestrationProfileForIntent, writesThroughReportWriter } from '../services/planning/orchestrationProfiles';
@@ -93,6 +94,25 @@ describe('the provider registry', () => {
   });
 });
 
+describe('review findings', () => {
+  it('puts the anomaly query first, so a tight budget keeps it', () => {
+    const chosen = selectProviders(brief('When was the Brooklyn Bridge completed?', { layer2: true }), WEB);
+    expect(chosen.extraQueries.map((extra) => extra.purpose)).toEqual(['anomaly', 'official_record']);
+    const round1 = withExtraQueries(['planned'], chosen.extraQueries.map((extra) => extra.text), 2);
+    expect(round1).toEqual(['planned', anomalyQueryFor('seed terms')]);
+  });
+
+  it('never treats the generic endpoint key as a Brave key', () => {
+    const was = { provider: config.discovery.provider, providerApiKey: config.discovery.providerApiKey };
+    Object.assign(config.discovery, { provider: 'generic', providerApiKey: 'generic-endpoint-key' });
+    expect(PROVIDER_REGISTRY.brave.isConfigured()).toBe(false);
+    expect(selectProviders(brief('Same question', { layer2: true }), { webProviders: ['generic'] }).providers).not.toContain('brave');
+    Object.assign(config.discovery, { provider: 'cascade' });
+    expect(PROVIDER_REGISTRY.brave.isConfigured()).toBe(true);
+    Object.assign(config.discovery, was);
+  });
+});
+
 describe('extra queries', () => {
   it('fits the extras inside the budget and always runs a planned query', () => {
     expect(withExtraQueries(['a', 'b', 'c'], ['x'], 3)).toEqual(['a', 'b', 'x']);
@@ -124,9 +144,12 @@ describe('reference lookups and the report writer', () => {
 
   it('decides the synthesis path with that rule, with routing read from the run', () => {
     const source = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
-    expect(source).toContain("if (writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled())) {");
+    expect(source).toContain("const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());");
     expect(source).not.toContain("if (shouldRunPipelineStage(orchProfile, 'synthesis')) {");
     // Every discovery pass is told what the request is about.
+    expect(source).toContain('if (synthesisRuns) {');
+    // The recorded synthesis time follows the same decision.
+    expect(source).toContain("(s === 'synthesis' ? synthesisRuns : shouldRunPipelineStage(orchProfile, s))");
     expect(source.match(/routingBrief: \{ intent: orchProfile\.intent, layer2: isAdjudicative \}/g)).toHaveLength(3);
     expect(source).not.toContain('configuredCap: config.discovery.maxIngestPerRun');
   });

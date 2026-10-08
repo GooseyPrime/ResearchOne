@@ -117,7 +117,8 @@ export function selectProviders(brief: RoutingBrief, env: RoutingEnvironment): P
     for (const key of PROVIDER_KEYS) {
       if ((PROVIDER_REGISTRY[key] as { challengeRuns?: boolean }).challengeRuns && configured(key)) add(key);
     }
-    extraQueries.push({ text: anomalyQueryFor(brief.seed), providers: [...providers], purpose: 'anomaly' });
+    // First, so a tight query budget drops a route's extra query before this one.
+    extraQueries.unshift({ text: anomalyQueryFor(brief.seed), providers: [...providers], purpose: 'anomaly' });
   }
 
   return { routes, providers, notConfigured, extraQueries };

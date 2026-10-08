@@ -16,7 +16,7 @@ With `PROVIDER_ROUTING_ENABLED` on, discovery decides what the request is about 
 | code | Software and repository words in the request | The web services, plus one search limited to GitHub |
 | default | None of the above | The web services, OpenAlex, Crossref, plus one search for official and primary records |
 
-A request can match more than one route, and each route it matches adds its services. A challenge run also adds every service marked for challenge runs (Brave today), plus one search for reports that don't fit the usual account.
+A request can match more than one route, and each route it matches adds its services. A challenge run (the three challenge report types, or the PolicyOne method) also adds every service marked for challenge runs (Brave today), plus one search for reports that don't fit the usual account. That search comes first among the extra searches, so a tight budget never drops it while another extra search runs.
 
 "The web services" means whatever the server is set to with `SEARCH_PROVIDER`: `tavily` (the default), `brave`, `generic`, or `cascade` (all three, in that order).
 
@@ -42,7 +42,7 @@ With `PROVIDER_ROUTING_ENABLED` off, discovery uses the web services plus the sp
 
 - **Covers:** an independent general web index. Useful for pages other engines rank low.
 - **Used for:** every route, as a web service, when `SEARCH_PROVIDER` is `brave` or `cascade`. Every challenge run also uses it when the key is set.
-- **Needs:** `SEARCH_PROVIDER_API_KEY`.
+- **Needs:** `SEARCH_PROVIDER_API_KEY`, with `SEARCH_PROVIDER` set to `brave` or `cascade`. The same setting is the generic endpoint's optional key, so with `SEARCH_PROVIDER=generic` it is never treated as a Brave key.
 - **Good at:** a second view of the web, and sensitive topics (such runs search it first).
 
 ### Generic web search endpoint (`generic`)

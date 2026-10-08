@@ -76,7 +76,9 @@ export const PROVIDER_REGISTRY = {
     web: true,
     challengeRuns: true,
     needs: ['SEARCH_PROVIDER_API_KEY'],
-    isConfigured: () => Boolean(config.discovery.providerApiKey),
+    // The same setting is the generic endpoint's optional key, so it is a Brave key
+    // only when the server is set to use Brave. Otherwise a generic key would be sent to Brave.
+    isConfigured: () => Boolean(config.discovery.providerApiKey) && ['brave', 'cascade'].includes(config.discovery.provider),
     build: () => new BraveSearchProvider(),
   },
   generic: {

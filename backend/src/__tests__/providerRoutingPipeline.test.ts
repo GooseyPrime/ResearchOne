@@ -162,6 +162,7 @@ describe('choosing search providers by request', () => {
 
   it('sends the anomaly query on a challenge run, to every provider it searches, and searches Brave when keyed', async () => {
     config.discovery.providerApiKey = 'brave-key';
+    config.discovery.provider = 'cascade';
     await runWithFlags(ROUTING_ON, () =>
       discover('Did the 2019 vaping illness outbreak come from nicotine products?', { intent: 'investigation', layer2: true })
     );

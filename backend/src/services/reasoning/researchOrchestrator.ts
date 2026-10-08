@@ -2435,7 +2435,9 @@ async function runResearchJobInner(
     } else {
       await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
     }
-    if (writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled())) {
+    // Slice 7: a lookup profile goes through the report writer with routing and Layer 1 on.
+    const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());
+    if (synthesisRuns) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       const usedSources = allChunks.map((chunk) => ({
@@ -3316,7 +3318,7 @@ ${reportForGates(generatedReport.markdown)}`,
       _intentId: orchProfile.intent,
     };
     for (const s of PIPELINE_STAGES) {
-      stageDurationPayload[s] = shouldRunPipelineStage(orchProfile, s)
+      stageDurationPayload[s] = (s === 'synthesis' ? synthesisRuns : shouldRunPipelineStage(orchProfile, s))
         ? Math.round(phaseDurations[s] ?? 0)
         : null;
     }
