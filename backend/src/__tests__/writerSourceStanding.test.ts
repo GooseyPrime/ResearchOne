@@ -166,8 +166,11 @@ describe('the writer and source standing', () => {
     expect(AUTHORITY_INSTRUCTION).not.toMatch(/that is not peer reviewed/);
     expect(STANDING_FOR_WRITER[3]).toMatch(/book/);
     expect(STANDING_FOR_WRITER[3]).toMatch(/thesis/);
-    // Conference and review articles are tier 2: the words do not say "study".
-    expect(STANDING_FOR_WRITER[2]).toBe('peer-reviewed scholarly work');
+    // Tier 2 includes a journal publisher's page matched by host alone, which does not establish peer review.
+    expect(STANDING_FOR_WRITER[2]).toBe('scholarly work from a journal or its publisher');
+    for (const words of Object.values(STANDING_FOR_WRITER)) expect(words).not.toMatch(/^peer-reviewed/);
+    expect(AUTHORITY_INSTRUCTION).toMatch(/Do not say a source was peer reviewed unless the passage itself says so/);
+    expect(AUTHORITY_INSTRUCTION).not.toMatch(/peer-reviewed study/);
   });
 });
 
@@ -215,6 +218,16 @@ describe('a source ranked by tier in the report text', () => {
       expect(readerFacingLabelHits(text)).toContain('source rank');
       expect(readerFacingLabelHits(removeBannedWording(text))).not.toContain('source rank');
     }
+  });
+
+  it('takes out a rating next to a reference-style link', () => {
+    expect(removeBannedWording('The regulator is a [tier 1][r] source.\n\n[r]: https://example.org/tiers')).toBe('The regulator is a source.\n\n[r]: https://example.org/tiers');
+    expect(removeBannedWording('Two [sources][s] in tier 2 disagree.\n\n[s]: https://example.org/s')).toBe('Two [sources][s] disagree.\n\n[s]: https://example.org/s');
+  });
+
+  it('keeps a quotation whole when it runs across code', () => {
+    const text = 'The first is a tier 1 source; the agency says "a tier 1 source with `data`".';
+    expect(removeBannedWording(text)).toBe('The first is a source; the agency says "a tier 1 source with `data`".');
   });
 
   it('keeps a quotation whole when it runs across a link', () => {

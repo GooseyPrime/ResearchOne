@@ -2409,6 +2409,14 @@ async function runResearchJobInner(
         'Rerun with a broader corpus or supply supplemental sources.'
       );
     }
+    // Slice 6. Recorded on the run, so a report keeps naming its sources the way it
+    // was written however the switch is set later, whichever way it is written.
+    // Cleared on a retry without it.
+    if (authorityTiersEnabled()) {
+      await query(`UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || '{"authorityTiers": true}'::jsonb WHERE id=$1`, [runId]);
+    } else {
+      await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
+    }
     if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
@@ -2480,13 +2488,6 @@ async function runResearchJobInner(
           `UPDATE research_runs SET corpus_after = corpus_after - 'citationLock' WHERE id=$1 AND corpus_after ? 'citationLock'`,
           [runId]
         );
-      }
-      // Slice 6. Recorded on the run, so a report keeps naming its sources the way it
-      // was written however the switch is set later. Cleared on a retry without it.
-      if (authorityTiersEnabled()) {
-        await query(`UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || '{"authorityTiers": true}'::jsonb WHERE id=$1`, [runId]);
-      } else {
-        await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
       }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,

@@ -934,7 +934,8 @@ export { stripInternalLabelsFromReport };
  */
 const RANKED_NOUN = '(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)';
 const RATING = '(?:authority[- ])?(?:tier|level)[- ]?[1-4]';
-const LINK_TAIL = '\\]\\([^)\\s]*(?:\\s+"[^"]*")?\\)';
+// An inline link's tail, "](url)", or a reference link's, "][ref]".
+const LINK_TAIL = '\\](?:\\([^)\\s]*(?:\\s+"[^"]*")?\\)|\\[[^\\]\\n]*\\])';
 
 export function withoutSourceRank(text: string): string {
   // The same whitespace the check accepts, so a soft line break inside a phrase
@@ -984,10 +985,11 @@ export function removeBannedWording(content: string): string {
 
   // The report's own wording only: a direct quotation keeps the source's words.
   const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
-  // A tier rating of a source is taken out first, over whole text outside code,
-  // so a quotation that runs across a link keeps its words. The rating forms
+  // A tier rating of a source is taken out first, over the whole text, so a
+  // quotation that runs across a link or code keeps its words. The rating forms
   // need spaces between words, so a link destination never matches.
-  const unrated = mapOutsideCode(content, (part) => mapOutsideQuotes(part, withoutSourceRank), (code) => code);
+  // Quotations first, over the whole text, so one that runs across code keeps its words; code is never changed.
+  const unrated = mapOutsideQuotes(content, (part) => mapOutsideCode(part, withoutSourceRank, (code) => code));
   // A link's label is prose the reader sees; its destination is not.
   return mapCitationProse(mapLinkLabels(unrated, cleanOwnWords), cleanOwnWords);
 }

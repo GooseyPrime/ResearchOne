@@ -242,7 +242,10 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
     readerWords: 'research institution page',
     tier: 3,
     what: 'a recognized research institution that publishes reports',
-    hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],
+    hosts: [
+      'rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org',
+      'mpg.de', 'cnrs.fr', 'cern.ch',
+    ],
     example: { url: 'https://www.pewresearch.org/science/2024/01/01/example/' },
   },
   {
@@ -251,7 +254,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
     tier: 3,
     what: 'a university or research institute',
     hostSuffixes: ['edu', 'ac.uk', 'edu.au', 'ac.jp', 'ac.in', 'edu.cn', 'ac.nz', 'ac.za', 'edu.sg'],
-    hosts: ['mpg.de', 'cnrs.fr', 'ethz.ch', 'epfl.ch', 'cern.ch'],
+    hosts: ['ethz.ch', 'epfl.ch'],
     example: { url: 'https://energy.mit.edu/research/future-nuclear-energy-carbon-constrained-world/' },
   },
 ];

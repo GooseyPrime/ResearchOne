@@ -124,12 +124,14 @@ export function tierOfStoredSource(row: StoredSourceSignals): AuthorityTier | nu
 
 /**
  * What the writer is told about a source's standing, by tier: each covers its
- * whole group, so the writer is never told a source is a kind it is not.
+ * whole group, so the writer is never told a source is a kind it is not. Tier 2
+ * includes pages matched only by a journal publisher's host, which does not
+ * establish peer review, so its words do not claim it.
  * Words for the writer, not labels for the reader.
  */
 export const STANDING_FOR_WRITER: Readonly<Record<AuthorityTier, string>> = {
   1: 'an official or primary record',
-  2: 'peer-reviewed scholarly work',
+  2: 'scholarly work from a journal or its publisher',
   3: 'published work not established as peer reviewed (such as a preprint, book, thesis, news report or reference work)',
   4: 'a source of unestablished standing',
 };

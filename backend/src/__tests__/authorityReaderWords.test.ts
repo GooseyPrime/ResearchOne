@@ -83,6 +83,11 @@ describe('review fixes for where the reader sees authority', () => {
   it('a named research institution is not called a university page', () => {
     expect(sourceKindInWords({ url: 'https://www.brookings.edu/articles/x/', authorityWords: true })).toBe('research institution page');
     expect(sourceKindInWords({ url: 'https://energy.mit.edu/x', authorityWords: true })).toBe('university page');
+    // Research institutes are not universities; ETH Zurich is.
+    for (const url of ['https://www.mpg.de/x', 'https://www.cnrs.fr/x', 'https://home.cern.ch/x']) {
+      expect(sourceKindInWords({ url, authorityWords: true })).toBe('research institution page');
+    }
+    expect(sourceKindInWords({ url: 'https://ethz.ch/en/x', authorityWords: true })).toBe('university page');
   });
 
   it('a host names the site, never a document type it cannot know', () => {
