@@ -12,7 +12,6 @@
  * Products created:
  *   - ResearchOne Student (monthly + annual)
  *   - ResearchOne Pro (monthly + annual)
- *   - ResearchOne Team Seat (monthly + annual)
  *   - ResearchOne BYOK (monthly + annual)
  *   - Wallet Top-up ($20, $50, $100)
  *   - Monitor Token Packs (1 / 5 / 10 tokens)
@@ -22,8 +21,6 @@
  *   - Provenance Ledger
  *   - Score API Pro
  *   - Patent IP Diligence Floor
- *   - Sovereign Onboarding
- *   - Sovereign Add-ons (Custom Corpus Adapter, Custom Model Weights, Priority SLA, Dedicated Success)
  */
 
 import Stripe from 'stripe';
@@ -56,7 +53,6 @@ interface PriceSpec {
 const PRODUCTS: ProductSpec[] = [
   { name: 'ResearchOne — Student', description: 'Student tier subscription (SheerID-verified)', lookupKey: 'researchone_student' },
   { name: 'ResearchOne — Pro', description: 'Pro tier subscription for indie researchers and consultants', lookupKey: 'researchone_pro' },
-  { name: 'ResearchOne — Team Seat', description: 'Team tier subscription per seat (3-seat minimum)', lookupKey: 'researchone_team_seat' },
   { name: 'ResearchOne — BYOK', description: 'Bring Your Own Keys subscription', lookupKey: 'researchone_byok' },
   { name: 'ResearchOne — Wallet Top-up ($20)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_20' },
   { name: 'ResearchOne — Wallet Top-up ($50)', description: 'One-time wallet top-up. Wallet credits do not expire. Used for pay-per-report pricing ($4 Standard, $10 Deep) and Pro-tier overages.', lookupKey: 'researchone_wallet_topup_50' },
@@ -70,11 +66,6 @@ const PRODUCTS: ProductSpec[] = [
   { name: 'ResearchOne — Provenance Ledger', description: 'Immutable audit trail for research provenance', lookupKey: 'researchone_provenance_ledger' },
   { name: 'ResearchOne — Score API Pro', description: "Programmatic access to ResearchOne's compliance and policy scoring engine", lookupKey: 'researchone_policyone_api_pro' },
   { name: 'ResearchOne — Patent IP Diligence Floor', description: 'Base fee for patent and IP diligence analysis', lookupKey: 'researchone_patent_ip_floor' },
-  { name: 'ResearchOne — Sovereign Onboarding', description: 'One-time onboarding fee for Sovereign tier', lookupKey: 'researchone_sovereign_onboarding' },
-  { name: 'ResearchOne — Sovereign: Custom Corpus Adapter', description: 'Custom corpus ingestion adapter for Sovereign clients', lookupKey: 'researchone_sovereign_corpus_adapter' },
-  { name: 'ResearchOne — Sovereign: Custom Model Weights', description: 'Custom model weights integration for Sovereign clients', lookupKey: 'researchone_sovereign_custom_weights' },
-  { name: 'ResearchOne — Sovereign: Priority Response SLA', description: 'Priority response SLA add-on for Sovereign clients', lookupKey: 'researchone_sovereign_priority_sla' },
-  { name: 'ResearchOne — Sovereign: Dedicated Success', description: 'Dedicated success contact add-on for Sovereign clients', lookupKey: 'researchone_sovereign_dedicated_success' },
 ];
 
 const PRICES: PriceSpec[] = [
@@ -86,9 +77,6 @@ const PRICES: PriceSpec[] = [
   { productLookupKey: 'researchone_pro', lookupKey: 'pro_monthly', unitAmountCents: 2900, currency: 'usd', recurring: { interval: 'month' } },
   { productLookupKey: 'researchone_pro', lookupKey: 'pro_annual', unitAmountCents: 29000, currency: 'usd', recurring: { interval: 'year' } },
 
-  // Team tier: $99/seat/month, $990/seat/year
-  { productLookupKey: 'researchone_team_seat', lookupKey: 'team_seat_monthly', unitAmountCents: 9900, currency: 'usd', recurring: { interval: 'month' } },
-  { productLookupKey: 'researchone_team_seat', lookupKey: 'team_seat_annual', unitAmountCents: 99000, currency: 'usd', recurring: { interval: 'year' } },
 
   // BYOK tier: $29/month, $290/year
   { productLookupKey: 'researchone_byok', lookupKey: 'byok_monthly', unitAmountCents: 2900, currency: 'usd', recurring: { interval: 'month' } },
@@ -114,14 +102,7 @@ const PRICES: PriceSpec[] = [
   // Patent IP Diligence floor (one-time per engagement)
   { productLookupKey: 'researchone_patent_ip_floor', lookupKey: 'patent_ip_floor', unitAmountCents: 250000, currency: 'usd' },
 
-  // Sovereign Onboarding (one-time)
-  { productLookupKey: 'researchone_sovereign_onboarding', lookupKey: 'sovereign_onboarding', unitAmountCents: 750000, currency: 'usd' },
 
-  // Sovereign add-ons (one-time or as invoiced)
-  { productLookupKey: 'researchone_sovereign_corpus_adapter', lookupKey: 'sovereign_corpus_adapter', unitAmountCents: 250000, currency: 'usd' },
-  { productLookupKey: 'researchone_sovereign_custom_weights', lookupKey: 'sovereign_custom_weights', unitAmountCents: 500000, currency: 'usd' },
-  { productLookupKey: 'researchone_sovereign_priority_sla', lookupKey: 'sovereign_priority_sla_monthly', unitAmountCents: 150000, currency: 'usd', recurring: { interval: 'month' } },
-  { productLookupKey: 'researchone_sovereign_dedicated_success', lookupKey: 'sovereign_dedicated_success_monthly', unitAmountCents: 200000, currency: 'usd', recurring: { interval: 'month' } },
 ];
 
 async function findOrCreateProduct(spec: ProductSpec): Promise<string> {
