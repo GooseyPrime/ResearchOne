@@ -16,6 +16,7 @@ import { splitTopLevelSections } from './targetedRepair';
 import { buildAbout, buildReferences, formatReadDate, sourceKey, type UsedSource } from './baselineReport';
 import { withSearchScope } from './searchScope';
 import type { ReferenceStyle } from '../formatting/referenceList';
+import { STANDING_FOR_WRITER, type AuthorityTier } from '../authority/authorityTier';
 
 export interface LockedPassage {
   /** `P1`, `P2`, … in the order the passages were retrieved. */
@@ -29,7 +30,21 @@ export interface LockedPassage {
   retracted?: boolean;
   /** What the link check found for the source's DOI, kept to be saved with the citation. */
   doiCheck?: { status: string; notice: string | null } | null;
+  /**
+   * Slice 6. The source's authority tier, set only when AUTHORITY_TIERS_ENABLED
+   * is on. The writer is shown it in words; the number never reaches the report.
+   */
+  standing?: AuthorityTier | null;
 }
+
+/**
+ * Slice 6. Added to the writer's instructions when its passages carry a
+ * standing. Sources are preferred, never dropped, and the order is never
+ * written into the report as a rating.
+ */
+export { STANDING_FOR_WRITER };
+
+export const AUTHORITY_INSTRUCTION = `Some passages say what kind of source they come from. A passage without that line has no stated standing: do not guess one, and do not rank it above or below another. Where two sources with stated standings disagree on a point, prefer the one higher in this order: official or primary records, then scholarly work from a journal or its publisher, then other published work not established as peer reviewed, then sources of unestablished standing. Do not say a source was peer reviewed unless the passage itself says so. Say in plain words which source you relied on and why, for example "the regulator's own figures put it at" or "a study in a scholarly journal found, while a news report gave". A source lower in the order that is the only one for a point is still used and cited. Do not grade or rank sources in the text: never write "tier", "authority level" or a rating, and do not copy the "Kind of source" lines.`;
 
 export interface CitationOccurrence {
   /** Reader number shown in the text. */
@@ -164,7 +179,8 @@ export function formatLockedContext(passages: LockedPassage[], cleanText: (text:
         .join(', ');
       const body = unmark(cleanText(passage.text).trim());
       const warning = passage.retracted ? ` ${RETRACTED_LABEL}` : '';
-      return `[${passage.marker}] ${from}${warning}\n${body}`;
+      const standing = passage.standing ? `Kind of source: ${STANDING_FOR_WRITER[passage.standing]}\n` : '';
+      return `[${passage.marker}] ${from}${warning}\n${standing}${body}`;
     })
     .join('\n\n---\n\n');
 }

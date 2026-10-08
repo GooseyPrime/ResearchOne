@@ -152,6 +152,8 @@ export function buildReaderEvidence(args: {
   claimRows: ReaderClaimRow[];
   /** The run's passages in the order the writer was shown them: an older report's "Chunk N" is the N-th. */
   passageOrder?: string[];
+  /** Slice 6. Name a plain web page by where it was read, when the run had authority tiers on. */
+  authorityWords?: boolean;
 }): ReaderEvidence {
   const sources = new Map<string, ReaderSource>();
   const citations: ReaderCitation[] = [];
@@ -165,7 +167,7 @@ export function buildReaderEvidence(args: {
         authors: (row.source_authors ?? []).filter((author) => typeof author === 'string' && author.trim().length > 0),
         date: isoDay(row.source_published_at),
         url: row.source_url,
-        kind: sourceKindInWords({ kind: row.source_kind, provider: row.source_provider, url: row.source_url, hasFile: Boolean(row.source_filename) }),
+        kind: sourceKindInWords({ kind: row.source_kind, provider: row.source_provider, url: row.source_url, hasFile: Boolean(row.source_filename), authorityWords: args.authorityWords === true }),
         notice: row.editorial_notice?.trim() || null,
       });
     }
@@ -222,13 +224,20 @@ const isMissingColumn = (err: unknown): boolean => (err as { code?: string })?.c
 /** How rows are read. The page reads as the signed-in person; an export job reads with the job's own access. */
 type Read = <T>(sql: string, params: unknown[]) => Promise<T[]>;
 
-export async function loadReaderEvidence(report: { id: string; status: string | null; run_id: string | null }, read: Read = query as Read): Promise<ReaderEvidence> {
+export async function loadReaderEvidence(
+  report: { id: string; status: string | null; run_id: string | null },
+  read: Read = query as Read,
+  options: { authorityWords?: boolean } = {}
+): Promise<ReaderEvidence> {
   const select = (extra: string): string =>
-    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, rc.source_id, rc.citation_text, rc.citation_order, rc.chunk_quote${extra},
+    `SELECT rc.section_id, rc.chunk_id, rc.claim_id, COALESCE(rc.source_id, c.source_id) AS source_id, rc.citation_text, rc.citation_order, rc.chunk_quote${extra},
             s.title AS source_title, s.url AS source_url, s.authors AS source_authors, s.publication AS source_publication,
             s.published_at AS source_published_at, s.original_filename AS source_filename,
             s.metadata->'bibliographic'->>'kind' AS source_kind, s.metadata->'bibliographic'->>'provider' AS source_provider
-       FROM report_citations rc LEFT JOIN sources s ON s.id = rc.source_id
+       FROM report_citations rc
+       LEFT JOIN chunks c ON c.id = rc.chunk_id
+       -- A citation saved without the old mapper's source id still names its passage, whose source is known.
+       LEFT JOIN sources s ON s.id = COALESCE(rc.source_id, c.source_id)
       WHERE rc.report_id = $1`;
   let citationRows: CitationRow[];
   try {
@@ -262,5 +271,6 @@ export async function loadReaderEvidence(report: { id: string; status: string | 
     citationRows,
     claimRows,
     passageOrder: Array.isArray(run?.retrieval_ids) ? run.retrieval_ids.map(String) : [],
+    authorityWords: options.authorityWords === true,
   });
 }

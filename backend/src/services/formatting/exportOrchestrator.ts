@@ -26,7 +26,7 @@ import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
 import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody, type ReaderExportOptions } from './readerExport';
 import { loadReaderEvidence } from './readerEvidence';
-import { readerViewForRun } from '../eval/readerView';
+import { authorityWordsForRun, readerViewForRun } from '../eval/readerView';
 import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
 import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
 
@@ -94,7 +94,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
     challengeTitles,
     legacyNumbers: hasLegacyLabels(body) ? await legacyNumbersForExport(reportId, state?.runId ?? null) : undefined,
   });
-  if (state?.savedStyle) return exportLockedReport(input, state.savedStyle, readerView ? readerOptions : null);
+  if (state?.savedStyle) return exportLockedReport(input, state.savedStyle, readerView ? readerOptions : null, await authorityWordsForRun(state.runId));
 
   // 2. Assign / load evidence aliases for this report.
   const aliases = await assignEvidenceAliases(reportId);
@@ -177,7 +177,9 @@ async function exportLockedReport(
   input: ExportJobInput,
   savedStyle: ReferenceStyle,
   /** Set for a report in the reader view: what its export leaves out and renumbers. */
-  readerOptions: ((body: string) => Promise<ReaderExportOptions>) | null
+  readerOptions: ((body: string) => Promise<ReaderExportOptions>) | null,
+  /** Slice 6. The run had authority tiers on: a rebuilt list names web pages as the saved one did. */
+  authorityWords = false
 ): Promise<ExportJobOutput> {
   const { reportId, format, style } = input;
   const metaRows = await adminQuery<ReportMetaRow>(`SELECT title, executive_summary, conclusion FROM reports WHERE id = $1 LIMIT 1`, [reportId]);
@@ -201,7 +203,7 @@ async function exportLockedReport(
         ORDER BY rc.citation_order ASC NULLS LAST, rc.created_at ASC`,
       [reportId]
     );
-    const restyled = withReferenceStyle(saved, sourcesByNumber(citationRows), wanted);
+    const restyled = withReferenceStyle(saved, sourcesByNumber(citationRows, { authorityWords }), wanted);
     sections = restyled.sections;
     if (!restyled.rebuilt) {
       // The sources behind the citations no longer match the saved list (a

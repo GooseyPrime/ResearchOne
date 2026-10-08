@@ -1,4 +1,5 @@
 import { citationLockEnabled, runWithFlags } from '../../config';
+import { tierOfStoredSource } from '../authority/authorityTier';
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
 import { judgeReportQuality } from './reportQualityJudge';
@@ -114,11 +115,14 @@ function secondsBetween(startedAt: string | null, completedAt: string | null): n
 }
 
 export const STORED_CITATION_SQL = `SELECT ea.alias, rc.chunk_quote AS "chunkQuote", c.content AS "chunkText",
+            COALESCE(rc.source_id, c.source_id) AS "sourceId", src.url AS "sourceUrl",
             rc.chunk_id AS "chunkId", rc.citation_text AS "citationText", cl.claim_text AS "claimText"
      FROM report_citations rc
      JOIN reports r ON r.id = rc.report_id
      LEFT JOIN evidence_aliases ea ON ea.citation_id = rc.id
      LEFT JOIN chunks c ON c.id = rc.chunk_id
+     -- A citation saved without the old mapper's source id still names its passage, whose source is known.
+     LEFT JOIN sources src ON src.id = COALESCE(rc.source_id, c.source_id)
      LEFT JOIN claims cl ON cl.id = rc.claim_id
      LEFT JOIN report_sections s ON s.id = rc.section_id
      WHERE r.run_id = $1
@@ -136,6 +140,18 @@ export function storedSectionsToMarkdown(rows: Array<{ title: string | null; con
     .join('\n\n');
 }
 
+/** Slice 6. Recorded tiers by source. A database without migration 060 has none; the address is judged instead. */
+async function loadRecordedTiers(sourceIds: string[]): Promise<Map<string, unknown>> {
+  if (sourceIds.length === 0) return new Map();
+  try {
+    const rows = await query<{ id: string; authority_tier: unknown }>(`SELECT id, authority_tier FROM sources WHERE id = ANY($1::uuid[])`, [[...new Set(sourceIds)]]);
+    return new Map(rows.map((row) => [row.id, row.authority_tier]));
+  } catch (err) {
+    if ((err as { code?: string })?.code !== '42703') throw err;
+    return new Map();
+  }
+}
+
 export async function loadStoredRun(runId: string): Promise<StoredRun> {
   const report = await query<{ title: string | null; content: string }>(
     `SELECT s.title, s.content FROM report_sections s
@@ -144,7 +160,8 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
      ORDER BY s.section_order`,
     [runId]
   );
-  const citations = await query<EvalCitation>(STORED_CITATION_SQL, [runId]);
+  const citations = await query<EvalCitation & { sourceId?: string | null; sourceUrl?: string | null }>(STORED_CITATION_SQL, [runId]);
+  const recordedTiers = await loadRecordedTiers(citations.map((row) => row.sourceId).filter((id): id is string => Boolean(id)));
   const links = await query<ContradictionLink>(
     `SELECT ia.file_name AS "documentA", ib.file_name AS "documentB"
      FROM contradictions x
@@ -177,6 +194,8 @@ export async function loadStoredRun(runId: string): Promise<StoredRun> {
       chunkId: row.chunkId,
       citationText: row.citationText,
       claimText: row.claimText,
+      // The recorded tier, or the address alone: the same reading retrieval uses.
+      authorityTier: tierOfStoredSource({ authority_tier: row.sourceId ? recordedTiers.get(row.sourceId) : null, url: row.sourceUrl }),
     })),
     contradictionLinks: links,
     startedAt: timing[0]?.started_at ?? null,

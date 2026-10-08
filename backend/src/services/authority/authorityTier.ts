@@ -104,3 +104,56 @@ export function storedAuthorityTier(value: unknown): AuthorityTier | null {
   const n = typeof value === 'string' && /^[1-4]$/.test(value) ? Number(value) : value;
   return n === 1 || n === 2 || n === 3 || n === 4 ? n : null;
 }
+
+/** What is stored about a source, as read back when its passages are retrieved. */
+export interface StoredSourceSignals {
+  authority_tier?: unknown;
+  url?: string | null;
+}
+
+/**
+ * The tier of a stored source. The recorded tier when there is one: it was
+ * worked out at ingest from signals that were trusted then. Otherwise the
+ * source is judged by its address alone. The kind and provider kept under a
+ * source's metadata are not used here: a later upload of the same content can
+ * fill them in, and nothing records who supplied them.
+ */
+export function tierOfStoredSource(row: StoredSourceSignals): AuthorityTier | null {
+  return storedAuthorityTier(row.authority_tier) ?? authorityTierFor({ url: row.url });
+}
+
+/**
+ * What the writer is told about a source's standing, by tier: each covers its
+ * whole group, so the writer is never told a source is a kind it is not. Tier 2
+ * includes pages matched only by a journal publisher's host, which does not
+ * establish peer review, so its words do not claim it.
+ * Words for the writer, not labels for the reader.
+ */
+export const STANDING_FOR_WRITER: Readonly<Record<AuthorityTier, string>> = {
+  1: 'an official or primary record',
+  2: 'scholarly work from a journal or its publisher',
+  3: 'published work not established as peer reviewed (such as a preprint, book, thesis, news report or reference work)',
+  4: 'a source of unestablished standing',
+};
+
+/**
+ * Two passages count as equally relevant when their scores agree to this many
+ * decimal places. Retrieval scores are continuous, so exact ties almost never
+ * happen; without a band the tier would never decide anything.
+ */
+export const RELEVANCE_BAND_DECIMALS = 2;
+
+const band = (similarity: number): number => Math.round(similarity * 10 ** RELEVANCE_BAND_DECIMALS);
+/** Unranked sources sort after tier 4 among equals, never before a ranked one. */
+const rank = (tier: AuthorityTier | null | undefined): number => tier ?? 5;
+
+/**
+ * Relevance first, then tier: within one relevance band the higher tier comes
+ * first, then the more relevant. Nothing is removed (invariant 7); a lower-tier
+ * passage only gives way to an equally relevant higher-tier one.
+ */
+export function orderByRelevanceThenAuthority<T extends { similarity: number; authority_tier?: AuthorityTier | null }>(chunks: readonly T[]): T[] {
+  return [...chunks].sort(
+    (a, b) => band(b.similarity) - band(a.similarity) || rank(a.authority_tier) - rank(b.authority_tier) || b.similarity - a.similarity
+  );
+}

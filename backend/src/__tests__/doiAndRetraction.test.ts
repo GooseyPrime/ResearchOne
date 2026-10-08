@@ -381,7 +381,7 @@ describe('when the link check runs', () => {
 
   it('is not repeated when the report is written: the writer gets what the check left, with its findings', () => {
     expect(orchestratorSource.match(/checkDois\(/g)).toHaveLength(1);
-    expect(orchestratorSource).toMatch(/const found = linkCheckByChunk\.get\(passage\.chunkId\);\s*return \{ \.\.\.passage, retracted: found\?\.retracted === true,/);
+    expect(orchestratorSource).toMatch(/const found = linkCheckByChunk\.get\(passage\.chunkId\);[\s\S]{0,400}return \{\s*\.\.\.passage,\s*retracted: found\?\.retracted === true,/);
   });
 
   it('never stops a run when the check itself fails', () => {

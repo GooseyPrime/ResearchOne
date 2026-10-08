@@ -1,5 +1,6 @@
 import { query, queryOne, withTransaction } from '../../db/pool';
 import { loadRunFlags } from '../eval/runFlagStore';
+import { authorityTiersEnabled } from '../authority/authorityTier';
 import axios, { AxiosError } from 'axios';
 import {
   callRoleModel,
@@ -50,7 +51,7 @@ import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
 import { config, baselineLayerEnabled, citationLockEnabled, doiResolveEnabled, runWithFlags } from '../../config';
 import { checkDois, doiOf, findUnstatedDois, type DoiCheck } from '../verification/doiResolve';
-import { resolveReferenceStyle, sourceKindInWords } from '../formatting/referenceList';
+import { resolveReferenceStyle, describeSourceKind } from '../formatting/referenceList';
 import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
   guardLockedRepair,
   LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
@@ -963,12 +964,15 @@ export function referenceDetails(source: UsedSource | undefined, row: LockedSour
   if (!row) return base;
   const authors = Array.isArray(row.authors) ? row.authors.filter((author) => typeof author === 'string' && author.trim().length > 0) : [];
   const url = base.url ?? row.url ?? null;
+  const described = describeSourceKind({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename), authorityWords: authorityTiersEnabled() });
   return {
     ...base,
     publisher: base.publisher ?? row.publication ?? null,
     authors: authors.length > 0 ? authors : null,
-    kind: sourceKindInWords({ kind: row.kind, provider: row.provider, url, hasFile: Boolean(row.original_filename) }),
+    // Slice 6. With authority tiers on, a plain web page is named by where it was read.
+    kind: described.words,
     accessed: isoDay(row.retrieval_timestamp),
+    ...(described.readFromWeb && described.words !== 'web page' ? { readFromWeb: true } : {}),
   };
 }
 
@@ -2419,6 +2423,14 @@ async function runResearchJobInner(
         'Rerun with a broader corpus or supply supplemental sources.'
       );
     }
+    // Slice 6. Recorded on the run, so a report keeps naming its sources the way it
+    // was written however the switch is set later, whichever way it is written.
+    // Cleared on a retry without it.
+    if (authorityTiersEnabled()) {
+      await query(`UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || '{"authorityTiers": true}'::jsonb WHERE id=$1`, [runId]);
+    } else {
+      await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
+    }
     if (shouldRunPipelineStage(orchProfile, 'synthesis')) {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
@@ -2463,9 +2475,17 @@ async function runResearchJobInner(
         // read them. What is left carries what the check found: a retracted
         // source is flagged to the writer, and each finding is saved with the
         // citations of its source.
+        const tierByChunk = new Map(allChunks.map((chunk) => [chunk.id, chunk.authority_tier ?? null]));
         lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id]))).map((passage) => {
           const found = linkCheckByChunk.get(passage.chunkId);
-          return { ...passage, retracted: found?.retracted === true, doiCheck: found ? { status: found.status, notice: found.notice } : null };
+          // Slice 6. A passage carries its source's standing only when retrieval ranked it (switch on).
+          const standing = tierByChunk.get(passage.chunkId);
+          return {
+            ...passage,
+            retracted: found?.retracted === true,
+            doiCheck: found ? { status: found.status, notice: found.notice } : null,
+            ...(standing ? { standing } : {}),
+          };
         });
         const doiCheckRecord = linkCheckRecord();
         // Recorded on the run, so anything that scores it later knows how it was

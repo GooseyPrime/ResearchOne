@@ -3,6 +3,7 @@
  * imports so the generator, the read route and the exporters can all use it.
  */
 import { REASONING_MODEL_ROLES } from '../reasoning/reasoningModelPolicy';
+import { STANDING_FOR_WRITER } from '../authority/authorityTier';
 
 const TIER_WORD = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)';
 /** "[Strong_Evidence - Chunk 3]" -> "[Chunk 3]"; keeps the chunk reference the citation mapper reads. */
@@ -314,7 +315,7 @@ export function unwrapCitationLinks(markdown: string): string {
  * list is prose, so it is read too, with any inline code inside it still kept.
  * `code` says what a code segment becomes; by default it is left as written.
  */
-function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
+export function mapOutsideCode(markdown: string, change: (text: string) => string, code: (segment: string) => string = (segment) => segment): string {
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(CODE_ONLY)) {
@@ -428,11 +429,56 @@ export function readerFacingLabelHits(text: string): string[] {
   });
   if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
   if (/\bthis report synthesizes evidence\b/i.test(seen)) hits.push('boilerplate');
+  if (SOURCE_RANK_LABEL.test(ownWords)) hits.push('source rank');
   return hits;
 }
 
 /** Marks where a label was removed, so spacing is tidied only there. */
 const REMOVED = '\uE000';
+
+/**
+ * Slice 6. The line the writer is shown above each passage ("Kind of source:
+ * peer-reviewed scholarly work"). It is an instruction to the writer, so a copy
+ * of it in the report is removed whole. Only the exact lines the writer is
+ * shown match, with or without a list marker, so a sentence of the report that
+ * happens to begin "Kind of source:" is kept.
+ */
+const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const WRITER_SOURCE_KIND_LINE = new RegExp(
+  `^[ \\t]*(?:(?:[-*+>]|\\d+[.)])[ \\t]+)?Kind of source:[ \\t]*(?:${Object.values(STANDING_FOR_WRITER).map(escapeForPattern).join('|')})[ \\t]*\\.?[ \\t]*$`,
+  'i'
+);
+
+/**
+ * Removes whole copied standing lines. Judged line by line on the whole text,
+ * not on the pieces between links and code, so a line that merely starts the
+ * same way and goes on past a link is kept. Code in every form the shared
+ * matcher knows (fences of any length, inline spans, indented lines) is blanked
+ * out before judging, so a line that is code, or holds any code, is kept.
+ */
+function dropWriterSourceKindLines(markdown: string): string {
+  if (!/Kind of source:/i.test(markdown)) return markdown;
+  const lines = markdown.split('\n');
+  const outsideCode = markdown.replace(CODE_ONLY, (code) => code.replace(/[^\n]/g, ' ')).split('\n');
+  return lines.filter((line, at) => !(outsideCode[at] === line && WRITER_SOURCE_KIND_LINE.test(line))).join('\n');
+}
+
+/**
+ * Slice 6. A sentence that ranks a source by tier number ("a tier 1 source",
+ * "sources in tier 2", "T1 evidence"). A tier is never printed in report text
+ * (plan, slice 6); this is the check that it is not. Only a tier number tied
+ * to a source, a study, a record or evidence counts, so "tier 2 cities" or a
+ * "tier 1 supplier" is prose.
+ */
+const SOURCE_RANK_LABEL = new RegExp(
+  [
+    '\\b(?:authority[- ])?(?:tier|level)[- ]?[1-4]\\s+(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)\\b',
+    '\\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)\\s+(?:of|at|in|from)\\s+(?:authority\\s+)?(?:tier|level)[- ]?[1-4]\\b',
+    '\\bT[1-4]\\s+(?:sources?|evidence|records?|stud(?:y|ies))\\b',
+    '\\bauthority\\s+(?:tier|level)\\b',
+  ].join('|'),
+  'i'
+);
 
 function cleanProse(text: string): string {
   return (
@@ -457,7 +503,8 @@ function cleanProse(text: string): string {
  * references ("[Chunk 3]") are kept, because citation mapping reads them.
  * Code in every Markdown form, links and URLs are never changed.
  */
-export function stripInternalLabelsFromReport(markdown: string): string {
+export function stripInternalLabelsFromReport(text: string): string {
+  const markdown = dropWriterSourceKindLines(text);
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {

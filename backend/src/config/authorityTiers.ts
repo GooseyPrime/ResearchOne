@@ -51,6 +51,13 @@ export interface AuthorityRule {
   hostSuffixes?: readonly string[];
   /** With `hosts` or `hostSuffixes`: the path must match as well. */
   path?: RegExp;
+  /**
+   * What a reader is told the source is, when the provider recorded nothing
+   * more specific than a web page. Address rules only. Words, never a tier.
+   * A host says where a page was read, not what document it is, so these name
+   * the site ("news site page"), never a document type ("news article").
+   */
+  readerWords?: string;
   example: AuthoritySignals;
 }
 
@@ -126,6 +133,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Where it was read: scholarly hosts before government hosts ───────────────
   {
     id: 'host-preprint-server',
+    readerWords: 'preprint server page',
     tier: 3,
     what: 'a preprint server',
     hosts: ['arxiv.org', 'biorxiv.org', 'medrxiv.org', 'chemrxiv.org', 'ssrn.com', 'osf.io', 'researchsquare.com', 'preprints.org', 'nber.org'],
@@ -133,6 +141,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pubmed',
+    readerWords: 'PubMed page',
     tier: 2,
     what: 'an article page on PubMed or PubMed Central',
     hosts: ['pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'europepmc.org'],
@@ -140,6 +149,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-pmc-path',
+    readerWords: 'PubMed Central page',
     tier: 2,
     what: 'a PubMed Central article at its older address',
     hosts: ['ncbi.nlm.nih.gov'],
@@ -148,6 +158,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-journal',
+    readerWords: 'journal publisher page',
     tier: 2,
     what: 'a site that publishes peer-reviewed journals',
     hosts: [
@@ -169,6 +180,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Primary and official ─────────────────────────────────────────────────────
   {
     id: 'host-government',
+    readerWords: 'government page',
     tier: 1,
     what: 'a government, military or court site',
     hostSuffixes: [
@@ -180,6 +192,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-intergovernmental',
+    readerWords: 'intergovernmental organization page',
     tier: 1,
     what: 'an intergovernmental body or its statistical service',
     hostSuffixes: ['int'],
@@ -188,6 +201,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-standards-body',
+    readerWords: 'standards body page',
     tier: 1,
     what: 'a standards body',
     hosts: ['iso.org', 'iec.ch', 'ietf.org', 'rfc-editor.org', 'w3.org', 'astm.org', 'standards.ieee.org'],
@@ -195,6 +209,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-registry',
+    readerWords: 'registry page',
     tier: 1,
     what: 'an official registry of trials, patents or filings',
     hosts: ['clinicaltrials.gov', 'patents.google.com', 'epo.org', 'isrctn.com'],
@@ -204,6 +219,7 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   // ── Established news, reference works, institutions ──────────────────────────
   {
     id: 'host-news',
+    readerWords: 'news site page',
     tier: 3,
     what: 'an established news organization',
     hosts: [
@@ -215,25 +231,31 @@ export const AUTHORITY_RULES: readonly AuthorityRule[] = [
   },
   {
     id: 'host-reference-work',
+    readerWords: 'reference work page',
     tier: 3,
     what: 'an edited reference work',
     hosts: ['britannica.com', 'plato.stanford.edu', 'oxfordreference.com', 'merriam-webster.com'],
     example: { url: 'https://www.britannica.com/technology/nuclear-reactor' },
   },
   {
+    id: 'host-research-institution',
+    readerWords: 'research institution page',
+    tier: 3,
+    what: 'a recognized research institution that publishes reports',
+    hosts: [
+      'rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org',
+      'mpg.de', 'cnrs.fr', 'cern.ch',
+    ],
+    example: { url: 'https://www.pewresearch.org/science/2024/01/01/example/' },
+  },
+  {
     id: 'host-university',
+    readerWords: 'university page',
     tier: 3,
     what: 'a university or research institute',
     hostSuffixes: ['edu', 'ac.uk', 'edu.au', 'ac.jp', 'ac.in', 'edu.cn', 'ac.nz', 'ac.za', 'edu.sg'],
-    hosts: ['mpg.de', 'cnrs.fr', 'ethz.ch', 'epfl.ch', 'cern.ch'],
+    hosts: ['ethz.ch', 'epfl.ch'],
     example: { url: 'https://energy.mit.edu/research/future-nuclear-energy-carbon-constrained-world/' },
-  },
-  {
-    id: 'host-research-institution',
-    tier: 3,
-    what: 'a recognized research institution that publishes reports',
-    hosts: ['rand.org', 'brookings.edu', 'pewresearch.org', 'csis.org', 'chathamhouse.org', 'nationalacademies.org', 'royalsociety.org', 'kff.org', 'urban.org'],
-    example: { url: 'https://www.pewresearch.org/science/2024/01/01/example/' },
   },
 ];
 

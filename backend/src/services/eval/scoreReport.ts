@@ -8,6 +8,8 @@ export interface EvalCitation {
   chunkId?: string | null;
   citationText?: string | null;
   claimText?: string | null;
+  /** Slice 6. The cited source's authority tier, 1 to 4, or null when it has none. Absent when not read. */
+  authorityTier?: number | null;
 }
 
 /** What a run's link check found, one count per distinct DOI, as the worker recorded it. */
@@ -56,7 +58,7 @@ export interface EvalScores {
   quote_verbatim: number;
   quote_supports: number | null;
   quote_supports_not_judged: number | null;
-  authority_share: null;
+  authority_share: number | null;
   doi_resolution: number | null;
   contradiction_retention: number | null;
   anomaly_retained: number | null;
@@ -119,6 +121,18 @@ export function scoreAnswerCorrect(report: string, keyFacts: string[]): number {
   return present / keyFacts.length;
 }
 
+/**
+ * Slice 6. The share of citations whose source is in the top two authority
+ * tiers (official or primary records, peer-reviewed work). A citation whose
+ * source has no tier counts as outside them. Null when there are no citations,
+ * or when no tier was read for any of them.
+ */
+export function scoreAuthorityShare(citations: EvalCitation[]): number | null {
+  if (citations.length === 0 || citations.every((citation) => citation.authorityTier === undefined)) return null;
+  const top = citations.filter((citation) => citation.authorityTier === 1 || citation.authorityTier === 2).length;
+  return top / citations.length;
+}
+
 export function scoreContradictionRetention(links: ContradictionLink[], sides: [string, string]): number {
   const wanted = new Set(sides.map(normalize));
   return links.some((link) => {
@@ -137,7 +151,7 @@ export function scoreStoredReport(input: EvalScoreInput): EvalScores {
     quote_verbatim: scoreQuoteVerbatim(input.citations),
     quote_supports: input.quoteSupports ?? null,
     quote_supports_not_judged: input.quoteSupportsNotJudged ?? null,
-    authority_share: null,
+    authority_share: scoreAuthorityShare(input.citations),
     doi_resolution: scoreDoiResolution(input.doiChecks),
     contradiction_retention: input.fixtureSides
       ? scoreContradictionRetention(input.contradictionLinks ?? [], input.fixtureSides)

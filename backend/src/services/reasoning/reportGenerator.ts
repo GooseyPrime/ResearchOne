@@ -1,8 +1,8 @@
-import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
+import { CLAIM_WORD, replaceSpokenRoles, mapCitationProse, mapLinkLabels, mapOutsideCode, mapOutsideQuotes, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { logger } from '../../utils/logger';
 import { callRoleModel, getSystemPrompt } from '../openrouter/openrouterService';
 import { baselineLayerEnabled } from '../../config';
-import { LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, stripUnstatedRetractions, unknownMarkers, unstatedRetractions, type FinalizedCitations, type LockedPassage } from './citationLock';
+import { AUTHORITY_INSTRUCTION, LOCK_INSTRUCTION, finalizeLockedCitations, formatLockedContext, keepRewritesThatPreserveMarkers, markersPreserved, passagesForSection, stripUnknownMarkers, stripUnstatedRetractions, unknownMarkers, unstatedRetractions, type FinalizedCitations, type LockedPassage } from './citationLock';
 import type { ReferenceStyle } from '../formatting/referenceList';
 import { SEARCH_SCOPE_WRITER_RULE, withSearchScope } from './searchScope';
 import { firstSentences, fitToTotal, fixedSectionWords, isLimitsSection, isSizedReaderSection, sentencesAsBullets, isBulletList, readerSectionBudgets, readerSectionRule, trimToWords, wordCount, draftedSections, readerTitle, removeRepeatedSentences, repeatedSentences, stripGradeLines, trimSummaryAtSentence, presentationFailures, buildReferences, buildAbout, acceptSubjectHeading, distinctSourceCount, renumberCitations, formatReadDate, parseRewrittenSections, sectionsToMarkdown, type UsedSource } from './baselineReport';
@@ -926,6 +926,49 @@ export { stripInternalLabelsFromReport };
  * plain wording, and take grade labels out; link labels included. Code in every Markdown form and link
  * destinations are not read and not changed.
  */
+/**
+ * Slice 6. Takes out a tier rating of a source, in every form the presentation
+ * check flags, and keeps the sentence: "a tier 1 source" becomes "a source",
+ * "sources in tier 2" becomes "sources", "T1 evidence" becomes "evidence", and
+ * "authority level" becomes "standing". "Tier 2 cities" is prose and is kept.
+ * Applied only outside quotations: a source's own words are left as it said them.
+ */
+const RANKED_NOUN = '(?:sources?|evidence|records?|stud(?:y|ies)|references?|documents?|citations?)';
+const RATING = '(?:authority[- ])?(?:tier|level)[- ]?[1-4]';
+// An inline link's tail, "](url)", or a reference link's, "][ref]".
+const LINK_TAIL = '\\](?:\\([^)\\s]*(?:\\s+"[^"]*")?\\)|\\[[^\\]\\n]*\\])';
+
+export function withoutSourceRank(text: string): string {
+  // The same whitespace the check accepts, so a soft line break inside a phrase
+  // is matched too. The reader sees a link's label in place, so a rating or a
+  // source noun that is a link's label counts as well: a linked rating is taken
+  // out with its link, a linked noun keeps its link.
+  return text
+    .replace(new RegExp(`\\[${RATING}${LINK_TAIL}\\s+(?=\\[?${RANKED_NOUN}\\b)`, 'gi'), '')
+    .replace(new RegExp(`\\b${RATING}\\s+(?=\\[?${RANKED_NOUN}\\b)`, 'gi'), '')
+    .replace(new RegExp(`\\s+(?:of|at|in|from)\\s+(?:authority\\s+)?(?:\\[${RATING}${LINK_TAIL}|(?:tier|level)[- ]?[1-4]\\b)`, 'gi'), (phrase, offset: number, whole: string) =>
+      new RegExp(`\\b(?:sources?|records?|stud(?:y|ies)|references?|evidence)(?:${LINK_TAIL})?$`, 'i').test(whole.slice(0, offset)) ? '' : phrase
+    )
+    .replace(new RegExp(`\\bT[1-4]\\s+(?=\\[?(?:sources?|evidence|records?|stud(?:y|ies))\\b)`, 'gi'), '')
+    .replace(/\bauthority\s+(?:tier|level)\b/gi, (phrase) => (phrase[0] === 'A' ? 'Standing' : 'standing'));
+}
+
+/**
+ * Takes out tier ratings from the report's own words only. Code is set aside
+ * first, whole, so a quoted string inside code cannot split it; quotations are
+ * then found on what is left, so one that runs across code or a link keeps its
+ * words. The code comes back exactly as it was.
+ */
+export function withoutSourceRankOutsideCodeAndQuotes(content: string): string {
+  const code: string[] = [];
+  const held = mapOutsideCode(content, (part) => part, (segment) => {
+    code.push(segment);
+    return `\uE010${code.length - 1}\uE011`;
+  });
+  const cleaned = mapOutsideQuotes(held, withoutSourceRank);
+  return cleaned.replace(/\uE010(\d+)\uE011/g, (_token, index: string) => code[Number(index)] ?? '');
+}
+
 export function removeBannedWording(content: string): string {
   // Each word is swapped for a plain one that fits the same place in the
   // sentence, so the sentence still reads. A grade token is a label, not a
@@ -959,8 +1002,12 @@ export function removeBannedWording(content: string): string {
 
   // The report's own wording only: a direct quotation keeps the source's words.
   const cleanOwnWords = (text: string): string => mapOutsideQuotes(clean(text), plainClaimWords);
+  // A tier rating of a source is taken out first, over the whole text, so a
+  // quotation that runs across a link or code keeps its words. The rating forms
+  // need spaces between words, so a link destination never matches.
+  const unrated = withoutSourceRankOutsideCodeAndQuotes(content);
   // A link's label is prose the reader sees; its destination is not.
-  return mapCitationProse(mapLinkLabels(content, cleanOwnWords), cleanOwnWords);
+  return mapCitationProse(mapLinkLabels(unrated, cleanOwnWords), cleanOwnWords);
 }
 
 /** Words that follow "claim(s)" when it is a noun: "claims about", "claims are", "claim is". */
@@ -1017,7 +1064,7 @@ export function finalizeLockedReportForSave(
   return { finalized, wordingAfter: presentationFailures(finalized.markdown) };
 }
 
-const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label']);
+const WORDING_HITS = new Set(['courtroom', 'claims wording', 'internal step', 'boilerplate', 'grade label', 'source rank']);
 
 /**
  * The same last check for a Layer 1 report written without the citation lock.
@@ -1573,7 +1620,9 @@ ${lengthDirective}
 ${layer1 && section.key === 'summary' ? 'The summary must answer the question directly in 150 words or less.' : ''}
 ${layer1 && section.key === 'disagreement' ? 'If the sources do not disagree, say so plainly in one sentence. Do not invent a disagreement.' : ''}
 ${useReaderHeadings || (layer1 && fixedSectionWords(section.key) !== undefined) ? readerSectionRule(section.key) : ''}
-${layer1 ? READER_WORDING_RULE : ''}${layer1 && args.searchScopeNote ? SEARCH_SCOPE_WRITER_RULE : ''}
+${layer1 ? READER_WORDING_RULE : ''}
+${shownPassages?.some((passage) => passage.standing) ? AUTHORITY_INSTRUCTION : ''}
+${layer1 && args.searchScopeNote ? SEARCH_SCOPE_WRITER_RULE : ''}
 ${shownPassages ? `${LOCK_INSTRUCTION} Do not mention section keys, topic numbers, or system markers.` : layer1 ? 'A sentence drawn from CHUNK n ends with [n] before the full stop. Do not mention section keys, topic numbers, or system markers.' : ''}
 Return section body text only. Do NOT write a markdown heading for this section — the heading is added for you.`,
         },

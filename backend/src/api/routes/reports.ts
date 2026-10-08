@@ -8,7 +8,7 @@ import {
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
 import { config } from '../../config';
-import { readerViewForRun } from '../../services/eval/readerView';
+import { authorityWordsForRun, readerViewForRun } from '../../services/eval/readerView';
 import { loadReaderEvidence } from '../../services/formatting/readerEvidence';
 import { forReader, notReportText } from '../readerResponse';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
@@ -724,7 +724,7 @@ router.get('/:id/reader', async (req, res, next) => {
       return;
     }
     // Source titles are the publisher's; findings are cleaned where they are built.
-    res.json(forReader(await loadReaderEvidence(rows[0]), { title: 'not-report' }));
+    res.json(forReader(await loadReaderEvidence(rows[0], undefined, { authorityWords: await authorityWordsForRun(rows[0].run_id) }), { title: 'not-report' }));
   } catch (err) {
     next(err);
   }
