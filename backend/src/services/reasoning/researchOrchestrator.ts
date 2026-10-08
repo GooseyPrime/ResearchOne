@@ -2449,9 +2449,17 @@ async function runResearchJobInner(
         // read them. What is left carries what the check found: a retracted
         // source is flagged to the writer, and each finding is saved with the
         // citations of its source.
+        const tierByChunk = new Map(allChunks.map((chunk) => [chunk.id, chunk.authority_tier ?? null]));
         lockedPassages = issuePassages(allChunks, referenceSources, new Map(sourceRows.map((row) => [row.id, row.source_id]))).map((passage) => {
           const found = linkCheckByChunk.get(passage.chunkId);
-          return { ...passage, retracted: found?.retracted === true, doiCheck: found ? { status: found.status, notice: found.notice } : null };
+          // Slice 6. A passage carries its source's standing only when retrieval ranked it (switch on).
+          const standing = tierByChunk.get(passage.chunkId);
+          return {
+            ...passage,
+            retracted: found?.retracted === true,
+            doiCheck: found ? { status: found.status, notice: found.notice } : null,
+            ...(standing ? { standing } : {}),
+          };
         });
         const doiCheckRecord = linkCheckRecord();
         // Recorded on the run, so anything that scores it later knows how it was

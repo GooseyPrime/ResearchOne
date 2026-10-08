@@ -17,6 +17,13 @@ import {
   type CorpusSourceRecord,
 } from './corpusCompetenceGate';
 import type { IntentId } from '../planning/intentTaxonomy';
+import {
+  authorityTiersEnabled,
+  orderByRelevanceThenAuthority,
+  tierOfStoredSource,
+  type AuthorityTier,
+  type StoredSourceSignals,
+} from '../authority/authorityTier';
 
 export interface RetrievedChunk {
   id: string;
@@ -31,6 +38,8 @@ export interface RetrievedChunk {
   tags: string[];
   owner_user_id?: string | null;
   source_origin?: 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url' | null;
+  /** Slice 6. The source's authority tier; set only when AUTHORITY_TIERS_ENABLED is on. */
+  authority_tier?: AuthorityTier | null;
 }
 
 export interface RetrievalOptions {
@@ -82,6 +91,46 @@ function deriveSourceOrigin(
   if (normalizedImportedVia === 'manual_url') return 'user_supplied_url';
   if (normalizedImportedVia === 'corpus_sync') return 'researchone_generated';
   return null;
+}
+
+/**
+ * Slice 6. Each passage with its source's authority tier: the recorded tier, or
+ * one worked out from the source's address and record when none is recorded.
+ * A database without migration 060 has no recorded tiers, so the read is made
+ * again without the column. Any other failure leaves the passages unranked:
+ * the order falls back to relevance, and no passage is lost.
+ */
+export async function withAuthorityTiers(chunks: RetrievedChunk[]): Promise<RetrievedChunk[]> {
+  if (chunks.length === 0) return chunks;
+  const ids = chunks.map((chunk) => chunk.id);
+  const read = (withColumn: boolean) =>
+    query<StoredSourceSignals & { chunk_id: string }>(
+      `SELECT c.id AS chunk_id, s.url, s.imported_via,
+              ${withColumn ? 's.authority_tier,' : ''}
+              s.metadata->'bibliographic'->>'kind' AS kind,
+              s.metadata->'bibliographic'->>'provider' AS provider
+         FROM chunks c
+         JOIN sources s ON s.id = c.source_id
+        WHERE c.id = ANY($1::uuid[])`,
+      [ids]
+    );
+  let rows: Array<StoredSourceSignals & { chunk_id: string }>;
+  try {
+    rows = await read(true);
+  } catch (err) {
+    if ((err as { code?: string })?.code !== '42703') {
+      logger.warn('retrieval: could not read authority tiers; passages keep relevance order', { error: err instanceof Error ? err.message : String(err) });
+      return chunks;
+    }
+    try {
+      rows = await read(false);
+    } catch (retryErr) {
+      logger.warn('retrieval: could not read authority tiers; passages keep relevance order', { error: retryErr instanceof Error ? retryErr.message : String(retryErr) });
+      return chunks;
+    }
+  }
+  const tierByChunk = new Map(rows.map((row) => [row.chunk_id, tierOfStoredSource(row)]));
+  return chunks.map((chunk) => ({ ...chunk, authority_tier: tierByChunk.get(chunk.id) ?? null }));
 }
 
 /**
@@ -348,9 +397,12 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     }
   }
 
-  const sorted = Array.from(results.values())
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, topK);
+  const candidates = Array.from(results.values());
+  // Slice 6. With the switch off the order is relevance alone, as it always was.
+  const sorted = (authorityTiersEnabled()
+    ? orderByRelevanceThenAuthority(await withAuthorityTiers(candidates))
+    : candidates.sort((a, b) => b.similarity - a.similarity)
+  ).slice(0, topK);
 
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];

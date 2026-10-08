@@ -104,3 +104,48 @@ export function storedAuthorityTier(value: unknown): AuthorityTier | null {
   const n = typeof value === 'string' && /^[1-4]$/.test(value) ? Number(value) : value;
   return n === 1 || n === 2 || n === 3 || n === 4 ? n : null;
 }
+
+/** What is stored about a source, as read back when its passages are retrieved. */
+export interface StoredSourceSignals {
+  authority_tier?: unknown;
+  url?: string | null;
+  kind?: string | null;
+  provider?: string | null;
+  imported_via?: string | null;
+}
+
+/**
+ * The tier of a stored source. The recorded tier when there is one; otherwise
+ * worked out from the same rules, so a source stored before tiers were recorded,
+ * or whose write failed, is still ranked. The kind and provider kept under a
+ * source's metadata count only for a source discovery found: a person can send
+ * any metadata with an upload, so an upload is judged by its address alone.
+ */
+export function tierOfStoredSource(row: StoredSourceSignals): AuthorityTier | null {
+  const recorded = storedAuthorityTier(row.authority_tier);
+  if (recorded !== null) return recorded;
+  const fromDiscovery = (row.imported_via ?? '').trim().toLowerCase() === 'autonomous_discovery';
+  return authorityTierFor(fromDiscovery ? { kind: row.kind, provider: row.provider, url: row.url } : { url: row.url });
+}
+
+/**
+ * Two passages count as equally relevant when their scores agree to this many
+ * decimal places. Retrieval scores are continuous, so exact ties almost never
+ * happen; without a band the tier would never decide anything.
+ */
+export const RELEVANCE_BAND_DECIMALS = 2;
+
+const band = (similarity: number): number => Math.round(similarity * 10 ** RELEVANCE_BAND_DECIMALS);
+/** Unranked sources sort after tier 4 among equals, never before a ranked one. */
+const rank = (tier: AuthorityTier | null | undefined): number => tier ?? 5;
+
+/**
+ * Relevance first, then tier: within one relevance band the higher tier comes
+ * first, then the more relevant. Nothing is removed (invariant 7); a lower-tier
+ * passage only gives way to an equally relevant higher-tier one.
+ */
+export function orderByRelevanceThenAuthority<T extends { similarity: number; authority_tier?: AuthorityTier | null }>(chunks: readonly T[]): T[] {
+  return [...chunks].sort(
+    (a, b) => band(b.similarity) - band(a.similarity) || rank(a.authority_tier) - rank(b.authority_tier) || b.similarity - a.similarity
+  );
+}

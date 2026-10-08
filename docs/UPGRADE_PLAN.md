@@ -35,11 +35,12 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 5, part 3. Exports | Done | PR #258. Item 7. See "Built in part 3" under slice 5. |
 | Slice 5, part 4. App wording and the gate | Done | PR #259. Item 8. See "Built in part 4" under slice 5. |
 | Slice 6, part 1. Tier rules and the stored tier | Done | PR #260, with the last review's findings closed in a follow-up pull request. Behind `AUTHORITY_TIERS_ENABLED`, unset by default. See "Delivered in parts" under slice 6. |
+| Slice 6, part 2. Retrieval order and the writer's instruction | Built, in review | Same switch. See "Built in part 2" under slice 6. |
 | Slices 7 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
-**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged and part 2 is next. S6 governs each move.
+**Your task now:** read this whole document again; section 0 and slice 6 changed. Slice 5 is built behind `READER_VIEW_ENABLED`; turning that switch on for customers is Brandon's decision (S4). Slice 6 is being delivered in parts, listed under it; part 1 is merged and part 2 is in review. S6 governs each move.
 
 ---
 
@@ -601,7 +602,7 @@ Acceptance:
 - The jargon gate fails on a reader-facing string containing "claims".
 - Harness: `pairwise_vs_reference` at least 0.5 on tasks with a reference report; `report_quality` at least 4.0.
 
-### Slice 6. Source authority (part 1 merged)
+### Slice 6. Source authority (part 2 in review)
 
 Flag `AUTHORITY_TIERS_ENABLED`. This was slice 4.
 
@@ -647,6 +648,14 @@ Acceptance:
   - A source with no web address, no provider and no recorded kind (an uploaded file) gets no tier. It is unranked, not ranked last.
   - Wikipedia is not in the reference-work list and falls to tier 4. Edited reference works (Britannica, the Stanford Encyclopedia of Philosophy) are tier 3.
   - Sources stored before the switch was on have no stored tier. Parts 2 and 3 work the tier out from the same rules when the column is empty, so a run with the switch on for that run alone still orders and labels every source.
+
+**Built in part 2.**
+
+- With the switch on, Layer 1 retrieval reads each passage's source tier: the recorded tier, or one worked out from the same rules when none is recorded, so a source stored before the switch, or whose write failed, is still ranked. A source's stored kind and provider count only when discovery found it; an upload is judged by its address alone.
+- Order is relevance first, then tier. Two passages count as equally relevant when their scores agree to two decimal places; scores are continuous, so exact ties almost never happen and the tier would otherwise decide nothing. Within that band the higher tier comes first, unranked sources after tier 4, then the more relevant. Nothing is removed.
+- With the switch off the order is relevance alone and no tier is read. If the tiers cannot be read the order falls back to relevance; without migration 060 the tiers are worked out.
+- With the citation lock on, the writer sees one line under each passage naming its kind of source in words ("an official or primary record", "a peer-reviewed study"), and an instruction: prefer the higher source where sources disagree, say in plain words which was relied on and why, still cite a lower source that is the only one for a point, and never grade or rank sources in the text. Without the lock the writer's prompt is unchanged in this part.
+- A copied "Kind of source" line is removed from report text by the same clean-up that removes tier labels.
 
 ### Slice 7. Provider routing by request (not started)
 

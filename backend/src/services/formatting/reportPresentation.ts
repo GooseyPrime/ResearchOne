@@ -434,9 +434,17 @@ export function readerFacingLabelHits(text: string): string[] {
 /** Marks where a label was removed, so spacing is tidied only there. */
 const REMOVED = '\uE000';
 
+/**
+ * Slice 6. The line the writer is shown above each passage ("Kind of source:
+ * a peer-reviewed study"). It is an instruction to the writer, so a copy of it
+ * in the report is removed whole.
+ */
+const WRITER_SOURCE_KIND_LINE = /^[ \t]*(?:[-*>][ \t]*)?Kind of source:[^\n]*(?:\n|$)/gim;
+
 function cleanProse(text: string): string {
   return (
     text
+      .replace(WRITER_SOURCE_KIND_LINE, '')
       .replace(TIER_INSIDE_BRACKET, '[')
       .replace(TIER_ONLY_BRACKET, REMOVED)
       .replace(SNAKE_TIER_TOKEN, REMOVED)
