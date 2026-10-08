@@ -1,4 +1,6 @@
 import type { ResearchProgressEvent, ResearchRun } from './api';
+import { plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 /**
  * Bounded trace / live-event buffers: keep the newest N items with oldest at the front
@@ -104,7 +106,7 @@ export function normalizeProgressEvent(evt: ResearchProgressEvent): ResearchProg
     ...evt,
     stage: evt.stage || 'planning',
     percent: Number.isFinite(evt.percent) ? evt.percent : 0,
-    message: evt.message || evt.stage || 'Update',
+    message: plainProgressText(evt.message) || readerStageLabel(evt.stage),
     timestamp: evt.timestamp || new Date().toISOString(),
   };
 }
@@ -147,7 +149,7 @@ export function eventsFromRunRow(run: ResearchRun): ResearchProgressEvent[] {
       runId: run.id,
       stage: run.progress_stage || run.status || 'planning',
       percent: run.progress_percent ?? 0,
-      message: run.progress_message || 'Resuming run…',
+      message: plainProgressText(run.progress_message) || 'Resuming run…',
       timestamp: stamp,
     }),
   ];
