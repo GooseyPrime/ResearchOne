@@ -178,6 +178,28 @@ describe('the relevance check after retrieval', () => {
     expect(h.judged).toContain(OLD_UPLOAD.source_url);
   });
 
+  it('keeps an attachment whose content an earlier run had already stored, known only through its ingestion job', async () => {
+    // The person attached this to the current run; the same content was stored before, so the source row still names the earlier run.
+    const REATTACHED = hit('reattached', 'https://example.org/briefing', 'Briefing', 'A briefing on something else.', 0.9, { imported_via: 'manual_url' });
+    h.verdictByUrl[String(REATTACHED.source_url)] = 'off_topic';
+    h.hits = [REATTACHED, EAC];
+    const answer = h.queryMock.getMockImplementation() as (sql: string, params?: unknown[]) => Promise<unknown>;
+    h.queryMock.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("ij.metadata->>'research_run_id'")) return params[1] === RUN ? [{ id: 'reattached' }] : [];
+      return answer(sql, params);
+    });
+    expect(await ids()).toEqual(['reattached', 'eac']);
+    expect(h.judged).not.toContain(REATTACHED.source_url);
+  });
+
+  it('takes the top passages after the check, so an unrelated document does not use up a place', async () => {
+    const more = Array.from({ length: 3 }, (_, i) => hit(`extra-${i}`, `https://www.eac.gov/extra-${i}`, `EAC note ${i}`, 'Election security note.', 0.5 - i * 0.01, { discovered_by_run_id: RUN }));
+    h.hits = [IOT, EAC, CISA, ...more];
+    const result = await retrieveChunksWithAudit({ query: 'election data security measures', intentId: 'timeline', userId: 'user-1', hybridSearch: false, runId: RUN, relevance: scope, topK: 3 });
+    // Before, the unrelated document held one of the three places and only two passages came back.
+    expect(result.citableChunks.map((chunk) => chunk.id)).toEqual(['eac', 'cisa', 'extra-0']);
+  });
+
   it('when no model can judge, keeps the run going on shared wording, leaves the unrelated document out, and records it', async () => {
     h.judge = 'down';
     const UNRELATED = hit('bread', 'https://example.org/sourdough-starter', 'How to keep a sourdough starter alive', 'Flour, water and patience.', 0.9);
