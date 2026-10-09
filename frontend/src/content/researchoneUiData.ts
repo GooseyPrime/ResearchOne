@@ -148,7 +148,7 @@ export const capabilities: Capability[] = [
     icon: 'Calculator',
   },
   {
-    id: 'red-team',
+    id: 'double_check',
     title: 'Double-check viewpoints',
     description: 'Choose whose questions Double-check asks—an FDA compliance officer, a hostile peer reviewer, or a defence attorney.',
     icon: 'UserX',
