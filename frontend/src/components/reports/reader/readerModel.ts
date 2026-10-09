@@ -53,8 +53,6 @@ const norm = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toL
 const OLDER_HEADINGS: ReadonlyArray<{ was: RegExp; now: string; challenge?: true }> = [
   // The section's public name until RJ-017; a stored report still carries it.
   { was: /^challenge pass$/, now: DOUBLE_CHECK.name, challenge: true },
-  // The section's public name until RJ-017; a stored report still carries it.
-  { was: /^challenge pass$/, now: DOUBLE_CHECK.name, challenge: true },
   { was: /^executive summary$/, now: 'Summary' },
   { was: /^framing$/, now: 'Background' },
   { was: /^research question( and scope)?$/, now: 'What was asked' },

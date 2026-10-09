@@ -177,7 +177,7 @@ export default function AnimatedPipelineHero({
           The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
           and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
           Retriever Analysis stages. Phase three, Reason and Verify, includes the
-          Reasoner and Double-check stages when additional checking is needed.
+          Reasoner and Double-check stages; every report is double-checked.
           Phase four, Write and Cite, includes
           the Drafting, Verifier, Report, and Recordkeeping stages.
         </p>
