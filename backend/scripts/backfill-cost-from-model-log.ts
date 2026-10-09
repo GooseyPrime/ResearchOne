@@ -38,7 +38,7 @@
  */
 import { createHash } from 'crypto';
 import { initDb, adminQuery, getPool } from '../src/db/pool';
-import { getModelPrice, computeCostUsd } from '../src/services/telemetry/pricingCatalog';
+import { getCallPrice, computeCostUsd } from '../src/services/telemetry/pricingCatalog';
 import { rolePhaseFor } from '../src/services/telemetry/costSidecar';
 import { logger } from '../src/utils/logger';
 
@@ -60,6 +60,9 @@ interface ModelLogEntry {
   durationMs?: number;
   usedFallback?: boolean;
   primaryModel?: string;
+  /** Present on entries written since the provider that answered was recorded. */
+  routeUsed?: { provider?: string };
+  listPrice?: { inputPricePer1mUsd: number; outputPricePer1mUsd: number };
 }
 
 function parseArgs(): { since: string; dryRun: boolean; limit: number | null } {
@@ -124,7 +127,12 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
       cumulativeOffset += durationMs;
 
       const phase = rolePhaseFor(role);
-      const price = await getModelPrice(model);
+      // Priced by the provider that answered, as the live writer does.
+      const price = await getCallPrice({
+        model,
+        provider: entry.routeUsed?.provider,
+        listPrice: entry.listPrice,
+      });
       const calculatedCost = computeCostUsd(promptTokens, completionTokens, price);
       const idempotencyKey = computeIdempotencyKey({
         runId: run.id,
