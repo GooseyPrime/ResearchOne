@@ -424,7 +424,7 @@ export default function ReportDetailPage() {
         />
         <p className="text-xs text-slate-500">
           Opens a page where you can follow the revision, then the new version of the report when it is ready.
-          Want to start again with different settings? Use <strong>New research spinoff</strong> above.
+          Want to start again with different settings? Use <strong>New follow-up research</strong> above.
         </p>
         <button
           type="button"
