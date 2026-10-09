@@ -1066,7 +1066,7 @@ async function runResearchJobInner(
             failure_meta='{}'::jsonb,
             progress_stage='starting',
             progress_percent=1,
-            progress_message='Worker picked up the run; preparing planner...',
+            progress_message='Starting the run and preparing the research plan...',
             progress_updated_at=NOW(),
             model_overrides=$2::jsonb,
             model_ensemble=$3::jsonb
@@ -1078,7 +1078,7 @@ async function runResearchJobInner(
     runId,
     stage: 'starting',
     percent: 1,
-    message: 'Worker picked up the run; preparing planner...',
+    message: 'Starting the run and preparing the research plan...',
     timestamp: new Date().toISOString(),
     eventType: 'progress',
     substep: 'worker_started',
@@ -1092,7 +1092,7 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     if (!data.skipPlanConfirmationGate) {
       try {
-        await progress('plan_generation', 2, 'Detecting intent and generating plan...', {
+        await progress('plan_generation', 2, 'Working out what you are asking for and drafting the plan...', {
           substep: 'plan_started',
         });
 
@@ -1165,7 +1165,7 @@ async function runResearchJobInner(
     // ────────────────────────────────────────────────────────────────
     // STAGE 1: EXECUTION QUERY STRATEGY — preserve confirmed contract
     // ────────────────────────────────────────────────────────────────
-    await progress('planning', 5, 'Building execution query strategy from confirmed plan...', {
+    await progress('planning', 5, 'Turning the confirmed plan into searches...', {
       substep: 'request_started',
     });
 
@@ -1204,7 +1204,7 @@ async function runResearchJobInner(
           isAdjudicative,
         });
       }
-      await progress('planning', 8, 'Planner response parsed', {
+      await progress('planning', 8, 'Search plan ready', {
         substep: 'response_parsed',
         model: plannerResult.model,
         tokenUsage: { prompt: plannerResult.promptTokens, completion: plannerResult.completionTokens },
@@ -1255,7 +1255,7 @@ async function runResearchJobInner(
     // Every search pass this run makes, for a report that must say what was searched.
     const searchPasses: SearchPassSummary[] = [];
     if (shouldRunPipelineStage(orchProfile, 'discovery')) {
-      await progress('discovery', 12, 'Discovery round 1: planning external queries...', { substep: 'queries_generating' });
+      await progress('discovery', 12, 'Search round 1: choosing what to look for...', { substep: 'queries_generating' });
 
       discoverySummary = await runDiscoveryOrchestrator({
         runId,
@@ -1285,19 +1285,19 @@ async function runResearchJobInner(
           data.confirmedPlanPayload?.researchBrief?.epistemicPosture === 'causal_test' ? 6 : 4,
         onRoundComplete: async ({ round, candidatesAfter }) => {
           const pct = round === 1 ? 15 : 17;
-          await progress('discovery', pct, `Discovery round ${round} complete (${candidatesAfter} candidates after dedup)`, {
+          await progress('discovery', pct, `Search round ${round} complete (${candidatesAfter} candidate sources after removing duplicates)`, {
             substep: `discovery_round_${round}_complete`,
           });
         },
         onDeterministicFallback: async ({ reason, queries }) => {
-          await progress('discovery', 13, `Discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+          await progress('discovery', 13, `The first set of searches was unusable; continuing with ${queries.length} standard searches.`, {
             substep: 'discovery_deterministic_fallback',
             detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
           });
         },
       });
     } else {
-      await progress('discovery', 12, 'Discovery skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('discovery', 12, 'Outside search is not needed for this kind of request', { substep: 'stage_skipped' });
       discoverySummary = emptyDiscoverySummary(runId) as unknown as Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
     }
 
@@ -1321,7 +1321,7 @@ async function runResearchJobInner(
       // A silent multi-minute wait at the barrier is indistinguishable from a
       // hang. This is also where the timing data to tune the barrier comes from.
       onProgress: async (state) => {
-        await progress('discovery', 16, `Waiting for discovery ingest: ${state.readyCount}/${state.totalTracked} queryable`, {
+        await progress('discovery', 16, `Reading the sources found: ${state.readyCount}/${state.totalTracked} ready`, {
           substep: 'discovery_ingest_waiting',
           detail: `pending=${state.pendingCount}; failed=${state.failedCount}; waited=${state.waitedMs}ms`,
           sourceCount: state.readyCount,
@@ -1333,25 +1333,25 @@ async function runResearchJobInner(
       // Not a degradation: enough sources were queryable to proceed while a
       // minority kept ingesting in the background. Reported distinctly from
       // `timeout` so a healthy early release is not read as a failure.
-      await progress('discovery', 18, `Discovery ingest sufficient (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked} queryable); continuing while ${discoveryIngestBarrier.pendingCount} finish`, {
+      await progress('discovery', 18, `Enough sources are ready (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}); continuing while ${discoveryIngestBarrier.pendingCount} finish`, {
         substep: 'discovery_ingest_ready',
         detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}; pending=${discoveryIngestBarrier.pendingCount}; failed=${discoveryIngestBarrier.failedCount}; waited=${discoveryIngestBarrier.waitedMs}ms`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else if (discoveryIngestBarrier.status === 'ready') {
-      await progress('discovery', 18, `Discovery ingest ready (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked} sources queryable).`, {
+      await progress('discovery', 18, `Sources are ready to read (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}).`, {
         substep: 'discovery_ingest_ready',
         detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else if (discoveryIngestBarrier.status === 'timeout') {
-      await progress('discovery', 18, `Discovery ingest barrier timed out; ${discoveryIngestBarrier.pendingCount} sources not yet queryable.`, {
+      await progress('discovery', 18, `Stopped waiting for slow sources; ${discoveryIngestBarrier.pendingCount} are not ready yet.`, {
         substep: 'discovery_ingest_ready',
         detail: `ready=${discoveryIngestBarrier.readyCount}; pending=${discoveryIngestBarrier.pendingCount}`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else {
-      await progress('discovery', 18, 'Discovery completed with zero ingested sources; retrieval will rely on already-queryable corpus material.', {
+      await progress('discovery', 18, 'The search added no new sources; continuing with the material already in your library.', {
         substep: 'discovery_ingest_ready',
         detail: 'no_sources_ingested',
       });
@@ -1454,7 +1454,7 @@ async function runResearchJobInner(
     const corpusGateSealedByDesign = (decisions: Array<Record<string, unknown>>): boolean =>
       decisions.length > 0 && decisions.every((d) => d.status === 'sealed');
     if (shouldRunPipelineStage(orchProfile, 'retrieval')) {
-      await progress('retrieval', 20, 'Retrieving evidence from corpus...', { substep: 'retrieval_started' });
+      await progress('retrieval', 20, 'Gathering the relevant passages...', { substep: 'retrieval_started' });
 
       const seenIds = new Set<string>();
 
@@ -1474,7 +1474,7 @@ async function runResearchJobInner(
           reasons: retrievalGuard.warnings,
           queryCount: retrievalGuard.queries.length,
         });
-        await progress('retrieval', 21, 'Normalized retrieval query set for diversity and length limits.', {
+        await progress('retrieval', 21, 'Tidied the list of searches so they are varied and not too long.', {
           substep: 'retrieval_query_budget_adjusted',
           detail: retrievalGuard.warnings.join(' | ').slice(0, 500),
         });
@@ -1522,7 +1522,7 @@ async function runResearchJobInner(
         );
       }
     } else {
-      await progress('retrieval', 20, 'Retrieval skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('retrieval', 20, 'Gathering passages is not needed for this kind of request', { substep: 'stage_skipped' });
     }
 
     logger.info(`[${runId}] Retrieved ${allChunks.length} unique chunks`);
@@ -1570,7 +1570,7 @@ async function runResearchJobInner(
       // believing it had evidence. That is fixed in `sourceSufficiencyGate`.
       // Adjudicative intents still hard-fail, further down, once rediscovery
       // is exhausted.
-      await progress('retrieval', 24, 'No citable evidence retrieved yet; attempting rediscovery.', {
+      await progress('retrieval', 24, 'No citable evidence found yet; searching again.', {
         substep: 'retrieval_no_evidence',
       });
     }
@@ -1621,7 +1621,7 @@ async function runResearchJobInner(
         });
         wave53SourceClassBreakdown = aggregateSourceClassBreakdown(wave53SourceClassMap.byChunkId);
       } else {
-        await progress('retriever_analysis', 35, 'Retriever analysis skipped for this intent profile', {
+        await progress('retriever_analysis', 35, 'Reading the passages is not needed for this kind of request', {
           substep: 'stage_skipped',
           chunkCount: allChunks.length,
         });
@@ -1633,7 +1633,7 @@ async function runResearchJobInner(
       latestSpecialistOutputs = {};
       specialistFindingsBlock = '';
       if (canonicalExecutionPlan.specialistAgents.length > 0) {
-        await progress('reasoning', 42, 'Executing specialist analysis team...', {
+        await progress('reasoning', 42, 'Running the specialist analyses...', {
           substep: 'specialist_started',
         });
         const specialistExecution = await runSpecialistExecution({
@@ -1753,7 +1753,7 @@ async function runResearchJobInner(
       await progress(
         'reasoning',
         47,
-        `Merged ${scopedChunkCount} scoped source chunk(s) into run provenance.`,
+        `Added ${scopedChunkCount} more source passage(s) to the evidence for this run.`,
         { substep: 'scoped_chunks_merged', chunkCount: allChunks.length }
       );
     }
@@ -1792,7 +1792,7 @@ async function runResearchJobInner(
     });
 
     if (sourceAssessment.action === 'rediscover') {
-      await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
+      await progress('reasoning', 48, 'The specialist analyses found too little evidence; running a targeted new search.', {
         substep: 'rediscovery_started',
         detail: sourceAssessment.gaps.join(' | ').slice(0, 500),
       });
@@ -1823,7 +1823,7 @@ async function runResearchJobInner(
         minUsableSources: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
         maxCoverageRounds: 2,
         onDeterministicFallback: async ({ reason, queries }) => {
-          await progress('reasoning', 48, `Re-discovery planner returned no usable queries; recovered with ${queries.length} deterministic queries.`, {
+          await progress('reasoning', 48, `The new set of searches was unusable; continuing with ${queries.length} standard searches.`, {
             substep: 'discovery_deterministic_fallback',
             detail: `${reason}: ${queries.join(' | ')}`.slice(0, 500),
           });
@@ -2074,7 +2074,7 @@ async function runResearchJobInner(
         requestedArtifactCount,
         gaps: sourceAssessment.gaps,
       });
-      await progress('reasoning', 49, 'Corroboration was limited; synthesising the full deliverable with explicit uncertainty labels.', {
+      await progress('reasoning', 49, 'Supporting evidence was limited; writing the full report with the uncertainty clearly marked.', {
         substep: 'low_evidence_labeled_delivery',
       });
     } else if (sourceAssessment.action === 'insufficient_evidence_fail_closed') {
@@ -2088,7 +2088,7 @@ async function runResearchJobInner(
       // only by a counter somewhere else. It has its own name now.
       sourceFailureReason = sourceAssessment.reason;
       adjudicativeEvidenceExhausted = true;
-      await progress('reasoning', 49, 'No independent evidence was found for a claim that needs verifying; stopping rather than guessing.', {
+      await progress('reasoning', 49, 'No independent evidence was found for a finding that needs verifying; stopping rather than guessing.', {
         substep: 'adjudicative_evidence_exhausted',
       });
     }
@@ -2129,7 +2129,7 @@ async function runResearchJobInner(
         snapshot: { output: reasonerResult.content },
       });
     } else {
-      await progress('reasoning', 50, 'Reasoning skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('reasoning', 50, 'Working through the evidence is not needed for this kind of request', { substep: 'stage_skipped' });
       reasonerResult = orchestrationStubModelResult('reasoner', stubReasoningFromRetriever(retrieverResult.content));
     }
 
@@ -2137,7 +2137,7 @@ async function runResearchJobInner(
 
     // the source-class pass — steelman pass (feeds skeptic user message + claim persistence)
     if (orchProfile.steelmanMode !== 'off') {
-      await progress('reasoning', 62, 'Steelman pass: strengthening formulations before critique...', {
+      await progress('reasoning', 62, 'Restating each finding in its strongest form before checking it...', {
         substep: 'steelman_started',
       });
       const steel = await runSteelmanPass({
@@ -2177,10 +2177,10 @@ async function runResearchJobInner(
     const skepticRuns = shouldRunPipelineStage(orchProfile, 'challenge');
 
     if (!skepticRuns) {
-      await progress('challenge', 65, 'Claim checking skipped for this run', { substep: 'stage_skipped' });
+      await progress('challenge', 65, 'Challenge pass skipped for this run', { substep: 'stage_skipped' });
       skepticResult = orchestrationStubModelResult('skeptic', '');
     } else if (orchProfile.skepticMode === 'annotate') {
-      await progress('challenge', 65, 'Checking the claims and noting objections...', { substep: 'skeptic_annotate' });
+      await progress('challenge', 65, 'Challenge pass: checking the findings and noting objections...', { substep: 'skeptic_annotate' });
       skepticResult = await callRoleModel({
         role: 'skeptic',
         ...v2,
@@ -2208,7 +2208,7 @@ async function runResearchJobInner(
         snapshot: { output: skepticResult.content, annotate: true },
       });
     } else {
-      await progress('challenge', 65, 'Arguing against the draft to find weak claims...', { substep: 'skeptic_started' });
+      await progress('challenge', 65, 'Challenge pass: arguing against the draft to find weak findings...', { substep: 'skeptic_started' });
 
       skepticResult = await callRoleModel({
         role: 'skeptic',
@@ -2286,10 +2286,10 @@ async function runResearchJobInner(
     } else {
       await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
     }
-    // Every report is written by the section writer, the reference lookup
-    // included: there is no shorter path with fixed headings and unbound citations.
-    {
-      await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
+    // Slice 7: a lookup profile goes through the report writer with routing and Layer 1 on.
+    const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());
+    if (synthesisRuns) {
+      await progress('synthesis', 80, 'Writing the report section by section...', { substep: 'outline_started' });
 
       const usedSources = allChunks.map((chunk) => ({
         title: chunk.source_title || chunk.source_url || 'Untitled source',
@@ -2411,6 +2411,52 @@ async function runResearchJobInner(
         );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
+      if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);
+    } else {
+      await progress('synthesis', 80, 'Writing a short report for this kind of request...', { substep: 'synthesis_light' });
+      const refSynth = await callRoleModel({
+        role: 'synthesizer',
+        ...v2,
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'synthesizer'),
+        messages: [
+          { role: 'system', content: getSystemPrompt('synthesizer', isAdjudicative) },
+          {
+            role: 'user',
+            content:
+              `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
+              `# Executive Summary\n(direct answer)\n` +
+              // "Evidence" is adjudication vocabulary. A reference lookup is not
+              // adjudicating a disputed claim, and a heading the writer sees
+              // becomes a heading the writer reasons in — which is how epistemic
+              // framing leaks into reports that never asked for it (Rule 37).
+              `# ${isAdjudicative ? 'Evidence' : 'Supporting Detail'}\n(short bullets tied to chunk IDs where possible)\n` +
+              `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
+              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
+              `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
+              // The minimal path is still a synthesis path: when retrieval and
+              // re-discovery came back empty it must receive the same
+              // uncertainty, non-fabrication, and modeled-claim rules as the
+              // iterative drafter (Codex P2 review, PR #202).
+              //
+              // Its verifier now enforces the claim-class burden, so the writer
+              // must be told the same rule or it emits unmarked named prices,
+              // products, and dates and then needlessly fails or repairs
+              // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
+              `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
+              `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
+              `Source material:\n${sourceContext.slice(0, 60000)}`,
+          },
+        ],
+      });
+      modelLog.push(refSynth);
+      generatedReport = { markdown: refSynth.content.trim() };
+      generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
+      await saveRunCheckpoint({
+        runId,
+        stage: 'synthesis',
+        checkpointKey: 'synthesis_light',
+        snapshot: { mode: 'reference_lookup' },
+      });
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -2420,7 +2466,7 @@ async function runResearchJobInner(
     let verification: VerificationResult = { passed: false, criteria: [], overall: 'UNKNOWN' };
     let verificationUnavailable = false;
     if (shouldRunPipelineStage(orchProfile, 'verification')) {
-      await progress('verification', 92, 'Verifying epistemic standards...');
+      await progress('verification', 92, 'Checking the report against the evidence...');
 
       // Phase B — use per-intent verifier rubric instead of the universal prompt
       const intentVerifierPrompt = buildVerifierPromptForIntent(orchProfile.intent, isAdjudicative);
@@ -2463,7 +2509,7 @@ ${reportForGates(generatedReport.markdown)}`,
       verification = normalizeVerificationResult(parsedVerification);
       verificationUnavailable = verification.overall === 'PARSE_FAILED';
     } else {
-      await progress('verification', 92, 'Verification skipped for this intent profile', { substep: 'stage_skipped' });
+      await progress('verification', 92, 'Checking the report is not needed for this kind of request', { substep: 'stage_skipped' });
       verifierResult = orchestrationStubModelResult(
         'verifier',
         JSON.stringify({ passed: false, criteria: [], overall: 'SKIPPED' }),
@@ -2542,7 +2588,7 @@ ${reportForGates(generatedReport.markdown)}`,
         },
       };
       try {
-        await progress('verification', 93, 'Auditing deliverable contract...');
+        await progress('verification', 93, 'Checking the report delivers everything that was asked for...');
         const auditUserContent = [
           `${gateContext}RESEARCH_BRIEF:\n${formatBriefForPrompt(researchBrief)}`,
           `\nGENERATED_REPORT:\n${boundedReportForAudit(markdown, 60000, searchScopeNote)}`,
@@ -2718,7 +2764,7 @@ ${reportForGates(generatedReport.markdown)}`,
         attempt <= MAX_REPAIR_ATTEMPTS && reportStatus !== 'completed' && reportStatus !== 'completed_degraded';
         attempt += 1
       ) {
-        await progress('verification', 93, 'Contract or verifier gate failed; attempting bounded repair pass.', {
+        await progress('verification', 93, 'The report did not pass its checks; repairing the affected parts.', {
           substep: 'repair_started',
           detail: `attempt_${attempt}`,
         });
@@ -2892,7 +2938,7 @@ ${reportForGates(generatedReport.markdown)}`,
       // it. On a locked report it carries no citation numbers; the main report does.
       plainLanguageMarkdown = lockedPassages ? stripReaderNumbers(plainLanguageResult.content.trim()) : plainLanguageResult.content.trim();
     } else {
-      await progress('plain_language', 93, 'Plain-language pass skipped until primary report passes all gates', { substep: 'stage_skipped' });
+      await progress('plain_language', 93, 'Plain-language version held back until the main report passes its checks', { substep: 'stage_skipped' });
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -2931,7 +2977,7 @@ ${reportForGates(generatedReport.markdown)}`,
     // ────────────────────────────────────────────────────────────────
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
-    await progress('saving', 94, 'Saving report to corpus...');
+    await progress('saving', 94, 'Saving the report...');
     const agentExecutionTelemetry = computeAgentExecutionTelemetry({
       orchProfile,
       plannedSpecialists: canonicalExecutionPlan.specialistAgents,
@@ -3011,7 +3057,7 @@ ${reportForGates(generatedReport.markdown)}`,
     // STAGE 10: EPISTEMIC PERSISTENCE — claims, contradictions, citations
     // ────────────────────────────────────────────────────────────────
     if (shouldRunPipelineStage(orchProfile, 'epistemic_persistence')) {
-      await progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
+      await progress('epistemic_persistence', 97, 'Saving the findings, disagreements between sources, and citations...');
 
       try {
         const claims = await extractAndPersistClaims({
@@ -3056,7 +3102,7 @@ ${reportForGates(generatedReport.markdown)}`,
         logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
       }
     } else {
-      await progress('epistemic_persistence', 97, 'Epistemic persistence skipped for this intent profile', {
+      await progress('epistemic_persistence', 97, 'Saving findings is not needed for this kind of request', {
         substep: 'stage_skipped',
       });
     }
@@ -3187,7 +3233,7 @@ ${reportForGates(generatedReport.markdown)}`,
     if (runTerminalStatus === 'completed') {
       await progress('done', 100, 'Research complete', { eventType: 'run_completed' });
     } else {
-      await progress('done', 100, `Research run finished with status: ${reportStatus}`, {
+      await progress('done', 100, 'Research finished, but the report did not pass every check', {
         eventType: 'run_quality_gate_failed',
         failureMeta: { gate_status: terminalOutcome.gateStatus ?? null },
       });

@@ -93,16 +93,10 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
       <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
         <Stat label="Time taken" value={readableDuration(stats.totalDurationMs)} />
         <Stat label="Sources cited" value={stats.sourcesCitedCount} />
-        <Stat label="Sources read" value={stats.sourcesRetrievedCount} />
-        {isAdmin ? (
-          <>
-            <Stat label="Words sent to the models (tokens)" value={stats.tokensInput} />
-            <Stat label="Words written by the models (tokens)" value={stats.tokensOutput} />
-            <Stat label="Passes that strengthened a point before checking it" value={stats.steelmanPassCount} />
-            <Stat label="Notes from the challenge pass" value={stats.skepticAnnotationsCount} />
-            <Stat label="Points where sources conflict" value={stats.contradictionsCount} />
-          </>
-        ) : null}
+        <Stat label="Sources retrieved" value={stats.sourcesRetrievedCount} />
+        <Stat label="Strongest-form restatement passes" value={stats.steelmanPassCount} />
+        <Stat label="Challenge pass notes" value={stats.skepticAnnotationsCount} />
+        <Stat label="Contradictions" value={stats.contradictionsCount} />
       </ul>
 
       {isAdmin && classRows.length > 0 ? (
