@@ -1,4 +1,3 @@
-import { baselineLayerEnabled } from '../../config';
 import { readerFacingLabelHits } from '../formatting/reportPresentation';
 import { formatReferenceList, type ReferenceStyle } from '../formatting/referenceList';
 
@@ -123,7 +122,7 @@ function proseBlocks(content: string): string[] {
 /** A citation marker is not part of the sentence it follows. */
 export function sentenceKey(sentence: string): string {
   return sentence
-    .replace(/\s*\[\s*(?:[EP])?\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*P?\d+)*\s*\]/gi, '')
+    .replace(/\s*\[\s*(?:[EP])?\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*P?\d+)*\s*\]/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -206,7 +205,6 @@ const PLAIN_QUESTION = /^(who|what|when|where|which|how (?:many|much|old|long|fa
  * request that needs adjudication is never quietly downgraded.
  */
 export function plainQuestionIntent(classifierFailed: boolean, unsure: boolean, request = ''): 'factual_report' | null {
-  if (!baselineLayerEnabled()) return null;
   if (!classifierFailed && !unsure) return null;
   const text = request.trim();
   if (!text || text.split(/\s+/).length > 30) return null;
@@ -247,7 +245,7 @@ export function distinctSourceCount(sources: UsedSource[]): number {
   return new Set(sources.map(sourceKey).filter(Boolean)).size;
 }
 
-const UNRESOLVED_MARKER = '\uE001';
+const UNRESOLVED_MARKER = '';
 
 /** One number per cited source. Markers in the text are rewritten to match. */
 export function renumberCitations<T extends { content: string }>(sections: T[], sources: UsedSource[]): { sections: T[]; cited: UsedSource[] } {
@@ -347,8 +345,8 @@ function endsWithNameInitial(text: string): boolean {
   if (!match) return false;
   const before = match[1];
   if (before === undefined) return true;
-  if (/[,;:(\[\u2014\u2013-]$/.test(before)) return true;
-  const word = before.replace(/^[("'\u201C\u2018[]+/, '');
+  if (/[,;:(\[—–-]$/.test(before)) return true;
+  const word = before.replace(/^[("'“‘[]+/, '');
   if (LETTER_LABEL_WORD.test(word)) return false;
   if (/^\p{Lu}\.$/u.test(word)) return true;
   if (/^(?:by|and|with|from|per|see|of|to|for|as|author|authors|editor|editors)$/i.test(word)) return true;
