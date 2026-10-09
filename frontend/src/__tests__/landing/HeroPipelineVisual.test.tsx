@@ -19,7 +19,7 @@ describe('HeroPipelineVisual', () => {
       'Retriever',
       'Retriever Analysis',
       'Reasoner',
-      'Challenge',
+      'Double-check',
       'Drafting',
       'Verifier',
       'Report',
@@ -35,7 +35,7 @@ describe('HeroPipelineVisual', () => {
     expect(html).toContain('This example ResearchOne flow has four phases');
   });
 
-  it('has aria-label on the challenge chip', () => {
-    expect(html).toContain('Challenge pass');
+  it('has aria-label on the Double-check chip', () => {
+    expect(html).toContain('aria-label="Double-check"');
   });
 });

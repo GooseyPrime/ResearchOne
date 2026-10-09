@@ -1,3 +1,5 @@
+import { customerOption } from '../content/customerOptions';
+
 /** Values persisted to Clerk `unsafeMetadata.initialTier` from marketing funnel query params. */
 export type SignupInitialTier = 'free_demo' | 'pro' | 'byok';
 
@@ -9,14 +11,8 @@ export function parseSignupTierFromSearch(search: string): SignupInitialTier {
 }
 
 export function signupTierLabel(tier: SignupInitialTier): string {
-  switch (tier) {
-    case 'pro':
-      return 'Pro';
-    case 'byok':
-      return 'BYOK';
-    default:
-      return 'Free Demo';
-  }
+  // The name of each plan is written once, in the registry of customer-facing names.
+  return customerOption('plan', tier).name;
 }
 
 /** Redirect target after Clerk sign-up so onboarding can read `tier`. */

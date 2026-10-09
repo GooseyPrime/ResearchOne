@@ -1,20 +1,9 @@
-/** Display labels for the plan-confirmation pass+ intent ids (aligned with backend `intentTaxonomy.ts`). */
-export const INTENT_DISPLAY_LABELS: Record<string, string> = {
-  factual_report: 'Factual report',
-  survey: 'Survey',
-  adjudication: 'Adjudication',
-  investigation: 'Investigation',
-  story_verification: 'Story verification',
-  opportunity_discovery: 'Opportunity discovery',
-  feasibility: 'Feasibility',
-  implementation: 'Implementation',
-  literature_review: 'Literature review',
-  comparative: 'Comparative',
-  how_to: 'How-to',
-  recommendation: 'Recommendation',
-  exploratory: 'Exploratory',
-  position_brief: 'Position brief',
-  timeline: 'Timeline',
-  reference_lookup: 'Reference lookup',
-  legacy: 'Legacy',
-};
+import { customerOptionsIn } from '../content/customerOptions';
+
+/**
+ * The name of each report type, by its id. The words are written once, in the
+ * registry of customer-facing names (`content/customerOptions.ts`).
+ */
+export const INTENT_DISPLAY_LABELS: Record<string, string> = Object.fromEntries(
+  customerOptionsIn('report_type').map((option) => [option.id, option.name])
+);

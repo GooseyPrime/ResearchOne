@@ -1,10 +1,11 @@
+import { DOUBLE_CHECK } from '../../content/customerOptions';
 const STAGES = [
   'Planner',
   'Discovery',
   'Retriever',
   'Analysis',
   'Reasoner',
-  'Challenge',
+  DOUBLE_CHECK.name,
   'Synthesizer',
   'Verifier',
   'Report',

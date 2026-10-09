@@ -15,7 +15,5 @@ red[- ]team
 \bsuppress(es|ed|ing)?\b the anomaly
 \bepistemic doctrine\b
 \bCitation-grade synthesis\b
-# WO-AH — the operator: "skeptic is no word ever presented to the user on any screen".
-\bskeptic
-\bskeptical
-\bskepticism
+# RJ-017: the old slang name of the checking step is never shown on any screen.
+\bs[k]eptic

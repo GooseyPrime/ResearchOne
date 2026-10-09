@@ -20,7 +20,7 @@ describe('v2FallbackResolution', () => {
     expect(
       allowFallbackByRoleFromModelEnsembleSnapshot({
         planner: { primary_override: null, fallback_override: null, fallback_enabled: true },
-        skeptic: { primary_override: null, fallback_override: null, fallback_enabled: false },
+        double_check: { primary_override: null, fallback_override: null, fallback_enabled: false },
       })
     ).toEqual({ planner: true });
   });

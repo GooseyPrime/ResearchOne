@@ -1,3 +1,4 @@
+import { customerOption } from '../content/customerOptions';
 /** Primary marketing header links — keep in sync with footer columns. */
 export const MARKETING_HEADER_NAV = [
   { to: '/methodology', label: 'Methodology' },
@@ -11,7 +12,7 @@ export const MARKETING_FOOTER_LINKS = {
   product: [
     { to: '/pricing', label: 'Pricing' },
     { to: '/sample-report', label: 'Sample report' },
-    { to: '/byok', label: 'BYOK' },
+    { to: '/byok', label: customerOption('plan', 'byok').name },
   ],
   methodology: [
     { to: '/methodology', label: 'How it works' },
