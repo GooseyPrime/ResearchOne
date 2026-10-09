@@ -33,22 +33,20 @@ export async function findStoredSourceForContent(args: {
   const owner = args.ownerUserId ?? null;
   const run = args.runId ?? null;
 
-  const stored = await queryOne<{
-    id: string;
-    url: string | null;
-    is_public: boolean | null;
-    is_own: boolean | null;
-  }>(
-    `SELECT s.id, s.url,
-            (${publicSourceSql('s')}) AS is_public,
+  const stored = await queryOne<{ id: string; url?: string | null }>(
+    'SELECT id, url FROM sources WHERE content_hash = $1',
+    [plainHash],
+  );
+  if (!stored) return { contentHash: plainHash, existing: null };
+
+  const visibility = await queryOne<{ is_public: boolean | null; is_own: boolean | null }>(
+    `SELECT (${publicSourceSql('s')}) AS is_public,
             (${ownSourceSql('s', 2)} OR ($3::text IS NOT NULL AND s.discovered_by_run_id::text = $3::text)) AS is_own
        FROM sources s
-      WHERE s.content_hash = $1`,
-    [plainHash, owner, run],
+      WHERE s.id = $1`,
+    [stored.id, owner, run],
   );
-
-  if (!stored) return { contentHash: plainHash, existing: null };
-  if (stored.is_public === true || stored.is_own === true) {
+  if (visibility?.is_public === true || visibility?.is_own === true) {
     return { contentHash: plainHash, existing: { id: stored.id, url: stored.url } };
   }
 
