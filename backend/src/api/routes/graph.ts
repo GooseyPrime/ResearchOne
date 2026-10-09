@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/clerkAuth';
 import { query } from '../../db/pool';
+import { libraryViewerFromRequest, ownClaimSql, ownSourceSql } from '../../db/libraryScope';
+import { buildOwnershipSql } from '../../db/tenantScope';
 
 const router = Router();
 
@@ -43,17 +45,39 @@ export interface GraphEdge {
 // sample of claims, all contradiction pairs, and a sample of run→source edges.
 router.get('/', async (req, res, next) => {
   try {
+    const viewer = libraryViewerFromRequest(req);
+    if (!viewer) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const { runId, limit = '80' } = req.query as { runId?: string; limit?: string };
+
+    // A run's graph is shown only to the run's owner (or an admin).
+    if (runId && !viewer.isAdmin) {
+      const owned = await query(
+        `SELECT 1 FROM research_runs WHERE id::text = $1::text AND ${buildOwnershipSql('', 2, 3)}`,
+        [runId, viewer.userId, req.auth?.orgId ?? null]
+      );
+      if (owned.length === 0) {
+        res.status(404).json({ error: 'Run not found' });
+        return;
+      }
+    }
     const parsedLimit = parseInt(limit, 10);
     const nodeLimit = Math.min(Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 80, 300);
 
     // ── Sources ──────────────────────────────────────────────────────────────
     const sourceParams: unknown[] = [Math.floor(nodeLimit * 0.4)];
-    let sourceFilter = '';
+    const sourceConds: string[] = [];
     if (runId) {
       sourceParams.push(runId);
-      sourceFilter = `WHERE s.discovered_by_run_id = $${sourceParams.length}`;
+      sourceConds.push(`s.discovered_by_run_id = $${sourceParams.length}`);
+    } else if (!viewer.isAdmin) {
+      // No run chosen: the caller's own sources only.
+      sourceParams.push(viewer.userId);
+      sourceConds.push(ownSourceSql('s', sourceParams.length));
     }
+    const sourceFilter = sourceConds.length > 0 ? `WHERE ${sourceConds.join(' AND ')}` : '';
     const sources = await query<{
       id: string;
       title: string | null;
@@ -80,6 +104,9 @@ router.get('/', async (req, res, next) => {
     if (runId) {
       claimParams.push(runId);
       claimFilter = `AND cl.run_id = $${claimParams.length}`;
+    } else if (!viewer.isAdmin) {
+      claimParams.push(viewer.userId);
+      claimFilter = `AND ${ownClaimSql('cl', claimParams.length)}`;
     }
     const claims = await query<{
       id: string;
@@ -106,10 +133,14 @@ router.get('/', async (req, res, next) => {
       claim_b_id: string;
       conflict_description: string | null;
     }>(
+      // Edges are only drawn between claim nodes already selected above, so a
+      // pair is read only when both of its claims are among them.
       `SELECT id, claim_a_id, claim_b_id, description AS conflict_description
        FROM contradictions
+       WHERE claim_a_id = ANY($1::uuid[]) AND claim_b_id = ANY($1::uuid[])
        ORDER BY created_at DESC
-       LIMIT 60`
+       LIMIT 60`,
+      [claims.map((c) => c.id)]
     );
 
     // ── Source → chunk edges (claim.source_id) ────────────────────────────────
