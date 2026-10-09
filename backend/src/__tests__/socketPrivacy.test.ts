@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Server as SocketIOServer } from 'socket.io';
-import { attachSocketAccessControl, type SocketAccessDeps } from '../realtime/socketAccess';
+import {
+  attachSocketAccessControl,
+  SESSION_GRACE_MS,
+  SUBSCRIBE_LIMIT_PER_MINUTE,
+  type SocketAccessDeps,
+} from '../realtime/socketAccess';
 import { createPrivateEmitter, type OwnerLookups } from '../realtime/privateEmit';
 import { createRouteIo } from '../realtime/routeIo';
 import { rlsStore } from '../db/pool';
@@ -29,14 +34,25 @@ const TOKENS: Record<string, string> = {
   'token-admin': 'user_admin',
 };
 
+/** Session lifetime handed out with each token; undefined means the token states none. */
+let tokenLifetimeMs: number | undefined;
+let jobChecks = 0;
+
 const deps: SocketAccessDeps = {
   verifySessionToken: async (token) => {
     const userId = TOKENS[token];
-    return userId ? { userId, orgId: null } : null;
+    if (!userId) return null;
+    return {
+      userId,
+      orgId: null,
+      expiresAtMs: tokenLifetimeMs === undefined ? undefined : Date.now() + tokenLifetimeMs,
+    };
   },
   isAdmin: (userId) => userId === 'user_admin',
-  canAccessJob: async (id, who) =>
-    who.userId === 'user_a' && (id === RUN_A || id === REPORT_A || id === INGEST_A),
+  canAccessJob: async (id, who) => {
+    jobChecks += 1;
+    return who.userId === 'user_a' && (id === RUN_A || id === REPORT_A || id === INGEST_A);
+  },
   canAccessReport: async (id, who) => who.userId === 'user_a' && id === REPORT_A,
 };
 
@@ -125,6 +141,8 @@ let fake: FakeIo;
 let io: SocketIOServer;
 
 beforeEach(() => {
+  tokenLifetimeMs = undefined;
+  jobChecks = 0;
   fake = new FakeIo();
   io = fake as unknown as SocketIOServer;
   attachSocketAccessControl(io, deps);
@@ -201,6 +219,8 @@ describe("user B never receives user A's events", () => {
     await subscribe(b, 'subscribe:job', RUN_A);
     await subscribe(b, 'subscribe:revision', REPORT_A);
     await subscribe(b, 'subscribe:corpus', '');
+    // Revision events go to the pages that asked for that report.
+    await subscribe(a, 'subscribe:revision', REPORT_A);
     const seenA = record(a);
     const seenB = record(b);
 
@@ -280,6 +300,118 @@ describe("user B never receives user A's events", () => {
     await expect(
       createPrivateEmitter(undefined, lookups).toRun(RUN_A, 'x', {}),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('revision events stay with the pages that asked for that report', () => {
+  it('an owner tab that did not open the report’s revision workspace does not receive them', async () => {
+    const workspace = await connect('token-a');
+    const otherTab = await connect('token-a');
+    await subscribe(workspace, 'subscribe:revision', REPORT_A);
+    await createPrivateEmitter(io, lookups).toReportRevision(
+      REPORT_A,
+      'revision:completed',
+      SECRET,
+    );
+    expect(record(workspace).map((e) => e.event)).toEqual(['revision:completed']);
+    expect(record(otherTab)).toEqual([]);
+  });
+});
+
+describe('a connection lasts only as long as its session', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is closed once its token has expired without a fresh one', async () => {
+    vi.useFakeTimers();
+    tokenLifetimeMs = 60_000;
+    const a = await connect('token-a');
+    await vi.advanceTimersByTimeAsync(60_000 + SESSION_GRACE_MS - 1);
+    expect(a.connected).toBe(true);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(a.connected).toBe(false);
+  });
+
+  it('stays open while the page keeps sending a fresh token', async () => {
+    vi.useFakeTimers();
+    tokenLifetimeMs = 60_000;
+    const a = await connect('token-a');
+    for (let i = 0; i < 6; i += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await subscribe(a, 'auth:refresh', 'token-a')).toEqual({ ok: true });
+    }
+    expect(a.connected).toBe(true);
+  });
+
+  it('is closed when the refresh token is invalid or belongs to someone else', async () => {
+    const a = await connect('token-a');
+    expect(await subscribe(a, 'auth:refresh', 'token-b')).toEqual({ ok: false });
+    expect(a.connected).toBe(false);
+    const again = await connect('token-a');
+    expect(await subscribe(again, 'auth:refresh', 'not-a-real-token')).toEqual({ ok: false });
+    expect(again.connected).toBe(false);
+  });
+});
+
+describe('room checks cannot be used to flood the database', () => {
+  const madeUpId = (n: number): string => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, '0')}`;
+
+  it('caps how many checks one connection may start per minute', async () => {
+    const b = await connect('token-b');
+    for (let i = 0; i < SUBSCRIBE_LIMIT_PER_MINUTE + 25; i += 1) {
+      expect(await subscribe(b, 'subscribe:job', madeUpId(i))).toEqual({ ok: false });
+    }
+    expect(jobChecks).toBe(SUBSCRIBE_LIMIT_PER_MINUTE);
+  });
+
+  it('asks once for a room requested many times at once, and not again once joined', async () => {
+    const a = await connect('token-a');
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => subscribe(a, 'subscribe:job', RUN_A)),
+    );
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(await subscribe(a, 'subscribe:job', RUN_A)).toEqual({ ok: true });
+    expect(jobChecks).toBe(1);
+  });
+});
+
+describe('events follow the current owner and do not wait on other objects', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a reassigned run stops reaching its former owner after the cache lifetime', async () => {
+    vi.useFakeTimers();
+    const a = await connect('token-a');
+    const b = await connect('token-b');
+    let ownerNow = 'user_a';
+    const live = createPrivateEmitter(io, { ...lookups, runOwner: async () => ownerNow });
+    await live.toRun(RUN_A, 'research:progress', SECRET);
+    ownerNow = 'user_b';
+    await vi.advanceTimersByTimeAsync(61_000);
+    await live.toRun(RUN_A, 'research:progress', SECRET);
+    expect(record(a)).toHaveLength(1);
+    expect(record(b)).toHaveLength(1);
+  });
+
+  it('a slow owner lookup for one run does not delay another run’s events', async () => {
+    const a = await connect('token-a');
+    let release: (owner: string | null) => void = () => undefined;
+    const slow = new Promise<string | null>((resolve) => {
+      release = resolve;
+    });
+    const OTHER_RUN = '66666666-6666-4666-8666-666666666666';
+    const live = createPrivateEmitter(io, {
+      ...lookups,
+      runOwner: (id) => (id === OTHER_RUN ? slow : Promise.resolve('user_a')),
+    });
+    const stuck = live.toRun(OTHER_RUN, 'research:progress', { run: 'other' });
+    await live.toRun(RUN_A, 'research:progress', { run: 'a-1' });
+    await live.toRun(RUN_A, 'research:progress', { run: 'a-2' });
+    expect(record(a).map((e) => e.data)).toEqual([{ run: 'a-1' }, { run: 'a-2' }]);
+    release(null);
+    await stuck;
   });
 });
 
