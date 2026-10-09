@@ -35,9 +35,9 @@ export interface BeamPalette {
   /** Node ring color when "active" — the moment a beam is entering or
    *  leaving. Brighter than idle. */
   nodeActiveRing: string;
-  /** Skeptic node ring color — overrides nodeActiveRing for the Skeptic
+  /** Double-check node ring color — overrides nodeActiveRing for the Double-check
    *  stage per Rule 27 I-4. Brightest in the palette. */
-  skepticRing: string;
+  doubleCheckRing: string;
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -54,9 +54,9 @@ export interface BeamPalette {
  *   - patent:   amber / green, industrial / IP aesthetic
  *
  * Brightness rank within each palette (lightest to darkest):
- *   beamHead  > nodeActiveRing > skepticRing > beamMid > nodeIdleRing > beamTail > trackColor
+ *   beamHead  > nodeActiveRing > doubleCheckRing > beamMid > nodeIdleRing > beamTail > trackColor
  *
- * Skeptic ring is brighter than nodeActiveRing so the Skeptic stays
+ * Double-check ring is brighter than nodeActiveRing so the Double-check stays
  * visibly distinguished even when neighboring nodes light up.
  * ───────────────────────────────────────────────────────────────── */
 
@@ -68,7 +68,7 @@ export const BEAM_PALETTES: Record<PersonaId, BeamPalette> = {
     trackColor:      'rgba(91, 206, 250, 0.18)',
     nodeIdleRing:    'rgba(91, 206, 250, 0.35)',
     nodeActiveRing:  '#5BCEFA',
-    skepticRing:     '#A5E5FF',      // matches beamHead — bright but on-brand
+    doubleCheckRing:     '#A5E5FF',      // matches beamHead — bright but on-brand
   },
 
   // OSINT — cooler, more technical. Indigo / sky blue.
@@ -79,7 +79,7 @@ export const BEAM_PALETTES: Record<PersonaId, BeamPalette> = {
     trackColor:      'rgba(74, 143, 224, 0.18)',
     nodeIdleRing:    'rgba(120, 160, 220, 0.30)',
     nodeActiveRing:  '#6FA0E5',
-    skepticRing:     '#E0F0FF',      // near-white — flags the adversarial step
+    doubleCheckRing:     '#E0F0FF',      // near-white — flags the adversarial step
   },
 
   // UAP — anomaly aesthetic. Violet with red highlights.
@@ -93,10 +93,10 @@ export const BEAM_PALETTES: Record<PersonaId, BeamPalette> = {
     trackColor:      'rgba(168, 85, 247, 0.20)',
     nodeIdleRing:    'rgba(168, 85, 247, 0.30)',
     nodeActiveRing:  '#C084FC',
-    skepticRing:     '#FF6B9D',      // saturated rose — the "anomaly" marker
+    doubleCheckRing:     '#FF6B9D',      // saturated rose — the "anomaly" marker
   },
 
-  // Academic — scholarly. Teal with gold accent for the Skeptic.
+  // Academic — scholarly. Teal with gold accent for the Double-check.
   academic: {
     beamHead:        '#C6F6E0',
     beamMid:         '#14B8A6',      // teal-500
@@ -104,10 +104,10 @@ export const BEAM_PALETTES: Record<PersonaId, BeamPalette> = {
     trackColor:      'rgba(20, 184, 166, 0.18)',
     nodeIdleRing:    'rgba(20, 184, 166, 0.30)',
     nodeActiveRing:  '#2DD4BF',
-    skepticRing:     '#F59E0B',      // amber — the peer-review highlight
+    doubleCheckRing:     '#F59E0B',      // amber — the peer-review highlight
   },
 
-  // Patent / IP — industrial. Amber primary, green skeptic.
+  // Patent / IP — industrial. Amber primary, green double-check.
   patent: {
     beamHead:        '#FEF3C7',
     beamMid:         '#F59E0B',      // amber-500
@@ -115,7 +115,7 @@ export const BEAM_PALETTES: Record<PersonaId, BeamPalette> = {
     trackColor:      'rgba(245, 158, 11, 0.18)',
     nodeIdleRing:    'rgba(245, 158, 11, 0.30)',
     nodeActiveRing:  '#FBBF24',
-    skepticRing:     '#86EFAC',      // green — the "novelty confirmed" marker
+    doubleCheckRing:     '#86EFAC',      // green — the "novelty confirmed" marker
   },
 };
 

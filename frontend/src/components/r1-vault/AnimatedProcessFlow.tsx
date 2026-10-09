@@ -1,6 +1,6 @@
 /**
  * AnimatedProcessFlow - Clean pipeline visualization
- * Data flows through 9 stages, the challenge stage highlighted
+ * Data flows through 9 stages, the Double-check stage highlighted
  */
 
 import { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import {
   Lightbulb, Search, FileSearch, Calculator, Brain,
   Shield, Scale, GitMerge, FileCheck } from
 'lucide-react';
+import { DOUBLE_CHECK } from '../../content/customerOptions';
 
 const STAGES = [
 { icon: Lightbulb, label: 'Planner' },
@@ -16,7 +17,7 @@ const STAGES = [
 { icon: FileSearch, label: 'Retriever' },
 { icon: Calculator, label: 'Quant' },
 { icon: Brain, label: 'Reasoner' },
-{ icon: Shield, label: 'Challenge', isSkeptic: true },
+{ icon: Shield, label: DOUBLE_CHECK.name, isDoubleCheck: true },
 { icon: Scale, label: 'Drafting' },
 { icon: GitMerge, label: 'Verifier' },
 { icon: FileCheck, label: 'Formatter' }];
@@ -126,7 +127,7 @@ export function AnimatedProcessFlow() {
           </div>
           <div data-ev-id="ev_6c8990023e" className="flex items-center gap-2">
             <div data-ev-id="ev_81a08f6b38" className="w-3 h-3 rounded-sm bg-red-500" />
-            <span data-ev-id="ev_f7584f52ee" className="text-[11px] font-mono text-slate-400">Challenge pass</span>
+            <span data-ev-id="ev_f7584f52ee" className="text-[11px] font-mono text-slate-400">{DOUBLE_CHECK.name}</span>
           </div>
           <div data-ev-id="ev_709795137c" className="flex items-center gap-2">
             <div data-ev-id="ev_48a805e73f" className="w-3 h-3 rounded-sm bg-amber-500" />

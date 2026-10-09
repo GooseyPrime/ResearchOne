@@ -54,26 +54,26 @@ describe('resolveReasoningModels', () => {
     expect(r).toEqual(V2_MODE_PRESETS.PATENT_GAP_ANALYSIS.planner);
   });
 
-  it('routes pipeline skeptic from preset', () => {
+  it('routes pipeline double-check from preset', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
-      role: 'skeptic',
-      callPurpose: 'pipeline_skeptic',
+      role: 'double_check',
+      callPurpose: 'pipeline_double_check',
       allowFallbackForRole: true,
     });
-    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.skeptic);
+    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.double_check);
   });
 
-  it('routes contradiction extraction to same skeptic preset as pipeline (no corporate override)', () => {
+  it('routes contradiction extraction to same double-check preset as pipeline (no corporate override)', () => {
     const r = resolveReasoningModels({
       engineVersion: 'v2',
       researchObjective: 'GENERAL_EPISTEMIC_RESEARCH',
-      role: 'skeptic',
+      role: 'double_check',
       callPurpose: 'contradiction_extraction',
       allowFallbackForRole: true,
     });
-    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.skeptic);
+    expect(r).toEqual(V2_MODE_PRESETS.GENERAL_EPISTEMIC_RESEARCH.double_check);
   });
 
   it('includes revision roles in V2 presets', () => {
