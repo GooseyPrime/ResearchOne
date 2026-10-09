@@ -61,7 +61,8 @@ interface ModelLogEntry {
   usedFallback?: boolean;
   primaryModel?: string;
   /** Present on entries written since the provider that answered was recorded. */
-  routeUsed?: { provider?: string };
+  routeUsed?: { provider?: string; position?: string };
+  routesTried?: Array<{ outcome?: string }>;
   listPrice?: { inputPricePer1mUsd: number; outputPricePer1mUsd: number };
 }
 
@@ -165,7 +166,7 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
            $10, $11,
            $12, $13::bigint, to_timestamp($13::bigint / 1000.0),
            $14, $15, $16,
-           $17, '{"backfilled":true}'::jsonb
+           $17, $18::jsonb
          )
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING (xmax = 0) AS inserted`,
@@ -187,6 +188,15 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
           price.outputPricePer1mUsd,
           calculatedCost,
           idempotencyKey,
+          JSON.stringify({
+            backfilled: true,
+            // The same route fields the live writer records.
+            ...(entry.routeUsed?.provider ? { provider: entry.routeUsed.provider } : {}),
+            ...(entry.routeUsed?.position ? { route_position: entry.routeUsed.position } : {}),
+            ...(Array.isArray(entry.routesTried)
+              ? { routes_refused: entry.routesTried.filter((attempt) => attempt.outcome === 'refused').length }
+              : {}),
+          }),
         ]
       );
       if (result.length === 0) {
