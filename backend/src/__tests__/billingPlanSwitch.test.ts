@@ -104,6 +104,7 @@ vi.mock('../services/billing/stripeCustomer', () => customerMocks);
 
 import request from 'supertest';
 import testApp from '../api/app';
+import { releasePlanSwitchScheduleFor } from '../services/billing/planSwitch';
 
 type LocalRow = {
   tier: string;
@@ -172,6 +173,8 @@ type PhaseSent = {
   proration_behavior?: string;
   metadata?: Record<string, string>;
   discounts?: unknown;
+  duration?: { interval: string; interval_count: number };
+  [setting: string]: unknown;
 };
 type ScheduleUpdateSent = { end_behavior?: string; proration_behavior?: string; metadata?: Record<string, string>; phases: PhaseSent[] };
 
@@ -308,6 +311,71 @@ describe('the change is scheduled for the end of the billing period', () => {
     expect(scheduleUpdate().phases.map((phase) => phase.discounts)).toEqual([[{ coupon: 'coupon_half' }], [{ coupon: 'coupon_half' }]]);
   });
 
+  it('bounds the new phase to one billing period of the new price, so the schedule then lets go', async () => {
+    await switchTo({ priceId: 'price_byok_m' });
+    expect(scheduleUpdate().phases[1]?.duration).toEqual({ interval: 'month', interval_count: 1 });
+    expect(scheduleUpdate().phases[0]?.duration).toBeUndefined();
+
+    stripeMocks.schedulesUpdate.mockClear();
+    await switchTo({ priceId: 'price_pro_y' });
+    expect(scheduleUpdate().phases[1]?.duration).toEqual({ interval: 'year', interval_count: 1 });
+  });
+
+  it('writes back how the subscription is taxed, collected and invoiced, on both phases', async () => {
+    // Writing phases replaces them; anything left out would be unset by Stripe.
+    stripeMocks.schedulesCreate.mockResolvedValue({
+      ...freshSchedule(),
+      phases: [
+        {
+          start_date: PERIOD_START,
+          end_date: PERIOD_END,
+          trial_end: null,
+          discounts: [],
+          automatic_tax: { enabled: true },
+          collection_method: 'charge_automatically',
+          default_payment_method: 'pm_card',
+          default_tax_rates: [{ id: 'txr_default' }],
+          description: 'ResearchOne Pro',
+          billing_thresholds: { amount_gte: 5000, reset_billing_cycle_anchor: false },
+          invoice_settings: { account_tax_ids: ['atxi_1'], days_until_due: null },
+          on_behalf_of: null,
+          items: [
+            {
+              price: 'price_pro_m',
+              quantity: 1,
+              tax_rates: [{ id: 'txr_item' }],
+              billing_thresholds: { usage_gte: 100 },
+              metadata: { seat: 'owner' },
+              discounts: [{ coupon: 'coupon_item', discount: null, promotion_code: null }],
+            },
+          ],
+        },
+      ],
+    });
+    await switchTo({ priceId: 'price_byok_m' });
+
+    const kept = {
+      automatic_tax: { enabled: true },
+      collection_method: 'charge_automatically',
+      default_payment_method: 'pm_card',
+      default_tax_rates: ['txr_default'],
+      description: 'ResearchOne Pro',
+      billing_thresholds: { amount_gte: 5000, reset_billing_cycle_anchor: false },
+      invoice_settings: { account_tax_ids: ['atxi_1'] },
+    };
+    const keptOnItem = {
+      quantity: 1,
+      tax_rates: ['txr_item'],
+      billing_thresholds: { usage_gte: 100 },
+      metadata: { seat: 'owner' },
+      discounts: [{ coupon: 'coupon_item' }],
+    };
+    const { phases } = scheduleUpdate();
+    expect(phases[0]).toMatchObject({ ...kept, items: [{ ...keptOnItem, price: 'price_pro_m' }] });
+    // The next phase differs in the price and nothing else.
+    expect(phases[1]).toMatchObject({ ...kept, items: [{ ...keptOnItem, price: 'price_byok_m' }] });
+  });
+
   it('leaves no schedule behind when Stripe refuses the phases', async () => {
     stripeMocks.schedulesUpdate.mockRejectedValue(Object.assign(new Error('Stripe is unavailable'), { statusCode: 503 }));
     const res = await switchTo({ priceId: 'price_byok_m' });
@@ -357,6 +425,35 @@ describe('one pending change at a time', () => {
     );
     const res = await switchTo({ priceId: 'price_pro_y' });
     expect(res.status).toBe(200);
+  });
+
+  it('after an earlier change has taken effect, releases its finished schedule and schedules the next one', async () => {
+    // The earlier schedule is still attached, but its new phase is the current one: nothing is pending.
+    const finished = pendingSchedule('price_byok_m', {
+      id: 'sub_sched_old',
+      current_phase: { start_date: PERIOD_END, end_date: PERIOD_END + 31 * 86400 },
+    });
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(
+      stripeSubscription({
+        schedule: finished,
+        metadata: { user_id: 'user_test', tier: 'byok' },
+        items: { data: [{ id: 'si_plan', quantity: 1, price: { id: 'price_byok_m' } }] },
+      }),
+    );
+    subscriptionMocks.getUserSubscription.mockResolvedValue(localRow({ tier: 'byok' }));
+    stripeMocks.schedulesCreate.mockResolvedValue(freshSchedule('price_byok_m'));
+
+    const res = await switchTo({ priceId: 'price_pro_m' });
+
+    expect(res.status).toBe(200);
+    expect(stripeMocks.schedulesRelease).toHaveBeenCalledTimes(1);
+    expect(stripeMocks.schedulesRelease).toHaveBeenCalledWith('sub_sched_old');
+    expect(stripeMocks.schedulesCreate).toHaveBeenCalledWith({ from_subscription: 'sub_mine' });
+    expect(scheduleUpdate().phases.map((phase) => phase.items[0]?.price)).toEqual(['price_byok_m', 'price_pro_m']);
+    // Released before the new one is made.
+    expect(stripeMocks.schedulesRelease.mock.invocationCallOrder[0]).toBeLessThan(
+      stripeMocks.schedulesCreate.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('lets one of two requests arriving together through, so one schedule is made', async () => {
@@ -629,5 +726,31 @@ describe('subscriptions that are not switched', () => {
     const res = await switchTo({ priceId: 'price_byok_m' });
     expect(res.status).toBe(409);
     expect(stripeMocks.schedulesCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('cancelling a subscription that has a schedule', () => {
+  it('releases a plan change scheduled here', async () => {
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(stripeSubscription({ schedule: pendingSchedule('price_byok_m') }));
+    expect(await releasePlanSwitchScheduleFor('sub_mine')).toEqual({ released: true, foreignSchedule: false });
+    expect(stripeMocks.schedulesRelease).toHaveBeenCalledWith('sub_sched_1');
+  });
+
+  it('leaves a schedule that was not made here alone, and says so', async () => {
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(
+      stripeSubscription({ schedule: pendingSchedule('price_byok_m', { metadata: {} }) }),
+    );
+    expect(await releasePlanSwitchScheduleFor('sub_mine')).toEqual({ released: false, foreignSchedule: true });
+    expect(stripeMocks.schedulesRelease).not.toHaveBeenCalled();
+    expect(stripeMocks.schedulesCancel).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when there is no schedule, or it has already been released', async () => {
+    expect(await releasePlanSwitchScheduleFor('sub_mine')).toEqual({ released: false, foreignSchedule: false });
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue(
+      stripeSubscription({ schedule: pendingSchedule('price_byok_m', { status: 'released' }) }),
+    );
+    expect(await releasePlanSwitchScheduleFor('sub_mine')).toEqual({ released: false, foreignSchedule: false });
+    expect(stripeMocks.schedulesRelease).not.toHaveBeenCalled();
   });
 });
