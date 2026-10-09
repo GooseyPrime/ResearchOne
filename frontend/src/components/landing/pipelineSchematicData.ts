@@ -1,3 +1,4 @@
+import { DOUBLE_CHECK } from '../../content/customerOptions';
 /** Illustrative specialist schematic for marketing surfaces. */
 
 export type StageAgentKind =
@@ -5,7 +6,7 @@ export type StageAgentKind =
   | 'retriever'
   | 'analyst'
   | 'synthesizer'
-  | 'skeptic'
+  | 'double_check'
   | 'citer'
   | 'renderer'
   | 'curator';
@@ -77,12 +78,12 @@ export const PIPELINE_SCHEMATIC_STAGES: readonly PipelineStageDef[] = [
   },
   {
     index: 7,
-    stageName: 'Challenge Pass',
-    agent: 'Challenge',
-    agentKind: 'skeptic',
+    stageName: DOUBLE_CHECK.name,
+    agent: DOUBLE_CHECK.name,
+    agentKind: 'double_check',
     input: 'Draft synthesis',
     output: 'Opposing findings + preserved disagreements',
-    rationale: 'Challenge review pass that pressure-tests key findings when verification-heavy analysis is selected.',
+    rationale: DOUBLE_CHECK.description,
   },
   {
     index: 8,
@@ -119,7 +120,7 @@ export const PIPELINE_CAPSULE_CENTERS_X: readonly number[] = [
 ];
 
 export const PIPELINE_SPINE_Y = 220;
-export const PIPELINE_SKEPTIC_APEX_Y = 340;
+export const PIPELINE_DOUBLE_CHECK_APEX_Y = 340;
 
 /** SVG viewBox — keep `PipelineSchematic` and hero framing in sync. */
 export const PIPELINE_SCHEMATIC_VIEWBOX = { width: 1440, height: 420 } as const;
@@ -129,7 +130,7 @@ export const STAGE_COLOR: Record<StageAgentKind, string> = {
   retriever: '#5BC0EB',
   analyst: '#F0C674',
   synthesizer: '#F0C674',
-  skeptic: '#D45B9E',
+  double_check: '#D45B9E',
   citer: '#E8DFCB',
   renderer: '#E8DFCB',
   curator: '#F0C674',

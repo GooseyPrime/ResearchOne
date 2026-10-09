@@ -21,13 +21,13 @@ describe('promptComposer', () => {
     });
 
     it('includes mode overlay when defined', () => {
-      const prompt = composePrompt('skeptic', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+      const prompt = composePrompt('double_check', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
       expect(prompt).toContain('MODE-SPECIFIC DIRECTIVES');
       expect(prompt).toContain('structured comparison');
     });
 
-    it('ADVERSARIAL_TWIN skeptic has full-attack overlay', () => {
-      const prompt = composePrompt('skeptic', 'ADVERSARIAL_TWIN', 'v2_deep');
+    it('ADVERSARIAL_TWIN double-check has full-attack overlay', () => {
+      const prompt = composePrompt('double_check', 'ADVERSARIAL_TWIN', 'v2_deep');
       expect(prompt).toContain('adversarial analysis');
       expect(prompt).toContain('full-attack critique');
     });
@@ -53,7 +53,7 @@ describe('promptComposer', () => {
     ];
 
     const agents: AgentRole[] = [
-      'planner', 'retriever', 'reasoner', 'skeptic',
+      'planner', 'retriever', 'reasoner', 'double_check',
       'synthesizer', 'verifier', 'plain_language_synthesizer', 'outline_architect',
     ];
 
@@ -66,8 +66,8 @@ describe('promptComposer', () => {
       }
     }
 
-    it('ADVERSARIAL_TWIN has skeptic and synthesizer overlays', () => {
-      expect(MODE_OVERLAYS.ADVERSARIAL_TWIN.skeptic).toBeTruthy();
+    it('ADVERSARIAL_TWIN has double-check and synthesizer overlays', () => {
+      expect(MODE_OVERLAYS.ADVERSARIAL_TWIN.double_check).toBeTruthy();
       expect(MODE_OVERLAYS.ADVERSARIAL_TWIN.synthesizer).toBeTruthy();
     });
   });
@@ -86,8 +86,8 @@ describe('promptComposer', () => {
       expect(prompt).toContain('Never silently demote');
     });
 
-    it('skeptic overlay includes structured comparison directive', () => {
-      const prompt = composePrompt('skeptic', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
+    it('double-check overlay includes structured comparison directive', () => {
+      const prompt = composePrompt('double_check', 'GENERAL_EPISTEMIC_RESEARCH', 'v2_deep');
       expect(prompt).toContain('retracted or contrasted source is a puzzle');
       expect(prompt).toContain('Premature collapse to consensus is failure');
     });
