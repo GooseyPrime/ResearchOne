@@ -8,6 +8,7 @@ import {
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
 import { logger } from '../../utils/logger';
+import { loadRunSources, usedByRun } from './runSources';
 import type {
   Dossier,
   DossierAuthContext,
@@ -559,46 +560,10 @@ export async function getDossierSources(
     );
     if (!anchor) return null;
 
-    const sourceRows = await query<Record<string, unknown>>(
-      `SELECT s.id AS source_id,
-              s.title,
-              s.url,
-              s.source_type::text AS source_type,
-              s.discovered_by_run_id,
-              s.fetch_method,
-              (
-                SELECT ij.status::text
-                FROM ingestion_jobs ij
-                WHERE ij.source_id = s.id
-                ORDER BY ij.created_at DESC
-                LIMIT 1
-              ) AS ingestion_status,
-              (
-                SELECT COUNT(*)::int
-                FROM chunks c
-                WHERE c.source_id = s.id
-              ) AS chunk_count,
-              EXISTS (
-                SELECT 1 FROM report_citations rc
-                WHERE ($2::uuid IS NOT NULL AND rc.report_id = $2::uuid)
-                  AND (
-                    rc.source_id = s.id
-                    OR (
-                      rc.chunk_id IS NOT NULL
-                      AND rc.source_id IS NULL
-                      AND EXISTS (
-                        SELECT 1 FROM chunks c
-                        WHERE c.id = rc.chunk_id
-                          AND c.source_id = s.id
-                      )
-                    )
-                  )
-              ) AS cited_in_report
-       FROM sources s
-       WHERE s.discovered_by_run_id = $1::uuid
-       ORDER BY s.ingested_at DESC NULLS LAST`,
-      [anchor.run_id, anchor.report_id],
-    );
+    // Only the sources this run used: the ones its passages came from, the
+    // ones its report cites, and what the person attached. A source that was
+    // fetched and never drawn on is not listed as one of the report's sources.
+    const sourceRows = usedByRun(await loadRunSources(anchor.run_id, anchor.report_id));
 
     const sources: DossierSourceEntry[] = sourceRows.map((row) => {
       const ingestionStatus = row.ingestion_status != null ? String(row.ingestion_status) : null;

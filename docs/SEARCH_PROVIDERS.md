@@ -26,7 +26,19 @@ A service that fails during a search does not stop the run. Each failure is reco
 
 From the third search round on, a planning model reads what has been found so far and writes the queries for what is still missing. It is told what each searched service covers, using the `covers` line from the registry, so a clear `covers` line produces better queries.
 
-With `PROVIDER_ROUTING_ENABLED` off, discovery uses the web services plus the specialist mapping in `discoveryOrchestrator.ts`, as it did before slice 7.
+With `PROVIDER_ROUTING_ENABLED` off, discovery uses the web services plus the specialist mapping in `discoveryOrchestrator.ts`, as it did before slice 7, with one exception described next.
+
+### Scholarly-only services
+
+arXiv, PubMed Central, ClinicalTrials.gov and USPTO PatentsView hold only research papers, clinical studies and patents. Each is marked `scholarlyOnly` in the registry. A scholarly-only service is searched only when the request is on a route that lists it, whether `PROVIDER_ROUTING_ENABLED` is on or off. A question about an election, a company or a law never reaches them, whichever specialists its plan schedules. When the specialist mapping would have added one and the request's routes do not list it, the run writes a `providers_held_back` row to `discovery_events`.
+
+Mark a new service `scholarlyOnly` when everything it returns is a scholarly or patent record. OpenAlex and Crossref are not marked: they cover every field and the default route uses them.
+
+### The relevance check
+
+A search service returns something for almost any words, so a result is not taken on the service's word. Before anything is fetched, a model reads each result's title, address, source and excerpt against the research question and says whether it is about the same subject. Results that are not, and a company's own sales pages, are not ingested. Each batch is recorded as a `relevance_gate` row in `discovery_events`, listing what was left out and why. The same check runs again on stored documents that retrieval returns, because the corpus is shared between runs (`relevance_retrieval` rows).
+
+The check is on unless `DISCOVERY_RELEVANCE_GATE_ENABLED` is set to `false`. That setting is for an emergency only.
 
 ## The services
 

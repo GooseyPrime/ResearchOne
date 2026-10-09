@@ -13,6 +13,9 @@ import {
 } from '../openrouter/openrouterService';
 import { retrieveChunksWithAudit, RetrievedChunk } from '../retrieval/retrievalService';
 import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
+import { relevanceCheckMessage, retrievalCheckMessage, type RelevanceCheckReport } from '../discovery/relevanceGate';
+import { documentsSetAsideAtRetrieval, relevanceCheckCausedShortfall, type RunRelevanceScope } from '../retrieval/runRelevanceFilter';
+import { distinctSourceCount } from './baselineReport';
 import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBarrier';
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
@@ -1252,6 +1255,27 @@ async function runResearchJobInner(
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
     let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
+    // The relevance check, in both places it runs. Discovery tells the trace what
+    // each batch of search results came to; retrieval is given the run's question
+    // so a document another run stored cannot reach this one unless it is about it.
+    // Both write their line at the stage and percent the run is already at: a
+    // search can run again later in the run, and its line must not move the
+    // run's progress back to the first search.
+    const onRelevanceCheck = async (report: RelevanceCheckReport) => {
+      await progress(currentStage, currentPercent, relevanceCheckMessage(report), {
+        substep: report.decidedWithoutModel > 0 ? 'relevance_check_without_model' : 'relevance_check',
+      });
+    };
+    const runRelevance: RunRelevanceScope = {
+      runId,
+      researchQuery,
+      model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      onChecked: async (report) => {
+        await progress(currentStage, currentPercent, retrievalCheckMessage(report), {
+          substep: report.decidedWithoutModel > 0 ? 'relevance_check_without_model' : 'relevance_check',
+        });
+      },
+    };
     // Every search pass this run makes, for a report that must say what was searched.
     const searchPasses: SearchPassSummary[] = [];
     if (shouldRunPipelineStage(orchProfile, 'discovery')) {
@@ -1269,6 +1293,7 @@ async function runResearchJobInner(
         userId: creditCtx?.userId,
         specialistAgentIds,
         routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+        onRelevanceCheck,
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
@@ -1493,6 +1518,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({
           query: rqStr,
@@ -1675,6 +1701,7 @@ async function runResearchJobInner(
                 intentId: orchProfile.intent,
                 userId: creditCtx?.userId,
                 runId,
+                relevance: runRelevance,
               });
               corpusGateDecisions.push({
                 query: `${scopedQuery} [scoped:${agent}]`,
@@ -1791,6 +1818,33 @@ async function runResearchJobInner(
       corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
+    // The relevance check after retrieval can take away documents the run was
+    // counting on: stored by an earlier run, returned for this one, and about
+    // something else. When that alone leaves the run short of the sources its
+    // plan asked for, it searches once more before a shortfall is recorded,
+    // through the same targeted search the evidence check below can ask for.
+    if (
+      sourceAssessment.action !== 'rediscover' &&
+      shouldRunPipelineStage(orchProfile, 'discovery') &&
+      config.discovery.enabled &&
+      relevanceCheckCausedShortfall({
+        // Counted by link, or by title where there is no link: an uploaded
+        // file has no link and is still a source the run can use.
+        usableSources: distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null }))),
+        setAside: documentsSetAsideAtRetrieval(runId),
+        minimum: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
+      })
+    ) {
+      await progress('reasoning', 48, 'Some stored documents were set aside as not relevant to this question; searching for more sources.', {
+        substep: 'relevance_gap_search_started',
+      });
+      sourceAssessment = {
+        ...sourceAssessment,
+        action: 'rediscover',
+        gaps: [...sourceAssessment.gaps, 'More sources about the subject of the question itself; several stored documents were about other subjects and were set aside.'],
+      };
+    }
+
     if (sourceAssessment.action === 'rediscover') {
       await progress('reasoning', 48, 'The specialist analyses found too little evidence; running a targeted new search.', {
         substep: 'rediscovery_started',
@@ -1809,6 +1863,7 @@ async function runResearchJobInner(
         userId: creditCtx?.userId,
         specialistAgentIds,
         routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+        onRelevanceCheck,
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
@@ -1871,6 +1926,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent as never,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({
           query: `${rqStr} [rediscovery]`,
@@ -1989,6 +2045,7 @@ async function runResearchJobInner(
           userId: creditCtx?.userId,
           specialistAgentIds,
           routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+          onRelevanceCheck,
           maxIngestCapOverride: resolveSourceIngestBudget({
             configuredCap: discoveryIngestFloor(),
             targetWordCount: resolvedWordTarget,
@@ -2012,6 +2069,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent as never,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({ query: `${researchQuery} [material check]`, ...followup.corpusGate });
         const knownIds = new Set(allChunks.map((chunk) => chunk.id));
@@ -3013,6 +3071,8 @@ ${reportForGates(generatedReport.markdown)}`,
     if (shouldRunPipelineStage(orchProfile, 'epistemic_persistence')) {
       await progress('epistemic_persistence', 97, 'Saving the findings, disagreements between sources, and citations...');
 
+      // What the citation mapper is given. It stays empty when the findings could not be saved.
+      let claimsForCitations: Awaited<ReturnType<typeof extractAndPersistClaims>> = [];
       try {
         const claims = await extractAndPersistClaims({
           runId,
@@ -3027,6 +3087,7 @@ ${reportForGates(generatedReport.markdown)}`,
           },
           ...v2,
         });
+        claimsForCitations = claims;
 
         await extractAndPersistContradictions({
           runId,
@@ -3036,7 +3097,15 @@ ${reportForGates(generatedReport.markdown)}`,
           doubleCheckOutput: doubleCheckResult.content,
           ...v2,
         });
+      } catch (epistemicErr) {
+        // Do not fail the run if epistemic persistence fails — log and continue
+        logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+      }
 
+      // Citations are mapped in a step of their own. They used to share the
+      // block above, so a failure while saving findings or contradictions meant
+      // the mapper never ran, and the report was shown with no citations.
+      try {
         // A locked report's citations come only from its markers, including when
         // it cites nothing. The model-based mapper would add a looser set that
         // matches nothing in the text.
@@ -3044,16 +3113,16 @@ ${reportForGates(generatedReport.markdown)}`,
           runId,
           reportId,
           chunks: allChunks,
-          claims,
+          claims: claimsForCitations,
           reportSections,
           discoverySummary: discoverySummary as unknown as Record<string, unknown>,
           sourceClassByChunkId: wave53SourceClassMap,
           chunkContextLimit: addonEffects.citationChunkContextLimit,
           ...v2,
         });
-      } catch (epistemicErr) {
-        // Do not fail the run if epistemic persistence fails — log and continue
-        logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+      } catch (citationErr) {
+        // Do not fail the run if citation mapping fails — log and continue
+        logger.error(`[${runId}] Citation mapping failed:`, citationErr);
       }
     } else {
       await progress('epistemic_persistence', 97, 'Saving findings is not needed for this kind of request', {

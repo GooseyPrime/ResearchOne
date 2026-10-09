@@ -277,6 +277,9 @@ MAX_EXTERNAL_DISCOVERY_RESULTS=25
 MAX_EXTERNAL_INGEST_PER_RUN=10
 # With PROVIDER_ROUTING_ENABLED=true, unset query and ingest values default to 12 and 24.
 PROVIDER_ROUTING_ENABLED=
+# A model checks that every source is about the question, before ingest and after retrieval.
+# On unless set to false. Set false only in an emergency.
+DISCOVERY_RELEVANCE_GATE_ENABLED=
 
 # Optional scholarly/provider enrichment settings
 PARALLEL_API_KEY=

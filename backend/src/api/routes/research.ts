@@ -53,6 +53,8 @@ import {
   type SpinoffLineage,
 } from '../../services/research/spinoffService';
 import { logger } from '../../utils/logger';
+import { isAllowlistedAdminUserId } from '../../services/auth/adminAllowlist';
+import { discoveryEventForReader, discoverySummaryForReader, loadRunSources, notUsedByRun, usedByRun } from '../../services/research/runSources';
 import { acceptedFlagOverride, UnknownFlagError } from '../../services/eval/flagOverride';
 
 const router = Router();
@@ -713,6 +715,12 @@ router.get('/:id', async (req, res, next) => {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
+    // The stored discovery summary lists every search result, including the ones
+    // set aside. A person is sent the sources the run went on to read.
+    if (!isAllowlistedAdminUserId(userId)) {
+      const run = rows[0] as Record<string, unknown>;
+      rows[0] = { ...run, discovery_summary: discoverySummaryForReader(run.discovery_summary) };
+    }
     res.json(forReader(rows[0], { title: 'not-report' }));
   } catch (err) {
     next(err);
@@ -752,18 +760,11 @@ router.get('/:id/artifacts', async (req, res, next) => {
     }
     const meta = runMeta[0];
 
-    const [sources, claims, checkpoints, discoveryEvents, totals] = await Promise.all([
-      query<{
-        id: string; title: string | null; url: string | null; source_type: string;
-        tags: string[]; ingested_at: string;
-      }>(
-        `SELECT id, title, url, source_type, COALESCE(tags, '{}'::text[]) AS tags, ingested_at
-         FROM sources
-         WHERE discovered_by_run_id=$1
-         ORDER BY ingested_at ASC
-         LIMIT 100`,
-        [runId]
-      ),
+    // The sources this run used. A source fetched for the run and never drawn
+    // on, and anything the relevance check set aside, is not listed here; an
+    // administrator gets those separately, labelled, for diagnosis.
+    const [runSources, claims, checkpoints, discoveryEventRows, totals] = await Promise.all([
+      loadRunSources(runId, meta.report_id ?? null),
       query<{
         id: string; claim_text: string; evidence_tier: string | null; source_id: string | null;
       }>(
@@ -793,16 +794,27 @@ router.get('/:id/artifacts', async (req, res, next) => {
          ORDER BY created_at ASC`,
         [runId]
       ).catch(() => []),
-      query<{ sources_total: string; claims_total: string }>(
-        `SELECT
-           (SELECT COUNT(*) FROM sources WHERE discovered_by_run_id=$1)::text AS sources_total,
-           (SELECT COUNT(*) FROM claims WHERE run_id=$1 AND claim_text IS NOT NULL)::text AS claims_total`,
+      query<{ claims_total: string }>(
+        `SELECT (SELECT COUNT(*) FROM claims WHERE run_id=$1 AND claim_text IS NOT NULL)::text AS claims_total`,
         [runId]
       ),
     ]);
 
-    const sourcesTotal = parseInt(totals[0]?.sources_total ?? '0', 10);
+    const isAdmin = isAllowlistedAdminUserId(userId);
+    const usedSources = usedByRun(runSources)
+      .slice()
+      .sort((x, y) => String(x.ingested_at ?? '').localeCompare(String(y.ingested_at ?? '')));
+    const sources = usedSources.slice(0, 100).map((row) => ({
+      id: row.source_id,
+      title: row.title,
+      url: row.url,
+      source_type: row.source_type ?? '',
+      tags: row.tags ?? [],
+      ingested_at: row.ingested_at ?? '',
+    }));
+    const sourcesTotal = usedSources.length;
     const claimsTotal = parseInt(totals[0]?.claims_total ?? '0', 10);
+    const discoveryEvents = isAdmin ? discoveryEventRows : discoveryEventRows.map(discoveryEventForReader);
 
     res.json({
       sources,
@@ -812,8 +824,10 @@ router.get('/:id/artifacts', async (req, res, next) => {
       claimsTotal,
       progressEvents: Array.isArray(meta.progress_events) ? meta.progress_events : [],
       plan: meta.plan ?? null,
-      discoverySummary: meta.discovery_summary ?? null,
+      discoverySummary: isAdmin ? meta.discovery_summary ?? null : discoverySummaryForReader(meta.discovery_summary),
       discoveryEvents,
+      // Diagnostics only: what the run found and did not use, with the reason in plain words.
+      ...(isAdmin ? { notUsedSources: notUsedByRun(runSources, discoveryEventRows) } : {}),
       modelLog: Array.isArray(meta.model_log) ? meta.model_log : [],
       modelOverrides: meta.model_overrides ?? null,
       modelEnsemble: meta.model_ensemble ?? null,

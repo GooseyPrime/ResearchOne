@@ -152,12 +152,28 @@ describe('choosing search providers by request', () => {
     expect([...called()].sort()).toEqual(['parallel', 'tavily']);
   });
 
-  it('without the switch, the same run reaches the academic providers through the specialist mapping', async () => {
+  // Changed 8 Oct 2026 on Brandon's order: a scholarly-only service is not searched
+  // for a request that is not scientific, medical, technical or about patents, with
+  // the switch on or off. This case used to assert that the same market question
+  // reached all four through the specialist mapping; that was the defect.
+  it('without the switch, the specialist mapping no longer sends a market question to the scholarly-only services', async () => {
     await discover('Which subscription box niches have growing demand and few competitors?', {
       specialists: ['data_analysis_specialist', 'market_scout'],
       intent: 'opportunity_discovery',
     });
-    for (const key of ACADEMIC) expect(called().has(key)).toBe(true);
+    for (const key of ACADEMIC) expect(called().has(key)).toBe(false);
+    // The mapping's other services are searched as before.
+    expect([...called()].sort()).toEqual(['parallel', 'tavily']);
+    expect((h.events.find((event) => event.phase === 'providers_held_back')?.payload.held_back as string[]).sort()).toEqual([...ACADEMIC].sort());
+  });
+
+  it('without the switch, the specialist mapping still sends a medical question to the scholarly services on its route', async () => {
+    await discover('What did the phase 3 clinical trials of semaglutide find in patients with obesity?', {
+      specialists: ['data_analysis_specialist'],
+      intent: 'survey',
+    });
+    for (const key of ['arxiv', 'pmc', 'clinicaltrials']) expect(called().has(key)).toBe(true);
+    expect(called().has('uspto')).toBe(false);
   });
 
   it('sends the anomaly query on a challenge run, to every provider it searches, and searches Brave when keyed', async () => {

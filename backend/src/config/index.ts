@@ -1,4 +1,4 @@
-import { switchEnabled } from './runFlags';
+import { switchEnabled, switchEnabledByDefault } from './runFlags';
 import path from 'path';
 import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
@@ -589,6 +589,16 @@ export function doiResolveEnabled(): boolean {
 export function providerRoutingEnabled(): boolean {
   return switchEnabled('PROVIDER_ROUTING_ENABLED');
 }
+/**
+ * The relevance check on what discovery finds and what retrieval returns
+ * (`discovery/relevanceGate.ts`). On unless DISCOVERY_RELEVANCE_GATE_ENABLED is
+ * set to "false": it is a protection, not a trial, so unset is on. Turning it
+ * off is for an emergency only and brings back the word-overlap check alone.
+ */
+export function relevanceGateEnabled(): boolean {
+  return switchEnabledByDefault('DISCOVERY_RELEVANCE_GATE_ENABLED');
+}
+export { switchEnabledByDefault } from './runFlags';
 /** How many queries discovery may send in one run. */
 export function discoveryQueryBudget(): number {
   return providerRoutingEnabled() ? config.discovery.routedMaxQueriesPerRun : config.discovery.maxQueriesPerRun;

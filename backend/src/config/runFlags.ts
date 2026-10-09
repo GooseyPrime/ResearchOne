@@ -22,3 +22,13 @@ export function switchEnabled(name: string): boolean {
   if (typeof recorded === 'boolean') return recorded;
   return process.env[name] === 'true';
 }
+
+/**
+ * A safeguard switch: on unless it is set to "false", for this run or for the
+ * process. Used where forgetting to set a value must not turn a protection off.
+ */
+export function switchEnabledByDefault(name: string): boolean {
+  const recorded = runFlagScope.getStore()?.[name];
+  if (typeof recorded === 'boolean') return recorded;
+  return process.env[name] !== 'false';
+}

@@ -42,6 +42,13 @@ export interface ProviderEntry {
   web?: boolean;
   /** Added to every challenge run when configured, whatever the route. */
   challengeRuns?: boolean;
+  /**
+   * The service holds only scholarly or patent records: research papers,
+   * clinical studies, patents. It is searched only for a request whose own
+   * routes include one this entry lists, whether or not PROVIDER_ROUTING_ENABLED
+   * is on. A civic, political or business question never reaches it.
+   */
+  scholarlyOnly?: boolean;
   /** Environment settings the service needs; empty for an open service. Names only. */
   needs: readonly string[];
   isConfigured: () => boolean;
@@ -118,6 +125,7 @@ export const PROVIDER_REGISTRY = {
     title: 'PubMed Central',
     covers: 'full-text biomedical and life-science articles',
     routes: { scientific: 30 },
+    scholarlyOnly: true,
     needs: [],
     isConfigured: always,
     build: () => new PubmedCentralSearchProvider(),
@@ -126,6 +134,7 @@ export const PROVIDER_REGISTRY = {
     title: 'ClinicalTrials.gov',
     covers: 'registered clinical studies, their design, status and posted results',
     routes: { scientific: 40 },
+    scholarlyOnly: true,
     needs: [],
     isConfigured: always,
     build: () => new ClinicalTrialsSearchProvider(),
@@ -134,6 +143,7 @@ export const PROVIDER_REGISTRY = {
     title: 'arXiv',
     covers: 'preprints in physics, mathematics, computer science, quantitative biology and related fields',
     routes: { scientific: 50 },
+    scholarlyOnly: true,
     needs: [],
     isConfigured: always,
     build: () => new ArxivSearchProvider(),
@@ -142,6 +152,7 @@ export const PROVIDER_REGISTRY = {
     title: 'USPTO PatentsView',
     covers: 'granted United States patents, their claims, inventors and assignees',
     routes: { patent: 10 },
+    scholarlyOnly: true,
     needs: [],
     isConfigured: always,
     build: () => new UsptoSearchProvider(),

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useId, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import NotUsedSources from '../components/research/NotUsedSources';
 import {
   getResearchRun,
   getRunArtifacts,
@@ -167,6 +168,7 @@ export default function FailedRunReportPage() {
   const sourcesTotal = artifacts?.sourcesTotal ?? sourceCount;
   const claimsTotal = artifacts?.claimsTotal ?? claimCount;
   const progressEvents = artifacts?.progressEvents ?? [];
+  const notUsedSources = artifacts?.notUsedSources ?? [];
   const supplementalAttachments = run.supplemental_attachments ?? [];
 
   return (
@@ -357,7 +359,7 @@ export default function FailedRunReportPage() {
       <div className="grid grid-cols-3 gap-3">
         <StatCard
           icon={<Database size={16} className="text-blue-400" />}
-          label="Sources found"
+          label="Sources used"
           value={artifactsLoading ? '…' : String(sourcesTotal)}
         />
         <StatCard
@@ -493,7 +495,7 @@ export default function FailedRunReportPage() {
       {sourceCount > 0 && (
         <CollapsibleSection
           icon={<Database size={15} className="text-blue-400" />}
-          title={`Sources discovered (${sourceCount}${sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})`}
+          title={`Sources used (${sourceCount}${sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})`}
         >
           <div className="space-y-2">
             {artifacts!.sources.map((s) => (
@@ -520,6 +522,16 @@ export default function FailedRunReportPage() {
               </div>
             ))}
           </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Diagnostics, administrators only: the API sends this list to no one else. */}
+      {notUsedSources.length > 0 && (
+        <CollapsibleSection
+          icon={<Database size={15} className="text-slate-400" />}
+          title={`Not used (${notUsedSources.length}) — diagnostics`}
+        >
+          <NotUsedSources sources={notUsedSources} />
         </CollapsibleSection>
       )}
 
