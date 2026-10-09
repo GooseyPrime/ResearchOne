@@ -45,7 +45,7 @@ export default function SecurityPage() {
           <h2 className="font-serif text-2xl">Export and delete</h2>
           <p className="mt-2 text-r1-text-muted">
             Your reports, corpus, and revisions can be exported or deleted from account settings. Deletion flows cascade to
-            dependent artifacts where the schema allows, and audit logs record administrative actions for enterprise tiers.
+            dependent artifacts where the schema allows, and audit logs record administrative actions.
           </p>
         </section>
 

@@ -3,7 +3,6 @@ import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import MethodologyPage from '../../pages/MethodologyPage';
-import SovereignPage from '../../pages/SovereignPage';
 import BYOKPage from '../../pages/BYOKPage';
 import SecurityPage from '../../pages/SecurityPage';
 
@@ -17,12 +16,6 @@ describe('marketing pages', () => {
     expect(html).toContain('How ResearchOne works');
     expect(html).toContain('A representative research flow');
     expect(html).toContain('CHALLENGE_REVIEW');
-  });
-
-  it('SovereignPage — isolation story', () => {
-    const html = inRouter(<SovereignPage />);
-    expect(html).toContain('Sovereign deployment');
-    expect(html).toContain('single-tenant');
   });
 
   it('BYOKPage — provider routing', () => {

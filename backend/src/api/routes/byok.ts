@@ -20,7 +20,7 @@ router.post('/keys', async (req, res, next) => {
 
     const userTier = await getUserTier(userId);
     if (userTier.tier !== 'byok' && userTier.tier !== 'admin' && userTier.tier !== 'sovereign') {
-      res.status(403).json({ error: 'BYOK key management requires the BYOK, Sovereign, or Admin tier' });
+      res.status(403).json({ error: 'BYOK key management requires the BYOK plan' });
       return;
     }
 

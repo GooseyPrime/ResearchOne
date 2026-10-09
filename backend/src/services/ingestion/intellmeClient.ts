@@ -13,11 +13,15 @@ import { createHmac } from 'crypto';
 import type { InTellMeClient } from './intellmeClient.stub';
 import { logger } from '../../utils/logger';
 
-const INTELLME_BASE_URL = process.env.INTELLME_API_URL ?? 'https://api.intellme.com/v1';
+// No default address: the integration is off unless INTELLME_API_URL is set.
+const INTELLME_BASE_URL = (process.env.INTELLME_API_URL ?? '').trim();
 const INTELLME_API_KEY = process.env.INTELLME_API_KEY ?? '';
 const INTELLME_API_SECRET = process.env.INTELLME_API_SECRET ?? '';
 
 function ensureConfigured(): void {
+  if (!INTELLME_BASE_URL) {
+    throw new Error('InTellMe client is off: INTELLME_API_URL is not set');
+  }
   if (!INTELLME_API_KEY || !INTELLME_API_SECRET) {
     throw new Error('InTellMe client not configured: INTELLME_API_KEY and INTELLME_API_SECRET are required');
   }

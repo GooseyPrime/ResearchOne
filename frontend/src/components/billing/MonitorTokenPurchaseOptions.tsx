@@ -92,7 +92,7 @@ export default function MonitorTokenPurchaseOptions({
     return (
       <div className={BOX}>
         <p className="text-sm text-slate-400">
-          Add-ons require an active Pro, BYOK, Team, or Sovereign subscription.{' '}
+          Add-ons require an active Pro or BYOK subscription.{' '}
           <Link to="/app/billing?intent=pro" className="text-indigo-400 hover:text-indigo-300">
             Choose a plan above to buy tokens.
           </Link>

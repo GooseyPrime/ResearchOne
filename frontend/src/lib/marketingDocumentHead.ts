@@ -72,11 +72,6 @@ const BY_PATH: Record<string, MarketingHeadEntry> = {
     description: 'Security practices, data handling, and trust posture for ResearchOne.',
     ogTitle: 'Security — ResearchOne',
   },
-  '/sovereign': {
-    title: 'Sovereign — ResearchOne',
-    description: 'Sovereign deployment and data residency options for ResearchOne.',
-    ogTitle: 'Sovereign — ResearchOne',
-  },
   '/byok': {
     title: 'BYOK — ResearchOne',
     description: 'Bring your own API keys and model routing with ResearchOne.',

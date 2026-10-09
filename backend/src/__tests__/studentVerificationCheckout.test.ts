@@ -72,9 +72,10 @@ beforeEach(() => {
 
 describe('POST /api/billing/checkout/subscription — deferred plans', () => {
   it.each([
-    ['student', 'price_student_monthly', 'Student'],
-    ['team', 'price_team_monthly', 'Team'],
-  ])('returns 409 when a user attempts %s checkout', async (tier, priceId, label) => {
+    // Student is deferred; Team is not sold at all.
+    ['student', 'price_student_monthly', { error: 'Student subscriptions are coming soon', code: 'PLAN_COMING_SOON' }],
+    ['team', 'price_team_monthly', { error: 'That plan is not available.', code: 'PLAN_NOT_AVAILABLE' }],
+  ])('returns 409 when a user attempts %s checkout', async (tier, priceId, refusal) => {
     studentVerificationMocks.isStudentVerified.mockResolvedValue(false);
 
     const res = await request(testApp)
@@ -82,10 +83,7 @@ describe('POST /api/billing/checkout/subscription — deferred plans', () => {
       .send({ priceId, tier });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({
-      error: `${label} subscriptions are coming soon`,
-      code: 'PLAN_COMING_SOON',
-    });
+    expect(res.body).toEqual(refusal);
     expect(stripeMocks.sessionsCreate).not.toHaveBeenCalled();
     expect(studentVerificationMocks.isStudentVerified).not.toHaveBeenCalled();
   });

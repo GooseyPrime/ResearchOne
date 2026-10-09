@@ -23,17 +23,16 @@ describe('PricingPage', () => {
     expect(html).toContain('Student');
     expect(html).toContain('Pro');
     expect(html).toContain('BYOK');
-    expect(html).toContain('Team');
-    expect(html).toContain('Sovereign Enterprise');
+    expect(html).not.toContain('Team');
+    expect(html).not.toMatch(/Sovereign|Enterprise|seat/i);
   });
 
-  it('marks Student and Team as unavailable without exposing checkout controls', () => {
+  it('marks Student as unavailable without exposing checkout controls', () => {
     const html = render();
-    // Student and Team plans, plus the two priced add-ons that are not sold through checkout.
-    expect((html.match(/Not yet available/g) ?? [])).toHaveLength(4);
+    // The Student plan, plus the two priced add-ons that are not sold through checkout.
+    expect((html.match(/Not yet available/g) ?? [])).toHaveLength(3);
     expect(html).not.toContain('Verify and start');
-    expect(html).toContain('mailto:hello@researchone.io?subject=Team%20tier%20inquiry');
-    expect(html).toContain('Team inquiry');
+    expect(html).not.toContain('inquiry →');
   });
 
   it('gives BYOK a Subscribe path through sign-up, then the key step', () => {
@@ -65,16 +64,17 @@ describe('PricingPage', () => {
     expect(html).toContain('$15/mo');
   });
 
-  it('marks Provenance Ledger Coming soon with Contact us', () => {
+  it('marks Provenance Ledger Coming soon, with nobody to write to', () => {
     const html = render();
     expect(html).toContain('Provenance Ledger');
-    expect(html).toContain('Provenance%20Ledger');
+    expect(html).not.toContain('Provenance%20Ledger');
   });
 
-  it("mentions Devil's Advocate Review as Sovereign-only", () => {
+  it("does not mention the Devil's Advocate Review", () => {
     const html = render();
-    expect(html).toContain('Devil&#x27;s Advocate Review');
-    expect(html).toContain('Included in Sovereign');
+    expect(html).not.toMatch(/Devil/);
+    expect(html).not.toContain('Talk to sales');
+    expect(html).not.toContain('/sovereign');
   });
 
   it('shows wallet credit pricing tiers', () => {
@@ -88,6 +88,6 @@ describe('PricingPage', () => {
 
   it('explains the add-on dependency invariant', () => {
     const html = render();
-    expect(html).toContain('require an active Pro, BYOK, Team, or Sovereign');
+    expect(html).toContain('require an active Pro or BYOK subscription');
   });
 });

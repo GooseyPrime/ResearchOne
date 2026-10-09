@@ -19,14 +19,14 @@ export type AddonCatalogEntry = {
   name: string;
   description: string;
   priceLabel: string;
-  billingModel: 'report_subscription' | 'token_pack' | 'per_run' | 'enterprise_inquiry';
+  billingModel: 'report_subscription' | 'token_pack' | 'per_run' | 'inquiry';
   category: 'report_monitor' | 'research_run' | 'platform';
   monitorKind?: ReportMonitorKind;
   runAddonKey?: string;
   managePath?: string;
   comingSoon: boolean;
   stripeConfigured: boolean;
-  enterpriseMailto?: string;
+  inquiryMailto?: string;
 };
 
 const ICON_BY_ID: Record<string, typeof Radar> = {
@@ -96,7 +96,7 @@ export default function AddOnsPage() {
           <div className="mt-4 rounded-md border border-amber-700/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-200 flex gap-2">
             <Lock size={18} className="shrink-0 mt-0.5" />
             <p>
-              Add-ons require an active Pro, BYOK, Team, or Sovereign plan.{' '}
+              Add-ons require an active Pro or BYOK plan.{' '}
               <Link to="/app/billing" className="text-indigo-300 hover:underline">
                 Upgrade in Account
               </Link>{' '}
@@ -265,8 +265,8 @@ export default function AddOnsPage() {
                 )}
               </div>
               <p className="mt-2 text-xs text-slate-400 leading-relaxed">{addon.description}</p>
-              {addon.enterpriseMailto ? (
-                <a href={addon.enterpriseMailto} className="mt-3 inline-block text-xs text-indigo-400 hover:text-indigo-300">
+              {addon.inquiryMailto ? (
+                <a href={addon.inquiryMailto} className="mt-3 inline-block text-xs text-indigo-400 hover:text-indigo-300">
                   Contact us →
                 </a>
               ) : null}

@@ -19,7 +19,6 @@ type AddOn = {
   price: string;
   description: string;
   comingSoon?: boolean;
-  comingSoonCta?: { label: string; href: string };
   /**
    * Where a subscriber buys it. Both targets are inside the app: a signed-out
    * visitor is sent to sign in and brought back, and the server checks the
@@ -49,10 +48,6 @@ const ADD_ONS: AddOn[] = [
     price: '$29/mo',
     description: 'Immutable, timestamped audit trail of every source retrieved, every reasoning step taken, and every export generated — suitable for regulatory and legal contexts.',
     comingSoon: true,
-    comingSoonCta: {
-      label: 'Enterprise inquiry →',
-      href: 'mailto:hello@researchone.io?subject=Provenance%20Ledger%20enterprise%20inquiry',
-    },
   },
   {
     name: 'Score API Pro',
@@ -98,7 +93,7 @@ export default function PricingPage() {
         <h1 className="font-serif text-5xl">Pricing that scales with how seriously you&apos;re researching.</h1>
         <p className="mt-4 text-r1-text-muted">Start free. Pay per report. Subscribe when it makes sense.</p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <PricingCard title="Free Demo" details="$0 — 2 reports lifetime — General Research only — Watermarked" cta="Start free" to="/sign-up" />
           <div id="student" className="contents">
             <PricingCard
@@ -125,14 +120,6 @@ export default function PricingPage() {
             }
           />
           <PricingCard
-            title="Team"
-            badge="Coming soon"
-            comingSoon
-            details="$99/seat/mo (3-seat min) — 80 reports/seat pooled — Private corpus, team library, SSO"
-            cta="Team inquiry →"
-            to="mailto:hello@researchone.io?subject=Team%20tier%20inquiry"
-          />
-          <PricingCard
             title="BYOK"
             details="$29/mo — All 5 modes, unlimited runs — BYOK keys — Private corpus (Ingest)"
             cta="Subscribe"
@@ -152,18 +139,12 @@ export default function PricingPage() {
               </div>
             }
           />
-          <PricingCard
-            title="Sovereign Enterprise"
-            details="From $4,500/mo (annual) — dedicated stack and custom retention — Devil's Advocate Review: Included in Sovereign"
-            cta="Talk to sales"
-            to="/sovereign"
-          />
         </div>
 
         <div id="living-reports" className="mt-16">
           <h2 className="font-serif text-3xl">Add-ons</h2>
           <p className="mt-2 text-r1-text-muted">
-            Add-ons require an active Pro, BYOK, Team, or Sovereign subscription. Stack as many as you need.
+            Add-ons require an active Pro or BYOK subscription. Stack as many as you need.
           </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {ADD_ONS.map((addon) => (
@@ -172,21 +153,13 @@ export default function PricingPage() {
                   <h3 className="font-serif text-xl text-r1-text">{addon.name}</h3>
                   {addon.comingSoon ? (
                     <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-r1-text-muted">
-                      Coming soon — Enterprise
+                      Coming soon
                     </span>
                   ) : (
                     <span className="shrink-0 text-sm font-medium text-r1-accent">{addon.price}</span>
                   )}
                 </div>
                 <p className="mt-3 text-sm leading-7 text-r1-text-muted">{addon.description}</p>
-                {addon.comingSoon && addon.comingSoonCta && (
-                  <a
-                    href={addon.comingSoonCta.href}
-                    className="mt-4 inline-flex text-sm text-r1-accent hover:underline"
-                  >
-                    {addon.comingSoonCta.label}
-                  </a>
-                )}
                 {addon.buy ? (
                   addonUnavailable(availability, addon.buy.addon) ? (
                     <NotYetAvailable tone="marketing" className="mt-4" />

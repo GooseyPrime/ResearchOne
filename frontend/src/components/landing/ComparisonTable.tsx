@@ -10,7 +10,7 @@ const ROWS: Array<{ capability: string; researchOne: Cell; generalPurpose: Cell 
   { capability: 'Versioned, living updates', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'Cited opposing findings', researchOne: 'yes', generalPurpose: 'partial' },
   { capability: 'Auditable citation-and-source chain', researchOne: 'yes', generalPurpose: 'partial' },
-  { capability: 'BYOK / sovereign tier', researchOne: 'yes', generalPurpose: 'no' },
+  { capability: 'Bring your own keys (BYOK)', researchOne: 'yes', generalPurpose: 'no' },
 ];
 
 function CellIcon({ value }: { value: Cell }) {
