@@ -3,7 +3,7 @@
  * If query rewriting is added, wrap LLM system prompts with withPreamble from constants/prompts.ts.
  */
 
-import { config } from '../../config';
+import { config, relevanceGateEnabled } from '../../config';
 import { isCitableAsIndependent } from './sourceIndependence';
 import { query } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
@@ -262,7 +262,9 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
       }
 
       vectorSql += ` ORDER BY e.vector <=> $1::vector LIMIT $${params.length + 1}`;
-      params.push(topK);
+      // With the relevance check on, half as many again are read, so that
+      // passages it leaves out can be replaced by the next in line.
+      params.push(relevance && relevanceGateEnabled() ? topK + Math.ceil(topK / 2) : topK);
 
       const vectorResults = await query<{
         id: string;
@@ -415,11 +417,14 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
   // of an equally relevant one that is citable.
   const rankedCandidates = tiersOn
     ? orderByRelevanceThenAuthority(await withAuthorityTiers(candidates))
-    : candidates.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
+    : candidates.sort((a, b) => b.similarity - a.similarity);
   // The corpus is shared across runs. Before any passage is handed back, the
   // documents this run has not judged are checked against its question, and
   // passages of a document that is about something else are left out.
-  const ordered = relevance ? await keepRelevantForRun(relevance, rankedCandidates) : rankedCandidates;
+  // The check runs before the top K are taken, so a document that is left out
+  // does not cost the run the next relevant passage in line.
+  const relevantCandidates = relevance ? await keepRelevantForRun(relevance, rankedCandidates) : rankedCandidates;
+  const ordered = tiersOn ? relevantCandidates : relevantCandidates.slice(0, topK);
 
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];
