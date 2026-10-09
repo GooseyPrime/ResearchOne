@@ -16,8 +16,8 @@ export interface IntentOutputTemplate {
   title: string;
   /** Section ids recorded in report metadata. Not an outline: no heading is made from them. */
   sections: readonly string[];
-  /** When true, UI shows skeptical annotations in a collapsible aside. */
-  sidebarSkepticAnnotations: boolean;
+  /** When true, UI shows double-check notes in a collapsible aside. */
+  sidebarDoubleCheckAnnotations: boolean;
   /** When false, omit plain-language footer block in dossier chrome. */
   showPlainLanguageFooter: boolean;
   /** Short guidance for synthesizer prompts (future use). */
@@ -89,7 +89,7 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     itemLabel: 'Finding',
     title: 'Factual report',
     sections: ['who_what_when', 'mechanism', 'sources', 'limits'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Encyclopedic who/what/when/where/how/why; plain informational prose.',
     verifierRubric: `PASS criteria for a Factual Report:
@@ -113,9 +113,9 @@ FAIL if: statements are made without a source, uncertainty is papered over, the 
     itemLabel: 'Finding',
     title: 'Survey',
     sections: ['established', 'contested', 'hypothesized', 'lore', 'open_questions'],
-    sidebarSkepticAnnotations: true,
+    sidebarDoubleCheckAnnotations: true,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Layered exposition; sidebar holds skeptical cross-checks.',
+    narrativeHint: 'Layered exposition; sidebar holds double-check notes.',
     verifierRubric: `PASS criteria for a Survey:
 - Covers the established, contested, and hypothesized layers of the topic.
 - Each layer is clearly distinguished and labeled.
@@ -136,7 +136,7 @@ FAIL if: all information is treated as equally certain, disagreement among resea
     itemLabel: 'Statement',
     title: 'Adjudication',
     sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Answer first: say plainly what the sources support and what they do not, then give the detail under subject headings.',
     verifierRubric: `PASS criteria for a report that examines whether a statement holds:
@@ -162,7 +162,7 @@ FAIL if: only one side of the available information is presented, the direct ans
     itemLabel: 'Finding',
     title: 'Investigation',
     sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Answer first, then the detail under subject headings. Where sources disagree, give each side the same care.',
     verifierRubric: `PASS criteria for an Investigation:
@@ -187,7 +187,7 @@ FAIL if: disagreement between sources is passed over, one side is given more wei
     itemLabel: 'Study',
     title: 'Literature review',
     sections: ['abstract', 'methods', 'findings', 'discussion', 'limitations', 'references'],
-    sidebarSkepticAnnotations: true,
+    sidebarDoubleCheckAnnotations: true,
     showPlainLanguageFooter: true,
     narrativeHint: 'PRISMA-style ordering; methodology notes in sidebar.',
     verifierRubric: `PASS criteria for a Literature Review:
@@ -213,7 +213,7 @@ FAIL if: sources are listed without synthesis, search scope is unstated, the rev
     itemLabel: 'Option',
     title: 'Comparative',
     sections: ['dimensions_table', 'per_option', 'recommendation_optional'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Matrix-first then deep per-option analysis.',
     verifierRubric: `PASS criteria for a Comparative:
@@ -236,7 +236,7 @@ FAIL if: options receive unequal treatment without justification, comparison dim
     itemLabel: 'Step',
     title: 'How-to',
     sections: ['prerequisites', 'steps', 'outcomes', 'troubleshooting'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Numbered procedural flow.',
     verifierRubric: `PASS criteria for a How-To:
@@ -259,7 +259,7 @@ FAIL if: steps are out of order, prerequisites are missing, steps are vague and 
     itemLabel: 'Recommendation',
     title: 'Recommendation',
     sections: ['constraints', 'options', 'recommendation', 'tradeoffs'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Decision-layer after comparative options.',
     verifierRubric: `PASS criteria for a Recommendation:
@@ -282,7 +282,7 @@ FAIL if: recommendation is asserted without reasoning, constraints are unstated,
     itemLabel: 'Direction',
     title: 'Exploratory',
     sections: ['editorial_intro', 'highlights', 'why_it_matters'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Curated highlights with an editorial introduction.',
     verifierRubric: `PASS criteria for an Exploratory report:
@@ -304,7 +304,7 @@ FAIL if: the report asserts definitive conclusions where the findings are explor
     itemLabel: 'Opportunity',
     title: 'Opportunity discovery',
     sections: ['overview', 'opportunities_list', 'ranking_and_analysis', 'recommendations', 'caveats'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint:
       'Ranked opportunity list. Use the confirmed plan as the contract: include exactly the fields the user requested or ResearchOne inferred at plan confirmation. Do not inject implementation guidance unless the user explicitly requested it.',
@@ -335,7 +335,7 @@ FAIL if: the requested opportunity count is not met; the report delivers a compa
     itemLabel: 'Factor',
     title: 'Feasibility analysis',
     sections: ['summary', 'dimensions', 'risks', 'viability_rating', 'recommendation'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Structured viability assessment with explicit go/no-go recommendation.',
     verifierRubric: `PASS criteria for a Feasibility Analysis:
@@ -358,7 +358,7 @@ FAIL if: a dimension is omitted without explanation, the recommendation is absen
     itemLabel: 'Phase',
     title: 'Implementation plan',
     sections: ['overview', 'prerequisites', 'plan_phases', 'detailed_steps', 'acceptance_criteria'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Ordered build plan with actionable steps and verification criteria.',
     verifierRubric: `PASS criteria for an Implementation Plan:
@@ -382,7 +382,7 @@ FAIL if: phases are vague, prerequisites are missing, steps are non-actionable, 
     itemLabel: 'Statement',
     title: 'Story verification',
     sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Answer first: which parts of the story the sources confirm, which they do not confirm, and which they show to be wrong. Then the detail under subject headings.',
     verifierRubric: `PASS criteria for a Story Verification:
@@ -408,7 +408,7 @@ FAIL if: the main statements of the story are not each addressed, certainty is s
     itemLabel: 'Argument',
     title: 'Position brief',
     sections: ['disclosure', 'thesis', 'support', 'counters', 'rebuttals'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Partisan disclosure header; rhetorical arc.',
     verifierRubric: `PASS criteria for a Position Brief:
@@ -432,7 +432,7 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
     itemLabel: 'Event',
     title: 'Timeline',
     sections: ['chronology', 'precision_notes', 'contested_dates'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Chronological with date-precision callouts.',
     verifierRubric: `PASS criteria for a Timeline:
@@ -456,7 +456,7 @@ FAIL if: events are out of order, date precision is overstated, contested dates 
     itemLabel: 'Entry',
     title: 'Reference lookup',
     sections: ['direct_answer', 'sources', 'confidence'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: false,
     narrativeHint: 'Minimal direct answer + sources + confidence.',
     verifierRubric: `PASS criteria for a Reference Lookup:
@@ -476,7 +476,7 @@ FAIL if: the direct answer is absent, sources are missing, the answer is padded 
     itemLabel: 'Item',
     title: 'Standard dossier',
     sections: ['executive_summary', 'evidence', 'analysis', 'conclusion'],
-    sidebarSkepticAnnotations: false,
+    sidebarDoubleCheckAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Legacy runs without intent gate.',
     verifierRubric: `PASS criteria for a Standard Dossier (legacy):
