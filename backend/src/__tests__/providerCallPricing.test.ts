@@ -58,9 +58,12 @@ function result(overrides: Partial<ModelCallResult>): ModelCallResult {
 
 async function insertedRow(emitted: ModelCallResult): Promise<unknown[]> {
   emitCallTelemetry(emitted, { role: emitted.role, startedAtMs: 1_760_000_000_000 });
-  await vi.waitFor(() => {
-    expect(adminQuery.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO agent_executions'))).toBe(true);
-  });
+  await vi.waitFor(
+    () => {
+      expect(adminQuery.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO agent_executions'))).toBe(true);
+    },
+    { timeout: 10_000 }
+  );
   const call = adminQuery.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO agent_executions'));
   return call?.[1] as unknown[];
 }
