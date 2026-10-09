@@ -4,6 +4,7 @@
  */
 
 import type { NavLink, PipelineStage, Capability, FeatureBlock, RuntimeNode, ResearchMode, EvidenceTier } from '@/lib/researchone/types';
+import { DOUBLE_CHECK, customerOption } from './customerOptions';
 
 // ===== NAVIGATION =====
 
@@ -35,7 +36,7 @@ export const footerNavSections = [
     title: 'Security',
     links: [
       { label: 'Security', href: '/security' },
-      { label: 'BYOK', href: '/byok' },
+      { label: customerOption('plan', 'byok').name, href: '/byok' },
     ],
   },
   {
@@ -77,10 +78,10 @@ export const pipelineStages: PipelineStage[] = [
     description: 'Builds cited findings with full source chains',
   },
   {
-    id: 'skeptic',
-    name: 'Challenge',
-    description: 'Challenge pass that argues against the draft, with optional critique perspectives to stress-test conclusions',
-    isSkeptic: true,
+    id: 'double_check',
+    name: DOUBLE_CHECK.name,
+    description: DOUBLE_CHECK.description,
+    isDoubleCheck: true,
   },
   {
     id: 'synthesizer',
@@ -107,7 +108,7 @@ export const protocolLabels = [
   'RETRIEVER',
   'QUANTITATIVE EXTRACTOR',
   'REASONER',
-  'CHALLENGE',
+  'DOUBLE-CHECK',
   'DRAFTING',
   'VERIFIER',
   'FORMATTER',
@@ -115,9 +116,9 @@ export const protocolLabels = [
 
 export const operationalPhrases = [
   'FUNDING BIAS CHECK ACTIVE',
-  'CHALLENGE PERSPECTIVE APPLIED',
+  'DOUBLE-CHECK VIEWPOINT APPLIED',
   'CONTRADICTION PRESERVED',
-  'CHALLENGE PASS COMPLETE',
+  'DOUBLE-CHECK COMPLETE',
   'REVISION LINEAGE ENABLED',
   'CITATION INTEGRITY VERIFIED',
   'SOCKET TRACE READY',
@@ -148,8 +149,8 @@ export const capabilities: Capability[] = [
   },
   {
     id: 'red-team',
-    title: 'Custom Challenge Perspectives',
-    description: 'Assign specialised critique perspectives to the challenge pass—FDA compliance officer, hostile peer reviewer, or defence attorney.',
+    title: 'Double-check viewpoints',
+    description: 'Choose whose questions Double-check asks—an FDA compliance officer, a hostile peer reviewer, or a defence attorney.',
     icon: 'UserX',
   },
   {
@@ -225,10 +226,10 @@ export const featureBlocks: FeatureBlock[] = [
   },
   {
     number: '06',
-    title: 'Challenge Pass',
-    subtitle: 'CHALLENGE · WEAKNESS_SCAN',
-    description: 'Optional critique personas argue against every conclusion before publication, exposing logical gaps and unsupported findings.',
-    isSkeptic: true,
+    title: DOUBLE_CHECK.name,
+    subtitle: 'DOUBLE-CHECK',
+    description: DOUBLE_CHECK.description,
+    isDoubleCheck: true,
   },
   {
     number: '07',
@@ -297,8 +298,8 @@ export const researchModes: { id: ResearchMode; label: string; description: stri
   },
   {
     id: 'adversarial',
-    label: 'Deeper challenge',
-    description: 'A heavier challenge pass with more thorough weakness detection',
+    label: 'Deeper Double-check',
+    description: 'A more thorough Double-check that tests more of the findings',
   },
   {
     id: 'comprehensive',
@@ -399,7 +400,7 @@ Significant contradictions exist in stakeholder assessments of enforcement effec
   ],
   revisionHistory: [
     { version: 1, timestamp: '2024-01-15T10:30:00Z', changes: 'Initial draft generated', agent: 'Drafting' },
-    { version: 2, timestamp: '2024-01-15T11:45:00Z', changes: 'Challenge pass completed - 3 weaknesses flagged', agent: 'Challenge' },
+    { version: 2, timestamp: '2024-01-15T11:45:00Z', changes: 'Double-check completed - 3 weaknesses flagged', agent: DOUBLE_CHECK.name },
     { version: 3, timestamp: '2024-01-15T13:00:00Z', changes: 'Citations verified, 2 sources upgraded', agent: 'Verifier' },
     { version: 4, timestamp: '2024-01-15T14:22:00Z', changes: 'Final review and publication', agent: 'Report' },
   ],
