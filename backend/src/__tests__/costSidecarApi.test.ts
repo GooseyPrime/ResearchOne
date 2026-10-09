@@ -63,7 +63,7 @@ function adminHeaders() {
   return { 'x-admin-token': ADMIN_TOKEN };
 }
 
-// ─── /admin/cost/summary ────────────────────────────────────────────────
+// ─── /admin/cost/summary ─────────────────────────────────────────────
 
 describe('GET /admin/cost/summary', () => {
   it('returns aggregated KPI totals', async () => {
@@ -125,7 +125,7 @@ describe('GET /admin/cost/summary', () => {
   });
 });
 
-// ─── /admin/cost/timeseries ─────────────────────────────────────────────
+// ─── /admin/cost/timeseries ──────────────────────────────────────────
 
 describe('GET /admin/cost/timeseries', () => {
   it('returns daily rollup points', async () => {
@@ -156,7 +156,7 @@ describe('GET /admin/cost/timeseries', () => {
   });
 });
 
-// ─── /admin/cost/breakdown ──────────────────────────────────────────────
+// ─── /admin/cost/breakdown ───────────────────────────────────────────
 
 describe('GET /admin/cost/breakdown', () => {
   it('returns phase breakdown by default', async () => {
@@ -202,7 +202,7 @@ describe('GET /admin/cost/breakdown', () => {
   });
 });
 
-// ─── /admin/cost/reports ────────────────────────────────────────────────
+// ─── /admin/cost/reports ─────────────────────────────────────────────
 
 describe('GET /admin/cost/reports', () => {
   it('returns per-run rollup rows', async () => {
