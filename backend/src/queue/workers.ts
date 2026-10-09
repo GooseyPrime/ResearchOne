@@ -1,4 +1,3 @@
-import { progressEventForBroadcast } from '../services/reasoning/customerFailureMessage';
 import { Worker, Job } from 'bullmq';
 import { Server as SocketIOServer } from 'socket.io';
 import { createRedisConnection } from './redis';
@@ -26,6 +25,7 @@ import {
   isBenignPlanResumeAwaitingConfirm,
 } from '../utils/researchFailureRouting';
 import { createResearchWorker } from './createResearchWorker';
+import { createPrivateEmitter } from '../realtime/privateEmit';
 
 async function markInterruptedResearchRuns(): Promise<void> {
   const rows = await query<{ id: string }>(`SELECT id FROM research_runs WHERE status='running' ORDER BY created_at DESC LIMIT 1000`);
@@ -56,16 +56,18 @@ async function markInterruptedResearchRuns(): Promise<void> {
 
 export async function startWorkers(io: SocketIOServer): Promise<void> {
   await markInterruptedResearchRuns();
-  const emit = (room: string, event: string, data: unknown) => {
-    // A run's progress goes to every connected browser, so it is sent without
-    // the model id, token counts, internal detail or stored error text.
-    const sent = event === 'research:progress' ? progressEventForBroadcast(data) : data;
-    io.to(room).emit(event, sent);
-    io.emit(event, sent); // also broadcast to all for dashboard updates
+  // Every event goes to the run's own room and its owner's room only —
+  // nothing is sent to all connected pages (see realtime/privateEmit.ts).
+  const live = createPrivateEmitter(io);
+  const emitRun = (runId: string, event: string, data: unknown): void => {
+    void live.toRun(runId, event, data);
   };
-  /** Plan payloads are user-private — never broadcast globally (PR #128). */
-  const emitJobPrivate = (runId: string, event: string, data: unknown) => {
-    io.to(`job:${runId}`).emit(event, data);
+  const emitIngestion = (jobId: string, event: string, data: unknown): void => {
+    void live.toIngestionJob(jobId, event, data);
+  };
+  const runListsChanged = (runId: string, withReports: boolean): void => {
+    if (withReports) void live.notifyRunOwner(runId, 'reports:updated', {});
+    void live.notifyRunOwner(runId, 'runs:updated', {});
   };
 
   // ─── Ingestion Worker ─────────────────────────────────────────────────
@@ -73,13 +75,13 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     QUEUE_NAMES.INGESTION,
     async (job: Job) => {
       logger.info(`Ingestion job started: ${job.id}`);
-      emit(`job:${job.data.ingestionJobId}`, 'job:progress', { status: 'running', jobId: job.data.ingestionJobId });
+      emitIngestion(job.data.ingestionJobId, 'job:progress', { status: 'running', jobId: job.data.ingestionJobId });
       const result = await runIngestionJob(job.data, (progress) => {
         job.updateProgress(progress);
-        emit(`job:${job.data.ingestionJobId}`, 'job:progress', progress);
+        emitIngestion(job.data.ingestionJobId, 'job:progress', progress);
       });
-      emit('corpus', 'corpus:updated', {});
-      emit(`job:${job.data.ingestionJobId}`, 'job:completed', result);
+      void live.notifyIngestionJobOwner(job.data.ingestionJobId, 'corpus:updated', {});
+      emitIngestion(job.data.ingestionJobId, 'job:completed', result);
       return result;
     },
     { connection: createRedisConnection(), concurrency: 3 }
@@ -93,7 +95,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
       const result = await runEmbeddingJob(job.data, (progress) => {
         job.updateProgress(progress);
       });
-      emit('corpus', 'corpus:updated', {});
+      void live.notifySourceOwners((job.data as { sourceId: string }).sourceId, 'corpus:updated', {});
       return result;
     },
     { connection: createRedisConnection(), concurrency: 2 }
@@ -106,45 +108,44 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         const data = job.data as ResearchResumeAfterPlanJobData;
         const { runId, confirmedPlanId } = data;
         logger.info(`Research resume-after-plan job started: ${job.id}`);
-        emit(`job:${runId}`, 'research:progress', researchStartedNotice(runId));
+        emitRun(runId, 'research:progress', researchStartedNotice(runId));
         try {
           const result = await resumeAfterPlanConfirmation(runId, confirmedPlanId, (update) => {
             job.updateProgress(update);
-            emit(`job:${runId}`, 'research:progress', update);
+            emitRun(runId, 'research:progress', update);
           });
           if (isResearchJobParkedAtPlanGate(result)) {
-            emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
+            emitRun(result.runId, 'research:plan_ready_for_confirmation', {
               runId: result.runId,
               planId: result.planId,
               planPayload: result.planPayload,
               refinementRounds: result.refinementRounds,
             });
-            io.emit('runs:updated', {});
+            runListsChanged(result.runId, false);
             return result;
           }
           // A gate failure produces a report row but is NOT a completion. Sent
           // as `research:completed`, the UI showed a success notification and
           // navigated to a report that had not passed its contract, before the
           // corrected summary arrived (Codex P1 review, PR #212).
-          emit(
-            `job:${runId}`,
+          emitRun(
+            runId,
             result.completedCleanly ? 'research:completed' : 'research:quality_gate_failed',
             result
           );
           if (result.summary) {
-            emit(`job:${runId}`, 'run:summary', result.summary);
+            emitRun(runId, 'run:summary', result.summary);
           }
-          io.emit('reports:updated', {});
-          io.emit('runs:updated', {});
+          runListsChanged(runId, true);
           return result;
         } catch (err) {
           if (err instanceof ResearchCancelledError) {
-            emit(`job:${runId}`, 'research:cancelled', { runId });
+            emitRun(runId, 'research:cancelled', { runId });
             const cancelledSummary = (err as Error & { summary?: RunSummaryPayload }).summary;
             if (cancelledSummary) {
-              emit(`job:${runId}`, 'run:summary', cancelledSummary);
+              emitRun(runId, 'run:summary', cancelledSummary);
             }
-            io.emit('runs:updated', {});
+            runListsChanged(runId, false);
             return { cancelled: true, runId };
           }
           const e = err as Error & {
@@ -166,53 +167,51 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
             throw err;
           }
           const decision = classifyResearchFailureForSocket(e, runId);
-          emit(`job:${runId}`, decision.event, decision.payload);
+          emitRun(runId, decision.event, decision.payload);
           if (e.summary) {
-            emit(`job:${runId}`, 'run:summary', e.summary);
+            emitRun(runId, 'run:summary', e.summary);
           }
-          io.emit('reports:updated', {});
-          io.emit('runs:updated', {});
+          runListsChanged(runId, true);
           throw err;
         }
       }
 
       logger.info(`Research job started: ${job.id}`);
-      emit(`job:${job.data.runId}`, 'research:progress', researchStartedNotice(job.data.runId));
+      emitRun(job.data.runId, 'research:progress', researchStartedNotice(job.data.runId));
       try {
         const result = await runResearchJob(job.data, (update) => {
           job.updateProgress(update);
-          emit(`job:${job.data.runId}`, 'research:progress', update);
+          emitRun(job.data.runId, 'research:progress', update);
         });
         if (isResearchJobParkedAtPlanGate(result)) {
-          emitJobPrivate(result.runId, 'research:plan_ready_for_confirmation', {
+          emitRun(result.runId, 'research:plan_ready_for_confirmation', {
             runId: result.runId,
             planId: result.planId,
             planPayload: result.planPayload,
             refinementRounds: result.refinementRounds,
           });
-          io.emit('runs:updated', {});
+          runListsChanged(result.runId, false);
           return result;
         }
         // Same branch as the primary worker: a gate failure is not a completion.
-        emit(
-          `job:${job.data.runId}`,
+        emitRun(
+          job.data.runId,
           result.completedCleanly ? 'research:completed' : 'research:quality_gate_failed',
           result
         );
         if (result.summary) {
-          emit(`job:${job.data.runId}`, 'run:summary', result.summary);
+          emitRun(job.data.runId, 'run:summary', result.summary);
         }
-        io.emit('reports:updated', {});
-        io.emit('runs:updated', {});
+        runListsChanged(job.data.runId, true);
         return result;
       } catch (err) {
         if (err instanceof ResearchCancelledError) {
-          emit(`job:${job.data.runId}`, 'research:cancelled', { runId: job.data.runId });
+          emitRun(job.data.runId, 'research:cancelled', { runId: job.data.runId });
           const cancelledSummary = (err as Error & { summary?: RunSummaryPayload }).summary;
           if (cancelledSummary) {
-            emit(`job:${job.data.runId}`, 'run:summary', cancelledSummary);
+            emitRun(job.data.runId, 'run:summary', cancelledSummary);
           }
-          io.emit('runs:updated', {});
+          runListsChanged(job.data.runId, false);
           return { cancelled: true, runId: job.data.runId };
         }
         const e = err as Error & {
@@ -229,12 +228,11 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         // The orchestrator throws a *budget-finalized* error shape so this
         // socket event matches the DB row that was just written.
         const decision = classifyResearchFailureForSocket(e, job.data.runId);
-        emit(`job:${job.data.runId}`, decision.event, decision.payload);
+        emitRun(job.data.runId, decision.event, decision.payload);
         if (e.summary) {
-          emit(`job:${job.data.runId}`, 'run:summary', e.summary);
+          emitRun(job.data.runId, 'run:summary', e.summary);
         }
-        io.emit('reports:updated', {});
-        io.emit('runs:updated', {});
+        runListsChanged(job.data.runId, true);
         throw err;
       }
     },
@@ -247,7 +245,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
     async (job: Job) => {
       logger.info(`Atlas export job started: ${job.id}`);
       const result = await runAtlasExport(job.data);
-      io.emit('atlas:updated', result);
+      void live.notifyAtlasExportOwner((job.data as { exportId: string }).exportId, 'atlas:updated', result);
       return result;
     },
     { connection: createRedisConnection(), concurrency: 1 }
