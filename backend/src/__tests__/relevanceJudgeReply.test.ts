@@ -54,9 +54,11 @@ describe('the rule used when no model can be read', () => {
     expect(kept).toEqual({ relevant: true, reason: null, note: '', basis: 'word_overlap' });
   });
 
-  it('asks for less on a very short question, where three shared words cannot be had', () => {
+  it('on a very short question asks for every one of its words, never fewer than the question has', () => {
     const short = topicTerms('semaglutide trial results');
-    expect(verdictWithoutModel(short, { title: 'Semaglutide in adults', url: '', excerpt: '' }).relevant).toBe(true);
+    expect(verdictWithoutModel(short, { title: 'Semaglutide trial results in adults', url: '', excerpt: '' }).relevant).toBe(true);
+    // One or two shared words is how unrelated results got in; a short question does not lower the bar.
+    expect(verdictWithoutModel(short, { title: 'Results of a sourdough trial', url: '', excerpt: '' }).relevant).toBe(false);
     expect(verdictWithoutModel(short, { title: 'Sourdough starters', url: '', excerpt: '' }).relevant).toBe(false);
   });
 

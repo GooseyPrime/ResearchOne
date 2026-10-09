@@ -88,7 +88,7 @@ const USED_TITLES = [EAC, CISA, EARLIER, ATTACHED].map((row) => row.title).sort(
 function answerDatabase() {
   h.queryOneMock.mockImplementation(async (sql: string) => {
     if (sql.includes('FROM v_dossier')) return { run_id: RUN, report_id: REPORT };
-    if (sql.includes('cardinality(retrieval_ids)')) return { recorded: h.retrievalRecorded };
+    if (sql.includes('retrieval_ids IS NOT NULL AS recorded')) return { recorded: h.retrievalRecorded };
     return null;
   });
   h.queryMock.mockImplementation(async (sql: string) => {
@@ -202,8 +202,21 @@ describe('a run\'s sources, as a person sees them', () => {
     expect(res.body.discoverySummary.sources).toHaveLength(3);
   });
 
+  it('reads an empty record of passages as recorded, and counts an attachment known only through its ingestion job', async () => {
+    h.rows = [IOT, EAC].map((row) => ({ ...row, used_passage: false, cited_in_report: false }));
+    await request(testApp).get(`/api/dossiers/${DOSSIER}/sources`);
+    const asked = [...h.queryOneMock.mock.calls, ...h.queryMock.mock.calls].map((call) => String(call[0]));
+    // An empty array is a finished retrieval that found nothing; only a missing one means "not yet".
+    expect(asked.some((sql) => sql.includes('retrieval_ids IS NOT NULL AS recorded'))).toBe(true);
+    expect(asked.some((sql) => sql.includes('cardinality(retrieval_ids)'))).toBe(false);
+    expect(asked.some((sql) => sql.includes("ij.metadata->>'research_run_id' = $1::text") && sql.includes('FROM attached'))).toBe(true);
+    // Retrieval finished with nothing: what was fetched and never drawn on is not listed as used.
+    const res = await request(testApp).get(`/api/dossiers/${DOSSIER}/sources`);
+    expect(res.body.sources).toHaveLength(0);
+  });
+
   it('while a run has recorded no passages yet, shows what was fetched for it', async () => {
-    // Still searching, or nothing was retrieved: nothing can be called unused yet.
+    // Still searching: nothing can be called unused yet.
     h.retrievalRecorded = false;
     h.rows = [IOT, EAC].map((row) => ({ ...row, used_passage: false, cited_in_report: false }));
     const res = await request(testApp).get(`/api/dossiers/${DOSSIER}/sources`);
