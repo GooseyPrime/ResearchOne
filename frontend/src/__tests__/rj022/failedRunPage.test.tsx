@@ -119,13 +119,30 @@ describe('RJ-022: the analytics tag does not run on signed-in pages', () => {
     expect(flags[GA_OFF]).toBe(false);
   });
 
-  it('is switched off in the page itself before the tag is configured, for a page opened directly', () => {
+  it('is switched in the page itself, before the tag is configured and before the tag sees a change of address', () => {
     const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
-    const off = html.indexOf(`window['ga-disable-${GA_MEASUREMENT_ID}'] = true`);
-    const configured = html.indexOf(`gtag('config', '${GA_MEASUREMENT_ID}')`);
-    expect(off).toBeGreaterThan(-1);
-    expect(configured).toBeGreaterThan(off);
-    expect(html).toContain('/^\\/(app|account|onboarding)(\\/|$)/.test(window.location.pathname)');
+    const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
+    expect(script.indexOf('r1AnalyticsScope();')).toBeGreaterThan(-1);
+    expect(script.indexOf(`gtag('config', '${GA_MEASUREMENT_ID}')`)).toBeGreaterThan(script.indexOf('r1AnalyticsScope();'));
+
+    // Run the page's own script, then move between a public page and signed-in pages.
+    const pushState = window.history.pushState;
+    const replaceState = window.history.replaceState;
+    try {
+      window.history.replaceState({}, '', `/app/dossiers/${RJ022_RUN_ID}`);
+      new Function(script)();
+      expect(flags[GA_OFF]).toBe(true);
+      window.history.pushState({}, '', '/pricing');
+      expect(flags[GA_OFF]).toBe(false);
+      window.history.pushState({}, '', `/app/run/${RJ022_RUN_ID}`);
+      expect(flags[GA_OFF]).toBe(true);
+      window.history.replaceState({}, '', '/');
+      expect(flags[GA_OFF]).toBe(false);
+    } finally {
+      window.history.pushState = pushState;
+      window.history.replaceState = replaceState;
+      window.history.replaceState({}, '', '/');
+    }
   });
 });
 
@@ -133,7 +150,7 @@ describe('RJ-022: taking labels out of old report text takes time in proportion 
   const list = (items: number) => `(inference, ${Array.from({ length: items }, (_, i) => `Chunk ${i + 1}`).join(', ')} and others`;
 
   it('does not double its time with each item of a list no bracket closes', () => {
-    // 26 items took about three seconds before the change, and twice that per further item.
+    // 26 items took 33 seconds here before the change, and twice that per further item.
     const started = performance.now();
     const out = stripReportLabels(`The audit found gaps ${list(26)}.`);
     expect(performance.now() - started).toBeLessThan(250);
