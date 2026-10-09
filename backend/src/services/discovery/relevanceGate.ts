@@ -152,9 +152,8 @@ export function documentKey(url: string | null | undefined, title?: string | nul
  * papers got in.
  */
 function requiredSharedTerms(questionTerms: number): number {
-  if (questionTerms <= 3) return 1;
-  if (questionTerms <= 6) return 2;
-  return 3;
+  // Three wherever the question has three; every one of them when it has fewer.
+  return Math.min(3, questionTerms);
 }
 
 /** The verdict when no model could be read: decided from shared vocabulary alone, and marked as such. */
