@@ -20,8 +20,8 @@ const CONFIG_TO_ROLE: Record<string, ReasoningModelRole> = {
   retriever: 'retriever',
   sourceClassClassifier: 'source_class_classifier',
   reasoner: 'reasoner',
-  steelman: 'steelman',
-  skeptic: 'skeptic',
+  strongest_form: 'strongest_form',
+  double_check: 'double_check',
   synthesizer: 'synthesizer',
   verifier: 'verifier',
   plainLanguageSynthesizer: 'plain_language_synthesizer',
@@ -120,7 +120,7 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
     section_drafter: pair(M.geminiPro, M.sonnet4),
     coherence_refiner: pair(M.sonnet45, M.geminiPro),
     plain_language_synthesizer: pair(M.haiku, M.geminiFlash),
-    skeptic: pair(M.hermes, M.dolphin),
+    double_check: pair(M.hermes, M.dolphin),
     internal_challenger: pair(M.hermes, M.dolphin),
     retriever: pair(M.v32, M.geminiFlash),
   }),
@@ -133,7 +133,7 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
     section_drafter: pair(M.opus, M.geminiPro),
     coherence_refiner: pair(M.opus, M.sonnet45),
     plain_language_synthesizer: pair(M.sonnet45, M.haiku),
-    skeptic: pair(M.hermes, M.dolphin),
+    double_check: pair(M.hermes, M.dolphin),
     internal_challenger: pair(M.hermes, M.dolphin),
     retriever: pair(M.v32, M.geminiFlash),
     verifier: pair(M.o4mini, M.o3mini),
@@ -147,7 +147,7 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
     synthesizer: pair(M.sonnet45, M.geminiPro),
     outline_architect: pair(M.kimi, M.o3),
     section_drafter: pair(M.geminiPro, M.sonnet4),
-    skeptic: pair(M.hermes, M.dolphin),
+    double_check: pair(M.hermes, M.dolphin),
     internal_challenger: pair(M.hermes, M.dolphin),
     citation_integrity_checker: pair(M.o4mini, M.mistral),
     plain_language_synthesizer: pair(M.haiku, M.geminiFlash),
@@ -157,7 +157,7 @@ export const ENSEMBLE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRo
     planner: pair(M.kimi, M.opus),
     reasoner: pair(M.r1, M.o3),
     synthesizer: pair(M.sonnet45, M.opus),
-    skeptic: pair(M.hermes, M.dolphin),
+    double_check: pair(M.hermes, M.dolphin),
     internal_challenger: pair(M.dolphin, M.hermes),
     retriever: pair(M.v32, M.o4mini),
     verifier: pair(M.sonnet4, M.o4mini),
@@ -346,12 +346,12 @@ function v2Mode(
  *   - **Synthesis roles**: Qwen3-235B-Thinking (primary; 256k for corpus
  *     ingestion) → fallback DeepSeek V3.2 (all objectives). PATENT_GAP
  *     synthesizer uses Qwen3 → R1 for citation-dense reasoning.
- *   - **Adversarial** (skeptic / internal_challenger): low-refusal Hermes
+ *   - **Adversarial** (double-check / internal_challenger): low-refusal Hermes
  *     OpenRouter line (Hermes 4 → Hermes 3 fallback) — validated by runtime
  *     `/chat/completions` preflight, not catalog metadata alone.
  *   - **Utility roles**: V2_UTILITIES constant (V3.2 → V3.1), including
  *     `retriever` and `source_class_classifier`.
- *   - **Steelman**: same reasoner-class ladder as `reasoner` / `change_planner`
+ *   - **Strongest-form**: same reasoner-class ladder as `reasoner` / `change_planner`
  *     (Qwen3 Thinking → DeepSeek R1-0528).
  *
  * Preset fallbacks fire unconditionally on primary failure.
@@ -363,14 +363,14 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
     internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
@@ -378,14 +378,14 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
     internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
@@ -396,14 +396,14 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.DEEPSEEK_R1, V2M.QWEN_THINKING),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
     internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
@@ -411,14 +411,14 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_R1),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
     internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 
@@ -428,14 +428,14 @@ export const V2_MODE_PRESETS: Record<ResearchObjective, Record<ReasoningModelRol
     planner: pair(V2M.KIMI_K2_THINKING, V2M.DEEPSEEK_V32),
     reasoner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     change_planner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
-    steelman: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
+    strongest_form: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_R1),
     outline_architect: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_drafter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     coherence_refiner: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     plain_language_synthesizer: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
     section_rewriter: pair(V2M.QWEN_THINKING, V2M.DEEPSEEK_V32),
-    skeptic: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
+    double_check: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
     internal_challenger: pair(V2M.HERMES_4_70B_OR, V2M.HERMES_3_70B_OR),
   }),
 };
