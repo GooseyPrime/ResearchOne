@@ -41,14 +41,17 @@
  * assumption from reappearing here.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getResearchRun, type ResearchProgressEvent, type ResearchRun } from '../utils/api';
 import { getSocket, subscribeToJob } from '../utils/socket';
 import {
   eventsFromRunRow,
+  isWorkerNotice,
   mergeTraceEvents,
   normalizeProgressEvent,
   sortEventsChronological,
+  traceProgress,
+  type TraceProgress,
 } from '../utils/traceEventWindow';
 import { isInFlightRunStatus } from '../utils/researchRuns';
 
@@ -67,13 +70,16 @@ export interface RunTraceStream {
   run: ResearchRun | null;
   /** Deduped, chronological, bounded. Oldest first — newest at the bottom. */
   traceEvents: ResearchProgressEvent[];
-  /** Most recent event by timestamp, for progress chrome. */
+  /** Most recent event by timestamp. */
   latest: ResearchProgressEvent | null;
+  /** How far the run has got, for the progress bar and step row. Never moves backwards within an attempt. */
+  progress: TraceProgress;
   isLoading: boolean;
   isError: boolean;
 }
 
 export function useRunTraceStream(runId: string | undefined): RunTraceStream {
+  const queryClient = useQueryClient();
   const [traceEvents, setTraceEvents] = useState<ResearchProgressEvent[]>([]);
 
   const {
@@ -128,8 +134,16 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
     const socket = getSocket();
 
     const onProgress = (raw: ResearchProgressEvent) => {
+      if (raw?.runId && raw.runId !== runId) return;
+      // The worker's "picked up" notice is not a step: it has no percentage.
+      // It was stamped with this browser's clock and shown as "Starting 0%",
+      // twice, and could pull the bar back to 0% (RJ-018). The run's own first
+      // step comes with the run row, so the notice only asks for that row now.
+      if (isWorkerNotice(raw)) {
+        void queryClient.invalidateQueries({ queryKey: ['research-run', runId] });
+        return;
+      }
       const update = normalizeProgressEvent(raw);
-      if (update.runId && update.runId !== runId) return;
       ingest([{ ...update, runId }]);
     };
 
@@ -137,17 +151,20 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
     return () => {
       socket.off('research:progress', onProgress);
     };
-  }, [runId, ingest]);
+  }, [runId, ingest, queryClient]);
 
   const latest = useMemo(
     () => (traceEvents.length > 0 ? traceEvents[traceEvents.length - 1] : null),
     [traceEvents]
   );
 
+  const progress = useMemo(() => traceProgress(traceEvents, run), [traceEvents, run]);
+
   return {
     run,
     traceEvents: traceEvents.length > 0 ? traceEvents : (NO_EVENTS as ResearchProgressEvent[]),
     latest,
+    progress,
     isLoading,
     isError,
   };
