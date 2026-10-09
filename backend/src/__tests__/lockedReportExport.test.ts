@@ -1,6 +1,7 @@
 /**
- * A report written with the citation lock exports as it was saved. Asserts on
- * the Markdown actually handed to Pandoc.
+ * A report written with the citation lock exports with the numbers and the
+ * reference list it was saved with. Asserts on the Markdown actually handed to
+ * Pandoc.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -129,14 +130,31 @@ describe('exporting a report written with the citation lock', () => {
     expect(mocks.adminQueryMock.mock.calls.some((call) => String(call[0]).includes('FROM report_citations'))).toBe(false);
   });
 
-  it('exports every other report the way it always did', async () => {
+  it('exports a report without saved numbers through the export engine, which builds its reference list', async () => {
     answer({ locked: false });
     await exportReport({ reportId: 'r1', format: 'docx', style: 'apa' });
     const { markdown, cslJson, style } = handed();
     expect(mocks.assignAliasesMock).toHaveBeenCalledTimes(1);
     expect(cslJson).toEqual([{ id: 'E1' }]);
     expect(style).toBe('apa');
-    // The engine appends its own heading for the bibliography it builds.
+    // The report's own text, whole and in order, with the reference list it already carries.
+    expect(markdown).toContain('## Summary\n\nCosts rose after 1979 [1]. French units took 65 to 90 months [2].');
+    expect(markdown).toContain('1. Jessica R. Lovering. Historical construction costs. Energy Policy. 1 Apr 2016. Journal article. https://doi.org/10.1/x');
+    // A report that carries its reference list is not given a second, empty heading for one.
+    expect(markdown.match(/^## References$/gm)).toHaveLength(1);
+    expect(markdown.trimEnd().endsWith('2 sources were read on 4 Oct 2026.')).toBe(true);
+  });
+
+  it('appends the heading the export engine fills when the report carries no reference list', async () => {
+    answer({ locked: false });
+    const withList = mocks.adminQueryMock.getMockImplementation() as (sql: string) => Promise<unknown[]>;
+    mocks.adminQueryMock.mockImplementation(async (sql: string) =>
+      sql.includes('FROM report_sections') ? SECTIONS.filter((section) => section.title !== 'References') : withList(sql)
+    );
+    await exportReport({ reportId: 'r1', format: 'docx', style: 'apa' });
+    const { markdown, cslJson } = handed();
+    expect(cslJson).toEqual([{ id: 'E1' }]);
+    expect(markdown.match(/^## References$/gm)).toHaveLength(1);
     expect(markdown.trimEnd().endsWith('## References')).toBe(true);
   });
 
