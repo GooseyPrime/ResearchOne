@@ -100,7 +100,7 @@ const ORDINAL_LABELS = [
  */
 const LEADING_ORDINAL = new RegExp(
   `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
-    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):–—-]\\s+)`,
+    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
   'i'
 );
 
@@ -963,10 +963,10 @@ export function withoutSourceRankOutsideCodeAndQuotes(content: string): string {
   const code: string[] = [];
   const held = mapOutsideCode(content, (part) => part, (segment) => {
     code.push(segment);
-    return `${code.length - 1}`;
+    return `\uE010${code.length - 1}\uE011`;
   });
   const cleaned = mapOutsideQuotes(held, withoutSourceRank);
-  return cleaned.replace(/(\d+)/g, (_token, index: string) => code[Number(index)] ?? '');
+  return cleaned.replace(/\uE010(\d+)\uE011/g, (_token, index: string) => code[Number(index)] ?? '');
 }
 
 export function removeBannedWording(content: string): string {
