@@ -1,4 +1,3 @@
-import { citationLockEnabled, runWithFlags } from '../../config';
 import { tierOfStoredSource } from '../authority/authorityTier';
 import { query } from '../../db/pool';
 import { judgeQuoteSupports } from './quoteSupportsJudge';
@@ -43,8 +42,7 @@ export function buildScoreInput(
   task: EvalTask,
   stored: StoredRun,
   quoteSupports: number | null,
-  notJudged: number | null = null,
-  flagOverrides: Record<string, boolean> | null = null
+  notJudged: number | null = null
 ): EvalScoreInput {
   const sides = (task.fixtureDocuments ?? []).filter((doc) => doc.role === 'side_a' || doc.role === 'side_b');
   return {
@@ -56,11 +54,9 @@ export function buildScoreInput(
     anomalyPhrase: task.anomalyPhrase,
     quoteSupports,
     quoteSupportsNotJudged: notJudged,
-    // Score as locked only when the run was locked: the lock needs both switches,
-    // read the same way the worker reads them for this run.
-    // The worker's own record decides. The harness may run on another machine
-    // with other settings, so its view is only a fallback for a run with no record.
-    citationLock: stored.citationLocked ?? runWithFlags(flagOverrides ?? null, () => citationLockEnabled()),
+    // The worker's own record decides. Every report written since the lock
+    // became permanent carries the record; one without it was written before.
+    citationLock: stored.citationLocked ?? false,
     doiChecks: stored.doiChecks ?? null,
     seconds: secondsBetween(stored.startedAt, stored.completedAt),
     tokens: stored.tokens,
@@ -84,7 +80,7 @@ export async function runHarness(
     const reportQuality = await judgeReportQuality(stored.reportMarkdown);
     const scores = applyJudgeGate(
       scoreStoredReport({
-        ...buildScoreInput(task, stored, judged.score, judged.notJudged, flagOverrides),
+        ...buildScoreInput(task, stored, judged.score, judged.notJudged),
         reportQuality: reportQuality?.mean ?? null,
       }),
       reportQuality

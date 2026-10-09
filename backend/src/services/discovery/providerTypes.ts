@@ -107,13 +107,6 @@ export function withAuthorityTier(candidate: SearchResultCandidate, tier: number
   return tier === null ? candidate : { ...candidate, authorityTier: tier };
 }
 
-/** The candidate as it was before reference details existed. */
-export function withoutBibliographic(candidate: SearchResultCandidate): SearchResultCandidate {
-  if (!('bibliographic' in candidate)) return candidate;
-  const { bibliographic: _dropped, ...rest } = candidate;
-  return rest;
-}
-
 /**
  * A provider's result as a run may use it. A DOI in the provider's record is
  * kept only when the run checks DOIs (DOI_RESOLVE_ENABLED): with that switch
@@ -142,19 +135,9 @@ export function requestMetadataForStorage(metadata: Record<string, unknown> | un
 }
 
 /**
- * The candidate a run keeps. With the citation lock on for the run it keeps the
- * provider's reference details; with it off it is the candidate as it always was,
- * so nothing new is stored, logged or queued.
- */
-export function candidateForRun(candidate: SearchResultCandidate, citationLockOn: boolean): SearchResultCandidate {
-  return citationLockOn ? candidate : withoutBibliographic(candidate);
-}
-
-/**
  * What goes with a discovered source into storage for its reference entry: the
  * provider that found it, and whatever the provider's record says about who
- * wrote and published it. Empty when the candidate carries none, which is every
- * candidate of a run without the citation lock.
+ * wrote and published it. Empty when the candidate carries none.
  */
 export function bibliographicMetadata(candidate: SearchResultCandidate): { bibliographic?: BibliographicDetails & { provider: string } } {
   if (!candidate.bibliographic) return {};

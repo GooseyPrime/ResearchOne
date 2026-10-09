@@ -5,7 +5,8 @@
  * to, the findings with their strength in words, and the status a person
  * reads. Nothing here returns a grade label, a raw status or an internal id as
  * text for a reader: strength and source type are words, and the status is
- * "Ready", "Needs review" or "Failed" with a plain reason.
+ * "Ready", "Finished with fewer sources than planned", "Needs review" or
+ * "Failed", with a plain reason.
  */
 import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
@@ -33,7 +34,7 @@ export function strengthInWords(tier: string | null | undefined): string {
 }
 
 export interface ReaderStatus {
-  word: 'Ready' | 'Needs review' | 'Failed' | 'In progress';
+  word: 'Ready' | 'Finished with fewer sources than planned' | 'Needs review' | 'Failed' | 'In progress';
   reason: string | null;
 }
 
@@ -54,7 +55,10 @@ export function readerStatus(args: { reportStatus: string | null; runStatus?: st
     // The stored explanation for this one names pipeline parts; a reader is told what it meant for them.
     const reason = gate === 'no_evidence' ? 'The search found no sources this report could cite, so no report was written.' : describeGateFailure(gate);
     // A report that exists but did not pass a check is kept for review; one with nothing to show failed.
-    return gate === 'no_evidence' ? { word: 'Failed', reason } : { word: 'Needs review', reason };
+    if (gate === 'no_evidence') return { word: 'Failed', reason };
+    // Written, and readable, from fewer sources than the plan called for: said as that, not as a fault.
+    if (gate === 'completed_degraded') return { word: 'Finished with fewer sources than planned', reason };
+    return { word: 'Needs review', reason };
   }
   if (args.runStatus === 'failed' || args.runStatus === 'aborted') return { word: 'Failed', reason: 'The run that wrote this report did not finish.' };
   if (args.runStatus === 'cancelled') return { word: 'Failed', reason: 'The run that wrote this report was cancelled before it finished.' };

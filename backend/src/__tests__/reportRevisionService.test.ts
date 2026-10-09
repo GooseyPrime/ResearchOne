@@ -64,32 +64,58 @@ describe('report revision helpers', () => {
     expect(index).toBe(2);
   });
 
-  it('flags consistency issues when conclusions/falsification are missing', async () => {
+  it('asks only for a summary: a report with no conclusion or falsification section has no consistency issue', async () => {
     const { basicConsistencyChecks } = await import('../services/reasoning/reportRevisionService');
     const issues = basicConsistencyChecks([
       { section_type: 'executive_summary', content: 'ok' },
       { section_type: 'reasoning', content: 'ok' },
     ] as never);
-    expect(issues).toContain('missing_conclusion');
-    expect(issues).toContain('missing_falsification_criteria');
+    expect(issues).toEqual([]);
   });
 
-  it('does not flag missing_falsification_criteria for descriptive (non-adjudicative) intents', async () => {
+  it('flags a report with no summary, and one whose summary is empty', async () => {
+    const { basicConsistencyChecks } = await import('../services/reasoning/reportRevisionService');
+    expect(
+      basicConsistencyChecks([
+        { section_type: 'reasoning', title: 'Dredging schedule', content: 'ok' },
+        { section_type: 'conclusion', title: 'Conclusion', content: 'ok' },
+      ] as never)
+    ).toEqual(['missing_executive_summary']);
+    expect(
+      basicConsistencyChecks([
+        { section_type: 'executive_summary', title: 'Summary', content: '   ' },
+        { section_type: 'reasoning', title: 'Dredging schedule', content: 'ok' },
+      ] as never)
+    ).toEqual(['missing_executive_summary']);
+  });
+
+  it('accepts the reader layout summary by its title', async () => {
+    const { basicConsistencyChecks } = await import('../services/reasoning/reportRevisionService');
+    for (const title of ['Summary', 'Executive Summary', ' summary ']) {
+      expect(
+        basicConsistencyChecks([
+          { section_type: 'summary', title, content: 'The answer.' },
+          { section_type: 'limits', title: 'Limits of this report', content: 'ok' },
+        ] as never)
+      ).toEqual([]);
+    }
+    expect(
+      basicConsistencyChecks([{ section_type: 'key_findings', title: 'Summary of costs', content: 'ok' }] as never)
+    ).toEqual(['missing_executive_summary']);
+  });
+
+  it('never asks for falsification criteria or a conclusion, whatever the report type', async () => {
     const { basicConsistencyChecks } = await import('../services/reasoning/reportRevisionService');
     const sections = [
       { section_type: 'executive_summary', content: 'Summary of findings' },
-      { section_type: 'conclusion', content: 'Conclusions here' },
       { section_type: 'findings', content: 'Key findings' },
     ] as never;
-    // Descriptive intents should NOT require falsification_criteria
-    const descriptiveIssues = basicConsistencyChecks(sections, 'opportunity_discovery');
-    expect(descriptiveIssues).not.toContain('missing_falsification_criteria');
-    // Adjudicative intents still require falsification_criteria
-    const adjudicativeIssues = basicConsistencyChecks(sections, 'adjudication');
-    expect(adjudicativeIssues).toContain('missing_falsification_criteria');
-    // Legacy (no intentId) still requires falsification_criteria for backward compat
-    const legacyIssues = basicConsistencyChecks(sections, undefined);
-    expect(legacyIssues).toContain('missing_falsification_criteria');
+    for (const intentId of ['opportunity_discovery', 'adjudication', 'investigation', 'story_verification', undefined]) {
+      const issues = basicConsistencyChecks(sections, intentId);
+      expect(issues).not.toContain('missing_falsification_criteria');
+      expect(issues).not.toContain('missing_conclusion');
+      expect(issues).toEqual([]);
+    }
   });
 });
 

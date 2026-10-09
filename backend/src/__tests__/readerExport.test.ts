@@ -2,12 +2,11 @@
  * Slice 5, item 7: PDF, Word and Markdown exports render the section 2a
  * report. Asserts on the Markdown handed to Pandoc; Pandoc itself does not run.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   adminQueryMock: vi.fn(),
   runPandocMock: vi.fn(),
-  readerViewMock: vi.fn(),
 }));
 
 vi.mock('../db/pool', () => ({ adminQuery: mocks.adminQueryMock }));
@@ -23,8 +22,9 @@ vi.mock('../services/formatting/pandocRunner', () => ({
 vi.mock('../services/telemetry', () => ({
   runScope: { run: <T>(_ctx: unknown, fn: () => T): T => fn() },
 }));
-vi.mock('../services/eval/readerView', () => ({ readerViewForRun: mocks.readerViewMock, authorityWordsForRun: async () => false }));
+vi.mock('../services/eval/readerView', () => ({ authorityWordsForRun: async () => false }));
 
+import { runWithFlags } from '../config/runFlags';
 import { exportReport } from '../services/formatting/exportOrchestrator';
 import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody } from '../services/formatting/readerExport';
 import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
@@ -61,20 +61,17 @@ const handed = (): string => (mocks.runPandocMock.mock.calls[0]?.[0] as { markdo
 beforeEach(() => {
   mocks.adminQueryMock.mockReset();
   mocks.runPandocMock.mockReset();
-  mocks.readerViewMock.mockReset();
   mocks.runPandocMock.mockResolvedValue({ outputBuffer: Buffer.from(''), outputBytes: 0, durationMs: 1 });
 });
 
 describe.each([
   ['a report written with the citation lock', true],
   ['an older report', false],
-])('exporting %s in the reader view', (_name, locked) => {
+])('exporting %s', (_name, locked) => {
   it.each(['pdf', 'docx', 'md'] as const)('hands Pandoc the section 2a report for %s: no never-list item, the reference list included', async (format) => {
     answer(locked);
-    mocks.readerViewMock.mockResolvedValue(true);
     await exportReport({ reportId: 'r1', format, style: 'numeric' } as never);
     const markdown = handed();
-    expect(mocks.readerViewMock).toHaveBeenCalledWith('run-1');
     expect(readerFacingLabelHits(markdown)).toEqual([]);
     expect(markdown.replace(/`[^`]*`/g, '')).not.toMatch(/chunk|strong_evidence|quantitative_quality_auditor/i);
     // Numbered citations and the list they point to.
@@ -95,17 +92,73 @@ describe.each([
   });
 });
 
-describe('S1: with the reader view off an export is what it was before', () => {
-  it('keeps the stored title heading and applies only the clean-up exports already had', async () => {
-    answer(true);
-    mocks.readerViewMock.mockResolvedValue(false);
-    await exportReport({ reportId: 'r1', format: 'pdf', style: 'numeric' } as never);
+describe('the reader export is the only export', () => {
+  const RETIRED = ['READER_VIEW_ENABLED', 'CITATION_LOCK_ENABLED', 'BASELINE_LAYER_ENABLED'] as const;
+  const before = RETIRED.map((name) => process.env[name]);
+
+  afterEach(() => {
+    RETIRED.forEach((name, at) => {
+      if (before[at] === undefined) delete process.env[name];
+      else process.env[name] = before[at];
+    });
+  });
+
+  it.each([true, false])("with the removed switches set to 'false' a report (locked: %s) is still exported as the reader sees it", async (locked) => {
+    answer(locked);
+    for (const name of RETIRED) process.env[name] = 'false';
+    await runWithFlags({ READER_VIEW_ENABLED: false, CITATION_LOCK_ENABLED: false, BASELINE_LAYER_ENABLED: false }, () =>
+      exportReport({ reportId: 'r1', format: 'pdf', style: 'numeric' } as never)
+    );
     const markdown = handed();
-    expect(markdown.match(new RegExp(TITLE, 'g'))).toHaveLength(2);
-    // The Challenge and the stored labels are exported as they always were.
-    expect(markdown).toContain('strongest objection');
-    expect(markdown).toContain('(Chunk 12)');
-    expect(markdown).toContain(`## ${TITLE}\n\n\n\n## Summary`);
+    // The title once: the stored title heading is not printed under the title block.
+    expect(markdown.match(new RegExp(TITLE, 'g'))).toHaveLength(1);
+    expect(markdown.startsWith(`---\ntitle: ${JSON.stringify(TITLE)}\n---\n\n## Summary\n\n`)).toBe(true);
+    // The Challenge is left out and no passage label is left in the prose.
+    expect(markdown).not.toContain('strongest objection');
+    expect(markdown).not.toContain('Objections considered');
+    expect(markdown.replace(/`[^`]*`/g, '')).not.toMatch(/chunk/i);
+    expect(readerFacingLabelHits(markdown)).toEqual([]);
+    expect(markdown.match(/^## References\s*$/gm)).toHaveLength(1);
+  });
+
+  it('exports a report saved in the removed layout whole, under the headings a reader sees', async () => {
+    const OLD_TITLE = 'Rail cost overruns';
+    const OLD_SECTIONS = [
+      { title: 'Executive Summary', content: 'Executive Summary\n\nThis report synthesizes evidence from 4 sources and 12 evidence chunks. Costs doubled [Chunk 1].', section_order: 0 },
+      { title: 'Primary Evidence', content: 'Tunnelling drove the overrun [Chunk 2] [Strong_Evidence].', section_order: 1 },
+      { title: 'Contested Zones', content: 'Contested Zones:\nThe current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage. Two audits differ on the baseline [Chunk 1].', section_order: 2 },
+      { title: 'Challenges and Alternative Explanations', content: 'Inflation alone may explain it.', section_order: 3 },
+      { title: 'Unresolved Questions', content: 'Whether the 2019 estimate was audited.', section_order: 4 },
+      { title: 'Falsification Criteria', content: 'An audited baseline would settle it.', section_order: 5 },
+    ];
+    mocks.adminQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("corpus_after->>'citationLock'")) return [{ locked: null, reference_style: null, citation_style: null, run_id: 'run-1' }];
+      if (sql.includes('FROM report_citations')) {
+        return ['chunk-a', 'chunk-b'].map((chunk, at) => ({ section_id: 's1', chunk_id: chunk, claim_id: null, source_id: `src${at}`, citation_text: null, citation_order: at, chunk_quote: 'q', source_title: `Source ${at}`, source_url: `https://example.org/${at}`, source_authors: null, source_publication: null, source_published_at: null, source_filename: null, source_kind: null, source_provider: null }));
+      }
+      if (sql.includes('FROM research_runs')) return [{ status: 'completed', gate_status: 'completed', retrieval_ids: ['chunk-a', 'chunk-b'] }];
+      if (sql.includes('FROM claims')) return [];
+      if (sql.includes('FROM report_sections')) return OLD_SECTIONS;
+      if (sql.includes('FROM reports')) return [{ title: OLD_TITLE, executive_summary: null, conclusion: null }];
+      return [];
+    });
+    await exportReport({ reportId: 'r1', format: 'md', style: 'numeric' } as never);
+    const markdown = handed();
+    expect(markdown.match(new RegExp(OLD_TITLE, 'g'))).toHaveLength(1);
+    // Every section of the report, in its stored order, under the reader's heading; the two challenge sections are left out.
+    expect([...markdown.matchAll(/^## (.+)$/gm)].map((match) => match[1])).toEqual(['Summary', 'What the sources show', 'Where sources disagree', 'Open questions', 'References']);
+    // The last heading is the one the export engine fills from the bibliography it builds.
+    expect(markdown.trimEnd().endsWith('## References')).toBe(true);
+    expect(markdown).not.toMatch(/Executive Summary|Primary Evidence|Contested Zones|Unresolved Questions|Falsification|Alternative Explanations/);
+    expect(markdown).not.toContain('Inflation alone');
+    expect(markdown).not.toContain('audited baseline would settle');
+    // Machine sentences, labels and passage labels are gone; the numbers are the reader's, the same for one passage wherever it is cited.
+    expect(markdown).not.toMatch(/synthesizes evidence|explicit contradiction pairs|chunk|strong_evidence/i);
+    expect(readerFacingLabelHits(markdown)).toEqual([]);
+    expect(markdown).toMatch(/^## Summary\n+Costs doubled \[1\]\.$/m);
+    expect(markdown).toContain('Tunnelling drove the overrun [2].');
+    expect(markdown).toMatch(/^## Where sources disagree\n+Two audits differ on the baseline \[1\]\.$/m);
+    expect(markdown).toContain('## Open questions\n\nWhether the 2019 estimate was audited.');
   });
 });
 

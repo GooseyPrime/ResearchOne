@@ -23,7 +23,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { cleanLayer1WordingForSave, finalizeLockedReportForSave, generateIterativeReport } from '../services/reasoning/reportGenerator';
+import { finalizeLockedReportForSave, generateIterativeReport } from '../services/reasoning/reportGenerator';
 import { issuePassages } from '../services/reasoning/citationLock';
 import { readerFacingLabelHits } from '../services/formatting/reportPresentation';
 
@@ -72,19 +72,24 @@ describe('a source whose title holds a banned phrase', () => {
   });
 });
 
-describe('the last wording check for a Layer 1 report without the lock', () => {
-  const references = '## References\n1. Example Press. The Case for Nuclear Power. https://example.org/case';
+describe('the last wording check before a report is saved', () => {
+  // Every report is written with the citation lock, so this is the one last check.
+  const passages = issuePassages([{ id: 'c1', content: 'Most of the lifetime cost is paid before the plant opens.' }], [SOURCE]);
+  const references = '## References\n1. Example Press. The Case for Nuclear Power. 1 May 2020. https://example.org/case';
+
   it('puts back into plain words what a repair pass reintroduced, and leaves the list alone', () => {
-    const repaired = `## Summary\nThe evidence establishes that costs rose [1]. The agency claims the rule changed [1].\n\n${references}\n\n## About this report\n1 source was read.`;
-    const out = cleanLayer1WordingForSave(repaired);
-    expect(out.markdown).toContain('The sources show that costs rose [1]. The agency states the rule changed [1].');
-    expect(out.markdown).toContain(references);
-    expect(out.markdown.endsWith('## About this report\n1 source was read.')).toBe(true);
-    expect(out.wordingAfter).toEqual([]);
+    const repaired = '## Summary\nThe evidence establishes that costs rose [P1]. The agency claims the rule changed [P1].';
+    const { finalized, wordingAfter } = finalizeLockedReportForSave(repaired, 'q', passages, 'numeric', '4 Oct 2026');
+    expect(finalized.markdown).toContain('The sources show that costs rose [1]. The agency states the rule changed [1].');
+    expect(finalized.markdown).toContain(references);
+    expect(finalized.markdown.trimEnd().endsWith('## About this report\n1 source was read on 4 Oct 2026.')).toBe(true);
+    expect(wordingAfter).toEqual([]);
   });
 
-  it('returns a clean report exactly as it was', () => {
-    const clean = `## Summary\nCosts rose [1].\n\n${references}`;
-    expect(cleanLayer1WordingForSave(clean)).toEqual({ markdown: clean, wordingAfter: [] });
+  it('changes no sentence of a clean report', () => {
+    const { finalized, wordingAfter } = finalizeLockedReportForSave('## Summary\nCosts rose [P1].', 'q', passages, 'numeric', '4 Oct 2026');
+    expect(finalized.markdown.startsWith('## Summary\nCosts rose [1].')).toBe(true);
+    expect(finalized.markdown).toContain(references);
+    expect(wordingAfter).toEqual([]);
   });
 });

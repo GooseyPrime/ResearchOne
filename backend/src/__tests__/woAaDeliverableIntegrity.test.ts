@@ -100,10 +100,11 @@ describe('WO-AA fixture — verification rubric matches the speech act', () => {
     );
   });
 
-  it('still requires falsification for adjudication, and forbids evidence-tier labels in the text', () => {
+  it('asks an adjudication for no section on what would overturn it, and forbids evidence-tier labels in the text', () => {
     // Tier grades live on claim rows, never in report prose (1 Oct 2026).
+    // The plain report is the only report (8 Oct 2026): the rubric asks for no such section.
     const prompt = buildVerifierPromptForIntent('adjudication', true);
-    expect(prompt).toMatch(/falsification/i);
+    expect(prompt.slice(prompt.indexOf('PASS criteria'))).not.toMatch(/falsification/i);
     expect(prompt).toMatch(/No evidence-tier labels/i);
     expect(prompt).not.toMatch(/carry evidence tier tags/i);
   });
@@ -226,17 +227,27 @@ describe('WO-AA fixture — review hardening (PR #203)', () => {
     expect(brief.secondaryIntent).toBe('feasibility');
   });
 
-  it('applies the claim-class burden to every non-adjudicative synthesis path', () => {
-    // Rule 42 R42-9. The iterative drafter and the reference_lookup light path
-    // both assign `generatedReport`; both must carry the burden. The light path
-    // sits deep inside runResearchJobInner, so guard it at the source level.
-    const source = readFileSync(
+  it('applies the claim-class burden on the one path that writes a report', () => {
+    // Rule 42 R42-9. Every run, the reference lookup included, is written by
+    // the section writer: the light path that assigned `generatedReport` from a
+    // single model call no longer exists, so the burden has one place to be.
+    const orchestrator = readFileSync(
       resolve(process.cwd(), 'src/services/reasoning/researchOrchestrator.ts'),
       'utf8'
     );
-    const lightPathStart = source.indexOf('reference lookup');
-    expect(lightPathStart).toBeGreaterThan(-1);
-    const lightPath = source.slice(lightPathStart, lightPathStart + 2000);
-    expect(lightPath).toContain('CLAIM_CLASS_SOURCING_BURDEN');
+    expect(orchestrator).not.toContain('writesThroughReportWriter');
+    expect(orchestrator).not.toContain('Supporting Detail');
+    expect(orchestrator).toMatch(/const iterativeReport = await generateIterativeReport\(/);
+    expect(orchestrator).toMatch(/generatedReport = iterativeReport;/);
+
+    const writer = readFileSync(
+      resolve(process.cwd(), 'src/services/reasoning/reportGenerator.ts'),
+      'utf8'
+    );
+    const drafterStart = writer.indexOf('Section to draft: ${section.title}');
+    expect(drafterStart).toBeGreaterThan(-1);
+    const drafterPrompt = writer.slice(drafterStart, drafterStart + 600);
+    // Unconditional: it sits in the prompt text itself, not behind a branch.
+    expect(drafterPrompt).toMatch(/Template narrative guidance: [^\n]*\n\\n\$\{CLAIM_CLASS_SOURCING_BURDEN\}\\n/);
   });
 });

@@ -52,8 +52,12 @@ interface MatrixRow {
   challenge: 'gate' | 'annotate';
   specialists: readonly string[];
   evidence: EvidencePolicy;
-  /** True only for reports whose job IS to reach a verdict. */
-  mayTalkLikeAVerdict: boolean;
+  /**
+   * True for the report types that examine whether something holds. They are
+   * written as plain reports like every other type, so their guidance to the
+   * writer and their checks are held to plain wording as well.
+   */
+  examinesAStatement: boolean;
   /**
    * Whether the words alone are enough to route the request.
    *
@@ -65,6 +69,9 @@ interface MatrixRow {
   resolvesWithoutAModel: boolean;
 }
 
+/** The section labels of the plain report, which the three report types that examine a statement now record. */
+const READER_PLAN_LABELS = ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'] as const;
+
 const MATRIX: readonly MatrixRow[] = [
   {
     intent: 'factual_report',
@@ -75,48 +82,49 @@ const MATRIX: readonly MatrixRow[] = [
     challenge: 'annotate',
     specialists: [],
     evidence: 'labelled_low_evidence',
-    resolvesWithoutAModel: false,
-    mayTalkLikeAVerdict: false,
+    // A short plain factual question falls back to this type when the
+    // classifier model is unavailable.
+    resolvesWithoutAModel: true,
+    examinesAStatement: false,
   },
   {
     intent: 'adjudication',
     prompt: 'Fact-check the claim that remote work always decreases delivery speed.',
     template: 'intent_adjudication',
-    documentShape: ['claim', 'case_for', 'case_against', 'verdict', 'weaknesses'],
-    itemLabel: 'Claim',
+    documentShape: READER_PLAN_LABELS,
+    itemLabel: 'Statement',
     challenge: 'gate',
     specialists: ['quantitative_quality_auditor'],
     evidence: 'fail_closed',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: true,
+    examinesAStatement: true,
   },
   {
     intent: 'investigation',
     prompt: 'Investigate why the city rail modernization program went over budget.',
     template: 'intent_investigation',
-    documentShape: ['framing', 'primary_evidence', 'contested_zones', 'unresolved'],
+    documentShape: READER_PLAN_LABELS,
     itemLabel: 'Finding',
     challenge: 'gate',
     specialists: ['story_verifier', 'timeline_reconstructor', 'quantitative_quality_auditor'],
     evidence: 'fail_closed',
     resolvesWithoutAModel: true,
-    // The issue's expected behaviour for an investigation is "balanced
-    // contested analysis" — it needs independent evidence, and it does NOT
-    // deliver a ruling. Two different axes, and this row is the reason to
-    // keep them apart.
-    mayTalkLikeAVerdict: false,
+    // An investigation needs independent evidence and gives each side the
+    // same care. It is written as a plain report, like the other two types
+    // that examine whether something holds.
+    examinesAStatement: true,
   },
   {
     intent: 'story_verification',
     prompt: 'Verify whether this story about the factory closure is true.',
     template: 'intent_story_verification',
-    documentShape: ['claim_summary', 'confirmed', 'unconfirmed', 'false_or_misleading', 'confidence', 'sources'],
-    itemLabel: 'Claim',
+    documentShape: READER_PLAN_LABELS,
+    itemLabel: 'Statement',
     challenge: 'gate',
     specialists: ['story_verifier', 'timeline_reconstructor'],
     evidence: 'fail_closed',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: true,
+    examinesAStatement: true,
   },
   {
     intent: 'opportunity_discovery',
@@ -134,7 +142,7 @@ const MATRIX: readonly MatrixRow[] = [
     ],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'feasibility',
@@ -146,7 +154,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: ['demand_signal_analyst', 'feasibility_architect'],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'implementation',
@@ -158,7 +166,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: ['feasibility_architect'],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'how_to',
@@ -170,7 +178,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: [],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'comparative',
@@ -182,7 +190,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: ['market_scout', 'competitor_mapper', 'data_analysis_specialist', 'quantitative_quality_auditor'],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'recommendation',
@@ -194,7 +202,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: ['market_scout', 'competitor_mapper', 'data_analysis_specialist'],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'timeline',
@@ -206,7 +214,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: ['timeline_reconstructor'],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: true,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
   {
     intent: 'reference_lookup',
@@ -218,7 +226,7 @@ const MATRIX: readonly MatrixRow[] = [
     specialists: [],
     evidence: 'labelled_low_evidence',
     resolvesWithoutAModel: false,
-    mayTalkLikeAVerdict: false,
+    examinesAStatement: false,
   },
 ];
 
@@ -247,7 +255,7 @@ describe.each(MATRIX)('intent fidelity — $intent', (row) => {
     expect(template!.intentId).toBe(row.intent);
   });
 
-  it('produces the sections that make it that kind of report', () => {
+  it('records the section labels and item label of its report type', () => {
     expect(template!.sections).toEqual(row.documentShape);
     expect(template!.itemLabel).toBe(row.itemLabel);
     expect(template!.requiredDeliverables.length).toBeGreaterThan(0);
@@ -304,15 +312,16 @@ describe.each(MATRIX)('intent fidelity — $intent', (row) => {
   });
 
   it(
-    row.mayTalkLikeAVerdict
-      ? 'is allowed to reach a verdict, because that is what it is for'
+    row.examinesAStatement
+      ? 'examines a statement as a plain report, with no verdict or courtroom wording anywhere in its template'
       : 'does not force verdict framing onto a request that did not ask for one',
     () => {
       const shape = [...template!.sections, ...template!.requiredDeliverables].join(' | ');
-      if (row.mayTalkLikeAVerdict) {
-        expect(shape).toMatch(VERDICT_VOCABULARY);
-      } else {
-        expect(shape).not.toMatch(VERDICT_VOCABULARY);
+      expect(shape).not.toMatch(VERDICT_VOCABULARY);
+      if (row.examinesAStatement) {
+        const guidance = [template!.narrativeHint, template!.verifierRubric].join(' | ');
+        expect(guidance).not.toMatch(VERDICT_VOCABULARY);
+        expect(guidance).not.toMatch(/contradiction analysis|unresolved questions|evidence ledger|contested zones|\bclaims?\b/i);
       }
     }
   );

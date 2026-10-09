@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import type { DossierTimelineRow } from '@/utils/api';
+import { plainRunStatus } from '@/utils/runStatusDisplay';
 
 const EVENT_LABELS: Record<string, string> = {
   initial_run: 'Initial run',
@@ -55,7 +56,7 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
                 <td className="px-4 py-2.5">
                   <span className="text-slate-200">{eventLabel(String(row.eventType))}</span>
                   {row.runStatus ? (
-                    <span className="block text-[10px] text-slate-500 mt-0.5">{row.runStatus}</span>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">{plainRunStatus(row.runStatus)}</span>
                   ) : null}
                 </td>
                 <td className="px-4 py-2.5 max-w-xs">
@@ -128,7 +129,8 @@ export function timelineRowsToCsv(rows: DossierTimelineRow[]): string {
         r.query,
         r.revisionNumber,
         r.engineVersion,
-        r.runStatus,
+        // The downloaded file is read by a person: the same plain words as the table.
+        r.runStatus ? plainRunStatus(r.runStatus) : r.runStatus,
         r.reportId,
         r.runId,
       ]

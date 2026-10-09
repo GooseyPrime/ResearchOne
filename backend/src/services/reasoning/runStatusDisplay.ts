@@ -73,13 +73,13 @@ export function describeGateFailure(status: ReportGateStatus): string {
     case 'contract_failed':
       return 'The report did not deliver everything the request asked for. It has been kept for review rather than finalised.';
     case 'verification_failed':
-      return 'The report did not pass verification. It has been kept for review rather than finalised.';
+      return 'The report did not pass its final check against its sources. It has been kept for review rather than finalised.';
     case 'completed_degraded':
-      return 'The report was produced from fewer sources than this request requires, so it is marked degraded rather than finalised.';
+      return 'This report was written from fewer sources than planned for this request. Read it with that in mind.';
     case 'no_evidence':
-      return 'No citable evidence cleared the corpus gate for this run. The run stopped before synthesis.';
+      return 'The search found no sources this report could cite, so no report was written.';
     default:
-      return 'The report did not pass its quality gates.';
+      return 'The report did not pass every check. It has been kept for review rather than finalised.';
   }
 }
 

@@ -25,7 +25,7 @@ export type RunDisplayTone = 'success' | 'warning' | 'failure' | 'neutral';
 export interface RunDisplayState {
   /** Raw status to key styling on, underscores intact. */
   status: string;
-  /** Human-readable, e.g. `CONTRACT FAILED`. */
+  /** What a person reads: plain words, never the stored value. */
   label: string;
   tone: RunDisplayTone;
 }
@@ -55,6 +55,43 @@ export const RUN_TONE_CLASSES: Record<RunDisplayTone, { text: string; border: st
 };
 
 /**
+ * A run's status in plain words. The stored values (`completed_degraded`,
+ * `contract_failed`, `plan_pending_confirmation` and the rest) are never shown
+ * to a person, in any spelling or case: a value this list does not know reads
+ * "Status not available", not the value itself.
+ */
+const PLAIN_RUN_STATUS: Readonly<Record<string, string>> = {
+  completed: 'Ready',
+  completed_degraded: 'Finished with fewer sources than planned',
+  contract_failed: 'Needs review: part of the request is missing',
+  verification_failed: 'Needs review: did not pass checking',
+  no_evidence: 'No usable sources found',
+  failed: 'Did not finish',
+  aborted: 'Stopped',
+  cancelled: 'Cancelled',
+  queued: 'Waiting to start',
+  running: 'In progress',
+  plan_pending_confirmation: 'Waiting for you to confirm the plan',
+};
+
+export function plainRunStatus(status: string | null | undefined): string {
+  return PLAIN_RUN_STATUS[(status ?? '').trim().toLowerCase()] ?? 'Status not available';
+}
+
+/** A saved report's own state in plain words (`under_review`, `finalized` and so on are never shown). */
+const PLAIN_REPORT_STATUS: Readonly<Record<string, string>> = {
+  draft: 'Being written',
+  generating: 'Being written',
+  under_review: 'Needs review',
+  finalized: 'Ready',
+  archived: 'Archived',
+};
+
+export function plainReportStatus(status: string | null | undefined): string {
+  return PLAIN_REPORT_STATUS[(status ?? '').trim().toLowerCase()] ?? 'Status not available';
+}
+
+/**
  * Resolve what to display from the run status and the gate status.
  *
  * The gate status wins whenever present and not a clean pass — it is strictly
@@ -69,7 +106,7 @@ export function resolveRunDisplayState(args: {
   const raw = (args.status ?? '').trim() || 'unknown';
   const gate = (args.gateStatus ?? null) as string | null;
   const status = gate && gate !== 'completed' ? gate : raw;
-  const label = status.replace(/_/g, ' ').toUpperCase();
+  const label = plainRunStatus(status);
 
   if (status === 'completed') return { status, label, tone: 'success' };
   if (status === 'cancelled') return { status, label, tone: 'neutral' };

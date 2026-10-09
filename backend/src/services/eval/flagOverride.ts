@@ -1,6 +1,6 @@
 import { query } from '../../db/pool';
 import { isAllowlistedAdminUserId } from '../auth/adminAllowlist';
-import { harnessFlagDefaults, isHarnessFlagName, type HarnessFlagName } from './harnessFlags';
+import { RETIRED_FLAG_NAMES, harnessFlagDefaults, isHarnessFlagName, type HarnessFlagName } from './harnessFlags';
 
 export class UnknownFlagError extends Error {
   readonly unknown: string[];
@@ -17,8 +17,9 @@ export function acceptedFlagOverride(
   body: unknown
 ): Record<string, boolean> | null {
   if (!isAllowlistedAdminUserId(userId)) return null;
-  const raw = readOverride(body);
-  if (!raw) return null;
+  const sent = readOverride(body);
+  if (!sent) return null;
+  const raw = Object.fromEntries(Object.entries(sent).filter(([key]) => !RETIRED_FLAG_NAMES.includes(key)));
   const unknown = Object.keys(raw).filter((key) => !isHarnessFlagName(key));
   if (unknown.length > 0) throw new UnknownFlagError(unknown);
   const flags: Record<string, boolean> = {};

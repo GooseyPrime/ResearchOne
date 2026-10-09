@@ -25,6 +25,8 @@ import DossierStatisticsSection from '../components/dossiers/DossierStatisticsSe
 import DossierSourcesPanel from '../components/dossiers/DossierSourcesPanel';
 import ReportForkActions from '../components/reports/ReportForkActions';
 import { extractApiError } from '../utils/api';
+import { plainReportStatus, plainRunStatus } from '../utils/runStatusDisplay';
+import { useIsAdmin } from '../hooks/useIsAdmin';
 
 type TabId = 'request' | 'plan' | 'report' | 'report-history' | 'spinoffs' | 'sources' | 'stats';
 
@@ -63,6 +65,7 @@ export default function DossierDetailPage() {
   const historyQuery = useDossierReportHistory(id);
   const spinoffsQuery = useDossierSpinoffs(id);
   const [tab, setTab] = useState<TabId>(() => tabFromHash());
+  const isAdmin = useIsAdmin();
 
   useEffect(() => {
     setTab(tabFromHash());
@@ -121,7 +124,7 @@ export default function DossierDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           <DossierStatusBadge status={data.runStatus} gateStatus={data.gateStatus} />
           <IntentBadge intent={data.plan.intent} />
-          {data.plan.orchestrationProfile ? (
+          {isAdmin && data.plan.orchestrationProfile ? (
             <span className="text-xs rounded-md border border-slate-700 px-2 py-0.5 text-slate-400">
               Profile: {data.plan.orchestrationProfile}
             </span>
@@ -185,9 +188,15 @@ export default function DossierDetailPage() {
               </Link>
             </div>
             {data.plan.planSummary && <p className="text-slate-300">{data.plan.planSummary}</p>}
-            <pre className="text-xs bg-slate-950/50 p-3 rounded-md overflow-x-auto text-slate-400">
-              {JSON.stringify(data.plan.planPayload, null, 2)}
-            </pre>
+            {/* The stored plan is the technical record: field names, search strings and
+                settings. It is shown to administrators only. */}
+            {isAdmin ? (
+              <pre className="text-xs bg-slate-950/50 p-3 rounded-md overflow-x-auto text-slate-400">
+                {JSON.stringify(data.plan.planPayload, null, 2)}
+              </pre>
+            ) : !data.plan.planSummary ? (
+              <p className="text-slate-500">No summary of the plan was saved for this dossier.</p>
+            ) : null}
           </div>
         )}
 
@@ -201,7 +210,6 @@ export default function DossierDetailPage() {
                   onEditInPlace={() => navigate(`/app/reports/${data.report.reportId}`)}
                 />
                 <DossierReportSection
-                  plan={data.plan}
                   report={reportQuery.data}
                   reportLoading={reportQuery.isLoading}
                   reportError={reportQuery.error instanceof Error ? reportQuery.error : null}
@@ -236,7 +244,7 @@ export default function DossierDetailPage() {
                         v{entry.versionNumber} — {entry.title}
                       </Link>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {entry.status}
+                        {plainReportStatus(entry.status)}
                         {entry.revisionNumber != null ? ` · revision #${entry.revisionNumber}` : ''}
                         {entry.createdAt ? ` · ${format(new Date(entry.createdAt), 'MMM d, yyyy')}` : ''}
                       </p>
@@ -276,8 +284,7 @@ export default function DossierDetailPage() {
                     <div className="min-w-0">
                       <p className="text-slate-200 line-clamp-2">{s.query}</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {s.runStatus}
-                        {s.engineVersion ? ` · ${s.engineVersion}` : ''}
+                        {plainRunStatus(s.runStatus)}
                         {s.createdAt ? ` · ${format(new Date(s.createdAt), 'MMM d, yyyy')}` : ''}
                       </p>
                     </div>
