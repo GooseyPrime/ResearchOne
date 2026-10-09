@@ -14,7 +14,7 @@ import { logger } from '../../utils/logger';
 import { extractJsonArray } from '../../utils/jsonArrayExtractor';
 import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
 import { resolveSourceClassForChunk } from '../planning/wave53EpistemicPolicy';
-import { normalizeClaimKeyForSteelman } from './steelmanService';
+import { normalizeClaimKeyForStrongestForm } from './strongestFormService';
 
 export interface ExtractedClaim {
   claim_text: string;
@@ -167,7 +167,7 @@ export async function extractAndPersistClaims(args: {
     sourceClassMap?: SourceClassMap;
     /** Alias for `sourceClassMap` (the source-class pass task naming). */
     sourceClassByChunkId?: SourceClassMap;
-    steelmanByClaimText?: Map<string, string>;
+    strongestFormByClaimText?: Map<string, string>;
   };
 }): Promise<ExtractedClaim[]> {
   const { runId, reportId, researchQuery, chunks, reasonerOutput, synthesizerOutput } = args;
@@ -240,7 +240,7 @@ export async function extractAndPersistClaims(args: {
   }
 
   const wave53Maps = args.wave53?.sourceClassMap ?? args.wave53?.sourceClassByChunkId;
-  const wave53Steelman = args.wave53?.steelmanByClaimText;
+  const wave53StrongestForm = args.wave53?.strongestFormByClaimText;
   const chunkById = new Map(chunks.map((c) => [c.id, c]));
   const knownIds = new Map(chunks.map((c) => [idKey(c.id), c.id]));
 
@@ -257,8 +257,8 @@ export async function extractAndPersistClaims(args: {
         wave53Maps && chunkId
           ? resolveSourceClassForChunk(chunkId, wave53Maps, sourceUrl)
           : null;
-      const steelmanSummary =
-        wave53Steelman?.get(normalizeClaimKeyForSteelman(claim.claim_text)) ?? null;
+      const strongestFormSummary =
+        wave53StrongestForm?.get(normalizeClaimKeyForStrongestForm(claim.claim_text)) ?? null;
 
       try {
         await client.query(
@@ -266,7 +266,7 @@ export async function extractAndPersistClaims(args: {
              chunk_id, source_id, claim_text, evidence_tier, confidence,
              tags, run_id, report_id, stance_summary,
              supporting_chunk_ids, contradicting_chunk_ids,
-             source_class, steelman_summary
+             source_class, strongest_form_summary
            )
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT DO NOTHING`,
@@ -283,7 +283,7 @@ export async function extractAndPersistClaims(args: {
             supportingChunkIds,
             [], // contradicting_chunk_ids populated by contradiction extractor
             sourceClass,
-            steelmanSummary,
+            strongestFormSummary,
           ]
         );
       } catch (err) {
