@@ -259,14 +259,28 @@ describe('citation lock on the report path', () => {
     expect(report.markdown).not.toContain('8 December 2023 [P2]');
   });
 
-  it('ignores locked passages when the Layer 1 switch is off', async () => {
-    delete process.env.BASELINE_LAYER_ENABLED;
-    await writeLocked();
-    const drafter = calls.filter((call) => call.role === 'section_drafter');
-    expect(drafter.length).toBeGreaterThan(0);
-    for (const call of drafter) {
-      expect(call.text).toContain('UNLOCKED-CONTEXT-SENTINEL');
-      expect(call.text).not.toContain('Cite with the markers shown above');
+  it.each([
+    ['BASELINE_LAYER_ENABLED', undefined],
+    ['BASELINE_LAYER_ENABLED', 'false'],
+    ['CITATION_LOCK_ENABLED', 'false'],
+  ] as const)('honours locked passages with the retired switch %s set to %s', async (name, value) => {
+    const before = process.env[name];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+    try {
+      const report = await writeLocked();
+      const drafter = calls.filter((call) => call.role === 'section_drafter');
+      expect(drafter.length).toBeGreaterThan(0);
+      for (const call of drafter) {
+        expect(call.text).not.toContain('UNLOCKED-CONTEXT-SENTINEL');
+        expect(call.text).toContain('[P1] US Food and Drug Administration');
+        expect(call.text).toContain('Cite with the markers shown above and no others.');
+      }
+      expect(report.markdown).toContain('8 December 2023 [P1].');
+      expect(report.citationIssues).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env[name];
+      else process.env[name] = before;
     }
   });
 });
@@ -693,7 +707,7 @@ describe('citation lock helpers', () => {
     expect(stripReaderNumbers('Costs rose [1]. Use `rows[1]` here [2][3].')).toBe('Costs rose. Use `rows[1]` here.');
   });
 
-  it('keeps the fixed source count from deciding a Layer 1 run', () => {
+  it('keeps the fixed source count from deciding a run that is not adjudicative', () => {
     expect(countShortfallSetsStatus(true)).toBe(false);
     expect(countShortfallSetsStatus(false)).toBe(true);
   });
@@ -714,19 +728,19 @@ describe('markers in either case and numbers that are not citations', () => {
   });
 
   it('reads grouped markers in the forms a model writes, and removes what it cannot read', () => {
-    expect(markersIn('A [P1/P2]. B [P1 and P3]. C [P2, 4]. D [P1\u2013P3]. E [p5-p6].')).toEqual([
+    expect(markersIn('A [P1/P2]. B [P1 and P3]. C [P2, 4]. D [P1–P3]. E [p5-p6].')).toEqual([
       'P1', 'P2', 'P1', 'P3', 'P2', 'P4', 'P1', 'P2', 'P3', 'P5', 'P6',
     ]);
     const shown = issuePassages(
       [{ id: 'chunk-a', content: 'The bridge opened in 1932.' }, { id: 'chunk-b', content: 'It cost four million.' }],
       [{ title: 'Bridge history', url: 'https://example.org/a' }, { title: 'Bridge costs', url: 'https://example.org/b' }]
     );
-    expect(unknownMarkers('It opened [P1\u2013P3].', shown)).toEqual(['P3']);
+    expect(unknownMarkers('It opened [P1–P3].', shown)).toEqual(['P3']);
     const finalized = finalizeLockedCitations('## Summary\nIt opened and was paid for [P1/P2]. It still stands [P1 see also the archive].', shown, '2 Oct 2026');
     expect(finalized.markdown).toContain('paid for [1][2]. It still stands.');
     expect(finalized.markdown).not.toMatch(/\[P\d/i);
     expect(finalized.removed).toBe(1);
-    expect(readerFacingLabelHits('It opened [P1\u2013P3].')).toContain('passage marker');
+    expect(readerFacingLabelHits('It opened [P1–P3].')).toContain('passage marker');
   });
 
   it('does not count a number in code or a link label as a citation', () => {
@@ -1181,7 +1195,7 @@ describe('code, links and stale reference lists', () => {
     const plain = sentenceKey('It opened in 1932 [P1, P2].');
     expect(sentenceKey('It opened in 1932 [P1/P2].')).toBe(plain);
     expect(sentenceKey('It opened in 1932 [P1 and P2].')).toBe(plain);
-    expect(sentenceKey('It opened in 1932 [P1\u2013P3].')).toBe(plain);
+    expect(sentenceKey('It opened in 1932 [P1–P3].')).toBe(plain);
   });
 
   it('removes an export-style alias the writer emitted', () => {
