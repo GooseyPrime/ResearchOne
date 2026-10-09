@@ -6,14 +6,15 @@ import {
   type ModelOverrideEntry,
   type AdminModelsResponse,
 } from '../utils/api';
+import { plainLabel } from '../lib/researchone/plainWords';
 
 const REASONING_ROLES: { key: string; label: string }[] = [
   { key: 'planner', label: 'Planner' },
   { key: 'retriever', label: 'Retriever' },
   { key: 'source_class_classifier', label: 'Source class classifier' },
   { key: 'reasoner', label: 'Reasoner' },
-  { key: 'steelman', label: 'Strongest-form restatement' },
-  { key: 'skeptic', label: 'Challenge pass' },
+  { key: 'strongest_form', label: plainLabel('strongest_form') },
+  { key: 'double_check', label: plainLabel('double_check') },
   { key: 'synthesizer', label: 'Synthesizer' },
   { key: 'verifier', label: 'Verifier' },
   { key: 'plain_language_synthesizer', label: 'Plain language' },
@@ -68,8 +69,8 @@ export default function ModelsPage() {
     retriever: 'retriever',
     source_class_classifier: 'sourceClassClassifier',
     reasoner: 'reasoner',
-    steelman: 'steelman',
-    skeptic: 'skeptic',
+    strongest_form: 'strongest_form',
+    double_check: 'double_check',
     synthesizer: 'synthesizer',
     verifier: 'verifier',
     plain_language_synthesizer: 'plainLanguageSynthesizer',
