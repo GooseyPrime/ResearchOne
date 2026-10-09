@@ -151,6 +151,7 @@ This is a safety net, not the fix. Slices 3 to 5 make the writer produce the sta
 ## 4. Production safety. Read twice
 
 **Merging to `main` deploys the backend to production automatically.** The deploy workflow fires on any push to `main` that touches `backend/**` or `scripts/**`, and migrations run with it. There is no staging environment. Treat every merge as a production release to paying users.
+
 The upgrade is built so that nothing changes for any user until Brandon turns a switch on, and every switch turns back off.
 
 - **S1. Flag off means identical.** Every slice from 3 onward ships a parity test: with that slice's flag off, a fixture run sends the same model messages, calls the same providers and writes the same rows as before the slice. New code is unreachable with the flag off.
