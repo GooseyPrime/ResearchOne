@@ -58,7 +58,7 @@ const NEVER = /established_fact|strong_evidence|testimony|inference|speculation|
 
 describe('the Report tab', () => {
   it('shows the report in order and nothing from the never-list', () => {
-    render(<ReaderView report={report} evidence={evidence} method={<p>Generation trace and model names</p>} />);
+    render(<ReaderView report={report} evidence={evidence} method={<p>What was asked, and the run reference</p>} />);
     const panel = screen.getByRole('tabpanel');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(report.title);
     expect(within(panel).getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['Summary', 'How the costs grew', 'References']);
@@ -66,7 +66,7 @@ describe('the Report tab', () => {
     expect(document.body.textContent).not.toMatch(NEVER);
     // The Challenge and the technical record are on their own tabs.
     expect(panel.textContent).not.toContain('strongest objection');
-    expect(panel.textContent).not.toContain('Generation trace');
+    expect(panel.textContent).not.toContain('What was asked, and the run reference');
   });
 
   it('says the status in words with a plain reason, never the stored value', () => {
@@ -215,24 +215,17 @@ describe('before the page data arrives', () => {
   });
 });
 
-describe('the page shows one view or the other', () => {
-  it('the old cards are in the branch a reader-view report never renders', async () => {
+describe('the page has one view', () => {
+  it('the report page has no second layout and none of the old cards', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const page = readFileSync(join(__dirname, '../../pages/ReportDetailPage.tsx'), 'utf8');
-    const reader = page.indexOf('{readerView ? (');
-    const legacy = page.indexOf(') : (', reader);
-    expect(reader).toBeGreaterThan(0);
-    expect(page.slice(reader, legacy)).toContain('<ReaderView');
-    for (const card of ['Falsification Criteria', 'label="Report status"', 'label="Run reference"', 'Unresolved Questions', 'evidence chunks', 'contradictions found']) {
-      expect(page.indexOf(card), card).toBeGreaterThan(legacy);
-      expect(page.slice(reader, legacy)).not.toContain(card);
+    expect(page).toContain('<ReaderView');
+    // Nothing chooses between layouts: the field the backend used to send is not read.
+    expect(page).not.toMatch(/readerView|reader_view/);
+    for (const card of ['Falsification Criteria', 'Report status', 'Unresolved Questions', 'evidence chunks', 'contradictions found', 'References and citations', 'evidence_tier', 'RunSummaryReport', 'generationTrace', 'metric_glosses']) {
+      expect(page, card).not.toContain(card);
     }
-    expect(page).toContain('{!readerView && generationTrace}');
-    // The old citation list prints stored grade and stance values; a reader-view report never renders it.
-    const oldList = page.indexOf('References and citations');
-    expect(page.slice(page.lastIndexOf('{!readerView && (', oldList), oldList)).toMatch(/^\{!readerView && \(\s*<div className="card p-5 space-y-3 print:hidden">\s*<h2[^>]*>$/);
-    expect(page.match(/tier: \{c\.evidence_tier/g)).toHaveLength(1);
   });
 });
 
@@ -266,11 +259,11 @@ describe('the other tabs', () => {
     expect(items[1].textContent).toContain('news article');
   });
 
-  it('How this was researched holds the technical record; Challenge holds the Challenge section', () => {
-    render(<ReaderView report={report} evidence={evidence} method={<p>Generation trace and model names</p>} />);
+  it('How this was researched holds what the page passes it; Challenge pass holds the challenge section', () => {
+    render(<ReaderView report={report} evidence={evidence} method={<p>What was asked, and the run reference</p>} />);
     fireEvent.click(screen.getByRole('tab', { name: 'How this was researched' }));
-    expect(screen.getByRole('tabpanel').textContent).toContain('Generation trace and model names');
-    fireEvent.click(screen.getByRole('tab', { name: 'Challenge' }));
+    expect(screen.getByRole('tabpanel').textContent).toContain('What was asked, and the run reference');
+    fireEvent.click(screen.getByRole('tab', { name: 'Challenge pass' }));
     expect(screen.getByRole('tabpanel').textContent).toContain('strongest objection');
     expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: /Citation 2/ })).toBeTruthy();
   });
@@ -299,7 +292,7 @@ describe('the model', () => {
   });
 });
 
-describe('the Markdown download in the reader view', () => {
+describe('the Markdown download', () => {
   it('is the Report tab: title once, sections, references and the closing note; no Challenge, no request line', () => {
     const markdown = buildReaderMarkdown(report);
     expect(markdown.startsWith(`# ${report.title}\n\n## Summary\n\nCosts rose after 1979 [1].`)).toBe(true);
@@ -320,12 +313,12 @@ describe('the Markdown download in the reader view', () => {
     expect(buildReaderMarkdown(old, new Map([[7, 1]]))).toBe(`# ${report.title}\n\n## Findings [1]\n\nText.\n`);
   });
 
-  it('is what the page downloads in the reader view, and the old text otherwise', async () => {
+  it('is what the page downloads, for every report', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const page = readFileSync(join(__dirname, '../../pages/ReportDetailPage.tsx'), 'utf8');
-    expect(page).toContain('md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));');
-    expect(page).toContain('md = buildReportMarkdown(report);');
+    expect(page).toContain('const md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));');
+    expect(page).not.toContain('buildReportMarkdown');
     // The labels are numbered from the page's data, fetched in the action when it has not arrived.
     expect(page).toContain('evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;');
   });
