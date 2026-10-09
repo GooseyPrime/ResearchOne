@@ -39,7 +39,7 @@ const FALLBACK_COLOR = '#64748b';
  * one thing. The word is not shown; the stored key is translated at the edge.
  */
 const PHASE_DISPLAY_LABELS: Record<string, string> = {
-  Skeptic: 'Challenge',
+  Skeptic: 'Challenge pass',
 };
 
 function phaseLabel(bucket: string): string {
