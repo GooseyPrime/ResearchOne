@@ -43,14 +43,73 @@ export type SectionRole = 'title' | 'references' | 'about' | 'challenge' | 'repo
 
 const norm = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toLowerCase();
 
-/** Where a stored section is shown. The Challenge has its own tab; the rest is the report. */
+/**
+ * Headings of the layout that was removed on 8 Oct 2026, and what a reader is
+ * shown in their place. A report written before then still has them stored; it
+ * is read through the same view as every other report, under these headings.
+ * `challenge` marks the ones whose text belongs on the Challenge pass tab.
+ */
+const OLDER_HEADINGS: ReadonlyArray<{ was: RegExp; now: string; challenge?: true }> = [
+  { was: /^executive summary$/, now: 'Summary' },
+  { was: /^framing$/, now: 'Background' },
+  { was: /^research question( and scope)?$/, now: 'What was asked' },
+  { was: /^(primary evidence|evidence ledger)$/, now: 'What the sources show' },
+  { was: /^(contested zones?|contradiction analysis)$/, now: 'Where sources disagree' },
+  { was: /^unresolved( questions)?$/, now: 'Open questions' },
+  { was: /^recommended next queries$/, now: 'Further questions' },
+  { was: /^challenges( and alternative explanations)?$/, now: 'Other explanations', challenge: true },
+  { was: /^falsification criteria$/, now: 'What would change these findings', challenge: true },
+];
+
+const olderHeading = (title: string) => OLDER_HEADINGS.find((entry) => entry.was.test(norm(title)));
+
+/** The heading a reader sees for a stored section. */
+export function readerHeading(title: string): string {
+  return olderHeading(title)?.now ?? title.replace(/\s+/g, ' ').trim();
+}
+
+/** The public name of the challenge material. Never shown under another name. */
+export const CHALLENGE_PASS = 'Challenge pass';
+
+/** Where a stored section is shown. The Challenge pass has its own tab; the rest is the report. */
 export function sectionRole(section: ReportSection, reportTitle: string): SectionRole {
   const title = norm(section.title);
   if (!section.content.trim() && title === norm(reportTitle)) return 'title';
   if (/^(references|sources|bibliography|works cited)$/.test(title)) return 'references';
   if (/^about this report$/.test(title)) return 'about';
   if (/^challenge\b|^the challenge\b|^adversarial (review|challenge)\b/.test(title) || section.section_type === 'challenge') return 'challenge';
+  if (olderHeading(section.title)?.challenge) return 'challenge';
   return 'report';
+}
+
+/**
+ * Sentences the old layout wrote by itself into a report's summary: counts of
+ * sources and passages, and a stock line about conflicts. No reader is shown
+ * them, in a report of any age.
+ */
+const MACHINE_SENTENCES: readonly RegExp[] = [
+  /This report synthesizes evidence from \d+ sources? and \d+ evidence chunks?[^.]*\.\s*/gi,
+  /The current evidence set does not surface explicit contradiction pairs[^.]*\.\s*/gi,
+  /[^.\n]*conclusions remain conditional on corpus coverage\.\s*/gi,
+  /The findings include \d+ explicit contradiction points?[^.]*\.\s*/gi,
+];
+
+export function withoutMachineSentences(text: string): string {
+  return MACHINE_SENTENCES.reduce((out, pattern) => out.replace(pattern, ''), text);
+}
+
+/**
+ * A section's text without a first line that only repeats its heading. Older
+ * reports stored the heading twice, once as the title and once at the top of
+ * the text, and the page printed both.
+ */
+export function withoutRepeatedHeading(title: string, content: string): string {
+  const lines = content.split('\n');
+  const first = lines.findIndex((line) => line.trim().length > 0);
+  if (first === -1) return content;
+  const line = norm(lines[first].replace(/[\s#*_]+/g, ' ').trim().replace(/[:：]\s*$/, ''));
+  if (line !== norm(title) && line !== norm(readerHeading(title))) return content;
+  return lines.slice(first + 1).join('\n').replace(/^\n+/, '');
 }
 
 export interface ReferenceEntry {
@@ -67,6 +126,14 @@ export function parseReferences(content: string): ReferenceEntry[] {
     else if (line.trim() && entries.length > 0) entries[entries.length - 1].text += ` ${line.trim()}`;
   }
   return entries;
+}
+
+/**
+ * Text shown outside the report's own sections (the plain-language version)
+ * with passage labels and the old layout's stock sentences taken out.
+ */
+export function stripReaderLabels(markdown: string): string {
+  return linkCitations(markdown, null, []);
 }
 
 /** Anchor a citation link points at. Read back by the renderer. */
@@ -116,7 +183,7 @@ export function linkCitations(markdown: string, sectionId: string | null, citati
           .filter((number): number is number => typeof number === 'number');
         return mapped.length > 0 ? [...new Set(mapped)].map((number) => `[${number}]`).join('') : '';
       });
-      return numbered
+      return withoutMachineSentences(numbered)
         .replace(NUMBER_GROUP, (_whole, group: string) => group.split(/\s*[,;]\s*/).map((number) => marker(Number(number))).join(''))
         // What a removed label leaves behind: a doubled space, a space before punctuation, empty brackets.
         .replace(/\(\s*\)|\[\s*\]/g, '')
@@ -158,10 +225,10 @@ export const TAB_LABELS: Record<ReaderTab, string> = {
   evidence: 'Evidence',
   sources: 'Sources',
   method: 'How this was researched',
-  challenge: 'Challenge',
+  challenge: CHALLENGE_PASS,
 };
 
-/** Tabs in order. The Challenge tab exists only for a report that has a Challenge section. */
+/** Tabs in order. The Challenge pass tab exists only for a report that has challenge material. */
 export function tabsFor(sections: ReportSection[], reportTitle: string): ReaderTab[] {
   const hasChallenge = sections.some((section) => sectionRole(section, reportTitle) === 'challenge');
   return hasChallenge ? ['report', 'evidence', 'sources', 'method', 'challenge'] : ['report', 'evidence', 'sources', 'method'];
@@ -186,8 +253,8 @@ export function legacyNumbersOf(evidence: Pick<ReaderEvidence, 'legacyLabels'> |
  * two are numbered in one pass and then parted again.
  */
 export function linkSection(title: string, content: string, sectionId: string | null, citations: ReaderCitation[], legacyNumbers?: ReadonlyMap<number, number>): { heading: string; body: string } {
-  const heading = title.replace(/\s+/g, ' ').trim();
-  const linked = linkCitations(`${heading}\n${content}`, sectionId, citations, legacyNumbers);
+  const heading = readerHeading(title);
+  const linked = linkCitations(`${heading}\n${withoutRepeatedHeading(title, content)}`, sectionId, citations, legacyNumbers);
   const at = linked.indexOf('\n');
   return at === -1 ? { heading: linked, body: '' } : { heading: linked.slice(0, at), body: linked.slice(at + 1) };
 }
@@ -207,7 +274,7 @@ export function buildReaderMarkdown(report: { title: string; sections?: ReportSe
     return role !== 'title' && role !== 'challenge';
   });
   // The heading gets the same handling as the body, as it does on the page.
-  for (const section of shown) lines.push(`## ${plain(section.title).trim()}`, '', plain(section.content).trim(), '');
+  for (const section of shown) lines.push(`## ${plain(readerHeading(section.title)).trim()}`, '', plain(withoutRepeatedHeading(section.title, section.content)).trim(), '');
   if (shown.length === 0 && report.executive_summary) lines.push(plain(report.executive_summary).trim(), '');
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
