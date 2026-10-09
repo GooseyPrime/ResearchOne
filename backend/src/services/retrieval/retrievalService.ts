@@ -6,6 +6,7 @@
 import { config, relevanceGateEnabled } from '../../config';
 import { isCitableAsIndependent } from './sourceIndependence';
 import { query } from '../../db/pool';
+import { ownSourceSql, retrievableSourceSql, sharedLibraryOwnerUserIds } from '../../db/libraryScope';
 import { generateEmbeddings } from '../openrouter/openrouterService';
 import { logger } from '../../utils/logger';
 import {
@@ -63,6 +64,39 @@ export interface RetrievalOptions {
    * absent no check runs: a revision's own supplemental scope, for example.
    */
   relevance?: RunRelevanceScope;
+  /**
+   * Set only when `sourceIds` were resolved from the owner's own ingestion
+   * jobs (a revision's attachments). The ids are then the whole scope and the
+   * library visibility rule is not applied on top of them.
+   */
+  sourceScopeIsOwnersOwn?: boolean;
+}
+
+/**
+ * Adds the library visibility rule to a retrieval query: a run reads public
+ * sources, its own discoveries and attachments, and its owner's own sources.
+ * Another user's uploads, pasted text and supplied URLs never match.
+ */
+function appendLibraryScope(
+  params: unknown[],
+  scope: { userId?: string; runId?: string; sourceScopeIsOwnersOwn?: boolean },
+): string {
+  if (scope.sourceScopeIsOwnersOwn) return '';
+  const indexes: { userParam?: number; runParam?: number; sharedOwnersParam?: number } = {};
+  if (scope.userId) {
+    params.push(scope.userId);
+    indexes.userParam = params.length;
+  }
+  if (scope.runId) {
+    params.push(scope.runId);
+    indexes.runParam = params.length;
+  }
+  const shared = sharedLibraryOwnerUserIds();
+  if (shared.length > 0) {
+    params.push(shared);
+    indexes.sharedOwnersParam = params.length;
+  }
+  return ` AND ${retrievableSourceSql('s', indexes)}`;
 }
 
 export interface RetrievalAuditResult {
@@ -162,12 +196,18 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     userId,
     runId,
     relevance,
+    sourceScopeIsOwnersOwn,
   } = options;
+  // The run's owner decides what it may read. Callers normally pass it; when
+  // they do not, it is read from the run so the rule never depends on a caller.
+  const scopeUserId =
+    userId ?? (runId && !sourceScopeIsOwnersOwn ? await runOwnerUserId(runId) : undefined);
+  const libraryScope = { userId: scopeUserId, runId, sourceScopeIsOwnersOwn };
 
   const results: Map<string, RetrievedChunk> = new Map();
   const backgroundResults: Map<string, RetrievedChunk> = new Map();
 
-  const sourceStats = await loadCorpusSourceStats({ filterTags, sourceIds });
+  const sourceStats = await loadCorpusSourceStats({ filterTags, sourceIds, libraryScope });
   const thresholds = config.retrieval.corpusGate;
   const partition = resolveCorpusPartition({
     intentId,
@@ -260,6 +300,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         params.push(sourceIds);
         vectorSql += ` AND c.source_id = ANY($${params.length}::uuid[])`;
       }
+
+      vectorSql += appendLibraryScope(params, libraryScope);
 
       vectorSql += ` ORDER BY e.vector <=> $1::vector LIMIT $${params.length + 1}`;
       // With the relevance check on, half as many again are read, so that
@@ -357,6 +399,8 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
         ftsParams.push(sourceIds);
         ftsSql += ` AND c.source_id = ANY($${ftsParams.length}::uuid[])`;
       }
+
+      ftsSql += appendLibraryScope(ftsParams, libraryScope);
 
       ftsSql += ` ORDER BY fts_rank DESC LIMIT $${ftsParams.length + 1}`;
       ftsParams.push(Math.ceil(topK / 2));
@@ -473,12 +517,16 @@ export async function retrieveRevisionSupplementalChunks(args: {
               (ij.url IS NOT NULL AND s.url = ij.url)
               OR (ij.file_name IS NOT NULL AND s.original_filename = ij.file_name)
             )
+            -- Matching by address or file name must stay inside the job
+            -- owner's own sources: another user's file can share a name.
+            AND ij.user_id IS NOT NULL
+            AND ${ownSourceSql('s', 3)}
           LIMIT 1
        ) resolved
       WHERE ij.metadata->>'revision_request_id' = $1
         AND ij.metadata->>'report_id' = $2
         AND resolved.source_id IS NOT NULL`,
-    [args.revisionRequestId, args.reportId]
+    [args.revisionRequestId, args.reportId, await reportOwnerUserId(args.reportId)]
   );
   const sourceIds = sourceRows.map((r) => r.source_id).filter(Boolean);
   if (sourceIds.length === 0) return [];
@@ -488,7 +536,30 @@ export async function retrieveRevisionSupplementalChunks(args: {
     topK: args.topK ?? 12,
     hybridSearch: true,
     sourceIds,
+    sourceScopeIsOwnersOwn: true,
   });
+}
+
+async function runOwnerUserId(runId: string): Promise<string | undefined> {
+  try {
+    const rows = await query<{ user_id: string | null }>(
+      'SELECT user_id FROM research_runs WHERE id::text = $1::text LIMIT 1',
+      [runId]
+    );
+    return rows[0]?.user_id ?? undefined;
+  } catch (err) {
+    // Unknown owner narrows the scope (public sources and this run's own); it never widens it.
+    logger.warn('retrieval: could not read the run owner; using the narrower scope', { error: err instanceof Error ? err.message : String(err) });
+    return undefined;
+  }
+}
+
+async function reportOwnerUserId(reportId: string): Promise<string | null> {
+  const rows = await query<{ user_id: string | null }>(
+    'SELECT user_id FROM reports WHERE id::text = $1::text LIMIT 1',
+    [reportId]
+  );
+  return rows[0]?.user_id ?? null;
 }
 
 function formatRetrievedChunksForPrompt(chunks: RetrievedChunk[]): string {
@@ -508,6 +579,7 @@ export { formatRetrievedChunksForPrompt };
 async function loadCorpusSourceStats(args: {
   filterTags?: string[];
   sourceIds?: string[];
+  libraryScope: { userId?: string; runId?: string; sourceScopeIsOwnersOwn?: boolean };
 }): Promise<{ records: CorpusSourceRecord[]; globalTotalChunks: number; failClosedReason?: string }> {
   try {
     const params: unknown[] = [];
@@ -520,6 +592,10 @@ async function loadCorpusSourceStats(args: {
       params.push(args.sourceIds);
       sourceFilters.push(`s.id = ANY($${params.length}::uuid[])`);
     }
+    // The gate counts only what this run may read, so another user's private
+    // documents neither open the gate nor show up in its figures.
+    const visibility = appendLibraryScope(params, args.libraryScope).replace(/^ AND /, '');
+    if (visibility) sourceFilters.push(visibility);
     const whereClause = sourceFilters.length > 0 ? `WHERE ${sourceFilters.join(' AND ')}` : '';
 
     const records = await query<{
@@ -560,12 +636,16 @@ async function loadCorpusSourceStats(args: {
       params,
     );
 
+    const globalParams: unknown[] = [];
+    const globalVisibility = appendLibraryScope(globalParams, args.libraryScope).replace(/^ AND /, '');
     const globalStats = await query<{ total_sources: number; total_chunks: number }>(
       `SELECT
          COUNT(DISTINCT s.id)::int AS total_sources,
          COUNT(DISTINCT c.id)::int AS total_chunks
        FROM sources s
-       LEFT JOIN chunks c ON c.source_id = s.id`
+       LEFT JOIN chunks c ON c.source_id = s.id
+       ${globalVisibility ? `WHERE ${globalVisibility}` : ''}`,
+      globalParams
     );
 
     return {

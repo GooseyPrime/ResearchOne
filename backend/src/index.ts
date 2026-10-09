@@ -5,6 +5,8 @@ import { logger } from './utils/logger';
 import { initDb } from './db/pool';
 import { initRedis } from './queue/redis';
 import { startWorkers } from './queue/workers';
+import { attachSocketAccessControl } from './realtime/socketAccess';
+import { createRouteIo } from './realtime/routeIo';
 import { getLoadedEnvFilePath } from './bootstrap/loadEnv';
 import { validateEnvModelPolicy } from './config/modelRuntime';
 import { config } from './config';
@@ -47,29 +49,11 @@ async function main() {
       },
     });
 
-    // Attach io to app for route access
-    app.set('io', io);
+    // Routes get a restricted handle that cannot broadcast to every page.
+    app.set('io', createRouteIo(io));
 
-    io.on('connection', (socket) => {
-      logger.info(`WebSocket client connected: ${socket.id}`);
-
-      socket.on('subscribe:job', (jobId: string) => {
-        socket.join(`job:${jobId}`);
-      });
-
-      // Dedicated revision room only — avoid duplicate events when server also emits to `job:${reportId}`.
-      socket.on('subscribe:revision', (reportId: string) => {
-        socket.join(`job:revision:${reportId}`);
-      });
-
-      socket.on('subscribe:corpus', () => {
-        socket.join('corpus');
-      });
-
-      socket.on('disconnect', () => {
-        logger.info(`WebSocket client disconnected: ${socket.id}`);
-      });
-    });
+    // Signed-in users only; each socket sees its own user's events (RJ-020).
+    attachSocketAccessControl(io);
 
     await new Promise<void>((resolve, reject) => {
       httpServer.once('error', reject);

@@ -31,6 +31,7 @@ import parallelMonitorWebhookRoutes from './webhooks/parallelMonitor';
 import bugnoteWebhookRoutes from './webhooks/bugnote';
 import { clerkAuthMiddleware } from '../middleware/clerkAuth';
 import { rlsContextMiddleware } from '../middleware/rlsContext';
+import { reportOwnershipGuards, researchOwnershipGuards } from './ownershipGuards';
 
 const app = express();
 
@@ -165,6 +166,13 @@ app.use('/api/webhooks/stripe', stripeWebhookRoutes);
 app.use('/api/webhooks/parallel-monitor', parallelMonitorWebhookRoutes);
 app.use('/api/webhooks/bugnote', bugnoteWebhookRoutes);
 
+// Ownership checks for routes that act on a report or run by id. They run
+// before the routers below, on both the /api prefix and the bare prefix.
+app.use('/api/reports', reportOwnershipGuards);
+app.use('/reports', reportOwnershipGuards);
+app.use('/api/research', researchOwnershipGuards);
+app.use('/research', researchOwnershipGuards);
+
 // Monitor routes are auth-protected and must only mount on their actual prefixes.
 app.use('/api/reports', reportMonitorsRouter);
 app.use('/api/monitors', userMonitorsRouter);
@@ -186,8 +194,9 @@ for (const [path, router] of routes) {
   app.use(path, router);
 }
 
-// Serve exported Atlas files from canonical exports directory
-app.use('/exports', express.static(config.exports.dir));
+// Export files are private. They are downloaded only through the signed-in
+// routes (`/api/atlas/exports/:id/download`, `/api/reports/exports/:id/download`),
+// which check the file belongs to the caller. There is no public file mount.
 
 // 404 handler
 app.use((_req, res) => {

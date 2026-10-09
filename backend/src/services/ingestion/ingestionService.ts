@@ -1,9 +1,9 @@
 import { isCalendarDay, normalizeDiscoveryUrl } from '../discovery/providerTypes';
 import { authorityTierFor, authorityTiersEnabled, storedAuthorityTier, type AuthoritySignals, type AuthorityTier } from '../authority/authorityTier';
 import axios from 'axios';
-import crypto from 'crypto';
 import { query, queryOne, withTransaction } from '../../db/pool';
 import { embeddingQueue } from '../../queue/queues';
+import { findStoredSourceForContent } from './sourceDedupe';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
 import { chunkText } from './chunker';
@@ -407,12 +407,14 @@ async function ingestFetchedWebPage(params: IngestFetchedWebPageParams): Promise
 
   onProgress({ stage: 'dedup', percent: 20, message: 'Checking for duplicates...' });
 
-  const contentHash = crypto.createHash('sha256').update(rawContent).digest('hex');
-
-  const existing = await queryOne<{ id: string; url?: string | null }>(
-    'SELECT id, url FROM sources WHERE content_hash=$1',
-    [contentHash]
-  );
+  // Identical content is shared only when the stored copy is public or already
+  // this owner's; another user's private copy is never reused (sourceDedupe.ts).
+  const { contentHash, existing } = await findStoredSourceForContent({
+    rawContent,
+    importedVia: data.importedVia ?? 'manual_upload',
+    ownerUserId: ingestedByUserId ?? null,
+    runId: data.discoveredByRunId ?? null,
+  });
   const bibliographic = checkedBibliographic;
 
   if (existing) {
