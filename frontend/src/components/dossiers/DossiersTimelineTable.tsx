@@ -129,7 +129,8 @@ export function timelineRowsToCsv(rows: DossierTimelineRow[]): string {
         r.query,
         r.revisionNumber,
         r.engineVersion,
-        r.runStatus,
+        // The downloaded file is read by a person: the same plain words as the table.
+        r.runStatus ? plainRunStatus(r.runStatus) : r.runStatus,
         r.reportId,
         r.runId,
       ]

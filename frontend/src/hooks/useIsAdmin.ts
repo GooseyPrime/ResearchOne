@@ -8,7 +8,8 @@ import api from '../utils/api';
  */
 export function useIsAdmin(): boolean {
   const { data } = useQuery({
-    queryKey: ['auth-me'],
+    // The key the page frame already uses, so the answer is asked for once.
+    queryKey: ['auth', 'me'],
     queryFn: () => api.get<{ userId: string; isAdmin: boolean }>('/auth/me').then((r) => r.data),
     staleTime: 60_000,
     retry: false,

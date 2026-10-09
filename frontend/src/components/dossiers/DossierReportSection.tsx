@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import ReportMarkdown from '../reports/ReportMarkdown';
 import { ReaderReportBody } from '../reports/reader/ReaderView';
-import type { Report } from '../../utils/api';
+import api, { type Report } from '../../utils/api';
 import { plainReportStatus } from '../../utils/runStatusDisplay';
-import { stripReaderLabels } from '../reports/reader/readerModel';
+import { legacyNumbersFrom, stripReaderLabels, type ReaderEvidence } from '../reports/reader/readerModel';
 
 type Props = {
   report: Report | undefined;
@@ -19,8 +21,26 @@ type Props = {
  * layout" outline, sections under their stored names, and a side panel of notes
  * from the check of the report — was removed on 8 Oct 2026. Challenge material
  * is on the report page's Challenge pass tab, not here.
+ *
+ * The citation numbers and the hover cards come from the same two requests the
+ * report page makes (same query keys, so they are shared). Without them an
+ * older report's passage labels would be removed with nothing in their place.
  */
 export default function DossierReportSection({ report, reportLoading, reportError, fullReportHref }: Props) {
+  const reportId = report?.id;
+  const { data: evidence } = useQuery({
+    queryKey: ['report-reader', reportId],
+    queryFn: async () => (await api.get(`/reports/${reportId}/reader`)).data as ReaderEvidence,
+    enabled: Boolean(reportId),
+  });
+  const { data: citations } = useQuery({
+    queryKey: ['report-citations', reportId],
+    queryFn: async () =>
+      (await api.get(`/reports/${reportId}/citations`)).data as Array<{ id: string; citation_text?: string; source_id?: string | null; citation_order?: number | null }>,
+    enabled: Boolean(reportId),
+  });
+  const legacyNumbers = useMemo(() => legacyNumbersFrom(citations ?? []), [citations]);
+
   if (reportLoading) {
     return <p className="text-slate-500 text-sm">Loading report…</p>;
   }
@@ -42,7 +62,7 @@ export default function DossierReportSection({ report, reportLoading, reportErro
       </div>
 
       <div className="space-y-5 min-w-0">
-        <ReaderReportBody report={report} />
+        <ReaderReportBody report={report} evidence={evidence} legacyNumbers={legacyNumbers} />
         {plainMd.length > 0 ? (
           <section className="rounded-lg border border-dashed border-slate-700/80 p-3">
             <h4 className="text-slate-200 text-sm font-medium mb-2">Plain-language summary</h4>

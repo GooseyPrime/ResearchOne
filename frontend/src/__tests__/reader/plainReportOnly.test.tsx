@@ -125,6 +125,7 @@ vi.mock('../../components/reports/ReportForkActions', () => ({ default: () => nu
 
 import ReportDetailPage from '../../pages/ReportDetailPage';
 import DossierReportSection from '../../components/dossiers/DossierReportSection';
+import { timelineRowsToCsv } from '../../components/dossiers/DossiersTimelineTable';
 import DossierStatusBadge from '../../components/dossiers/DossierStatusBadge';
 import DossierStatisticsSection from '../../components/dossiers/DossierStatisticsSection';
 import { TAB_LABELS } from '../../components/reports/reader/readerModel';
@@ -277,6 +278,23 @@ describe('a dossier\'s Report tab', () => {
     expect(document.body.textContent).not.toContain('A single ministry press notice');
     expect(document.body.textContent).not.toMatch(/Challenge notes|Cross-check/);
     expectNone(document.body.textContent ?? '', 'dossier Report tab');
+  });
+
+  it('keeps an older report\'s citations as reader numbers instead of dropping them', async () => {
+    render(wrap(<DossierReportSection report={OLD_REPORT} reportLoading={false} reportError={null} fullReportHref="/app/reports/r-old" />));
+    await waitFor(() => expect(document.body.textContent).toContain('opened the tender in March 2019 [1]'));
+    expect(document.body.textContent).not.toMatch(/Chunk \d/);
+    expectNone(document.body.textContent ?? '', 'dossier Report tab with citations');
+  });
+});
+
+describe('the timeline download', () => {
+  it('writes each run status in plain words, never the stored value', () => {
+    const csv = timelineRowsToCsv([
+      { occurredAt: '2026-10-08T22:00:00Z', eventType: 'run', dossierId: 'd1', query: 'q', revisionNumber: null, engineVersion: 'v2', runStatus: 'completed_degraded', reportId: 'r1', runId: 'run-1' },
+    ] as Parameters<typeof timelineRowsToCsv>[0]);
+    expect(csv).toContain('Finished with fewer sources than planned');
+    expectNone(csv, 'timeline download');
   });
 });
 
