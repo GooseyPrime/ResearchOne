@@ -1,27 +1,37 @@
 import { RESEARCH_OBJECTIVE_OPTIONS } from '@/constants/researchObjectives';
 import { CITATION_STYLE_OPTIONS, type CitationStyleChoice } from '@/utils/api';
+import {
+  customerOption,
+  customerOptionHelp,
+  customerOptionsIn,
+  findCustomerOption,
+  type CustomerOption,
+  type OptionGroup,
+} from '@/content/customerOptions';
 import clsx from 'clsx';
 
 export type ResearchOutputObjectiveValue = 'AUTO' | (typeof RESEARCH_OBJECTIVE_OPTIONS)[number]['value'];
 export type ReportLengthPreset = 'automatic' | 'short' | 'standard' | 'long' | 'extra_long' | 'custom';
 
-const REPORT_FORMAT_OPTIONS = [
-  { value: 'automatic', label: 'Automatic / Best fit' },
-  { value: 'ranked_options', label: 'Ranked options' },
-  { value: 'narrative_briefing', label: 'Narrative briefing' },
-  { value: 'step_by_step_guide', label: 'Step-by-step guide' },
-  { value: 'comparison_table', label: 'Comparison table' },
-  { value: 'structured_report', label: 'Structured report / Technical spec' },
+const REPORT_FORMAT_VALUES = [
+  'automatic',
+  'ranked_options',
+  'narrative_briefing',
+  'step_by_step_guide',
+  'comparison_table',
+  'structured_report',
 ] as const;
+type ReportFormatValue = (typeof REPORT_FORMAT_VALUES)[number];
 
-const LENGTH_OPTIONS: Array<{ value: ReportLengthPreset; label: string }> = [
-  { value: 'automatic', label: 'Automatic (fit the question)' },
-  { value: 'short', label: 'Short (~1,200 words)' },
-  { value: 'standard', label: 'Standard (~2,200 words)' },
-  { value: 'long', label: 'Long (~4,000 words)' },
-  { value: 'extra_long', label: 'Extra long (~7,000 words)' },
-  { value: 'custom', label: 'Custom word count…' },
-];
+const REPORT_LENGTH_VALUES: readonly ReportLengthPreset[] = ['automatic', 'short', 'standard', 'long', 'extra_long', 'custom'];
+
+/** Every option of a control, named from the registry of customer-facing names. */
+const named = <T extends string>(group: OptionGroup, values: readonly T[]): Array<{ value: T; words: CustomerOption }> =>
+  values.map((value) => ({ value, words: customerOption(group, value) }));
+
+const REPORT_FORMAT_OPTIONS = named('report_format', REPORT_FORMAT_VALUES);
+const LENGTH_OPTIONS = named('report_length', REPORT_LENGTH_VALUES);
+const FIELD = Object.fromEntries(customerOptionsIn('request_field').map((option) => [option.id, option]));
 
 export interface ResearchOutputControlsProps {
   objective: string;
@@ -59,11 +69,21 @@ export function resolveTargetWordCount(preset: string, custom: number): number |
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function normalizeReportFormats(values: string[]): string[] {
-  const filtered = values.filter((value): value is (typeof REPORT_FORMAT_OPTIONS)[number]['value'] =>
-    REPORT_FORMAT_OPTIONS.some((option) => option.value === value)
+  const filtered = values.filter((value): value is ReportFormatValue =>
+    (REPORT_FORMAT_VALUES as readonly string[]).includes(value)
   );
   if (filtered.includes('automatic')) return ['automatic'];
   return filtered.length > 0 ? Array.from(new Set(filtered)) : ['automatic'];
+}
+
+/** What the chosen option does, with its example, under the control it belongs to. */
+function OptionHelp({ option, testId }: { option: CustomerOption | undefined; testId: string }) {
+  if (!option) return null;
+  return (
+    <p className="mt-1 text-[11px] leading-snug text-slate-500" data-testid={testId}>
+      {customerOptionHelp(option)}
+    </p>
+  );
 }
 
 export default function ResearchOutputControls({
@@ -84,6 +104,8 @@ export default function ResearchOutputControls({
 }: ResearchOutputControlsProps) {
   const normalizedFormats = normalizeReportFormats(reportFormats);
   const targetWordCount = resolveTargetWordCount(reportLengthPreset, reportLengthCustom);
+  const automaticObjective = customerOption('research_objective', 'AUTO');
+  const defaultCitationStyle = customerOption('citation_style', 'automatic');
 
   const sectionClass = compact ? 'space-y-1.5' : 'space-y-2';
   const rowClass = compact ? 'grid gap-3 xl:grid-cols-4' : 'space-y-4';
@@ -93,14 +115,16 @@ export default function ResearchOutputControls({
       {showObjective ? (
         <div className={sectionClass}>
           <label className="block">
-            <span className="text-xs text-slate-300">Research Objective</span>
+            <span className="text-xs text-slate-300" title={FIELD.research_objective.description}>
+              {FIELD.research_objective.name}
+            </span>
             <select
               className="input mt-1 w-full"
               value={objective}
               onChange={(e) => onObjectiveChange(e.target.value)}
               disabled={disabled}
             >
-              <option value="AUTO">Automatic — ResearchOne selects from the request</option>
+              <option value="AUTO">{automaticObjective.name}</option>
               {objectiveOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -108,11 +132,14 @@ export default function ResearchOutputControls({
               ))}
             </select>
           </label>
+          <OptionHelp option={findCustomerOption('research_objective', objective)} testId="objective-help" />
         </div>
       ) : null}
 
       <div className={sectionClass}>
-        <div className="text-xs text-slate-300">Report Format</div>
+        <div className="text-xs text-slate-300" title={FIELD.report_format.description}>
+          {FIELD.report_format.name}
+        </div>
         <div className="mt-1 flex flex-wrap gap-2">
           {REPORT_FORMAT_OPTIONS.map((option) => {
             const selected = normalizedFormats.includes(option.value);
@@ -121,6 +148,8 @@ export default function ResearchOutputControls({
                 key={option.value}
                 type="button"
                 className={selected ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
+                title={customerOptionHelp(option.words)}
+                aria-pressed={selected}
                 onClick={() => {
                   if (option.value === 'automatic') {
                     onReportFormatsChange(['automatic']);
@@ -133,15 +162,20 @@ export default function ResearchOutputControls({
                 }}
                 disabled={disabled}
               >
-                {option.label}
+                {option.words.name}
               </button>
             );
           })}
         </div>
+        {normalizedFormats.map((value) => (
+          <OptionHelp key={value} option={findCustomerOption('report_format', value)} testId={`format-help-${value}`} />
+        ))}
       </div>
 
       <div className={sectionClass}>
-        <div className="text-xs text-slate-300">Report Length</div>
+        <div className="text-xs text-slate-300" title={FIELD.report_length.description}>
+          {FIELD.report_length.name}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <select
             className="input w-full md:max-w-xs"
@@ -151,7 +185,7 @@ export default function ResearchOutputControls({
           >
             {LENGTH_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {option.words.name}
               </option>
             ))}
           </select>
@@ -177,19 +211,22 @@ export default function ResearchOutputControls({
             )}
           </span>
         </div>
+        <OptionHelp option={findCustomerOption('report_length', reportLengthPreset)} testId="length-help" />
       </div>
 
       {onCitationStyleChange && citationStyle ? (
         <div className={sectionClass}>
           <label className="block">
-            <span className="text-xs text-slate-300">Citation Style</span>
+            <span className="text-xs text-slate-300" title={FIELD.citation_style.description}>
+              {FIELD.citation_style.name}
+            </span>
             <select
               className={clsx('input mt-1 w-full', compact && 'xl:max-w-xs')}
               value={citationStyle}
               onChange={(e) => onCitationStyleChange(e.target.value as CitationStyleChoice)}
               disabled={disabled}
             >
-              <option value="automatic">Report default</option>
+              <option value="automatic">{defaultCitationStyle.name}</option>
               {CITATION_STYLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -197,6 +234,7 @@ export default function ResearchOutputControls({
               ))}
             </select>
           </label>
+          <OptionHelp option={findCustomerOption('citation_style', citationStyle)} testId="citation-help" />
         </div>
       ) : null}
     </div>

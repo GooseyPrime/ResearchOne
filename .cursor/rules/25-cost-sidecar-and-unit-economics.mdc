@@ -18,13 +18,13 @@ globs:
 ## Why this rule exists
 
 The 10-stage pipeline (Planner → Discovery → Retriever → Reasoner →
-Skeptic → Synthesizer → Verifier → Report Generator → Revision Workflow
+Double-check → Synthesizer → Verifier → Report Generator → Revision Workflow
 → Epistemic Persistence) makes per-report unit economics impossible to
 estimate from logs alone. Admin needs an exact `$X.XX` per report so we
 can: (a) tune the V2 reasoner-class defaults toward the cheapest model
 that still passes the forbidden-defaults regression, (b) cap reports
 that exceed budget, (c) price Sovereign deals against real cost rather
-than guesses, and (d) detect bottleneck agents (the Skeptic running
+than guesses, and (d) detect bottleneck agents (the Double-check running
 twice in a recovery loop, a verifier eating 4× budget).
 
 This rule exists so the telemetry path itself cannot become the next
@@ -154,8 +154,8 @@ read-only view in a future WO, never the raw table.
 ### I-9. Phase ≠ Role
 
 The Cost Sidecar spec mixes "phase" (Planner / Discovery / Retriever /
-Reasoner / Skeptic / Synthesizer / Verifier / Report / Persistence)
-with "role" (planner, retriever, reasoner, skeptic, synthesizer,
+Reasoner / Double-check / Synthesizer / Verifier / Report / Persistence)
+with "role" (planner, retriever, reasoner, double-check, synthesizer,
 verifier, plain_language_synthesizer, outline_architect, section_drafter,
 internal_challenger, coherence_refiner, revision_intake, report_locator,
 change_planner, section_rewriter, citation_integrity_checker,
