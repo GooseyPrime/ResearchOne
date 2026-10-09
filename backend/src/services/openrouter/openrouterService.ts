@@ -650,7 +650,10 @@ async function callAnthropicChat(model: string, options: ModelCallOptions): Prom
   let accumulatedContent = '';
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
-  let largestPromptTokens = 0;
+  // Each request is priced by its own prompt length, so cost is added up per request.
+  let inputCostUsd = 0;
+  let outputCostUsd = 0;
+  let everyRequestPriced = true;
   let sendTemperature = true;
   let turns = prepared.messages;
   // The same continuation the gateway call makes: when the answer stopped at
@@ -683,8 +686,15 @@ async function callAnthropicChat(model: string, options: ModelCallOptions): Prom
     const promptTokens =
       (data.usage?.input_tokens ?? 0) + (data.usage?.cache_read_input_tokens ?? 0) + (data.usage?.cache_creation_input_tokens ?? 0);
     totalPromptTokens += promptTokens;
-    totalCompletionTokens += data.usage?.output_tokens ?? 0;
-    largestPromptTokens = Math.max(largestPromptTokens, promptTokens);
+    const completionTokens = data.usage?.output_tokens ?? 0;
+    totalCompletionTokens += completionTokens;
+    const requestPrice = anthropicListPrice(model, promptTokens);
+    if (requestPrice) {
+      inputCostUsd += (promptTokens / 1_000_000) * requestPrice.inputPricePer1mUsd;
+      outputCostUsd += (completionTokens / 1_000_000) * requestPrice.outputPricePer1mUsd;
+    } else {
+      everyRequestPriced = false;
+    }
 
     if (data.stop_reason === 'refusal') {
       // A declined answer must not become part of a report. It is recorded as
@@ -723,7 +733,16 @@ async function callAnthropicChat(model: string, options: ModelCallOptions): Prom
 
   if (!accumulatedContent.trim()) throw new Error('No text content in the response from Anthropic');
 
-  const listPrice = anthropicListPrice(model, largestPromptTokens);
+  // One pair of rates that gives the summed cost when applied to the summed
+  // tokens, so a call whose requests fell on different price steps is costed
+  // exactly.
+  const listPrice: ListPrice | null = everyRequestPriced
+    ? {
+        inputPricePer1mUsd: totalPromptTokens > 0 ? (inputCostUsd / totalPromptTokens) * 1_000_000 : (anthropicListPrice(model, 0)?.inputPricePer1mUsd ?? 0),
+        outputPricePer1mUsd:
+          totalCompletionTokens > 0 ? (outputCostUsd / totalCompletionTokens) * 1_000_000 : (anthropicListPrice(model, 0)?.outputPricePer1mUsd ?? 0),
+      }
+    : null;
   return {
     content: stripModelReasoningTraces(accumulatedContent),
     model,
@@ -1003,13 +1022,16 @@ export function modelRoutesForCall(args: {
   };
 
   const ownSlots = new Set(own.map((route) => slotForRoute(route)));
-  const ownRank = Math.min(...[...ownSlots].map(rank));
+  // The order is measured against the provider the role's own model is on. A
+  // backup on another provider does not hold that provider's place.
+  const primarySlot = slotForRoute(own[0]);
+  const ownRank = rank(primarySlot);
   const slotsInOrder = [...order].sort((a, b) => rank(a) - rank(b));
   const orderSet = args.providerOrderSet ?? config.modelProviderOrderSet;
-  const ahead = orderSet ? slotsInOrder.filter((slot) => !ownSlots.has(slot) && rank(slot) < ownRank) : [];
+  const ahead = orderSet ? slotsInOrder.filter((slot) => slot !== primarySlot && rank(slot) < ownRank) : [];
   // A provider the role has not used yet comes before one that already refused it.
   const fresh = slotsInOrder.filter((slot) => !ownSlots.has(slot) && !ahead.includes(slot));
-  const rest = slotsInOrder.filter((slot) => ownSlots.has(slot));
+  const rest = slotsInOrder.filter((slot) => ownSlots.has(slot) && !ahead.includes(slot));
 
   const routes: ModelRoute[] = [];
   for (const slot of ahead) for (const route of others[slot]) routes.push({ ...route, position: 'preferred' });
