@@ -16,6 +16,7 @@
  * Files and links the person attached to this run are never left out: they
  * chose them for this question.
  */
+import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { recordDiscoveryEvent } from '../discovery/discoveryEvents';
 import {
@@ -102,6 +103,30 @@ function attachedToThisRun(chunk: RetrievedChunk, runId: string): boolean {
   );
 }
 
+/**
+ * Passages of a document the person attached to this run whose content was
+ * already stored. Such an attachment is tied to the older source only through
+ * its ingestion job, so the source's own record does not show it. A failed
+ * read leaves these to the judge like any other document, and is logged.
+ */
+async function attachedThroughEarlierCopy(runId: string, chunks: readonly RetrievedChunk[]): Promise<Set<string>> {
+  const ids = [...new Set(chunks.map((chunk) => chunk.id))];
+  if (ids.length === 0) return new Set();
+  try {
+    const rows = await query<{ id: string }>(
+      `SELECT c.id
+         FROM chunks c
+         JOIN ingestion_jobs ij ON ij.source_id = c.source_id
+        WHERE c.id = ANY($1::uuid[]) AND ij.metadata->>'research_run_id' = $2::text`,
+      [ids, runId]
+    );
+    return new Set((rows ?? []).map((row) => row.id));
+  } catch (err) {
+    logger.warn(`[relevance:${runId}] could not read which stored documents were attached to this run`, { code: (err as { code?: string })?.code ?? 'unknown' });
+    return new Set();
+  }
+}
+
 function siteOf(url: string): string {
   try {
     return new URL(url).hostname;
@@ -121,8 +146,13 @@ export async function keepRelevantForRun(scope: RunRelevanceScope, chunks: Retri
   const keyOf = (chunk: RetrievedChunk) => documentKey(chunk.source_url, chunk.source_title);
   // The best passage of each document that still needs a verdict from a model.
   const toJudge = new Map<string, RetrievedChunk>();
+  const earlierCopies = await attachedThroughEarlierCopy(
+    scope.runId,
+    chunks.filter((chunk) => !attachedToThisRun(chunk, scope.runId))
+  );
+  const attached = (chunk: RetrievedChunk) => attachedToThisRun(chunk, scope.runId) || earlierCopies.has(chunk.id);
   for (const chunk of chunks) {
-    if (attachedToThisRun(chunk, scope.runId)) continue;
+    if (attached(chunk)) continue;
     const key = keyOf(chunk);
     if (verdictFor(scope.runId, key)?.basis === 'model') continue;
     const best = toJudge.get(key);
@@ -148,7 +178,7 @@ export async function keepRelevantForRun(scope: RunRelevanceScope, chunks: Retri
   const kept: RetrievedChunk[] = [];
   const excluded = new Map<string, { url: string; title: string; reason: NotUsedReason | null; basis: RelevanceBasis; why: string; passages: number }>();
   for (const chunk of chunks) {
-    if (attachedToThisRun(chunk, scope.runId)) {
+    if (attached(chunk)) {
       kept.push(chunk);
       continue;
     }

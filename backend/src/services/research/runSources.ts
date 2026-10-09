@@ -44,7 +44,7 @@ export interface RunSources {
  */
 export async function loadRunSources(runId: string, reportId: string | null): Promise<RunSources> {
   const run = await queryOne<{ recorded: boolean }>(
-    `SELECT COALESCE(cardinality(retrieval_ids), 0) > 0 AS recorded FROM research_runs WHERE id = $1::uuid`,
+    `SELECT retrieval_ids IS NOT NULL AS recorded FROM research_runs WHERE id = $1::uuid`,
     [runId]
   );
   const rows = await query<RunSourceRow>(
@@ -59,6 +59,18 @@ export async function loadRunSources(runId: string, reportId: string | null): Pr
          FROM report_citations rc
          LEFT JOIN chunks c ON c.id = rc.chunk_id
         WHERE $2::uuid IS NOT NULL AND rc.report_id = $2::uuid
+     ),
+     -- What the person attached to this run. An attachment whose content was
+     -- already stored is tied to the older source only through its ingestion
+     -- job, so the job is read as well as the source's own record.
+     attached AS (
+       SELECT s2.id AS source_id
+         FROM sources s2
+        WHERE s2.discovered_by_run_id = $1::uuid AND s2.imported_via IN ('manual_upload', 'manual_url')
+       UNION
+       SELECT ij.source_id
+         FROM ingestion_jobs ij
+        WHERE ij.source_id IS NOT NULL AND ij.metadata->>'research_run_id' = $1::text
      )
      SELECT s.id AS source_id,
             s.title,
@@ -78,11 +90,12 @@ export async function loadRunSources(runId: string, reportId: string | null): Pr
             (SELECT COUNT(*)::int FROM chunks c WHERE c.source_id = s.id) AS chunk_count,
             (s.id IN (SELECT source_id FROM passages)) AS used_passage,
             (s.id IN (SELECT source_id FROM cited WHERE source_id IS NOT NULL)) AS cited_in_report,
-            (s.discovered_by_run_id = $1::uuid AND s.imported_via IN ('manual_upload', 'manual_url')) AS attached_by_user
+            (s.id IN (SELECT source_id FROM attached)) AS attached_by_user
        FROM sources s
       WHERE s.discovered_by_run_id = $1::uuid
          OR s.id IN (SELECT source_id FROM passages)
          OR s.id IN (SELECT source_id FROM cited WHERE source_id IS NOT NULL)
+         OR s.id IN (SELECT source_id FROM attached)
       ORDER BY s.ingested_at DESC NULLS LAST`,
     [runId, reportId]
   );
@@ -97,8 +110,8 @@ function isUsed(row: RunSourceRow): boolean {
  * The sources to show a person for this run.
  *
  * Until the run has recorded the passages it worked from (it is still
- * searching, or it never retrieved anything), nothing can be called unused yet
- * and every source fetched for it is shown. Once passages are recorded, only
+ * searching), nothing can be called unused yet and every source fetched for it
+ * is shown. Once the record exists, even an empty one, only
  * the sources they came from, the sources the report cites, and what the
  * person attached are shown.
  */
