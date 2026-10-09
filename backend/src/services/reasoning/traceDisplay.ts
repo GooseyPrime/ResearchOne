@@ -44,7 +44,15 @@ export function retrievalProgressLabel(args: {
   chunkCount: number;
   pass?: 'initial' | 'rediscovery';
 }): string {
-  const passLabel = args.pass === 'rediscovery' ? ' (re-discovery)' : '';
-  const chunks = args.chunkCount === 1 ? '1 chunk' : `${args.chunkCount} chunks`;
-  return `Retrieval ${args.index}/${args.total} complete${passLabel} — ${chunks} so far`;
+  const passLabel = args.pass === 'rediscovery' ? ' (second search)' : '';
+  const chunks = args.chunkCount === 1 ? '1 passage' : `${args.chunkCount} passages`;
+  return `Search ${args.index}/${args.total} of your library complete${passLabel} — ${chunks} so far`;
+}
+
+/**
+ * An internal step id as words: `market_scout` -> "market scout". Progress
+ * messages are read by people, so an id never goes into one as written.
+ */
+export function plainStepName(id: string): string {
+  return (id ?? '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }

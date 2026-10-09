@@ -146,7 +146,7 @@ export default function PrivacyPage() {
             source snapshots, chunks, embeddings, and intermediate research artifacts.
           </p>
           <p>
-            Unless a report is enrolled as an active Living Report or governed by a separate enterprise agreement,
+            Unless a report is enrolled as an active Living Report or governed by a separate written agreement,
             temporary workspace data is ordinarily purged within 30 days after report finalization. Failed or
             cancelled research runs have their workspace data purged within 14 days. Temporary upload staging data
             is purged within 72 hours.
@@ -161,10 +161,6 @@ export default function PrivacyPage() {
             data while the Living Report subscription remains active. If a Living Report subscription is cancelled
             or payment fails, workspace data enters a 30-day grace period before purge. The final report output
             remains available for the standard 120-day retention period from finalization or cancellation.
-          </p>
-          <p>
-            Sovereign and enterprise customers may define custom retention, deletion, and isolation terms by
-            contract.
           </p>
           <p>
             We retain your account information for as long as your account is active and for a reasonable period

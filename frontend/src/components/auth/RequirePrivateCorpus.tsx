@@ -29,7 +29,7 @@ export default function RequirePrivateCorpus({ children }: { children: ReactElem
       <div className="max-w-lg mx-auto px-6 py-16 space-y-4">
         <h1 className="text-2xl font-bold text-white">Private corpus (Ingest)</h1>
         <p className="text-sm text-slate-400 leading-relaxed">
-          The Ingest workspace is for Pro, Team, BYOK, and Sovereign accounts that maintain a{' '}
+          The Ingest workspace is for Pro and BYOK accounts that maintain a{' '}
           <strong className="text-slate-200">separate private corpus</strong> from the shared ResearchOne
           library. You can still attach URLs and files on research requests; those are scoped to your run.
         </p>

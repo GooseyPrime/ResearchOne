@@ -32,7 +32,7 @@ export default function SavedOrchestrationProfilesCard({ tierAllowsProfiles }: {
       <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-5 text-left space-y-2 max-w-xl w-full">
         <h2 className="text-sm font-semibold text-white">Saved orchestration profiles</h2>
         <p className="text-xs text-slate-400 leading-snug">
-          Saved profiles are available on paid tiers (Pro, Team, BYOK, Sovereign). They let you reuse orchestration
+          Saved profiles are available on the Pro and BYOK plans. They let you reuse orchestration
           defaults on new runs. Upgrade on the{' '}
           <Link to="/pricing" className="text-accent hover:underline">
             pricing page

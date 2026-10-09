@@ -24,6 +24,11 @@ export const BANNED: Array<{ name: string; pattern: RegExp }> = [
   // "Tier 2", "Tier-1", "Tier 1–4", "tier (1–4)".
   { name: 'tier number', pattern: /\btiers?[ -]?\(?[1-4]\b/gi },
   { name: 'grade label', pattern: /\b(established[_ ]fact|strong[_ ]evidence|testimony[- ]tier)\b/gi },
+  // RJ-013: no nickname for a pipeline role or pass. The step is the "Challenge pass".
+  { name: 'role nickname', pattern: /\b(steel[- ]?man\w*|straw[- ]?m[ae]n\w*|s[kc]eptic\w*|devil['’]?s[- ]advocate\w*|red[- ]?team\w*|contrarian\w*|adversar\w*|gadfl\w*)\b/gi },
+  // RJ-013: an internal step code ("steelman_started", "stage_skipped", "query_done") is never text.
+  // The codes end in what the step did; a column name or a class name ("discovered_by_run_id") is not one.
+  { name: 'raw step code', pattern: /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(started|completed|complete|done|running|skipped|ready|waiting|fallback|generated|parsed|merged|adjusted|exhausted|annotate)\b/g },
   { name: 'raw status', pattern: /\b(under_review|plan_pending_confirmation|contract_failed|verification_failed|completed_degraded)\b/g },
 ];
 

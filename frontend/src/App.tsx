@@ -25,7 +25,6 @@ import ResearchV2GuidePage from './pages/ResearchV2GuidePage';
 import ModelsPage from './pages/ModelsPage';
 import PricingPage from './pages/PricingPage';
 import MethodologyPage from './pages/MethodologyPage';
-import SovereignPage from './pages/SovereignPage';
 import BYOKPage from './pages/BYOKPage';
 import BYOKConfigPage from './pages/BYOKConfigPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -72,7 +71,7 @@ export function AppRoutes() {
       <Route path="/compare" element={<ComparePage />} />
       <Route path="/changelog" element={<ChangelogPage />} />
       <Route path="/docs" element={<MarketingDocsPage />} />
-      <Route path="/sovereign" element={<SovereignPage />} />
+      <Route path="/sovereign" element={<Navigate to="/pricing" replace />} />
       <Route path="/byok" element={<BYOKPage />} />
       <Route path="/security" element={<SecurityPage />} />
       <Route path="/terms" element={<TermsPage />} />

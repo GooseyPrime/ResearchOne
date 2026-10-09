@@ -3,6 +3,12 @@ import NotYetAvailable from './NotYetAvailable';
 import type { SubscriptionOption } from './PlanCheckoutOptions';
 
 import type { PlanIntent } from '../../lib/billing/planIntent';
+import {
+  formatPlanChangeDate,
+  planChangeLabel,
+  scheduledChangeSentence,
+  type ScheduledPlanChange,
+} from '../../lib/billing/planChange';
 
 export type SwitchablePlan = PlanIntent;
 export type SwitchPeriod = 'monthly' | 'annual';
@@ -38,6 +44,14 @@ type PlanSwitchOptionsProps = {
   onCancel: () => void;
   isSwitching: boolean;
   switchError: string | null;
+  /** When the billing period the customer has paid for ends (ISO 8601), if known. */
+  currentPeriodEnd?: string | null;
+  /** The change already scheduled, if any. While there is one, no other can be picked. */
+  scheduled?: ScheduledPlanChange | null;
+  /** "Keep my current plan": drops the scheduled change. */
+  onKeepCurrentPlan?: () => void;
+  isKeeping?: boolean;
+  keepError?: string | null;
 };
 
 /**
@@ -45,9 +59,13 @@ type PlanSwitchOptionsProps = {
  * subscriber in place of the "choose a plan" block.
  *
  * Picking a plan does not change anything. It opens a confirmation that says
- * what will happen to the bill; only "Confirm switch" sends the request. The
- * server changes the subscription the customer already has, so they are never
- * billed for two.
+ * when the plan will change; only "Confirm change" sends the request. The
+ * change starts with the next billing period: nothing is charged or credited
+ * on the day it is asked for, and the customer keeps one subscription.
+ *
+ * Once a change is scheduled the block shows it, with "Keep my current plan"
+ * to take it back. Only one change can be pending, so the plan buttons are
+ * not offered until it has started or been taken back.
  */
 export default function PlanSwitchOptions({
   currentTier,
@@ -61,6 +79,11 @@ export default function PlanSwitchOptions({
   onCancel,
   isSwitching,
   switchError,
+  currentPeriodEnd = null,
+  scheduled = null,
+  onKeepCurrentPlan,
+  isKeeping = false,
+  keepError = null,
 }: PlanSwitchOptionsProps) {
   // The confirmation appears below the plan boxes. Focus moves to it so a
   // keyboard or screen-reader user is taken to the question, not left on the
@@ -90,13 +113,41 @@ export default function PlanSwitchOptions({
     );
   }
 
-  const pendingLabel = pending
-    ? `${SWITCHABLE_PLANS.find((p) => p.tier === pending.tier)?.label ?? pending.tier}, ${PERIOD_LABEL[pending.period]} billing`
-    : '';
+  if (scheduled) {
+    return (
+      <div className="mt-4" id="switch-plan">
+        <div
+          role="status"
+          data-scheduled-plan-change={scheduled.tier}
+          className="rounded-md border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100"
+        >
+          <p className="font-medium">{scheduledChangeSentence(scheduled)}</p>
+          <p className="mt-1 text-emerald-100/80">
+            Until then you stay on your current plan. To choose a different plan, keep your current plan first.
+          </p>
+          <button
+            type="button"
+            disabled={isKeeping}
+            className="mt-3 rounded border border-white/20 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-50"
+            onClick={onKeepCurrentPlan}
+          >
+            {isKeeping ? 'Keeping your current plan…' : 'Keep my current plan'}
+          </button>
+        </div>
+        {keepError ? <p className="mt-2 text-sm text-red-400">{keepError}</p> : null}
+      </div>
+    );
+  }
+
+  const pendingLabel = pending ? planChangeLabel(pending.tier, pending.period) : '';
+  const changesOn = formatPlanChangeDate(currentPeriodEnd);
+  const when = changesOn ? `on ${changesOn}` : 'at the end of your current billing period';
 
   return (
     <div className="mt-4" id="switch-plan">
-      <p className="text-sm text-slate-400 mb-3">Switch plan or billing period:</p>
+      <p className="text-sm text-slate-400 mb-3">
+        Switch plan or billing period. A change starts with your next billing period; nothing is charged today.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {SWITCHABLE_PLANS.map((plan) => {
           const option = options.find((o) => o.tier === plan.tier);
@@ -164,14 +215,10 @@ export default function PlanSwitchOptions({
           aria-describedby="plan-switch-confirm-detail"
           className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
         >
-          <p id="plan-switch-confirm-title" className="font-medium">Switch to {pendingLabel}?</p>
+          <p id="plan-switch-confirm-title" className="font-medium">Change to {pendingLabel}?</p>
           <p id="plan-switch-confirm-detail" className="mt-1 text-amber-100/90">
-            The change takes effect now. You keep one subscription; it moves to the new plan. The difference in
-            price for the rest of your current billing period is credited or charged on your next bill.
-          </p>
-          <p className="mt-1 text-amber-100/80">
-            If you are also changing between monthly and annual billing, a new billing period starts today and
-            that bill is issued today.
+            Your plan changes to {pendingLabel} {when}, when the billing period you have paid for ends. Nothing is
+            charged today. You keep one subscription, and you can take the change back any time before then.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -180,7 +227,7 @@ export default function PlanSwitchOptions({
               className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 transition-colors disabled:opacity-50"
               onClick={onConfirm}
             >
-              {isSwitching ? 'Switching…' : 'Confirm switch'}
+              {isSwitching ? 'Scheduling…' : 'Confirm change'}
             </button>
             <button
               type="button"
@@ -188,7 +235,7 @@ export default function PlanSwitchOptions({
               className="rounded border border-white/20 px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5 transition-colors disabled:opacity-50"
               onClick={onCancel}
             >
-              Keep my current plan
+              Not now
             </button>
           </div>
         </div>

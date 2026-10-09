@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import clsx from 'clsx';
+import { plainLabel, plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 const TIER_COLORS: Record<string, string> = {
   established_fact: 'text-green-400',
@@ -292,7 +294,7 @@ export default function FailedRunReportPage() {
               <div className="flex items-center gap-2">
                 <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
                 <span className="text-xs text-slate-400">
-                  Failed at stage: <span className="text-amber-400 font-mono">{run.failed_stage}</span>
+                  Failed at stage: <span className="text-amber-400">{readerStageLabel(run.failed_stage)}</span>
                 </span>
               </div>
             )}
@@ -300,7 +302,7 @@ export default function FailedRunReportPage() {
               <div className="rounded-lg bg-black/30 border border-red-900/30 p-3">
                 <div className="text-[10px] uppercase tracking-widest text-red-500/70 mb-1">Error</div>
                 <p className="text-xs text-red-300/90 leading-relaxed font-mono whitespace-pre-wrap break-words">
-                  {run.error_message}
+                  {plainProgressText(run.error_message)}
                 </p>
               </div>
             )}
@@ -394,17 +396,16 @@ export default function FailedRunReportPage() {
                   <span className={clsx(
                     'w-[14ch] flex-shrink-0 truncate',
                     isError ? 'text-red-400' : isDone ? 'text-green-400' : 'text-indigo-400'
-                  )}>{evt.stage}</span>
+                  )}>{readerStageLabel(evt.stage)}</span>
                   <span className="w-[5ch] flex-shrink-0 text-right text-slate-600 tabular-nums">{evt.percent ?? 0}%</span>
                   <span className="flex-1 min-w-0 text-slate-300 break-words">
-                    {evt.message}
+                    {plainProgressText(evt.message)}
                     {evt.model && <span className="ml-2 text-indigo-400/70">[{evt.model}]</span>}
                     {evt.tokenUsage && (
                       <span className="ml-1 text-slate-500">{evt.tokenUsage.prompt}p+{evt.tokenUsage.completion}c</span>
                     )}
-                    {evt.substep && <span className="ml-1 text-slate-500">({evt.substep})</span>}
                     {evt.failure?.errorMessage && (
-                      <span className="ml-1 text-red-300/90">→ {evt.failure.errorMessage}</span>
+                      <span className="ml-1 text-red-300/90">→ {plainProgressText(evt.failure.errorMessage)}</span>
                     )}
                   </span>
                 </div>
@@ -443,7 +444,7 @@ export default function FailedRunReportPage() {
                 {artifacts.discoveryEvents.map((evt, i) => (
                   <div key={i} className="text-xs bg-surface-200/40 border border-surface-100/20 rounded p-2 space-y-1">
                     <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
-                      <span className="text-cyan-400">{evt.phase}</span>
+                      <span className="text-cyan-400">{plainLabel(evt.phase)}</span>
                       <span>·</span>
                       <span className="text-slate-400">{evt.provider}</span>
                       <span className="ml-auto">{format(new Date(evt.created_at), 'HH:mm:ss')}</span>
@@ -472,7 +473,7 @@ export default function FailedRunReportPage() {
               return (
                 <details key={i} className="bg-surface-200/40 border border-surface-100/20 rounded">
                   <summary className="cursor-pointer px-3 py-2 text-xs flex items-center gap-2">
-                    <span className="text-slate-500 w-32 truncate">{String(e.role ?? 'unknown')}</span>
+                    <span className="text-slate-500 w-32 truncate">{plainLabel(typeof e.role === 'string' ? e.role : '') || 'Unknown step'}</span>
                     <span className="text-indigo-400/80 truncate flex-1 min-w-0">{String(e.model ?? 'unknown')}</span>
                     <span className="text-slate-500 tabular-nums">
                       {Number(e.promptTokens ?? 0)}p+{Number(e.completionTokens ?? 0)}c
@@ -556,9 +557,9 @@ export default function FailedRunReportPage() {
             {artifacts.checkpoints.map((cp, i) => (
               <details key={i} className="text-xs bg-surface-200/30 border border-surface-100/10 rounded">
                 <summary className="cursor-pointer flex items-center gap-3 py-1.5 px-3">
-                  <span className="font-mono text-slate-500 flex-shrink-0">{cp.stage}</span>
+                  <span className="text-slate-500 flex-shrink-0">{readerStageLabel(cp.stage)}</span>
                   <span className="text-slate-600 flex-shrink-0">→</span>
-                  <span className="text-slate-400 truncate">{cp.checkpoint_key}</span>
+                  <span className="text-slate-400 truncate">{plainLabel(cp.checkpoint_key)}</span>
                   <span className="text-slate-600 text-[10px] ml-auto flex-shrink-0">
                     {format(new Date(cp.created_at), 'HH:mm:ss')}
                   </span>

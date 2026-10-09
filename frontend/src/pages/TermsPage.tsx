@@ -75,14 +75,13 @@ export default function TermsPage() {
             ResearchOne is a research-report generation and monitoring service, not a general-purpose file storage
             or document hosting platform. Temporary workspaces may include uploaded files, extracted text, discovered
             source snapshots, chunks, embeddings, and intermediate research artifacts. Unless a report is enrolled as
-            an active Living Report or governed by a separate enterprise agreement, temporary workspace data may be
+            an active Living Report or governed by a separate written agreement, temporary workspace data may be
             purged after report finalization.
           </p>
           <p>
             Final report outputs are ordinarily retained for 120 days so users may view, export, or delete them.
             Living Reports retain the source set, monitoring configuration, revision history, and related workspace
-            data while the Living Report remains active. Sovereign and enterprise customers may define custom retention,
-            deletion, and isolation terms by contract.
+            data while the Living Report remains active.
           </p>
           <p>
             You are responsible for exporting any reports or data you wish to retain beyond the applicable retention

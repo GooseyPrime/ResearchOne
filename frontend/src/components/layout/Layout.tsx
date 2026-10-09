@@ -41,6 +41,7 @@ import SystemStatusModal from './SystemStatusModal';
 import clsx from 'clsx';
 import { BugNoteProvider } from '../integrations/BugNoteProvider';
 import { parseRunIdFromSearchParams } from '../../utils/researchRunRoutes';
+import { plainProgressText } from '@/lib/researchone/plainWords';
 
 type NavItem = {
   to: string;
@@ -166,8 +167,8 @@ export default function Layout() {
       percent: top.progress_percent ?? 0,
       message:
         top.status === 'plan_pending_confirmation'
-          ? top.progress_message || 'Plan ready — review required'
-          : top.progress_message || 'Running…',
+          ? plainProgressText(top.progress_message) || 'Plan ready — review required'
+          : plainProgressText(top.progress_message) || 'Running…',
       timestamp: top.progress_updated_at || new Date().toISOString(),
     });
   }, [allRuns, setActiveRun]);

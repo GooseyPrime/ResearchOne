@@ -501,7 +501,7 @@ async function createReportRevisionInner(args: {
     if (!requestRows[0]?.id) throw new Error('Failed to create revision request row');
     requestId = requestRows[0].id;
   }
-  emit('retrieval', 8, 'Retrieving supplemental corpus chunks');
+  emit('retrieval', 8, 'Gathering passages from the added material');
   let retrievedSupplementalContext = '';
   let enrichedAttachments: RevisionAttachmentAudit[] = [];
   if (supplementalAttachments.length > 0) {
@@ -533,7 +533,7 @@ async function createReportRevisionInner(args: {
     ? `\n\nUser-attached supplemental context (review and weigh as sources; cite when used):\n${combinedSupplemental}`
     : '';
 
-  emit('intake', 12, 'Parsing revision request');
+  emit('intake', 12, 'Reading the revision request');
   const intakeResult = await callRoleModel({
     ...revisionRoleCall('revision_intake'),
     messages: [
@@ -543,7 +543,7 @@ async function createReportRevisionInner(args: {
   });
   const intake = parseJson<RevisionIntake>(intakeResult.content) ?? {};
 
-  emit('location', 24, 'Locating impacted sections');
+  emit('location', 24, 'Finding the sections the change affects');
   const targetTerms = intake.target_terms ?? [];
   const deterministicHits = locateAffectedSections({ sections: baseSections, request: args.requestText, targetTerms });
   const locatorResult = await callRoleModel({
@@ -562,7 +562,7 @@ Return strict JSON.`,
   const locatorPayload = parseJson<{ affected_sections?: string[]; global_impact?: string }>(locatorResult.content) ?? {};
   const affectedSections = [...new Set([...(locatorPayload.affected_sections ?? []), ...deterministicHits])];
 
-  emit('planning', 38, 'Building structured change plan');
+  emit('planning', 38, 'Planning the changes');
   const plannerResult = await callRoleModel({
     ...revisionRoleCall('change_planner'),
     messages: [
@@ -597,7 +597,7 @@ Return strict JSON.`,
     ],
   };
 
-  emit('rewriting', 56, 'Rewriting impacted sections');
+  emit('rewriting', 56, 'Rewriting the affected sections');
   let revisedSections = baseSections.map((section) => ({ ...section }));
   const fromTerm = targetTerms[0]?.trim();
   const toTerm = targetTerms[1]?.trim();
@@ -689,7 +689,7 @@ Return revised section body only.`,
     logger.info('Revision removed citations from rewritten sentences', { reportId: args.reportId, removed: carried.removed });
   }
 
-  emit('citation_integrity', 70, 'Running citation integrity checks');
+  emit('citation_integrity', 70, 'Checking the citations');
   const citationChecks: Record<string, unknown> = {};
   const citationEntries = await Promise.all(
     revisedSections.map(async (section) => {
@@ -720,7 +720,7 @@ Return JSON only.`,
     citationChecks[sectionType] = check;
   }
 
-  emit('verification', 82, 'Running final revision verifier');
+  emit('verification', 82, 'Checking the revised report');
   const verifierResult = await callRoleModel({
     ...revisionRoleCall('final_revision_verifier'),
     messages: [
@@ -755,7 +755,7 @@ Return strict JSON.`,
         : 'Revision preserved core report consistency checks while applying requested changes.',
   };
 
-  emit('persistence', 90, 'Persisting revised report version');
+  emit('persistence', 90, 'Saving the revised report');
   let revisionId = '';
   let revisedReportId = '';
   await withTransaction(async (client) => {

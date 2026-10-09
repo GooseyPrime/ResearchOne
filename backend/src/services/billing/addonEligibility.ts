@@ -4,11 +4,13 @@ import { getBillingSubscriptionView } from './billingSubscriptionView';
 
 /**
  * Plans that may buy add-ons. The pricing page tells the visitor "Add-ons
- * require an active Pro, BYOK, Team, or Sovereign subscription", and the
+ * require an active Pro or BYOK subscription", and the
  * browser hides the buttons for everyone else. Hiding a button is not a rule:
  * the checkout routes ask this module, so the sentence on the page is true
  * for a request made by hand as well.
  */
+// 'team' and 'sovereign' are no longer sold; they stay here so an account
+// already on one of those tiers keeps what it had.
 export const ADDON_ELIGIBLE_TIERS: readonly TierName[] = ['pro', 'byok', 'team', 'sovereign', 'admin'];
 
 export function tierIsAddonEligible(tier: string): boolean {
@@ -34,4 +36,4 @@ export async function resolveAddonEligibility(userId: string): Promise<AddonElig
 }
 
 export const ADDON_SUBSCRIPTION_REQUIRED_MESSAGE =
-  'Add-ons require an active Pro, BYOK, Team, or Sovereign subscription';
+  'Add-ons require an active Pro or BYOK subscription';

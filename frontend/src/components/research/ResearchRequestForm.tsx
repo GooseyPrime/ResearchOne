@@ -49,6 +49,7 @@ import { applySupplementalIngestNotifications } from '../../utils/supplementalIn
 import { buildClarifyingQuestions } from '../../utils/clarifyingQuestions';
 import { liveResearchUrl } from '../../utils/researchRunRoutes';
 import { useStore } from '../../store/useStore';
+import { plainLabel } from '@/lib/researchone/plainWords';
 
 type ModelRow = { primary?: string; fallback?: string; fallbackEnabled?: boolean };
 type ObjectiveChoice = 'AUTO' | ResearchObjective;
@@ -550,7 +551,7 @@ export default function ResearchRequestForm() {
               {Object.keys(presetForObjective).map((role) => (
                 <div key={role} className="border border-indigo-900/20 rounded p-2 space-y-2">
                   <div className="text-xs text-slate-400 uppercase tracking-wide">
-                    {role.replace(/_/g, ' ')}
+                    {plainLabel(role)}
                   </div>
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">

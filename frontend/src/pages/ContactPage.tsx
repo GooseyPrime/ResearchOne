@@ -4,7 +4,7 @@ import LandingHeader from '../components/landing/LandingHeader';
 const CHANNELS = [
   {
     title: 'Sales',
-    body: 'Pricing, pilots, and enterprise agreements.',
+    body: 'Pricing and pilots.',
     href: 'mailto:hello@researchone.io?subject=ResearchOne%20inquiry',
     label: 'hello@researchone.io',
   },

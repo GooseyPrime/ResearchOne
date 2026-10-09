@@ -77,6 +77,27 @@ export function isSelfServeSubscriptionTier(tier: string): tier is 'pro' | 'byok
   return tier === 'pro' || tier === 'byok';
 }
 
+/** Whether a configured Pro or BYOK price bills by the month or by the year. Null for any other price. */
+export function getBillingPeriodForSubscriptionPrice(priceId: string): 'monthly' | 'annual' | null {
+  const ids = config.stripe.priceIds;
+  if (!priceId.trim()) return null;
+  if (priceId === ids.proMonthly || priceId === ids.byokMonthly) return 'monthly';
+  if (priceId === ids.proAnnual || priceId === ids.byokAnnual) return 'annual';
+  return null;
+}
+
+/**
+ * Plans that are no longer sold. The tier names stay valid everywhere else,
+ * so an account already on one keeps working; what is refused is buying one
+ * or switching to one.
+ */
+export function isRemovedPlanTier(tier: string): tier is 'team' | 'sovereign' {
+  const name = tier.trim().toLowerCase();
+  return name === 'team' || name === 'sovereign';
+}
+
+export const REMOVED_PLAN_MESSAGE = 'That plan is not available.';
+
 export function getSubscriptionPriceOptions(): SubscriptionPriceOption[] {
   const ids = config.stripe.priceIds;
   const options: SubscriptionPriceOption[] = [];

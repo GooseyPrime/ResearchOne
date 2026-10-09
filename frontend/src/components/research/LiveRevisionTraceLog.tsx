@@ -1,5 +1,7 @@
 import clsx from 'clsx';
 import type { ResearchProgressEvent } from '@/utils/api';
+import { plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 function formatShortTime(iso?: string): string {
   if (!iso) return '';
@@ -26,7 +28,7 @@ export default function LiveRevisionTraceLog({
       {(latestMessage != null || latestPercent != null) && (
         <div className="rounded-lg border border-indigo-900/40 bg-surface-900/80 p-4 space-y-2">
           <div className="flex justify-between gap-2 text-xs text-slate-400">
-            <span className="text-slate-200">{latestMessage ?? 'Revision in progress'}</span>
+            <span className="text-slate-200">{plainProgressText(latestMessage) || 'Revision in progress'}</span>
             {latestPercent != null && (
               <span className="tabular-nums text-slate-500">{latestPercent}%</span>
             )}
@@ -55,11 +57,11 @@ export default function LiveRevisionTraceLog({
               <li key={`${evt.timestamp ?? idx}-${evt.stage}-${idx}`} className="text-slate-300">
                 <span className="text-slate-500">{formatShortTime(evt.timestamp)}</span>
                 {' '}
-                <span className="text-indigo-300/90 uppercase">{evt.stage}</span>
+                <span className="text-indigo-300/90">{readerStageLabel(evt.stage)}</span>
                 {evt.percent != null && (
                   <span className="text-slate-500"> · {evt.percent}%</span>
                 )}
-                {evt.message && <span className="text-slate-400"> — {evt.message}</span>}
+                {evt.message && <span className="text-slate-400"> — {plainProgressText(evt.message)}</span>}
               </li>
             ))}
           </ul>

@@ -4,6 +4,8 @@ import clsx from 'clsx';
 import { retryResearchRunFromFailure } from '../../utils/api';
 import { formatFailureReason } from '../../utils/researchFailureFormat';
 import { failureCardHeadline, isResumeAvailable, type LiveStatus } from '../../utils/researchLiveStatus';
+import { plainLabel, plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 export interface ResearchRunFailureSocketPayload {
   runId: string;
@@ -106,11 +108,11 @@ export default function ResearchRunFailureCard({
 
       <div className={clsx('text-xs space-y-1', tone === 'red' ? 'text-red-200' : 'text-amber-200')}>
         <p>
-          <span className="text-slate-400">Stage:</span> {failure.stage || 'unknown'}
+          <span className="text-slate-400">Stage:</span> {readerStageLabel(failure.stage)}
           {role ? (
             <span>
               {' '}
-              · <span className="text-slate-400">Role:</span> {role}
+              · <span className="text-slate-400">Step:</span> {plainLabel(role)}
             </span>
           ) : null}
           {model ? (
@@ -132,7 +134,7 @@ export default function ResearchRunFailureCard({
             </span>
           ) : null}
         </p>
-        <p className="opacity-90">{reason}</p>
+        <p className="opacity-90">{plainProgressText(reason)}</p>
         {typeof retryAttempts === 'number' && typeof retryBudget === 'number' && (
           <p className="text-slate-400">
             Retries used: <span className="text-slate-300">{retryAttempts}</span> of{' '}
