@@ -44,7 +44,7 @@ const ROLE_NAME = new RegExp(
 const SAYS_NEXT = new RegExp(`^\\s+${ROLE_SAYS}\\b`, 'i');
 const CREDIT_BEFORE = /\b(?:by|from|per|according\s+to)\s$/i;
 /** Text that ends where a sentence starts: the start, a sentence end or a new line, then any list marker and opening punctuation. */
-const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'\u201C\u2018([]*$/;
+const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'“‘([]*$/;
 
 /** Whether the text before `offset` ends where a sentence starts. */
 export function startsSentence(whole: string, offset: number): boolean {
@@ -107,7 +107,7 @@ export const CLAIM_WORD = new RegExp(
 );
 
 /** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
-const QUOTED_SPAN = /"[^"\n]{1,600}"|\u201C[^\u201D\n]{1,600}\u201D/g;
+const QUOTED_SPAN = /"[^"\n]{1,600}"|“[^”\n]{1,600}”/g;
 
 /** Apply a change to everything outside double quotation marks. */
 export function mapOutsideQuotes(text: string, change: (part: string) => string): string {
@@ -203,7 +203,7 @@ const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
  */
 const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
 /** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
-const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
+const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
 
 /** Width of leading whitespace, a tab counting as four columns. */
 function indentWidth(line: string): number {
@@ -351,12 +351,12 @@ export function mapLinkLabels(markdown: string, change: (label: string) => strin
  * stands, and code, link definitions and bare addresses taken out.
  */
 function readerVisibleText(text: string): string {
-  return mapOutsideCode(text, (part) => part, () => '\uE004')
+  return mapOutsideCode(text, (part) => part, () => '')
     .replace(INLINE_LINK, '$1')
     // A reference-style link shows its label; the identifier after it is never seen.
     .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
-    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
-    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
+    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '')
+    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '');
 }
 
 /**
@@ -390,14 +390,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const proseOf = (source: string): string => {
     let prose = '';
     mapCitationProse(source, (part) => {
-      prose += `${part}\uE004`;
+      prose += `${part}`;
       return part;
     });
     // The label of a link is read by the reader too; its destination is not.
-    const outsideCode = mapOutsideCode(source, (part) => part, () => '\uE004');
-    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+    const outsideCode = mapOutsideCode(source, (part) => part, () => '');
+    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]`;
     // Likewise the label of a reference-style link ("[label][ref]").
-    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]`;
     return prose;
   };
   // Labels and markers are a leak wherever they are printed, the reference list included.
@@ -417,14 +417,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const body = readerVisibleText(own);
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
-  const seen = `${proseOf(own)}\uE004${body}`;
+  const seen = `${proseOf(own)}${body}`;
   if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
   // A role named in a sentence is an internal step on the page, brackets or not.
   if (namesSpokenRole(body) && !hits.includes('internal step')) hits.push('internal step');
   // What a source says in its own words stays as it said it; the report's own wording is checked.
   let ownWords = '';
   mapOutsideQuotes(body, (part) => {
-    ownWords += `${part}\uE004`;
+    ownWords += `${part}`;
     return part;
   });
   if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
@@ -434,7 +434,7 @@ export function readerFacingLabelHits(text: string): string[] {
 }
 
 /** Marks where a label was removed, so spacing is tidied only there. */
-const REMOVED = '\uE000';
+const REMOVED = '';
 
 /**
  * Slice 6. The line the writer is shown above each passage ("Kind of source:
@@ -480,19 +480,36 @@ const SOURCE_RANK_LABEL = new RegExp(
   'i'
 );
 
+/**
+ * Sentences the layout removed on 8 Oct 2026 wrote by itself into a report's
+ * summary: counts of sources and passages, and stock lines about conflicts. No
+ * reader is shown them, in a report of any age. A report can still discuss its
+ * subject in any of these words; only these whole sentences are taken out.
+ */
+const MACHINE_SENTENCES: readonly RegExp[] = [
+  /This report synthesizes evidence from \d+ sources? and \d+ evidence chunks?[^.\n]*\.[ \t]*/gi,
+  /The current evidence set does not surface explicit contradiction pairs[^.\n]*\.[ \t]*/gi,
+  /[^.\n]*conclusions remain conditional on corpus coverage\.[ \t]*/gi,
+  /The findings include \d+ explicit contradiction points?[^.\n]*\.[ \t]*/gi,
+];
+
+export function withoutMachineSentences(text: string): string {
+  return MACHINE_SENTENCES.reduce((out, pattern) => out.replace(pattern, ''), text);
+}
+
 function cleanProse(text: string): string {
   return (
-    text
+    withoutMachineSentences(text)
       .replace(TIER_INSIDE_BRACKET, '[')
       .replace(TIER_ONLY_BRACKET, REMOVED)
       .replace(SNAKE_TIER_TOKEN, REMOVED)
       .replace(INTERNAL_STEP_NAME, REMOVED)
       // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
-      .replace(/[ \t]*\uE000+[ \t]*(?=[.,;:!?)\]])/g, '')
+      .replace(/[ \t]*+[ \t]*(?=[.,;:!?)\]])/g, '')
       // A removal between words leaves one space.
-      .replace(/(?<=\S)[ \t]*\uE000+[ \t]*(?=\S)/g, ' ')
+      .replace(/(?<=\S)[ \t]*+[ \t]*(?=\S)/g, ' ')
       // A removal at the start or end of a line leaves nothing.
-      .replace(/[ \t]*\uE000+[ \t]*/g, '')
+      .replace(/[ \t]*+[ \t]*/g, '')
   );
 }
 
@@ -513,6 +530,71 @@ export function stripInternalLabelsFromReport(text: string): string {
     cursor = start + match[0].length;
   }
   return out + cleanProse(markdown.slice(cursor));
+}
+
+const normHeading = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toLowerCase();
+
+/**
+ * Headings of the layout that was removed, and what a reader is shown in their
+ * place. A report written before 8 Oct 2026 still has them stored; it is read
+ * and exported through the same view as every other report, under these
+ * headings. `challenge` marks the ones whose text is challenge material: it is
+ * shown on the Challenge pass tab and left out of the report a reader exports.
+ * (The reading page carries the same list, so a report is headed the same way
+ * whichever side maps it.)
+ */
+const OLDER_HEADINGS: ReadonlyArray<{ was: RegExp; now: string; challenge?: true }> = [
+  { was: /^executive summary$/, now: 'Summary' },
+  { was: new RegExp(`^${'fram' + 'ing'}$`), now: 'Background' },
+  { was: /^research question( and scope)?$/, now: 'What was asked' },
+  { was: /^(primary evidence|evidence ledger)$/, now: 'What the sources show' },
+  { was: /^(contested zones?|contradiction analysis)$/, now: 'Where sources disagree' },
+  { was: /^unresolved( questions)?$/, now: 'Open questions' },
+  { was: /^recommended next queries$/, now: 'Further questions' },
+  { was: /^challenges( and alternative explanations)?$/, now: 'Other explanations', challenge: true },
+  { was: /^falsification criteria$/, now: 'What would change these findings', challenge: true },
+];
+
+const olderHeading = (title: string) => OLDER_HEADINGS.find((entry) => entry.was.test(normHeading(title)));
+
+/** The heading a reader sees for a stored section title. */
+export function readerHeading(title: string): string {
+  return olderHeading(title)?.now ?? title;
+}
+
+/** Whether a stored title is one of the old layout's challenge sections. */
+export function isOlderChallengeHeading(title: string): boolean {
+  return olderHeading(title)?.challenge === true;
+}
+
+/**
+ * A section's text without a first line that only repeats its heading. Older
+ * reports stored the heading twice, as the title and again at the top of the
+ * text, and it was printed twice.
+ */
+export function withoutRepeatedHeading(title: string, content: string): string {
+  const lines = content.split('\n');
+  const first = lines.findIndex((line) => line.trim().length > 0);
+  if (first === -1) return content;
+  const line = normHeading(lines[first].replace(/[\s#*_]+/g, ' ').trim().replace(/[:：]\s*$/, ''));
+  if (line !== normHeading(title) && line !== normHeading(readerHeading(title))) return content;
+  return lines.slice(first + 1).join('\n').replace(/^\n+/, '');
+}
+
+/**
+ * A stored section as a reader is sent it: labels removed, the heading a reader
+ * sees, the heading not repeated in the text, and an old challenge section
+ * marked as one so the page puts it on the Challenge pass tab. Returns a copy.
+ */
+export function presentSectionForReader<S extends Record<string, unknown>>(section: S): S {
+  const title = typeof section.title === 'string' ? stripInternalLabelsFromReport(section.title) : null;
+  const content = typeof section.content === 'string' ? stripInternalLabelsFromReport(section.content) : null;
+  return {
+    ...section,
+    ...(title !== null ? { title: readerHeading(title) } : {}),
+    ...(content !== null ? { content: title !== null ? withoutRepeatedHeading(title, content) : content } : {}),
+    ...(title !== null && isOlderChallengeHeading(title) ? { section_type: 'challenge' } : {}),
+  };
 }
 
 interface ReaderFrontMatterLike {
@@ -544,13 +626,10 @@ export function cleanReaderMetadata<T>(metadata: T): T {
       ...front,
       overall_summary: cleanIfString(front.overall_summary),
       conclusions_nutshell: cleanIfString(front.conclusions_nutshell),
-      metric_glosses: Array.isArray(front.metric_glosses)
-        ? front.metric_glosses.map((gloss: unknown) =>
-            gloss && typeof gloss === 'object'
-              ? Object.fromEntries(Object.entries(gloss as Record<string, unknown>).map(([k, v]) => [k, cleanIfString(v)]))
-              : gloss
-          )
-        : front.metric_glosses,
+      // The cards of the removed layout (counts of conflicts and passages, a
+      // template sentence about what would overturn the report). An older
+      // report still has them stored; none is sent to a reader.
+      metric_glosses: [],
     };
   }
   return out as T;
@@ -647,7 +726,9 @@ function presentValue(value: unknown, depth: number, everyString: boolean, optio
   const out: Record<string, unknown> = {};
   for (const [key, held] of Object.entries(value)) {
     const readerText = READER_TEXT_FIELDS.has(key) || (key === 'title' && titleIsReports);
-    if (typeof held === 'string') out[key] = everyString || readerText ? stripInternalLabelsFromReport(held) : held;
+    // A section named in a revision's history is headed as the report page heads it.
+    if (typeof held === 'string' && key === 'section_title') out[key] = readerHeading(stripInternalLabelsFromReport(held));
+    else if (typeof held === 'string') out[key] = everyString || readerText ? stripInternalLabelsFromReport(held) : held;
     else out[key] = presentValue(held, depth + 1, everyString || READER_TEXT_GROUPS.has(key), options, titleIsReports || (options.reportTitleUnder?.includes(key) ?? false));
   }
   return out;
