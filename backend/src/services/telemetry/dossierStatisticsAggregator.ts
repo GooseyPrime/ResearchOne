@@ -166,14 +166,17 @@ export async function aggregateAndPersistDossierStatistics(
     } catch (wideErr) {
       const code = (wideErr as { code?: string })?.code;
       if (code === '42703') {
+        // A column is missing: the database is behind this code. The retry names no
+        // column that a later migration added or renamed (036 and 061), so the
+        // rest of the row is still saved.
         await query(
           `INSERT INTO dossier_statistics (
              run_id, total_duration_ms, tokens_input, tokens_output,
              sources_retrieved_count, sources_cited_count, citation_density,
              contradictions_count, refinement_rounds,
-             agents_ran, agents_skipped, stage_durations, double_check_annotations_count,
+             agents_ran, agents_skipped, stage_durations,
              computed_at
-           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
+           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, NOW())
            ON CONFLICT (run_id) DO UPDATE SET
              total_duration_ms = COALESCE(EXCLUDED.total_duration_ms, dossier_statistics.total_duration_ms),
              tokens_input = COALESCE(EXCLUDED.tokens_input, dossier_statistics.tokens_input),
@@ -186,7 +189,6 @@ export async function aggregateAndPersistDossierStatistics(
              agents_ran = COALESCE(EXCLUDED.agents_ran, dossier_statistics.agents_ran),
              agents_skipped = COALESCE(EXCLUDED.agents_skipped, dossier_statistics.agents_skipped),
              stage_durations = COALESCE(EXCLUDED.stage_durations, dossier_statistics.stage_durations),
-             double_check_annotations_count = COALESCE(EXCLUDED.double_check_annotations_count, dossier_statistics.double_check_annotations_count),
              computed_at = NOW()`,
           [
             runId,
@@ -201,7 +203,6 @@ export async function aggregateAndPersistDossierStatistics(
             agentsRanJson,
             agentsSkippedJson,
             stageDurationsJson,
-            doubleCheckAnnotationsCount,
           ],
         );
       } else {

@@ -90,7 +90,7 @@ describe('what a run remembers', () => {
 });
 
 describe('the lines written to a run\'s trace', () => {
-  const banned = /steelman|skeptic|devil's advocate|red team|adversarial|\bclaims?\b|[a-z]+_[a-z]+/i;
+  const banned = /steel-?man|s[k]eptic|devil's advocate|red team|adversarial|\bclaims?\b|[a-z]+_[a-z]+/i;
 
   it('says in plain words what a check came to', () => {
     const plain = relevanceCheckMessage({ round: 1, judged: 50, relevant: 31, notUsed: 19, decidedWithoutModel: 0 });
