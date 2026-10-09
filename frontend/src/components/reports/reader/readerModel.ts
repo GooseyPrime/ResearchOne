@@ -4,6 +4,7 @@
  */
 import type { ReportSection } from '../../../utils/api';
 import { DOUBLE_CHECK } from '../../../content/customerOptions';
+import { reportDisplayTitle } from '../../../utils/plainTitles';
 
 export interface ReaderSource {
   id: string;
@@ -107,12 +108,55 @@ export function withoutMachineSentences(text: string): string {
  * the text, and the page printed both.
  */
 export function withoutRepeatedHeading(title: string, content: string): string {
-  const lines = content.split('\n');
-  const first = lines.findIndex((line) => line.trim().length > 0);
-  if (first === -1) return content;
-  const line = norm(lines[first].replace(/[\s#*_]+/g, ' ').trim().replace(/[:：]\s*$/, ''));
-  if (line !== norm(title) && line !== norm(readerHeading(title))) return content;
-  return lines.slice(first + 1).join('\n').replace(/^\n+/, '');
+  const wanted = norm(readerHeading(title));
+  let rest = content;
+  // More than once: a report stored the heading as its title, again as a
+  // Markdown heading and again as a bold line, under the old name or the new.
+  for (let guard = 0; guard < 4; guard += 1) {
+    const lines = rest.split('\n');
+    const first = lines.findIndex((line) => line.trim().length > 0);
+    if (first === -1) return rest;
+    const line = norm(lines[first].replace(/[\s#*_]+/g, ' ').trim().replace(/[:：]\s*$/, ''));
+    if (line !== norm(title) && line !== wanted && norm(readerHeading(line)) !== wanted) return rest;
+    rest = lines.slice(first + 1).join('\n').replace(/^\n+/, '');
+  }
+  return rest;
+}
+
+export interface ShownSection {
+  section: ReportSection;
+  /** False when the section above already carries this heading: a heading stored twice prints once. */
+  showHeading: boolean;
+}
+
+/**
+ * The sections of the report itself, in order, as the Report tab prints them
+ * (RJ-018 item 1). Two things an older report stores made one heading print
+ * twice:
+ *
+ *  - a heading with nothing under it, kept only to carry the report's title or
+ *    to open the section that follows under the same name. It is not printed.
+ *    (A heading-only section whose name appears nowhere else is kept: it may
+ *    be a heading over the sections after it.)
+ *  - two sections in a row that map to the same reader heading (the old layout's
+ *    name and its replacement, say). The second is printed without a heading.
+ */
+export function shownReportSections(sections: readonly ReportSection[], reportTitle: string): ShownSection[] {
+  const ordered = [...sections].sort((a, b) => a.section_order - b.section_order);
+  const ofReport = ordered.filter((section) => sectionRole(section, reportTitle) === 'report');
+  const heading = (section: ReportSection): string => norm(readerHeading(section.title));
+  const isEmpty = (section: ReportSection): boolean => withoutRepeatedHeading(section.title, section.content).trim().length === 0;
+  const title = norm(reportTitle);
+  const kept = ofReport.filter((section) => {
+    if (!isEmpty(section)) return true;
+    const name = heading(section);
+    if (name === title || norm(section.title) === title) return false;
+    return !ofReport.some((other) => other !== section && heading(other) === name);
+  });
+  return kept.map((section, index) => ({
+    section,
+    showHeading: index === 0 || heading(kept[index - 1]) !== heading(section),
+  }));
 }
 
 export interface ReferenceEntry {
@@ -267,17 +311,22 @@ export function linkSection(title: string, content: string, sectionId: string | 
  * copy actions. The title once, the report's own sections, the reference list
  * and the closing note. No passage labels, and nothing from the other tabs.
  */
-export function buildReaderMarkdown(report: { title: string; sections?: ReportSection[]; executive_summary?: string }, legacyNumbers: ReadonlyMap<number, number> = new Map()): string {
+export function buildReaderMarkdown(report: { title: string; query?: string | null; sections?: ReportSection[]; executive_summary?: string }, legacyNumbers: ReadonlyMap<number, number> = new Map()): string {
   const sections = [...(report.sections ?? [])].sort((a, b) => a.section_order - b.section_order);
-  const lines: string[] = [`# ${report.title}`, ''];
+  const lines: string[] = [`# ${reportDisplayTitle(report.title, report.query)}`, ''];
   // With no saved citations to link to, linkCitations leaves numbers as written and only removes or renumbers labels.
   const plain = (text: string): string => linkCitations(text, null, [], legacyNumbers);
+  // The report's own sections as the Report tab prints them: a heading stored twice is written once.
+  const ofReport = new Map(shownReportSections(sections, report.title).map((entry) => [entry.section, entry.showHeading]));
   const shown = sections.filter((section) => {
     const role = sectionRole(section, report.title);
-    return role !== 'title' && role !== 'challenge';
+    return role === 'report' ? ofReport.has(section) : role !== 'title' && role !== 'challenge';
   });
   // The heading gets the same handling as the body, as it does on the page.
-  for (const section of shown) lines.push(`## ${plain(readerHeading(section.title)).trim()}`, '', plain(withoutRepeatedHeading(section.title, section.content)).trim(), '');
+  for (const section of shown) {
+    if (ofReport.get(section) !== false) lines.push(`## ${plain(readerHeading(section.title)).trim()}`, '');
+    lines.push(plain(withoutRepeatedHeading(section.title, section.content)).trim(), '');
+  }
   if (shown.length === 0 && report.executive_summary) lines.push(plain(report.executive_summary).trim(), '');
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
