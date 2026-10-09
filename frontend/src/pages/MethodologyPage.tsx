@@ -15,6 +15,7 @@ import {
   OUTLIER_BRIDGING_MARKETING,
   POSTURE_FAMILIES,
 } from '@/content/howResearchOneThinks';
+import { DOUBLE_CHECK } from '../content/customerOptions';
 
 export default function MethodologyPage() {
   return (
@@ -53,23 +54,21 @@ export default function MethodologyPage() {
       <section data-ev-id="ev_f7aee2320e" className="py-20 lg:py-32 bg-r1-canvas-deep">
         <div data-ev-id="ev_ba5a82429a" className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12">
-            {/* The challenge pass */}
+            {/* Double-check */}
             <div data-ev-id="ev_1e40fe866e" className="r1-panel p-6 lg:p-8 ring-1 ring-r1-challenge/20">
               <span data-ev-id="ev_4117025d57" className="r1-tag mb-4 inline-flex border-r1-challenge/50 text-r1-challenge">
-                CHALLENGE_REVIEW
+                DOUBLE-CHECK
               </span>
               <h3 data-ev-id="ev_d800821cdc" className="text-xl font-bold text-r1-heading mb-4">
-                Why we argue against our own draft
+                Why every report gets a Double-check
               </h3>
               <p data-ev-id="ev_22a137e75d" className="text-[15px] text-r1-muted leading-relaxed mb-4 text-pretty">
-                Every report is argued against before it concludes. The challenge pass presses on the
-                draft's important conclusions, looks for weak corroboration, and surfaces alternative
-                interpretations. How hard it presses is decided from the request: a statement to be
-                verified gets a harder pass than a how-to guide.
+                {DOUBLE_CHECK.description} Example: {DOUBLE_CHECK.example} How thorough it is depends on
+                the request: a statement to be verified is tested harder than a how-to guide.
               </p>
               <ul data-ev-id="ev_301776280f" className="flex flex-col gap-2">
                 {[
-                'Challenges how confident each finding is',
+                'Tests how well each finding is supported',
                 'Identifies unsupported assertions',
                 'Flags potential confirmation bias',
                 'Surfaces contradictory evidence'].map((item, i) =>
