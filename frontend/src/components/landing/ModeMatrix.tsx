@@ -1,6 +1,8 @@
+import { customerOption } from '../../content/customerOptions';
+
 const MODES = [
   {
-    mode: 'General Research',
+    mode: customerOption('research_objective', 'GENERAL_EPISTEMIC_RESEARCH').name,
     bestFor: 'Contested questions where sources are mixed',
     runTime: '8–15 min',
     overlay: 'Balanced planner; tier-weighted report writer',
@@ -8,7 +10,7 @@ const MODES = [
     outputEmphasis: 'Tiered source summary',
   },
   {
-    mode: 'Investigative Research',
+    mode: customerOption('research_objective', 'INVESTIGATIVE_SYNTHESIS').name,
     bestFor: 'Tracking incentives, networks, narrative drift',
     runTime: '12–20 min',
     overlay: 'Actor-graph planner; timeline retriever',
@@ -16,7 +18,7 @@ const MODES = [
     outputEmphasis: 'Timeline + actor map',
   },
   {
-    mode: 'Patent Research and Whitespace Mapping',
+    mode: customerOption('research_objective', 'PATENT_GAP_ANALYSIS').name,
     bestFor: 'Mapping prior art and novelty',
     runTime: '10–18 min',
     overlay: 'Prior-art retriever; mechanism analyzer',
@@ -24,7 +26,7 @@ const MODES = [
     outputEmphasis: 'Gap analysis + novelty matrix',
   },
   {
-    mode: 'Application Discovery',
+    mode: customerOption('research_objective', 'NOVEL_APPLICATION_DISCOVERY').name,
     bestFor: 'Mechanism → implementation paths',
     runTime: '10–15 min',
     overlay: 'Mechanism-first reasoner',
@@ -32,7 +34,7 @@ const MODES = [
     outputEmphasis: 'Application hypotheses',
   },
   {
-    mode: 'Convergence Analysis',
+    mode: customerOption('research_objective', 'ANOMALY_CORRELATION').name,
     bestFor: 'Are these signals related?',
     runTime: '10–18 min',
     overlay: 'Correlation planner; contradiction-preserving report compiler',
@@ -41,7 +43,7 @@ const MODES = [
   },
 ] as const;
 
-const COLUMNS = ['Mode', 'Best for', 'Typical run time', 'Mode-specific overlay', 'Challenge depth', 'Output emphasis'] as const;
+const COLUMNS = ['Mode', 'Best for', 'Typical run time', 'Mode-specific overlay', 'Double-check depth', 'Output emphasis'] as const;
 
 export default function ModeMatrix() {
   return (

@@ -1,3 +1,4 @@
+import { DOUBLE_CHECK } from './customerOptions';
 /** Shared FAQ for landing inline section — questions avoid third-party product names (marketing hardening). */
 export const MARKETING_FAQ_ITEMS = [
   {
@@ -6,9 +7,8 @@ export const MARKETING_FAQ_ITEMS = [
       'Mainstream assistants optimize for fast cited answers. ResearchOne builds a plan first, gathers and reads sources, then applies specialist analysis based on your requested outcome. It keeps evidence, interpretation, uncertainty, and contradictions visible in one cited report.',
   },
   {
-    question: 'What does the challenge pass actually do?',
-    answer:
-      'The challenge pass argues against the draft: it surfaces counter-sources, stress-tests findings, and preserves contradictions as named outputs rather than smoothing them away.',
+    question: 'What does Double-check actually do?',
+    answer: `${DOUBLE_CHECK.description} Example: ${DOUBLE_CHECK.example}`,
   },
   {
     question: 'What happens when two high-tier sources disagree?',
@@ -40,9 +40,8 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
       'ResearchOne is plan-first and outcome-adaptive: it can run different specialist methods for explanation, comparison, verification, implementation research, or quantitative analysis. The comparison is structural auditability and explicit uncertainty handling versus a single chat-shaped pass.',
   },
   {
-    question: 'What does the challenge pass actually do?',
-    answer:
-      'It receives the draft report and argues against it: searches for counter-sources, stress-tests findings, and returns opposing findings with contradictions preserved for the Citation Bind stage.',
+    question: 'What does Double-check actually do?',
+    answer: `${DOUBLE_CHECK.description} Example: ${DOUBLE_CHECK.example}`,
   },
   {
     question: 'What happens when two high-tier sources disagree?',
