@@ -6,11 +6,15 @@ import { query } from '../../db/pool';
 import { logger } from '../../utils/logger';
 import { config } from '../../config';
 import { uploadAtlasJsonlToNomic } from './nomicUpload';
+import { isAllowlistedAdminUserId } from '../auth/adminAllowlist';
+import { ownSourceSql, retrievableSourceSql } from '../../db/libraryScope';
 export interface AtlasExportJobData {
   exportId: string;
   label: string;
   description?: string;
   filterTags?: string[];
+  /** Who asked for the export. It contains only what this user may read. */
+  requestedByUserId?: string | null;
 }
 
 export interface AtlasPoint {
@@ -35,10 +39,23 @@ export const EXPORTS_DIR = config.exports.dir;
 
 export async function runAtlasExport(data: AtlasExportJobData): Promise<{ exportId: string; count: number; path: string }> {
   const { exportId, filterTags } = data;
+  const requester = data.requestedByUserId ?? null;
 
   logger.info(`Starting Atlas export ${exportId}`);
 
   // Build query - filter by tags if provided
+  // The export holds the requester's own sources plus public web sources.
+  // Which run found a public source, and the query it was searching for, are
+  // another user's activity and are kept only on the requester's own rows.
+  const params: unknown[] = [];
+  let ownSql = 'FALSE';
+  let scopeSql = retrievableSourceSql('s', {});
+  if (requester) {
+    params.push(requester);
+    ownSql = ownSourceSql('s', params.length);
+    scopeSql = retrievableSourceSql('s', { userParam: params.length });
+  }
+
   let sql = `
     SELECT
       c.id,
@@ -50,19 +67,25 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
       s.tags,
       s.source_type,
       s.imported_via,
-      s.discovered_by_run_id,
-      s.discovery_query,
+      CASE WHEN ${ownSql} THEN s.discovered_by_run_id END AS discovered_by_run_id,
+      CASE WHEN ${ownSql} THEN s.discovery_query END AS discovery_query,
       s.source_rank,
       e.vector::text AS vector_str,
-      cl.evidence_tier
+      (
+        SELECT cl.evidence_tier
+          FROM claims cl
+          JOIN research_runs cr ON cr.id = cl.run_id
+         WHERE cl.chunk_id = c.id
+           AND cr.user_id = ${requester ? '$1::text' : 'NULL'}
+         LIMIT 1
+      ) AS evidence_tier
     FROM chunks c
     JOIN embeddings e ON e.chunk_id = c.id
     LEFT JOIN sources s ON s.id = c.source_id
-    LEFT JOIN claims cl ON cl.chunk_id = c.id
     WHERE e.vector IS NOT NULL
+      AND ${scopeSql}
   `;
 
-  const params: unknown[] = [];
   if (filterTags && filterTags.length > 0) {
     params.push(filterTags);
     sql += ` AND s.tags && $${params.length}::text[]`;
@@ -195,7 +218,8 @@ export async function runAtlasExport(data: AtlasExportJobData): Promise<{ export
   }
 
   // Optional Nomic upload.
-  if (config.nomic.autoUploadOnExport && config.nomic.apiKey.trim()) {
+  // Sending library text to an outside service is an admin action.
+  if (config.nomic.autoUploadOnExport && config.nomic.apiKey.trim() && isAllowlistedAdminUserId(requester)) {
     try {
       const nomic = await uploadAtlasJsonlToNomic({
         exportPath: compressedPath,

@@ -11,6 +11,7 @@ import { atlasExportQueue } from '../../queue/queues';
 import * as fs from 'fs';
 import { uploadAtlasJsonlToNomic } from '../../services/embedding/nomicUpload';
 import { config } from '../../config';
+import { libraryViewerFromRequest, ownSourceSql } from '../../db/libraryScope';
 
 const router = Router();
 
@@ -45,7 +46,14 @@ router.post('/export', async (req, res, next) => {
       );
     }
 
-    await atlasExportQueue.add('atlas-export', { exportId, label, description, filterTags });
+    // The export holds what the requester may read — never another user's documents.
+    await atlasExportQueue.add('atlas-export', {
+      exportId,
+      label,
+      description,
+      filterTags,
+      requestedByUserId: exportUserId,
+    });
 
     res.status(202).json({ exportId, status: 'queued', nomicAutoUpload: true, chunkCount: 0 });
   } catch (err) {
@@ -118,6 +126,11 @@ router.get('/exports/:id/download', async (req, res, next) => {
 // truncating the live corpus.
 router.get('/embedded-count', async (req, res, next) => {
   try {
+    const viewer = libraryViewerFromRequest(req);
+    if (!viewer) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const { tags } = req.query as { tags?: string };
     const filterTags = tags ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : null;
     const params: unknown[] = [];
@@ -125,6 +138,10 @@ router.get('/embedded-count', async (req, res, next) => {
     if (filterTags && filterTags.length > 0) {
       params.push(filterTags);
       tagFilter = `AND s.tags && $${params.length}::text[]`;
+    }
+    if (!viewer.isAdmin) {
+      params.push(viewer.userId);
+      tagFilter += ` AND ${ownSourceSql('s', params.length)}`;
     }
     const rows = await query<{ count: number | string }>(
       `SELECT COUNT(*)::int AS count
@@ -151,6 +168,11 @@ router.get('/embedded-count', async (req, res, next) => {
 // points.
 router.get('/points', async (req, res, next) => {
   try {
+    const viewer = libraryViewerFromRequest(req);
+    if (!viewer) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const { limit = '500', tags } = req.query as { limit?: string; tags?: string };
     const ATLAS_FULL_CORPUS_LIMIT = 10000;
     let lim: number;
@@ -168,6 +190,13 @@ router.get('/points', async (req, res, next) => {
     if (filterTags && filterTags.length > 0) {
       params.push(filterTags);
       tagFilter = `AND s.tags && $${params.length}::text[]`;
+    }
+    // A user sees points for their own sources; an admin sees the whole library.
+    let claimScope = '';
+    if (!viewer.isAdmin) {
+      params.push(viewer.userId);
+      tagFilter += ` AND ${ownSourceSql('s', params.length)}`;
+      claimScope = `AND EXISTS (SELECT 1 FROM research_runs cr WHERE cr.id = cl.run_id AND cr.user_id = $${params.length}::text)`;
     }
 
     // Pick the highest-ranked claim that links to this chunk, in either
@@ -198,8 +227,9 @@ router.get('/points', async (req, res, next) => {
          (
            SELECT cl.evidence_tier
              FROM claims cl
-            WHERE cl.chunk_id = c.id
-               OR c.id = ANY(cl.supporting_chunk_ids)
+            WHERE (cl.chunk_id = c.id
+               OR c.id = ANY(cl.supporting_chunk_ids))
+              ${claimScope}
             ORDER BY CASE cl.evidence_tier
               WHEN 'established_fact' THEN 1
               WHEN 'strong_evidence'  THEN 2
@@ -324,9 +354,14 @@ function project(vec: number[], matrix: number[][]): number[] {
 }
 
 // POST /api/atlas/exports/:id/nomic-upload - Upload existing atlas export to Nomic dataset
+// Admin only: this sends library text to an outside service under the server's own key.
 router.post('/exports/:id/nomic-upload', async (req, res, next) => {
   try {
     const userId = req.auth?.userId ?? null;
+    if (!libraryViewerFromRequest(req)?.isAdmin) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
 
     let rows: Array<{ export_path: string; label: string }>;
     try {
