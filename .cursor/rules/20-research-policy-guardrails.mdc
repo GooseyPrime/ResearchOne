@@ -19,13 +19,13 @@ at the repo root. Read it. The summary the agent must internalize:
    that wrapping is **immutable**.
 3. **Preserve anomalies and contradictions.** Never sanitize, never
    debunk-by-recall, never silently smooth.
-4. **Challenge roles** (`skeptic`, `internal_challenger`) get
+4. **Challenge roles** (`double_check`, `internal_challenger`) get
    `CHALLENGE_PASS_SYSTEM_PREFIX` from
    `backend/src/services/reasoning/reasoningModelPolicy.ts`, applied by
    `applySystemAugmentations` in `openrouterService.ts` on every run
    that calls those roles, except calls made with
    `callPurpose: 'contradiction_extraction'` (the contradiction
-   extractor calls the `skeptic` role without the prefix, on purpose).
+   extractor calls the `double_check` role without the prefix, on purpose).
    It is not gated on an engine version. That prefix is **immutable**.
 
 ## Model selection
@@ -40,7 +40,7 @@ Layer 1 writing, checking, and judging may use the best model for the
 job, including closed-provider models (Anthropic, OpenAI, Google,
 Mistral closed), chosen by the measurement harness, always with a
 fallback on another provider. The low-refusal requirement applies to
-Layer 2 challenge roles only (`skeptic`, `internal_challenger`).
+Layer 2 challenge roles only (`double_check`, `internal_challenger`).
 
 **Today every role, Layer 1 included, runs on the open-weights
 `V2_MODE_PRESETS`, and `V2_FORBIDDEN_DEFAULT_MODELS` in
@@ -140,7 +140,7 @@ updated to add new intents, extend this table accordingly.
 
 | Intent family | Requires hypothesis/falsification? |
 |---|---|
-| `adjudicative`, `causal_test`, `story_verification` | **Yes** — full skeptic / adversarial pipeline |
+| `adjudicative`, `causal_test`, `story_verification` | **Yes** — full double-check / adversarial pipeline |
 | `factual`, `survey`, `comparison`, `explain`, `reference_lookup` | **No** — source-backed synthesis, uncertainty labels, no hypothesis field |
 | `exploratory`, `opportunity_discovery`, `market_research`, `feasibility` | **No** — deliverable list + feasibility screening; hypothesis conversion is the regression to fix |
 | `recommendation`, `implementation`, `how_to` | **No** — deliverable checklist; no adjudicative structure |
