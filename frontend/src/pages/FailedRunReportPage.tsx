@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useId, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import NotUsedSources from '../components/research/NotUsedSources';
 import {
   getResearchRun,
   getRunArtifacts,
@@ -9,7 +10,7 @@ import {
   extractApiError,
 } from '../utils/api';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
-import NotUsedSources from '../components/research/NotUsedSources';
+import { useIsAdmin } from '../hooks/useIsAdmin';
 import {
   ArrowLeft,
   XCircle,
@@ -55,6 +56,7 @@ export default function FailedRunReportPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
   const [retryError, setRetryError] = useState<string | null>(null);
+  const isAdmin = useIsAdmin();
 
   const { data: run, isLoading: runLoading, error: runError } = useQuery({
     queryKey: ['research-run', runId],
@@ -290,7 +292,7 @@ export default function FailedRunReportPage() {
         {/* Error details */}
         {(run.failed_stage || run.error_message) && (
           <div className="space-y-2">
-            {run.failed_stage && (
+            {isAdmin && run.failed_stage && (
               <div className="flex items-center gap-2">
                 <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
                 <span className="text-xs text-slate-400">
@@ -325,9 +327,10 @@ export default function FailedRunReportPage() {
         )}
       </div>
 
-      {/* Embedded full Run Summary Report (the exact same component used on the
-          research page so the user's "perfect report" is preserved here). */}
-      <RunSummaryReport
+      {/* The technical record of the run (its trace, the steps that ran, model and
+          token counts) is for administrators. A customer is shown what went
+          wrong in plain words above, and the reference to quote to support. */}
+      {isAdmin && <RunSummaryReport
         summary={runSummary}
         run={run}
         plan={(artifacts?.plan as Record<string, unknown> | null | undefined) ?? (run?.plan ?? null)}
@@ -338,7 +341,7 @@ export default function FailedRunReportPage() {
           error: run.error_message ?? '',
           failureMeta: fmeta,
         }}
-      />
+      />}
 
       {/* Artifacts error */}
       {artifactsError && (
