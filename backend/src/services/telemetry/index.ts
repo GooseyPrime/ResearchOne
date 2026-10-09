@@ -18,6 +18,7 @@ export {
 
 export {
   getModelPrice,
+  getCallPrice,
   computeCostUsd,
   type ModelPrice,
 } from './pricingCatalog';
