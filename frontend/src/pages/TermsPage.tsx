@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import LandingFooter from '../components/landing/LandingFooter';
 import LandingHeader from '../components/landing/LandingHeader';
+import { customerOption } from '../content/customerOptions';
 
 const EFFECTIVE_DATE = 'May 6, 2025';
 
@@ -104,7 +105,7 @@ export default function TermsPage() {
             cancellation takes effect at the end of the current paid period and you will retain access until then.
           </p>
           <p>
-            <strong className="text-r1-text">Wallet credits</strong> are non-refundable and expire 12 months after
+            <strong className="text-r1-text">{customerOption('plan', 'wallet').name}</strong> are non-refundable and expire 12 months after
             purchase unless applicable law requires otherwise.
           </p>
           <p>
