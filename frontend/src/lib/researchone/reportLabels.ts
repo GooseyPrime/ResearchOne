@@ -19,12 +19,20 @@
 const GRADE_WITH_ORIGIN = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation|preserved[_ ]contradiction|contradiction|unresolved)';
 /** A grade that is a label standing alone in brackets. */
 const GRADE_ALONE = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation|preserved[_ ]contradiction)';
-const PASSAGE_NUMBERS = 'chunks?\\s+\\d+(?:\\s*(?:,|;|&|and)\\s*(?:chunks?\\s+)?\\d+)*';
+/**
+ * "Chunk 17", "Chunks 2, 12 and 15". After the first number only bare numbers
+ * continue this list; a repeated word ("Chunk 2, Chunk 5") starts the next
+ * origin in `ORIGIN_LIST`. Each ", Chunk 5" used to be readable both ways, so a
+ * long list that was not closed by a bracket was tried in every combination:
+ * the time doubled with each item, and 30 items held the page for a minute
+ * (RJ-022).
+ */
+const PASSAGE_NUMBERS = 'chunks?\\s+\\d+(?:\\s*(?:,|;|&|and)\\s*\\d+)*';
 /** The system's own working notes, as old reports named them. */
 const WORKING_NOTE =
   '(?:challenger?|critical|reasoning|reasoner|retriever|retrieval|planner|verifier|synthesi[sz]er|synthesis|quantitative|discovery|auditor)\\s+(?:findings|notes?|outputs?|analysis|summary|pass)';
 const ORIGIN = `(?:${PASSAGE_NUMBERS}|${WORKING_NOTE})`;
-const ORIGIN_LIST = `${ORIGIN}(?:\\s*[,;]\\s*${ORIGIN})*`;
+const ORIGIN_LIST = `${ORIGIN}(?:\\s*(?:,|;|&|and)\\s*${ORIGIN})*`;
 
 const inBrackets = (inner: string): string => `\\s?(?:\\(\\s*${inner}\\s*\\)|\\[\\s*${inner}\\s*\\])`;
 
