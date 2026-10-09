@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { BookmarkPlus, ChevronDown, ChevronUp, ClipboardCheck, HelpCircle, Loader2, MessageSquareText, XCircle } from 'lucide-react';
-import { INTENT_DISPLAY_LABELS, INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
+import { INTENT_DISPLAY_LABELS, INTENT_EXAMPLES, INTENT_SHORT_DESCRIPTIONS } from '../../lib/intents';
 import {
   buildIntentOverrideRefineInstruction,
   HOW_RESEARCHONE_THINKS_SHORT,
@@ -12,6 +12,14 @@ import {
   resolvePostureFamily,
 } from '../../content/howResearchOneThinks';
 import ResearchBriefPreview from './ResearchBriefPreview';
+import {
+  DOUBLE_CHECK,
+  customerOptionHelp,
+  customerOptionName,
+  customerOptionsIn,
+  findCustomerOption,
+  type CustomerOption,
+} from '../../content/customerOptions';
 import {
   cancelRunPlanAtGate,
   confirmRunPlanAtGate,
@@ -40,25 +48,32 @@ function readIntentId(payload: Record<string, unknown>): string {
   return typeof id === 'string' && id.trim() ? id.trim() : 'legacy';
 }
 
-/** Human labels for skeptic / steelman modes from orchestration profile. */
+/** The plan screen's own fields, named and described from the registry of customer-facing names. */
+const FIELD = Object.fromEntries(customerOptionsIn('plan_field').map((option) => [option.id, option]));
+
+/** How this plan checks its findings, in the registry's words. */
 function readEpistemicPosture(payload: Record<string, unknown>): {
-  skepticLabel: string;
-  steelmanLabel: string;
+  doubleCheckLabel: string;
+  strongestFormLabel: string;
+  /** When Double-check runs, with what that means and an example; absent for a mode the registry has no words for. */
+  doubleCheckWords: CustomerOption | undefined;
+  /** How findings are restated before they are tested. */
+  strongestFormWords: CustomerOption | undefined;
   profileName: string | null;
-  skepticMode: string;
-  steelmanMode: string;
+  doubleCheckMode: string;
+  strongestFormMode: string;
 } {
   const profile =
     (payload.orchestrationProfile as Record<string, unknown> | undefined) ??
     (payload.orchestration_profile as Record<string, unknown> | undefined) ??
     {};
 
-  const skepticRaw = (profile.skepticMode ?? profile.skeptic_mode ?? 'off') as string;
-  const steelmanRaw = (profile.steelmanMode ?? profile.steelman_mode ?? 'off') as string;
-  // The Devil's Advocate add-on used to upgrade a run whose profile had the
-  // challenge pass switched off. Every run runs it now and nothing is bought,
-  // so the raw mode from the plan is the mode (WO-AH).
-  const effectiveSkepticRaw = skepticRaw;
+  const doubleCheckRaw = (profile.doubleCheckMode ?? profile.double_check_mode ?? 'off') as string;
+  const strongestFormRaw = (profile.strongestFormMode ?? profile.strongest_form_mode ?? 'off') as string;
+  // An add-on used to upgrade a run whose profile had the check switched off.
+  // Every run runs it now and nothing is bought, so the raw mode from the plan
+  // is the mode (WO-AH).
+  const effectiveDoubleCheckRaw = doubleCheckRaw;
   const displayName =
    typeof profile.name === 'string'
      ? profile.name
@@ -68,26 +83,18 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
          ? profile.display_name
          : null;
 
-  const skepticMap: Record<string, string> = {
-    off: 'Off (no separate Challenge pass)',
-    annotate: 'Challenge pass, with objections shown as notes beside the report',
-    gate: 'Challenge pass before the report is written',
-  };
-  const steelmanMap: Record<string, string> = {
-    off: 'Off',
-    standard: 'Each finding restated in its strongest form before it is checked',
-    per_option: 'Each option restated in its strongest form before it is checked',
-    as_product: 'The strongest case for the position is the report (position brief)',
-    symmetric: 'The strongest case for each side, then the case against it',
-  };
+  const doubleCheckWords = findCustomerOption('check_timing', effectiveDoubleCheckRaw);
+  const strongestFormWords = findCustomerOption('restatement_style', strongestFormRaw);
 
   return {
-    // A mode this page has no words for is not shown as its id.
-    skepticLabel: skepticMap[effectiveSkepticRaw] ?? 'Challenge pass',
-    steelmanLabel: steelmanMap[steelmanRaw] ?? 'On',
+    // A mode the registry has no words for is not shown as its id.
+    doubleCheckLabel: doubleCheckWords?.name ?? DOUBLE_CHECK.name,
+    strongestFormLabel: strongestFormWords?.name ?? '',
+    doubleCheckWords,
+    strongestFormWords,
     profileName: displayName,
-    skepticMode: effectiveSkepticRaw,
-    steelmanMode: steelmanRaw,
+    doubleCheckMode: effectiveDoubleCheckRaw,
+    strongestFormMode: strongestFormRaw,
   };
 }
 
@@ -155,15 +162,17 @@ export default function PlanConfirmationPanel({
   }, [snapshot.planId, snapshot.refinementRounds, snapshot.planPayload]);
 
   const intentKey = readIntentId(localPayload);
-  const intentLabel = INTENT_DISPLAY_LABELS[intentKey] ?? intentKey.replace(/_/g, ' ');
+  // A report type the registry does not know is read as its words, never shown as its id.
+  const intentLabel = INTENT_DISPLAY_LABELS[intentKey] ?? customerOptionName('report_type', intentKey);
   const intentDesc = INTENT_SHORT_DESCRIPTIONS[intentKey] ?? '';
+  const intentExample = INTENT_EXAMPLES[intentKey] ?? '';
   const intentHelpText = INTENT_HELP_TEXT[intentKey] ?? '';
   const intentConfidence = readPlanIntentConfidence(localPayload);
   const competenceText = readTopicCompetenceAssessment(localPayload);
   const posture = readEpistemicPosture(localPayload);
   const postureFamily = resolvePostureFamily({
-    skepticMode: posture.skepticMode,
-    steelmanMode: posture.steelmanMode,
+    doubleCheckMode: posture.doubleCheckMode,
+    strongestFormMode: posture.strongestFormMode,
     intentId: intentKey,
   });
   const postureFamilyDef = POSTURE_FAMILIES.find((p) => p.id === postureFamily.id) ?? postureFamily;
@@ -313,7 +322,7 @@ export default function PlanConfirmationPanel({
   const handleSaveProfile = async () => {
     const name = saveName.trim();
     if (!name) {
-      onNotify('info', 'Enter a name for this profile.');
+      onNotify('info', 'Enter a name for these settings.');
       return;
     }
     setSaveBusy(true);
@@ -332,7 +341,7 @@ export default function PlanConfirmationPanel({
       setSaveOpen(false);
       setSaveName('');
       onInvalidateSavedProfiles?.();
-      onNotify('success', 'Profile saved — select it before your next run.');
+      onNotify('success', 'Settings saved — choose them on your next request.');
     } catch (e) {
       onNotify('error', extractApiError(e));
     } finally {
@@ -374,8 +383,8 @@ export default function PlanConfirmationPanel({
         <div className="min-w-0 space-y-1">
           <h3 className="text-sm font-semibold text-amber-100">Confirm research plan</h3>
           <p className="text-xs text-slate-400 leading-snug">
-            Review the detected intent and draft plan. Confirm to start retrieval and reasoning with the full pipeline,
-            refine the plan in plain language, or cancel to release the run.
+            Check the report type and the plan below. Confirm to start the research, tell us what to change, or
+            cancel to go back and edit your request. Nothing runs until you confirm.
           </p>
         </div>
       </div>
@@ -411,8 +420,13 @@ export default function PlanConfirmationPanel({
 
       <div className="rounded-lg border border-surface-100 bg-surface-200/40 p-3 space-y-2 text-xs">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-slate-500 uppercase tracking-wide">Intent</span>
-          <span className={clsx('rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide', confidenceBadge.cls)}>
+          <span className="text-slate-500 uppercase tracking-wide" title={FIELD.report_type.description}>
+            {FIELD.report_type.name}
+          </span>
+          <span
+            className={clsx('rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide', confidenceBadge.cls)}
+            title={customerOptionHelp(FIELD.confidence)}
+          >
             {confidenceBadge.label}
             {intentConfidence != null ? ` (${(intentConfidence * 100).toFixed(0)}%)` : ''}
           </span>
@@ -426,14 +440,17 @@ export default function PlanConfirmationPanel({
           ) : null}
         </div>
         {intentDesc ? <p className="text-slate-400 mt-1">{intentDesc}</p> : null}
-        {intentHelpText ? (
-          <p className="text-slate-500 text-[11px] leading-snug">{intentHelpText}</p>
+        {intentExample ? (
+          <p className="text-slate-500 text-[11px] leading-snug">Example: {intentExample}</p>
         ) : null}
+        <p className="text-slate-500 text-[11px] leading-snug">{FIELD.report_type.description}</p>
 
-        {/* Epistemic posture — Phase 1 visibility + Phase 2 posture family badge */}
+        {/* How this report's findings are checked: Double-check, described where it is named. */}
         <div className="pt-2 mt-2 border-t border-surface-100/60 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-slate-500 uppercase tracking-wide">Epistemic posture</span>
+            <span className="text-slate-500 uppercase tracking-wide" title={FIELD.check_approach.description}>
+              {FIELD.check_approach.name}
+            </span>
             <span
               className={clsx(
                 'rounded border px-2 py-0.5 text-[10px] uppercase tracking-wide',
@@ -444,21 +461,23 @@ export default function PlanConfirmationPanel({
               {postureFamilyDef.label}
             </span>
           </div>
-          {posture.profileName ? (
-            <p className="text-slate-300 text-[11px]">Profile: {posture.profileName}</p>
-          ) : null}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
-            <span>
-              <span className="text-slate-500">Challenge pass:</span> {posture.skepticLabel}
-            </span>
-            <span>
-              <span className="text-slate-500">Strongest-form restatement:</span> {posture.steelmanLabel}
-            </span>
+          <div className="space-y-1 text-slate-300" data-testid="plan-double-check">
+            <p className="font-medium text-slate-200">{DOUBLE_CHECK.name}</p>
+            <p className="text-slate-400 text-[11px] leading-snug">{DOUBLE_CHECK.description}</p>
+            <p className="text-slate-500 text-[11px] leading-snug">Example: {DOUBLE_CHECK.example}</p>
+            <p>
+              <span className="text-slate-500">For this report:</span> {posture.doubleCheckLabel}
+            </p>
+            {posture.doubleCheckWords ? (
+              <p className="text-slate-500 text-[11px] leading-snug">{customerOptionHelp(posture.doubleCheckWords)}</p>
+            ) : null}
+            {posture.strongestFormWords ? (
+              <>
+                <p>{posture.strongestFormLabel}</p>
+                <p className="text-slate-500 text-[11px] leading-snug">{customerOptionHelp(posture.strongestFormWords)}</p>
+              </>
+            ) : null}
           </div>
-          <p className="text-slate-500 text-[11px] leading-snug">
-            When the selected intent calls for investigation or adjudication, ResearchOne gathers supporting and
-            opposing evidence and keeps genuine source disagreements visible.
-          </p>
         </div>
 
         {/* "How ResearchOne thinks" expandable */}
@@ -479,31 +498,37 @@ export default function PlanConfirmationPanel({
 
         {topicStr ? (
           <div>
-            <span className="text-slate-500 uppercase tracking-wide">Topic read</span>
+            <span className="text-slate-500 uppercase tracking-wide" title={FIELD.topic_read.description}>
+              {FIELD.topic_read.name}
+            </span>
             <p className="text-slate-300 mt-1 whitespace-pre-wrap">{topicStr}</p>
           </div>
         ) : null}
         {competenceText ? (
           <div>
-            <span className="text-slate-500 uppercase tracking-wide">Competence check</span>
+            <span className="text-slate-500 uppercase tracking-wide" title={FIELD.research_fit.description}>
+              {FIELD.research_fit.name}
+            </span>
             <p className="text-slate-400 mt-1 whitespace-pre-wrap">{competenceText}</p>
           </div>
         ) : null}
-        <p className="text-slate-500">Refinement rounds: {rounds}</p>
+        <p className="text-slate-500" title={FIELD.plan_changes.description}>
+          {FIELD.plan_changes.name}: {rounds}
+        </p>
       </div>
 
       {/* Intent override control */}
       <div className="rounded-lg border border-surface-100 bg-surface-200/20 p-3 space-y-2 text-xs">
-        <p className="text-slate-400 font-medium">I meant a different research goal…</p>
+        <p className="text-slate-400 font-medium">{FIELD.change_report_type.name}…</p>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={intentOverrideId}
             onChange={(e) => setIntentOverrideId(e.target.value)}
             disabled={busy || intentOverrideBusy}
             className="rounded border border-surface-100 bg-[#0b0d14] px-2 py-1 text-xs text-slate-200 disabled:opacity-50 flex-1 min-w-0"
-            aria-label="Select a different research intent"
+            aria-label={FIELD.change_report_type.name}
           >
-            <option value="">Select intent…</option>
+            <option value="">Choose a report type…</option>
             {INTENT_OVERRIDE_OPTIONS.filter((o) => o.id !== intentKey).map((o) => (
               <option key={o.id} value={o.id}>
                 {o.label} — {o.shortDescription}
@@ -520,8 +545,13 @@ export default function PlanConfirmationPanel({
             Apply
           </button>
         </div>
+        {intentOverrideId && INTENT_HELP_TEXT[intentOverrideId] ? (
+          <p className="text-slate-500 text-[11px]" data-testid="report-type-choice-help">
+            {INTENT_HELP_TEXT[intentOverrideId]}
+          </p>
+        ) : null}
         <p className="text-slate-600 text-[11px]">
-          Sends a refinement instruction to re-route this plan. The plan gate stays open for your review.
+          {FIELD.change_report_type.description} You see the new plan here before anything runs.
         </p>
       </div>
 
@@ -534,8 +564,9 @@ export default function PlanConfirmationPanel({
 
       <div className="space-y-2">
         <label className="block text-xs font-medium text-slate-400" htmlFor="plan-refine-input">
-          Refine plan (optional)
+          {FIELD.refine_plan.name}
         </label>
+        <p className="text-[11px] text-slate-500">{customerOptionHelp(FIELD.refine_plan)}</p>
         <textarea
           id="plan-refine-input"
           rows={3}
@@ -555,7 +586,7 @@ export default function PlanConfirmationPanel({
           )}
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <MessageSquareText size={14} />}
-          Apply refinement
+          Change the plan
         </button>
       </div>
 
@@ -569,13 +600,14 @@ export default function PlanConfirmationPanel({
               onClick={() => setSaveOpen(true)}
             >
               <BookmarkPlus size={14} />
-              Save this plan as a profile
+              {FIELD.save_settings.name}
             </button>
           ) : (
             <div className="space-y-2 rounded-lg border border-surface-100 bg-[#0b0d14]/80 p-3">
               <label className="block text-xs text-slate-400" htmlFor="save-profile-name">
-                Profile name
+                Name for these settings
               </label>
+              <p className="text-[11px] text-slate-500">{customerOptionHelp(FIELD.save_settings)}</p>
               <input
                 id="save-profile-name"
                 className="input text-xs w-full"
@@ -592,7 +624,7 @@ export default function PlanConfirmationPanel({
                   onClick={() => void handleSaveProfile()}
                 >
                   {saveBusy ? <Loader2 size={14} className="animate-spin inline" /> : null}
-                  Save profile
+                  Save settings
                 </button>
                 <button type="button" className="btn-secondary text-xs" disabled={saveBusy} onClick={() => setSaveOpen(false)}>
                   Cancel
@@ -611,7 +643,7 @@ export default function PlanConfirmationPanel({
           className="btn-primary inline-flex items-center gap-2 text-xs"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
-          Confirm & run
+          {FIELD.confirm.name}
         </button>
         <button
           type="button"
@@ -620,7 +652,7 @@ export default function PlanConfirmationPanel({
           className="btn-secondary inline-flex items-center gap-2 text-xs text-slate-300"
         >
           <XCircle size={14} />
-          Cancel run
+          {FIELD.cancel.name}
         </button>
       </div>
     </div>
