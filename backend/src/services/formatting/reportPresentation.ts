@@ -26,13 +26,17 @@ const SNAKE_TIER_TOKEN = /\b(?:established_fact|strong_evidence)\b:?[ \t]*/gi;
  * authors reject)", "(2019, chapter 3)") is not this shape and is kept.
  */
 const GRADE_WITH_ORIGIN = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation|preserved[_ ]contradiction|contradiction|unresolved)';
-const PASSAGE_NUMBERS = 'chunks?\\s+\\d+(?:\\s*(?:,|;|&|and)\\s*(?:chunks?\\s+)?\\d+)*';
+// After the first number only bare numbers continue a passage list; a repeated
+// word ("Chunk 2, Chunk 5") starts the next origin in `ORIGIN_LIST`. When each
+// ", Chunk 5" could be read both ways, a long list that no bracket closed was
+// tried in every combination and held the API process (RJ-022).
+const PASSAGE_NUMBERS = 'chunks?\\s+\\d+(?:\\s*(?:,|;|&|and)\\s*\\d+)*';
 const WORKING_NOTE =
   '(?:challenger?|critical|reasoning|reasoner|retriever|retrieval|planner|verifier|synthesi[sz]er|synthesis|quantitative|discovery|auditor)\\s+(?:findings|notes?|outputs?|analysis|summary|pass)';
 const ORIGIN = `(?:${PASSAGE_NUMBERS}|${WORKING_NOTE})`;
-const ORIGIN_LIST = `${ORIGIN}(?:\\s*[,;]\\s*${ORIGIN})*`;
+const ORIGIN_LIST = `${ORIGIN}(?:\\s*(?:,|;|&|and)\\s*${ORIGIN})*`;
 const GRADE_AND_ORIGIN_LABEL = new RegExp(
-  `(\\s?)(?:\\(\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|\u2013\u2014-]\\s*${ORIGIN_LIST}\\s*\\)|\\[\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|\u2013\u2014-]\\s*${ORIGIN_LIST}\\s*\\])`,
+  `(\\s?)(?:\\(\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|–—-]\\s*${ORIGIN_LIST}\\s*\\)|\\[\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|–—-]\\s*${ORIGIN_LIST}\\s*\\])`,
   'gi'
 );
 /** A working note named alone in brackets: "(Challenger Findings)", "[Reasoning Output]". */
@@ -55,7 +59,7 @@ function gradeAndOriginReplacement(label: string, lead: string): string {
   // The space before the label, if there was one, stays: labels written side by side stay side by side.
   return `${lead}[${unique.length > 1 ? 'Chunks' : 'Chunk'} ${unique.join(', ')}]`;
 }
-const REMOVED_LABEL = '\uE000';
+const REMOVED_LABEL = '';
 
 /**
  * RJ-018. Section names of the removed layout written inside a sentence
@@ -103,7 +107,7 @@ const ROLE_NAME = new RegExp(
 const SAYS_NEXT = new RegExp(`^\\s+${ROLE_SAYS}\\b`, 'i');
 const CREDIT_BEFORE = /\b(?:by|from|per|according\s+to)\s$/i;
 /** Text that ends where a sentence starts: the start, a sentence end or a new line, then any list marker and opening punctuation. */
-const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'\u201C\u2018([]*$/;
+const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'“‘([]*$/;
 
 /** Whether the text before `offset` ends where a sentence starts. */
 export function startsSentence(whole: string, offset: number): boolean {
@@ -166,7 +170,7 @@ export const CLAIM_WORD = new RegExp(
 );
 
 /** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
-const QUOTED_SPAN = /"[^"\n]{1,600}"|\u201C[^\u201D\n]{1,600}\u201D/g;
+const QUOTED_SPAN = /"[^"\n]{1,600}"|“[^”\n]{1,600}”/g;
 
 /** Apply a change to everything outside double quotation marks. */
 export function mapOutsideQuotes(text: string, change: (part: string) => string): string {
@@ -262,7 +266,7 @@ const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
  */
 const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
 /** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
-const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
+const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
 
 /** Width of leading whitespace, a tab counting as four columns. */
 function indentWidth(line: string): number {
@@ -410,12 +414,12 @@ export function mapLinkLabels(markdown: string, change: (label: string) => strin
  * stands, and code, link definitions and bare addresses taken out.
  */
 function readerVisibleText(text: string): string {
-  return mapOutsideCode(text, (part) => part, () => '\uE004')
+  return mapOutsideCode(text, (part) => part, () => '')
     .replace(INLINE_LINK, '$1')
     // A reference-style link shows its label; the identifier after it is never seen.
     .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
-    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
-    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
+    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '')
+    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '');
 }
 
 /**
@@ -449,14 +453,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const proseOf = (source: string): string => {
     let prose = '';
     mapCitationProse(source, (part) => {
-      prose += `${part}\uE004`;
+      prose += `${part}`;
       return part;
     });
     // The label of a link is read by the reader too; its destination is not.
-    const outsideCode = mapOutsideCode(source, (part) => part, () => '\uE004');
-    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+    const outsideCode = mapOutsideCode(source, (part) => part, () => '');
+    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]`;
     // Likewise the label of a reference-style link ("[label][ref]").
-    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]`;
     return prose;
   };
   // Labels and markers are a leak wherever they are printed, the reference list included.
@@ -478,14 +482,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const body = readerVisibleText(own);
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
-  const seen = `${proseOf(own)}\uE004${body}`;
+  const seen = `${proseOf(own)}${body}`;
   if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
   // A role named in a sentence is an internal step on the page, brackets or not.
   if (namesSpokenRole(body) && !hits.includes('internal step')) hits.push('internal step');
   // What a source says in its own words stays as it said it; the report's own wording is checked.
   let ownWords = '';
   mapOutsideQuotes(body, (part) => {
-    ownWords += `${part}\uE004`;
+    ownWords += `${part}`;
     return part;
   });
   if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
@@ -495,7 +499,7 @@ export function readerFacingLabelHits(text: string): string[] {
 }
 
 /** Marks where a label was removed, so spacing is tidied only there. */
-const REMOVED = '\uE000';
+const REMOVED = '';
 
 /**
  * Slice 6. The line the writer is shown above each passage ("Kind of source:
@@ -574,11 +578,11 @@ function cleanProse(text: string, keepSectionNames = false): string {
       .replace(SNAKE_TIER_TOKEN, REMOVED)
       .replace(INTERNAL_STEP_NAME, REMOVED)
       // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
-      .replace(/[ \t]*\uE000+[ \t]*(?=[.,;:!?)\]])/g, '')
+      .replace(/[ \t]*+[ \t]*(?=[.,;:!?)\]])/g, '')
       // A removal between words leaves one space.
-      .replace(/(?<=\S)[ \t]*\uE000+[ \t]*(?=\S)/g, ' ')
+      .replace(/(?<=\S)[ \t]*+[ \t]*(?=\S)/g, ' ')
       // A removal at the start or end of a line leaves nothing.
-      .replace(/[ \t]*\uE000+[ \t]*/g, '')
+      .replace(/[ \t]*+[ \t]*/g, '')
   );
 }
 

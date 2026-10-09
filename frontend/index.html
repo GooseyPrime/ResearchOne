@@ -8,6 +8,24 @@
       function gtag() {
         dataLayer.push(arguments);
       }
+      // The tag is for the public pages. On signed-in pages it is switched off
+      // (Google's per-id switch), so it neither sends nor reads anything there
+      // (RJ-022). The switch follows the address: it is set here before the tag
+      // is configured, and again each time the address changes, before the tag
+      // sees the change. src/lib/analyticsScope.ts holds the same rule.
+      function r1AnalyticsScope() {
+        window['ga-disable-G-C9CW32EES7'] = /^\/(app|account|onboarding)(\/|$)/.test(window.location.pathname);
+      }
+      r1AnalyticsScope();
+      ['pushState', 'replaceState'].forEach(function (name) {
+        var change = window.history[name];
+        window.history[name] = function () {
+          var result = change.apply(this, arguments);
+          r1AnalyticsScope();
+          return result;
+        };
+      });
+      window.addEventListener('popstate', r1AnalyticsScope);
       gtag('js', new Date());
 
       gtag('config', 'G-C9CW32EES7');
