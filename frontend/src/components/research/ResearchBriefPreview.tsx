@@ -1,4 +1,8 @@
 import { INTENT_DISPLAY_LABELS } from '../../lib/intents';
+import { customerOptionsIn } from '../../content/customerOptions';
+
+/** The plan preview's headings, named and described from the registry of customer-facing names. */
+const FIELD = Object.fromEntries(customerOptionsIn('plan_field').map((option) => [option.id, option]));
 import { AGENT_DISPLAY_DESCRIPTIONS, SPECIALIST_AGENT_IDS } from '../../lib/agentDisplayDescriptions';
 import { humanizeIdentifier } from '../../utils/formatIdentifiers';
 import ResearchDeliverablesChecklist from './ResearchDeliverablesChecklist';
@@ -128,18 +132,24 @@ export default function ResearchBriefPreview({
           {INTENT_DISPLAY_LABELS[intentId ?? ''] ?? (intentId ? humanizeIdentifier(intentId) : 'General research request')}
         </p>
         {confidence != null ? (
-          <p className="text-[11px] text-slate-400 mt-1">Classifier confidence: {(confidence * 100).toFixed(0)}%</p>
+          <p className="text-[11px] text-slate-400 mt-1" title={FIELD.confidence.description}>
+            {FIELD.confidence.name}: {(confidence * 100).toFixed(0)}%
+          </p>
         ) : null}
       </div>
 
       <div>
-        <p className="text-slate-500 uppercase tracking-wide mb-1">Deliverables</p>
+        <p className="text-slate-500 uppercase tracking-wide mb-1" title={FIELD.deliverables.description}>
+          {FIELD.deliverables.name}
+        </p>
         <ResearchDeliverablesChecklist artifacts={deliverables} />
       </div>
 
       {agentTeam.length > 0 ? (
         <div>
-          <p className="text-slate-500 uppercase tracking-wide mb-1">Agent team</p>
+          <p className="text-slate-500 uppercase tracking-wide mb-1" title={FIELD.work_steps.description}>
+            {FIELD.work_steps.name}
+          </p>
           <div className="space-y-2">
             {agentTeam.map((agent) => (
               <div
@@ -166,7 +176,9 @@ export default function ResearchBriefPreview({
       ) : null}
 
       <div>
-        <p className="text-slate-500 uppercase tracking-wide mb-1">Assumptions</p>
+        <p className="text-slate-500 uppercase tracking-wide mb-1" title={FIELD.assumptions.description}>
+          {FIELD.assumptions.name}
+        </p>
         <ResearchAssumptionsEditor
           assumptions={assumptions}
           disabled={disabled}
