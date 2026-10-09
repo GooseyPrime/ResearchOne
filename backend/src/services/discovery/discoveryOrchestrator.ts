@@ -31,6 +31,17 @@ import { ingestionQueue } from '../../queue/queues';
 import { fillReferenceDetails, recordAuthorityTier, storedBibliographic } from '../ingestion/ingestionService';
 import { authorityTierOfResults, authorityTiersEnabled, storedAuthorityTier } from '../authority/authorityTier';
 import { selectByRelevance } from './candidateRelevance';
+import { recordDiscoveryEvent } from './discoveryEvents';
+import {
+  RELEVANCE_BATCH_SIZE,
+  documentKey,
+  judgeRelevance,
+  notUsedLabel,
+  relevanceGateEnabled,
+  rememberVerdict,
+  verdictFor,
+  type RelevanceCheckReport,
+} from './relevanceGate';
 import { effectiveIngestCap } from './sourceBudget';
 import { callRoleModel } from '../openrouter/openrouterService';
 import { runScope } from '../telemetry';
@@ -45,7 +56,7 @@ import {
   doiResolveEnabled,
   providerRoutingEnabled,
 } from '../../config';
-import { selectProviders, sourceDescriptionsFor, type ProviderKey, type ProviderSelection } from './providerRouting';
+import { providersForRequest, selectProviders, sourceDescriptionsFor, type DiscoveryRoute, type ProviderKey, type ProviderSelection } from './providerRouting';
 import { isSpecialistAgentId, type SpecialistAgentId } from '../reasoning/agentCapabilityRegistry';
 import {
   DiscoveryPlan,
@@ -246,8 +257,20 @@ export async function planGapQueries(args: {
   }
 }
 
-/** Get the configured search provider(s). With PROVIDER_ROUTING_ENABLED on, `selectProviders` decides instead. */
-function getSearchProviders(specialistAgentIds: readonly string[] = []): SearchProvider[] {
+/**
+ * Get the configured search provider(s). With PROVIDER_ROUTING_ENABLED on, `selectProviders` decides instead.
+ *
+ * The specialist mapping still adds its connectors, but a scholarly-only one
+ * (arXiv, PubMed Central, ClinicalTrials.gov, USPTO) is held back unless the
+ * request itself is on a route that uses it (`providersForRequest`). The
+ * mapping ties those four to specialists that are scheduled for report types
+ * that have nothing to do with science, which is how a question about an
+ * election was sent to arXiv.
+ */
+function getSearchProviders(
+  specialistAgentIds: readonly string[],
+  brief: { researchQuery: string; intent?: string | null; researchObjective?: string | null }
+): { providers: SearchProvider[]; keys: ProviderKey[]; heldBack: ProviderKey[]; routes: DiscoveryRoute[] } {
   const connectorKeys = new Set<ProviderKey>();
   for (const specialistId of specialistAgentIds) {
     if (!isSpecialistAgentId(specialistId)) continue;
@@ -255,22 +278,23 @@ function getSearchProviders(specialistAgentIds: readonly string[] = []): SearchP
       connectorKeys.add(key);
     }
   }
-  const specialistConnectors = [...connectorKeys].map((key) => provider(key));
-
-  const providerName = config.discovery.provider;
-  switch (providerName) {
-    case 'cascade':
-      return [provider('tavily'), provider('brave'), provider('generic'), ...specialistConnectors];
-    case 'brave':
-      return [provider('brave'), ...specialistConnectors];
-    case 'generic':
-      return [provider('generic'), ...specialistConnectors];
-    case 'tavily':
-      return [provider('tavily'), ...specialistConnectors];
-    default:
-      return [provider('tavily'), ...specialistConnectors];
-  }
+  const { allowed, heldBack, routes } = providersForRequest([...connectorKeys], brief);
+  const keys = [...webProviderKeys(), ...allowed];
+  return { providers: keys.map((key) => provider(key)), keys, heldBack, routes };
 }
+
+/** Candidates judged at a time before any is queued: two model calls, made together. */
+const RELEVANCE_WAVE = RELEVANCE_BATCH_SIZE * 2;
+/**
+ * The most candidates one pass sends to the judge. The list is ranked, so past
+ * this depth a pass that still has too few relevant sources is better served
+ * by new searches than by reading further down the same results.
+ */
+const MAX_JUDGED_PER_PASS = 200;
+/** Extra search rounds a pass may run when the relevance check leaves it short of sources. */
+const MAX_RELEVANCE_GAP_ROUNDS = 2;
+/** Queries each of those rounds may send. They may exceed the run's ordinary query budget by this much and no more. */
+const RELEVANCE_GAP_QUERIES_PER_ROUND = 3;
 
 function isSensitiveTopic(text: string): boolean {
   const lowered = text.toLowerCase();
@@ -321,6 +345,12 @@ export async function runDiscoveryOrchestrator(args: {
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
   /** Fired when the LLM planner yielded no usable queries and deterministic recovery took over (Rule 42 R42-3). */
   onDeterministicFallback?: (payload: { reason: string; queries: string[] }) => Promise<void> | void;
+  /**
+   * Fired after each batch of candidates is checked for relevance, so the run's
+   * trace says how many were set aside and whether a model made the decision
+   * (Rule 42 R42-3: a fallback must be visible in the trace).
+   */
+  onRelevanceCheck?: (report: RelevanceCheckReport) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const parent = runScope.current();
   return runScope.run(
@@ -352,6 +382,7 @@ async function runDiscoveryOrchestratorInner(args: {
   onRoundComplete?: (payload: { round: number; candidatesAfter: number }) => Promise<void> | void;
   /** Fired when the LLM planner yielded no usable queries and deterministic recovery took over (Rule 42 R42-3). */
   onDeterministicFallback?: (payload: { reason: string; queries: string[] }) => Promise<void> | void;
+  onRelevanceCheck?: (report: RelevanceCheckReport) => Promise<void> | void;
 }): Promise<DiscoveryRunSummary> {
   const {
     runId,
@@ -369,6 +400,7 @@ async function runDiscoveryOrchestratorInner(args: {
     maxCoverageRounds,
     onRoundComplete,
     onDeterministicFallback,
+    onRelevanceCheck,
   } = args;
   const startTime = Date.now();
 
@@ -518,7 +550,24 @@ async function runDiscoveryOrchestratorInner(args: {
       extra_queries: routing.extraQueries.map(({ text, purpose, providers: to }) => ({ text, purpose, providers: to })),
     });
   }
-  const providers = routing ? routing.providers.map((key) => provider(key)) : getSearchProviders(specialistAgentIds ?? []);
+  const unrouted = routing
+    ? null
+    : getSearchProviders(specialistAgentIds ?? [], {
+        researchQuery,
+        intent: routingBrief?.intent ?? null,
+        researchObjective: researchObjective ?? null,
+      });
+  if (unrouted && unrouted.heldBack.length > 0) {
+    logger.info(`[discovery:${runId}] Not searched for this request (scholarly-only, request is on ${unrouted.routes.join(', ')}): ${unrouted.heldBack.join(', ')}`);
+    await persistDiscoveryEvent(runId, 'providers_held_back', 'router', researchQuery, 0, 0, {
+      routes: unrouted.routes,
+      held_back: unrouted.heldBack,
+      why: 'scholarly-only service; the request is not scientific, medical, technical or about patents',
+    });
+  }
+  const providers = routing ? routing.providers.map((key) => provider(key)) : unrouted!.providers;
+  /** The services this pass searches, for the gap-filling planner. */
+  const searchedKeys: readonly ProviderKey[] = routing ? routing.providers : unrouted!.keys;
   /** Queries sent only to some providers (slice 7 extra queries). Others go to every provider. */
   const queryProviders = new Map<string, ReadonlySet<string>>(
     (routing?.extraQueries ?? []).map((extra) => [extra.text, new Set<string>(extra.providers)])
@@ -536,8 +585,15 @@ async function runDiscoveryOrchestratorInner(args: {
   const resultsFor = new Map<string, SearchResultCandidate[]>();
   const queriesExecuted: string[] = [];
   let roundsExecuted = 0;
+  /** The highest round number a search has run under. */
+  let lastRoundNumber = 0;
   // Total query budget shared across all discovery rounds.
   const totalQueryBudget = discoveryQueryBudget();
+  /**
+   * What `runSearchRound` may spend up to. The run's budget, raised only by the
+   * few queries a relevance gap-filling round is allowed (see below).
+   */
+  let queryBudget = totalQueryBudget;
 
   const recordProviderError = (name: string, searchQuery: string, round: number, reason: unknown) =>
     persistDiscoveryEvent(runId, 'provider_error', name, searchQuery, 0, 0, { round, query: searchQuery, ...providerErrorRecord(reason) });
@@ -552,7 +608,7 @@ async function runDiscoveryOrchestratorInner(args: {
     if (queries.length === 0) return 0;
     let roundNewCandidates = 0;
     for (const searchQuery of queries) {
-      if (queriesExecuted.length >= totalQueryBudget) break;
+      if (queriesExecuted.length >= queryBudget) break;
       queriesExecuted.push(searchQuery);
 
       // Fan out configured providers in parallel for this query. Dedup via `seenUrls` /
@@ -640,6 +696,7 @@ async function runDiscoveryOrchestratorInner(args: {
       }
     }
     roundsExecuted += 1;
+    lastRoundNumber = Math.max(lastRoundNumber, roundNumber);
     return roundNewCandidates;
   };
 
@@ -781,132 +838,316 @@ async function runDiscoveryOrchestratorInner(args: {
 
   // ─── Step 3: Score/rank candidates ──────────────────────────────────────────
   // Sort by score descending, then rank ascending.
-  const scoreRanked = [...allCandidates].sort((a, b) => b.score - a.score || a.rank - b.rank);
-
-  // Then: is it about the thing that was asked?
-  //
-  // Provider scores are not comparable across providers — arXiv's idea of a
-  // good match for "affiliate marketing niches" is still a paper — and nothing
-  // between an API response and the ingest queue used to ask whether the
-  // result was on topic. On-topic candidates are ingested first; off-topic
-  // ones are held back and used only to avoid starving a run of sources, and
-  // when they are used it is recorded as such.
-  // Off-topic candidates top up to the FLOOR, and no further. See
-  // `selectByRelevance` for what the whole-list version cost.
+  const byScore = (list: readonly SearchResultCandidate[]) => [...list].sort((a, b) => b.score - a.score || a.rank - b.rank);
+  // The fewest sources this pass should end with: what the plan asked for, and never fewer than three.
   const relevanceFloor = Math.max(minUsableSources ?? 0, Math.min(3, maxIngest));
-  const { ranked, toppedUpUrls: offTopicUrls, dropped } = selectByRelevance(
-    researchQuery,
-    scoreRanked,
-    relevanceFloor
-  );
-  if (dropped > 0 || offTopicUrls.size > 0) {
-    logger.info(
-      `[discovery:${runId}] off-topic candidates for this request: ${dropped} dropped, ` +
-        `${offTopicUrls.size} kept to reach the ${relevanceFloor}-source floor`
-    );
-  }
+  // The relevance check. On unless switched off for an emergency; with it off
+  // the word-overlap check below is all there is, as before.
+  const gateOn = relevanceGateEnabled();
 
-  // ─── Step 4: Check which candidates are already in corpus ───────────────────
   const selected: DiscoverySource[] = [];
   const skipped: DiscoverySource[] = [];
+  /** Addresses already decided on, so a later round considers only what is new. */
+  const handled = new Set<string>();
+  /** Candidates the judge kept, for the gap-filling planner to read. */
+  const relevantFound: SearchResultCandidate[] = [];
+  /** Relevant candidates that were already stored: usable by this run without a fetch. */
+  let relevantAlreadyStored = 0;
+  /** Candidates the relevance check set aside. */
+  let setAside = 0;
+  const keyOfCandidate = (candidate: SearchResultCandidate) => documentKey(candidate.url, candidate.title);
 
-  for (let i = 0; i < ranked.length && selected.length < maxIngest; i++) {
-    const candidate = ranked[i];
-    const normalised = normalizeUrl(candidate.url);
-    // Check if already ingested
-    const alreadyIngested = await queryOne<{ id: string }>(
-      `SELECT id FROM sources WHERE url=$1 OR url=$2`,
-      [candidate.url, normalised]
-    );
-
-    if (alreadyIngested) {
-      // The source is stored from an earlier run, perhaps before reference
-      // details were kept. What this run's provider record says fills what the
-      // stored source lacks. A candidate carries details only with the citation
-      // lock on, and a failure here costs the reference entry, not the run.
-      const referenceDetails = storedBibliographic(bibliographicMetadata(candidate));
-      if (referenceDetails) {
-        try {
-          await fillReferenceDetails(alreadyIngested.id, referenceDetails);
-        } catch (err) {
-          logger.warn(`[discovery:${runId}] could not add reference details to a stored source: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-      // A source stored before tiers were recorded gains one; a recorded tier is kept.
-      // Never fails the run: a write that keeps failing is logged and the run goes on.
-      if (authorityTiersEnabled()) await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
-      skipped.push({
-        ...candidate,
-        selectionRationale: 'already in corpus',
-        ingested: false,
-        skipReason: 'already_in_corpus',
-      });
-      continue;
-    }
-
-    // Enqueue ingestion
-    const jobId = uuidv4();
-    try {
-      const ijMeta = JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery });
-      try {
-        await query(
-          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
-           VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
-          [jobId, candidate.url, ijMeta, userId ?? null]
-        );
-      } catch (ijErr) {
-        if ((ijErr as { code?: string })?.code !== '42703') throw ijErr;
-        await query(
-          `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
-           VALUES ($1, $2, 'web_url', 'queued', $3)`,
-          [jobId, candidate.url, ijMeta]
-        );
-      }
-
-      const finalUrl = await ensureReachableUrl(candidate.url);
-      await ingestionQueue.add('ingest-url', {
-        ingestionJobId: jobId,
-        url: finalUrl,
-        sourceType: 'web_url',
-        tags: [],
-        metadata: { discovery_run_id: runId, ...bibliographicMetadata(candidate) },
-        importedVia: 'autonomous_discovery',
-        discoveredByRunId: runId,
-        discoveryQuery: candidate.sourceQuery,
-        sourceRank: candidate.rank,
-        fetchMethod: 'http_get',
-        ...(authorityTiersEnabled() && candidate.authorityTier ? { authorityTier: candidate.authorityTier } : {}),
-      });
-
-      selected.push({
-        ...candidate,
-        selectionRationale: offTopicUrls.has(candidate.url)
-          ? `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}, off-topic for this request (kept: too few on-topic candidates)`
-          : `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}`,
-        ingested: true,
-        ingestionJobId: jobId,
-      });
-
-      logger.info(`[discovery:${runId}] Queued ingestion for: ${finalUrl} (job ${jobId})`);
-    } catch (err) {
-      logger.error(`[discovery:${runId}] Failed to queue ingestion for ${candidate.url}:`, err);
-      skipped.push({
-        ...candidate,
-        selectionRationale: 'ingestion queue failed',
-        ingested: false,
-        skipReason: 'queue_error',
-      });
-    }
-  }
-
-  // Mark remaining candidates as skipped (max reached or not selected)
-  for (let i = selected.length + skipped.length; i < ranked.length; i++) {
-    skipped.push({
-      ...ranked[i],
-      selectionRationale: 'max_sources_to_ingest reached',
-      ingested: false,
-      skipReason: 'max_reached',
+  /**
+   * Ask the judge about one batch of candidates, remember what it said for the
+   * rest of the run, and write the batch to the run's discovery record.
+   */
+  const judgeWave = async (wave: SearchResultCandidate[], round: number): Promise<void> => {
+    // A model's verdict from an earlier pass of this run stands; only the rest are asked about.
+    const fresh = wave.filter((candidate) => verdictFor(runId, keyOfCandidate(candidate))?.basis !== 'model');
+    const judged = await judgeRelevance({
+      runId,
+      researchQuery,
+      items: fresh.map((candidate) => ({
+        key: keyOfCandidate(candidate),
+        title: candidate.title ?? '',
+        url: candidate.url,
+        source: candidate.provider,
+        excerpt: typeof candidate.snippet === 'string' ? candidate.snippet : '',
+      })),
+      model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
     });
+    for (const [key, verdict] of judged.verdicts) rememberVerdict(runId, key, verdict);
+    const notUsed = wave.filter((candidate) => verdictFor(runId, keyOfCandidate(candidate))?.relevant !== true);
+    const report: RelevanceCheckReport = {
+      round,
+      judged: wave.length,
+      relevant: wave.length - notUsed.length,
+      notUsed: notUsed.length,
+      decidedWithoutModel: judged.decidedWithoutModel,
+    };
+    await persistDiscoveryEvent(runId, 'relevance_gate', 'judge', researchQuery, wave.length, report.relevant, {
+      round,
+      judged: report.judged,
+      relevant: report.relevant,
+      // Each candidate left out, with the reason. The judge's own words and the
+      // kind of any failure are kept; no error message is, since one can carry
+      // a request address with a key in it.
+      not_used: notUsed.map((candidate) => {
+        const verdict = verdictFor(runId, keyOfCandidate(candidate));
+        return {
+          url: candidate.url,
+          title: candidate.title,
+          provider: candidate.provider,
+          reason: verdict?.reason ?? 'off_topic',
+          decided_by: verdict?.basis ?? 'word_overlap',
+          why: verdict?.note ?? '',
+        };
+      }),
+      ...(judged.decidedWithoutModel > 0 ? { decided_without_model: judged.decidedWithoutModel, failure_kinds: judged.failureKinds } : {}),
+    });
+    if (judged.decidedWithoutModel > 0) {
+      logger.warn(
+        `[discovery:${runId}] relevance check: no model verdict for ${judged.decidedWithoutModel} of ${wave.length} candidate(s) ` +
+          `(${judged.failureKinds.join(', ')}); decided by shared vocabulary and marked for a second check before use`
+      );
+    }
+    try {
+      await onRelevanceCheck?.(report);
+    } catch {
+      /* non-fatal */
+    }
+  };
+
+  // ─── Step 4: Check which candidates are already in corpus ───────────────────
+  /**
+   * Go down a ranked list, queueing what the run will read, until it has
+   * `maxIngest`. With the relevance check on, a candidate is judged before it
+   * is looked at here, and one judged off-topic is never fetched or stored.
+   */
+  const considerCandidates = async (
+    pool: readonly SearchResultCandidate[],
+    offTopicUrls: ReadonlySet<string | null | undefined>,
+    round: number
+  ): Promise<void> => {
+    let judgedUpTo = 0;
+    for (let i = 0; i < pool.length && selected.length < maxIngest; i++) {
+      if (gateOn && i >= judgedUpTo) {
+        if (judgedUpTo >= MAX_JUDGED_PER_PASS) break;
+        const wave = pool.slice(judgedUpTo, judgedUpTo + RELEVANCE_WAVE);
+        judgedUpTo += wave.length;
+        await judgeWave(wave, round);
+      }
+      const candidate = pool[i];
+      const normalised = normalizeUrl(candidate.url);
+      handled.add(normalised);
+
+      if (gateOn) {
+        const verdict = verdictFor(runId, keyOfCandidate(candidate));
+        if (verdict?.relevant !== true) {
+          setAside += 1;
+          skipped.push({
+            ...candidate,
+            selectionRationale: notUsedLabel(verdict?.reason),
+            ingested: false,
+            skipReason: verdict?.reason === 'vendor_sales' ? 'vendor_sales' : 'not_relevant',
+          });
+          continue;
+        }
+        relevantFound.push(candidate);
+      }
+
+      // Check if already ingested
+      const alreadyIngested = await queryOne<{ id: string }>(
+        `SELECT id FROM sources WHERE url=$1 OR url=$2`,
+        [candidate.url, normalised]
+      );
+
+      if (alreadyIngested) {
+        // The source is stored from an earlier run, perhaps before reference
+        // details were kept. What this run's provider record says fills what the
+        // stored source lacks. A candidate carries details only with the citation
+        // lock on, and a failure here costs the reference entry, not the run.
+        const referenceDetails = storedBibliographic(bibliographicMetadata(candidate));
+        if (referenceDetails) {
+          try {
+            await fillReferenceDetails(alreadyIngested.id, referenceDetails);
+          } catch (err) {
+            logger.warn(`[discovery:${runId}] could not add reference details to a stored source: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        // A source stored before tiers were recorded gains one; a recorded tier is kept.
+        // Never fails the run: a write that keeps failing is logged and the run goes on.
+        if (authorityTiersEnabled()) await recordAuthorityTier(alreadyIngested.id, storedAuthorityTier(candidate.authorityTier));
+        if (gateOn) relevantAlreadyStored += 1;
+        skipped.push({
+          ...candidate,
+          selectionRationale: 'already in corpus',
+          ingested: false,
+          skipReason: 'already_in_corpus',
+        });
+        continue;
+      }
+
+      // Enqueue ingestion
+      const jobId = uuidv4();
+      try {
+        const ijMeta = JSON.stringify({ discovery_run_id: runId, query: candidate.sourceQuery });
+        try {
+          await query(
+            `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata, user_id)
+             VALUES ($1, $2, 'web_url', 'queued', $3, $4)`,
+            [jobId, candidate.url, ijMeta, userId ?? null]
+          );
+        } catch (ijErr) {
+          if ((ijErr as { code?: string })?.code !== '42703') throw ijErr;
+          await query(
+            `INSERT INTO ingestion_jobs (id, url, source_type, status, metadata)
+             VALUES ($1, $2, 'web_url', 'queued', $3)`,
+            [jobId, candidate.url, ijMeta]
+          );
+        }
+
+        const finalUrl = await ensureReachableUrl(candidate.url);
+        await ingestionQueue.add('ingest-url', {
+          ingestionJobId: jobId,
+          url: finalUrl,
+          sourceType: 'web_url',
+          tags: [],
+          metadata: { discovery_run_id: runId, ...bibliographicMetadata(candidate) },
+          importedVia: 'autonomous_discovery',
+          discoveredByRunId: runId,
+          discoveryQuery: candidate.sourceQuery,
+          sourceRank: candidate.rank,
+          fetchMethod: 'http_get',
+          ...(authorityTiersEnabled() && candidate.authorityTier ? { authorityTier: candidate.authorityTier } : {}),
+        });
+
+        selected.push({
+          ...candidate,
+          selectionRationale: offTopicUrls.has(candidate.url)
+            ? `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}, off-topic for this request (kept: too few on-topic candidates)`
+            : `score=${candidate.score.toFixed(2)}, rank=${candidate.rank}`,
+          ingested: true,
+          ingestionJobId: jobId,
+        });
+
+        logger.info(`[discovery:${runId}] Queued ingestion for: ${finalUrl} (job ${jobId})`);
+      } catch (err) {
+        logger.error(`[discovery:${runId}] Failed to queue ingestion for ${candidate.url}:`, err);
+        skipped.push({
+          ...candidate,
+          selectionRationale: 'ingestion queue failed',
+          ingested: false,
+          skipReason: 'queue_error',
+        });
+      }
+    }
+
+    // Whatever was not reached: the run already has all it may ingest, or the
+    // judge's allowance for this pass ran out. Neither is fetched.
+    const full = selected.length >= maxIngest;
+    for (const candidate of pool) {
+      const normalised = normalizeUrl(candidate.url);
+      if (handled.has(normalised)) continue;
+      handled.add(normalised);
+      skipped.push({
+        ...candidate,
+        selectionRationale: full || !gateOn ? 'max_sources_to_ingest reached' : 'not checked for relevance; not used',
+        ingested: false,
+        skipReason: full || !gateOn ? 'max_reached' : 'not_judged',
+      });
+    }
+  };
+
+  if (!gateOn) {
+    // Emergency setting: the check a model makes is off, and this is the path
+    // as it was before the check existed. Is it about the thing that was asked?
+    //
+    // Provider scores are not comparable across providers — arXiv's idea of a
+    // good match for "affiliate marketing niches" is still a paper — and nothing
+    // between an API response and the ingest queue used to ask whether the
+    // result was on topic. On-topic candidates are ingested first; off-topic
+    // ones are held back and used only to avoid starving a run of sources, and
+    // when they are used it is recorded as such.
+    // Off-topic candidates top up to the FLOOR, and no further. See
+    // `selectByRelevance` for what the whole-list version cost.
+    const { ranked, toppedUpUrls: offTopicUrls, dropped } = selectByRelevance(
+      researchQuery,
+      byScore(allCandidates),
+      relevanceFloor
+    );
+    if (dropped > 0 || offTopicUrls.size > 0) {
+      logger.info(
+        `[discovery:${runId}] off-topic candidates for this request: ${dropped} dropped, ` +
+          `${offTopicUrls.size} kept to reach the ${relevanceFloor}-source floor`
+      );
+    }
+    await considerCandidates(ranked, offTopicUrls, Math.max(1, lastRoundNumber));
+  } else {
+    await considerCandidates(byScore(allCandidates), new Set(), Math.max(1, lastRoundNumber));
+
+    // ─── Gap-filling after the relevance check ────────────────────────────────
+    // The check can leave a pass with fewer relevant sources than the run needs.
+    // Before that is reported as a shortfall, the planner reads what WAS
+    // relevant and writes new searches for what is still missing (slice 7's
+    // `planGapQueries`, used here whether or not provider routing is on). What
+    // those searches find goes through the same check. Bounded: at most
+    // MAX_RELEVANCE_GAP_ROUNDS rounds of RELEVANCE_GAP_QUERIES_PER_ROUND queries.
+    //
+    // "Usable" here counts relevant candidates queued or already stored. A
+    // source that later fails to fetch is the caller's concern, as it always was.
+    const sourcesNeeded = Math.min(maxIngest, relevanceFloor);
+    const usable = () => selected.length + relevantAlreadyStored;
+    let gapRounds = 0;
+    while (setAside > 0 && usable() < sourcesNeeded && selected.length < maxIngest && gapRounds < MAX_RELEVANCE_GAP_ROUNDS) {
+      gapRounds += 1;
+      const round = Math.max(3, lastRoundNumber + 1);
+      logger.info(
+        `[discovery:${runId}] relevance check left ${usable()} of ${sourcesNeeded} sources needed ` +
+          `(${setAside} set aside); gap-filling round ${round}`
+      );
+      await persistDiscoveryEvent(runId, 'relevance_shortfall', 'orchestrator', researchQuery, usable(), sourcesNeeded, {
+        round,
+        usable: usable(),
+        needed: sourcesNeeded,
+        set_aside: setAside,
+      });
+      const planned = await planGapQueries({
+        runId,
+        round,
+        researchQuery,
+        sources: sourceDescriptionsFor(searchedKeys),
+        queriesExecuted,
+        found: relevantFound,
+        maxQueries: RELEVANCE_GAP_QUERIES_PER_ROUND,
+        model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      });
+      if (!planned) break;
+      // These rounds may go past the run's ordinary query budget, by their own
+      // small allowance: the budget is usually spent by round 1, and a pass that
+      // the check has emptied must still be able to look again.
+      queryBudget = Math.max(queryBudget, queriesExecuted.length + planned.length);
+      const roundNew = await runSearchRound(round, planned, discoveryPlan.exclusion_patterns);
+      logger.info(`[discovery:${runId}] Round ${round} complete: +${roundNew} candidates (total ${allCandidates.length})`);
+      try { await onRoundComplete?.({ round, candidatesAfter: allCandidates.length }); } catch { /* non-fatal */ }
+      if (roundNew === 0) break;
+      await considerCandidates(
+        byScore(allCandidates.filter((candidate) => !handled.has(normalizeUrl(candidate.url)))),
+        new Set(),
+        round
+      );
+    }
+    if (gapRounds > 0) {
+      // The count on the run row was written before these rounds ran.
+      try {
+        await query(`UPDATE research_runs SET discovery_round_count=$1 WHERE id=$2`, [roundsExecuted, runId]);
+      } catch {
+        // Column may not yet be present pre-migration 013 — non-fatal.
+      }
+    }
+    if (setAside > 0 && usable() < sourcesNeeded) {
+      logger.warn(`[discovery:${runId}] after the relevance check and ${gapRounds} gap-filling round(s): ${usable()} of ${sourcesNeeded} sources needed`);
+    }
   }
 
   // ─── Step 5: Wait for ingestion jobs to complete (bounded timeout) ──────────
@@ -921,6 +1162,7 @@ async function runDiscoveryOrchestratorInner(args: {
   await persistDiscoveryEvent(runId, 'complete', 'orchestrator', researchQuery, allCandidates.length, selected.length, {
     selected: selected.map(s => ({ url: s.url, jobId: s.ingestionJobId })),
     skipped: skipped.map(s => ({ url: s.url, reason: s.skipReason })),
+    ...(gateOn ? { relevance: { set_aside: setAside, relevant_already_stored: relevantAlreadyStored } } : {}),
   });
 
   const summary = buildSummary(
@@ -1049,26 +1291,7 @@ export function providerErrorRecord(reason: unknown): { error_kind: string; http
   return status === undefined ? { error_kind: kind } : { error_kind: kind, http_status: status };
 }
 
-async function persistDiscoveryEvent(
-  runId: string,
-  phase: string,
-  provider: string,
-  queryText: string,
-  resultCount: number,
-  selectedCount: number,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await query(
-      `INSERT INTO discovery_events (id, run_id, phase, provider, query_text, result_count, selected_count, payload)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [uuidv4(), runId, phase, provider, queryText, resultCount, selectedCount, JSON.stringify(payload)]
-    );
-  } catch (err) {
-    // Don't fail the research run if audit persistence fails
-    logger.warn('[discovery] Failed to persist discovery event:', err);
-  }
-}
+const persistDiscoveryEvent = recordDiscoveryEvent;
 
 function buildSummary(
   runId: string,
