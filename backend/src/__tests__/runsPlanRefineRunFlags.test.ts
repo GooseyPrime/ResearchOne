@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   queryOne: vi.fn(),
   refinePlan: vi.fn(),
-  seenInside: [] as Array<{ baseline: boolean; lock: boolean }>,
+  seenInside: [] as Array<{ doi: boolean; routing: boolean }>,
 }));
 
 vi.mock('../middleware/clerkAuth', () => ({
@@ -42,7 +42,7 @@ vi.mock('../utils/researchResumeQueueing', () => ({ enqueueResearchResumeAfterPl
 vi.mock('../services/billing/walletReservations', () => ({ releaseHold: vi.fn() }));
 
 import runsRouter from '../api/routes/runs';
-import { baselineLayerEnabled, citationLockEnabled } from '../config';
+import { doiResolveEnabled, providerRoutingEnabled } from '../config';
 import { getGatePlanRowForRun } from '../services/planning/planWriteService';
 
 const RUN_ID = '00000000-0000-4000-8000-000000000123';
@@ -76,7 +76,7 @@ beforeEach(() => {
   mocks.refinePlan.mockReset();
   mocks.seenInside.length = 0;
   mocks.refinePlan.mockImplementation(async () => {
-    mocks.seenInside.push({ baseline: baselineLayerEnabled(), lock: citationLockEnabled() });
+    mocks.seenInside.push({ doi: doiResolveEnabled(), routing: providerRoutingEnabled() });
     return { revisedPlan: PLAN, diffSummary: 'changed', intentChange: { detected: false, from: null, to: null, rationale: '' } };
   });
   vi.mocked(getGatePlanRowForRun).mockResolvedValue({ id: 'plan_1', plan_payload: PLAN, refinement_rounds: 0 } as never);
@@ -86,26 +86,36 @@ const refine = () => request(appForTest()).post(`/api/runs/${RUN_ID}/plan/refine
 
 describe('POST /api/runs/:runId/plan/refine', () => {
   it('revises the plan inside the switches recorded for the run', async () => {
-    database({ BASELINE_LAYER_ENABLED: true, CITATION_LOCK_ENABLED: true });
+    database({ DOI_RESOLVE_ENABLED: true, PROVIDER_ROUTING_ENABLED: true });
     const res = await refine();
     expect(res.status).toBe(200);
-    expect(mocks.seenInside).toEqual([{ baseline: true, lock: true }]);
+    expect(mocks.seenInside).toEqual([{ doi: true, routing: true }]);
     // The switches end with the request; nothing is left on for the process.
-    expect(baselineLayerEnabled()).toBe(false);
+    expect(doiResolveEnabled()).toBe(false);
+    expect(providerRoutingEnabled()).toBe(false);
+  });
+
+  it('revises the plan as usual when a removed layout switch is still recorded for the run', async () => {
+    // A run started before 8 Oct 2026 may have these recorded. Nothing reads them.
+    database({ BASELINE_LAYER_ENABLED: false, CITATION_LOCK_ENABLED: false, READER_VIEW_ENABLED: false, DOI_RESOLVE_ENABLED: true });
+    const res = await refine();
+    expect(res.status).toBe(200);
+    expect(mocks.refinePlan).toHaveBeenCalledTimes(1);
+    expect(mocks.seenInside).toEqual([{ doi: true, routing: false }]);
   });
 
   it('revises under the process settings when nothing is recorded for the run', async () => {
     database(null);
     const res = await refine();
     expect(res.status).toBe(200);
-    expect(mocks.seenInside).toEqual([{ baseline: false, lock: false }]);
+    expect(mocks.seenInside).toEqual([{ doi: false, routing: false }]);
   });
 
   it('revises under the process settings on a database that has no table for recorded switches', async () => {
     database(Object.assign(new Error('relation "eval_run_overrides" does not exist'), { code: '42P01' }));
     const res = await refine();
     expect(res.status).toBe(200);
-    expect(mocks.seenInside).toEqual([{ baseline: false, lock: false }]);
+    expect(mocks.seenInside).toEqual([{ doi: false, routing: false }]);
   });
 
   it('does not revise the plan when the recorded switches cannot be read', async () => {
