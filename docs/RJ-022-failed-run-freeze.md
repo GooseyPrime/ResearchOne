@@ -13,13 +13,12 @@ What was found, by making the text larger and recording where the time went:
 
 What changed:
 
-- The tag is off on `/app`, `/account` and `/onboarding`, through Google's own per-id switch: set in `index.html` before the tag is configured, and kept on route changes by `frontend/src/lib/analyticsScope.ts` (called from `MarketingDocumentEffect`). Public pages are measured as before. Checked in Chromium: no time in the pattern and no hit sent from a signed-in page, whether opened directly or reached from a public page.
-- `reportLabels.ts`: a list of passage numbers and a list of origins no longer overlap, so the time is in proportion to the text.
+- The tag is off on `/app`, `/account` and `/onboarding`, through Google's own per-id switch: set in `index.html` before the tag is configured and again each time the address changes, before the tag sees the change; `frontend/src/lib/analyticsScope.ts` (called from `MarketingDocumentEffect`) holds the same rule for rendering. Public pages are measured as before, including one reached from a signed-in page. Checked in Chromium: no time in the pattern and no hit sent from a signed-in page, whether opened directly or reached from a public page.
+- `frontend/src/lib/researchone/reportLabels.ts` and `backend/src/services/formatting/reportPresentation.ts`: a list of passage numbers and a list of origins no longer overlap, so the time is in proportion to the text. The server had the same pattern, where it would hold the API process for every user (6 seconds for 26 items in its test before the change); the passage numbers it keeps as citations are unchanged.
 
 Not established, and what it needs:
 
 - **Whether either of these is what held run `6622a18a` still.** The run's stored text was not read (no production database access for this order), so it is not known that it holds a run of characters long enough, and its dossier card was on screen before the click, which the label pattern alone would have prevented. Both are real ways for these pages to stop responding and both are closed; the live cause is not confirmed. Next step if it happens again: a performance recording in the browser that froze, or the longest unbroken run of characters in the run's `query`, `supplemental`, `error_message` and trace.
-- `backend/src/services/formatting/reportPresentation.ts` builds its label pattern the same way. There it would hold the API process, not a browser. Not changed here (a frontend order).
 - A burst of live events makes the run page ask for the whole run row once per event. Only a server sending many events a second does this; none was observed.
 
-Tests: `frontend/src/__tests__/rj022/failedRunPage.test.tsx`.
+Tests: `frontend/src/__tests__/rj022/failedRunPage.test.tsx`, `backend/src/__tests__/rj022ReportLabelTime.test.ts`.

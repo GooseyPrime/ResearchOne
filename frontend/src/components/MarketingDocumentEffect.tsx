@@ -8,9 +8,10 @@ import { applyAnalyticsScope, isSignedInAreaPath } from '@/lib/analyticsScope';
  * Per product request this uses `useEffect` (post-paint); prerender still captures final head after tick.
  * Authenticated app shells (`/app/*`, `/account/*`, `/onboarding`) are left unchanged except a generic title reset.
  *
- * It also keeps the analytics tag off the signed-in pages (RJ-022). That runs
- * while rendering, not in the effect: the tag reacts to the address changing,
- * which happens before effects run, so the switch has to be set by then.
+ * It also keeps the analytics tag off the signed-in pages (RJ-022). The page's
+ * own script (`index.html`) sets that switch the moment the address changes;
+ * this sets it again while rendering, for anything that reaches a route
+ * without going through the browser's history.
  */
 export default function MarketingDocumentEffect() {
   const { pathname } = useLocation();
