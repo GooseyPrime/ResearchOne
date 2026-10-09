@@ -615,7 +615,7 @@ router.get('/model-options', async (_req, res, next) => {
         planner: config.models.planner,
         retriever: config.models.retriever,
         reasoner: config.models.reasoner,
-        skeptic: config.models.skeptic,
+        double_check: config.models.double_check,
         synthesizer: config.models.synthesizer,
         verifier: config.models.verifier,
         plain_language_synthesizer: config.models.plainLanguageSynthesizer,
