@@ -33,6 +33,7 @@ import {
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
+import { runRowForCustomer } from '../../services/reasoning/customerFailureMessage';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
@@ -689,6 +690,8 @@ router.get('/', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');
     }
 
+    // A person is sent the plain sentence for a failed run, never the stored error.
+    if (!isAllowlistedAdminUserId(userId)) rows = rows.map((row) => runRowForCustomer(row));
     res.json(forReader(rows, { title: 'not-report' }));
   } catch (err) {
     next(err);
@@ -717,9 +720,12 @@ router.get('/:id', async (req, res, next) => {
     }
     // The stored discovery summary lists every search result, including the ones
     // set aside. A person is sent the sources the run went on to read.
+    // The stored error and trace name the step, the model and the provider's
+    // answer. A person is sent the plain sentence for the failure; the stored
+    // detail stays on the admin and diagnostics views.
     if (!isAllowlistedAdminUserId(userId)) {
       const run = rows[0] as Record<string, unknown>;
-      rows[0] = { ...run, discovery_summary: discoverySummaryForReader(run.discovery_summary) };
+      rows[0] = runRowForCustomer({ ...run, discovery_summary: discoverySummaryForReader(run.discovery_summary) });
     }
     res.json(forReader(rows[0], { title: 'not-report' }));
   } catch (err) {
