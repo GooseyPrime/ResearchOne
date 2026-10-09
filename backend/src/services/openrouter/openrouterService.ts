@@ -1037,6 +1037,7 @@ SOURCE-CLASS AWARENESS (Wave 5.3):
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 
   synthesizer: REPORT_WRITER_PROMPT,
+
   verifier: REPORT_VERIFIER_PROMPT,
 
   plain_language_synthesizer: withStandardPreamble(`You are a plain-language explainer for ResearchOne.
