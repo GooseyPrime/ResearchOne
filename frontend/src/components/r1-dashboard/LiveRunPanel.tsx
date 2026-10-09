@@ -37,7 +37,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { AlertCircle, Clock, FileText, Plus, XCircle, XOctagon } from 'lucide-react';
-import { pipelineStages } from '@/content/researchoneUiData';
+import { RUN_STEPS, RUN_STEP_ORDER, customerOption, customerOptionHelp, type RunStepId } from '@/content/customerOptions';
+import type { ResearchStage } from '@/lib/researchone/types';
 import LiveResearchTraceLog from '@/components/research/LiveResearchTraceLog';
 import RunRequestDisclosure from '@/components/research/RunRequestDisclosure';
 import RunPlanGate from '@/components/research/RunPlanGate';
@@ -73,6 +74,30 @@ const GATE_FAILURE_COPY: Record<string, string> = {
 
 const EMPTY_RUNS: ResearchRun[] = [];
 
+/** The run page's two headings, named and described from the registry of customer-facing names (RJ-018). */
+const PROGRESS_FIELD = customerOption('run_page_field', 'progress');
+const RUN_STATUS_FIELD = customerOption('run_page_field', 'run_status');
+
+/**
+ * Which of the nine steps a reported stage belongs to. The pipeline reports
+ * more stages than the row has steps; each is shown under the step it is part of.
+ */
+const RUN_STEP_FOR_STAGE: Record<ResearchStage, RunStepId> = {
+  planner: 'planner',
+  sleuth: 'sleuth',
+  discovery: 'sleuth',
+  retriever: 'retriever',
+  retriever_analysis: 'retriever',
+  quantitative: 'quantitative',
+  reasoner: 'reasoner',
+  double_check: 'double_check',
+  synthesizer: 'synthesizer',
+  verifier: 'verifier',
+  formatter: 'formatter',
+  report: 'formatter',
+  complete: 'formatter',
+};
+
 function formatStarted(run: ResearchRun): string | null {
   const stamp = run.started_at || run.created_at;
   if (!stamp) return null;
@@ -84,7 +109,7 @@ export function LiveRunPanel() {
   const { runId } = useParams<{ runId: string }>();
   const queryClient = useQueryClient();
 
-  const { run, traceEvents, latest, isLoading, isError } = useRunTraceStream(runId);
+  const { run, traceEvents, progress, isLoading, isError } = useRunTraceStream(runId);
 
   // Other runs in flight, for the rail. The same query key Layout already
   // polls, so this shares its cache rather than adding a second poll.
@@ -162,13 +187,16 @@ export function LiveRunPanel() {
   const tone = RUN_TONE_CLASSES[display.tone];
   const title = runDisplayTitle(run);
   const titleIsReference = isReferenceTitle(run);
-  const percent = Math.max(0, Math.min(100, Math.round(latest?.percent ?? run.progress_percent ?? 0)));
-  const currentStage = mapApiRunStage(latest?.stage ?? run.progress_stage);
+  // How far the run has got. Never lower than a value already shown for this
+  // attempt: a late or repeated "starting" does not pull the bar back (RJ-018).
+  const percent = progress.percent;
+  const currentStage = mapApiRunStage(progress.stage ?? run.progress_stage);
   // The diagram folds stages it has no box for into the nearest one. The words
   // a person reads come from the stage as the run reported it, so writing and
   // checking are not both shown as the stage before them.
-  const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : latest?.stage ?? run.progress_stage ?? run.status;
-  const currentStageIndex = pipelineStages.findIndex((s) => s.id === currentStage);
+  const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : progress.stage ?? run.progress_stage ?? run.status;
+  const currentStepIndex = RUN_STEP_ORDER.findIndex((id) => id === RUN_STEP_FOR_STAGE[currentStage]);
+  const currentStep = currentStepIndex >= 0 ? RUN_STEPS[currentStepIndex] : null;
   const isTerminal = !isInFlightRunStatus(run.status);
   const startedAt = formatStarted(run);
 
@@ -216,11 +244,20 @@ export function LiveRunPanel() {
                 className="r1-panel p-6"
               >
                 <div className="mb-4 flex items-center justify-between">
-                  <span className="r1-mono-label text-[10px]">PIPELINE_PROGRESS</span>
+                  <h2 className="text-sm font-semibold text-r1-heading" title={customerOptionHelp(PROGRESS_FIELD)}>
+                    {PROGRESS_FIELD.name}
+                  </h2>
                   <span className="text-lg font-semibold text-r1-cyan">{percent}%</span>
                 </div>
 
-                <div className="mb-6 h-2 overflow-hidden rounded-full bg-r1-panel-lift">
+                <div
+                  className="mb-6 h-2 overflow-hidden rounded-full bg-r1-panel-lift"
+                  role="progressbar"
+                  aria-label={PROGRESS_FIELD.name}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={percent}
+                >
                   <motion.div
                     className="h-full rounded-full bg-gradient-to-r from-r1-cyan to-r1-cyan/70"
                     initial={{ width: 0 }}
@@ -229,26 +266,45 @@ export function LiveRunPanel() {
                   />
                 </div>
 
-                <div className="grid grid-cols-5 gap-3 sm:grid-cols-10">
-                  {pipelineStages.map((stage, index) => (
-                    <div key={stage.id} className="text-center">
+                {/* The steps of a run, named from the registry of customer-facing names. */}
+                <ol className="grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-9" data-testid="run-steps">
+                  {RUN_STEPS.map((step, index) => (
+                    <li
+                      key={step.id}
+                      className="text-center"
+                      title={customerOptionHelp(step)}
+                      aria-current={index === currentStepIndex ? 'step' : undefined}
+                    >
                       <div
+                        aria-hidden
                         className={`mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full font-mono text-[10px] ${
-                          index < currentStageIndex
+                          index < currentStepIndex
                             ? 'border border-r1-green/40 bg-r1-green/20 text-r1-green'
-                            : index === currentStageIndex
+                            : index === currentStepIndex
                               ? 'r1-glow-cyan border border-r1-cyan/50 bg-r1-cyan/20 text-r1-cyan'
                               : 'border border-r1-border bg-r1-panel-lift text-r1-dim'
                         }`}
                       >
                         {index + 1}
                       </div>
-                      <span className="r1-mono-label hidden text-[8px] sm:block">
-                        {stage.name.split(' ')[0]}
+                      <span
+                        className={`block text-[11px] leading-tight ${
+                          index === currentStepIndex ? 'font-medium text-r1-heading' : 'text-r1-muted'
+                        }`}
+                      >
+                        {step.name}
                       </span>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
+
+                {/* What the step the run is on does, with an example: readable without hovering. */}
+                {currentStep && (
+                  <p className="mt-4 text-xs leading-relaxed text-r1-muted" data-testid="run-step-help">
+                    <span className="font-medium text-r1-heading">{currentStep.name}.</span> {currentStep.description}{' '}
+                    <span className="text-r1-dim">Example: {currentStep.example}</span>
+                  </p>
+                )}
               </motion.div>
             )}
 
@@ -277,11 +333,13 @@ export function LiveRunPanel() {
 
           <div className="flex flex-col gap-6">
             <div className="r1-panel p-6">
-              <span className="r1-mono-label mb-4 block text-[10px]">RUN_STATUS</span>
+              <h2 className="mb-4 text-sm font-semibold text-r1-heading" title={customerOptionHelp(RUN_STATUS_FIELD)}>
+                {RUN_STATUS_FIELD.name}
+              </h2>
               <dl className="space-y-3 text-sm">
                 <Fact label="Status" value={<span className={tone.text}>{display.label}</span>} />
-                <Fact label="Stage" value={readerStageLabel(stageAsReported)} />
-                {!isTerminal && <Fact label="Progress" value={`${percent}%`} />}
+                <Fact label="Step" value={readerStageLabel(stageAsReported)} />
+                {!isTerminal && <Fact label={PROGRESS_FIELD.name} value={`${percent}%`} />}
                 {startedAt && <Fact label="Started" value={startedAt} />}
                 {run.run_ref && (
                   <Fact
@@ -335,7 +393,7 @@ function RunWorkspaceRail({
 
       {otherActiveRuns.length > 0 && (
         <>
-          <span className="r1-mono-label text-[10px] text-r1-dim">ALSO RUNNING</span>
+          <span className="text-xs text-r1-dim">Also running</span>
           {otherActiveRuns.map((other) => (
             <Link
               key={other.id}
@@ -463,14 +521,8 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
       <div className="r1-panel border-r1-challenge/30 p-4">
         <div className="flex items-start gap-2">
           <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-r1-challenge" aria-hidden />
-          <div>
-            <p className="text-sm text-r1-challenge">{reason}</p>
-            {gateStatus && (
-              <p className="r1-mono-label mt-1 text-[10px] text-r1-dim">
-                {gateStatus.replace(/_/g, ' ').toUpperCase()}
-              </p>
-            )}
-          </div>
+          {/* The reason is the sentence above. The check's internal code is not printed under it (RJ-018). */}
+          <p className="text-sm text-r1-challenge">{reason}</p>
         </div>
         {retryable && (
           <p className="mt-2 text-xs text-amber-300">
