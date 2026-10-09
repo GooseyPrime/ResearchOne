@@ -111,7 +111,8 @@ import { config, runWithFlags } from '../config';
 
 type Settings = { enabled: boolean; provider: string; ingestionWaitTimeoutMs: number };
 const discoveryWas: Settings = { enabled: config.discovery.enabled, provider: config.discovery.provider, ingestionWaitTimeoutMs: config.discovery.ingestionWaitTimeoutMs };
-const LOCK_ON = { CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true };
+/** Names that used to switch the report layout. Nothing reads them: reference details are always kept. */
+const REMOVED_OFF = { CITATION_LOCK_ENABLED: false, BASELINE_LAYER_ENABLED: false };
 
 function discover() {
   return runDiscoveryOrchestrator({
@@ -144,7 +145,7 @@ describe('reference details through discovery', () => {
 
   it('queues one job for an address three providers found, with the fullest record', async () => {
     h.delays = { tavily: 0, crossref: 20, openalex: 40 };
-    const summary = await runWithFlags(LOCK_ON, discover);
+    const summary = await discover();
     expect(h.queued).toHaveLength(1);
     expect(h.queued[0].url).toBe(NEW_URL);
     expect(queuedMetadata()[0].bibliographic).toEqual({ ...CROSSREF_DETAILS, kind: 'journal article', provider: 'crossref' });
@@ -154,13 +155,13 @@ describe('reference details through discovery', () => {
 
   it('queues the same record whichever provider answers first', async () => {
     h.delays = { tavily: 40, crossref: 20, openalex: 0 };
-    await runWithFlags(LOCK_ON, discover);
+    await discover();
     expect(h.queued).toHaveLength(1);
     expect(queuedMetadata()[0].bibliographic).toEqual({ ...CROSSREF_DETAILS, kind: 'journal article', provider: 'crossref' });
   });
 
   it('gives a source stored by an earlier run the details this run found, and still skips it', async () => {
-    const summary = await runWithFlags(LOCK_ON, discover);
+    const summary = await discover();
     expect(h.queued.some((job) => job.url === STORED_URL)).toBe(false);
     expect(summary.sources.find((source) => source.url === STORED_URL)?.skipReason).toBe('already_in_corpus');
     expect(fills()).toHaveLength(1);
@@ -178,16 +179,31 @@ describe('reference details through discovery', () => {
 
   it('finishes the run when the stored source cannot be updated', async () => {
     h.failFill = true;
-    const summary = await runWithFlags(LOCK_ON, discover);
+    const summary = await discover();
     expect(summary.sources.find((source) => source.url === STORED_URL)?.skipReason).toBe('already_in_corpus');
     expect(h.queued).toHaveLength(1);
   });
 
-  it('stores and queues nothing new with the citation lock off', async () => {
-    h.delays = { tavily: 0, crossref: 20, openalex: 40 };
-    await discover();
+  it("keeps and stores the same reference details with the removed switches set to 'false'", async () => {
+    const was = { lock: process.env.CITATION_LOCK_ENABLED, baseline: process.env.BASELINE_LAYER_ENABLED };
+    process.env.CITATION_LOCK_ENABLED = 'false';
+    process.env.BASELINE_LAYER_ENABLED = 'false';
+    try {
+      h.delays = { tavily: 0, crossref: 20, openalex: 40 };
+      await runWithFlags(REMOVED_OFF, discover);
+    } finally {
+      if (was.lock === undefined) delete process.env.CITATION_LOCK_ENABLED;
+      else process.env.CITATION_LOCK_ENABLED = was.lock;
+      if (was.baseline === undefined) delete process.env.BASELINE_LAYER_ENABLED;
+      else process.env.BASELINE_LAYER_ENABLED = was.baseline;
+    }
     expect(h.queued).toHaveLength(1);
-    expect(queuedMetadata()[0]).toEqual({ discovery_run_id: '11111111-1111-4111-8111-111111111111' });
-    expect(fills()).toHaveLength(0);
+    expect(queuedMetadata()[0]).toEqual({
+      discovery_run_id: '11111111-1111-4111-8111-111111111111',
+      bibliographic: { ...CROSSREF_DETAILS, kind: 'journal article', provider: 'crossref' },
+    });
+    // The source an earlier run stored is still given what this run found.
+    expect(fills()).toHaveLength(1);
+    expect(fills()[0].params[0]).toBe(STORED_ID);
   });
 });
