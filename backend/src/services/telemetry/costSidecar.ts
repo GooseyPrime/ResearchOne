@@ -69,7 +69,7 @@ export const runScope = {
 
 /**
  * Pipeline phase. These are the human-grouped stages the admin dashboard
- * uses for cost-breakdown analytics ("the Skeptic phase ate 38% of the
+ * uses for cost-breakdown analytics ("the Double-check phase ate 38% of the
  * cost this week"). Stable enum — do not rename without updating the
  * frontend `PHASE_COLORS` map.
  */
@@ -78,7 +78,7 @@ export type PipelinePhase =
   | 'Discovery'
   | 'Retrieval'
   | 'Reasoning'
-  | 'Skeptic'
+  | 'Double-check'
   | 'Synthesis'
   | 'Verification'
   | 'Plain Language'
@@ -95,7 +95,7 @@ export type PipelinePhase =
  *
  * Per rule 25 (I-9): if you add a new role, add its mapping HERE in the
  * same commit, or the new role will be bucketed as "Other" and the
- * Skeptic-bottleneck analysis will be wrong.
+ * Double-check-bottleneck analysis will be wrong.
  *
  * The `call_purpose` field gives us a second axis for cases where the
  * same role serves different phases (e.g. `planner` role inside the
@@ -103,7 +103,7 @@ export type PipelinePhase =
  */
 export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase {
   // Call-purpose overrides win first.
-  if (callPurpose === 'pipeline_skeptic') return 'Skeptic';
+  if (callPurpose === 'pipeline_double_check') return 'Double-check';
   if (callPurpose === 'contradiction_extraction') return 'Contradiction Extraction';
   if (
     callPurpose === 'wave5_intent_classification' ||
@@ -120,11 +120,11 @@ export function rolePhaseFor(role: string, callPurpose?: string): PipelinePhase 
     case 'source_class_classifier':
       return 'Retrieval';
     case 'reasoner':
-    case 'steelman':
+    case 'strongest_form':
       return 'Reasoning';
-    case 'skeptic':
+    case 'double_check':
     case 'internal_challenger':
-      return 'Skeptic';
+      return 'Double-check';
     case 'synthesizer':
     case 'outline_architect':
     case 'section_drafter':
@@ -190,7 +190,7 @@ function computeIdempotencyKey(args: {
 // ────────────────────────────────────────────────────────────────────
 
 export interface EmitOptions {
-  /** Role from REASONING_MODEL_ROLES (e.g. 'planner', 'skeptic'). */
+  /** Role from REASONING_MODEL_ROLES (e.g. 'planner', 'double_check'). */
   role: string;
   /** Optional ModelCallPurpose. */
   callPurpose?: string;
