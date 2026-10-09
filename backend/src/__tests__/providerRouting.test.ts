@@ -9,7 +9,7 @@ import { PROVIDER_KEYS, PROVIDER_REGISTRY } from '../services/discovery/provider
 import { config } from '../config';
 import { providerErrorRecord, withExtraQueries } from '../services/discovery/discoveryOrchestrator';
 import { anomalyQueryFor, searchSeedFor } from '../services/discovery/deterministicDiscoveryQueries';
-import { getOrchestrationProfileForIntent, writesThroughReportWriter } from '../services/planning/orchestrationProfiles';
+import { getOrchestrationProfileForIntent } from '../services/planning/orchestrationProfiles';
 
 const unkeyed = new Set(['brave']);
 const WEB = { webProviders: ['tavily'] as const, isConfigured: (key: string) => !unkeyed.has(key) };
@@ -133,24 +133,28 @@ describe('extra queries', () => {
 });
 
 describe('reference lookups and the report writer', () => {
-  const lookup = getOrchestrationProfileForIntent('reference_lookup');
-
-  it('writes a lookup through the report writer only with both switches on', () => {
-    expect(writesThroughReportWriter(lookup, true, true)).toBe(true);
-    expect(writesThroughReportWriter(lookup, true, false)).toBe(false);
-    expect(writesThroughReportWriter(lookup, false, true)).toBe(false);
-    expect(writesThroughReportWriter(getOrchestrationProfileForIntent('factual_report'), false, false)).toBe(true);
-  });
-
-  it('decides the synthesis path with that rule, with routing read from the run', () => {
+  it('writes every run, a reference lookup included, through the report writer with the citation lock', () => {
     const source = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
-    expect(source).toContain("const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());");
-    expect(source).not.toContain("if (shouldRunPipelineStage(orchProfile, 'synthesis')) {");
+    // No rule decides whether the report writer runs: there is no shorter path to choose.
+    expect(source).not.toContain('writesThroughReportWriter');
+    expect(source).not.toContain('synthesisRuns');
+    expect(source).not.toContain('layer1Run');
+    expect(source).not.toContain("shouldRunPipelineStage(orchProfile, 'synthesis')");
+    expect(source.match(/await generateIterativeReport\(\{/g)).toHaveLength(1);
+    // The lock is recorded on the run and nothing takes the record away.
+    expect(source).toContain('JSON.stringify({ citationLock: true, ...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {}) })');
+    expect(source).not.toContain("- 'citationLock'");
+    expect(source).not.toMatch(/citationLock:\s*false/);
+    // The recorded synthesis time is kept for every run.
+    expect(source).toContain("(s === 'synthesis' || shouldRunPipelineStage(orchProfile, s))");
     // Every discovery pass is told what the request is about.
-    expect(source).toContain('if (synthesisRuns) {');
-    // The recorded synthesis time follows the same decision.
-    expect(source).toContain("(s === 'synthesis' ? synthesisRuns : shouldRunPipelineStage(orchProfile, s))");
     expect(source.match(/routingBrief: \{ intent: orchProfile\.intent, layer2: isAdjudicative \}/g)).toHaveLength(3);
     expect(source).not.toContain('configuredCap: config.discovery.maxIngestPerRun');
+  });
+
+  it('has no rule left in the profiles for choosing a writer', () => {
+    const profiles = readFileSync(join(__dirname, '../services/planning/orchestrationProfiles.ts'), 'utf8');
+    expect(profiles).not.toContain('writesThroughReportWriter');
+    expect(getOrchestrationProfileForIntent('reference_lookup').intent).toBe('reference_lookup');
   });
 });
