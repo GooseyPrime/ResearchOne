@@ -1,8 +1,13 @@
 import { config } from '../../config';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { PlanPayload } from './planTypes';
-import { PLAN_LENGTH_FIT_INSTRUCTION, PLAN_REFINEMENT_PROMPT } from './prompts';
+import { PLAN_LENGTH_FIT_INSTRUCTION, PLAN_PLAIN_WORDS_INSTRUCTION, PLAN_REFINEMENT_PROMPT } from './prompts';
 import { parsePlanRefinementJson } from './planJson';
+
+/** The whole instruction the planning step is given when a plan is changed. Read by the wording test. */
+export function planRefinementSystemPrompt(): string {
+  return `${PLAN_REFINEMENT_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION} If the report type changes, size estimatedLength again for the new type.\n${PLAN_PLAIN_WORDS_INSTRUCTION}\nKeep "title" as it is unless the subject of the research changes.`;
+}
 
 export async function refinePlan(input: {
   currentPlan: PlanPayload;
@@ -45,7 +50,7 @@ export async function refinePlan(input: {
       // is sized again for the new type.
       {
         role: 'system',
-        content: `${PLAN_REFINEMENT_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION} If the report type changes, size estimatedLength again for the new type.`,
+        content: planRefinementSystemPrompt(),
       },
       { role: 'user', content: userBlock },
     ],

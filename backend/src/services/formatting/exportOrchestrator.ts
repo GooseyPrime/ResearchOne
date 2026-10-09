@@ -24,11 +24,24 @@ import { runPandoc, PandocError, type ExportFormat, type ExportStyle } from './p
 import { runScope } from '../telemetry';
 import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
+import { readerReportTitle } from '../research/titleShaping';
+
 import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody, type ReaderExportOptions } from './readerExport';
 import { loadReaderEvidence } from './readerEvidence';
 import { authorityWordsForRun } from '../eval/readerView';
 import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
 import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
+
+/**
+ * The title block of an exported file. A report stored under an old section
+ * name is exported under a title made from its request, as the page shows it
+ * (RJ-018); the stored title is still what the body is matched against, so the
+ * heading that repeats it is still dropped.
+ */
+export function exportTitleBlock(title: string | null, request: string | null): string {
+  const shown = readerReportTitle(title === null ? null : stripInternalLabelsFromReport(title), request);
+  return shown ? `---\ntitle: ${JSON.stringify(shown)}\n---\n\n` : '';
+}
 
 /** What an export may ask for: a named style, or the numbered default. */
 export type RequestedExportStyle = ExportStyle | 'numeric';
@@ -83,7 +96,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
 
   // 1. Load report title + markdown body from real schema columns
   //    (`report_sections`, not a fictional `reports.body_markdown`).
-  const { title, bodyMarkdown, challengeTitles } = await loadReportMarkdownForExport(reportId);
+  const { title, request, bodyMarkdown, challengeTitles } = await loadReportMarkdownForExport(reportId);
 
   // A report written with the citation lock is exported as it was saved:
   // its numbers and its reference list are already in the text.
@@ -109,9 +122,7 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
 
   // 4. Wrap the body in a minimal title-block so pandoc can produce
   //    a proper document.
-  const titleBlock = title
-    ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n`
-    : '';
+  const titleBlock = exportTitleBlock(title, request);
 
   // 5. Build the CSL-JSON bibliography from the aliases.
   const bibliography = aliasesToCslBibliography(aliases);
@@ -181,7 +192,7 @@ async function exportLockedReport(
   authorityWords = false
 ): Promise<ExportJobOutput> {
   const { reportId, format, style } = input;
-  const metaRows = await adminQuery<ReportMetaRow>(`SELECT title, executive_summary, conclusion FROM reports WHERE id = $1 LIMIT 1`, [reportId]);
+  const metaRows = await adminQuery<ReportMetaRow>(`SELECT title, query, executive_summary, conclusion FROM reports WHERE id = $1 LIMIT 1`, [reportId]);
   if (metaRows.length === 0) throw new PandocError(`report not found: ${reportId}`, 'validation_error');
   const saved = await adminQuery<SectionRow>(
     `SELECT title, content, section_order, section_type FROM report_sections WHERE report_id = $1 ORDER BY section_order ASC`,
@@ -222,7 +233,7 @@ async function exportLockedReport(
     .map((section) => `## ${stripInternalLabelsFromReport(section.title)}\n\n${stripInternalLabelsFromReport(section.content)}`)
     .join('\n\n');
   const body = readerExportBody(title, assembled, await readerOptions(assembled));
-  const titleBlock = title ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n` : '';
+  const titleBlock = exportTitleBlock(title, metaRows[0].query ?? null);
   const pandocResult = await runPandoc({
     markdown: `${titleBlock}${body}\n`,
     cslJson: [],
@@ -242,6 +253,8 @@ async function exportLockedReport(
 
 interface ReportMetaRow {
   title: string;
+  /** The request the report answers: what its title falls back on (RJ-018). */
+  query?: string | null;
   executive_summary: string | null;
   conclusion: string | null;
 }
@@ -270,9 +283,9 @@ async function legacyNumbersForExport(reportId: string, runId: string | null): P
 
 async function loadReportMarkdownForExport(
   reportId: string
-): Promise<{ title: string | null; bodyMarkdown: string; challengeTitles: string[] }> {
+): Promise<{ title: string | null; request: string | null; bodyMarkdown: string; challengeTitles: string[] }> {
   const metaRows = await adminQuery<ReportMetaRow>(
-    `SELECT title, executive_summary, conclusion
+    `SELECT title, query, executive_summary, conclusion
        FROM reports
       WHERE id = $1
       LIMIT 1`,
@@ -311,5 +324,5 @@ async function loadReportMarkdownForExport(
     throw new PandocError(`report has no body content: ${reportId}`, 'validation_error');
   }
 
-  return { title: meta.title ?? null, bodyMarkdown: body, challengeTitles: sectionRows.filter(isChallengeSection).map((row) => stripInternalLabelsFromReport(row.title)) };
+  return { title: meta.title ?? null, request: meta.query ?? null, bodyMarkdown: body, challengeTitles: sectionRows.filter(isChallengeSection).map((row) => stripInternalLabelsFromReport(row.title)) };
 }

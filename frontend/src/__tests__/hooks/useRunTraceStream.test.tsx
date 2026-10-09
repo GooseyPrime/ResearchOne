@@ -293,4 +293,28 @@ describe('useRunTraceStream', () => {
     renderHook(() => useRunTraceStream(RUN_ID), { wrapper });
     await waitFor(() => expect(subscribeToJob).toHaveBeenCalledWith(RUN_ID));
   });
+  it("RJ-018 — the worker's notice is not a row, and progress does not fall back", async () => {
+    // Observed on 9 Oct 2026 for run 6622a18a: "Starting 0%" twice, below later
+    // steps, and the bar at 0%. The notice has no time and no percentage, each
+    // page receives it twice, and each copy was stamped by the browser's clock.
+    const persisted = [
+      { ...evt(1, '2026-10-09T13:16:00.400Z'), stage: 'planning', percent: 5 },
+      { ...evt(2, '2026-10-09T13:16:00.900Z'), stage: 'discovery', percent: 12 },
+    ];
+    getResearchRun.mockResolvedValue(runRow({ progress_events: persisted, progress_stage: 'discovery', progress_percent: 12 }));
+    const { result } = renderHook(() => useRunTraceStream(RUN_ID), { wrapper });
+    await waitFor(() => expect(result.current.traceEvents).toHaveLength(2));
+    act(() => {
+      emit({ stage: 'started', runId: RUN_ID });
+      emit({ stage: 'started', runId: RUN_ID });
+    });
+    expect(result.current.traceEvents).toHaveLength(2);
+    expect(result.current.traceEvents.some((event) => event.stage === 'started')).toBe(false);
+    expect(result.current.progress).toEqual({ percent: 12, stage: 'discovery' });
+    // A late event that reports less is kept as history and does not move progress back.
+    act(() => emit({ ...evt(3, '2026-10-09T13:17:00.000Z'), stage: 'starting', percent: 1 }));
+    await waitFor(() => expect(result.current.traceEvents).toHaveLength(3));
+    expect(result.current.latest?.stage).toBe('starting');
+    expect(result.current.progress).toEqual({ percent: 12, stage: 'discovery' });
+  });
 });

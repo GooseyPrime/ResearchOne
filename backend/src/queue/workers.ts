@@ -13,6 +13,7 @@ import {
 } from '../services/reasoning/researchOrchestrator';
 import {
   RESEARCH_JOB_RESUME_AFTER_PLAN,
+  researchStartedNotice,
   type ResearchResumeAfterPlanJobData,
 } from './researchQueueJobs';
 import { runAtlasExport } from '../services/embedding/atlasExport';
@@ -101,7 +102,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
         const data = job.data as ResearchResumeAfterPlanJobData;
         const { runId, confirmedPlanId } = data;
         logger.info(`Research resume-after-plan job started: ${job.id}`);
-        emit(`job:${runId}`, 'research:progress', { stage: 'started', runId });
+        emit(`job:${runId}`, 'research:progress', researchStartedNotice(runId));
         try {
           const result = await resumeAfterPlanConfirmation(runId, confirmedPlanId, (update) => {
             job.updateProgress(update);
@@ -172,7 +173,7 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
       }
 
       logger.info(`Research job started: ${job.id}`);
-      emit(`job:${job.data.runId}`, 'research:progress', { stage: 'started', runId: job.data.runId });
+      emit(`job:${job.data.runId}`, 'research:progress', researchStartedNotice(job.data.runId));
       try {
         const result = await runResearchJob(job.data, (update) => {
           job.updateProgress(update);

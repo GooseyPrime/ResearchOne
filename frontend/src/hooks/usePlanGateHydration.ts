@@ -4,6 +4,26 @@ import { getRunPlanForGate } from '../utils/api';
 import type { PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import { getAdaptiveRefetchIntervalMs } from '../utils/apiRateLimit';
 
+/** How often the plan is asked for while a run waits at its plan and no plan has arrived yet. */
+export const PLAN_FIRST_LOAD_POLL_MS = 2_000;
+/** How often it is asked for again once it is on screen (a change made in another tab). */
+export const PLAN_LOADED_POLL_MS = 12_000;
+
+/**
+ * How long to wait before asking for the plan again (RJ-018).
+ *
+ * This was one interval for both cases, lengthened six times over while the
+ * live connection was healthy: 72 seconds. A first request that came back
+ * without the plan (the run reaches "waiting for your go-ahead" a moment before
+ * the plan can be read) therefore left "Loading research plan…" on screen for
+ * over a minute, and a reload was the only thing that helped. Until the plan is
+ * on screen it is asked for every two seconds; once it is, the slow, adaptive
+ * interval is right again.
+ */
+export function planGatePollIntervalMs(planLoaded: boolean): number {
+  return planLoaded ? getAdaptiveRefetchIntervalMs(PLAN_LOADED_POLL_MS) : PLAN_FIRST_LOAD_POLL_MS;
+}
+
 /** REST hydrate for `plan_pending_confirmation` when socket was missed or on refresh. */
 export function usePlanGateHydration({
   trackingRunId,
@@ -18,11 +38,11 @@ export function usePlanGateHydration({
   const needsGatePlanPoll =
     Boolean(trackingRunId) && runStatus === 'plan_pending_confirmation';
 
-  const { data: gatePlanResponse } = useQuery({
+  const { data: gatePlanResponse, isError: gatePlanError } = useQuery({
     queryKey: ['run-plan-gate', trackingRunId],
     queryFn: () => getRunPlanForGate(trackingRunId!),
     enabled: needsGatePlanPoll,
-    refetchInterval: () => getAdaptiveRefetchIntervalMs(12_000),
+    refetchInterval: (query) => planGatePollIntervalMs(Boolean(query.state.data?.plan?.planId)),
   });
 
   useEffect(() => {
@@ -52,5 +72,5 @@ export function usePlanGateHydration({
     });
   }, [gatePlanResponse, trackingRunId, setPlanGateLocal]);
 
-  return { gatePlanResponse, needsGatePlanPoll };
+  return { gatePlanResponse, needsGatePlanPoll, gatePlanError };
 }

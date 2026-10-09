@@ -81,6 +81,21 @@ describe('the registry of customer-facing names', () => {
     expect(problems).toEqual([]);
   });
 
+  it('holds the steps of a run, the run page headings and the dossier card labels (RJ-018)', () => {
+    expect(ids('run_step')).toEqual(['planner', 'sleuth', 'retriever', 'quantitative', 'reasoner', 'synthesizer', 'verifier', 'formatter']);
+    expect(ids('run_page_field')).toEqual(['progress', 'run_status']);
+    expect(ids('dossier_badge')).toEqual(['spinoff', 'revised', 'version']);
+    // The searching step's old nickname is slang: it is in the list of words a person is never shown.
+    const slang = BANNED.find((banned) => banned.name === 'slang step name');
+    expect(slang).toBeDefined();
+    expect(new RegExp(slang!.pattern.source, 'i').test('PLANNER, SLEUTH, RETRIEVER')).toBe(true);
+    expect(new RegExp(slang!.pattern.source, 'i').test('The Sleuthing Pass')).toBe(true);
+    expect(scanReaderWording(SRC).filter((hit) => hit.word === 'slang step name')).toEqual([]);
+    for (const name of [...names('run_step'), ...names('run_page_field'), ...names('dossier_badge')]) {
+      expect(name, name).not.toMatch(/sleuth|spin-?off|\bv2\b|[A-Z]{2,}_[A-Z]{2,}/i);
+    }
+  });
+
   it('fails this test when an entry loses its description or its example', () => {
     const incomplete = (option: { name: string; description: string; example: string }): boolean =>
       !option.name.trim() || !option.description.trim() || !option.example.trim();

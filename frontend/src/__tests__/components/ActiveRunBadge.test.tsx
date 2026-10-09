@@ -102,13 +102,14 @@ describe('ActiveRunBadge', () => {
 
   it('names runs by their title, never by the raw prompt', async () => {
     getResearchRuns.mockResolvedValue([
-      run({ id: 'run-a', display_title: null, run_ref: 'R1-20260823-1557-4K7Q2-9', query: '# Research Objective…' }),
+      run({ id: 'run-a', display_title: null, run_ref: 'R1-20260823-1557-4K7Q2-9', query: '# Research Objective\n\n**Context:** Review the statements in Volume I.' }),
       run({ id: 'run-b', display_title: 'A real title' }),
     ]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: /2 runs/i }));
     const menu = screen.getByRole('menu');
-    expect(within(menu).getByText('R1-20260823-1557-4K7Q2-9')).toBeTruthy();
+    // RJ-018: with no stored title, a short title made from the request — never the request as typed.
+    expect(within(menu).getByText('Review the statements in Volume I')).toBeTruthy();
     expect(within(menu).queryByText(/# Research Objective/)).toBeNull();
   });
 

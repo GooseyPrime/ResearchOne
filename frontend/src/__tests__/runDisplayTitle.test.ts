@@ -38,15 +38,20 @@ describe('runDisplayTitle', () => {
     expect(runDisplayTitle({ display_title: '   ', run_ref: REF })).toBe(REF);
   });
 
-  it('never returns a prompt, even when the row carries one', () => {
-    // The shipped defect. `title` and `query` are not inputs to this module,
-    // so a caller cannot accidentally reintroduce them by passing the row.
+  it('never returns the prompt itself; with no stored title it makes a short title from it', () => {
+    // The shipped defect was the raw prompt as the heading, Markdown `#` and
+    // all. `title` is still not an input. RJ-018: when no plain title exists
+    // the request is used — shortened to a title, never shown whole.
     const row = {
-      title: '# Research Objective: Identify and Rank the 20 Best Affiliate…',
-      query: '# Research Objective: Identify and Rank the 20 Best Affiliate…',
+      title: '# Research Objective: Identify and Rank the 20 Best Affiliate Programs\n\nLong body…',
+      query: '# Research Objective: Identify and Rank the 20 Best Affiliate Programs\n\nLong body that runs on for many lines.',
       run_ref: REF,
     };
-    expect(runDisplayTitle(row)).toBe(REF);
+    expect(runDisplayTitle(row)).toBe('Research Objective: Identify and Rank the 20 Best Affiliate Programs');
+    expect(runDisplayTitle(row)).not.toContain('#');
+    expect(runDisplayTitle(row)).not.toContain('Long body');
+    // With no request either, the reference.
+    expect(runDisplayTitle({ title: row.title, run_ref: REF } as Parameters<typeof runDisplayTitle>[0])).toBe(REF);
   });
 
   it('degrades to a label when even the reference is missing', () => {

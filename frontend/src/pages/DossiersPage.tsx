@@ -8,6 +8,8 @@ import { extractApiError, type DossierListRow } from '../utils/api';
 import DossierStatusBadge from '../components/dossiers/DossierStatusBadge';
 import IntentBadge from '../components/dossiers/IntentBadge';
 import DossiersTimelineTable, { timelineRowsToCsv } from '../components/dossiers/DossiersTimelineTable';
+import { stripReportLabels } from '../lib/researchone/reportLabels';
+import { customerOption, customerOptionHelp } from '../content/customerOptions';
 import { runDisplayTitle } from '../utils/runDisplayTitle';
 
 type ViewMode = 'cards' | 'timeline';
@@ -222,7 +224,14 @@ function PaginationBar({
   );
 }
 
-function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => void }) {
+/** The small labels a dossier card can carry, from the registry of customer-facing names. */
+const BADGE = {
+  version: customerOption('dossier_badge', 'version'),
+  spinoff: customerOption('dossier_badge', 'spinoff'),
+  revised: customerOption('dossier_badge', 'revised'),
+};
+
+export function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => void }) {
   const activityAt = row.lastActivityAt ?? row.dossierCreatedAt;
   return (
     <button
@@ -235,24 +244,26 @@ function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => v
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+          {/*
+            Small labels, named from the registry of customer-facing names, each
+            with its description and example on hover (RJ-018). The engine code
+            ("v2") that stood here told a customer nothing and is gone.
+          */}
+          <div className="flex flex-wrap items-center gap-2" data-testid="dossier-badges">
             {row.versionNumber != null && row.versionNumber > 1 ? (
-              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-slate-800 text-slate-300">
-                v{row.versionNumber}
+              <span className="text-[11px] rounded px-1.5 py-0.5 bg-slate-800 text-slate-300" title={customerOptionHelp(BADGE.version)}>
+                {BADGE.version.name} {row.versionNumber}
               </span>
             ) : null}
             {row.isSpinoff ? (
-              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-purple-900/40 text-purple-300">
-                Spinoff
+              <span className="text-[11px] rounded px-1.5 py-0.5 bg-purple-900/40 text-purple-300" title={customerOptionHelp(BADGE.spinoff)}>
+                {BADGE.spinoff.name}
               </span>
             ) : null}
             {row.isRevised ? (
-              <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-accent/15 text-accent">
-                Revised
+              <span className="text-[11px] rounded px-1.5 py-0.5 bg-accent/15 text-accent" title={customerOptionHelp(BADGE.revised)}>
+                {BADGE.revised.name}
               </span>
-            ) : null}
-            {row.engineVersion ? (
-              <span className="text-[10px] uppercase tracking-wide text-slate-500">{row.engineVersion}</span>
             ) : null}
           </div>
           <p className="text-xs text-slate-500">
@@ -268,12 +279,21 @@ function DossierListCard({ row, onOpen }: { row: DossierListRow; onOpen: () => v
           */}
           <p className="text-sm text-white font-medium line-clamp-2">
             {runDisplayTitle({
-              display_title: row.displayTitle,
-              report_title: row.reportTitle,
+              display_title: stripReportLabels(row.displayTitle),
+              report_title: stripReportLabels(row.reportTitle),
               run_ref: row.runRef,
+              query: stripReportLabels(row.requestQuery),
             })}
           </p>
-          <p className="text-xs text-slate-400 line-clamp-1">{row.requestQuery || '—'}</p>
+          {/*
+            A request started from an older report quotes that report, and old
+            report text carried labels such as "(established_fact, Chunk 17)".
+            They are taken out of what the card shows; the stored request is
+            not changed (RJ-018).
+          */}
+          <p className="text-xs text-slate-400 line-clamp-1" data-testid="dossier-request-preview">
+            {stripReportLabels(row.requestQuery) || '—'}
+          </p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           <DossierStatusBadge status={row.runStatus} gateStatus={row.gateStatus} />

@@ -6,7 +6,7 @@ import { query, queryOne, withTransaction } from '../../db/pool';
 import type { ResearchJobData } from '../reasoning/researchOrchestratorTypes';
 import type { PlanPayload } from './planTypes';
 import { planSummaryFromPayload } from './planTypes';
-import { deriveRunDisplayTitle } from '../research/titleShaping';
+import { plainRunTitle } from '../research/titleShaping';
 import { logger } from '../../utils/logger';
 
 export interface InsertGatePlanResult {
@@ -23,17 +23,26 @@ export interface InsertGatePlanResult {
  * `<h1>`, the dossier cards as headlines carrying Markdown `#`. Four consumers
  * of one mapping deriving it four times is Rule 44 T3 by construction.
  *
+ * RJ-018: the title is the planning step's short plain title of the question,
+ * or one made from the request (`plainRunTitle`). It is never the planning
+ * step's analysis of the request.
+ *
  * Best-effort by design — a run with no `display_title` reads correctly through
- * the `display_title -> report_title -> run_ref` fallback, so failing the plan
+ * the `display_title -> report_title -> request -> run_ref` fallback, so failing the plan
  * write over a cosmetic column would trade a real outcome for a display one.
  * "Best-effort" is not "silent", though: 42703 is the expected pre-migration-057
  * case and is left alone, and everything else is logged (Rule 44 T8 — a job
  * whose failure logs the same as its success has no monitoring value).
  */
 async function writeRunDisplayTitle(runId: string, planPayload: PlanPayload): Promise<void> {
-  const title = deriveRunDisplayTitle(planPayload.topicAnalysis?.summary);
-  if (!title) return;
   try {
+    // RJ-018: the title is the short plain one the planning step wrote, or one
+    // made from the request. It was the first sentence of the planning step's
+    // topic analysis, which is a sentence ABOUT the request ("The query requires
+    // investigating dual dimensions…") and read as one on every screen.
+    const run = await queryOne<{ query: string | null }>(`SELECT query FROM research_runs WHERE id = $1::uuid`, [runId]);
+    const title = plainRunTitle(planPayload.title, run?.query ?? null);
+    if (!title) return;
     await query(
       `UPDATE research_runs
           SET display_title = $2
@@ -216,9 +225,17 @@ export async function confirmGatePlan(input: {
   return Boolean(row?.id);
 }
 
+/**
+ * Moves a run from waiting at the plan to running. Only a run that is still
+ * waiting is moved (RJ-018): a second confirmation that arrives after the run
+ * has started, finished or been cancelled changes nothing.
+ */
 export async function markRunRunningAfterPlanConfirm(runId: string): Promise<void> {
   await query(
-    `UPDATE research_runs SET status = 'running', started_at = COALESCE(started_at, NOW()), updated_at = NOW() WHERE id = $1::uuid`,
+    `UPDATE research_runs
+        SET status = 'running', started_at = COALESCE(started_at, NOW()), updated_at = NOW()
+      WHERE id = $1::uuid
+        AND status = 'plan_pending_confirmation'`,
     [runId]
   );
 }

@@ -321,8 +321,9 @@ describe('the live run panel', () => {
   it("words the stage from what the run reported, not from the diagram's nearest box", async () => {
     const { readFileSync } = await import('node:fs');
     const panel = readFileSync(join(SRC, 'components/r1-dashboard/LiveRunPanel.tsx'), 'utf8');
-    expect(panel).toContain("const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : latest?.stage ?? run.progress_stage ?? run.status;");
-    expect(panel).toContain('<Fact label="Stage" value={readerStageLabel(stageAsReported)} />');
+    // RJ-018: the stage is the one at the furthest point the run has reached, so a late "starting" cannot replace it.
+    expect(panel).toContain("const stageAsReported = run.status === 'plan_pending_confirmation' ? 'plan_pending_confirmation' : progress.stage ?? run.progress_stage ?? run.status;");
+    expect(panel).toContain('<Fact label="Step" value={readerStageLabel(stageAsReported)} />');
     // Stages the diagram folds together read differently to a person.
     expect(readerStageLabel('synthesis')).not.toBe(readerStageLabel('reasoner'));
     expect(readerStageLabel('verification')).not.toBe(readerStageLabel('reasoner'));

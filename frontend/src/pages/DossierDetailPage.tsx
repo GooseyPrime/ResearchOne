@@ -1,3 +1,4 @@
+import { customerOption, customerOptionHelp } from '../content/customerOptions';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -28,6 +29,9 @@ import { extractApiError } from '../utils/api';
 import { plainReportStatus, plainRunStatus } from '../utils/runStatusDisplay';
 import { useIsAdmin } from '../hooks/useIsAdmin';
 
+/** New research started from an earlier report, as every screen names it (RJ-018). */
+const FOLLOW_UP = customerOption('dossier_badge', 'spinoff');
+
 type TabId = 'request' | 'plan' | 'report' | 'report-history' | 'spinoffs' | 'sources' | 'stats';
 
 const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
@@ -35,7 +39,7 @@ const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'plan', label: 'Plan', icon: LayoutList },
   { id: 'report', label: 'Report', icon: FileText },
   { id: 'report-history', label: 'Report history', icon: History },
-  { id: 'spinoffs', label: 'Spinoffs', icon: GitBranch },
+  { id: 'spinoffs', label: FOLLOW_UP.name, icon: GitBranch },
   { id: 'sources', label: 'Sources', icon: Database },
   { id: 'stats', label: 'Statistics', icon: Sigma },
 ];
@@ -266,14 +270,14 @@ export default function DossierDetailPage() {
 
         {tab === 'spinoffs' && (
           <div className="space-y-3">
-            <h2 className="text-white font-medium">Spinoffs</h2>
+            <h2 className="text-white font-medium" title={customerOptionHelp(FOLLOW_UP)}>{FOLLOW_UP.name}</h2>
             <p className="text-xs text-slate-500">Child research runs forked from this dossier&apos;s report lineage.</p>
             {spinoffsQuery.isLoading ? (
-              <p className="text-slate-500">Loading spinoffs…</p>
+              <p className="text-slate-500">Loading follow-up research…</p>
             ) : spinoffsQuery.isError ? (
               <p className="text-slate-500">{extractApiError(spinoffsQuery.error)}</p>
             ) : (spinoffsQuery.data?.spinoffs ?? []).length === 0 ? (
-              <p className="text-slate-500">No spinoff runs yet.</p>
+              <p className="text-slate-500">No follow-up research yet.</p>
             ) : (
               <ul className="space-y-2">
                 {(spinoffsQuery.data?.spinoffs ?? []).map((s) => (

@@ -210,7 +210,7 @@ export default function ReportSpinoffPage() {
       }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['research-runs'] });
-      addNotification('info', 'Spinoff research queued — opening live run.');
+      addNotification('info', 'Follow-up research is queued. Opening its page…');
       navigate(liveResearchUrl(data.runId));
     },
     onError: (err: unknown) => {
@@ -241,7 +241,7 @@ export default function ReportSpinoffPage() {
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <GitBranch className="text-accent" size={22} />
-          New research spinoff
+          New follow-up research
         </h1>
         <p className="text-sm text-slate-400 mt-2">
           Starts a fresh research run that inherits context from{' '}
@@ -263,7 +263,7 @@ export default function ReportSpinoffPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 disabled={mutation.isPending}
-                placeholder="What should this spinoff investigate?"
+                placeholder="What should this follow-up research look into?"
               />
             </div>
 
@@ -441,7 +441,7 @@ export default function ReportSpinoffPage() {
               disabled={!query.trim() || mutation.isPending}
             >
               <Send size={16} />
-              {mutation.isPending ? 'Starting spinoff…' : 'Start spinoff research'}
+              {mutation.isPending ? 'Starting…' : 'Start follow-up research'}
             </button>
           </form>
         </div>

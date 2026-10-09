@@ -17,11 +17,13 @@ import {
   readerHeading,
   referenceAnchor,
   sectionRole,
+  shownReportSections,
   tabsFor,
   type ReaderEvidence,
   type ReaderSource,
   type ReaderTab,
 } from './readerModel';
+import { reportDisplayTitle } from '../../../utils/plainTitles';
 import { DOUBLE_CHECK, customerOptionsIn } from '../../../content/customerOptions';
 
 /** Before the page's data arrives: the report text alone, and no status claimed. */
@@ -111,16 +113,17 @@ export function ReaderReportBody({ report, evidence = EMPTY, legacyNumbers }: Re
   const linked = (section: { id: string; title: string; content: string }) => linkSection(section.title, section.content, section.id, evidence.citations, labels);
   return (
     <>
-      {sections.map((section, index) =>
-        role(index) === 'report' ? (
-          <section key={section.id} className="space-y-2">
+      {/* A heading stored twice is printed once (RJ-018). */}
+      {shownReportSections(sections, report.title).map(({ section, showHeading }) => (
+        <section key={section.id} className="space-y-2">
+          {showHeading && (
             <h2 className="text-xl font-semibold text-white">
               <Prose inline markdown={linked(section).heading} evidence={evidence} />
             </h2>
-            <Prose markdown={linked(section).body} evidence={evidence} />
-          </section>
-        ) : null
-      )}
+          )}
+          <Prose markdown={linked(section).body} evidence={evidence} />
+        </section>
+      ))}
       {sections.every((_, index) => role(index) !== 'report') && report.executive_summary && (
         // An older report with no stored sections: its summary gets the same citation handling.
         <Prose markdown={link(report.executive_summary, null)} evidence={evidence} />
@@ -174,7 +177,8 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
     <article className="space-y-5">
       <header className="space-y-2">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-3xl font-bold text-white leading-tight">{report.title}</h1>
+          {/* The report's real title, or a title of the request it answers; never the name of an old section (RJ-018). */}
+          <h1 className="text-3xl font-bold text-white leading-tight">{reportDisplayTitle(report.title, report.query)}</h1>
           {evidence.status.word && (
             <span className={clsx('badge border flex-shrink-0', STATUS_TONE[evidence.status.word] ?? STATUS_TONE['Needs review'])}>{evidence.status.word}</span>
           )}

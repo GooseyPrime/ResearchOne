@@ -1,0 +1,109 @@
+{
+  "about": "RJ-018. Old report text with the labels a customer was shown, and what each becomes. Read by the backend test (rj018ReportLabels.test.ts) and by the frontend test (reportLabels.test.ts), so the two formatters cannot drift. 'report' is the server's clean-up, which keeps passage numbers in the form the citation mapper reads; 'preview' is what a card shows, where there are no citations to link to.",
+  "labels": [
+    {
+      "name": "grade with one passage",
+      "input": "Turnout rose by four points (established_fact, Chunk 17).",
+      "report": "Turnout rose by four points [Chunk 17].",
+      "preview": "Turnout rose by four points."
+    },
+    {
+      "name": "grade with several passages",
+      "input": "Three audits agree (strong_evidence, Chunks 2, 12, 15) on the count.",
+      "report": "Three audits agree [Chunks 2, 12, 15] on the count.",
+      "preview": "Three audits agree on the count."
+    },
+    {
+      "name": "grade with a working note",
+      "input": "The delay was probably deliberate (inference, Challenger Findings).",
+      "report": "The delay was probably deliberate.",
+      "preview": "The delay was probably deliberate."
+    },
+    {
+      "name": "another grade with a working note",
+      "input": "A cover-up cannot be ruled out (speculation, Critical Notes).",
+      "report": "A cover-up cannot be ruled out.",
+      "preview": "A cover-up cannot be ruled out."
+    },
+    {
+      "name": "preserved contradiction with a working note",
+      "input": "The two agencies give different totals (preserved contradiction, Reasoning Output).",
+      "report": "The two agencies give different totals.",
+      "preview": "The two agencies give different totals."
+    },
+    {
+      "name": "square brackets and capitals",
+      "input": "Costs doubled [Strong_Evidence, Chunk 3] in a year.",
+      "report": "Costs doubled [Chunk 3] in a year.",
+      "preview": "Costs doubled in a year."
+    },
+    {
+      "name": "a grade standing alone",
+      "input": "The memo exists (established_fact) and was signed (preserved contradiction).",
+      "report": "The memo exists and was signed.",
+      "preview": "The memo exists and was signed."
+    },
+    {
+      "name": "a working note named alone",
+      "input": "No second source was found (Challenger Findings).",
+      "report": "No second source was found.",
+      "preview": "No second source was found."
+    },
+    {
+      "name": "an old section name inside a sentence",
+      "input": "See Recommended Next Queries and the Contested Zones below.",
+      "report": "See Further questions and the Where sources disagree below.",
+      "preview": "See Further questions and the Where sources disagree below."
+    }
+  ],
+  "kept": [
+    "The bridge (opened in 1932) carries four lanes.",
+    "Spending rose (see Table 2) in every district.",
+    "The authors call this an inference (an inference they later withdrew).",
+    "Smith (2019, chapter 3) disagrees.",
+    "The court heard testimony (three days of it) in March.",
+    "It cost $40 million (about 2% of the budget).",
+    "The audit (which the city commissioned, and which the contractor disputes) found errors.",
+    "This is speculation, the minister said (and the opposition agreed).",
+    "The reasoning (set out in the appendix) is short.",
+    "She collected primary evidence for two years and read the critical notes of earlier editors."
+  ],
+  "requestTitles": [
+    {
+      "request": "What security measures protect the 2026 presidential election? Include paper ballots and audits.",
+      "title": "What security measures protect the 2026 presidential election?"
+    },
+    {
+      "request": "# Research Objective: Rank the 20 best affiliate programs\n\n## Scope\nUS only.",
+      "title": "Research Objective: Rank the 20 best affiliate programs"
+    },
+    {
+      "request": "# Research Objective\n\n**Context:** Do a full site review of the content in Volume I.\n\n---\n\nEvaluate the statements using reasoning capabilities.",
+      "title": "Do a full site review of the content in Volume I"
+    },
+    {
+      "request": "## Context\n\nCompare heat pumps and gas boilers for a 1930s house.",
+      "title": "Compare heat pumps and gas boilers for a 1930s house"
+    },
+    {
+      "request": "Is it true that remote work lowers productivity",
+      "title": "Is it true that remote work lowers productivity"
+    },
+    {
+      "request": "   ",
+      "title": null
+    },
+    {
+      "request": "Compare heat pumps and boilers for an old house.\n\n## Output requirements\n\nA table.",
+      "title": "Compare heat pumps and boilers for an old house"
+    },
+    {
+      "request": "Compare C# and F# for .NET services, and say when foo_bar style names matter.",
+      "title": "Compare C# and F# for .NET services, and say when foo_bar style names matter"
+    },
+    {
+      "request": "**Is the `max_tokens` setting** the cause of *truncated* replies?",
+      "title": "Is the max_tokens setting the cause of truncated replies?"
+    }
+  ]
+}

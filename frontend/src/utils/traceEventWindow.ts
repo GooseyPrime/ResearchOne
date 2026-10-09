@@ -154,3 +154,96 @@ export function eventsFromRunRow(run: ResearchRun): ResearchProgressEvent[] {
     }),
   ];
 }
+
+/**
+ * A notice from the worker that it has picked the run up (RJ-018).
+ *
+ * It is not a step of the run: it has no percentage, and until RJ-018 it had no
+ * time either. Each page received it twice (once on the run's channel, once on
+ * the all-pages broadcast), stamped each copy with the browser's own clock, and
+ * showed "Starting 0%" twice — after later steps where the browser's clock ran
+ * ahead of the server's, which also pulled the progress bar back to 0%. The run's
+ * real first step ("starting", 1%) is written by the pipeline and arrives with
+ * the run row, so the notice is never a row of the trace.
+ */
+export function isWorkerNotice(evt: Partial<ResearchProgressEvent> | null | undefined): boolean {
+  if (!evt) return false;
+  // The server's name for it since RJ-018. Read as text: it is not one of the trace's own event types.
+  if ((evt.eventType as string | undefined) === 'worker_notice') return true;
+  return evt.stage === 'started' && !Number.isFinite(evt.percent) && !evt.message;
+}
+
+/** A run that stopped and was started again begins its count again. */
+function isRestartMarker(evt: ResearchProgressEvent): boolean {
+  return (
+    evt.eventType === 'run_resumed' ||
+    evt.eventType === 'run_failed' ||
+    evt.eventType === 'run_aborted' ||
+    evt.stage === 'failed' ||
+    evt.stage === 'aborted'
+  );
+}
+
+export interface TraceProgress {
+  /** 0–100, and never lower than a value already shown for this attempt. */
+  percent: number;
+  /** The step the run is on: the step of the furthest point it has reached. */
+  stage: string | null;
+}
+
+/**
+ * How far a run has got, for the progress bar and the step row (RJ-018).
+ *
+ * Progress on screen never moves backwards. The furthest point any event of
+ * this attempt reports is where the run is; an event that reports less (a
+ * second "starting" when the run picks up after its plan is confirmed, a late
+ * or repeated event) does not pull the display back. Only a real restart — the
+ * run stopped and was started again — begins the count again.
+ *
+ * `events` are in time order, oldest first, as `useRunTraceStream` holds them.
+ * `row` is the run row's own progress, which can be ahead of the events on a
+ * page that has only just opened.
+ */
+export function traceProgress(
+  events: readonly ResearchProgressEvent[],
+  row?: { progress_percent?: number | null; progress_stage?: string | null } | null
+): TraceProgress {
+  let percent = -1;
+  let stage: string | null = null;
+  for (const evt of events) {
+    if (isRestartMarker(evt)) {
+      percent = -1;
+      stage = null;
+      continue;
+    }
+    if (isWorkerNotice(evt) || !Number.isFinite(evt.percent)) continue;
+    if (evt.percent >= percent) {
+      percent = evt.percent;
+      stage = evt.stage || stage;
+    }
+  }
+  const rowPercent = typeof row?.progress_percent === 'number' && Number.isFinite(row.progress_percent) ? row.progress_percent : null;
+  if (rowPercent !== null && rowPercent > percent) {
+    percent = rowPercent;
+    stage = row?.progress_stage || stage;
+  }
+  if (stage === null) stage = row?.progress_stage || null;
+  return { percent: Math.max(0, Math.min(100, Math.round(percent))), stage };
+}
+
+/**
+ * The percentage printed on each row of the trace, in the order given (RJ-018).
+ * A row never shows less than the row above it within one attempt, for the
+ * same reason the bar does not move back.
+ */
+export function tracePercents(events: readonly ResearchProgressEvent[]): number[] {
+  let furthest = 0;
+  return events.map((evt) => {
+    if (isRestartMarker(evt)) {
+      furthest = 0;
+      return Number.isFinite(evt.percent) ? Math.round(evt.percent) : 0;
+    }
+    if (Number.isFinite(evt.percent) && evt.percent > furthest) furthest = evt.percent;
+    return Math.round(furthest);
+  });
+}
