@@ -3,6 +3,11 @@ import * as path from 'path';
 import { initDb, getPool } from './pool';
 import { logger } from '../utils/logger';
 
+/** Renamed migration files: the SQL LIKE pattern the old record matches, and the file name it has now. */
+const RENAMED_MIGRATION_FILES: ReadonlyArray<{ recordedAs: string; now: string }> = [
+  { recordedAs: '036\\_wave5\\_source\\_class\\_%.sql', now: '036_wave5_source_class_strongest_form.sql' },
+];
+
 async function migrate() {
   await initDb();
   const pool = getPool();
@@ -15,6 +20,19 @@ async function migrate() {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // A migration file that was renamed after it had been applied. An applied
+  // migration is known only by its file name (there is no checksum), so its
+  // record is moved to the new name first; otherwise the renamed file would
+  // be applied a second time. The old name is matched by pattern.
+  for (const renamed of RENAMED_MIGRATION_FILES) {
+    await pool.query(
+      `UPDATE schema_migrations SET filename = $2
+        WHERE filename LIKE $1 AND filename <> $2
+          AND NOT EXISTS (SELECT 1 FROM schema_migrations WHERE filename = $2)`,
+      [renamed.recordedAs, renamed.now]
+    );
+  }
 
   const migrationsDir = path.join(__dirname, 'migrations');
   const files = fs.readdirSync(migrationsDir)
