@@ -1,14 +1,19 @@
 import type { ReactNode } from 'react';
 import { useId, useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import NotUsedSources from '../components/research/NotUsedSources';
+import DiscoverySummaryView from '../components/research/DiscoverySummaryView';
+import ShowAllList from '../components/ui/ShowAllList';
 import {
   getResearchRun,
   getRunArtifacts,
   retryResearchRunFromFailure,
   extractApiError,
 } from '../utils/api';
+import { SEND_AS_NEW_REQUEST, retryRefusalFromError, retryRefusedText, sentenceForRunThatCannotRunAgain } from '../utils/customerFailureText';
+import { requestPrefillUrl } from '../utils/researchRunRoutes';
+import { readLongFrames } from '../lib/longFrameLog';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import { useIsAdmin } from '../hooks/useIsAdmin';
 import {
@@ -55,8 +60,11 @@ function formatShortTime(iso: string | undefined): string {
 export default function FailedRunReportPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
-  const [retryError, setRetryError] = useState<string | null>(null);
+  // The server refused to run this run again: its sentence, and (administrators only) why.
+  const [retryRefused, setRetryRefused] = useState<{ sentence: string | null; adminReason: string | null } | null>(null);
   const isAdmin = useIsAdmin();
+  // Times this browser was held still on any page, with the script that was running (RJ-022B).
+  const longFrames = useMemo(() => readLongFrames(), []);
 
   const { data: run, isLoading: runLoading, error: runError } = useQuery({
     queryKey: ['research-run', runId],
@@ -80,7 +88,7 @@ export default function FailedRunReportPage() {
   const retryMutation = useMutation({
     mutationFn: () => retryResearchRunFromFailure(runId!),
     onSuccess: () => navigate('/app/research'),
-    onError: (err) => setRetryError(extractApiError(err)),
+    onError: (err) => setRetryRefused(retryRefusalFromError(err)),
   });
 
   // Build a RunSummaryData payload from the persisted run row + artifacts so
@@ -162,7 +170,9 @@ export default function FailedRunReportPage() {
 
   const isAborted = run.status === 'aborted';
   const fmeta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
-  const retryable = fmeta.retryable === true;
+  // The test the server applies before it runs a run again.
+  const retryable = fmeta.retryable === true || fmeta.resumeAvailable === true;
+  const canRunAgain = retryable && !retryRefused;
   const sourceCount = artifacts?.sources.length ?? 0;
   const claimCount = artifacts?.claims.length ?? 0;
   const sourcesTotal = artifacts?.sourcesTotal ?? sourceCount;
@@ -198,22 +208,38 @@ export default function FailedRunReportPage() {
               </p>
             </div>
           </div>
-          {retryable && (
-            <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-end gap-1.5">
+            {canRunAgain ? (
               <button
                 type="button"
                 className="btn-ghost text-xs flex items-center gap-1.5 text-accent border border-accent/30 px-3 py-1.5 rounded-lg"
-                onClick={() => { setRetryError(null); retryMutation.mutate(); }}
+                onClick={() => retryMutation.mutate()}
                 disabled={retryMutation.isPending}
               >
                 <RefreshCw size={12} className={retryMutation.isPending ? 'animate-spin' : ''} />
-                Retry run
+                Run it again
               </button>
-              {retryError && (
-                <p className="text-[10px] text-red-400 max-w-48 text-right leading-snug">{retryError}</p>
-              )}
-            </div>
-          )}
+            ) : (
+              // A run that cannot be run again (stored that way, or just refused
+              // by the server) is offered as a new request with the same words.
+              <Link
+                to={requestPrefillUrl(run.id)}
+                className="btn-ghost text-xs flex items-center gap-1.5 text-accent border border-accent/30 px-3 py-1.5 rounded-lg"
+              >
+                {SEND_AS_NEW_REQUEST}
+              </Link>
+            )}
+            {retryRefused && (
+              <p className="text-[10px] text-red-400 max-w-56 text-right leading-snug" role="alert" data-testid="retry-refused">
+                {retryRefusedText(retryRefused.sentence)}
+              </p>
+            )}
+            {isAdmin && retryRefused?.adminReason && (
+              <p className="text-[10px] text-slate-500 font-mono max-w-56 text-right leading-snug" data-testid="retry-refused-reason">
+                {retryRefused.adminReason}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Original query */}
@@ -224,8 +250,8 @@ export default function FailedRunReportPage() {
           </p>
         </div>
 
-        {/* Research objective + engine version */}
-        {(run.research_objective || run.engine_version) && (
+        {/* Research objective + engine version: internal names, for administrators. */}
+        {isAdmin && (run.research_objective || run.engine_version) && (
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
             {run.research_objective && (
               <span>
@@ -304,7 +330,11 @@ export default function FailedRunReportPage() {
               <div className="rounded-lg bg-black/30 border border-red-900/30 p-3">
                 <div className="text-[10px] uppercase tracking-widest text-red-500/70 mb-1">Error</div>
                 <p className="text-xs text-red-300/90 leading-relaxed font-mono whitespace-pre-wrap break-words">
-                  {plainProgressText(run.error_message)}
+                  {/* An administrator reads the stored error. Everyone else reads the server's
+                      sentence, which does not name "Run it again" once the run cannot be. */}
+                  {isAdmin || canRunAgain
+                    ? plainProgressText(run.error_message)
+                    : sentenceForRunThatCannotRunAgain(plainProgressText(run.error_message))}
                 </p>
               </div>
             )}
@@ -318,7 +348,7 @@ export default function FailedRunReportPage() {
             {run.retry_budget != null && (
               <> of <span className="text-slate-300">{run.retry_budget}</span></>
             )}
-            {fmeta.terminal === true && (
+            {isAdmin && fmeta.terminal === true && (
               <span className="ml-2 text-slate-600">
                 · budget locked ({String(fmeta.abortReason ?? 'non-recoverable')})
               </span>
@@ -418,7 +448,8 @@ export default function FailedRunReportPage() {
       )}
 
       {/* Plan from planner */}
-      {artifacts?.plan && (
+      {/* The stored plan is the technical record (field names, search strings, settings): administrators only. */}
+      {isAdmin && artifacts?.plan && (
         <CollapsibleSection
           icon={<Target size={15} className="text-amber-400" />}
           title="Research plan (from planner)"
@@ -437,9 +468,7 @@ export default function FailedRunReportPage() {
         >
           <div className="space-y-3">
             {artifacts?.discoverySummary && (
-              <pre className="text-[11px] font-mono text-slate-300 bg-[#080a10] rounded border border-surface-100/20 p-3 overflow-x-auto whitespace-pre-wrap max-h-72 overflow-y-auto">
-                {JSON.stringify(artifacts.discoverySummary, null, 2)}
-              </pre>
+              <DiscoverySummaryView summary={artifacts.discoverySummary} isAdmin={isAdmin} />
             )}
             {artifacts?.discoveryEvents && artifacts.discoveryEvents.length > 0 && (
               <div className="space-y-1.5">
@@ -497,8 +526,8 @@ export default function FailedRunReportPage() {
           icon={<Database size={15} className="text-blue-400" />}
           title={`Sources used (${sourceCount}${sourcesTotal > sourceCount ? ` of ${sourcesTotal}` : ''})`}
         >
-          <div className="space-y-2">
-            {artifacts!.sources.map((s) => (
+          <ShowAllList items={artifacts!.sources} className="space-y-2" testId="sources-used">
+            {(s) => (
               <div
                 key={s.id}
                 className="flex items-start gap-3 p-3 rounded-lg bg-surface-200/50 border border-surface-100/20"
@@ -520,8 +549,8 @@ export default function FailedRunReportPage() {
                 </div>
                 <span className="text-[10px] text-slate-500 flex-shrink-0">{s.source_type}</span>
               </div>
-            ))}
-          </div>
+            )}
+          </ShowAllList>
         </CollapsibleSection>
       )}
 
@@ -541,8 +570,8 @@ export default function FailedRunReportPage() {
           icon={<Brain size={15} className="text-purple-400" />}
           title={`Findings extracted (${claimCount}${claimsTotal > claimCount ? ` of ${claimsTotal}` : ''})`}
         >
-          <div className="space-y-2">
-            {artifacts!.claims.map((c) => (
+          <ShowAllList items={artifacts!.claims} className="space-y-2" testId="findings-extracted">
+            {(c) => (
               <div
                 key={c.id}
                 className="p-3 rounded-lg bg-surface-200/50 border border-surface-100/20 space-y-1"
@@ -554,8 +583,8 @@ export default function FailedRunReportPage() {
                   </span>
                 )}
               </div>
-            ))}
-          </div>
+            )}
+          </ShowAllList>
         </CollapsibleSection>
       )}
 
@@ -580,6 +609,32 @@ export default function FailedRunReportPage() {
                   {JSON.stringify(cp.snapshot, null, 2)}
                 </pre>
               </details>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Diagnostics, administrators only: what this browser recorded when a page stopped responding. */}
+      {isAdmin && longFrames.length > 0 && (
+        <CollapsibleSection
+          icon={<Clock size={15} className="text-amber-400" />}
+          title={`Times a page was held still in this browser (${longFrames.length})`}
+        >
+          <div className="space-y-1.5" data-testid="long-frames">
+            {[...longFrames].reverse().map((frame, i) => (
+              <div key={i} className="text-xs bg-surface-200/40 border border-surface-100/20 rounded p-2 space-y-1 font-mono">
+                <p className="text-slate-300">
+                  {(frame.ms / 1000).toFixed(1)} s · {frame.path} · {frame.at}
+                </p>
+                {frame.scripts.length === 0 && <p className="text-[10px] text-slate-500">No script was named for this one.</p>}
+                {frame.scripts.map((script, j) => (
+                  <p key={j} className="text-[10px] text-slate-500 break-all">
+                    {(script.ms / 1000).toFixed(1)} s · {script.source}
+                    {script.fn ? ` · ${script.fn}` : ''}
+                    {script.invoker ? ` · ${script.invoker}` : ''}
+                  </p>
+                ))}
+              </div>
             ))}
           </div>
         </CollapsibleSection>
