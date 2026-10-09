@@ -213,6 +213,25 @@ router.post('/:runId/plan/refine', async (req: Request, res: Response, next: Nex
   }
 });
 
+/** What a repeated confirmation is told. Plain words: the customer reads `message`. */
+export const PLAN_ALREADY_CONFIRMED = {
+  status: 'already_confirmed',
+  alreadyConfirmed: true,
+  message: 'This plan is already confirmed. The research has started, so there is nothing more to do.',
+} as const;
+
+export const PLAN_NOT_WAITING_MESSAGE =
+  'This plan can no longer be confirmed, because the research was cancelled or has stopped. Start a new request to run it again.';
+
+/**
+ * A confirmation for a run that is not waiting at its plan. A run that is
+ * running or has finished was confirmed already, so the answer is a success
+ * that says so. A cancelled or stopped run cannot be confirmed: `null`.
+ */
+export function planConfirmRepeatAnswer(runStatus: string): typeof PLAN_ALREADY_CONFIRMED | null {
+  return runStatus === 'running' || runStatus === 'completed' ? PLAN_ALREADY_CONFIRMED : null;
+}
+
 /** POST /api/runs/:runId/plan/confirm */
 router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -233,7 +252,16 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
       return;
     }
     if (run.status !== 'plan_pending_confirmation') {
-      res.status(400).json({ error: `Run is not awaiting plan confirmation (status=${run.status})` });
+      // One confirmation starts one run (RJ-018). A second one, from a second
+      // click or a second tab, is not an error to the person who sent it: the
+      // plan they confirmed is confirmed. It is answered in plain words and
+      // nothing is queued, marked or announced again.
+      const repeat = planConfirmRepeatAnswer(run.status);
+      if (repeat) {
+        res.json({ ok: true, runId, planId: bodyPlanId || null, ...repeat });
+        return;
+      }
+      res.status(409).json({ error: PLAN_NOT_WAITING_MESSAGE, code: 'plan_not_waiting' });
       return;
     }
 
@@ -295,6 +323,15 @@ router.post('/:runId/plan/confirm', async (req: Request, res: Response, next: Ne
           logger.warn('plan_confirm_rollback_job_remove', { runId, err: removeErr });
         }
         res.status(409).json({ error: 'Plan could not be confirmed (wrong state or plan id)' });
+        return;
+      }
+      // Two confirmations arrived together and the other one won. Its request
+      // queues the run, marks it running, counts the confirmation and announces
+      // it; this one only says so. (The queue step above is safe to have run
+      // twice: it is keyed on the run, and a job already waiting is left alone.)
+      const now = await loadRunForPlanGate(runId, ctx.userId, ctx.orgId);
+      if (now && now.status !== 'plan_pending_confirmation') {
+        res.json({ ok: true, runId, planId: effectivePlanId, ...PLAN_ALREADY_CONFIRMED });
         return;
       }
     }
