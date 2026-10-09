@@ -8,6 +8,12 @@
       function gtag() {
         dataLayer.push(arguments);
       }
+      // The tag is for the public pages. On signed-in pages it is switched off
+      // before it is configured, so it neither sends nor reads anything there
+      // (RJ-022; the same rule is kept on route changes by src/lib/analyticsScope.ts).
+      if (/^\/(app|account|onboarding)(\/|$)/.test(window.location.pathname)) {
+        window['ga-disable-G-C9CW32EES7'] = true;
+      }
       gtag('js', new Date());
 
       gtag('config', 'G-C9CW32EES7');
