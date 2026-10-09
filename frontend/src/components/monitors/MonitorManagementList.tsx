@@ -8,10 +8,12 @@ import {
   type ReportMonitorRow,
 } from '../../utils/api';
 import MonitorEventsPanel from './MonitorEventsPanel';
+import { customerOption } from '../../content/customerOptions';
 
+/** Add-on names, from the registry of customer-facing names. */
 const KIND_LABEL: Record<ReportMonitorKind, string> = {
-  living_report: 'Living Report',
-  reverse_citation_watch: 'Reverse-Citation Watch',
+  living_report: customerOption('add_on', 'living_report').name,
+  reverse_citation_watch: customerOption('add_on', 'reverse_citation_watch').name,
 };
 
 export default function MonitorManagementList({

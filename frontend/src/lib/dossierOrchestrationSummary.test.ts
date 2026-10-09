@@ -16,7 +16,7 @@ function baseStats(over: Partial<DossierStats> = {}): DossierStats {
     sourcesRetrievedCount: null,
     sourcesCitedCount: null,
     citationDensity: null,
-    skepticAnnotationsCount: null,
+    doubleCheckAnnotationsCount: null,
     contradictionsCount: null,
     refinementRounds: null,
     agentsRan: ['a', 'b', 'c'],
