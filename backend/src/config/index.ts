@@ -1,4 +1,4 @@
-import { switchEnabled } from './runFlags';
+import { switchEnabled, switchEnabledByDefault } from './runFlags';
 import path from 'path';
 import { loadEnv, getRepoRoot } from '../bootstrap/loadEnv';
 import {
@@ -567,7 +567,7 @@ validateEnsemblePresetsAgainstAllowlist();
 validateV2ModePresetsAgainstAllowlist();
 
 export { config };
-export { runWithFlags, switchEnabled } from './runFlags';
+export { runWithFlags, switchEnabled, switchEnabledByDefault } from './runFlags';
 /** Slice 4. Unset is off. The lock applies only where the Layer 1 switch is also on. */
 export function citationLockEnabled(): boolean {
   return switchEnabled('CITATION_LOCK_ENABLED') && switchEnabled('BASELINE_LAYER_ENABLED');
@@ -594,6 +594,15 @@ export function doiResolveEnabled(): boolean {
  */
 export function providerRoutingEnabled(): boolean {
   return switchEnabled('PROVIDER_ROUTING_ENABLED');
+}
+/**
+ * The relevance check on what discovery finds and what retrieval returns
+ * (`discovery/relevanceGate.ts`). On unless DISCOVERY_RELEVANCE_GATE_ENABLED is
+ * set to "false": it is a protection, not a trial, so unset is on. Turning it
+ * off is for an emergency only and brings back the word-overlap check alone.
+ */
+export function relevanceGateEnabled(): boolean {
+  return switchEnabledByDefault('DISCOVERY_RELEVANCE_GATE_ENABLED');
 }
 /** How many queries discovery may send in one run. */
 export function discoveryQueryBudget(): number {
