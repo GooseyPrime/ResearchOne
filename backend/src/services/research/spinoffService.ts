@@ -1,4 +1,3 @@
-import { readerViewEnabled } from '../../config';
 import { stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { query } from '../../db/pool';
 import { buildOwnershipSql, rejectUnscopedReadOnScopeError } from '../../db/tenantScope';
@@ -101,13 +100,13 @@ export async function buildPriorReportContextBlock(reportId: string): Promise<st
     'SELECT title, content FROM report_sections WHERE report_id=$1 ORDER BY section_order',
     [reportId]
   );
-  const clean = (text: string): string => (readerViewEnabled() ? stripInternalLabelsFromReport(text) : text);
+  const clean = (text: string): string => stripInternalLabelsFromReport(text);
   const parts: string[] = [
     `${SPINOFF_PRIOR_REPORT_MARKER} — report "${clean(title)}"]`,
     '',
   ];
   for (const sec of sections) {
-    // With the reader view on, the next report is written from this text as a reader would see it.
+    // The next report is written from this text as a reader would see it.
     parts.push(`## ${clean(sec.title ?? '')}`);
     parts.push(clean(sec.content ?? ''));
     parts.push('');
