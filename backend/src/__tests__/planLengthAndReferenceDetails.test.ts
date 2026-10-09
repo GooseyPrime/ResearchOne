@@ -19,7 +19,7 @@ import { PLAN_LENGTH_FIT_INSTRUCTION } from '../services/planning/prompts';
 import { PLANNER_WORD_CEILING, resolveReportWordTarget } from '../services/reasoning/reportGenerator';
 import { referenceDetails, type LockedSourceRow } from '../services/reasoning/researchOrchestrator';
 
-const BOTH_ON = { BASELINE_LAYER_ENABLED: true, CITATION_LOCK_ENABLED: true };
+const RETIRED_OFF = { BASELINE_LAYER_ENABLED: false, CITATION_LOCK_ENABLED: false };
 
 function currentPlan() {
   return parsePlanGeneratorJson('{}', 'reference_lookup', 0.8, defaultResearchBrief('reference_lookup', 0.8, 'classified'));
@@ -39,11 +39,11 @@ function refineTo(intent: string, estimatedLength: { minWords: number; maxWords:
 
 const systemPromptSent = (): string => (mocks.callRoleModel.mock.calls[0][0] as { messages: Array<{ role: string; content: string }> }).messages[0].content;
 
-describe('revising a plan under the switches of its run', () => {
+describe('revising a plan', () => {
   beforeEach(() => mocks.callRoleModel.mockReset());
 
-  it('sizes a revised plan to the question when the Layer 1 switch is on for the run', async () => {
-    const out = await runWithFlags(BOTH_ON, () => refineTo('factual_report', { minWords: 60, maxWords: 150 }));
+  it('sizes a revised plan to the question', async () => {
+    const out = await refineTo('factual_report', { minWords: 60, maxWords: 150 });
     expect(systemPromptSent()).toContain(PLAN_LENGTH_FIT_INSTRUCTION);
     expect(systemPromptSent()).toContain('If the report type changes, size estimatedLength again for the new type.');
     // The length the planner chose is kept, not replaced by the report type's standard range.
@@ -51,11 +51,12 @@ describe('revising a plan under the switches of its run', () => {
     expect(resolveReportWordTarget({ estimatedLength: out.revisedPlan.outputShape.estimatedLength })).toEqual({ target: 105, source: 'planner' });
   });
 
-  it('revises a plan as before when the switch is off', async () => {
-    const out = await refineTo('factual_report', { minWords: 60, maxWords: 150 });
-    expect(systemPromptSent()).not.toContain(PLAN_LENGTH_FIT_INSTRUCTION);
-    // With the switch off the report type's standard range is used, as it was.
-    expect(out.revisedPlan.outputShape.estimatedLength.maxWords).toBeGreaterThan(150);
+  it('sizes it the same way for a run that still carries the retired switches set to off', async () => {
+    const out = await runWithFlags(RETIRED_OFF, () => refineTo('factual_report', { minWords: 60, maxWords: 150 }));
+    expect(systemPromptSent()).toContain(PLAN_LENGTH_FIT_INSTRUCTION);
+    // The report type's standard range does not replace the planner's length.
+    expect(out.revisedPlan.outputShape.estimatedLength).toEqual({ minWords: 60, maxWords: 150 });
+    expect(resolveReportWordTarget({ estimatedLength: out.revisedPlan.outputShape.estimatedLength })).toEqual({ target: 105, source: 'planner' });
   });
 });
 

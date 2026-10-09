@@ -7,8 +7,13 @@ import {
   REPORT_WORD_COUNT_DEFAULT,
   REPORT_WORD_COUNT_PER_SECTION_FLOOR,
 } from '../services/reasoning/reportGenerator';
+import { draftedSections } from '../services/reasoning/baselineReport';
 
-const SECTION_COUNT = 10;
+/** The plan every report is written to. */
+const READER_PLAN = draftedSections('adjudication', 'q');
+const SECTION_COUNT = READER_PLAN.length;
+/** The minimum length is ten per-section floors, the size the request form's length choices were built around. */
+const MIN_LENGTH_FLOORS = 10;
 
 describe('clampWordTarget', () => {
   it('returns the default when input is undefined', () => {
@@ -38,12 +43,12 @@ describe('clampWordTarget', () => {
     expect(clampWordTarget(2200.6)).toBe(2201);
   });
 
-  it('REPORT_WORD_COUNT_MIN equals SECTION_COUNT × per-section floor', () => {
-    // This is the contract that prevents distributeWordBudget from
-    // overshooting at the floor: the minimum budget is exactly the sum of
-    // per-section floors, so each section can sit at the floor and the
-    // total still equals what the user requested.
-    expect(REPORT_WORD_COUNT_MIN).toBe(SECTION_COUNT * REPORT_WORD_COUNT_PER_SECTION_FLOOR);
+  it('REPORT_WORD_COUNT_MIN is ten per-section floors and covers the reader plan', () => {
+    // The minimum must be at least the sum of the reader plan's per-section
+    // floors, so the smallest length a user can choose never forces
+    // distributeWordBudget above the requested total.
+    expect(REPORT_WORD_COUNT_MIN).toBe(MIN_LENGTH_FLOORS * REPORT_WORD_COUNT_PER_SECTION_FLOOR);
+    expect(REPORT_WORD_COUNT_MIN).toBeGreaterThanOrEqual(SECTION_COUNT * REPORT_WORD_COUNT_PER_SECTION_FLOOR);
   });
 });
 
@@ -54,32 +59,39 @@ describe('distributeWordBudget', () => {
     return total;
   }
 
-  it('returns one entry per section in SECTION_PLAN', () => {
-    const budgets = distributeWordBudget(2200);
+  it('returns one entry per section of the reader plan', () => {
+    const budgets = distributeWordBudget(2200, READER_PLAN);
     expect(budgets.size).toBe(SECTION_COUNT);
   });
 
   it('every section receives at least the per-section floor', () => {
     for (const total of [REPORT_WORD_COUNT_MIN, 1200, 2200, 4000, 7000, REPORT_WORD_COUNT_MAX]) {
-      const budgets = distributeWordBudget(total);
+      const budgets = distributeWordBudget(total, READER_PLAN);
       for (const v of budgets.values()) {
         expect(v).toBeGreaterThanOrEqual(REPORT_WORD_COUNT_PER_SECTION_FLOOR);
       }
     }
   });
 
-  it('summed budgets stay close to the requested total at the floor', () => {
-    // At exactly REPORT_WORD_COUNT_MIN (every section pinned to floor) the
-    // sum must equal the total — no overshoot. This is the regression Codex
-    // and Copilot flagged on PR #50.
-    const total = REPORT_WORD_COUNT_MIN;
-    const budgets = distributeWordBudget(total);
+  it('summed budgets equal the requested total when every section sits at the floor', () => {
+    // When the total is exactly the sum of per-section floors, every section
+    // is pinned to the floor and the sum equals the total — no overshoot.
+    // This is the regression Codex and Copilot flagged on PR #50.
+    const total = SECTION_COUNT * REPORT_WORD_COUNT_PER_SECTION_FLOOR;
+    const budgets = distributeWordBudget(total, READER_PLAN);
     expect(sum(budgets)).toBe(total);
+    for (const v of budgets.values()) expect(v).toBe(REPORT_WORD_COUNT_PER_SECTION_FLOOR);
+  });
+
+  it('does not overshoot the minimum length a user can choose', () => {
+    const budgets = distributeWordBudget(REPORT_WORD_COUNT_MIN, READER_PLAN);
+    expect(sum(budgets)).toBeLessThanOrEqual(REPORT_WORD_COUNT_MIN);
+    expect(REPORT_WORD_COUNT_MIN - sum(budgets)).toBeLessThanOrEqual(SECTION_COUNT);
   });
 
   it('summed budgets track the requested total within rounding for typical presets', () => {
     for (const total of [1200, 2200, 4000, 7000, 12000]) {
-      const budgets = distributeWordBudget(total);
+      const budgets = distributeWordBudget(total, READER_PLAN);
       const s = sum(budgets);
       // ≤ SECTION_COUNT words of slack per section from Math.round.
       expect(Math.abs(s - total)).toBeLessThanOrEqual(SECTION_COUNT);
@@ -87,15 +99,23 @@ describe('distributeWordBudget', () => {
   });
 
   it('sections with higher weight get larger budgets', () => {
-    const budgets = distributeWordBudget(4000);
-    // Per the SECTION_PLAN weights, Reasoning (1.6) and Evidence (1.4)
-    // should outweigh Executive Summary (0.6) and Recommended Queries (0.5).
-    const reasoning = budgets.get('reasoning_analysis')!;
-    const evidence = budgets.get('evidence_ledger')!;
-    const exec = budgets.get('executive_summary')!;
-    const recommend = budgets.get('recommended_next_queries')!;
-    expect(reasoning).toBeGreaterThan(exec);
-    expect(reasoning).toBeGreaterThan(recommend);
-    expect(evidence).toBeGreaterThan(exec);
+    // The reader plan weights its sections equally; an extra section added
+    // for a requested format can carry more weight and must get more words.
+    const plan = [
+      ...READER_PLAN,
+      { key: 'comparison_table', title: 'Comparison table', weight: 1.6 },
+      { key: 'steps', title: 'Steps', weight: 0.5 },
+    ];
+    const budgets = distributeWordBudget(4000, plan);
+    const heavy = budgets.get('comparison_table')!;
+    const summary = budgets.get('summary')!;
+    const light = budgets.get('steps')!;
+    expect(heavy).toBeGreaterThan(summary);
+    expect(summary).toBeGreaterThan(light);
+  });
+
+  it('gives the equally weighted reader sections equal budgets', () => {
+    const budgets = distributeWordBudget(4000, READER_PLAN);
+    expect(new Set(budgets.values()).size).toBe(1);
   });
 });

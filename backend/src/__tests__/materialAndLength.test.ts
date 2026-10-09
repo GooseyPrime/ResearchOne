@@ -68,10 +68,15 @@ describe('a length nobody chose does not block growth to fit requested items', (
     expect(userChosenWordTarget(2200, 'default')).toBeUndefined();
   });
 
-  it('passes the writer exactly what the user sent when the switch is off', () => {
-    const decision = { target: 2200, source: 'user' as const };
-    expect(synthesisLengthArgs(false, undefined, decision)).toEqual({ targetWordCount: undefined });
-    expect(synthesisLengthArgs(false, 4000, decision)).toEqual({ targetWordCount: 4000 });
-    expect(synthesisLengthArgs(true, undefined, { target: 105, source: 'planner' })).toEqual({ targetWordCount: 105, lengthSource: 'planner' });
+  it('passes the writer the length decided for the run and who decided it, for every run', () => {
+    expect(synthesisLengthArgs({ target: 2200, source: 'default' })).toEqual({ targetWordCount: 2200, lengthSource: 'default' });
+    expect(synthesisLengthArgs({ target: 4000, source: 'user' })).toEqual({ targetWordCount: 4000, lengthSource: 'user' });
+    expect(synthesisLengthArgs({ target: 105, source: 'planner' })).toEqual({ targetWordCount: 105, lengthSource: 'planner' });
+  });
+
+  it('never hands the writer an undecided length', () => {
+    const args = synthesisLengthArgs(resolveReportWordTarget({}));
+    expect(args.targetWordCount).toBe(2200);
+    expect(userChosenWordTarget(args.targetWordCount, args.lengthSource)).toBeUndefined();
   });
 });

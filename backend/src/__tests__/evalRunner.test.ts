@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { flagForRun, flagValueForRun } from '../services/eval/flagOverride';
+import { flagForRun, flagValueForRun, UnknownFlagError } from '../services/eval/flagOverride';
 import { fixtureFiles, runHarness, type EvalTransport } from '../services/eval/runHarness';
 import { summarizeScores } from '../services/eval/taskSet';
 import { QUOTE_SUPPORTS_FALLBACK, QUOTE_SUPPORTS_MODEL, QUOTE_SUPPORTS_PROMPT } from '../services/eval/quoteSupportsPrompt';
@@ -15,11 +15,19 @@ vi.mock('../services/openrouter/openrouterService', () => ({
 
 describe('flag lookup', () => {
   it('uses the config default, then the recorded override', async () => {
-    expect(flagForRun('BASELINE_LAYER_ENABLED', null)).toBe(false);
-    expect(flagForRun('BASELINE_LAYER_ENABLED', { BASELINE_LAYER_ENABLED: true })).toBe(true);
+    expect(flagForRun('AUTHORITY_TIERS_ENABLED', null)).toBe(false);
+    expect(flagForRun('AUTHORITY_TIERS_ENABLED', { AUTHORITY_TIERS_ENABLED: true })).toBe(true);
     const { query } = await import('../db/pool');
-    vi.mocked(query).mockResolvedValueOnce([{ flags: { BASELINE_LAYER_ENABLED: true } }]);
-    await expect(flagValueForRun('run-1', 'BASELINE_LAYER_ENABLED')).resolves.toBe(true);
+    vi.mocked(query).mockResolvedValueOnce([{ flags: { AUTHORITY_TIERS_ENABLED: true } }]);
+    await expect(flagValueForRun('run-1', 'AUTHORITY_TIERS_ENABLED')).resolves.toBe(true);
+  });
+
+  it.each(['BASELINE_LAYER_ENABLED', 'CITATION_LOCK_ENABLED', 'READER_VIEW_ENABLED'])('does not know %s: the name is no longer a flag, whatever is recorded under it', async (name) => {
+    expect(() => flagForRun(name, null)).toThrow(UnknownFlagError);
+    expect(() => flagForRun(name, { [name]: true })).toThrow(`Unknown flag: ${name}`);
+    const { query } = await import('../db/pool');
+    vi.mocked(query).mockResolvedValueOnce([{ flags: { [name]: true } }]);
+    await expect(flagValueForRun('run-1', name)).rejects.toThrow(UnknownFlagError);
   });
 });
 
@@ -62,9 +70,9 @@ describe('harness runner', () => {
         };
       },
     };
-    const rows = await runHarness(transport, [task], { CITATION_LOCK_ENABLED: false });
+    const rows = await runHarness(transport, [task], { DOI_RESOLVE_ENABLED: false });
     expect(started).toHaveLength(1);
-    expect(passedOverrides).toEqual({ CITATION_LOCK_ENABLED: false });
+    expect(passedOverrides).toEqual({ DOI_RESOLVE_ENABLED: false });
     expect(attached[0]).toEqual(fixtureFiles(task).map((file) => file.name));
     expect(rows[0].scores.contradiction_retention).toBe(1);
     expect(rows[0].scores.time_to_report).toBe(60);
