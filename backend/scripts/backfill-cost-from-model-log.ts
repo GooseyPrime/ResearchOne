@@ -38,7 +38,7 @@
  */
 import { createHash } from 'crypto';
 import { initDb, adminQuery, getPool } from '../src/db/pool';
-import { getModelPrice, computeCostUsd } from '../src/services/telemetry/pricingCatalog';
+import { getCallPrice, computeCostUsd } from '../src/services/telemetry/pricingCatalog';
 import { rolePhaseFor } from '../src/services/telemetry/costSidecar';
 import { logger } from '../src/utils/logger';
 
@@ -60,6 +60,10 @@ interface ModelLogEntry {
   durationMs?: number;
   usedFallback?: boolean;
   primaryModel?: string;
+  /** Present on entries written since the provider that answered was recorded. */
+  routeUsed?: { provider?: string; position?: string };
+  routesTried?: Array<{ outcome?: string }>;
+  listPrice?: { inputPricePer1mUsd: number; outputPricePer1mUsd: number };
 }
 
 function parseArgs(): { since: string; dryRun: boolean; limit: number | null } {
@@ -124,7 +128,12 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
       cumulativeOffset += durationMs;
 
       const phase = rolePhaseFor(role);
-      const price = await getModelPrice(model);
+      // Priced by the provider that answered, as the live writer does.
+      const price = await getCallPrice({
+        model,
+        provider: entry.routeUsed?.provider,
+        listPrice: entry.listPrice,
+      });
       const calculatedCost = computeCostUsd(promptTokens, completionTokens, price);
       const idempotencyKey = computeIdempotencyKey({
         runId: run.id,
@@ -157,7 +166,7 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
            $10, $11,
            $12, $13::bigint, to_timestamp($13::bigint / 1000.0),
            $14, $15, $16,
-           $17, '{"backfilled":true}'::jsonb
+           $17, $18::jsonb
          )
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING (xmax = 0) AS inserted`,
@@ -179,6 +188,15 @@ async function backfillRun(run: ResearchRunRow, dryRun: boolean): Promise<{
           price.outputPricePer1mUsd,
           calculatedCost,
           idempotencyKey,
+          JSON.stringify({
+            backfilled: true,
+            // The same route fields the live writer records.
+            ...(entry.routeUsed?.provider ? { provider: entry.routeUsed.provider } : {}),
+            ...(entry.routeUsed?.position ? { route_position: entry.routeUsed.position } : {}),
+            ...(Array.isArray(entry.routesTried)
+              ? { routes_refused: entry.routesTried.filter((attempt) => attempt.outcome === 'refused').length }
+              : {}),
+          }),
         ]
       );
       if (result.length === 0) {

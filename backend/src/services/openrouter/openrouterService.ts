@@ -21,6 +21,14 @@ import {
 import { effectiveEmbedding, effectiveFallback, effectivePrimary } from '../runtimeModelStore';
 import { buildOpenRouterAppHeaders, buildOpenRouterProviderBlock } from './openrouterProviderBlock';
 import { emitCallTelemetry } from '../telemetry';
+import {
+  anthropicListPrice,
+  anthropicModelsByRole,
+  nvidiaListPrice,
+  nvidiaModelsByRole,
+  type ListPrice,
+  type ProviderSlot,
+} from './providerRoutes';
 
 export { REASONING_FIRST_PREAMBLE, withPreamble, withStandardPreamble };
 
@@ -79,12 +87,29 @@ export interface ModelCallResult {
   routeUsed?: ModelRouteUsed;
   /** Every route tried for this call, in order, when the first one did not answer. */
   routesTried?: ModelRouteAttempt[];
+  /**
+   * The provider's published price for this call, when the provider is one
+   * whose prices are kept in code (Anthropic, NVIDIA). Cost tracking uses it
+   * unless the pricing table has a row for the provider and model.
+   */
+  listPrice?: ListPrice;
 }
 
-export type ModelRouteProvider = 'openrouter' | 'huggingface_inference' | 'together';
+export type ModelRouteProvider = 'openrouter' | 'huggingface_inference' | 'together' | 'anthropic' | 'nvidia';
 
-/** Where a model sits in a role's order: its own model, its own backup, or a backup on another provider. */
-export type ModelRoutePosition = 'primary' | 'backup' | 'cross_provider';
+/**
+ * Where a model sits in a role's order: its own model, its own backup, a
+ * backup on another provider, or (`preferred`) a provider that
+ * `MODEL_PROVIDER_ORDER` places ahead of the role's own model.
+ */
+export type ModelRoutePosition = 'primary' | 'backup' | 'cross_provider' | 'preferred';
+
+/** One route a call may take. `via` is set for a provider that is called directly with its own model ids. */
+export interface ModelRoute {
+  model: string;
+  position: ModelRoutePosition;
+  via?: 'anthropic' | 'nvidia';
+}
 
 export interface ModelRouteUsed {
   model: string;
@@ -114,7 +139,7 @@ export interface NormalizedModelErrorShape {
   status?: number;
   providerMessage?: string;
   /** upstream backend used for this error (Together = provider fallback after HF failure for HF repo ids) */
-  upstream?: 'openrouter' | 'huggingface_inference' | 'together' | 'unknown';
+  upstream?: ModelRouteProvider | 'unknown';
   /** endpoint attempted when known */
   endpoint?: string;
   providerFallbackAttempted?: boolean;
@@ -131,7 +156,7 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   classification: ModelErrorClassification;
   status?: number;
   providerMessage?: string;
-  upstream?: 'openrouter' | 'huggingface_inference' | 'together' | 'unknown';
+  upstream?: ModelRouteProvider | 'unknown';
   endpoint?: string;
   providerFallbackAttempted?: boolean;
   providerFallbackBackend?: 'together' | null;
@@ -523,6 +548,214 @@ async function callTogetherChat(model: string, options: ModelCallOptions): Promi
     primaryModel: model,
   };
 }
+function nvidiaChatEndpoint(): string {
+  return `${config.nvidia.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
+
+/** NVIDIA NIM: the OpenAI chat-completions shape, with NVIDIA's own model ids. */
+async function callNvidiaChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  if (!config.nvidia.apiKey?.trim()) {
+    throw new Error('NVIDIA provider requires NVIDIA_API_KEY');
+  }
+  const start = Date.now();
+  const body: Record<string, unknown> = {
+    model,
+    messages: applySystemAugmentations(options),
+    temperature: options.temperature ?? TEMPERATURE_MAP[options.role],
+    max_tokens: options.maxTokens ?? MAX_TOKENS_MAP[options.role],
+  };
+  logger.debug('NVIDIA request payload prepared', { role: options.role, model, maxTokens: body.max_tokens });
+  const response = await axios.post(nvidiaChatEndpoint(), body, {
+    headers: {
+      Authorization: `Bearer ${config.nvidia.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 180000,
+  });
+
+  const choice = response.data.choices?.[0];
+  if (!choice) throw new Error('No response choices from NVIDIA');
+
+  return {
+    content: stripModelReasoningTraces(typeof choice.message?.content === 'string' ? choice.message.content : ''),
+    model,
+    role: options.role,
+    promptTokens: response.data.usage?.prompt_tokens ?? 0,
+    completionTokens: response.data.usage?.completion_tokens ?? 0,
+    durationMs: Date.now() - start,
+    usedFallback: false,
+    primaryModel: model,
+    listPrice: nvidiaListPrice(),
+  };
+}
+
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+function anthropicMessagesEndpoint(): string {
+  return `${config.anthropic.baseUrl.replace(/\/+$/, '')}/messages`;
+}
+
+/**
+ * The Messages API takes the system prompt as its own field and a list of
+ * turns that starts with the user and alternates. System messages are joined
+ * into that field; neighbouring turns from the same side are joined into one.
+ */
+export function toAnthropicRequestMessages(messages: ChatMessage[]): {
+  system: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+} {
+  const system = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .filter((content) => content.trim().length > 0)
+    .join('\n\n');
+  const turns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (const message of messages) {
+    if (message.role === 'system' || !message.content.trim()) continue;
+    const last = turns[turns.length - 1];
+    if (last && last.role === message.role) {
+      last.content = `${last.content}\n\n${message.content}`;
+    } else {
+      turns.push({ role: message.role, content: message.content });
+    }
+  }
+  if (turns.length === 0 || turns[0].role !== 'user') {
+    turns.unshift({ role: 'user', content: 'Carry out the task described in your instructions.' });
+  }
+  return { system, messages: turns };
+}
+
+interface AnthropicMessageResponse {
+  content?: Array<{ type?: string; text?: string }>;
+  stop_reason?: string | null;
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+}
+
+/** Anthropic, called directly: the Messages API with Claude model ids. */
+async function callAnthropicChat(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
+  if (!config.anthropic.apiKey?.trim()) {
+    throw new Error('Anthropic provider requires ANTHROPIC_API_KEY');
+  }
+  const start = Date.now();
+  const prepared = toAnthropicRequestMessages(applySystemAugmentations(options));
+  const maxTokens = options.maxTokens ?? MAX_TOKENS_MAP[options.role];
+  // The Messages API accepts 0 to 1.
+  const temperature = Math.min(1, Math.max(0, options.temperature ?? TEMPERATURE_MAP[options.role]));
+  const headers = {
+    'x-api-key': config.anthropic.apiKey,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+    'Content-Type': 'application/json',
+  };
+
+  let accumulatedContent = '';
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  // Each request is priced by its own prompt length, so cost is added up per request.
+  let inputCostUsd = 0;
+  let outputCostUsd = 0;
+  let everyRequestPriced = true;
+  let sendTemperature = true;
+  let turns = prepared.messages;
+  // The same continuation the gateway call makes: when the answer stopped at
+  // the token limit, ask for the rest, at most twice.
+  const MAX_CONTINUATIONS = 2;
+
+  for (let attempt = 0; attempt <= MAX_CONTINUATIONS; attempt++) {
+    const body: Record<string, unknown> = { model, max_tokens: maxTokens, messages: turns };
+    if (prepared.system) body.system = prepared.system;
+    if (sendTemperature) body.temperature = temperature;
+
+    let data: AnthropicMessageResponse;
+    try {
+      data = (await axios.post(anthropicMessagesEndpoint(), body, { headers, timeout: 300000 })).data as AnthropicMessageResponse;
+    } catch (err) {
+      // Some Claude models take no sampling settings and answer 400 when one
+      // is sent. The request is sent once more without it.
+      const refusedTemperature =
+        sendTemperature &&
+        axios.isAxiosError(err) &&
+        err.response?.status === 400 &&
+        /temperature|sampling/i.test(extractProviderMessage(err));
+      if (!refusedTemperature) throw err;
+      sendTemperature = false;
+      logger.info('Anthropic model takes no temperature; sending the request again without it', { role: options.role, model });
+      attempt -= 1;
+      continue;
+    }
+
+    const promptTokens =
+      (data.usage?.input_tokens ?? 0) + (data.usage?.cache_read_input_tokens ?? 0) + (data.usage?.cache_creation_input_tokens ?? 0);
+    totalPromptTokens += promptTokens;
+    const completionTokens = data.usage?.output_tokens ?? 0;
+    totalCompletionTokens += completionTokens;
+    const requestPrice = anthropicListPrice(model, promptTokens);
+    if (requestPrice) {
+      inputCostUsd += (promptTokens / 1_000_000) * requestPrice.inputPricePer1mUsd;
+      outputCostUsd += (completionTokens / 1_000_000) * requestPrice.outputPricePer1mUsd;
+    } else {
+      everyRequestPriced = false;
+    }
+
+    if (data.stop_reason === 'refusal') {
+      // A declined answer must not become part of a report. It is recorded as
+      // a refusal of this route so the next provider is asked.
+      throw new NormalizedModelError({
+        classification: 'provider_unavailable',
+        providerMessage: 'The model declined this request (stop_reason=refusal).',
+        model,
+        upstream: 'anthropic',
+        endpoint: anthropicMessagesEndpoint(),
+        fallbackTried: false,
+        role: options.role,
+      });
+    }
+
+    const chunkContent = (data.content ?? [])
+      .filter((block) => block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text as string)
+      .join('');
+    accumulatedContent += chunkContent;
+
+    if (data.stop_reason !== 'max_tokens' || attempt === MAX_CONTINUATIONS || !chunkContent.trim()) break;
+
+    logger.warn(`[${options.role}] stop_reason=max_tokens on ${model} (attempt ${attempt + 1}/${MAX_CONTINUATIONS + 1}); continuing`, {
+      role: options.role,
+      model,
+      attempt: attempt + 1,
+      accumulatedChars: accumulatedContent.length,
+    });
+    turns = [
+      ...turns,
+      { role: 'assistant', content: chunkContent.trimEnd() },
+      { role: 'user', content: 'Continue exactly where you left off. Do not repeat what you have already written.' },
+    ];
+  }
+
+  if (!accumulatedContent.trim()) throw new Error('No text content in the response from Anthropic');
+
+  // One pair of rates that gives the summed cost when applied to the summed
+  // tokens, so a call whose requests fell on different price steps is costed
+  // exactly.
+  const listPrice: ListPrice | null = everyRequestPriced
+    ? {
+        inputPricePer1mUsd: totalPromptTokens > 0 ? (inputCostUsd / totalPromptTokens) * 1_000_000 : (anthropicListPrice(model, 0)?.inputPricePer1mUsd ?? 0),
+        outputPricePer1mUsd:
+          totalCompletionTokens > 0 ? (outputCostUsd / totalCompletionTokens) * 1_000_000 : (anthropicListPrice(model, 0)?.outputPricePer1mUsd ?? 0),
+      }
+    : null;
+  return {
+    content: stripModelReasoningTraces(accumulatedContent),
+    model,
+    role: options.role,
+    promptTokens: totalPromptTokens,
+    completionTokens: totalCompletionTokens,
+    durationMs: Date.now() - start,
+    usedFallback: false,
+    primaryModel: model,
+    ...(listPrice ? { listPrice } : {}),
+  };
+}
+
 async function callOpenRouter(model: string, options: ModelCallOptions): Promise<ModelCallResult> {
   const start = Date.now();
   const messages: ChatMessage[] = applySystemAugmentations(options);
@@ -596,10 +829,15 @@ function togetherChatEndpoint(): string {
   return `${base}/chat/completions`;
 }
 
+type ModelBackend = 'HF' | 'Together' | 'OpenRouter' | 'Anthropic' | 'NVIDIA';
+
 async function callModel(
-  model: string,
+  route: ModelRoute,
   options: ModelCallOptions
-): Promise<{ result: ModelCallResult; backend: 'HF' | 'Together' | 'OpenRouter' }> {
+): Promise<{ result: ModelCallResult; backend: ModelBackend }> {
+  const model = route.model;
+  if (route.via === 'anthropic') return { result: await callAnthropicChat(model, options), backend: 'Anthropic' };
+  if (route.via === 'nvidia') return { result: await callNvidiaChat(model, options), backend: 'NVIDIA' };
   if (isHfRepoModel(model)) {
     try {
       return { result: await callHfChat(model, options), backend: 'HF' };
@@ -676,9 +914,11 @@ export const modelRouteRetry: { delaysMs: number[] } = {
   delaysMs: config.nodeEnv === 'test' ? [] : [4_000, 12_000],
 };
 
-function providerForBackend(backend: 'HF' | 'Together' | 'OpenRouter'): ModelRouteProvider {
+function providerForBackend(backend: ModelBackend): ModelRouteProvider {
   if (backend === 'HF') return 'huggingface_inference';
   if (backend === 'Together') return 'together';
+  if (backend === 'Anthropic') return 'anthropic';
+  if (backend === 'NVIDIA') return 'nvidia';
   return 'openrouter';
 }
 
@@ -686,10 +926,27 @@ function nativeProviderForModel(model: string): ModelRouteProvider {
   return isHfRepoModel(model) ? 'huggingface_inference' : 'openrouter';
 }
 
+/** The provider a route's first request goes to. */
+function nativeProviderForRoute(route: ModelRoute): ModelRouteProvider {
+  return route.via ?? nativeProviderForModel(route.model);
+}
+
+function endpointForRoute(route: ModelRoute): string {
+  if (route.via === 'anthropic') return anthropicMessagesEndpoint();
+  if (route.via === 'nvidia') return nvidiaChatEndpoint();
+  return isHfRepoModel(route.model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`;
+}
+
+/** The place a route has in `MODEL_PROVIDER_ORDER`. Hub models share the `together` place. */
+function slotForRoute(route: Pick<ModelRoute, 'model' | 'via'>): ProviderSlot {
+  if (route.via) return route.via;
+  return isHfRepoModel(route.model) ? 'together' : 'openrouter';
+}
+
 /** One shape for whatever a provider call threw, so every route's refusal is recorded the same way. */
 function normalizeRouteError(
   err: unknown,
-  model: string,
+  route: ModelRoute,
   role: ModelRole,
   fallbackTried: boolean
 ): NormalizedModelError {
@@ -700,9 +957,9 @@ function normalizeRouteError(
     classification: isAxios ? classifyModelError(axiosErr) : classifyHfError(err),
     status: axiosErr.response?.status,
     providerMessage: isAxios ? extractProviderMessage(axiosErr) : err instanceof Error ? err.message : String(err),
-    model,
-    upstream: isHfRepoModel(model) ? 'huggingface_inference' : 'openrouter',
-    endpoint: isHfRepoModel(model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
+    model: route.model,
+    upstream: nativeProviderForRoute(route),
+    endpoint: endpointForRoute(route),
     providerFallbackAttempted: false,
     providerFallbackBackend: null,
     providerFallbackResult: null,
@@ -712,9 +969,19 @@ function normalizeRouteError(
 }
 
 /**
- * The routes a call may take, in order: the role's own model, the role's own
- * backup, then approved models on the other configured providers. The first
- * two are exactly what the role had before; nothing here reorders or drops them.
+ * The routes a call may take, in order.
+ *
+ * With the default provider order this is: the role's own model, the role's
+ * own backup, then the other configured providers in the order
+ * `MODEL_PROVIDER_ORDER` gives them. A provider the role's own models did not
+ * use comes before more models on the provider that has just refused them.
+ * The first two are exactly what the role had before; nothing here drops them.
+ *
+ * When the server sets `MODEL_PROVIDER_ORDER` and it places a configured
+ * provider ahead of the one the role's own model is on, that provider's model
+ * for the role is tried first (`preferred`), and the role's own model and
+ * backup follow it. With the setting left unset, the role's own model is
+ * always first.
  */
 export function modelRoutesForCall(args: {
   role: ModelRole;
@@ -723,19 +990,53 @@ export function modelRoutesForCall(args: {
   /** False when the caller supplied its own OpenRouter key and the server has none. */
   openrouterConfigured: boolean;
   hubConfigured: boolean;
-}): Array<{ model: string; position: ModelRoutePosition }> {
-  const routes: Array<{ model: string; position: ModelRoutePosition }> = [{ model: args.primary, position: 'primary' }];
-  if (args.fallback && args.fallback !== args.primary) routes.push({ model: args.fallback, position: 'backup' });
-  const seen = new Set(routes.map((route) => route.model));
-  const tried = new Set(routes.map((route) => nativeProviderForModel(route.model)));
-  const backups = crossProviderBackupModelsForRole(args.role, {
+  /** True when `ANTHROPIC_API_KEY` is set and the call may use the server's account. */
+  anthropicConfigured?: boolean;
+  /** True when `NVIDIA_API_KEY` is set and the call may use the server's account. */
+  nvidiaConfigured?: boolean;
+  /** Defaults to the server's `MODEL_PROVIDER_ORDER`. */
+  providerOrder?: readonly ProviderSlot[];
+  /** Whether the order was set on the server, and so may place a provider ahead of the role's own model. */
+  providerOrderSet?: boolean;
+}): ModelRoute[] {
+  const own: ModelRoute[] = [{ model: args.primary, position: 'primary' }];
+  if (args.fallback && args.fallback !== args.primary) own.push({ model: args.fallback, position: 'backup' });
+  const order = args.providerOrder ?? config.modelProviderOrder;
+  const rank = (slot: ProviderSlot): number => {
+    const index = order.indexOf(slot);
+    return index === -1 ? order.length : index;
+  };
+  const seen = new Set(own.map((route) => route.model));
+  const gatewayAndHub = crossProviderBackupModelsForRole(args.role, {
     openrouter: args.openrouterConfigured,
     hub: args.hubConfigured,
   }).filter((model) => !seen.has(model));
+
+  const others: Record<ProviderSlot, Array<Pick<ModelRoute, 'model' | 'via'>>> = {
+    openrouter: gatewayAndHub.filter((model) => !isHfRepoModel(model)).map((model) => ({ model })),
+    together: gatewayAndHub.filter((model) => isHfRepoModel(model)).map((model) => ({ model })),
+    anthropic: args.anthropicConfigured
+      ? [{ model: anthropicModelsByRole(config.anthropic.models)[args.role], via: 'anthropic' }]
+      : [],
+    nvidia: args.nvidiaConfigured ? [{ model: nvidiaModelsByRole(config.nvidia.models)[args.role], via: 'nvidia' }] : [],
+  };
+
+  const ownSlots = new Set(own.map((route) => slotForRoute(route)));
+  // The order is measured against the provider the role's own model is on. A
+  // backup on another provider does not hold that provider's place.
+  const primarySlot = slotForRoute(own[0]);
+  const ownRank = rank(primarySlot);
+  const slotsInOrder = [...order].sort((a, b) => rank(a) - rank(b));
+  const orderSet = args.providerOrderSet ?? config.modelProviderOrderSet;
+  const ahead = orderSet ? slotsInOrder.filter((slot) => slot !== primarySlot && rank(slot) < ownRank) : [];
   // A provider the role has not used yet comes before one that already refused it.
-  const fresh = backups.filter((model) => !tried.has(nativeProviderForModel(model)));
-  const rest = backups.filter((model) => tried.has(nativeProviderForModel(model)));
-  for (const model of [...fresh, ...rest]) routes.push({ model, position: 'cross_provider' });
+  const fresh = slotsInOrder.filter((slot) => !ownSlots.has(slot) && !ahead.includes(slot));
+  const rest = slotsInOrder.filter((slot) => ownSlots.has(slot) && !ahead.includes(slot));
+
+  const routes: ModelRoute[] = [];
+  for (const slot of ahead) for (const route of others[slot]) routes.push({ ...route, position: 'preferred' });
+  routes.push(...own);
+  for (const slot of [...fresh, ...rest]) for (const route of others[slot]) routes.push({ ...route, position: 'cross_provider' });
   return routes;
 }
 
@@ -771,6 +1072,9 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     // goes and who pays. Their request is never moved onto the platform's
     // Hugging Face or Together accounts.
     hubConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.hfToken?.trim() || config.together.apiKey?.trim()),
+    // The same holds for the server's Anthropic and NVIDIA accounts.
+    anthropicConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.anthropic.apiKey?.trim()),
+    nvidiaConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.nvidia.apiKey?.trim()),
   });
   const hasBackup = routes.some((route) => route.position === 'backup');
   const attempts: ModelRouteAttempt[] = [];
@@ -796,11 +1100,15 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
       if (route.position === 'cross_provider' && !ownProviderSideRefusal) {
         break;
       }
-      if (route.position !== 'primary') {
-        logger.info(`Falling back to ${route.model} for role [${options.role}]`, { position: route.position, round });
+      if (route.position === 'backup' || route.position === 'cross_provider') {
+        logger.info(`Falling back to ${route.model} for role [${options.role}]`, {
+          position: route.position,
+          provider: nativeProviderForRoute(route),
+          round,
+        });
       }
       try {
-        const { result, backend } = await callModel(route.model, prepared);
+        const { result, backend } = await callModel(route, prepared);
         const provider = providerForBackend(backend);
         logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
         // Together answers a hub model only after Hugging Face failed for it.
@@ -816,7 +1124,8 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
           });
         }
         attempts.push({ model: route.model, provider, position: route.position, round, outcome: 'answered' });
-        const usedFallback = route.position !== 'primary';
+        // A provider the server's order puts first is not a fallback: nothing was refused to reach it.
+        const usedFallback = route.position === 'backup' || route.position === 'cross_provider';
         const augmented: ModelCallResult = {
           ...result,
           usedFallback,
@@ -840,15 +1149,16 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         });
         return augmented;
       } catch (err) {
-        const normalized = normalizeRouteError(err, route.model, options.role, route.position !== 'primary');
+        const normalized = normalizeRouteError(err, route, options.role, route.position !== 'primary');
+        const ownRoute = route.position === 'primary' || route.position === 'backup';
         // A hub model that reached Together did so because Hugging Face had
         // already failed for it, which is a refusal about the provider.
         const hubHostFailedFirst = normalized.upstream === 'together' && normalized.providerFallbackAttempted === true;
-        if (route.position !== 'cross_provider' && (PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification) || hubHostFailedFirst)) {
+        if (ownRoute && (PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification) || hubHostFailedFirst)) {
           ownProviderSideRefusal = true;
         }
         firstClassification ??= normalized.classification;
-        if (route.position !== 'cross_provider') ownModelsError = normalized;
+        if (ownRoute) ownModelsError = normalized;
         // A hub model is tried on Hugging Face and then on Together. When the
         // second one refused as well, both refusals are on the record.
         if (normalized.upstream === 'together' && normalized.providerFallbackAttempted) {
@@ -863,14 +1173,14 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         }
         attempts.push({
           model: route.model,
-          provider: normalized.upstream === 'together' ? 'together' : nativeProviderForModel(route.model),
+          provider: normalized.upstream === 'together' ? 'together' : nativeProviderForRoute(route),
           position: route.position,
           round,
           outcome: 'refused',
           classification: normalized.classification,
           status: normalized.status,
         });
-        const log = route.position === 'primary' ? logger.warn : logger.error;
+        const log = route.position === 'primary' || route.position === 'preferred' ? logger.warn : logger.error;
         log(`Model ${route.position} route failed for [${options.role}]`, {
           role: options.role,
           model: route.model,
@@ -943,7 +1253,14 @@ function classifyModelError(err: AxiosError): ModelErrorClassification {
     if (/no allowed providers/i.test(msg)) return 'provider_unavailable';
     return 'bad_request';
   }
-  if (status === 400) return 'bad_request';
+  if (status === 400) {
+    // Anthropic reports an empty account as a 400 whose message says the
+    // credit balance is too low. That is about the account, not the request.
+    if (/credit balance is too low|insufficient (credits|funds|quota|balance)|insufficient_quota/i.test(extractProviderMessage(err))) {
+      return 'quota_exceeded';
+    }
+    return 'bad_request';
+  }
   return 'unknown';
 }
 
