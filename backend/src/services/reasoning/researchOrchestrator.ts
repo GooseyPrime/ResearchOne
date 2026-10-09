@@ -2906,11 +2906,11 @@ ${reportForGates(generatedReport.markdown)}`,
     // numbered and after the plain-language version, so neither includes it.
     // A failure is contained: the report is saved without the section.
     // ────────────────────────────────────────────────────────────────
-    if (isAdjudicative && skepticRuns && typeof generatedReport?.markdown === 'string' && generatedReport.markdown.trim()) {
+    if (isAdjudicative && doubleCheckRuns && typeof generatedReport?.markdown === 'string' && generatedReport.markdown.trim()) {
       const challengePass = await writeChallengePass({
         query: researchQuery,
         reportMarkdown: generatedReport.markdown,
-        challengeNotes: skepticResult.content,
+        challengeNotes: doubleCheckResult.content,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
@@ -3895,6 +3895,7 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
     'contradiction': 'contradiction_analysis',
     // The section the reading page shows on its Challenge pass tab. Listed
     // before the looser match below, which is for older reports.
+    'double-check': 'challenge',
     'challenge pass': 'challenge',
     'challenge': 'challenges',
     'synthesis': 'synthesis',
