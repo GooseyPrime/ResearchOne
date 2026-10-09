@@ -18,7 +18,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, randomUUID } from 'crypto';
 import { adminQuery } from '../../db/pool';
 import { logger } from '../../utils/logger';
-import { computeCostUsd, getModelPrice } from './pricingCatalog';
+import { computeCostUsd, getCallPrice } from './pricingCatalog';
 import type { ModelCallResult } from '../openrouter/openrouterService';
 
 // ────────────────────────────────────────────────────────────────────
@@ -264,7 +264,13 @@ async function writeRow(
   opts: EmitOptions,
   scope: RunScopeContext
 ): Promise<void> {
-  const price = await getModelPrice(result.model);
+  // Priced by the provider that answered: the same model id can cost a
+  // different amount, or nothing, on another provider.
+  const price = await getCallPrice({
+    model: result.model,
+    provider: result.routeUsed?.provider,
+    listPrice: result.listPrice,
+  });
   const calculatedCost = computeCostUsd(result.promptTokens, result.completionTokens, price);
   const phase = scope.phaseOverride ?? rolePhaseFor(opts.role, opts.callPurpose);
   const callPurpose = opts.callPurpose ?? 'default';
@@ -326,6 +332,13 @@ async function writeRow(
       JSON.stringify({
         // Anything else we want to grep on later — kept lean.
         primary_model: result.primaryModel,
+        // Which provider answered and where it sat in the role's order.
+        ...(result.routeUsed
+          ? { provider: result.routeUsed.provider, route_position: result.routeUsed.position }
+          : {}),
+        ...(result.routesTried
+          ? { routes_refused: result.routesTried.filter((attempt) => attempt.outcome === 'refused').length }
+          : {}),
       }),
     ]
   );
