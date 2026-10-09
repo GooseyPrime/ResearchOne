@@ -327,6 +327,7 @@ router.post('/runtime/restart', async (req, res) => {
       }),
     ]
   );
+
   const command = config.admin.restartCommand;
   logger.warn(`Admin runtime restart initiated: ${command}`);
 
