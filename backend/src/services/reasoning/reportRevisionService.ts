@@ -1,5 +1,4 @@
 import { query, withTransaction } from '../../db/pool';
-import { readerViewForRun } from '../eval/readerView';
 import { cleanSectionForStorage, stripInternalLabelsFromReport } from '../formatting/reportPresentation';
 import { callRoleModel, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
 import {
@@ -15,7 +14,6 @@ import {
 } from './reasoningModelPolicy';
 import { normalizeRunOverrides, runtimeOverrideForRole } from './researchOrchestratorNormalize';
 import { allowFallbackByRoleFromModelEnsembleSnapshot } from './v2FallbackResolution';
-import { ADJUDICATIVE_SECTION_INTENTS } from './reportGenerator';
 import { logger } from '../../utils/logger';
 import { rebindRevisedCitations, renumberAfterRevision } from './citationLock';
 import { recordDoiChecks, type CitationWriter } from './citationBinding';
@@ -124,10 +122,6 @@ function tokenize(value: string): string[] {
     .filter((token) => token.length > 3);
 }
 
-function toSectionMap(sections: ReportSectionRow[]): Record<string, ReportSectionRow> {
-  return Object.fromEntries(sections.map((s) => [s.section_type, s]));
-}
-
 export function locateAffectedSections(args: {
   sections: ReportSectionRow[];
   request: string;
@@ -167,19 +161,19 @@ export function inferInsertionIndex(sectionTypes: string[], insertion: { after_s
   return evidenceIdx >= 0 ? evidenceIdx + 1 : sectionTypes.length;
 }
 
-export function basicConsistencyChecks(sections: ReportSectionRow[], intentId?: string): string[] {
-  const map = toSectionMap(sections);
-  const issues: string[] = [];
-  if (!map.executive_summary || !map.executive_summary.content.trim()) issues.push('missing_executive_summary');
-  if (!map.conclusion || !map.conclusion.content.trim()) issues.push('missing_conclusion');
-  // Falsification criteria only applies to adjudicative intents (adjudication, investigation,
-  // story_verification) and legacy runs with no intentId. Descriptive intents never produce
-  // this section, so checking for it would always produce a false positive (Rule 37).
-  const requiresFalsification = !intentId || ADJUDICATIVE_SECTION_INTENTS.has(intentId);
-  if (requiresFalsification && (!map.falsification_criteria || !map.falsification_criteria.content.trim())) {
-    issues.push('missing_falsification_criteria');
-  }
-  return issues;
+/**
+ * What every revised report must still have: a summary with text in it. That is
+ * the one section the plain layout always has. The old layout's own sections (a
+ * conclusion, and for some report types a section on what would overturn the
+ * report) are not required of any report. `_intentId` is kept so callers do not change.
+ */
+export function basicConsistencyChecks(sections: ReportSectionRow[], _intentId?: string): string[] {
+  const hasSummary = sections.some(
+    (section) =>
+      (section.section_type === 'executive_summary' || /^(executive )?summary$/i.test((section.title ?? '').trim())) &&
+      (section.content ?? '').trim().length > 0
+  );
+  return hasSummary ? [] : ['missing_executive_summary'];
 }
 
 /**
@@ -397,8 +391,6 @@ async function createReportRevisionInner(args: {
     throw new Error('Report not found');
   }
   const baseReport = reportRows[0];
-  // A revision is stored the way its report's run was set: the reader-view switch as that run recorded it.
-  const storeCleanForRun = await readerViewForRun((baseReport as { run_id?: unknown }).run_id);
   const baseSections = await query<ReportSectionRow>(
     'SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order',
     [args.reportId]
@@ -798,10 +790,8 @@ Return strict JSON.`,
 
     // Stored clean, not only shown clean (slice 5, item 11): the report row,
     // its sections, and the before and after text kept as revision history.
-    // With the switch off for the report's run every row is written as it was before the slice.
-    const storeClean = storeCleanForRun;
-    const asStored = (text: string): string => (storeClean ? stripInternalLabelsFromReport(text) : text);
-    const sectionsToStore = storeClean ? revisedSections.map(cleanSectionForStorage) : revisedSections;
+    const asStored = (text: string): string => stripInternalLabelsFromReport(text);
+    const sectionsToStore = revisedSections.map(cleanSectionForStorage);
 
     const revisionReportBaseParams = [
       baseReport.id,
