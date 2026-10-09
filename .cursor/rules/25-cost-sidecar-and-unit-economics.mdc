@@ -155,7 +155,7 @@ read-only view in a future WO, never the raw table.
 
 The Cost Sidecar spec mixes "phase" (Planner / Discovery / Retriever /
 Reasoner / Double-check / Synthesizer / Verifier / Report / Persistence)
-with "role" (planner, retriever, reasoner, double-check, synthesizer,
+with "role" (planner, retriever, reasoner, double_check, synthesizer,
 verifier, plain_language_synthesizer, outline_architect, section_drafter,
 internal_challenger, coherence_refiner, revision_intake, report_locator,
 change_planner, section_rewriter, citation_integrity_checker,
