@@ -13,6 +13,8 @@ import {
 } from '../openrouter/openrouterService';
 import { retrieveChunksWithAudit, RetrievedChunk } from '../retrieval/retrievalService';
 import { runDiscoveryOrchestrator } from '../discovery/discoveryOrchestrator';
+import { relevanceCheckMessage, retrievalCheckMessage, type RelevanceCheckReport } from '../discovery/relevanceGate';
+import { documentsSetAsideAtRetrieval, relevanceCheckCausedShortfall, type RunRelevanceScope } from '../retrieval/runRelevanceFilter';
 import { waitForDiscoveryIngestReadiness } from '../discovery/discoveryIngestBarrier';
 import { extractAndPersistClaims } from './claimExtractor';
 import { extractAndPersistContradictions } from './contradictionExtractor';
@@ -1397,6 +1399,27 @@ async function runResearchJobInner(
     // STAGE 2: DISCOVERY — autonomous external research if needed
     // ────────────────────────────────────────────────────────────────
     let discoverySummary: Awaited<ReturnType<typeof runDiscoveryOrchestrator>>;
+    // The relevance check, in both places it runs. Discovery tells the trace what
+    // each batch of search results came to; retrieval is given the run's question
+    // so a document another run stored cannot reach this one unless it is about it.
+    // Both write their line at the stage and percent the run is already at: a
+    // search can run again later in the run, and its line must not move the
+    // run's progress back to the first search.
+    const onRelevanceCheck = async (report: RelevanceCheckReport) => {
+      await progress(currentStage, currentPercent, relevanceCheckMessage(report), {
+        substep: report.decidedWithoutModel > 0 ? 'relevance_check_without_model' : 'relevance_check',
+      });
+    };
+    const runRelevance: RunRelevanceScope = {
+      runId,
+      researchQuery,
+      model: { engineVersion, researchObjective, allowFallbackByRole, byokApiKeyOverride },
+      onChecked: async (report) => {
+        await progress(currentStage, currentPercent, retrievalCheckMessage(report), {
+          substep: report.decidedWithoutModel > 0 ? 'relevance_check_without_model' : 'relevance_check',
+        });
+      },
+    };
     // Every search pass this run makes, for a report that must say what was searched.
     const searchPasses: SearchPassSummary[] = [];
     if (shouldRunPipelineStage(orchProfile, 'discovery')) {
@@ -1414,6 +1437,7 @@ async function runResearchJobInner(
         userId: creditCtx?.userId,
         specialistAgentIds,
         routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+        onRelevanceCheck,
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
@@ -1638,6 +1662,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({
           query: rqStr,
@@ -1820,6 +1845,7 @@ async function runResearchJobInner(
                 intentId: orchProfile.intent,
                 userId: creditCtx?.userId,
                 runId,
+                relevance: runRelevance,
               });
               corpusGateDecisions.push({
                 query: `${scopedQuery} [scoped:${agent}]`,
@@ -1936,15 +1962,38 @@ async function runResearchJobInner(
       corpusIntentionallySealed: corpusGateSealedByDesign(corpusGateDecisions),
     });
 
-    if (sourceAssessment.action === 'rediscover') {
-      await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
-        substep: 'rediscovery_started',
-        detail: sourceAssessment.gaps.join(' | ').slice(0, 500),
+    // The relevance check after retrieval can take away documents the run was
+    // counting on: stored by an earlier run, returned for this one, and about
+    // something else. When that alone leaves the run short of the sources its
+    // plan asked for, it searches once more before a shortfall is recorded.
+    const relevanceLeftRunShort =
+      shouldRunPipelineStage(orchProfile, 'discovery') &&
+      config.discovery.enabled &&
+      relevanceCheckCausedShortfall({
+        usableSources: new Set(allChunks.map((chunk) => chunk.source_url?.trim()).filter(Boolean)).size,
+        setAside: documentsSetAsideAtRetrieval(runId),
+        minimum: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
       });
+    const rediscoveryGaps =
+      relevanceLeftRunShort && sourceAssessment.action !== 'rediscover'
+        ? [...sourceAssessment.gaps, 'More sources about the subject of the question itself; several stored documents were about other subjects and were set aside.']
+        : sourceAssessment.gaps;
+    if (sourceAssessment.action === 'rediscover' || relevanceLeftRunShort) {
+      await progress(
+        'reasoning',
+        48,
+        sourceAssessment.action === 'rediscover'
+          ? 'Specialists found insufficient evidence; launching targeted re-discovery.'
+          : 'Some stored documents were set aside as not relevant to this question; searching for more sources.',
+        {
+          substep: sourceAssessment.action === 'rediscover' ? 'rediscovery_started' : 'relevance_gap_search_started',
+          detail: rediscoveryGaps.join(' | ').slice(0, 500),
+        }
+      );
 
       const rediscoverySummary = await runDiscoveryOrchestrator({
         runId,
-        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${sourceAssessment.gaps.map((gap) => `- ${gap}`).join('\n')}`,
+        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${rediscoveryGaps.map((gap) => `- ${gap}`).join('\n')}`,
         plan: plan as unknown as Record<string, unknown>,
         filterTags,
         engineVersion,
@@ -1954,6 +2003,7 @@ async function runResearchJobInner(
         userId: creditCtx?.userId,
         specialistAgentIds,
         routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+        onRelevanceCheck,
         // The configured cap is a floor for an ordinary run, not the answer
         // for every run: a long report or a twenty-item deliverable needs more
         // than ten sources to be built out of. See `resolveSourceIngestBudget`.
@@ -2016,6 +2066,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent as never,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({
           query: `${rqStr} [rediscovery]`,
@@ -2134,6 +2185,7 @@ async function runResearchJobInner(
           userId: creditCtx?.userId,
           specialistAgentIds,
           routingBrief: { intent: orchProfile.intent, layer2: isAdjudicative },
+          onRelevanceCheck,
           maxIngestCapOverride: resolveSourceIngestBudget({
             configuredCap: discoveryIngestFloor(),
             targetWordCount: resolvedWordTarget,
@@ -2157,6 +2209,7 @@ async function runResearchJobInner(
           intentId: orchProfile.intent as never,
           userId: creditCtx?.userId,
           runId,
+          relevance: runRelevance,
         });
         corpusGateDecisions.push({ query: `${researchQuery} [material check]`, ...followup.corpusGate });
         const knownIds = new Set(allChunks.map((chunk) => chunk.id));
@@ -3234,6 +3287,8 @@ ${reportForGates(generatedReport.markdown)}`,
     if (shouldRunPipelineStage(orchProfile, 'epistemic_persistence')) {
       await progress('epistemic_persistence', 97, 'Persisting claims, contradictions, and citations...');
 
+      // What the citation mapper is given. It stays empty when the findings could not be saved.
+      let claimsForCitations: Awaited<ReturnType<typeof extractAndPersistClaims>> = [];
       try {
         const claims = await extractAndPersistClaims({
           runId,
@@ -3248,6 +3303,7 @@ ${reportForGates(generatedReport.markdown)}`,
           },
           ...v2,
         });
+        claimsForCitations = claims;
 
         await extractAndPersistContradictions({
           runId,
@@ -3257,7 +3313,15 @@ ${reportForGates(generatedReport.markdown)}`,
           skepticOutput: skepticResult.content,
           ...v2,
         });
+      } catch (epistemicErr) {
+        // Do not fail the run if epistemic persistence fails — log and continue
+        logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+      }
 
+      // Citations are mapped in a step of their own. They used to share the
+      // block above, so a failure while saving findings or contradictions meant
+      // the mapper never ran, and the report was shown with no citations.
+      try {
         // A locked report's citations come only from its markers, including when
         // it cites nothing. The model-based mapper would add a looser set that
         // matches nothing in the text.
@@ -3265,16 +3329,16 @@ ${reportForGates(generatedReport.markdown)}`,
           runId,
           reportId,
           chunks: allChunks,
-          claims,
+          claims: claimsForCitations,
           reportSections,
           discoverySummary: discoverySummary as unknown as Record<string, unknown>,
           sourceClassByChunkId: wave53SourceClassMap,
           chunkContextLimit: addonEffects.citationChunkContextLimit,
           ...v2,
         });
-      } catch (epistemicErr) {
-        // Do not fail the run if epistemic persistence fails — log and continue
-        logger.error(`[${runId}] Epistemic persistence failed:`, epistemicErr);
+      } catch (citationErr) {
+        // Do not fail the run if citation mapping fails — log and continue
+        logger.error(`[${runId}] Citation mapping failed:`, citationErr);
       }
     } else {
       await progress('epistemic_persistence', 97, 'Epistemic persistence skipped for this intent profile', {
