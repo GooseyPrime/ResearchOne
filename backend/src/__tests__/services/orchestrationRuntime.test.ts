@@ -78,20 +78,25 @@ describe('orchestrationRuntime canonical execution plan', () => {
   });
 });
 
-describe('a plan confirmed for a run whose Layer 1 switch is on for that run alone', () => {
+describe('the length the planner chose, when a confirmed plan is merged for its run', () => {
   const sized = (): PlanPayload => {
     const plan = basePlan('factual_report');
     return { ...plan, outputShape: { ...plan.outputShape, estimatedLength: { minWords: 80, maxWords: 150 } } };
   };
 
-  it("keeps the planner's length when the plan is merged under the run's switches", () => {
-    const merged = mergePlanPayloadForRun(sized(), { BASELINE_LAYER_ENABLED: true });
+  it.each([
+    ['no recorded switches', null],
+    ['the retired switch recorded as on', { BASELINE_LAYER_ENABLED: true }],
+    ['the retired switch recorded as off', { BASELINE_LAYER_ENABLED: false }],
+  ] as const)('is kept for a run with %s', (_label, flags) => {
+    const merged = mergePlanPayloadForRun(sized(), flags);
     expect(merged.outputShape.estimatedLength).toEqual({ minWords: 80, maxWords: 150 });
     expect(resolveReportWordTarget({ estimatedLength: merged.outputShape.estimatedLength })).toEqual({ target: 115, source: 'planner' });
   });
 
-  it("takes the report type's standard range when the run has no such switch", () => {
-    const merged = mergePlanPayloadForRun(sized(), null);
+  it("gives way to the report type's standard range only when the plan has no usable length", () => {
+    const plan = sized();
+    const merged = mergePlanPayloadForRun({ ...plan, outputShape: { ...plan.outputShape, estimatedLength: { minWords: 0, maxWords: 0 } } }, null);
     expect(merged.outputShape.estimatedLength).toEqual({ minWords: 1200, maxWords: 6000 });
   });
 

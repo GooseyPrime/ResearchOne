@@ -15,23 +15,25 @@ vi.mock('../services/openrouter/openrouterService', () => ({
         primaryModel: 'test',
       };
     }
-    const content = asked.includes('Section to draft: Summary')
+    // The section being drafted is named on its own line; later lines of the request name other sections.
+    const drafting = (title: string): boolean => asked.includes(`Section to draft: ${title}\n`);
+    const content = drafting('Summary')
       ? 'The FDA authorized Casgevy in December 2023. It was the first CRISPR-based therapy approved in the United States. [1]'
-      : asked.includes('Key findings')
-        ? '- Casgevy edits a patient\'s own blood stem cells. [1]\n- The authorization was for sickle cell disease. [1]'
-        : asked.includes('Where sources disagree')
-          ? 'The sources do not disagree.'
-          : asked.includes('Comparison table')
-            ? '| Option | Note |\n| --- | --- |\n| Casgevy | First CRISPR therapy authorized in December 2023. [1] |'
-            : asked.includes('Casgevy authorization')
-            ? 'The FDA authorization covered patients 12 and older with recurrent vaso-occlusive crises. [1]'
-            : 'The decision applied to sickle cell disease with recurrent crises. [1]';
+      : drafting('Comparison table')
+        ? '| Option | Note |\n| --- | --- |\n| Casgevy | First CRISPR therapy authorized in December 2023. [1] |'
+        : drafting('Key findings')
+          ? '- Casgevy edits a patient\'s own blood stem cells. [1]\n- The authorization was for sickle cell disease. [1]'
+          : drafting('Where sources disagree')
+            ? 'The sources do not disagree.'
+            : drafting('Casgevy authorization')
+              ? 'The FDA authorization covered patients 12 and older with recurrent vaso-occlusive crises. [1]'
+              : 'The decision applied to sickle cell disease with recurrent crises. [1]';
     return { content, model: 'test', role: 'section_drafter', promptTokens: 1, completionTokens: 1, durationMs: 1, usedFallback: false, primaryModel: 'test' };
   }),
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { generateIterativeReport, resolveReportWordTarget } from '../services/reasoning/reportGenerator';
+import { generateIterativeReport, OUTLINE_HEADING_INSTRUCTION, resolveReportWordTarget } from '../services/reasoning/reportGenerator';
 import { callRoleModel } from '../services/openrouter/openrouterService';
 import { scoreStoredReport, applyJudgeGate } from '../services/eval/scoreReport';
 import { judgeReportQuality } from '../services/eval/reportQualityJudge';
@@ -44,7 +46,7 @@ describe('baseline report pipeline', () => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
   });
 
-  it('writes a switched-on report through the generator at the standard length', async () => {
+  it('writes a report through the generator at the standard length', async () => {
     const report = await generateIterativeReport({
       query: 'When did the FDA authorize the first CRISPR therapy?',
       plan: {},
@@ -98,7 +100,7 @@ describe('baseline report pipeline', () => {
     expect(plan.skipReasons.discovery).toBe('Skipped by canonical intent profile.');
   });
 
-  it('writes a switched-on reference lookup in the reader layout, not the short dossier (slice 7, issue #244)', async () => {
+  it('writes a reference lookup in the reader layout, not the short dossier (slice 7, issue #244)', async () => {
     const report = await generateIterativeReport({
       query: 'When did the FDA authorize the first CRISPR therapy?',
       plan: {},
@@ -142,11 +144,11 @@ describe('baseline report pipeline', () => {
 
   it.each([
     ['ranked_options', 'Ranked options'],
-    ['narrative_briefing', 'Narrative briefing'],
+    ['narrative_briefing', null],
     ['step_by_step_guide', 'Steps'],
     ['comparison_table', 'Comparison table'],
-    ['structured_report', 'Structured report'],
-  ] as const)('keeps the requested %s structure when the switch is on', async (format, heading) => {
+    ['structured_report', null],
+  ] as const)('writes the reader layout with the section a requested %s adds, before the closing sections', async (format, heading) => {
     const report = await generateIterativeReport({
       query: 'When did the FDA authorize the first CRISPR therapy?',
       plan: {},
@@ -161,39 +163,65 @@ describe('baseline report pipeline', () => {
       skipChallenger: true,
       usedSources: [{ title: 'FDA Casgevy authorization', publisher: 'US Food and Drug Administration', date: 'December 2023', url: 'https://www.fda.gov/casgevy' }],
     });
-    expect(report.markdown).toContain(`## ${heading}`);
-    expect(report.markdown).toContain('## Who What When');
-    expect(report.markdown).toContain('## Mechanism');
-    expect(report.markdown).toContain('## Summary');
-    expect(report.markdown).toContain('## References');
-    expect(report.markdown).toContain('## About this report');
+    const headings = [...report.markdown.matchAll(/^#{1,6}\s+.+$/gm)].map((match) => match[0]);
+    // A structured report and a narrative briefing add no section: the reader layout already is one.
+    expect(headings).toEqual([
+      '# FDA authorization of Casgevy',
+      '## Summary',
+      '## Key findings',
+      '## Casgevy authorization',
+      '## Eligible patient group',
+      ...(heading ? [`## ${heading}`] : []),
+      '## Where sources disagree',
+      '## Limits of this report',
+      '## References',
+      '## About this report',
+    ]);
+    // The report type's own section names are never headings.
+    for (const removed of ['Who What When', 'Mechanism', 'Narrative briefing', 'Structured report']) {
+      expect(report.markdown).not.toContain(`## ${removed}`);
+    }
     expect(report.targetWordCount).toBe(4000);
     const summary = report.sections.find((section) => section.key === 'summary')?.content ?? '';
     expect(summary.trim().split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(150);
     if (format === 'comparison_table') expect(report.markdown).toContain('| Option | Note |');
   });
 
-  it('matches the unset-flag report path and keeps the standard length', async () => {
-    delete process.env.BASELINE_LAYER_ENABLED;
-    vi.mocked(callRoleModel).mockClear();
-    const report = await generateIterativeReport({
-      query: 'When did the FDA authorize the first CRISPR therapy?',
-      plan: {},
-      sourceContext: 'The FDA authorized Casgevy in December 2023.',
-      retrieverAnalysis: '',
-      reasoningChains: '',
-      challenges: '',
-      intentId: 'factual_report',
-      outputTemplateId: 'intent_factual_report',
-      skipChallenger: true,
-    });
-    const outline = vi.mocked(callRoleModel).mock.calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Generate a report outline'));
-    const draft = vi.mocked(callRoleModel).mock.calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Section to draft'));
-    expect(String(outline?.[0]?.messages?.[1]?.content)).not.toContain('grammatical noun phrase');
-    expect(String(draft?.[0]?.messages?.[1]?.content)).not.toContain('Do not mention section keys');
-    expect(String(draft?.[0]?.messages?.[1]?.content)).not.toContain('CHUNK n');
-    expect(report.markdown.startsWith('# ')).toBe(false);
-    expect(report.targetWordCount).toBe(2200);
-    expect(resolveReportWordTarget({ estimatedLength: { minWords: 60, maxWords: 150 } }).target).toBeLessThan(200);
-  });
+  it.each([['unset', undefined], ['set to false', 'false']] as const)(
+    'writes the same reader layout at the standard length with the retired switch %s',
+    async (_label, value) => {
+      if (value === undefined) delete process.env.BASELINE_LAYER_ENABLED;
+      else process.env.BASELINE_LAYER_ENABLED = value;
+      vi.mocked(callRoleModel).mockClear();
+      const report = await generateIterativeReport({
+        query: 'When did the FDA authorize the first CRISPR therapy?',
+        plan: {},
+        sourceContext: 'The FDA authorized Casgevy in December 2023.',
+        retrieverAnalysis: '',
+        reasoningChains: '',
+        challenges: '',
+        intentId: 'factual_report',
+        outputTemplateId: 'intent_factual_report',
+        skipChallenger: true,
+      });
+      const calls = vi.mocked(callRoleModel).mock.calls;
+      const outline = calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Generate a report outline'));
+      const draft = calls.find((call) => String(call[0]?.messages?.[1]?.content).includes('Section to draft'));
+      expect(String(outline?.[0]?.messages?.[1]?.content)).toContain(OUTLINE_HEADING_INSTRUCTION);
+      expect(OUTLINE_HEADING_INSTRUCTION).toContain('grammatical noun phrase');
+      expect(String(draft?.[0]?.messages?.[1]?.content)).toContain('Do not mention section keys');
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call[0]?.isAdjudicative).toBe(false);
+        expect(call[0]?.baselineLayer).toBe(true);
+      }
+      expect(report.markdown.startsWith('# FDA authorization of Casgevy\n')).toBe(true);
+      for (const heading of ['## Summary', '## Key findings', '## Where sources disagree', '## Limits of this report', '## About this report']) {
+        expect(report.markdown).toContain(heading);
+      }
+      expect(report.markdown).not.toContain('## Who What When');
+      expect(report.targetWordCount).toBe(2200);
+      expect(resolveReportWordTarget({ estimatedLength: { minWords: 60, maxWords: 150 } }).target).toBeLessThan(200);
+    }
+  );
 });

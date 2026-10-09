@@ -1,7 +1,7 @@
 /**
  * Who wrote and published a source, from the provider's record to the stored
- * source: read by the provider, kept on the candidate only when the citation
- * lock is on for the run, checked before it is stored.
+ * source: read by the provider, always kept on the candidate, checked before it
+ * is stored.
  */
 import { describe, expect, it } from 'vitest';
 import { crossrefBibliographic } from '../services/discovery/providers/crossrefSearch';
@@ -9,9 +9,9 @@ import { openAlexBibliographic } from '../services/discovery/providers/openAlexS
 import { arxivBibliographic } from '../services/discovery/providers/arxivSearch';
 import { formatReference } from '../services/formatting/referenceList';
 import { pmcAuthorName, pmcBibliographic } from '../services/discovery/providers/pubmedCentralSearch';
-import { bibliographicMetadata, candidateForRun, fullestBibliographic, providerRecord, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
+import { bibliographicMetadata, fullestBibliographic, providerRecord, isCalendarDay, isoFromParts, type SearchResultCandidate } from '../services/discovery/providerTypes';
 import { bibliographicRecord, storedBibliographic } from '../services/ingestion/ingestionService';
-import { citationLockEnabled, runWithFlags } from '../config';
+import * as providerTypes from '../services/discovery/providerTypes';
 
 describe('what each provider record says', () => {
   it('reads authors, journal and a full date from Crossref', () => {
@@ -103,13 +103,10 @@ describe('what a run keeps', () => {
     bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01' },
   };
 
-  it('keeps reference details only with the citation lock on', () => {
-    const off = candidateForRun(candidate, false);
-    expect('bibliographic' in off).toBe(false);
-    // Exactly the fields a candidate had before reference details existed.
-    expect(Object.keys(off).sort()).toEqual(['provider', 'rank', 'score', 'snippet', 'sourceQuery', 'title', 'url']);
-    expect(bibliographicMetadata(off)).toEqual({});
-    expect(candidateForRun(candidate, true)).toBe(candidate);
+  it('has no way to drop reference details from a candidate', () => {
+    // The two helpers that removed them for a run without the citation lock are gone.
+    expect('candidateForRun' in providerTypes).toBe(false);
+    expect('withoutBibliographic' in providerTypes).toBe(false);
   });
 
   it('writes a PubMed name family first with its initials, and leaves other names alone', () => {
@@ -158,12 +155,6 @@ describe('what a run keeps', () => {
     expect(bibliographicMetadata(candidate)).toEqual({
       bibliographic: { authors: ['Lovering, Jessica R.'], publisher: 'Energy Policy', publishedAt: '2016-04-01', provider: 'crossref' },
     });
-  });
-
-  it('reads the lock from the switches of the run, and needs both', () => {
-    expect(citationLockEnabled()).toBe(false);
-    expect(runWithFlags({ CITATION_LOCK_ENABLED: true }, () => citationLockEnabled())).toBe(false);
-    expect(runWithFlags({ CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => citationLockEnabled())).toBe(true);
   });
 });
 

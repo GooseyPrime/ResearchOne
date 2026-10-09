@@ -15,18 +15,19 @@ afterEach(() => {
   delete process.env.BASELINE_LAYER_ENABLED;
 });
 
-describe('Layer 1 is an explicit opt-in', () => {
-  it('does not apply to a call that only omits isAdjudicative', () => {
-    process.env.BASELINE_LAYER_ENABLED = 'true';
-    expect(resolveBaselineLayer({})).toBe(false);
-    expect(resolveBaselineLayer({ isAdjudicative: false })).toBe(false);
-    expect(resolveBaselineLayer({ baselineLayer: true })).toBe(true);
-    expect(resolveBaselineLayer({ baselineLayer: true, isAdjudicative: true })).toBe(false);
-  });
-
-  it('never applies with the switch off', () => {
-    expect(resolveBaselineLayer({ baselineLayer: true })).toBe(false);
-  });
+describe('Layer 1 source handling is asked for by the caller, not by a switch', () => {
+  it.each([['unset', undefined], ['true', 'true'], ['false', 'false']] as const)(
+    'applies only when the call asks for it and is not adjudicative, with the retired switch %s',
+    (_label, value) => {
+      if (value === undefined) delete process.env.BASELINE_LAYER_ENABLED;
+      else process.env.BASELINE_LAYER_ENABLED = value;
+      expect(resolveBaselineLayer({})).toBe(false);
+      expect(resolveBaselineLayer({ isAdjudicative: false })).toBe(false);
+      expect(resolveBaselineLayer({ baselineLayer: true })).toBe(true);
+      expect(resolveBaselineLayer({ baselineLayer: true, isAdjudicative: false })).toBe(true);
+      expect(resolveBaselineLayer({ baselineLayer: true, isAdjudicative: true })).toBe(false);
+    }
+  );
 });
 
 describe('headings in scripts other than Latin', () => {

@@ -40,10 +40,12 @@ describe('the run\'s record of authority tiers', () => {
     expect(await authorityWordsForRun('run-1')).toBe(false);
   });
 
-  it('is written by the run that writes the report, and cleared on a retry without the switch', () => {
+  it('is written by the run before it writes the report, and cleared on a retry without the authority switch', () => {
     const source = readFileSync(resolve(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
-    // Before the synthesis stage, so a run that skips it (a reference lookup) still records it.
-    expect(source.indexOf(`'{"authorityTiers": true}'`)).toBeLessThan(source.indexOf("const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());"));
+    // Before the report is written. Every run writes one, through the one report writer.
+    const writerCall = source.indexOf('await generateIterativeReport({');
+    expect(writerCall).toBeGreaterThan(-1);
+    expect(source.indexOf(`'{"authorityTiers": true}'`)).toBeLessThan(writerCall);
     expect(source.indexOf(`'{"authorityTiers": true}'`)).toBeGreaterThan(source.indexOf('const reportForGates = (markdown: string): string =>'));
     expect(source).toMatch(/if \(authorityTiersEnabled\(\)\) \{\s*await query\(`UPDATE research_runs SET corpus_after = COALESCE\(corpus_after, '\{\}'::jsonb\) \|\| '\{"authorityTiers": true\}'::jsonb WHERE id=\$1`/);
     expect(source).toContain(`corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`);

@@ -3,9 +3,9 @@
  * outside world replaced. Two faults a review found in part 1:
  *  - the tier was decided in the ingestion worker, which a run's switches do
  *    not reach, so a run with the switch on for that run alone stored no tier;
- *  - the tier was read from reference details that discovery drops when the
- *    citation lock is off, so a journal article reached by its DOI link was
- *    stored as an unknown published work.
+ *  - the tier was read from reference details that discovery then dropped for
+ *    some runs, so a journal article reached by its DOI link was stored as an
+ *    unknown published work. Discovery now always keeps them.
  * Discovery now decides the tier itself, inside the run, from each provider's
  * own record, and sends it with the job.
  */
@@ -118,7 +118,8 @@ import { config, runWithFlags } from '../config';
 type Settings = { enabled: boolean; provider: string; ingestionWaitTimeoutMs: number };
 const discoveryWas: Settings = { enabled: config.discovery.enabled, provider: config.discovery.provider, ingestionWaitTimeoutMs: config.discovery.ingestionWaitTimeoutMs };
 const TIERS_ON = { AUTHORITY_TIERS_ENABLED: true };
-const BOTH_ON = { AUTHORITY_TIERS_ENABLED: true, CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true };
+/** The tier switch with the removed layout switches set against it. Nothing reads those names. */
+const TIERS_ON_REMOVED_OFF = { AUTHORITY_TIERS_ENABLED: true, CITATION_LOCK_ENABLED: false, BASELINE_LAYER_ENABLED: false };
 
 function discover() {
   return runDiscoveryOrchestrator({
@@ -146,14 +147,17 @@ describe('the authority tier through discovery', () => {
     Object.assign(config.discovery, discoveryWas);
   });
 
-  it('sends the tier with the job when only the authority switch is on', async () => {
+  it('sends the tier with the job when the authority switch is on, beside the reference details', async () => {
     h.delays = { tavily: 0, crossref: 20, openalex: 40 };
     await runWithFlags(TIERS_ON, discover);
     expect(h.queued).toHaveLength(1);
     // A DOI link alone is tier 3. One provider recorded a journal article: tier 2.
     expect(h.queued[0].authorityTier).toBe(2);
-    // The citation lock is off, so no reference details travel.
-    expect(h.queued[0].metadata).toEqual({ discovery_run_id: '11111111-1111-4111-8111-111111111111' });
+    // Reference details always travel with the job; the tier does not replace them.
+    expect(h.queued[0].metadata).toEqual({
+      discovery_run_id: '11111111-1111-4111-8111-111111111111',
+      bibliographic: { ...CROSSREF_DETAILS, kind: 'journal article', provider: 'crossref' },
+    });
   });
 
   it('sends the same tier whichever provider answers first', async () => {
@@ -162,9 +166,10 @@ describe('the authority tier through discovery', () => {
     expect(h.queued[0].authorityTier).toBe(2);
   });
 
-  it('sends the same tier with the citation lock on as well', async () => {
-    await runWithFlags(BOTH_ON, discover);
+  it("sends the same tier and the same details with the removed layout switches set to 'false'", async () => {
+    await runWithFlags(TIERS_ON_REMOVED_OFF, discover);
     expect(h.queued[0].authorityTier).toBe(2);
+    expect((h.queued[0].metadata as Record<string, unknown>).bibliographic).toEqual({ ...CROSSREF_DETAILS, kind: 'journal article', provider: 'crossref' });
   });
 
   it('gives a source stored by an earlier run its tier, without replacing one it has', async () => {

@@ -5,6 +5,7 @@ import clsx from 'clsx';
 import type { Report } from '../../../utils/api';
 import CitationMarker from './CitationMarker';
 import {
+  CHALLENGE_PASS,
   CITE_HREF,
   TAB_LABELS,
   citationCard,
@@ -13,6 +14,7 @@ import {
   linkSection,
   parseReferences,
   readableDay,
+  readerHeading,
   referenceAnchor,
   sectionRole,
   tabsFor,
@@ -26,6 +28,7 @@ const EMPTY: ReaderEvidence = { status: { word: '', reason: null }, sources: [],
 
 const STATUS_TONE: Record<string, string> = {
   Ready: 'bg-green-900/20 text-green-400 border-green-800/30',
+  'Finished with fewer sources than planned': 'bg-amber-900/20 text-amber-300 border-amber-800/30',
   'Needs review': 'bg-amber-900/20 text-amber-300 border-amber-800/30',
   Failed: 'bg-red-900/20 text-red-300 border-red-800/30',
   'In progress': 'bg-accent/10 text-accent border-accent/30',
@@ -82,19 +85,76 @@ function SourceLine({ source }: { source: ReaderSource }): JSX.Element {
   );
 }
 
-export interface ReaderViewProps {
+export interface ReaderReportBodyProps {
   report: Report;
   evidence?: ReaderEvidence;
   /** Passage labels of an older report mapped to reader numbers. */
   legacyNumbers?: ReadonlyMap<number, number>;
-  /** The technical record: plan, searches, run reference, generation trace, models. */
+}
+
+/**
+ * The report as a reader is meant to see it, and nothing else: its sections
+ * under reader headings, numbered citations, the reference list and the closing
+ * note. This is the only way a report's text is shown to a customer, on the
+ * report page and on a dossier's Report tab alike, for a report of any age.
+ * There is no other layout to fall back to.
+ */
+export function ReaderReportBody({ report, evidence = EMPTY, legacyNumbers }: ReaderReportBodyProps): JSX.Element {
+  const sections = useMemo(() => [...(report.sections ?? [])].sort((a, b) => a.section_order - b.section_order), [report.sections]);
+  const role = (index: number) => sectionRole(sections[index], report.title);
+  const referenceSection = sections.find((_, index) => role(index) === 'references');
+  const references = referenceSection ? parseReferences(referenceSection.content) : [];
+  const about = sections.find((_, index) => role(index) === 'about');
+  const labels = useMemo(() => new Map([...legacyNumbersOf(evidence), ...(legacyNumbers ?? [])]), [evidence, legacyNumbers]);
+  const link = (content: string, sectionId: string | null): string => linkCitations(content, sectionId, evidence.citations, labels);
+  const linked = (section: { id: string; title: string; content: string }) => linkSection(section.title, section.content, section.id, evidence.citations, labels);
+  return (
+    <>
+      {sections.map((section, index) =>
+        role(index) === 'report' ? (
+          <section key={section.id} className="space-y-2">
+            <h2 className="text-xl font-semibold text-white">
+              <Prose inline markdown={linked(section).heading} evidence={evidence} />
+            </h2>
+            <Prose markdown={linked(section).body} evidence={evidence} />
+          </section>
+        ) : null
+      )}
+      {sections.every((_, index) => role(index) !== 'report') && report.executive_summary && (
+        // An older report with no stored sections: its summary gets the same citation handling.
+        <Prose markdown={link(report.executive_summary, null)} evidence={evidence} />
+      )}
+      {references.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold text-white">References</h2>
+          <ol className="space-y-2 text-sm text-slate-300 list-none pl-0">
+            {references.map((entry) => (
+              <li key={entry.number} id={referenceAnchor(entry.number)} className="flex gap-2 scroll-mt-24 target:bg-accent/10 rounded px-1">
+                <span className="text-slate-500 flex-shrink-0">{entry.number}.</span>
+                <span className="min-w-0 break-words">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ p: ({ children }) => <>{children}</> }}>
+                    {entry.text}
+                  </ReactMarkdown>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {about && <p className="text-xs text-slate-500 border-t border-indigo-900/20 pt-3">{about.content.trim()}</p>}
+    </>
+  );
+}
+
+export interface ReaderViewProps extends ReaderReportBodyProps {
+  /** What a reader may want to know about how the report came to be: what was asked, and the reference to quote to support. */
   method?: ReactNode;
 }
 
 /**
  * The reading page (slice 5). The Report tab shows the report as a reader is
- * meant to see it and nothing else. Strength appears only on the Evidence tab;
- * the generation trace only under "How this was researched".
+ * meant to see it and nothing else. Strength appears only on the Evidence tab,
+ * and challenge material only on the Challenge pass tab.
  */
 export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, method }: ReaderViewProps): JSX.Element {
   const sections = useMemo(() => [...(report.sections ?? [])].sort((a, b) => a.section_order - b.section_order), [report.sections]);
@@ -104,11 +164,9 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
   const role = (index: number) => sectionRole(sections[index], report.title);
   const referenceSection = sections.find((_, index) => role(index) === 'references');
   const references = referenceSection ? parseReferences(referenceSection.content) : [];
-  const about = sections.find((_, index) => role(index) === 'about');
   const sourceById = new Map(evidence.sources.map((source) => [source.id, source]));
   // Labels the backend mapped for an older report, with any the caller adds.
   const labels = useMemo(() => new Map([...legacyNumbersOf(evidence), ...(legacyNumbers ?? [])]), [evidence, legacyNumbers]);
-  const link = (content: string, sectionId: string | null): string => linkCitations(content, sectionId, evidence.citations, labels);
   const linked = (section: { id: string; title: string; content: string }) => linkSection(section.title, section.content, section.id, evidence.citations, labels);
 
   return (
@@ -144,42 +202,7 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
       </div>
 
       <div role="tabpanel" id={`reader-panel-${active}`} aria-labelledby={`reader-tab-${active}`} className="space-y-6">
-        {active === 'report' && (
-          <>
-            {sections.map((section, index) =>
-              role(index) === 'report' ? (
-                <section key={section.id} className="space-y-2">
-                  <h2 className="text-xl font-semibold text-white">
-                    <Prose inline markdown={linked(section).heading} evidence={evidence} />
-                  </h2>
-                  <Prose markdown={linked(section).body} evidence={evidence} />
-                </section>
-              ) : null
-            )}
-            {sections.every((_, index) => role(index) !== 'report') && report.executive_summary && (
-              // An older report with no stored sections: its summary gets the same citation handling.
-              <Prose markdown={link(report.executive_summary, null)} evidence={evidence} />
-            )}
-            {references.length > 0 && (
-              <section className="space-y-2">
-                <h2 className="text-xl font-semibold text-white">References</h2>
-                <ol className="space-y-2 text-sm text-slate-300 list-none pl-0">
-                  {references.map((entry) => (
-                    <li key={entry.number} id={referenceAnchor(entry.number)} className="flex gap-2 scroll-mt-24 target:bg-accent/10 rounded px-1">
-                      <span className="text-slate-500 flex-shrink-0">{entry.number}.</span>
-                      <span className="min-w-0 break-words">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ p: ({ children }) => <>{children}</> }}>
-                          {entry.text}
-                        </ReactMarkdown>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
-            {about && <p className="text-xs text-slate-500 border-t border-indigo-900/20 pt-3">{about.content.trim()}</p>}
-          </>
-        )}
+        {active === 'report' && <ReaderReportBody report={report} evidence={evidence} legacyNumbers={legacyNumbers} />}
 
         {active === 'evidence' && (
           <section className="space-y-4">
@@ -254,22 +277,29 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
 
         {active === 'method' && (
           <section className="space-y-4">
-            <p className="text-sm text-slate-400">The technical record of this report: what was asked, how it was planned and searched, and what ran.</p>
-            {method ?? <p className="text-sm text-slate-500">No record of the run is available for this report.</p>}
+            <p className="text-sm text-slate-400">What was asked, and the reference to quote if you contact support about this report.</p>
+            {method ?? <p className="text-sm text-slate-500">No record of the request is available for this report.</p>}
           </section>
         )}
 
-        {active === 'challenge' &&
-          sections.map((section, index) =>
-            role(index) === 'challenge' ? (
-              <section key={section.id} className="space-y-2">
-                <h2 className="text-xl font-semibold text-white">
-                  <Prose inline markdown={linked(section).heading} evidence={evidence} />
-                </h2>
-                <Prose markdown={linked(section).body} evidence={evidence} />
-              </section>
-            ) : null
-          )}
+        {active === 'challenge' && (
+          <section className="space-y-6">
+            <p className="text-sm text-slate-400">A second look at this report: where its findings could be wrong, and what would change them.</p>
+            {sections.map((section, index) =>
+              role(index) === 'challenge' ? (
+                <section key={section.id} className="space-y-2">
+                  {/* A section already named for the tab is not headed twice. */}
+                  {readerHeading(section.title).toLowerCase() !== CHALLENGE_PASS.toLowerCase() && (
+                    <h2 className="text-xl font-semibold text-white">
+                      <Prose inline markdown={linked(section).heading} evidence={evidence} />
+                    </h2>
+                  )}
+                  <Prose markdown={linked(section).body} evidence={evidence} />
+                </section>
+              ) : null
+            )}
+          </section>
+        )}
       </div>
     </article>
   );

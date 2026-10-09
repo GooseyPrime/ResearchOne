@@ -259,14 +259,28 @@ describe('citation lock on the report path', () => {
     expect(report.markdown).not.toContain('8 December 2023 [P2]');
   });
 
-  it('ignores locked passages when the Layer 1 switch is off', async () => {
-    delete process.env.BASELINE_LAYER_ENABLED;
-    await writeLocked();
-    const drafter = calls.filter((call) => call.role === 'section_drafter');
-    expect(drafter.length).toBeGreaterThan(0);
-    for (const call of drafter) {
-      expect(call.text).toContain('UNLOCKED-CONTEXT-SENTINEL');
-      expect(call.text).not.toContain('Cite with the markers shown above');
+  it.each([
+    ['BASELINE_LAYER_ENABLED', undefined],
+    ['BASELINE_LAYER_ENABLED', 'false'],
+    ['CITATION_LOCK_ENABLED', 'false'],
+  ] as const)('honours locked passages with the retired switch %s set to %s', async (name, value) => {
+    const before = process.env[name];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+    try {
+      const report = await writeLocked();
+      const drafter = calls.filter((call) => call.role === 'section_drafter');
+      expect(drafter.length).toBeGreaterThan(0);
+      for (const call of drafter) {
+        expect(call.text).not.toContain('UNLOCKED-CONTEXT-SENTINEL');
+        expect(call.text).toContain('[P1] US Food and Drug Administration');
+        expect(call.text).toContain('Cite with the markers shown above and no others.');
+      }
+      expect(report.markdown).toContain('8 December 2023 [P1].');
+      expect(report.citationIssues).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env[name];
+      else process.env[name] = before;
     }
   });
 });
@@ -693,7 +707,7 @@ describe('citation lock helpers', () => {
     expect(stripReaderNumbers('Costs rose [1]. Use `rows[1]` here [2][3].')).toBe('Costs rose. Use `rows[1]` here.');
   });
 
-  it('keeps the fixed source count from deciding a Layer 1 run', () => {
+  it('keeps the fixed source count from deciding a run that is not adjudicative', () => {
     expect(countShortfallSetsStatus(true)).toBe(false);
     expect(countShortfallSetsStatus(false)).toBe(true);
   });

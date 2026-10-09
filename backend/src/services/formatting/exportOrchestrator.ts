@@ -26,7 +26,7 @@ import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
 import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody, type ReaderExportOptions } from './readerExport';
 import { loadReaderEvidence } from './readerEvidence';
-import { authorityWordsForRun, readerViewForRun } from '../eval/readerView';
+import { authorityWordsForRun } from '../eval/readerView';
 import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
 import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
 
@@ -88,13 +88,12 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   // A report written with the citation lock is exported as it was saved:
   // its numbers and its reference list are already in the text.
   const state = await loadLockedReportState(reportId);
-  // Slice 5: a report in the reader view is exported as the reader view shows it.
-  const readerView = await readerViewForRun(state?.runId);
+  // Every report is exported as the reader view shows it.
   const readerOptions = async (body: string): Promise<ReaderExportOptions> => ({
     challengeTitles,
     legacyNumbers: hasLegacyLabels(body) ? await legacyNumbersForExport(reportId, state?.runId ?? null) : undefined,
   });
-  if (state?.savedStyle) return exportLockedReport(input, state.savedStyle, readerView ? readerOptions : null, await authorityWordsForRun(state.runId));
+  if (state?.savedStyle) return exportLockedReport(input, state.savedStyle, readerOptions, await authorityWordsForRun(state.runId));
 
   // 2. Assign / load evidence aliases for this report.
   const aliases = await assignEvidenceAliases(reportId);
@@ -105,8 +104,8 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
   // 3. Rewrite the report body to use pandoc citation syntax.
   //    Input:  "... as shown in [E1] ..."
   //    Output: "... as shown in [@E1] ..."
-  const readerBody = readerView ? readerExportBody(title, bodyMarkdown, await readerOptions(bodyMarkdown)) : null;
-  const rewrittenBody = rewriteAliasesForPandoc(readerBody ?? bodyMarkdown);
+  const readerBody = readerExportBody(title, bodyMarkdown, await readerOptions(bodyMarkdown));
+  const rewrittenBody = rewriteAliasesForPandoc(readerBody);
 
   // 4. Wrap the body in a minimal title-block so pandoc can produce
   //    a proper document.
@@ -119,9 +118,9 @@ async function exportReportInner(input: ExportJobInput): Promise<ExportJobOutput
 
   // 6. Run pandoc.
   const pandocResult = await runPandoc({
-    // The heading Pandoc fills from the bibliography. A reader-view report that
+    // The heading Pandoc fills from the bibliography. A report that
     // already carries its reference list is not given a second, empty one.
-    markdown: readerBody !== null && hasReferenceList(readerBody) ? `${titleBlock}${rewrittenBody}\n` : `${titleBlock}${rewrittenBody}\n\n## References\n`,
+    markdown: hasReferenceList(readerBody) ? `${titleBlock}${rewrittenBody}\n` : `${titleBlock}${rewrittenBody}\n\n## References\n`,
     cslJson: bibliography,
     format,
     style: pandocStyleFor(style),
@@ -176,8 +175,8 @@ async function loadLockedReportState(reportId: string): Promise<{ savedStyle: Re
 async function exportLockedReport(
   input: ExportJobInput,
   savedStyle: ReferenceStyle,
-  /** Set for a report in the reader view: what its export leaves out and renumbers. */
-  readerOptions: ((body: string) => Promise<ReaderExportOptions>) | null,
+  /** What the export leaves out and renumbers, as the reader view does. */
+  readerOptions: (body: string) => Promise<ReaderExportOptions>,
   /** Slice 6. The run had authority tiers on: a rebuilt list names web pages as the saved one did. */
   authorityWords = false
 ): Promise<ExportJobOutput> {
@@ -222,7 +221,7 @@ async function exportLockedReport(
   const assembled = sections
     .map((section) => `## ${stripInternalLabelsFromReport(section.title)}\n\n${stripInternalLabelsFromReport(section.content)}`)
     .join('\n\n');
-  const body = readerOptions ? readerExportBody(title, assembled, await readerOptions(assembled)) : assembled;
+  const body = readerExportBody(title, assembled, await readerOptions(assembled));
   const titleBlock = title ? `---\ntitle: ${JSON.stringify(stripInternalLabelsFromReport(title))}\n---\n\n` : '';
   const pandocResult = await runPandoc({
     markdown: `${titleBlock}${body}\n`,

@@ -16,7 +16,6 @@ import {
   composeItemHeading,
   resolveTableSectionKey,
   contractRequestsTable,
-  DESCRIPTIVE_SECTION_PLAN,
   extractItemName,
   formatSectionsForRefiner,
   parseRefinedSections,
@@ -24,6 +23,7 @@ import {
 } from '../services/reasoning/reportGenerator';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 import { appendContractRequiredSections } from '../services/reasoning/contractOutline';
+import { draftedSections } from '../services/reasoning/baselineReport';
 import {
   applyTargetedRepair,
   extractMissingSectionTitles,
@@ -540,13 +540,18 @@ describe('run c50162a9 — contract-required sections and table headers', () => 
     expect(buildTableHeaderDirective({ fields: [], itemLabel: 'Opportunity' })).toBe('');
   });
 
-  it('keeps adjudication vocabulary out of the descriptive section plan', () => {
-    const titles = DESCRIPTIVE_SECTION_PLAN.map((s) => s.title.toLowerCase());
-    expect(titles.some((t) => t.includes('evidence'))).toBe(false);
-    expect(titles.some((t) => t.includes('falsification'))).toBe(false);
-    expect(titles.some((t) => t.includes('contradiction'))).toBe(false);
-    // The key is load-bearing for revision insertion order and must not move.
-    expect(DESCRIPTIVE_SECTION_PLAN.some((s) => s.key === 'evidence_ledger')).toBe(true);
+  it('keeps adjudication vocabulary out of the section plan of every report type', () => {
+    for (const intentId of ['opportunity_discovery', 'factual_report', 'adjudication', 'investigation', 'story_verification', undefined]) {
+      const plan = draftedSections(intentId, 'q');
+      const titles = plan.map((s) => s.title.toLowerCase());
+      expect(titles.some((t) => t.includes('evidence'))).toBe(false);
+      expect(titles.some((t) => t.includes('falsification'))).toBe(false);
+      expect(titles.some((t) => t.includes('contradiction'))).toBe(false);
+      // The old layout's ledger section is gone from the plan, key and all.
+      expect(plan.some((s) => s.key === 'evidence_ledger')).toBe(false);
+      expect(plan.map((s) => s.key).slice(0, 2)).toEqual(['summary', 'key_findings']);
+      expect(plan.map((s) => s.key).slice(-2)).toEqual(['disagreement', 'limits']);
+    }
   });
 });
 

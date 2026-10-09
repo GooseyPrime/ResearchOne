@@ -48,13 +48,11 @@ import { finalizeLockedCitations, issuePassages, type LockedPassage } from '../s
 import { formatReadDate, presentationFailures } from '../services/reasoning/baselineReport';
 import {
   boundedReportForAudit,
-  closingNoteOf,
   describeSearchScope,
   mergeSearchRecords,
   reportStatesSearchScope,
   searchScopeGateContext,
   searchScopeNoteFor,
-  withClosingNoteRestored,
 } from '../services/reasoning/searchScope';
 import { INTENT_OUTPUT_TEMPLATES } from '../services/formatting/templates/intentOutputTemplates';
 
@@ -146,7 +144,7 @@ describe('a literature review says what was searched', () => {
       looselyMatched: 1,
     });
     expect(describeSearchScope(record)).toBe(STATEMENT);
-    expect(searchScopeNoteFor({ layer1Run: true, intentId: 'literature_review', summaries: [FIRST_PASS, SECOND_PASS] })).toBe(STATEMENT);
+    expect(searchScopeNoteFor({ intentId: 'literature_review', summaries: [FIRST_PASS, SECOND_PASS] })).toBe(STATEMENT);
     expect(presentationFailures(STATEMENT)).toEqual([]);
   });
 
@@ -170,16 +168,20 @@ describe('a literature review says what was searched', () => {
     expect(describeSearchScope(mergeSearchRecords([{ queriesExecuted: ['q one two'], sources: [overCap('arxiv')] }]))).toContain('taken first. 1 result was considered.');
   });
 
-  it('says nothing about a search that did not happen, and nothing for any other run', () => {
+  it('says nothing about a search that did not happen, and nothing for a report type that does not ask for it', () => {
     // A run whose profile skips discovery records a count where the list of queries would be.
     const skipped = { queriesExecuted: 0, candidatesFound: 0, candidatesSelected: 0, sources: [] };
-    expect(searchScopeNoteFor({ layer1Run: true, intentId: 'literature_review', summaries: [skipped] })).toBe('');
-    expect(searchScopeNoteFor({ layer1Run: true, intentId: 'literature_review', summaries: [] })).toBe('');
-    // With the Layer 1 switch off, or for a report type that does not ask for it, the report is what it was.
-    expect(searchScopeNoteFor({ layer1Run: false, intentId: 'literature_review', summaries: [FIRST_PASS] })).toBe('');
-    expect(searchScopeNoteFor({ layer1Run: true, intentId: 'factual_report', summaries: [FIRST_PASS] })).toBe('');
-    expect(searchScopeNoteFor({ layer1Run: true, intentId: 'survey', summaries: [FIRST_PASS] })).toBe('');
+    expect(searchScopeNoteFor({ intentId: 'literature_review', summaries: [skipped] })).toBe('');
+    expect(searchScopeNoteFor({ intentId: 'literature_review', summaries: [] })).toBe('');
+    expect(searchScopeNoteFor({ intentId: 'factual_report', summaries: [FIRST_PASS] })).toBe('');
+    expect(searchScopeNoteFor({ intentId: 'survey', summaries: [FIRST_PASS] })).toBe('');
     expect(searchScopeGateContext('')).toBe('');
+  });
+
+  it.each([['unset', undefined], ['set to false', 'false']] as const)('states the search of a literature review with the retired switch %s', (_label, value) => {
+    if (value === undefined) delete process.env.BASELINE_LAYER_ENABLED;
+    else process.env.BASELINE_LAYER_ENABLED = value;
+    expect(searchScopeNoteFor({ intentId: 'literature_review', summaries: [FIRST_PASS, SECOND_PASS] })).toBe(STATEMENT);
   });
 
   it('counts a query it cannot show, and never prints wording or markup the reader standard bans', () => {
@@ -238,7 +240,7 @@ describe('a literature review says what was searched', () => {
     for (const call of without) expect(call.text).not.toContain('Do not describe a search');
   });
 
-  it('carries the statement in a Layer 1 review written without the citation lock', async () => {
+  it('carries the statement in a review written without locked passages', async () => {
     citeByNumber = true;
     const report = await writeReview(STATEMENT, false);
     const closing = report.markdown.split(/^## About this report\s*$/m)[1] ?? '';
@@ -246,7 +248,7 @@ describe('a literature review says what was searched', () => {
     expect(statesItsSearch(report.markdown)).toBe(true);
   });
 
-  it('keeps the statement when a redraft of a review written without the lock rewords the closing note', async () => {
+  it('keeps the statement when a redraft of a review written without locked passages rewords the closing note', async () => {
     citeByNumber = true;
     redraftRewordsClosingNote = true;
     const report = await writeReview(STATEMENT, false);
@@ -257,39 +259,10 @@ describe('a literature review says what was searched', () => {
     expect(closing.trim()).toBe(`${STATEMENT} 2 sources were read on ${formatReadDate()}.`);
   });
 
-  it('holds every later version of a report to the closing note as code wrote it', () => {
-    const body = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## References\n1. The Lancet.\n\n## About this report\n';
-    const written = `${STATEMENT} 2 sources were read on 8 Oct 2026.`;
-    const intact = `${body}${written}`;
-    expect(closingNoteOf(intact)).toBe(written);
-    expect(withClosingNoteRestored(intact, written)).toBe(intact);
-    // Reworded, or cut down to the count.
-    expect(withClosingNoteRestored(`${body}We searched several databases. 2 sources were read on 8 Oct 2026.`, written)).toBe(intact);
-    expect(withClosingNoteRestored(`${body}2 sources were read on 8 Oct 2026.`, written)).toBe(intact);
-    // Replaced by a statement that is false: the report still cites its sources.
-    expect(withClosingNoteRestored(`${body}No sources were used.`, written)).toBe(intact);
-    // The heading renamed or the section removed by a rewrite of the whole report: the note is put back at the end.
-    const renamed = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## References\n1. The Lancet.\n\n## Methodology\nWe searched widely.\n';
-    expect(withClosingNoteRestored(renamed, written)).toBe(`${renamed.trimEnd()}\n\n## About this report\n${written}`);
-    const removed = '# A review\n\n## Summary\nInterleukin-6 fell [1].';
-    expect(withClosingNoteRestored(removed, written).endsWith(`\n\n## About this report\n${written}`)).toBe(true);
-    expect(statesItsSearch(withClosingNoteRestored(removed, written))).toBe(true);
-    // A report that truly used no sources is held to that, and a run with no note to keep is left alone.
-    expect(withClosingNoteRestored(`${body}Something else.`, 'No sources were used.')).toBe(`${body}No sources were used.`);
-    expect(withClosingNoteRestored(`${body}Reworded by a repair.`, '')).toBe(`${body}Reworded by a repair.`);
-    expect(closingNoteOf(removed)).toBe('');
-  });
-
-  it('keeps a section a repair appended after the closing note when it puts the note back', () => {
+  it('gives the contract check the closing note itself when a section follows it', () => {
     const head = '# A review\n\n## Summary\nInterleukin-6 fell [1].\n\n## About this report\n';
     const written = `${STATEMENT} 2 sources were read on 8 Oct 2026.`;
     const appended = '## Discussion of patterns\nTwo cohorts agree on the direction of change [1].\n\n### A sub-heading\nMore detail.';
-    const reworded = `${head}We looked in a few places. 2 sources were read on 8 Oct 2026.\n\n${appended}`;
-    const restored = withClosingNoteRestored(reworded, written);
-    expect(restored).toBe(`${head}${written}\n\n${appended}`);
-    // Already in place, with a section after it: nothing changes.
-    expect(withClosingNoteRestored(restored, written)).toBe(restored);
-    expect(closingNoteOf(restored)).toBe(written);
     // The contract check is given the note itself, not whatever follows it.
     const long = `${head.replace('Interleukin-6 fell [1].', 'Interleukin-6 fell [1]. '.repeat(3000))}${written}\n\n${appended}`;
     const given = boundedReportForAudit(long, 60000, STATEMENT);
@@ -325,18 +298,20 @@ describe('a literature review says what was searched', () => {
     // the note is made and every place it must arrive, so a statement that is
     // worked out and then handed to nothing fails here.
     const source = readFileSync(resolve(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
-    expect(source).toContain('const searchScopeNote = searchScopeNoteFor({ layer1Run, intentId: orchProfile.intent, summaries: searchPasses });');
+    expect(source).toContain('const searchScopeNote = searchScopeNoteFor({ intentId: orchProfile.intent, summaries: searchPasses });');
+    expect(source).toContain('const gateContext = searchScopeGateContext(searchScopeNote);');
     expect(source.match(/searchPasses\.push\(/g)).toHaveLength(3);
     expect(source).toContain('lockedPassages, undefined, referenceStyle, searchScopeNote).markdown');
     expect(source).toContain('...(searchScopeNote ? { searchScopeNote } : {}),');
     expect(source).toContain('finalizeLockedReportForSave(generatedReport.markdown, researchQuery, lockedPassages, referenceStyle, undefined, searchScopeNote)');
     expect(source.match(/\$\{gateContext\}Verify this research report meets epistemic standards/g)).toHaveLength(2);
     expect(source).toContain('`${gateContext}RESEARCH_BRIEF:');
-    // Without the lock the note is put back before the checks read the report and before it is saved,
-    // and the contract check is given the closing note of a long report.
-    expect(source).toContain('if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);');
-    expect(source).toContain(': withClosingNoteRestored(markdown, writtenClosingNote);');
-    expect(source).toContain('generatedReport.markdown = withClosingNoteRestored(checked.markdown, writtenClosingNote);');
+    // Every run is written with the citation lock, so the note is written by code at each of those
+    // places; nothing puts a reworded note back afterwards. The contract check is given the closing
+    // note of a long report.
+    expect(source).not.toContain('layer1Run');
+    expect(source).not.toContain('withClosingNoteRestored');
+    expect(source).not.toContain('closingNoteOf');
     expect(source).toContain('${boundedReportForAudit(markdown, 60000, searchScopeNote)}');
   });
 });

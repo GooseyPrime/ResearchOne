@@ -7,7 +7,7 @@
  * never-list. Labels are already removed where the text is assembled; this
  * takes out what is left that a reader must not see.
  */
-import { mapCitationProse } from './reportPresentation';
+import { isOlderChallengeHeading, mapCitationProse, readerHeading, withoutRepeatedHeading } from './reportPresentation';
 
 const norm = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toLowerCase();
 
@@ -36,7 +36,12 @@ function withReaderNumbers(markdown: string, legacyNumbers: ReadonlyMap<number, 
 
 /** A section the reading page shows on its Challenge tab, not in the report. The same rule as the page's. */
 export function isChallengeSection(section: { title: string; section_type?: string | null }): boolean {
-  return section.section_type === 'challenge' || /^(challenge\b|the challenge\b|adversarial (review|challenge)\b)/.test(norm(section.title));
+  return (
+    section.section_type === 'challenge' ||
+    /^(challenge\b|the challenge\b|adversarial (review|challenge)\b)/.test(norm(section.title)) ||
+    // An older report's challenge sections, under the names the removed layout gave them.
+    isOlderChallengeHeading(section.title)
+  );
 }
 
 /** Whether the text still holds a passage label, so the mapping is only loaded for a report that needs it. */
@@ -75,7 +80,17 @@ export function readerExportBody(title: string | null, body: string, options: Re
     if (wanted.length > 0 && norm(name) === wanted && rest.join('\n').trim() === '') return false;
     return !(challenge.has(norm(name)) || isChallengeSection({ title: name }));
   });
-  return withReaderNumbers(kept.join('\n'), options.legacyNumbers ?? new Map()).replace(/\n{3,}/g, '\n\n').trim();
+  // An older report is exported under the headings the reading page shows for
+  // it, and a heading its text repeats is printed once.
+  const headed = kept.map((block) => {
+    const [heading, ...rest] = block.split('\n');
+    if (!heading.startsWith('## ')) return block;
+    const name = heading.slice(3);
+    const text = withoutRepeatedHeading(name, rest.join('\n'));
+    // A removed line must not leave the text hard against its heading.
+    return [`## ${readerHeading(name.trim())}`, text === rest.join('\n') ? text : `\n${text}`].join('\n');
+  });
+  return withReaderNumbers(headed.join('\n'), options.legacyNumbers ?? new Map()).replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** True when the export text still has a reference list to stand behind its numbers. */

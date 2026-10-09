@@ -101,7 +101,7 @@ async function write(lock = true, requestedFormats?: string[]) {
 const section = (report: Awaited<ReturnType<typeof write>>, key: string): string => report.sections.find((entry) => entry.key === key)?.content ?? '';
 const drafterCallFor = (title: string) => calls.find((call) => call.role === 'section_drafter' && call.text.includes(`Section to draft: ${title}`));
 
-describe('section size and shape on the Layer 1 report path', () => {
+describe('section size and shape on the report path', () => {
   beforeEach(() => {
     process.env.BASELINE_LAYER_ENABLED = 'true';
     calls.length = 0;
@@ -175,10 +175,10 @@ describe('section size and shape on the Layer 1 report path', () => {
   });
 
   it('holds the limits note to its size when a presentation format was chosen', async () => {
-    // With a format chosen the report keeps the older section plan, where every
-    // section had an even share: 440 words of a 2,200-word report for a limits note.
+    // A narrative briefing adds no section: the reader layout already is one.
     const report = await write(true, ['narrative_briefing']);
-    expect(report.sections.some((entry) => entry.key === 'narrative_briefing')).toBe(true);
+    expect(report.sections.some((entry) => entry.key === 'narrative_briefing')).toBe(false);
+    expect(report.sections.map((entry) => entry.title)).toEqual((await write()).sections.map((entry) => entry.title));
     const limitsCall = calls.find((call) => call.role === 'section_drafter' && call.text.includes('Section to draft: Limits'));
     expect(limitsCall?.text).toContain('target: ~90 words');
     expect(limitsCall?.text).toContain('Write two to four sentences that name only real limits');
@@ -193,7 +193,26 @@ describe('section size and shape on the Layer 1 report path', () => {
     expect(asks[0].last).toContain('Rewrite it within 90 words');
   });
 
-  it('holds the limitations of a literature review to the same size when a format was chosen', async () => {
+  it('holds the limits note to its size when a chosen format adds a section of its own', async () => {
+    const report = await write(true, ['ranked_options']);
+    expect(report.sections.map((entry) => entry.title)).toEqual([
+      'Summary',
+      'Key findings',
+      'Regulatory change during construction',
+      'Standard designs built in series',
+      'Ranked options',
+      'Where sources disagree',
+      'Limits of this report',
+    ]);
+    const limitsCall = calls.find((call) => call.role === 'section_drafter' && call.text.includes('Section to draft: Limits'));
+    expect(limitsCall?.text).toContain('target: ~90 words');
+    expect(limitsCall?.text).toContain('Write two to four sentences that name only real limits');
+    expect(splitSentences(section(report, 'limits'))).toHaveLength(4);
+    expect(drafterCallFor('Summary')?.text).toContain('This section ("Summary") target: ~150 words');
+    expect(drafterCallFor('Key findings')?.text).toContain('target: ~180 words');
+  });
+
+  it('holds the limits note of a literature review to the same size when a format was chosen', async () => {
     const report = await generateIterativeReport({
       query: 'What does the literature say about nuclear construction costs?',
       plan: {},
@@ -210,10 +229,12 @@ describe('section size and shape on the Layer 1 report path', () => {
       usedSources: [SOURCE, SOURCE, SOURCE],
       lockedPassages: issuePassages(CHUNKS, [SOURCE, SOURCE, SOURCE]),
     });
-    const call = calls.find((entry) => entry.role === 'section_drafter' && entry.text.includes('Section to draft: Limitations'));
+    // A literature review is written to the reader layout too: its closing note is "Limits of this report".
+    expect(report.sections.some((entry) => entry.title === 'Limitations')).toBe(false);
+    const call = calls.find((entry) => entry.role === 'section_drafter' && entry.text.includes('Section to draft: Limits of this report'));
     expect(call?.text).toContain('target: ~90 words');
     expect(call?.text).toContain('Write two to four sentences that name only real limits');
-    expect(splitSentences(report.sections.find((entry) => entry.key === 'limitations')?.content ?? '')).toHaveLength(4);
+    expect(splitSentences(report.sections.find((entry) => entry.key === 'limits')?.content ?? '')).toHaveLength(4);
   });
 
   it('keeps the whole report inside its length when several sections each run over', async () => {
@@ -305,28 +326,38 @@ describe('section size and shape on the Layer 1 report path', () => {
     expect(calls.some((call) => call.last.startsWith('That draft is') && call.text.includes('Section to draft: Steps'))).toBe(false);
   });
 
-  it('tells the refiner never to lengthen a Layer 1 report', async () => {
+  it('tells the refiner never to lengthen a report', async () => {
     await write();
-    const refiner = calls.find((call) => call.role === 'coherence_refiner' && call.text.includes('Refine report text'));
+    const refiner = calls.find((call) => call.role === 'coherence_refiner' && call.last.startsWith('Refine the report text. Keep every fact and every citation as it is.'));
     expect(refiner?.text).toContain('Never lengthen a section and never add material.');
     expect(refiner?.text).not.toContain('extend it with substantive analysis');
   });
 
-  it('changes nothing with the Layer 1 switch off', async () => {
-    delete process.env.BASELINE_LAYER_ENABLED;
-    bodyIsLong = true;
-    keyFindingsAsParagraph = true;
-    await write(false);
-    expect(calls.some((call) => call.last.startsWith('That draft is') || call.last.startsWith('Rewrite this as 3 to 7'))).toBe(false);
-    const drafter = calls.filter((call) => call.role === 'section_drafter');
-    expect(drafter.length).toBeGreaterThan(0);
-    for (const call of drafter) {
-      expect(call.text).not.toContain('Write 3 to 7 bullet points');
-      expect(call.text).not.toContain('Never use the words claim or claims');
+  it.each([['unset', undefined], ['set to false', 'false']] as const)(
+    'holds the same sizes, shapes and wording rules with the retired switch %s and no locked passages',
+    async (_label, value) => {
+      if (value === undefined) delete process.env.BASELINE_LAYER_ENABLED;
+      else process.env.BASELINE_LAYER_ENABLED = value;
+      bodyIsLong = true;
+      keyFindingsAsParagraph = true;
+      const report = await write(false);
+      expect(calls.some((call) => call.last.startsWith('That draft is') && call.text.includes('Section to draft: Regulatory change during construction'))).toBe(true);
+      expect(calls.some((call) => call.last.startsWith('Rewrite this as 3 to 7 bullet points'))).toBe(true);
+      expect(drafterCallFor('Summary')?.text).toContain('This section ("Summary") target: ~150 words');
+      expect(drafterCallFor('Key findings')?.text).toContain('target: ~180 words');
+      expect(drafterCallFor('Key findings')?.text).toContain('Write 3 to 7 bullet points');
+      expect(drafterCallFor('Limits of this report')?.text).toContain('target: ~90 words');
+      const drafter = calls.filter((call) => call.role === 'section_drafter');
+      expect(drafter.length).toBeGreaterThan(0);
+      for (const call of drafter) expect(call.text).toContain('Never use the words claim or claims');
+      expect(isBulletList(section(report, 'key_findings'))).toBe(true);
+      expect(section(report, 'key_findings').split('\n').length).toBeLessThanOrEqual(7);
+      expect(splitSentences(section(report, 'limits'))).toHaveLength(4);
+      const refiner = calls.find((call) => call.role === 'coherence_refiner' && call.last.startsWith('Refine the report text.'));
+      expect(refiner?.text).toContain('Never lengthen a section and never add material.');
+      expect(refiner?.text).not.toContain('extend it with substantive analysis');
     }
-    const refiner = calls.find((call) => call.role === 'coherence_refiner' && call.text.includes('Refine report text'));
-    expect(refiner?.text).toContain('extend it with substantive analysis from the challenger findings rather than padding.');
-  });
+  );
 });
 
 describe('helpers behind section size and shape', () => {

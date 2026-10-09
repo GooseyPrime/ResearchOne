@@ -113,7 +113,7 @@ describe('admin harness override through the route', () => {
     });
     const res = await request(testApp)
       .post('/api/research')
-      .send({ query: 'What year was the treaty signed?', flagOverrides: { BASELINE_LAYER_ENABLED: true } });
+      .send({ query: 'What year was the treaty signed?', flagOverrides: { AUTHORITY_TIERS_ENABLED: true } });
     expect(res.status).toBe(500);
     expect(mocks.queueAddMock).not.toHaveBeenCalled();
     const failed = mocks.queryMock.mock.calls.find((call) => String(call[0]).includes("status='failed'"));
@@ -127,10 +127,35 @@ describe('admin harness override through the route', () => {
     });
     const res = await request(testApp)
       .post('/api/research')
-      .send({ query: 'What year was the treaty signed?', flagOverrides: { BASELINE_LAYER_ENABLED: true } });
+      .send({ query: 'What year was the treaty signed?', flagOverrides: { AUTHORITY_TIERS_ENABLED: true } });
     expect(res.status).toBe(503);
     expect(res.body.error).toMatch(/override table is not available yet/);
     expect(mocks.insertRunMock).not.toHaveBeenCalled();
     expect(mocks.queueAddMock).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('ignores an override naming only removed layout switches (%s) and starts the run normally', async (value) => {
+    const res = await request(testApp)
+      .post('/api/research')
+      .send({ query: 'What year was the treaty signed?', flagOverrides: { BASELINE_LAYER_ENABLED: value, CITATION_LOCK_ENABLED: value, READER_VIEW_ENABLED: value } });
+    expect(res.status).toBe(202);
+    expect(mocks.insertRunMock).toHaveBeenCalledTimes(1);
+    expect(mocks.queueAddMock).toHaveBeenCalledTimes(1);
+    // Nothing is recorded for the run, and the override table is not even asked for.
+    expect(mocks.queryMock.mock.calls.some((call) => String(call[0]).includes('eval_run_overrides'))).toBe(false);
+  });
+
+  it('records only the live switch when an override names a removed one beside it', async () => {
+    mocks.queryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes('to_regclass')) return [{ present: 'eval_run_overrides' }];
+      return [];
+    });
+    const res = await request(testApp)
+      .post('/api/research')
+      .send({ query: 'What year was the treaty signed?', flagOverrides: { CITATION_LOCK_ENABLED: false, AUTHORITY_TIERS_ENABLED: true } });
+    expect(res.status).toBe(202);
+    const saved = mocks.queryMock.mock.calls.find((call) => String(call[0]).includes('INSERT INTO eval_run_overrides'));
+    expect(JSON.parse(String((saved?.[1] as unknown[])[1]))).toEqual({ AUTHORITY_TIERS_ENABLED: true });
+    expect(mocks.queueAddMock).toHaveBeenCalledTimes(1);
   });
 });

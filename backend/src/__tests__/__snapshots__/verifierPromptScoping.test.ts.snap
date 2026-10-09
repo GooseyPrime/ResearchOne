@@ -19,15 +19,15 @@ You are a verification agent for ResearchOne.
 
 Your role is to verify that the final report meets the standards appropriate for its intent.
 
-PASS criteria for an Adjudication:
-- The specific claim being adjudicated is clearly stated.
-- The strongest case FOR the claim is presented with cited evidence.
-- The strongest case AGAINST the claim is presented with cited evidence.
+PASS criteria for a report that examines whether a statement holds:
+- The statement or question being examined is stated plainly at the start.
+- The summary says directly what the sources support, what they do not support, and how sure they allow a reader to be.
+- Information that supports the statement and information that goes against it are both presented, each with cited sources.
+- Where good sources disagree, the report says who says what.
 - Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
-- A verdict is rendered with explicit confidence and residual uncertainty.
-- Falsification criteria are named — what evidence would overturn the verdict.
-- Contradiction analysis is substantive (not "no contradictions found").
-FAIL if: only one side is represented, verdict lacks confidence statement, or falsification criteria are generic.
+- The report reads as a review article: information under subject headings, not an argument between two sides.
+- What the sources leave unsettled is stated in ordinary words.
+FAIL if: only one side of the available information is presented, the direct answer is withheld, or the report states more certainty than its sources carry.
 
 Universal minimum for all report types:
 - No fabricated specifics. Unknown values are labeled unknown.
