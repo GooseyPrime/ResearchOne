@@ -5,7 +5,7 @@ import {
   PIPELINE_CAPSULE_CENTERS_X,
   PIPELINE_SCHEMATIC_STAGES,
   PIPELINE_SCHEMATIC_VIEWBOX,
-  PIPELINE_SKEPTIC_APEX_Y,
+  PIPELINE_DOUBLE_CHECK_APEX_Y,
   PIPELINE_SPINE_Y,
   STAGE_COLOR,
   type PipelineStageDef,
@@ -15,7 +15,7 @@ const VIEW_W = PIPELINE_SCHEMATIC_VIEWBOX.width;
 const VIEW_H = PIPELINE_SCHEMATIC_VIEWBOX.height;
 
 export const PIPELINE_SCHEMATIC_ARIA_LABEL =
-  'Illustrative ResearchOne specialist flow from intake through versioned reporting, with an optional challenge verification loop';
+  'Illustrative ResearchOne specialist flow from intake through versioned reporting, with a Double-check loop';
 
 function hexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
@@ -110,12 +110,12 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
       .join(' ')}`;
   }, []);
 
-  const skepticPathD = useMemo(() => {
+  const doubleCheckPathD = useMemo(() => {
     const x6 = PIPELINE_CAPSULE_CENTERS_X[5];
     const x7 = PIPELINE_CAPSULE_CENTERS_X[6];
     const x8 = PIPELINE_CAPSULE_CENTERS_X[7];
     const y = PIPELINE_SPINE_Y;
-    const yLow = PIPELINE_SKEPTIC_APEX_Y;
+    const yLow = PIPELINE_DOUBLE_CHECK_APEX_Y;
     return `M ${x6},${y + 28} C ${x6 + 40},${yLow} ${x8 - 40},${yLow} ${x8},${y + 28} L ${x7},${y + 28}`;
   }, []);
 
@@ -197,14 +197,14 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
 
             <path id={`${uid}-spine`} d={spineD} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={1.5} />
             <path
-              id={`${uid}-skeptic`}
-              d={skepticPathD}
+              id={`${uid}-double-check`}
+              d={doubleCheckPathD}
               fill="none"
               stroke="#D45B9E"
               strokeWidth={1.5}
               strokeOpacity={0.75}
               strokeDasharray="6 6"
-              data-testid="pipeline-skeptic-loop-path"
+              data-testid="pipeline-double-check-loop-path"
             />
 
             {!reducedMotion && !pauseMotion ? (
@@ -219,7 +219,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
                   <animateMotion dur="12s" repeatCount="indefinite" begin="8s" rotate="auto" path={spineD} />
                 </circle>
                 <circle r={3} fill="#D45B9E">
-                  <animateMotion dur="8s" repeatCount="indefinite" rotate="auto" path={skepticPathD} />
+                  <animateMotion dur="8s" repeatCount="indefinite" rotate="auto" path={doubleCheckPathD} />
                 </circle>
               </>
             ) : null}
@@ -233,7 +233,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
                   textAnchor="middle"
                   className="fill-r1-accent text-[11px]"
                 >
-                  + challenge review
+                  + Double-check
                 </text>
               </g>
             ) : null}
@@ -241,7 +241,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
             {/* Optional verification loop label */}
             <text
               x={(PIPELINE_CAPSULE_CENTERS_X[5] + PIPELINE_CAPSULE_CENTERS_X[7]) / 2}
-              y={PIPELINE_SKEPTIC_APEX_Y + 24}
+              y={PIPELINE_DOUBLE_CHECK_APEX_Y + 24}
               textAnchor="middle"
               className="fill-[#D45B9E] text-[11px] font-medium"
             >
@@ -253,7 +253,7 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
               const cy = PIPELINE_SPINE_Y;
               const col = STAGE_COLOR[s.agentKind];
               const open = activeCard === s.index;
-              const isSkeptic = s.agentKind === 'skeptic';
+              const isDoubleCheck = s.agentKind === 'double_check';
               return (
                 <g
                   key={s.index}
@@ -286,11 +286,11 @@ export default function PipelineSchematic({ resolvedPersona: _resolvedPersona }:
                     rx={14}
                     fill="#0F1318"
                     stroke={col}
-                    strokeWidth={isSkeptic ? 2 : 1.25}
+                    strokeWidth={isDoubleCheck ? 2 : 1.25}
                     strokeOpacity={0.65}
                     className={open ? 'opacity-100' : 'opacity-95'}
                   />
-                  {isSkeptic ? (
+                  {isDoubleCheck ? (
                     <rect x={-2} y={-2} width={100} height={60} rx={15} fill="none" stroke="#D45B9E" strokeOpacity={0.25} />
                   ) : null}
                   <text x={84} y={14} textAnchor="end" className="fill-r1-text-muted text-[10px]">

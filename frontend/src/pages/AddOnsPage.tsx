@@ -13,6 +13,7 @@ import ReportSubscribeModal from '../components/addons/ReportSubscribeModal';
 import LivingReportSubscribeModal from '../components/addons/LivingReportSubscribeModal';
 import NotYetAvailable from '../components/billing/NotYetAvailable';
 import { RESEARCH_ADDONS_QUERY_KEY } from '../utils/researchRunAddons';
+import { customerOptionHelp, findCustomerOption } from '../content/customerOptions';
 
 export type AddonCatalogEntry = {
   id: string;
@@ -77,7 +78,17 @@ export default function AddOnsPage() {
 
   const monitors =
     monitorsQuery.isError || monitorsQuery.isLoading ? [] : (monitorsQuery.data?.monitors ?? []);
-  const addons = useMemo(() => catalogQuery.data?.addons ?? [], [catalogQuery.data?.addons]);
+  // Each add-on is shown under the name, description and example the registry
+  // of customer-facing names has for its id; one the registry does not know is
+  // not shown.
+  const addons = useMemo(
+    () =>
+      (catalogQuery.data?.addons ?? []).flatMap((addon) => {
+        const words = findCustomerOption('add_on', addon.id);
+        return words ? [{ ...addon, name: words.name, description: customerOptionHelp(words) }] : [];
+      }),
+    [catalogQuery.data?.addons]
+  );
 
   const reportAddons = useMemo(() => addons.filter((a) => a.category === 'report_monitor'), [addons]);
   const runAddons = useMemo(() => addons.filter((a) => a.category === 'research_run'), [addons]);
