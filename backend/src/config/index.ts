@@ -567,25 +567,19 @@ validateEnsemblePresetsAgainstAllowlist();
 validateV2ModePresetsAgainstAllowlist();
 
 export { config };
-export { runWithFlags, switchEnabled, switchEnabledByDefault } from './runFlags';
-/** Slice 4. Unset is off. The lock applies only where the Layer 1 switch is also on. */
-export function citationLockEnabled(): boolean {
-  return switchEnabled('CITATION_LOCK_ENABLED') && switchEnabled('BASELINE_LAYER_ENABLED');
-}
-/** Slice 5. Unset is off. Sent to the reading page with each report; the page shows the reader view when it is on. */
-export function readerViewEnabled(): boolean {
-  return switchEnabled('READER_VIEW_ENABLED');
-}
-export function baselineLayerEnabled(): boolean {
-  return switchEnabled('BASELINE_LAYER_ENABLED');
-}
+export { runWithFlags, switchEnabled } from './runFlags';
+/*
+ * The plain report is the only report (8 Oct 2026). The reader layout, the
+ * citation lock and the reader view are not switched: there is no
+ * BASELINE_LAYER_ENABLED, CITATION_LOCK_ENABLED or READER_VIEW_ENABLED to read,
+ * and no environment value changes what a report looks like.
+ */
 /**
  * Slice 4 part 3. DOI resolution and retraction checking. Unset is off. The
- * check acts on locked passages, so it is on only where the citation lock is:
- * with the lock off this switch changes nothing, stored details included.
+ * check acts on the passages a report may cite.
  */
 export function doiResolveEnabled(): boolean {
-  return switchEnabled('DOI_RESOLVE_ENABLED') && citationLockEnabled();
+  return switchEnabled('DOI_RESOLVE_ENABLED');
 }
 /**
  * Slice 7. Search providers chosen by what the request is about. Unset is off:
@@ -604,6 +598,7 @@ export function providerRoutingEnabled(): boolean {
 export function relevanceGateEnabled(): boolean {
   return switchEnabledByDefault('DISCOVERY_RELEVANCE_GATE_ENABLED');
 }
+export { switchEnabledByDefault } from './runFlags';
 /** How many queries discovery may send in one run. */
 export function discoveryQueryBudget(): number {
   return providerRoutingEnabled() ? config.discovery.routedMaxQueriesPerRun : config.discovery.maxQueriesPerRun;
