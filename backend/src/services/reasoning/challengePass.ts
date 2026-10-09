@@ -1,11 +1,11 @@
 /**
- * The Challenge pass: what the challenge method found, written for a reader.
+ * Double-check (named "Challenge pass" until RJ-017): what the checking method found, written for a reader.
  *
  * A request examined by the challenge method (a verdict-type request) gets the
  * same plain report as every other request. What the challenge found is not
  * mixed into that report and is not laid out as an argument between two sides.
- * It is written once, here, in plain prose, as one section named "Challenge
- * pass". The reading page shows that section on its own tab, and an export of
+ * It is written once, here, in plain prose, as one section named
+ * "Double-check". The reading page shows that section on its own tab, and an export of
  * the report leaves it out.
  *
  * This module never changes the report. A failure here is contained: the report
@@ -17,13 +17,13 @@ import { callRoleModel, type ModelCallResult } from '../openrouter/openrouterSer
 import { removeBannedWording } from './reportGenerator';
 import type { ResearchObjective } from './reasoningModelPolicy';
 
-/** The public name of the challenge material. It is never shown under another name. */
-export const CHALLENGE_PASS_TITLE = 'Challenge pass';
+/** The public name of the checking material, as the registry of customer-facing names has it. It is never shown under another name. */
+export const CHALLENGE_PASS_TITLE = 'Double-check';
 
 const NOTES_LIMIT = 12_000;
 const REPORT_LIMIT = 24_000;
 
-export const CHALLENGE_PASS_WRITER_PROMPT = withLayer1Preamble(`You write one short section of a research report, called the Challenge pass.
+export const CHALLENGE_PASS_WRITER_PROMPT = withLayer1Preamble(`You write one short section of a research report, called Double-check.
 It tells the reader, in plain prose, how the findings of the report could be wrong.
 
 You are given the finished report and a reviewer's notes that question it.
@@ -33,15 +33,15 @@ RULES:
 - Where the notes support it, cover: which findings rest on a single source, or on sources that trace back to one origin; what other explanation fits the same information; what the report could not check; and what new information would change a finding.
 - Use only points that are in the notes or in the report. Do not add facts. Where information is missing, say that it is missing; never treat missing information as a sign of anything.
 - Do not lay the section out as a trial or a debate. Do not write a ruling, and do not set out two opposing sides.
-- Do not use the words claim, claims, skeptic, steelman, adversarial, red team, devil's advocate or verdict. Write "finding", "statement", "the report says", "the sources report".
+- Do not use the words claim, claims, adversarial, red team, devil's advocate or verdict, or a nickname for a reviewer. Write "finding", "statement", "the report says", "the sources report".
 - Do not name a research step, a reviewer, a grade, a tier or a passage label. Do not cite by number.
 - No headings. Two to four short paragraphs, or a short paragraph followed by a short bullet list. 120 to 300 words.
-- If the notes raise nothing that bears on the report's findings, write one sentence saying that the challenge pass found nothing that changes them.
+- If the notes raise nothing that bears on the report's findings, write one sentence saying that the double-check found nothing that changes them.
 
 Return the section text only.`);
 
 /** Words the Challenge pass may not carry to a reader. What cannot be reworded is a reason not to show the section. */
-const NOT_FOR_A_READER = /\b(?:claim(?:s|ed|ing)?|steel-?man\w*|skeptic\w*|sceptic\w*|devil[’']?s advocate|red[- ]team\w*|adversar(?:y|ies|ial)\b)/i;
+const NOT_FOR_A_READER = /\b(?:claim(?:s|ed|ing)?|steel-?man\w*|s[k]eptic\w*|sceptic\w*|devil[’']?s advocate|red[- ]team\w*|adversar(?:y|ies|ial)\b)/i;
 
 /**
  * The writer's text as it may be saved: headings turned into plain lines (a
@@ -59,7 +59,7 @@ export function cleanChallengePass(text: string): string | null {
       if (!heading) return line;
       const words = heading[1].trim();
       // The section is already named; a heading that repeats the name is dropped.
-      return /^challenge(?: pass)?$/i.test(words.replace(/[*_]/g, '')) ? '' : `**${words.replace(/\*\*/g, '')}**`;
+      return /^(?:challenge(?: pass)?|double-check)$/i.test(words.replace(/[*_]/g, '')) ? '' : `**${words.replace(/\*\*/g, '')}**`;
     })
     .join('\n')
     .replace(/[ \t]*\[\s*P?\d+(?:\s*[,;]\s*P?\d+)*\s*\]/gi, '')
