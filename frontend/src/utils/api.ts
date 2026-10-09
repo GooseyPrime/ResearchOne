@@ -62,7 +62,7 @@ export function extractApiError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────────
 
 export interface CorpusStats {
   source_count: number;
@@ -599,7 +599,7 @@ export interface UserSubscription {
   currentPeriodEnd: string | null;
 }
 
-// ─── API Functions ────────────────────────────────────────────────────────────
+// ─── API Functions ───────────────────────────────────────────────────────────────
 
 export const getStats = () => api.get<CorpusStats>('/corpus/stats').then(r => r.data);
 
@@ -1009,6 +1009,17 @@ export interface RunArtifacts {
     phase: string; provider: string; query_text: string; result_count: number;
     selected_count: number; payload: Record<string, unknown>; created_at: string;
   }>;
+  /**
+   * What the run found and did not use, with the reason in plain words. Sent to
+   * an administrator only; absent for everyone else.
+   */
+  notUsedSources?: Array<{
+    title: string | null;
+    url: string | null;
+    stage: 'search_result' | 'stored_document' | 'fetched';
+    label: string;
+    why: string;
+  }>;
   modelLog?: Array<Record<string, unknown>>;
   modelOverrides?: Record<string, unknown> | null;
   modelEnsemble?: Record<string, unknown> | null;
@@ -1251,7 +1262,7 @@ export const getWalletSummary = () =>
 export const getSubscription = () =>
   api.get<UserSubscription>('/billing/subscription').then((r) => r.data);
 
-// ─── Living Reports / Parallel Monitor (WO T) ─────────────────────────────────
+// ─── Living Reports / Parallel Monitor (WO T) ────────────────────────────────────
 
 export type ReportMonitorKind = 'living_report' | 'reverse_citation_watch';
 
