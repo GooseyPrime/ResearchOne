@@ -4,6 +4,7 @@
  */
 import { REASONING_MODEL_ROLES } from '../reasoning/reasoningModelPolicy';
 import { STANDING_FOR_WRITER } from '../authority/authorityTier';
+import { looksLikePlanningAnalysis, readerReportTitle, titleFromRequest } from '../research/titleShaping';
 
 const TIER_WORD = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)';
 /** "[Strong_Evidence - Chunk 3]" -> "[Chunk 3]"; keeps the chunk reference the citation mapper reads. */
@@ -12,6 +13,64 @@ const TIER_INSIDE_BRACKET = new RegExp(`\\[\\s*${TIER_WORD}\\s*[-–—:|,]\\s*(
 const TIER_ONLY_BRACKET = new RegExp(`\\s?(?:\\[\\s*${TIER_WORD}\\s*\\]|\\(\\s*${TIER_WORD}\\s*\\))`, 'gi');
 /** Snake-case tier tokens used as labels in running text: "STRONG_EVIDENCE:", "established_fact". */
 const SNAKE_TIER_TOKEN = /\b(?:established_fact|strong_evidence)\b:?[ \t]*/gi;
+
+/**
+ * RJ-018. A grade written together with where it came from, as older reports
+ * printed it after a sentence: "(established_fact, Chunk 17)",
+ * "(strong_evidence, Chunks 2, 12, 15)", "(inference, Challenger Findings)",
+ * "(speculation, Critical Notes)", "(preserved contradiction, Reasoning Output)".
+ *
+ * Only this shape matches: a round or square bracket that opens with a grade
+ * word and goes on to passage numbers or to the name of one of the system's own
+ * working notes. An ordinary parenthesis ("(see Table 2)", "(an inference the
+ * authors reject)", "(2019, chapter 3)") is not this shape and is kept.
+ */
+const GRADE_WITH_ORIGIN = '(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation|preserved[_ ]contradiction|contradiction|unresolved)';
+const PASSAGE_NUMBERS = 'chunks?\\s+\\d+(?:\\s*(?:,|;|&|and)\\s*(?:chunks?\\s+)?\\d+)*';
+const WORKING_NOTE =
+  '(?:challenger?|critical|reasoning|reasoner|retriever|retrieval|planner|verifier|synthesi[sz]er|synthesis|quantitative|discovery|auditor)\\s+(?:findings|notes?|outputs?|analysis|summary|pass)';
+const ORIGIN = `(?:${PASSAGE_NUMBERS}|${WORKING_NOTE})`;
+const ORIGIN_LIST = `${ORIGIN}(?:\\s*[,;]\\s*${ORIGIN})*`;
+const GRADE_AND_ORIGIN_LABEL = new RegExp(
+  `(\\s?)(?:\\(\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|–—-]\\s*${ORIGIN_LIST}\\s*\\)|\\[\\s*${GRADE_WITH_ORIGIN}\\s*[,;:|–—-]\\s*${ORIGIN_LIST}\\s*\\])`,
+  'gi'
+);
+/** A working note named alone in brackets: "(Challenger Findings)", "[Reasoning Output]". */
+const WORKING_NOTE_LABEL = new RegExp(`\\s?(?:\\(\\s*${WORKING_NOTE}\\s*\\)|\\[\\s*${WORKING_NOTE}\\s*\\])`, 'gi');
+/** "(preserved contradiction)" standing alone. The other grades alone are `TIER_ONLY_BRACKET`. */
+const PRESERVED_CONTRADICTION_LABEL = /\s?(?:\(\s*preserved[_ ]contradiction\s*\)|\[\s*preserved[_ ]contradiction\s*\])/gi;
+
+/**
+ * What a grade-and-origin label becomes. The passage numbers are kept, in the
+ * form the citation mapper reads ("[Chunks 2, 12, 15]"), because they are the
+ * report's citations; the grade and any working-note name are dropped.
+ */
+function gradeAndOriginReplacement(label: string, lead: string): string {
+  const numbers = [...label.matchAll(/chunks?\s+((?:\d+)(?:\s*(?:,|;|&|and)\s*(?:chunks?\s+)?\d+)*)/gi)]
+    .flatMap((match) => match[1].split(/\s*(?:,|;|&|and)\s*(?:chunks?\s+)?/i))
+    .map((number) => number.trim())
+    .filter((number) => /^\d+$/.test(number));
+  if (numbers.length === 0) return REMOVED_LABEL;
+  const unique = [...new Set(numbers)];
+  // The space before the label, if there was one, stays: labels written side by side stay side by side.
+  return `${lead}[${unique.length > 1 ? 'Chunks' : 'Chunk'} ${unique.join(', ')}]`;
+}
+const REMOVED_LABEL = '';
+
+/**
+ * RJ-018. Section names of the removed layout written inside a sentence
+ * ("see Recommended Next Queries"), in the capitals the old layout gave them.
+ * Only the names nobody else uses are read here; the one-word names are
+ * ordinary words and are mapped only where they stand as a heading.
+ */
+const OLDER_SECTION_NAMES_IN_TEXT: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bRecommended Next Queries\b/g, 'Further questions'],
+  [/\bContested Zones?\b/g, 'Where sources disagree'],
+  [/\bContradiction Analysis\b/g, 'Where sources disagree'],
+  [/\bEvidence Ledger\b/g, 'What the sources show'],
+  [/\bPrimary Evidence\b/g, 'What the sources show'],
+  [/\bFalsification Criteria\b/g, 'What would change these findings'],
+];
 
 /**
  * Bracketed names of the system's own roles, in any case, with underscores or
@@ -44,7 +103,7 @@ const ROLE_NAME = new RegExp(
 const SAYS_NEXT = new RegExp(`^\\s+${ROLE_SAYS}\\b`, 'i');
 const CREDIT_BEFORE = /\b(?:by|from|per|according\s+to)\s$/i;
 /** Text that ends where a sentence starts: the start, a sentence end or a new line, then any list marker and opening punctuation. */
-const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'\u201C\u2018([]*$/;
+const SENTENCE_START = /(?:^|[.!?]\s+|\n)\s*(?:(?:[-*+]|\d+[.)])\s+)?["'“‘([]*$/;
 
 /** Whether the text before `offset` ends where a sentence starts. */
 export function startsSentence(whole: string, offset: number): boolean {
@@ -107,7 +166,7 @@ export const CLAIM_WORD = new RegExp(
 );
 
 /** A direct quotation is the source's wording, not the report's. Short spans only, inside one paragraph. */
-const QUOTED_SPAN = /"[^"\n]{1,600}"|\u201C[^\u201D\n]{1,600}\u201D/g;
+const QUOTED_SPAN = /"[^"\n]{1,600}"|“[^”\n]{1,600}”/g;
 
 /** Apply a change to everything outside double quotation marks. */
 export function mapOutsideQuotes(text: string, change: (part: string) => string): string {
@@ -203,7 +262,7 @@ const MARKER_AS_LINK_TEXT = /^\[\s*P\d+[^\]\n]*\]\(/i;
  */
 const MARKER_AS_REFERENCE_LINK = /^\[\s*(?:P\d+|E\d+|(?:see\s+)?chunks?\s+\d+)[^\]\n]*\](?:\[[^\]\n]*\])?$/i;
 /** A bare number is a reader's citation even when a "[1]: url" line would make it a shortcut link, spaced ("[ 1 ]") or grouped ("[1, 2]") forms included. */
-const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+\u2013\u2014-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
+const NUMBER_AS_REFERENCE_LINK = /^\[\s*\d+(?:\s*(?:[,;/&+–—-]|and|to)\s*\d+)*\s*\](?:\[\])?$/;
 
 /** Width of leading whitespace, a tab counting as four columns. */
 function indentWidth(line: string): number {
@@ -351,12 +410,12 @@ export function mapLinkLabels(markdown: string, change: (label: string) => strin
  * stands, and code, link definitions and bare addresses taken out.
  */
 function readerVisibleText(text: string): string {
-  return mapOutsideCode(text, (part) => part, () => '\uE004')
+  return mapOutsideCode(text, (part) => part, () => '')
     .replace(INLINE_LINK, '$1')
     // A reference-style link shows its label; the identifier after it is never seen.
     .replace(/\[([^\]\n]*)\]\[[^\]\n]*\]/g, '$1')
-    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '\uE004')
-    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '\uE004');
+    .replace(new RegExp(LINK_DEFINITION_SOURCE, 'g'), '')
+    .replace(/<https?:\/\/[^>\s]+>|https?:\/\/[^\s)\]>]+/gi, '');
 }
 
 /**
@@ -390,14 +449,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const proseOf = (source: string): string => {
     let prose = '';
     mapCitationProse(source, (part) => {
-      prose += `${part}\uE004`;
+      prose += `${part}`;
       return part;
     });
     // The label of a link is read by the reader too; its destination is not.
-    const outsideCode = mapOutsideCode(source, (part) => part, () => '\uE004');
-    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]\uE004`;
+    const outsideCode = mapOutsideCode(source, (part) => part, () => '');
+    for (const link of outsideCode.matchAll(INLINE_LINK)) prose += `[${link[1]}]`;
     // Likewise the label of a reference-style link ("[label][ref]").
-    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]\uE004`;
+    for (const link of outsideCode.matchAll(/\[([^\]\n]*)\]\[[^\]\n]*\]/g)) prose += `[${link[1]}]`;
     return prose;
   };
   // Labels and markers are a leak wherever they are printed, the reference list included.
@@ -410,6 +469,8 @@ export function readerFacingLabelHits(text: string): string[] {
   // Closed or not: "[P1" left open is still a marker on the page.
   if (/\[\s*P\d+\b/i.test(prose)) hits.push('passage marker');
   if (/[\[(]\s*(?:established[_ ]fact|strong[_ ]evidence|testimony|inference|speculation)\s*[\])]/i.test(prose)) hits.push('grade label');
+  if (!hits.includes('grade label') && (new RegExp(GRADE_AND_ORIGIN_LABEL.source, 'i').test(prose) || new RegExp(PRESERVED_CONTRADICTION_LABEL.source, 'i').test(prose))) hits.push('grade label');
+  if (!hits.includes('internal step') && new RegExp(WORKING_NOTE_LABEL.source, 'i').test(prose)) hits.push('internal step');
   // Every check of wording reads the report's own sentences. A reference entry
   // is a source's title and publisher, which the report did not write: a source
   // called "The Case for Nuclear Power" is not courtroom wording.
@@ -417,14 +478,14 @@ export function readerFacingLabelHits(text: string): string[] {
   const body = readerVisibleText(own);
   // Phrases are read as the reader sees them: a link shows its label in place,
   // so "This [report](url) synthesizes evidence" is the banned phrase.
-  const seen = `${proseOf(own)}\uE004${body}`;
+  const seen = `${proseOf(own)}${body}`;
   if (/\b(?:verdict|case for|case against|falsified|adjudicate|the evidence establishes|testimony[- ]tier)\b/i.test(seen)) hits.push('courtroom');
   // A role named in a sentence is an internal step on the page, brackets or not.
   if (namesSpokenRole(body) && !hits.includes('internal step')) hits.push('internal step');
   // What a source says in its own words stays as it said it; the report's own wording is checked.
   let ownWords = '';
   mapOutsideQuotes(body, (part) => {
-    ownWords += `${part}\uE004`;
+    ownWords += `${part}`;
     return part;
   });
   if (new RegExp(CLAIM_WORD.source, 'iu').test(ownWords)) hits.push('claims wording');
@@ -434,7 +495,7 @@ export function readerFacingLabelHits(text: string): string[] {
 }
 
 /** Marks where a label was removed, so spacing is tidied only there. */
-const REMOVED = '\uE000';
+const REMOVED = '';
 
 /**
  * Slice 6. The line the writer is shown above each passage ("Kind of source:
@@ -497,19 +558,27 @@ export function withoutMachineSentences(text: string): string {
   return MACHINE_SENTENCES.reduce((out, pattern) => out.replace(pattern, ''), text);
 }
 
-function cleanProse(text: string): string {
+function withReaderSectionNames(text: string): string {
+  return OLDER_SECTION_NAMES_IN_TEXT.reduce((out, [was, now]) => out.replace(was, now), text);
+}
+
+function cleanProse(text: string, keepSectionNames = false): string {
   return (
-    withoutMachineSentences(text)
+    (keepSectionNames ? withoutMachineSentences(text) : withReaderSectionNames(withoutMachineSentences(text)))
+      // Before the single-grade rules: they would take the grade and leave "(, Chunk 17)".
+      .replace(GRADE_AND_ORIGIN_LABEL, gradeAndOriginReplacement)
+      .replace(WORKING_NOTE_LABEL, REMOVED)
+      .replace(PRESERVED_CONTRADICTION_LABEL, REMOVED)
       .replace(TIER_INSIDE_BRACKET, '[')
       .replace(TIER_ONLY_BRACKET, REMOVED)
       .replace(SNAKE_TIER_TOKEN, REMOVED)
       .replace(INTERNAL_STEP_NAME, REMOVED)
       // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
-      .replace(/[ \t]*\uE000+[ \t]*(?=[.,;:!?)\]])/g, '')
+      .replace(/[ \t]*+[ \t]*(?=[.,;:!?)\]])/g, '')
       // A removal between words leaves one space.
-      .replace(/(?<=\S)[ \t]*\uE000+[ \t]*(?=\S)/g, ' ')
+      .replace(/(?<=\S)[ \t]*+[ \t]*(?=\S)/g, ' ')
       // A removal at the start or end of a line leaves nothing.
-      .replace(/[ \t]*\uE000+[ \t]*/g, '')
+      .replace(/[ \t]*+[ \t]*/g, '')
   );
 }
 
@@ -520,17 +589,25 @@ function cleanProse(text: string): string {
  * references ("[Chunk 3]") are kept, because citation mapping reads them.
  * Code in every Markdown form, links and URLs are never changed.
  */
-export function stripInternalLabelsFromReport(text: string): string {
+export function stripInternalLabelsFromReport(text: string, options: { keepSectionNames?: boolean } = {}): string {
   const markdown = dropWriterSourceKindLines(text);
   let out = '';
   let cursor = 0;
   for (const match of markdown.matchAll(protectedSegmentFor(markdown))) {
     const start = match.index ?? 0;
-    out += cleanProse(markdown.slice(cursor, start)) + match[0];
+    out += cleanProse(markdown.slice(cursor, start), options.keepSectionNames) + match[0];
     cursor = start + match[0].length;
   }
-  return out + cleanProse(markdown.slice(cursor));
+  return out + cleanProse(markdown.slice(cursor), options.keepSectionNames);
 }
+
+/**
+ * A stored heading with its labels removed and its name as stored. A heading
+ * is mapped to reader words by `readerHeading`, which also has to recognise the
+ * old name to mark challenge material; the in-sentence mapping would rename it
+ * first and hide that.
+ */
+const stripHeadingLabels = (title: string): string => stripInternalLabelsFromReport(title, { keepSectionNames: true });
 
 const normHeading = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toLowerCase();
 
@@ -589,7 +666,7 @@ export function withoutRepeatedHeading(title: string, content: string): string {
  * marked as one so the page puts it on the Challenge pass tab. Returns a copy.
  */
 export function presentSectionForReader<S extends Record<string, unknown>>(section: S): S {
-  const title = typeof section.title === 'string' ? stripInternalLabelsFromReport(section.title) : null;
+  const title = typeof section.title === 'string' ? stripHeadingLabels(section.title) : null;
   const content = typeof section.content === 'string' ? stripInternalLabelsFromReport(section.content) : null;
   return {
     ...section,
@@ -698,6 +775,13 @@ const READER_TEXT_FIELDS: ReadonlySet<string> = new Set([
 /** Fields whose every text value is reader text, whatever its key: lists a report shows as written. */
 const READER_TEXT_GROUPS: ReadonlySet<string> = new Set(['metric_glosses', 'unresolved_questions', 'recommended_queries']);
 const PRESENT_DEPTH = 8;
+/** Where a row carries the request it answers, under the names the routes use. */
+const REQUEST_FIELDS = ['query', 'request_query', 'requestQuery'] as const;
+const REPORT_TITLE_FIELDS: ReadonlySet<string> = new Set(['report_title', 'reportTitle']);
+const RUN_TITLE_FIELDS: ReadonlySet<string> = new Set(['display_title', 'displayTitle', 'run_display_title', 'runDisplayTitle']);
+/** A section's `title` is its heading, which has its own mapping; only a report's `title` falls back on the request. */
+const isSectionRow = (row: Record<string, unknown>): boolean =>
+  'section_order' in row || 'section_type' in row || ('content' in row && !('executive_summary' in row) && !('query' in row));
 
 export interface PresentOptions {
   /**
@@ -726,10 +810,21 @@ function presentValue(value: unknown, depth: number, everyString: boolean, optio
   if (Array.isArray(value)) return value.map((item) => presentValue(item, depth + 1, everyString, options, titleIsReports));
   if (!isPlainRecord(value)) return value;
   const out: Record<string, unknown> = {};
+  // The request this row answers, where the row carries it: what a title falls back on.
+  const request = REQUEST_FIELDS.map((field) => value[field]).find((held): held is string => typeof held === 'string' && held.trim().length > 0) ?? null;
   for (const [key, held] of Object.entries(value)) {
     const readerText = READER_TEXT_FIELDS.has(key) || (key === 'title' && titleIsReports);
     // A section named in a revision's history is headed as the report page heads it.
-    if (typeof held === 'string' && key === 'section_title') out[key] = readerHeading(stripInternalLabelsFromReport(held));
+    if (typeof held === 'string' && key === 'section_title') out[key] = readerHeading(stripHeadingLabels(held));
+    // A report's title is never an old section name; with the request at hand it is a title of the request.
+    else if (typeof held === 'string' && (REPORT_TITLE_FIELDS.has(key) || (key === 'title' && titleIsReports && !isSectionRow(value)))) {
+      out[key] = readerReportTitle(stripInternalLabelsFromReport(held), request) ?? '';
+    }
+    // A run's title is never the planning step's analysis of the request.
+    else if (typeof held === 'string' && RUN_TITLE_FIELDS.has(key)) {
+      const cleaned = stripInternalLabelsFromReport(held);
+      out[key] = looksLikePlanningAnalysis(cleaned) ? titleFromRequest(request) : cleaned;
+    }
     else if (typeof held === 'string') out[key] = everyString || readerText ? stripInternalLabelsFromReport(held) : held;
     else out[key] = presentValue(held, depth + 1, everyString || READER_TEXT_GROUPS.has(key), options, titleIsReports || (options.reportTitleUnder?.includes(key) ?? false));
   }
