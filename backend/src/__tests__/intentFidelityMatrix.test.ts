@@ -264,7 +264,7 @@ describe.each(MATRIX)('intent fidelity — $intent', (row) => {
 
   it('is challenged, at the strength its request calls for', () => {
     // WO-AH: the pass itself is not optional. Only its strength varies.
-    expect(profile.skepticMode).toBe(row.challenge);
+    expect(profile.doubleCheckMode).toBe(row.challenge);
     expect(profile.agentsToSkip).not.toContain('challenge');
     expect(profile.agentsToRun).toContain('challenge');
   });
