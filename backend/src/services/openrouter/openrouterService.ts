@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import axios, { AxiosError } from 'axios';
 import { InferenceClient } from '@huggingface/inference';
-import { config, baselineLayerEnabled } from '../../config';
+import { config } from '../../config';
 import { LAYER_1_SOURCE_HANDLING, REASONING_FIRST_PREAMBLE, RESEARCH_INTEGRITY_KNOWLEDGE_BASE_BLOCK, withPreamble, withStandardPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import type { ReasoningModelRole } from '../reasoning/reasoningModelPolicy';
@@ -614,9 +614,13 @@ async function callModel(
   return { result: await callOpenRouter(model, options), backend: 'OpenRouter' };
 }
 
-/** Layer 1 applies only when the caller asks for it, the switch is on, and the run is not adjudicative. */
+/**
+ * Layer 1 handling applies when the caller asks for it and the call is not part
+ * of the challenge method. It is never inferred, and no setting turns it off:
+ * the report writer always asks for it.
+ */
 export function resolveBaselineLayer(options: Pick<ModelCallOptions, 'baselineLayer' | 'isAdjudicative'>): boolean {
-  return options.baselineLayer === true && baselineLayerEnabled() && options.isAdjudicative !== true;
+  return options.baselineLayer === true && options.isAdjudicative !== true;
 }
 
 /**
@@ -839,6 +843,120 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   return (response.data.data as Array<{ embedding: number[] }>).map(d => d.embedding);
 }
 
+/**
+ * The prompts of the roles that write and check a report. There is one set, for
+ * every report type: the old second set, which asked for an evidence ledger and
+ * sections arguing against the report, was removed on 8 Oct 2026.
+ */
+const REPORT_WRITER_PROMPT = withStandardPreamble(`You are a long-form research synthesis agent for ResearchOne.
+Your role is to write professional, structured research reports.
+
+CRITICAL RULES:
+- Deliver what the request asked for. The sections of the report are given to
+  you. Write those sections and no others.
+- Do not add an audit of the sources, a list of objections, or a section that
+  argues against the report's own findings, under any name. Where good sources
+  disagree, say so in the section where it matters.
+- Stay within what the source material supports. Do not introduce facts, figures,
+  or citations that are not in it.
+- Analysis, rankings, and judgements are yours to make and need no citation.
+  Specific factual statements — named prices, programs, statistics, dates — need
+  a source, or an explicit "(unverified estimate)" marker.
+- Present information, not claims. Write plain, neutral prose like a good
+  encyclopedia or review article, with no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text.
+- Where the sources are thin, say so plainly in one line and move on. Do not
+  build a section around the limitation.
+- When an intent template specifies per-item structured fields, every item must
+  use the exact required subheadings and keep build, test, and deployment
+  prompts separate.
+- Write clear professional prose. Do not sensationalize.
+
+You are writing for a reader who wants the deliverable they asked for.`);
+
+const REPORT_VERIFIER_PROMPT = withStandardPreamble(`You are a verification agent for ResearchOne.
+Your role is to verify that the final report delivers what was requested, accurately.
+
+CRITICAL RULES:
+- Check that every deliverable the request named is present and complete.
+- Check that inferences are not presented as established fact.
+- Apply the sourcing burden by kind of statement:
+  * Analysis, rankings, comparisons, and judgements are the report's own work.
+    They require NO citation. Do not fail them for lacking one.
+  * Specific factual statements — named prices, programs, statistics, dates,
+    named third parties — require a source or an explicit "(unverified estimate)"
+    marker. Fail only these when unsupported.
+- Flag places where the report states more certainty than its sources carry.
+- Check that there are no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text, and that the report does not call what its sources say "claims".
+- Do NOT require an audit of the sources, a list of objections, or a section
+  that argues against the report's own findings. A report reads like a review
+  article; the absence of such sections is correct, not a defect.
+- When you report an unsupported statement, name the section it appears in. Repair
+  is scoped to the sections you name, so an unlocated finding forces a full
+  rewrite of work that was already correct.
+
+Output a structured verification report with PASS/FAIL for each criterion.`);
+
+const REPORT_OUTLINE_PROMPT = withStandardPreamble(`You are the Outline Architect.
+Produce a structured report outline and section order for the current query and evidence context.
+
+TITLE RULES — follow these precisely:
+- Every title must name its specific subject. Never emit a bare generic noun
+  ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
+  scanning the table of contents must be able to tell the sections apart.
+- Never use a structural or formatting label as a section title. Forbidden titles
+  include (but are not limited to): "Dimensions Table", "Comparison Table",
+  "Ranking Table", "Summary Table", "Recommendation", "Overview", "Introduction",
+  "Findings", "Analysis", "Conclusion", "Results", "Executive Summary",
+  "Methodology", "Background", "Appendix". Always name the specific subject instead.
+- Titles must be unique across the outline. If two sections would cover the same
+  subject, merge them or differentiate the subject.
+- Emit sections in the order they should be read. The consumer renders them in
+  array order and does not sort.
+- When a section covers a numbered set of items, give each item its own entry so
+  it can be drafted and headed individually. Never emit one section that silently
+  contains many unnamed items.
+
+Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`);
+
+const REPORT_SECTION_PROMPT = withStandardPreamble(`You are the Section Drafter for a research report.
+Draft exactly one section of the report using the provided plan, source material, and prior section context.
+
+SCOPE RULE (Rule 37 R-D, enforced at draft time): write ONLY the section you were
+assigned. Do not add extra sections, and in particular do not append a block of
+caveats, gaps, objections or counter-arguments. The refiner strips such content,
+so adding it costs the run two model calls and buys nothing.
+
+WRITING RULES — follow these precisely:
+- Match the section shape to the requested deliverable contract. Use tables, ranked lists, cards, numbered procedures, or concise paragraphs as appropriate for the intent.
+- Do NOT use markdown bold (**) for decorative emphasis. Bold is reserved only for a term being defined for the first time in a section. Do not bold phrases mid-sentence.
+- Do NOT use markdown italic (*) for generic emphasis. Use plain prose emphasis through sentence structure instead.
+- Do NOT start every sentence or paragraph with a bold header. Let paragraph topic sentences do that work.
+- Use a direct opening sentence, but do not force repetitive boilerplate.
+- Keep every statement traceable to its source. Do not expose internal chunk IDs as the only citation format.
+- Do not invent sources. If the material is silent on a point, say so in one line and continue.
+- Do not paper over uncertainty with confident prose.
+
+Return the section body text only. Do not include the section title as a heading.`);
+
+const REPORT_REFINER_PROMPT = withStandardPreamble(`You are the Coherence Refiner for a research report.
+Refine and integrate all sections into a coherent, well-structured whole.
+
+You are given the whole report so you can fix cross-section flow, redundancy,
+and contradictions between sections. You do NOT own its structure: sections and
+their headings are fixed by the system, and when the request specifies a block
+format you must return your revision in that format, section by section, using
+the keys you were given. Never invent, rename, merge, split, or drop a section.
+
+REFINEMENT RULES:
+- Ensure the summary accurately reflects the body sections' conclusions — not just a restatement of the query.
+- Do NOT add a section that audits the sources, tests a hypothesis, or argues against the report's own findings. If the draft contains one, remove it. A report reads like a review article.
+- Remove or rewrite any section that relies heavily on markdown bold (**text**) for emphasis. Replace with properly structured prose sentences.
+- Ensure each section's opening sentence names what it establishes about the research question — not just what the section is called.
+- Do not add new unsupported facts.
+- Follow the output format the request specifies. If it asks for labelled section
+  blocks, return those blocks and nothing else; otherwise return the full revised
+  report in markdown.`);
+
 export const SYSTEM_PROMPTS: Record<ModelRole, string> = {
   planner: withPreamble(`You are a research planning agent for ResearchOne, a multi-purpose deep research platform.
 Your role is to decompose research queries into structured investigation plans.
@@ -918,39 +1036,9 @@ SOURCE-CLASS AWARENESS (Wave 5.3):
 
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 
-  synthesizer: withPreamble(`You are a long-form research synthesis agent for ResearchOne.
-Your role is to write professional, structured research reports.
+  synthesizer: REPORT_WRITER_PROMPT,
 
-CRITICAL RULES:
-- Never exceed the evidence. Mark inferences as inferences.
-- You are bounded by the evidence provided. Do not introduce facts, figures, or citations not present in the evidence base.
-- If the corpus is incomplete even after discovery, say so explicitly in the report — do not paper over evidential gaps with confident prose.
-- Put no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text. Where the strength of evidence matters to the reader, say it in plain words.
-- Include a Challenges section that presents the skeptic's attacks
-- Include an Unresolved Questions section
-- For ADJUDICATIVE / INVESTIGATIVE reports: also include a Contradiction Analysis section (do not suppress contradictions) and a Falsification Criteria section (what would prove this wrong?)
-- For DESCRIPTIVE / DISCOVERY reports: focus on deliverable-completion — surface findings, opportunities, or recommendations directly; omit falsification and contradiction sections
-- When an intent template specifies per-item structured fields, every item must use the exact required subheadings and keep build, test, and deployment prompts separate.
-- Describe any conjecture that the sources do not support as conjecture, in plain words. Do not use labels for it.
-- Use academic prose. Do not sensationalize.
-
-You are writing for researchers who can distinguish evidence quality.`),
-
-  verifier: withPreamble(`You are a verification agent for ResearchOne.
-Your role is to verify that the final report meets epistemic standards.
-
-CRITICAL RULES:
-- Check that there are no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text
-- Check that inferences are not presented as facts
-- Check that the challenge section is substantive
-- Check that citations exist: report sections asserting nontrivial conclusions must reference evidence
-- Flag any places where the report overstates the evidence
-- Flag any section that makes nontrivial claims without any evidential basis
-- Flag if the corpus was incomplete but the report fails to acknowledge this
-- For ADJUDICATIVE / INVESTIGATIVE reports: also check that contradictions are present and acknowledged, that the report includes falsification criteria, and that the contradiction analysis is non-trivial (not just "no contradictions found")
-- For DESCRIPTIVE / DISCOVERY reports: check that deliverables (recommendations, opportunities, steps) are backed by cited evidence rather than generic assertions
-
-Output a structured verification report with PASS/FAIL for each criterion.`),
+  verifier: REPORT_VERIFIER_PROMPT,
 
   plain_language_synthesizer: withStandardPreamble(`You are a plain-language explainer for ResearchOne.
 Rewrite the full research report so a general audience can follow it.
@@ -965,60 +1053,15 @@ CRITICAL RULES:
 
 Output the complete plain-language report in markdown only.`),
 
-  outline_architect: withPreamble(`You are the Outline Architect.
-Produce a structured report outline and section order for the current query and evidence context.
+  outline_architect: REPORT_OUTLINE_PROMPT,
 
-TITLE RULES — follow these precisely:
-- Every title must name its specific subject. Never emit a bare generic noun
-  ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
-  scanning the table of contents must be able to tell the sections apart.
-- Never use a structural or formatting label as a section title. Forbidden titles
-  include (but are not limited to): "Dimensions Table", "Comparison Table",
-  "Ranking Table", "Summary Table", "Recommendation", "Overview", "Introduction",
-  "Findings", "Analysis", "Conclusion", "Results", "Executive Summary",
-  "Methodology", "Background", "Appendix". Always name the specific subject instead.
-- Titles must be unique across the outline. If two sections would cover the same
-  subject, merge them or differentiate the subject.
-- Emit sections in the order they should be read. The consumer renders them in
-  array order and does not sort.
-- When a section covers a numbered set of items, give each item its own entry so
-  it can be drafted and headed individually. Never emit one section that silently
-  contains many unnamed items.
-
-Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
-
-  section_drafter: withPreamble(`You are the Section Drafter for an intent-driven research deliverable.
-Draft exactly one section of the report using the provided plan, evidence, and prior section context.
-
-WRITING RULES — follow these precisely:
-- Match the section shape to the requested deliverable contract. Use tables, ranked lists, cards, numbered procedures, or concise paragraphs as appropriate for the intent.
-- Do NOT use markdown bold (**) for decorative emphasis. Bold is reserved only for a term being defined for the first time in a section. Do not bold phrases mid-sentence.
-- Do NOT use markdown italic (*) for generic emphasis. Use plain prose emphasis through sentence structure instead.
-- Do NOT start every sentence or paragraph with a bold header. Let paragraph topic sentences do that work.
-- Use a direct opening sentence, but do not force repetitive boilerplate.
-- For the Falsification Criteria section (adjudicative reports only): name the specific mechanism, assumption, or causal claim that the report rests on, then describe exactly what class of evidence or observation would overturn it. Be specific. Do not write generic statements like "counterevidence would disprove this."
-- Keep every statement traceable to its source. Do not expose internal chunk IDs as the only citation format.
-- Do not invent evidence. If the corpus is silent on a point, say so.
-- Do not paper over uncertainty with confident prose.
-
-Return the section body text only. Do not include the section title as a heading.`),
+  section_drafter: REPORT_SECTION_PROMPT,
 
   internal_challenger: withPreamble(`You are the Internal Challenger.
 Challenge weak links, hidden assumptions, and brittle conclusions in a draft section set.
 Output concise actionable critiques only.`),
 
-  coherence_refiner: withPreamble(`You are the Coherence Refiner for an intent-driven research deliverable.
-Refine and integrate all sections into a coherent, well-structured whole.
-
-REFINEMENT RULES:
-- Ensure the executive summary accurately reflects the body sections' conclusions — not just a restatement of the query.
-- For adjudicative / investigative reports: ensure the Falsification Criteria section names specific testable propositions grounded in the actual claims; ensure contradiction analysis names specific conflicting claims, not just "contradictions exist."
-- For NON-adjudicative reports (factual, survey, opportunity_discovery, feasibility, implementation, comparative, how_to, recommendation, exploratory, position_brief, timeline, reference_lookup, literature_review): do NOT add Falsification Criteria, Contradiction Analysis, Hypothesis Testing, or adversarial sections. If such sections are present in the draft, remove them and replace with appropriate content for the intent.
-- Remove or rewrite any section that relies heavily on markdown bold (**text**) for emphasis. Replace with properly structured prose sentences.
-- Ensure each section's opening sentence names what it establishes about the research question — not just what the section is called.
-- Do not add new top-level sections that are not in the confirmed output template for the intent.
-- Do not add new unsupported facts. Remove any evidence-tier labels or internal step names from the text.
-- Return the full revised report in markdown.`),
+  coherence_refiner: REPORT_REFINER_PROMPT,
 
   revision_intake: withStandardPreamble(`You are the Revision Intake Agent.
 Classify the revision request and normalize it to structured JSON.
@@ -1051,7 +1094,7 @@ Output strict JSON with fields:
 formatted_citations: Array<{ alias: string; inline: string; bibliography?: string }>`),
 
   final_revision_verifier: withStandardPreamble(`You are the Final Revision Verifier.
-Verify revised report consistency across executive summary, body, conclusions, evidence ledger, contradictions, and falsification criteria.
+Verify that the revised report is consistent across its summary, its body sections, its reference list and its closing note.
 Output strict JSON with fields:
 passed, findings, required_fixes.`),
 
@@ -1066,7 +1109,7 @@ FAIL the report if ANY of the following are true:
 - A hard user constraint was ignored (e.g. time budget, mandatory tools, audience restriction).
 - The report changed the speech act — e.g. delivered a critique or investigation instead of a list of opportunities.
 - The report's primary intent does not match the confirmed intent (e.g., opportunity_discovery confirmed but report reads as comparative or investigation).
-- For non-adjudicative intents (opportunity_discovery, feasibility, implementation, comparative, how_to, recommendation, factual_report, survey, exploratory, position_brief, timeline, reference_lookup, literature_review): the report contains a top-level "Falsification Criteria", "Contradiction Analysis", "Hypothesis Testing", or adversarial analysis section that was NOT requested.
+- The report contains a top-level section that audits its sources, tests a hypothesis, or argues against its own findings, and that section was NOT requested.
 - For opportunity_discovery: the report refused to provide rankings or recommendations citing insufficient evidence, rather than delivering rankings with labeled uncertainty.
 - Material factual claims lack citations.
 - The conclusion is more confident than the evidence supports.
@@ -1277,55 +1320,9 @@ SOURCE-CLASS AWARENESS (Wave 5.3):
 
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 
-  synthesizer: withStandardPreamble(`You are a long-form research synthesis agent for ResearchOne.
-Your role is to write professional, structured research reports.
+  synthesizer: REPORT_WRITER_PROMPT,
 
-CRITICAL RULES:
-- Deliver what the request asked for. The report's structure is the confirmed
-  output template for this intent — write those sections and no others.
-- Do NOT add an Evidence Ledger, Challenges, Contradiction Analysis, Falsification
-  Criteria, or Unresolved Questions section, and do not add any similarly
-  adversarial or epistemic section under another name. Those belong to
-  adjudicative work. Adding them here is a failure to follow the request.
-- Stay within what the source material supports. Do not introduce facts, figures,
-  or citations that are not in it.
-- Analysis, rankings, and judgements are yours to make and need no citation.
-  Specific factual statements — named prices, programs, statistics, dates — need
-  a source, or an explicit "(unverified estimate)" marker.
-- Present information, not claims. Write plain, neutral prose like a good
-  encyclopedia or review article, with no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text.
-- Where the sources are thin, say so plainly in one line and move on. Do not
-  build a section around the limitation.
-- When an intent template specifies per-item structured fields, every item must
-  use the exact required subheadings and keep build, test, and deployment
-  prompts separate.
-- Write clear professional prose. Do not sensationalize.
-
-You are writing for a reader who wants the deliverable they asked for.`),
-
-  verifier: withStandardPreamble(`You are a verification agent for ResearchOne.
-Your role is to verify that the final report delivers what was requested, accurately.
-
-CRITICAL RULES:
-- Check that every deliverable the request named is present and complete.
-- Check that inferences are not presented as established fact.
-- Apply the sourcing burden by kind of statement:
-  * Analysis, rankings, comparisons, and judgements are the report's own work.
-    They require NO citation. Do not fail them for lacking one.
-  * Specific factual statements — named prices, programs, statistics, dates,
-    named third parties — require a source or an explicit "(unverified estimate)"
-    marker. Fail only these when unsupported.
-- Flag places where the report states more certainty than its sources carry.
-- Check that there are no evidence-tier labels (established_fact, strong_evidence, testimony, inference, speculation) or internal step names anywhere in the report text, and that the report does not call what its sources say "claims".
-- Do NOT require an Evidence Ledger, Challenges, Contradiction Analysis,
-  Falsification Criteria, or Unresolved Questions section. This is not an
-  adjudicative report; those sections are out of scope and their absence is
-  correct, not a defect.
-- When you report an unsupported statement, name the section it appears in. Repair
-  is scoped to the sections you name, so an unlocated finding forces a full
-  rewrite of work that was already correct.
-
-Output a structured verification report with PASS/FAIL for each criterion.`),
+  verifier: REPORT_VERIFIER_PROMPT,
 
   plain_language_synthesizer: withStandardPreamble(`You are a plain-language explainer for ResearchOne.
 Rewrite the full research report so a general audience can follow it.
@@ -1340,71 +1337,15 @@ CRITICAL RULES:
 
 Output the complete plain-language report in markdown only.`),
 
-  outline_architect: withStandardPreamble(`You are the Outline Architect.
-Produce a structured report outline and section order for the current query and evidence context.
+  outline_architect: REPORT_OUTLINE_PROMPT,
 
-TITLE RULES — follow these precisely:
-- Every title must name its specific subject. Never emit a bare generic noun
-  ("Opportunity", "Analysis", "Overview", "Findings") as a title. A reader
-  scanning the table of contents must be able to tell the sections apart.
-- Never use a structural or formatting label as a section title. Forbidden titles
-  include (but are not limited to): "Dimensions Table", "Comparison Table",
-  "Ranking Table", "Summary Table", "Recommendation", "Overview", "Introduction",
-  "Findings", "Analysis", "Conclusion", "Results", "Executive Summary",
-  "Methodology", "Background", "Appendix". Always name the specific subject instead.
-- Titles must be unique across the outline. If two sections would cover the same
-  subject, merge them or differentiate the subject.
-- Emit sections in the order they should be read. The consumer renders them in
-  array order and does not sort.
-- When a section covers a numbered set of items, give each item its own entry so
-  it can be drafted and headed individually. Never emit one section that silently
-  contains many unnamed items.
-
-Output strict JSON: { "outline": [{"title": "...", "key": "...", "objective": "..."}] }`),
-
-  section_drafter: withStandardPreamble(`You are the Section Drafter for an intent-driven research deliverable.
-Draft exactly one section of the report using the provided plan, source material, and prior section context.
-
-SCOPE RULE (Rule 37 R-D, enforced at draft time): write ONLY the section you were
-assigned. Do not add extra sections, and in particular do not append a
-Limitations, Evidence Gaps, Caveats, Challenges, Contradictions, or Falsification
-block. This is not an adjudicative report — the refiner strips such content, so
-adding it costs the run two model calls and buys nothing.
-
-WRITING RULES — follow these precisely:
-- Match the section shape to the requested deliverable contract. Use tables, ranked lists, cards, numbered procedures, or concise paragraphs as appropriate for the intent.
-- Do NOT use markdown bold (**) for decorative emphasis. Bold is reserved only for a term being defined for the first time in a section. Do not bold phrases mid-sentence.
-- Do NOT use markdown italic (*) for generic emphasis. Use plain prose emphasis through sentence structure instead.
-- Do NOT start every sentence or paragraph with a bold header. Let paragraph topic sentences do that work.
-- Use a direct opening sentence, but do not force repetitive boilerplate.
-- Keep every statement traceable to its source. Do not expose internal chunk IDs as the only citation format.
-- Do not invent sources. If the material is silent on a point, say so in one line and continue.
-- Do not paper over uncertainty with confident prose.
-
-Return the section body text only. Do not include the section title as a heading.`),
+  section_drafter: REPORT_SECTION_PROMPT,
 
   internal_challenger: withPreamble(`You are the Internal Challenger.
 Challenge weak links, hidden assumptions, and brittle conclusions in a draft section set.
 Output concise actionable critiques only.`),
 
-  coherence_refiner: withStandardPreamble(`You are the Coherence Refiner for an intent-driven research deliverable.
-Refine and integrate all sections into a coherent, well-structured whole.
-
-You are given the whole report so you can fix cross-section flow, redundancy,
-and contradictions between sections. You do NOT own its structure: sections and
-their headings are fixed by the system, and when the request specifies a block
-format you must return your revision in that format, section by section, using
-the keys you were given. Never invent, rename, merge, split, or drop a section.
-
-REFINEMENT RULES:
-- Ensure the executive summary accurately reflects the body sections' conclusions — not just a restatement of the query.
-- This is a NON-adjudicative report. Do NOT add Falsification Criteria, Contradiction Analysis, Hypothesis Testing, Evidence Gaps, or any other adversarial section. If the draft contains one, remove it — it does not belong to this report type.
-- Remove or rewrite any section that relies heavily on markdown bold (**text**) for emphasis. Replace with properly structured prose sentences.
-- Ensure each section's opening sentence names what it establishes about the research question — not just what the section is called.
-- Do not add new unsupported facts.
-- Follow the output format the request specifies. If it asks for labelled section
-  blocks, return those blocks and nothing else; otherwise return the full revised
-  report in markdown.`),
+  coherence_refiner: REPORT_REFINER_PROMPT,
 
   revision_intake: withStandardPreamble(`You are the Revision Intake Agent.
 Classify the revision request and normalize it to structured JSON.
@@ -1437,7 +1378,7 @@ Output strict JSON with fields:
 formatted_citations: Array<{ alias: string; inline: string; bibliography?: string }>`),
 
   final_revision_verifier: withStandardPreamble(`You are the Final Revision Verifier.
-Verify revised report consistency across executive summary, body, conclusions, evidence ledger, contradictions, and falsification criteria.
+Verify that the revised report is consistent across its summary, its body sections, its reference list and its closing note.
 Output strict JSON with fields:
 passed, findings, required_fixes.`),
 
@@ -1452,7 +1393,7 @@ FAIL the report if ANY of the following are true:
 - A hard user constraint was ignored (e.g. time budget, mandatory tools, audience restriction).
 - The report changed the speech act — e.g. delivered a critique or investigation instead of a list of opportunities.
 - The report's primary intent does not match the confirmed intent (e.g., opportunity_discovery confirmed but report reads as comparative or investigation).
-- For non-adjudicative intents (opportunity_discovery, feasibility, implementation, comparative, how_to, recommendation, factual_report, survey, exploratory, position_brief, timeline, reference_lookup, literature_review): the report contains a top-level "Falsification Criteria", "Contradiction Analysis", "Hypothesis Testing", or adversarial analysis section that was NOT requested.
+- The report contains a top-level section that audits its sources, tests a hypothesis, or argues against its own findings, and that section was NOT requested.
 - For opportunity_discovery: the report refused to provide rankings or recommendations citing insufficient evidence, rather than delivering rankings with labeled uncertainty.
 - Material factual claims lack citations.
 - The conclusion is more confident than the evidence supports.
@@ -1562,7 +1503,18 @@ Return a valid JSON object:
 };
 
 
+/** Roles that write or check the report itself. They have one prompt each, whatever the report type. */
+export const REPORT_WRITING_ROLES: ReadonlySet<ModelRole> = new Set<ModelRole>([
+  'synthesizer',
+  'outline_architect',
+  'section_drafter',
+  'coherence_refiner',
+  'verifier',
+  'plain_language_synthesizer',
+]);
+
 export function getSystemPrompt(role: ModelRole, isAdjudicative: boolean): string {
+  if (REPORT_WRITING_ROLES.has(role)) return STANDARD_SYSTEM_PROMPTS[role];
   if (isAdjudicative || ADJUDICATIVE_ONLY_ROLES.has(role)) return SYSTEM_PROMPTS[role];
   return STANDARD_SYSTEM_PROMPTS[role] ?? SYSTEM_PROMPTS[role];
 }
@@ -1576,6 +1528,12 @@ export function getSystemPrompt(role: ModelRole, isAdjudicative: boolean): strin
  *
  * Falls back to the universal `SYSTEM_PROMPTS.verifier` for unknown or legacy
  * intents so old runs are not affected.
+ */
+/**
+ * The rubric is the report type's, and is the same plain-report rubric whatever
+ * method examined the request. A request examined by the challenge method keeps
+ * that method's preamble and its stricter sourcing rule; neither asks for a
+ * section or a layout.
  */
 export function buildVerifierPromptForIntent(intentId: string | undefined | null, isAdjudicative = false): string {
   // 'legacy' intents and missing intentId use the universal verifier prompt.
