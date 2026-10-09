@@ -38,7 +38,6 @@ import type { ResearchObjective } from '../reasoning/reasoningModelPolicy';
 import { withPreamble } from '../../constants/prompts';
 import { logger } from '../../utils/logger';
 import {
-  citationLockEnabled,
   config,
   discoveryIngestFloor,
   discoveryQueryBudget,
@@ -56,7 +55,6 @@ import {
   bibliographicMetadata,
   withAuthorityTier,
   normalizeDiscoveryUrl,
-  candidateForRun,
   resultForRun,
   fullestBibliographic,
   providerRecord,
@@ -579,8 +577,8 @@ async function runDiscoveryOrchestratorInner(args: {
             if (isExcluded) continue;
             if (seenUrls.has(key)) {
               // The same address from a second provider is still one candidate.
-              // With the citation lock on it keeps the fuller reference record of
-              // the two, whichever provider answered first.
+              // It keeps the fuller reference record of the two, whichever
+              // provider answered first.
               const at = candidateAt.get(key);
               if (authorityTiersEnabled() && at !== undefined) {
                 // A second provider may record what the work is where the first did not.
@@ -588,7 +586,7 @@ async function runDiscoveryOrchestratorInner(args: {
                 resultsFor.set(key, seen);
                 allCandidates[at] = withAuthorityTier(allCandidates[at], authorityTierOfResults(seen));
               }
-              const record = citationLockEnabled() ? providerRecord(r) : undefined;
+              const record = providerRecord(r);
               if (record && at !== undefined) {
                 const records = [...(recordsFor.get(key) ?? []), record];
                 recordsFor.set(key, records);
@@ -598,18 +596,17 @@ async function runDiscoveryOrchestratorInner(args: {
             }
             seenUrls.add(key);
             candidateAt.set(key, allCandidates.length);
-            const firstRecord = citationLockEnabled() ? providerRecord(r) : undefined;
+            const firstRecord = providerRecord(r);
             if (firstRecord) recordsFor.set(key, [firstRecord]);
-            // Reference details travel with a candidate only when the citation lock
-            // is on for this run. With it off a candidate is exactly what it was.
+            // Reference details travel with every candidate: every report cites
+            // by the citation lock, and its reference list is written from them.
             // The tier is worked out here, from the provider's own record, because
-            // that record is dropped below when the citation lock is off and the
-            // run's switches do not reach the worker that stores the source.
+            // the run's switches do not reach the worker that stores the source.
             if (authorityTiersEnabled()) resultsFor.set(key, [r]);
             allCandidates.push(
               authorityTiersEnabled()
-                ? withAuthorityTier(candidateForRun(r, citationLockEnabled()), authorityTierOfResults([r]))
-                : candidateForRun(r, citationLockEnabled())
+                ? withAuthorityTier(r, authorityTierOfResults([r]))
+                : r
             );
             newCount++;
           }

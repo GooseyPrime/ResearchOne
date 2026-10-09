@@ -9,27 +9,16 @@ import api, {
   getReportRevisions,
   publishReportFeatured,
   getResearchRun,
-  getRunArtifacts,
-  type ResearchRun,
-  type ResearchProgressEvent,
 } from '../utils/api';
 import type { ReportRevisionRequestState } from '@/types/reportRevisionNavigation';
 import MonitorToggle from '../components/monitors/MonitorToggle';
 import ReportExportButton from '../components/reports/ReportExportButton';
-import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
 import AttachmentDropZone from '../components/research/AttachmentDropZone';
 import ReportForkActions from '../components/reports/ReportForkActions';
 import {
   ArrowLeft,
   FileText,
   AlertTriangle,
-  CheckCircle,
-  HelpCircle,
-  Target,
-  ArrowRight,
-  BookOpen,
-  Scale,
-  Brain,
   Printer,
   Share2,
   Download,
@@ -45,75 +34,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { getSocket, subscribeToJob } from '../utils/socket';
 
-const SECTION_ICONS: Record<string, React.ElementType> = {
-  executive_summary: BookOpen,
-  research_question: HelpCircle,
-  evidence_ledger: Scale,
-  reasoning: Brain,
-  contradiction_analysis: AlertTriangle,
-  challenges: AlertTriangle,
-  synthesis: FileText,
-  conclusion: CheckCircle,
-  falsification_criteria: Target,
-  unresolved_questions: HelpCircle,
-  recommended_queries: ArrowRight,
-  body: FileText,
-};
-
-const SECTION_COLORS: Record<string, string> = {
-  executive_summary: 'text-accent',
-  evidence_ledger: 'text-research-teal',
-  contradiction_analysis: 'text-amber-400',
-  challenges: 'text-red-400',
-  falsification_criteria: 'text-purple-400',
-  conclusion: 'text-green-400',
-};
-
-function buildReportMarkdown(report: {
-  title: string;
-  query: string;
-  sections?: Array<{ title: string; content: string }>;
-  executive_summary?: string;
-}): string {
-  const lines: string[] = [`# ${report.title}`, '', `**Research query:** ${report.query}`, ''];
-  if (report.sections && report.sections.length > 0) {
-    for (const s of report.sections) {
-      lines.push(`## ${s.title}`, '', s.content, '', '');
-    }
-  } else if (report.executive_summary) {
-    lines.push(report.executive_summary);
-  }
-  return lines.join('\n').trim() + '\n';
-}
-
-
 /** The style a report's own reference list was saved in, when the report records one. */
 function savedReferenceStyle(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
   const style = (metadata as { reference_style?: unknown }).reference_style;
   return typeof style === 'string' && style ? style : null;
 }
-
-function getReaderFrontMatter(metadata?: Record<string, unknown>): {
-  overall_summary?: string;
-  conclusions_nutshell?: string;
-  metric_glosses?: Array<{ label?: string; value?: string; narrative?: string }>;
-} {
-  if (!metadata) return {};
-  const m = metadata as Record<string, unknown>;
-  const r = m.reader_front_matter as Record<string, unknown> | undefined;
-  if (!r || typeof r !== 'object') return {};
-  return {
-    overall_summary: typeof r.overall_summary === 'string' ? r.overall_summary : undefined,
-    conclusions_nutshell: typeof r.conclusions_nutshell === 'string' ? r.conclusions_nutshell : undefined,
-    metric_glosses: Array.isArray(r.metric_glosses) ? (r.metric_glosses as Array<{ label?: string; value?: string; narrative?: string }>) : undefined,
-  };
-}
-
-// WO-AB removed `metricNarrative()`: it looked a gloss up by keyword and fell
-// back to hardcoded adjudicative copy ("Counterevidence must directly disprove
-// …") whenever the lookup missed. Glosses are now rendered directly, so an
-// intent that supplies no falsification metric simply shows no such card.
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -170,17 +96,6 @@ export default function ReportDetailPage() {
     enabled: Boolean(report?.run_id),
   });
 
-  // Fetch the run's artifacts (progress events, model_log, plan, etc.) so the
-  // same RunSummaryReport rendered on FailedRunReportPage is available here
-  // on the success report page. This shows the user the full path the
-  // orchestrator took to a successful report (matching the failed-run view).
-  const { data: runArtifacts } = useQuery({
-    queryKey: ['run-artifacts', report?.run_id],
-    queryFn: () => getRunArtifacts(report!.run_id!),
-    enabled: Boolean(report?.run_id),
-    retry: 1,
-  });
-
   const { data: revisions = [] } = useQuery({
     queryKey: ['report-revisions', id],
     queryFn: () => getReportRevisions(id!),
@@ -217,81 +132,25 @@ export default function ReportDetailPage() {
     queryFn: async () => {
       const { default: api } = await import('../utils/api');
       const res = await api.get(`/reports/${id}/citations`);
-      return res.data as Array<{ id: string; citation_text?: string; source_title?: string; source_url?: string; evidence_tier?: string; stance?: string; source_id?: string | null; citation_order?: number | null }>;
+      // Only what numbers an older report's passage labels is read. Grade and stance values are not.
+      return res.data as Array<{ id: string; citation_text?: string; source_id?: string | null; citation_order?: number | null }>;
     },
     enabled: !!id,
   });
 
-  // Slice 5: the reader view, when the backend says this report is shown in it.
-  const readerView = report?.reader_view === true;
+  // Every report is shown in the reader view. Nothing the backend sends, and no
+  // setting, selects another layout: there is none.
   const { data: readerEvidence } = useQuery({
     queryKey: ['report-reader', id],
     queryFn: async () => (await api.get(`/reports/${id}/reader`)).data as ReaderEvidence,
-    enabled: Boolean(id) && readerView,
+    enabled: Boolean(id) && Boolean(report),
   });
   const legacyNumbers = useMemo(() => legacyNumbersFrom(citations), [citations]);
-
-  const frontMatter = getReaderFrontMatter(report?.metadata as Record<string, unknown> | undefined);
-  const metricGlosses = frontMatter.metric_glosses;
 
   const plainMd =
     report?.metadata && typeof report.metadata === 'object' && 'plain_language_markdown' in report.metadata
       ? String((report.metadata as { plain_language_markdown?: string }).plain_language_markdown ?? '')
       : '';
-
-  const runSummary: RunSummaryData | null = useMemo(() => {
-    if (!sourceRun) return null;
-    const events = runArtifacts?.progressEvents ?? sourceRun.progress_events ?? [];
-    const phaseDurations: Record<string, number> = {};
-    if (events.length > 0) {
-      const buckets: Record<string, { start: number; end: number }> = {};
-      for (const evt of events) {
-        if (!evt.timestamp || !evt.stage) continue;
-        const t = new Date(evt.timestamp).getTime();
-        if (Number.isNaN(t)) continue;
-        const bucket = buckets[evt.stage] ?? (buckets[evt.stage] = { start: t, end: t });
-        bucket.start = Math.min(bucket.start, t);
-        bucket.end = Math.max(bucket.end, t);
-      }
-      for (const [stage, { start, end }] of Object.entries(buckets)) {
-        phaseDurations[stage] = end - start;
-      }
-    }
-    const totalDurationMs =
-      sourceRun.completed_at && sourceRun.created_at
-        ? new Date(sourceRun.completed_at).getTime() - new Date(sourceRun.created_at).getTime()
-        : 0;
-    let totalPromptTokens = 0;
-    let totalCompletionTokens = 0;
-    const modelUsage: RunSummaryData['modelUsage'] = [];
-    for (const entry of runArtifacts?.modelLog ?? []) {
-      const e = entry as Record<string, unknown>;
-      const promptTokens = Number(e.promptTokens ?? 0);
-      const completionTokens = Number(e.completionTokens ?? 0);
-      totalPromptTokens += promptTokens;
-      totalCompletionTokens += completionTokens;
-      modelUsage!.push({
-        role: typeof e.role === 'string' ? e.role : 'unknown',
-        model: typeof e.model === 'string' ? e.model : 'unknown',
-        promptTokens,
-        completionTokens,
-        durationMs: Number(e.durationMs ?? 0),
-      });
-    }
-    return {
-      runId: sourceRun.id,
-      status: sourceRun.status,
-      totalDurationMs,
-      phaseDurations,
-      totalPromptTokens,
-      totalCompletionTokens,
-      retryCount: sourceRun.retry_attempts ?? 0,
-      failedStage: sourceRun.failed_stage ?? null,
-      errorMessage: sourceRun.error_message ?? null,
-      failureMeta: (sourceRun.failure_meta as Record<string, unknown> | undefined) ?? null,
-      modelUsage,
-    };
-  }, [sourceRun, runArtifacts]);
 
   const researchRequestSnapshot = useMemo(() => {
     const meta = report?.metadata as { research_request?: { query?: string; supplemental?: string; supplemental_attachments?: unknown } } | undefined;
@@ -362,20 +221,15 @@ export default function ReportDetailPage() {
     // labels are numbered from the page's data; if that has not arrived yet it
     // is fetched here, so a quick click does not save a file with its
     // citations missing.
-    let md: string;
-    if (readerView) {
-      let evidence = readerEvidence;
-      if (!evidence) {
-        try {
-          evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;
-        } catch {
-          evidence = undefined;
-        }
+    let evidence = readerEvidence;
+    if (!evidence) {
+      try {
+        evidence = (await api.get(`/reports/${report.id}/reader`)).data as ReaderEvidence;
+      } catch {
+        evidence = undefined;
       }
-      md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));
-    } else {
-      md = buildReportMarkdown(report);
     }
+    const md = buildReaderMarkdown(report, new Map([...legacyNumbersOf(evidence), ...legacyNumbers]));
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -499,17 +353,6 @@ export default function ReportDetailPage() {
       </div>
   );
 
-  const generationTrace = sourceRun ? (
-      <div className="print:hidden space-y-2">
-        <RunGenerationTracePanel
-          runSummary={runSummary}
-          run={sourceRun}
-          plan={(runArtifacts?.plan as Record<string, unknown> | null | undefined) ?? (sourceRun.plan ?? null)}
-          traceEvents={runArtifacts?.progressEvents ?? sourceRun.progress_events ?? []}
-        />
-      </div>
-  ) : null;
-
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6 print:px-4">
       <button className="btn-ghost text-sm print:hidden" onClick={() => navigate('/app/dossiers')}>
@@ -517,221 +360,31 @@ export default function ReportDetailPage() {
         Back to dossiers
       </button>
 
-      {readerView ? (
-        <>
-          <ReaderView
-            report={report}
-            evidence={readerEvidence}
-            legacyNumbers={legacyNumbers}
-            method={
-              <div className="space-y-4">
-                {originalRequest}
-                {sourceRun?.run_ref && (
-                  <p className="text-sm text-slate-300">
-                    Run reference: <span className="font-mono">{sourceRun.run_ref}</span>. Quote it to support.
-                  </p>
-                )}
-                {generationTrace}
-              </div>
-            }
-          />
-          <div className="space-y-3 print:hidden">
-            <MonitorToggle reportId={report.id} reportStatus={report.status} />
-            {retentionNotices}
-          </div>
-          {currentRevisionEntry && currentRevisionDetail && (
-            <RevisionDiffPanel
-              revisionEntry={currentRevisionEntry as { id: string; revision_number?: number; rationale?: string; created_at?: string }}
-              revisionDetail={currentRevisionDetail as { rationale?: string; sections: Array<{ id: string; section_type?: string; section_title: string; change_type?: string; before_content: string; after_content: string }> }}
-            />
-          )}
-        </>
-      ) : (
-        <>
-      <div className="card-glow p-6 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="text-2xl font-bold text-white leading-tight">{report.title}</h1>
-          <span
-            className={clsx(
-              'badge border flex-shrink-0',
-              report.status === 'finalized'
-                ? 'bg-green-900/20 text-green-400 border-green-800/30'
-                : 'bg-accent/10 text-accent border-accent/30'
-            )}
-          >
-            {report.status}
-          </span>
-        </div>
-
-        {plainMd.length > 0 && (
-          <button
-            type="button"
-            className="text-sm text-accent hover:underline flex items-center gap-1.5 print:hidden"
-            onClick={() => setPlainOpen(true)}
-          >
-            <Sparkles size={14} />
-            See this report in plain language
-          </button>
-        )}
-
-        <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-          <span>{formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}</span>
-          <span>•</span>
-          <span>v{report.version_number ?? 1}</span>
-          <span>•</span>
-          <span>{report.source_count} sources</span>
-          <span>•</span>
-          <span>{report.chunk_count} evidence chunks</span>
-          {report.contradiction_count > 0 && (
-            <>
-              <span>•</span>
-              <span className="text-amber-400">⚠ {report.contradiction_count} contradictions found</span>
-            </>
-          )}
-        </div>
-
-        <MonitorToggle reportId={report.id} reportStatus={report.status} />
-
-        {retentionNotices}
-
-        {originalRequest}
-
-        <div className="pt-2 border-t border-indigo-900/20 space-y-3">
-          {(frontMatter.overall_summary || frontMatter.conclusions_nutshell) && (
-            <div className="rounded-lg border border-indigo-900/20 bg-surface-200 p-3 space-y-2">
-              {frontMatter.overall_summary && (
-                <p className="text-sm text-slate-200 leading-relaxed">
-                  {frontMatter.overall_summary}
-                </p>
-              )}
-              {frontMatter.conclusions_nutshell && (
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  {frontMatter.conclusions_nutshell}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/*
-            WO-AB: render the metric glosses the BACKEND supplied for this
-            intent, rather than four hardcoded cards.
-
-            Previously this always rendered "Claim conflicts" and "Falsification
-            target" — adjudicative concepts — on every report. An
-            opportunity-discovery run therefore displayed "Counterevidence must
-            directly disprove the report's core mechanism" next to a ranked
-            market list, and fell back to that copy whenever the backend's
-            (correct, non-adjudicative) gloss labels did not match.
-          */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(metricGlosses ?? []).map((gloss, i) => (
-              <MetaStat
-                key={`${gloss.label ?? 'metric'}-${i}`}
-                label={gloss.label ?? 'Metric'}
-                value={gloss.value && gloss.value.trim() !== '' ? gloss.value : '—'}
-                narrative={gloss.narrative}
-              />
-            ))}
-            <MetaStat
-              label="Report status"
-              value={report.status}
-              narrative="Finalized means this revision passed all gates and has saved its findings, sources, and citations."
-            />
+      <ReaderView
+        report={report}
+        evidence={readerEvidence}
+        legacyNumbers={legacyNumbers}
+        method={
+          <div className="space-y-4">
+            {originalRequest}
             {sourceRun?.run_ref && (
-              // The reference support asks for. Shown here as well as on the run
-              // summary because a user arriving at a finished report has usually
-              // left the run view behind.
-              <MetaStat
-                label="Run reference"
-                value={sourceRun.run_ref}
-                narrative="Quote this reference to support. It identifies this run uniquely, including if it failed."
-              />
+              <p className="text-sm text-slate-300">
+                Run reference: <span className="font-mono">{sourceRun.run_ref}</span>. Quote it to support.
+              </p>
             )}
           </div>
-        </div>
+        }
+      />
+      <div className="space-y-3 print:hidden">
+        <MonitorToggle reportId={report.id} reportStatus={report.status} />
+        {retentionNotices}
       </div>
-
       {currentRevisionEntry && currentRevisionDetail && (
         <RevisionDiffPanel
           revisionEntry={currentRevisionEntry as { id: string; revision_number?: number; rationale?: string; created_at?: string }}
           revisionDetail={currentRevisionDetail as { rationale?: string; sections: Array<{ id: string; section_type?: string; section_title: string; change_type?: string; before_content: string; after_content: string }> }}
         />
       )}
-
-      {report.falsification_criteria && (
-        <div className="card p-4 border-purple-900/40 bg-purple-900/10">
-          <div className="flex items-center gap-2 mb-2">
-            <Target size={14} className="text-purple-400" />
-            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">Falsification Criteria</span>
-          </div>
-          <p className="text-sm text-slate-300 leading-relaxed">{report.falsification_criteria}</p>
-        </div>
-      )}
-
-      {report.sections && report.sections.length > 0 ? (
-        <div className="space-y-4">
-          {report.sections.map(section => {
-            const Icon = SECTION_ICONS[section.section_type] ?? FileText;
-            const color = SECTION_COLORS[section.section_type] ?? 'text-slate-400';
-            return (
-              <div key={section.id} className="card p-6 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Icon size={16} className={color} />
-                  <h2 className={clsx('font-semibold text-sm uppercase tracking-wide', color)}>{section.title}</h2>
-                </div>
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <ReportContent content={section.content} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        report.executive_summary && (
-          <div className="card p-6">
-            <ReportContent content={report.executive_summary} />
-          </div>
-        )
-      )}
-
-      {report.unresolved_questions && report.unresolved_questions.length > 0 && (
-        <div className="card p-5 border-amber-900/30">
-          <div className="flex items-center gap-2 mb-3">
-            <HelpCircle size={14} className="text-amber-400" />
-            <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Unresolved Questions</span>
-          </div>
-          <ul className="space-y-2">
-            {report.unresolved_questions.map((q, i) => (
-              <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
-                <span className="text-amber-500 flex-shrink-0">?</span>
-                {q}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {report.recommended_queries && report.recommended_queries.length > 0 && (
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <ArrowRight size={14} className="text-research-teal" />
-            <span className="text-xs font-semibold text-research-teal uppercase tracking-wider">Recommended Next Queries</span>
-          </div>
-          <ul className="space-y-2">
-            {report.recommended_queries.map((q, i) => (
-              <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
-                <span className="text-research-teal flex-shrink-0">→</span>
-                {q}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-        </>
-      )}
-
-      {!readerView && generationTrace}
 
       <ReportForkActions
         reportId={report.id}
@@ -770,8 +423,8 @@ export default function ReportDetailPage() {
           label="Supplemental files and URLs to support the revision (optional)"
         />
         <p className="text-xs text-slate-500">
-          Opens a dedicated revision workspace with a live pipeline trace, then the new report version when complete.
-          Need a different engine, objective, or model lineup? Use <strong>New research spinoff</strong> above.
+          Opens a page where you can follow the revision, then the new version of the report when it is ready.
+          Want to start again with different settings? Use <strong>New research spinoff</strong> above.
         </p>
         <button
           type="button"
@@ -782,26 +435,6 @@ export default function ReportDetailPage() {
           {revisionSubmitting ? 'Opening revision workspace…' : 'Submit revision request'}
         </button>
       </div>
-
-      {/* The reader view has its own Sources and Evidence tabs; this card shows stored grade values. */}
-      {!readerView && (
-        <div className="card p-5 space-y-3 print:hidden">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">References and citations</h2>
-          {citations.length === 0 ? (
-            <p className="text-xs text-slate-500">No mapped citations available for this report revision yet.</p>
-          ) : (
-            <ul className="space-y-2 text-xs">
-              {citations.map((c, idx) => (
-                <li key={c.id} className="rounded border border-indigo-900/20 bg-surface-200 p-2 space-y-1">
-                  <div className="text-slate-300">[{idx + 1}] {c.source_title || c.source_url || 'Untitled source'}</div>
-                  {c.citation_text && <div className="text-slate-400">{c.citation_text}</div>}
-                  <div className="text-slate-500">tier: {c.evidence_tier || 'unknown'} · stance: {c.stance || 'unknown'}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
 
       <ReportActionBar
         className="print:hidden"
@@ -959,26 +592,6 @@ function ReportActionBar({
   );
 }
 
-function MetaStat({
-  label,
-  value,
-  color,
-  narrative,
-}: {
-  label: string;
-  value: string | number;
-  color?: string;
-  narrative?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-indigo-900/20 bg-surface-200 p-3">
-      <div className={clsx('text-sm font-semibold', color ?? 'text-white')}>{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
-      {narrative && <div className="text-xs text-slate-400 mt-1 leading-relaxed">{narrative}</div>}
-    </div>
-  );
-}
-
 function ReportContent({ content }: { content: string }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none">
@@ -986,60 +599,6 @@ function ReportContent({ content }: { content: string }) {
     </div>
   );
 }
-
-/**
- * Collapsible panel that shows the same Run Summary Report (phase timings,
- * model usage, full event trace) used on the FailedRunReportPage — but here
- * it sits on the success report page so the user can see the path the
- * orchestrator took to a successful report. Closed by default to keep the
- * report itself the focus of the page.
- */
-function RunGenerationTracePanel({
-  runSummary,
-  run,
-  plan,
-  traceEvents,
-}: {
-  runSummary: RunSummaryData | null;
-  run: ResearchRun;
-  plan?: Record<string, unknown> | null;
-  traceEvents: ResearchProgressEvent[];
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="card p-0 overflow-hidden">
-      <button
-        type="button"
-        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
-          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          Generation trace and run summary
-          <span className="text-[10px] font-normal text-slate-500 normal-case tracking-normal">
-            (full path the orchestrator took to this report)
-          </span>
-        </span>
-        <span className="text-[10px] uppercase text-slate-500 font-mono">
-          {(traceEvents ?? []).length} events
-        </span>
-      </button>
-      {open && (
-        <div className="px-4 pb-4">
-          <RunSummaryReport
-            summary={runSummary}
-            run={run}
-            plan={plan}
-            traceEvents={traceEvents ?? []}
-            failure={null}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 
 /**
  * Auto-shown summary of "what changed in this revision" rendered near the
@@ -1084,7 +643,7 @@ function RevisionDiffPanel({
           </span>
         </div>
         <p className="text-sm text-slate-300 leading-relaxed">
-          The revision pipeline accepted the request{rationale ? ` ("${rationale}")` : ''} but did not change any sections. Compare with the previous version in Revision History.
+          The revision request was accepted{rationale ? ` ("${rationale}")` : ''} but did not change any sections. Compare with the previous version in Revision History.
         </p>
       </div>
     );

@@ -8,7 +8,7 @@ import {
   rejectUnscopedReadOnScopeError,
 } from '../../db/tenantScope';
 import { config } from '../../config';
-import { authorityWordsForRun, readerViewForRun } from '../../services/eval/readerView';
+import { authorityWordsForRun } from '../../services/eval/readerView';
 import { loadReaderEvidence } from '../../services/formatting/readerEvidence';
 import { forReader, notReportText } from '../readerResponse';
 import { publishReportToFeaturedRepo } from '../../services/featuredReportGithub';
@@ -23,6 +23,7 @@ import { getSpinoffPrefill } from '../../services/research/spinoffService';
 import { exportReport, type RequestedExportStyle } from '../../services/formatting/exportOrchestrator';
 import {
   cleanReaderMetadata,
+  presentSectionForReader,
   cleanRevisionForReader,
   stripInternalLabelsFromReport,
 } from '../../services/formatting/reportPresentation';
@@ -488,13 +489,10 @@ router.get('/:id', async (req, res, next) => {
       `SELECT * FROM report_sections WHERE report_id=$1 ORDER BY section_order`,
       [req.params.id]
     );
-    // Reports saved before labels were removed at generation time still carry
-    // them; clean what the reader sees without rewriting stored rows.
-    const sections = storedSections.map((section) => ({
-      ...section,
-      ...(typeof section.title === 'string' ? { title: stripInternalLabelsFromReport(section.title) } : {}),
-      ...(typeof section.content === 'string' ? { content: stripInternalLabelsFromReport(section.content) } : {}),
-    }));
+    // A report of any age is sent as a reader reads it: labels removed, and a
+    // report saved in the removed layout under reader headings. Stored rows are
+    // not rewritten.
+    const sections = storedSections.map(presentSectionForReader);
 
     let hasActiveLivingReport = false;
     try {
@@ -519,14 +517,13 @@ router.get('/:id', async (req, res, next) => {
           : stored.executive_summary,
       conclusion:
         typeof stored.conclusion === 'string' ? stripInternalLabelsFromReport(stored.conclusion) : stored.conclusion,
-      falsification_criteria:
-        typeof stored.falsification_criteria === 'string'
-          ? stripInternalLabelsFromReport(stored.falsification_criteria)
-          : stored.falsification_criteria,
+      // Kept in its column for the challenge method. No page shows it: for most
+      // reports it holds a template sentence quoting the request.
+      falsification_criteria: null,
       metadata: cleanReaderMetadata(stored.metadata),
     };
 
-    res.json(forReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: await readerViewForRun(stored.run_id) }));
+    res.json(forReader({ ...report, sections, has_active_living_report: hasActiveLivingReport, reader_view: true }));
   } catch (err) {
     next(err);
   }

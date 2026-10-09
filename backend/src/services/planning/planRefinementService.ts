@@ -1,4 +1,4 @@
-import { baselineLayerEnabled, config } from '../../config';
+import { config } from '../../config';
 import { callRoleModel } from '../openrouter/openrouterService';
 import type { PlanPayload } from './planTypes';
 import { PLAN_LENGTH_FIT_INSTRUCTION, PLAN_REFINEMENT_PROMPT } from './prompts';
@@ -41,13 +41,11 @@ export async function refinePlan(input: {
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: input.llmOpts.byokApiKeyOverride,
     messages: [
-      // With the Layer 1 switch on for this run, a revised plan is sized the way a
-      // first plan is. A changed report type is sized again for the new type.
+      // A revised plan is sized the way a first plan is. A changed report type
+      // is sized again for the new type.
       {
         role: 'system',
-        content: baselineLayerEnabled()
-          ? `${PLAN_REFINEMENT_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION} If the report type changes, size estimatedLength again for the new type.`
-          : PLAN_REFINEMENT_PROMPT,
+        content: `${PLAN_REFINEMENT_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION} If the report type changes, size estimatedLength again for the new type.`,
       },
       { role: 'user', content: userBlock },
     ],

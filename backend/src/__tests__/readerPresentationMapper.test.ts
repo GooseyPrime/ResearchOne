@@ -5,10 +5,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { cleanSectionForStorage, presentForReader, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
+import { cleanReaderMetadata, cleanSectionForStorage, presentForReader, presentSectionForReader, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
 import { forReader, notReportText } from '../api/readerResponse';
-import { readerViewEnabled, runWithFlags } from '../config';
-import { isHarnessFlagName } from '../services/eval/harnessFlags';
+import * as configModule from '../config';
+import { runWithFlags } from '../config';
+import { RETIRED_FLAG_NAMES, isHarnessFlagName } from '../services/eval/harnessFlags';
 
 const LABELLED = 'Costs rose sharply [established_fact] after 1979.';
 const CLEAN = stripInternalLabelsFromReport(LABELLED);
@@ -93,12 +94,24 @@ describe('presentForReader', () => {
   });
 });
 
-describe('S1: with the switch off a response is sent exactly as before', () => {
-  it('forReader is the mapper with the switch on and nothing with it off', () => {
+describe('a response is always sent clean: there is no setting that sends report text as stored', () => {
+  it("forReader is the mapper, with READER_VIEW_ENABLED unset, 'false' or recorded off for the run", () => {
     const rows = [{ title: LABELLED }];
-    expect(forReader(rows)).toBe(rows);
-    expect(runWithFlags({ READER_VIEW_ENABLED: true }, () => forReader(rows))).toEqual([{ title: CLEAN }]);
-    expect(runWithFlags({ READER_VIEW_ENABLED: true }, () => forReader(rows, { title: 'not-report' }))).toEqual(rows);
+    const was = process.env.READER_VIEW_ENABLED;
+    try {
+      delete process.env.READER_VIEW_ENABLED;
+      expect(forReader(rows)).toEqual([{ title: CLEAN }]);
+      process.env.READER_VIEW_ENABLED = 'false';
+      expect(forReader(rows)).toEqual([{ title: CLEAN }]);
+      expect(runWithFlags({ READER_VIEW_ENABLED: false }, () => forReader(rows))).toEqual([{ title: CLEAN }]);
+    } finally {
+      if (was === undefined) delete process.env.READER_VIEW_ENABLED;
+      else process.env.READER_VIEW_ENABLED = was;
+    }
+    // A cleaned copy: the stored row is not the response and is not changed.
+    expect(forReader(rows)).not.toBe(rows);
+    expect(rows[0].title).toBe(LABELLED);
+    expect(forReader(rows, { title: 'not-report' })).toEqual(rows);
     expect(notReportText(rows)).toBe(rows);
   });
 
@@ -140,16 +153,17 @@ describe('every route that returns report text to a reader goes through the mapp
   });
 });
 
-describe('a revision is stored clean when the switch is on, and as before when it is off', () => {
+describe('a revision is always stored clean', () => {
   it('cleans a revised section before it is written', () => {
     expect(cleanSectionForStorage({ id: 's1', title: LABELLED, content: LABELLED, section_order: 1 })).toEqual({ id: 's1', title: CLEAN, content: CLEAN, section_order: 1 });
   });
 
   it('is what the revision save path writes: the report row, its sections, and both sides of the kept history', () => {
     const source = readFileSync(join(__dirname, '../services/reasoning/reportRevisionService.ts'), 'utf8');
-    expect(source).toContain('const storeCleanForRun = await readerViewForRun((baseReport as { run_id?: unknown }).run_id);');
-    expect(source).toContain('const storeClean = storeCleanForRun;');
-    expect(source).toContain('const sectionsToStore = storeClean ? revisedSections.map(cleanSectionForStorage) : revisedSections;');
+    expect(source).toContain('const asStored = (text: string): string => stripInternalLabelsFromReport(text);');
+    expect(source).toContain('const sectionsToStore = revisedSections.map(cleanSectionForStorage);');
+    // Nothing decides per run whether to clean.
+    expect(source).not.toMatch(/storeClean\b|storeCleanForRun|readerViewForRun|readerViewEnabled/);
     expect(source).toContain('asStored(baseReport.title),');
     // Every insert of section text reads the stored copy; none reads the revised sections directly.
     const inserts = source.slice(source.indexOf('const sectionsToStore'));
@@ -159,23 +173,72 @@ describe('a revision is stored clean when the switch is on, and as before when i
     expect(inserts).not.toContain("before?.content ?? '',");
   });
 
-  it('a spinoff is given the earlier report clean under the same switch', () => {
+  it('a spinoff is always given the earlier report clean', () => {
     const source = readFileSync(join(__dirname, '../services/research/spinoffService.ts'), 'utf8');
-    expect(source).toContain('const clean = (text: string): string => (readerViewEnabled() ? stripInternalLabelsFromReport(text) : text);');
+    expect(source).toContain('const clean = (text: string): string => stripInternalLabelsFromReport(text);');
+    expect(source).not.toContain('readerViewEnabled');
     expect(source).toContain("parts.push(clean(sec.content ?? ''));");
   });
 });
 
-describe('READER_VIEW_ENABLED', () => {
-  it('is off unless set, and can be set for one run like the other switches', () => {
-    expect(readerViewEnabled()).toBe(false);
-    expect(runWithFlags({ READER_VIEW_ENABLED: true }, () => readerViewEnabled())).toBe(true);
-    expect(isHarnessFlagName('READER_VIEW_ENABLED')).toBe(true);
+describe('the reader view is not switched', () => {
+  it('has no READER_VIEW_ENABLED to read, for the process or for one run', () => {
+    expect('readerViewEnabled' in configModule).toBe(false);
+    expect(isHarnessFlagName('READER_VIEW_ENABLED')).toBe(false);
+    expect(RETIRED_FLAG_NAMES).toEqual(['BASELINE_LAYER_ENABLED', 'CITATION_LOCK_ENABLED', 'READER_VIEW_ENABLED']);
+    expect(readFileSync(join(__dirname, '../services/eval/readerView.ts'), 'utf8')).not.toMatch(/function readerViewForRun|readerViewEnabled\(/);
   });
 
-  it("travels with the report, read as the report's own run recorded it", () => {
+  it('every report is sent as a reader-view report, its sections under the headings a reader sees', () => {
     const source = readFileSync(join(__dirname, '../api/routes/reports.ts'), 'utf8');
-    expect(source).toContain('reader_view: await readerViewForRun(stored.run_id)');
-    expect(readFileSync(join(__dirname, '../services/eval/readerView.ts'), 'utf8')).toContain('return runWithFlags(await loadRunFlags(runId), () => readerViewEnabled());');
+    expect(source).toContain('reader_view: true }));');
+    expect(source).not.toContain('readerViewForRun');
+    expect(source).toContain('const sections = storedSections.map(presentSectionForReader);');
+    expect(source).toContain('falsification_criteria: null,');
+  });
+});
+
+describe('a section of a report saved in the removed layout, as a reader is sent it', () => {
+  it.each([
+    ['Framing', 'Background'],
+    ['Primary Evidence', 'What the sources show'],
+    ['Evidence Ledger', 'What the sources show'],
+    ['Contested Zones', 'Where sources disagree'],
+    ['Contradiction Analysis', 'Where sources disagree'],
+    ['Unresolved', 'Open questions'],
+    ['Unresolved Questions', 'Open questions'],
+    ['Executive Summary', 'Summary'],
+    ['Research Question and Scope', 'What was asked'],
+    ['Recommended Next Queries', 'Further questions'],
+  ])('shows "%s" as "%s", without the labels and without the heading repeated in the text', (stored, shown) => {
+    const section = presentSectionForReader({ id: 's1', title: stored, content: `${stored}\n\n${LABELLED}`, section_order: 2, section_type: 'analysis' });
+    expect(section).toEqual({ id: 's1', title: shown, content: CLEAN, section_order: 2, section_type: 'analysis' });
+  });
+
+  it.each([
+    ['Challenges and Alternative Explanations', 'Other explanations'],
+    ['Falsification Criteria', 'What would change these findings'],
+  ])('marks "%s" as challenge material under "%s"', (stored, shown) => {
+    expect(presentSectionForReader({ title: stored, content: LABELLED, section_type: 'analysis' })).toEqual({ title: shown, content: CLEAN, section_type: 'challenge' });
+  });
+
+  it('leaves a heading of the plain report as written, and returns a copy', () => {
+    const stored = { title: 'How the costs grew', content: LABELLED, section_type: 'analysis' };
+    expect(presentSectionForReader(stored)).toEqual({ title: 'How the costs grew', content: CLEAN, section_type: 'analysis' });
+    expect(stored.content).toBe(LABELLED);
+  });
+
+  it('takes the sentences the old layout wrote about its own machinery out of the text', () => {
+    const text = [
+      'This report synthesizes evidence from 14 sources and 96 evidence chunks. Costs doubled.',
+      'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage. Two audits differ.',
+      'The findings include 3 explicit contradiction points. The baseline is disputed.',
+    ].join('\n');
+    expect(stripInternalLabelsFromReport(text)).toBe('Costs doubled.\nTwo audits differ.\nThe baseline is disputed.');
+  });
+
+  it('sends no metric glosses and maps a revision heading to the one a reader sees', () => {
+    expect(cleanReaderMetadata({ reader_front_matter: { overall_summary: LABELLED, metric_glosses: [{ label: 'x', gloss: 'y' }] } }).reader_front_matter).toMatchObject({ overall_summary: CLEAN, metric_glosses: [] });
+    expect(presentForReader({ diffs: [{ section_title: 'Contested Zones' }] }).diffs[0].section_title).toBe('Where sources disagree');
   });
 });

@@ -61,7 +61,7 @@ vi.mock('../services/openrouter/openrouterService', () => ({
   getSystemPrompt: () => 'Write the section.',
 }));
 
-import { cleanLayer1WordingForSave, generateIterativeReport, removeBannedWording } from '../services/reasoning/reportGenerator';
+import { finalizeLockedReportForSave, generateIterativeReport, removeBannedWording } from '../services/reasoning/reportGenerator';
 import { AUTHORITY_INSTRUCTION, formatLockedContext, issuePassages, STANDING_FOR_WRITER, type LockedPassage } from '../services/reasoning/citationLock';
 import { readerFacingLabelHits, stripInternalLabelsFromReport } from '../services/formatting/reportPresentation';
 
@@ -242,9 +242,11 @@ describe('a source ranked by tier in the report text', () => {
     expect(removeBannedWording(text)).toBe('The regulator is a source; the agency says "a tier 1 source of [data](https://example.org/tier-1-source)".');
   });
 
-  it('is cleaned in the last check before an unlocked report is saved', () => {
-    const saved = cleanLayer1WordingForSave('## Findings\n\nThe regulator is a tier 1 source [1].');
-    expect(saved.markdown).toContain('The regulator is a source [1].');
+  it('is cleaned in the last check before a report is saved', () => {
+    const locked = issuePassages([{ id: 'c1', content: 'The regulator published the rule.' }], [{ title: 'Rule notice', url: 'https://example.org/rule' }]);
+    const saved = finalizeLockedReportForSave('## Findings\n\nThe regulator is a tier 1 source [P1].', 'q', locked, 'numeric', '4 Oct 2026');
+    expect(saved.finalized.markdown).toContain('The regulator is a source [1].');
+    expect(saved.finalized.markdown).not.toMatch(/tier 1/i);
     expect(saved.wordingAfter).toEqual([]);
   });
 });

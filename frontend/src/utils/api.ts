@@ -290,7 +290,7 @@ export interface Report {
   workspace_purged_at?: string | null;
   retention_status?: string | null;
   has_active_living_report?: boolean;
-  /** Slice 5: the backend's READER_VIEW_ENABLED switch as set for this report's run. */
+  /** Always true. Every report is shown in the reader view; the page does not read this to decide anything. */
   reader_view?: boolean;
   sections?: ReportSection[];
   metadata?: Record<string, unknown> & {

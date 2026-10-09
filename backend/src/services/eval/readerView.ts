@@ -1,20 +1,9 @@
-import { readerViewEnabled, runWithFlags } from '../../config';
 import { query } from '../../db/pool';
-import { loadRunFlags } from './runFlagStore';
 
-/**
- * Whether a report is in the reader view: the switch as recorded for the run
- * that wrote it, else the process setting. A sample written with the switch on
- * for that run alone is read, and revised, the same way. Never throws.
+/*
+ * Every report is shown in the reader view. There was a per-run switch for it
+ * (`readerViewForRun`); it was removed on 8 Oct 2026 with the switch itself.
  */
-export async function readerViewForRun(runId: unknown): Promise<boolean> {
-  if (typeof runId !== 'string' || !runId) return readerViewEnabled();
-  try {
-    return runWithFlags(await loadRunFlags(runId), () => readerViewEnabled());
-  } catch {
-    return readerViewEnabled();
-  }
-}
 
 /**
  * Slice 6. Whether a report names its sources by where they were read ("government

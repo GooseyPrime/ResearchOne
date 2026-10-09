@@ -389,12 +389,14 @@ describe('when the link check runs', () => {
   });
 });
 
-describe('the switch and the citation lock', () => {
-  it('is on only where the lock is on', () => {
-    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
-    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true, CITATION_LOCK_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
+describe('the switch stands alone', () => {
+  it('is read from DOI_RESOLVE_ENABLED only: the removed layout switches neither turn it on nor hold it off', () => {
+    expect(runWithFlags({}, () => doiResolveEnabled())).toBe(false);
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true }, () => doiResolveEnabled())).toBe(true);
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: true, CITATION_LOCK_ENABLED: false, BASELINE_LAYER_ENABLED: false }, () => doiResolveEnabled())).toBe(true);
     expect(runWithFlags({ DOI_RESOLVE_ENABLED: true, CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => doiResolveEnabled())).toBe(true);
     expect(runWithFlags({ CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
+    expect(runWithFlags({ DOI_RESOLVE_ENABLED: false, CITATION_LOCK_ENABLED: true, BASELINE_LAYER_ENABLED: true }, () => doiResolveEnabled())).toBe(false);
   });
 });
 
