@@ -88,7 +88,11 @@ export default function RunPlanGate({ runId, runStatus }: RunPlanGateProps) {
   /** "Review plan" was pressed and the run's newest state is being fetched. */
   const [checking, setChecking] = useState(false);
   /** This page confirmed the plan and the run has not yet reported that it started. */
-  const [confirmedHere, setConfirmedHere] = useState(false);
+  // Held as the run it belongs to: this component is reused when the page moves
+  // to another run, and run A's confirmation must not be shown on run B.
+  const [confirmedRunId, setConfirmedRunId] = useState<string | null>(null);
+  const confirmedHere = confirmedRunId === runId;
+  const setConfirmedHere = (value: boolean) => setConfirmedRunId(value ? runId : null);
   const [waitedForAccount, setWaitedForAccount] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -124,7 +128,7 @@ export default function RunPlanGate({ runId, runStatus }: RunPlanGateProps) {
               }
         );
       }
-      setConfirmedHere(false);
+      setConfirmedRunId(null);
       void qc.invalidateQueries({ queryKey: ['research-run', runId] });
       void qc.invalidateQueries({ queryKey: ['run-plan-gate', runId] });
     };
@@ -160,8 +164,17 @@ export default function RunPlanGate({ runId, runStatus }: RunPlanGateProps) {
   }, [planLoaded, accountSettled]);
 
   useEffect(() => {
-    if (!waiting) setConfirmedHere(false);
+    if (!waiting) setConfirmedRunId(null);
   }, [waiting]);
+
+  // Another run: nothing of the last one carries over.
+  useEffect(() => {
+    setSnapshot((prev) => (prev && prev.runId !== runId ? null : prev));
+    setBusy(false);
+    setChecking(false);
+    setWaitedForAccount(false);
+    setConfirmedRunId((prev) => (prev === runId ? prev : null));
+  }, [runId]);
 
   const showConfirmed = confirmedHere && waiting;
   const showLoading = !showConfirmed && ((waiting && !drawPanel) || (wantsPlan && checking && !waiting));

@@ -312,6 +312,24 @@ describe('one confirmation starts one run', () => {
     expect(screen.queryByTestId('plan-loading')).toBeNull();
   });
 
+  it("one run's confirmation is not shown on another run", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const gate = (id: string) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <RunPlanGate runId={id} runStatus="plan_pending_confirmation" />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(gate(RUN_ID));
+    fireEvent.click(await screen.findByRole('button', { name: CONFIRM }));
+    expect(await screen.findByText('Plan confirmed. Starting the research…')).toBeInTheDocument();
+    // The page moves to another run that is also waiting at its plan; the component is reused.
+    view.rerender(gate('another-run'));
+    expect(screen.queryByText('Plan confirmed. Starting the research…')).toBeNull();
+    expect(await screen.findByRole('button', { name: CONFIRM })).toBeInTheDocument();
+  });
+
   it('a confirmation the server had already received is reported as that, not as an error', async () => {
     confirmRunPlanAtGate.mockResolvedValue({ ok: true, runId: RUN_ID, planId: 'plan-1', status: 'already_confirmed', alreadyConfirmed: true, message: PLAN_ALREADY_CONFIRMED_MESSAGE });
     const { onNotify, onAfterConfirm } = panel();

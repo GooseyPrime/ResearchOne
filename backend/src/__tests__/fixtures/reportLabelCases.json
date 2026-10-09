@@ -92,6 +92,18 @@
     {
       "request": "   ",
       "title": null
+    },
+    {
+      "request": "Compare heat pumps and boilers for an old house.\n\n## Output requirements\n\nA table.",
+      "title": "Compare heat pumps and boilers for an old house"
+    },
+    {
+      "request": "Compare C# and F# for .NET services, and say when foo_bar style names matter.",
+      "title": "Compare C# and F# for .NET services, and say when foo_bar style names matter"
+    },
+    {
+      "request": "**Is the `max_tokens` setting** the cause of *truncated* replies?",
+      "title": "Is the max_tokens setting the cause of truncated replies?"
     }
   ]
 }

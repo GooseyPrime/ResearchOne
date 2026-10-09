@@ -223,7 +223,7 @@ const REQUEST_PART_HEADING =
   /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|summary|introduction|purpose|problem(?:\s+statement)?)$/i;
 /** The same words opening a sentence as a label: "Context: Do a full review…". */
 const REQUEST_PART_LABEL =
-  /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|purpose)\s*[:\u2013\u2014-]\s*/i;
+  /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|purpose)\s*[:–—-]\s*/i;
 const REQUEST_TITLE_MIN_CHARS = 12;
 
 /**
@@ -241,8 +241,21 @@ export function titleFromRequest(request: string | null | undefined): string | n
   if (typeof request !== 'string') return null;
   const text = request.trim();
   if (!text) return null;
-  const clean = (value: string): string => value.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim();
-  const headingMatch = text.slice(0, 400).match(/^#{1,3}\s+(.+?)\s*$/m);
+  // Markdown is taken off where it is Markdown: a heading's hashes, and emphasis
+  // or code marks that wrap a span. A character that is part of the subject
+  // ("C#", "foo_bar", "2 * 3") is kept.
+  const clean = (value: string): string =>
+    value
+      .replace(/^\s{0,3}#{1,6}\s+/, '')
+      .replace(/(\*\*\*|\*\*|___|__)(?=\S)(.+?)(?<=\S)\1/g, '$2')
+      .replace(/(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])/g, '$1')
+      .replace(/`([^`\n]+)`/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+  // Only a heading that opens the request names it. A heading further down
+  // ("## Output requirements") names a part of the request, not its subject.
+  const firstLine = text.split('\n').find((line) => line.trim().length > 0) ?? '';
+  const headingMatch = /^\s{0,3}#{1,3}\s+(.+?)\s*$/.exec(firstLine);
   const heading = headingMatch?.[1] ? clean(headingMatch[1]).replace(/[\s:;,.]+$/, '') : '';
   const usableHeading = heading.length >= REQUEST_TITLE_MIN_CHARS && !REQUEST_PART_HEADING.test(heading) ? heading : '';
   const sentence =

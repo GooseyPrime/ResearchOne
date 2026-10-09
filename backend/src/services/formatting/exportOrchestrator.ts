@@ -26,6 +26,12 @@ import { logger } from '../../utils/logger';
 import { stripInternalLabelsFromReport } from './reportPresentation';
 import { readerReportTitle } from '../research/titleShaping';
 
+import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody, type ReaderExportOptions } from './readerExport';
+import { loadReaderEvidence } from './readerEvidence';
+import { authorityWordsForRun } from '../eval/readerView';
+import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
+import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
+
 /**
  * The title block of an exported file. A report stored under an old section
  * name is exported under a title made from its request, as the page shows it
@@ -36,11 +42,6 @@ export function exportTitleBlock(title: string | null, request: string | null): 
   const shown = readerReportTitle(title === null ? null : stripInternalLabelsFromReport(title), request);
   return shown ? `---\ntitle: ${JSON.stringify(shown)}\n---\n\n` : '';
 }
-import { hasLegacyLabels, hasReferenceList, isChallengeSection, readerExportBody, type ReaderExportOptions } from './readerExport';
-import { loadReaderEvidence } from './readerEvidence';
-import { authorityWordsForRun } from '../eval/readerView';
-import { resolveReferenceStyle, type ReferenceStyle } from './referenceList';
-import { sourcesByNumber, withReferenceStyle, type LockedCitationSourceRow } from './lockedReportExport';
 
 /** What an export may ask for: a named style, or the numbered default. */
 export type RequestedExportStyle = ExportStyle | 'numeric';
