@@ -49,7 +49,7 @@ function renderPage() {
 }
 
 async function styleSelect(): Promise<HTMLSelectElement> {
-  const label = await screen.findByText('Citation style');
+  const label = await screen.findByText('Citation Style');
   const select = label.parentElement?.querySelector('select');
   if (!select) throw new Error('citation style control not found');
   return select as HTMLSelectElement;

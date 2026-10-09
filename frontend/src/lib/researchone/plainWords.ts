@@ -9,6 +9,10 @@
  * new one.
  */
 import { READER_STAGE_WORDS } from './stageLabels';
+import { DOUBLE_CHECK } from '../../content/customerOptions';
+
+/** The one public name of the checking step, from the registry of customer-facing names. */
+const CHECK = DOUBLE_CHECK.name;
 
 /** Model-role and cost-phase keys, as a person reads them. Keys are lower case. */
 const ROLE_WORDS: Record<string, string> = {
@@ -16,8 +20,11 @@ const ROLE_WORDS: Record<string, string> = {
   retriever: 'Source reading',
   source_class_classifier: 'Source sorting',
   reasoner: 'Evidence analysis',
-  steelman: 'Strongest-form restatement',
-  skeptic: 'Challenge pass',
+  // One step to a customer; it has two parts, and each part can use its own model.
+  strongest_form: `${CHECK} (restating findings)`,
+  double_check: `${CHECK} (testing findings)`,
+  // The cost phase both parts are recorded under.
+  'double-check': CHECK,
   internal_challenger: 'Draft review',
   synthesizer: 'Report writing',
   verifier: 'Report checking',
@@ -42,18 +49,20 @@ const EARLIER_MESSAGES: Array<[RegExp, string]> = [
 
 /** A nickname for a role or a pass, and the plain words that take its place. */
 const NICKNAMES: Array<[RegExp, string]> = [
-  [/\bdevil['’]?s[- ]advocate(?: (?:review|pass))?/gi, 'challenge pass'],
-  [/\bred[- ]?team(?:ing|ed|s)?(?: (?:review|pass))?/gi, 'challenge pass'],
+  [/\bdevil['’]?s[- ]advocate(?: (?:review|pass))?/gi, CHECK],
+  [/\bred[- ]?team(?:ing|ed|s)?(?: (?:review|pass))?/gi, CHECK],
   [/\bsteel[- ]?man(?:ning|ned|s)?(?: pass)?/gi, 'strongest-form restatement'],
   [/\bstraw[- ]?m[ae]n(?:ning)?/gi, 'weaker version'],
-  [/\bs[kc]eptic(?:al|ism|s)?(?: pass)?/gi, 'challenge pass'],
-  [/\bcontrarians?(?: (?:review|pass))?/gi, 'challenge pass'],
-  [/\badversarial(?: (?:review|pass|twin|challenge))?/gi, 'challenge pass'],
-  [/\badversar(?:y|ies)/gi, 'challenge pass'],
-  [/\bgadfl(?:y|ies)(?: pass)?/gi, 'challenge pass'],
+  [/\bs[kc]eptic(?:al|ism|s)?(?: pass)?/gi, CHECK],
+  [/\bcontrarians?(?: (?:review|pass))?/gi, CHECK],
+  [/\badversarial(?: (?:review|pass|twin|challenge))?/gi, CHECK],
+  [/\badversar(?:y|ies)/gi, CHECK],
+  [/\bgadfl(?:y|ies)(?: pass)?/gi, CHECK],
+  // The step's earlier public name, in messages stored before RJ-017.
+  [/\bchallenge pass\b/gi, CHECK],
 ];
 
-/** An internal code: lower-case words joined by underscores ("steelman_started"). */
+/** An internal code: lower-case words joined by underscores ("strongest_form_started"). */
 const STEP_CODE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g;
 
 const sentenceCase = (text: string): string => (text ? text.charAt(0).toUpperCase() + text.slice(1) : text);
@@ -69,12 +78,12 @@ export function plainProgressText(text: string | null | undefined): string {
   if (!original) return '';
   for (const [earlier, now] of EARLIER_MESSAGES) if (earlier.test(original)) return now;
   let plain = original;
-  // "(steelman_started)" after a message says nothing to a reader: drop it whole.
+  // "(strongest_form_started)" after a message says nothing to a reader: drop it whole.
   plain = plain.replace(/\s*[([]\s*[a-z][a-z0-9]*(?:_[a-z0-9]+)+\s*[)\]]/g, '');
   for (const [nickname, words] of NICKNAMES) plain = plain.replace(nickname, words);
   // A code inside a sentence is read as its words.
   plain = plain.replace(STEP_CODE, (code) => code.replace(/_/g, ' '));
-  plain = plain.replace(/\b(challenge pass)(?: \1)+/gi, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+  plain = plain.replace(/\b(double-check)(?: \1)+/gi, '$1').replace(/[ \t]{2,}/g, ' ').trim();
   return plain === original ? original : sentenceCase(plain);
 }
 
@@ -88,7 +97,7 @@ export function plainLabel(id: string | null | undefined): string {
   const lower = key.toLowerCase();
   if (ROLE_WORDS[lower]) return ROLE_WORDS[lower];
   if (READER_STAGE_WORDS[lower]) return READER_STAGE_WORDS[lower];
-  // "skeptic_output" is the saved result of a known step.
+  // "double_check_output" is the saved result of a known step.
   const result = /^(.+)_(output|result)$/.exec(lower);
   if (result && (ROLE_WORDS[result[1]] || READER_STAGE_WORDS[result[1]])) return `${ROLE_WORDS[result[1]] ?? READER_STAGE_WORDS[result[1]]}: saved result`;
   return sentenceCase(plainProgressText(lower.replace(/[_-]+/g, ' ')));

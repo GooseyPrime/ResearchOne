@@ -3,8 +3,10 @@ import { ChevronDown, UserX } from 'lucide-react';
 import clsx from 'clsx';
 import {
   CHALLENGE_PERSPECTIVE_OPTIONS,
+  NO_VIEWPOINT,
   isPresetChallengePerspective,
 } from '../../utils/challengePerspective';
+import { DOUBLE_CHECK, customerOption, customerOptionHelp } from '../../content/customerOptions';
 
 export { CHALLENGE_PERSPECTIVE_OPTIONS };
 
@@ -15,13 +17,15 @@ type ChallengePerspectiveSelectorProps = {
   className?: string;
 };
 
+const FIELD = customerOption('request_field', 'check_viewpoint');
+const CUSTOM = customerOption('check_viewpoint', 'custom');
+
 /**
- * Optional steer for the challenge pass, sent as supplemental context.
+ * Optional steer for Double-check, sent as supplemental context.
  *
- * This used to be the “persona” picker on the Deep form only — a control
- * whose own label named the pipeline role. Every report is challenged now, so
- * it appears on the one form, and it says what it does in words a reader
- * recognises.
+ * Every report is double-checked, so the control appears on the one form. It
+ * says what Double-check is, with its example, and each viewpoint says what
+ * it does. All of those words come from the registry of customer-facing names.
  */
 export default function ChallengePerspectiveSelector({
   value,
@@ -47,16 +51,19 @@ export default function ChallengePerspectiveSelector({
   const showCustomInput =
     customActive || (Boolean(value.trim()) && !isPresetChallengePerspective(value));
   const triggerLabel = showCustomInput
-    ? value.trim() || 'Custom perspective (describe below)'
-    : value || 'No particular perspective';
+    ? value.trim() || `${CUSTOM.name} (describe below)`
+    : value || NO_VIEWPOINT.name;
 
   return (
     <div className={clsx('relative', className)}>
-      <label className="section-title block mb-2">Challenge perspective (optional)</label>
-      <p className="text-xs text-slate-500 mb-2">
-        Your report is argued against before it concludes. Pick whose objections it should have to
-        survive, or leave this alone and we will choose from your request.
+      <label className="section-title block mb-2">{FIELD.name}</label>
+      <p className="text-xs text-slate-500 mb-2" data-testid="double-check-description">
+        {DOUBLE_CHECK.description}
       </p>
+      <p className="text-xs text-slate-500 mb-2" data-testid="double-check-example">
+        Example: {DOUBLE_CHECK.example}
+      </p>
+      <p className="text-xs text-slate-500 mb-2">{FIELD.description}</p>
       <button
         type="button"
         disabled={disabled}
@@ -110,7 +117,9 @@ export default function ChallengePerspectiveSelector({
                 }}
               >
                 <span className="font-medium text-slate-200">{perspective.label}</span>
-                <span className="block text-xs text-slate-500 mt-0.5">{perspective.description}</span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  {customerOptionHelp(perspective)}
+                </span>
               </button>
             </li>
           ))}
@@ -119,10 +128,10 @@ export default function ChallengePerspectiveSelector({
       {showCustomInput && !disabled ? (
         <textarea
           className="mt-2 w-full rounded-lg border border-surface-400/80 bg-surface-200/40 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-accent/50 focus:outline-none min-h-[72px] resize-y"
-          placeholder="Describe the stance to argue from (for example: a regulator looking for gaps in primary sources)…"
+          placeholder={`${CUSTOM.description} For example: ${CUSTOM.example}`}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          aria-label="Custom challenge perspective"
+          aria-label={CUSTOM.name}
         />
       ) : null}
     </div>
