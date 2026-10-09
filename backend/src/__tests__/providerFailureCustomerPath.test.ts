@@ -6,6 +6,7 @@
  * aborted, its payload was dropped so it could not be run again, and the page
  * showed the stored error with the step, the model and the status code in it.
  */
+import { runChargeDecision } from '../services/billing/runChargeDecision';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/pool', async (importOriginal) => ({
@@ -122,6 +123,31 @@ describe('a run whose writing step is refused for credit', () => {
     const details = buildResearchFailureDetails(outOfCredit(), 'synthesis');
     const transition = decideRunStateOnFailure({ raw: details.failureMeta, classifierRetryable: details.retryable, retryAttempts: 3, retryBudget: 3 });
     expect(transition.nextStatus).toBe('aborted');
+  });
+});
+
+describe('what a run that fails this way costs', () => {
+  it('takes no payment when the writing step is refused for credit, and keeps the reservation for running it again', () => {
+    const details = buildResearchFailureDetails(outOfCredit(), 'synthesis');
+    const transition = decideRunStateOnFailure({ raw: details.failureMeta, classifierRetryable: details.retryable, retryAttempts: 0, retryBudget: 3 });
+
+    expect(runChargeDecision({ status: transition.nextStatus, retryable: transition.failureMeta.retryable })).toBe('keep_hold_for_run_again');
+  });
+
+  it('gives the reservation back at once when the run has stopped for good', () => {
+    const details = buildResearchFailureDetails(outOfCredit(), 'synthesis');
+    const transition = decideRunStateOnFailure({ raw: details.failureMeta, classifierRetryable: details.retryable, retryAttempts: 3, retryBudget: 3 });
+
+    expect(runChargeDecision({ status: transition.nextStatus, retryable: transition.failureMeta.retryable })).toBe('release_hold');
+  });
+
+  it('takes payment only for a run that completed', () => {
+    expect(runChargeDecision({ status: 'completed' })).toBe('charge');
+    for (const status of ['failed', 'aborted', 'cancelled', 'running', 'queued']) {
+      for (const retryable of [true, false, undefined]) {
+        expect(runChargeDecision({ status, retryable })).not.toBe('charge');
+      }
+    }
   });
 });
 

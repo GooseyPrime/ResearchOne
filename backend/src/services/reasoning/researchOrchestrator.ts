@@ -69,6 +69,7 @@ import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoMod
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
+import { runChargeDecision } from '../billing/runChargeDecision';
 import { incrementReportCount } from '../tier/tierService';
 import { resolveSourceIngestBudget } from '../discovery/sourceBudget';
 import { RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
@@ -3193,7 +3194,7 @@ ${reportForGates(generatedReport.markdown)}`,
     });
 
     // Credit charge: consume hold on success, decrement subscription quota
-    if (creditCtx && runTerminalStatus === 'completed') {
+    if (creditCtx && runChargeDecision({ status: runTerminalStatus }) === 'charge') {
       try {
         if (creditCtx.holdId && creditCtx.userId) {
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
@@ -3524,8 +3525,8 @@ ${reportForGates(generatedReport.markdown)}`,
     // For retryable failures, hold is kept for the retry attempt (it carries
     // forward via resumeJobPayload.creditChargeContext).
     if (creditCtx?.holdId && creditCtx.userId) {
-      const isTerminal = finalStatus === 'aborted' || !failureMetaWithResume.retryable;
-      if (isTerminal) {
+      const decision = runChargeDecision({ status: finalStatus, retryable: failureMetaWithResume.retryable === true });
+      if (decision === 'release_hold') {
         try {
           await releaseHold(creditCtx.holdId, creditCtx.userId);
         } catch (releaseErr) {
