@@ -438,7 +438,7 @@ export function parsePlanGeneratorJson(
         expectedSourceCount: { min: 8, max: 40 },
       },
       outputShape: {
-        structure: 'Executive summary → Evidence → Contradictions → Conclusions → Next steps',
+        structure: 'Summary → Key findings → Subject sections → Where sources disagree → References',
         estimatedLength: { minWords: 1500, maxWords: 8000 },
         documentShape: def?.documentShape ?? 'Structured report.',
       },
