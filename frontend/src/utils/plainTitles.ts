@@ -75,7 +75,7 @@ const REQUEST_PART_HEADING =
   /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|summary|introduction|purpose|problem(?:\s+statement)?)$/i;
 /** The same words opening a sentence as a label: "Context: Do a full review…". */
 const REQUEST_PART_LABEL =
-  /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|purpose)\s*[:–—-]\s*/i;
+  /^(?:research\s+)?(?:objectives?|context|task|request|question|topic|background|overview|instructions?|prompt|goals?|scope|intent|brief|purpose)\s*[:\u2013\u2014-]\s*/i;
 
 /**
  * A short title made from the request: its opening heading or first sentence,
