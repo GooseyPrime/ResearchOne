@@ -11,6 +11,9 @@
  *  - every entry has a name, a description and an example, and
  *  - a screen cannot offer an option that has no entry here
  *    (`frontend/src/__tests__/wording/customerOptions.test.tsx`).
+ *
+ * RJ-018 added the steps of a run, the headings of the run page and the small
+ * labels on a dossier card.
  */
 
 export type OptionGroup =
@@ -28,7 +31,10 @@ export type OptionGroup =
   | 'check_timing'
   | 'restatement_style'
   | 'add_on'
-  | 'plan';
+  | 'plan'
+  | 'run_step'
+  | 'run_page_field'
+  | 'dossier_badge';
 
 export interface CustomerOption {
   group: OptionGroup;
@@ -791,6 +797,103 @@ export const CUSTOMER_OPTIONS: readonly CustomerOption[] = [
     'Bring your own keys: you connect your own AI provider accounts, pay them for usage, and run as many reports as you like.',
     'You paste in your OpenRouter key and reports run on your own account.'
   ),
+  // ── The steps of a run, as the run page names them (RJ-018) ──────────────
+  // Double-check is one of the steps; it is the 'feature' entry at the top.
+  entry(
+    'run_step',
+    'planner',
+    'Plan',
+    'Works out what your question needs and lists the searches to run.',
+    "'How safe are e-scooters?' becomes searches for injury figures, city rules and battery fires."
+  ),
+  entry(
+    'run_step',
+    'sleuth',
+    'Search sources',
+    'Looks for sources on the web and in published research, including angles the first searches missed.',
+    'A search for injury figures also turns up a hospital study the first search did not find.'
+  ),
+  entry(
+    'run_step',
+    'retriever',
+    'Read sources',
+    'Reads the sources that were found and keeps the passages that bear on your question.',
+    'From a 40-page safety study, the two paragraphs on helmet use are kept.'
+  ),
+  entry(
+    'run_step',
+    'quantitative',
+    'Check figures',
+    'Pulls the numbers and tables out of the sources and checks they are quoted exactly.',
+    "'38% of riders' is checked against the table it came from."
+  ),
+  entry(
+    'run_step',
+    'reasoner',
+    'Weigh evidence',
+    'Works out what the passages show when read together, and where they disagree.',
+    'Two studies agree on injury rates and a third counts them differently.'
+  ),
+  entry(
+    'run_step',
+    'synthesizer',
+    'Write',
+    'Writes the report from the findings that were checked.',
+    'The findings on injuries, rules and batteries become three sections with citations.'
+  ),
+  entry(
+    'run_step',
+    'verifier',
+    'Check citations',
+    'Checks that each citation in the report points to a source that says what the report says.',
+    'A sentence citing source 4 is compared with the passage from source 4.'
+  ),
+  entry(
+    'run_step',
+    'formatter',
+    'Finish',
+    'Lays out the finished report and gets it ready to read and download.',
+    'The reference list is numbered and the report opens on its own page.'
+  ),
+
+  // ── Headings on the run page ─────────────────────────────────────────────
+  entry(
+    'run_page_field',
+    'progress',
+    'Progress',
+    'How far this research has got, from the first search to the finished report.',
+    '45% while the sources are being read.'
+  ),
+  entry(
+    'run_page_field',
+    'run_status',
+    'Run status',
+    'Where this research stands right now: its status, the step it is on, when it started and its reference.',
+    'Status: Working. Step: Searching sources.'
+  ),
+
+  // ── Small labels on a dossier card ───────────────────────────────────────
+  entry(
+    'dossier_badge',
+    'spinoff',
+    'Follow-up research',
+    'New research that was started from one of your earlier reports and builds on it.',
+    'After a report on city bike lanes, you start follow-up research on what they did to shop sales.'
+  ),
+  entry(
+    'dossier_badge',
+    'revised',
+    'Revised',
+    'The report was changed after it was first written, and the earlier text is kept in its history.',
+    'You asked for a section on costs to be added, and the report was revised.'
+  ),
+  entry(
+    'dossier_badge',
+    'version',
+    'Version',
+    'Which saved version of the report this is, counted up each time the report is revised.',
+    'Version 2 is the report after its first revision.'
+  ),
 ];
 
 const BY_KEY: ReadonlyMap<string, CustomerOption> = new Map(CUSTOMER_OPTIONS.map((option) => [`${option.group}:${option.id}`, option]));
@@ -827,3 +930,18 @@ export function customerOptionHelp(option: Pick<CustomerOption, 'description' | 
 
 /** The checking step, as every screen names and describes it. */
 export const DOUBLE_CHECK: CustomerOption = customerOption('feature', 'double_check');
+
+/**
+ * The steps of a run in the order they happen, as the run page shows them
+ * (RJ-018). The ids are the ones the pipeline diagram already uses.
+ */
+export const RUN_STEP_ORDER = ['planner', 'sleuth', 'retriever', 'quantitative', 'reasoner', 'double_check', 'synthesizer', 'verifier', 'formatter'] as const;
+export type RunStepId = (typeof RUN_STEP_ORDER)[number];
+
+/** A step's name, description and example. Double-check is the one entry every screen shares. */
+export function runStep(id: RunStepId): CustomerOption {
+  return id === 'double_check' ? DOUBLE_CHECK : customerOption('run_step', id);
+}
+
+/** Every step of a run, in order. */
+export const RUN_STEPS: readonly CustomerOption[] = RUN_STEP_ORDER.map(runStep);

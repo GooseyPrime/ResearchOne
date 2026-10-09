@@ -12,6 +12,12 @@ export interface PlanPayload {
   resolvedResearchObjective?: string;
   objectiveResolutionSource?: string;
   objectiveResolutionReason?: string;
+  /**
+   * RJ-018 — a short plain title of the question, written by the planning step
+   * for the customer ("Election security for the 2026 presidential election").
+   * Absent on plans made before then; the run's name then comes from the request.
+   */
+  title?: string;
   intent: {
     id: IntentId;
     displayLabel: string;
@@ -23,6 +29,12 @@ export interface PlanPayload {
     isMultiLayer: boolean;
     isActivelyContested: boolean;
     competenceAssessment: string;
+    /**
+     * RJ-018 — true when the subject is very recent, very specialised or thinly
+     * covered. The plan screen's wording is plain, so this flag (not a phrase in
+     * the text) is what keeps such a plan from confirming itself.
+     */
+    hardToResearch?: boolean;
   };
   orchestrationProfile: {
     name: string;

@@ -16,6 +16,11 @@ import { dossierReportUrlForRun, liveResearchUrl, failedRunReportUrl } from '../
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
 import { plainProgressText } from '@/lib/researchone/plainWords';
+import { customerOption } from '@/content/customerOptions';
+import { runDisplayTitle } from '../../utils/runDisplayTitle';
+
+/** New research started from an earlier report, as every screen names it. */
+const FOLLOW_UP = customerOption('dossier_badge', 'spinoff');
 
 const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
   queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
@@ -155,7 +160,8 @@ export default function ResearchRunRow({
         <div className="flex items-center gap-3 min-w-0">
           <Icon size={14} className={cfg.color} />
           <div className="min-w-0">
-            <div className="text-sm text-white truncate">{run.title || run.query}</div>
+            {/* The run's name, or a short title of its request; never the whole request (RJ-018). */}
+            <div className="text-sm text-white truncate">{runDisplayTitle(run)}</div>
             <div className="text-xs text-slate-500 flex flex-wrap gap-2">
               <span className={cfg.color}>{cfg.label}</span>
               {run.progress_percent != null && isLive ? (
@@ -201,7 +207,7 @@ export default function ResearchRunRow({
               onClick={openRequest}
             >
               <FileEdit size={12} />
-              {run.report_id ? 'Spinoff' : 'Open request'}
+              {run.report_id ? FOLLOW_UP.name : 'Open request'}
             </button>
           ) : null}
           {(run.status === 'queued' || run.status === 'running' || isPlanGate) && (

@@ -90,12 +90,14 @@ You will receive: the user query, optional supplemental context, a chosen intent
 
 Return ONLY valid JSON (no markdown fences) matching this TypeScript-like shape:
 {
+  "title": "<a short plain title of the question, 4 to 10 words, as a newspaper would head it>",
   "intent": { "id": "<IntentId>", "displayLabel": "<short human label>", "confidence": number, "reasoning": "<brief>" },
   "topicAnalysis": {
-    "summary": "<2-4 sentences>",
+    "summary": "<2-4 plain sentences saying what the person wants to know>",
     "isMultiLayer": boolean,
     "isActivelyContested": boolean,
-    "competenceAssessment": "<whether this is in-distribution for a web-retrieval research stack; flag novelty/OOD candidly>"
+    "competenceAssessment": "<1-2 plain sentences: how well published sources can answer this, and what may be hard to find>",
+    "hardToResearch": boolean
   },
   "orchestrationProfile": {
     "name": "canonical_profile",
@@ -121,6 +123,20 @@ Return ONLY valid JSON (no markdown fences) matching this TypeScript-like shape:
 }
 
 Use conservative ranges. estimatedCostCents must be null unless the caller instructs otherwise (BYOK/Sovereign billing detail is unknown here).`;
+
+/**
+ * RJ-018. How the fields a customer reads on the plan screen are written. The
+ * title became the run's name and the two topicAnalysis texts are printed under
+ * "What we understood" and "How well we can research this"; both used to come
+ * back in the planning model's own vocabulary. Appended to the plan generator
+ * and to the plan refinement prompt, and held by `planPlainWords.test.ts`.
+ */
+export const PLAN_PLAIN_WORDS_INSTRUCTION = `PLAIN WORDS. A member of the public reads "title", "topicAnalysis.summary" and "topicAnalysis.competenceAssessment" on screen. Write them for a general reader with no technical background.
+- "title" names the subject of the question in 4 to 10 words, like a headline: "Election security for the 2026 presidential election". It is not a sentence about the request. Never begin it with "The query", "The request", "The user", "This question" or "Analysis of". No numbering, no colon-separated list, no quotation marks, no full stop.
+- "topicAnalysis.summary" says in everyday words what the person wants to know. Speak to the person ("You want to know…") or state the subject plainly. Do not describe the request as an object ("The query requires investigating dual dimensions…").
+- "topicAnalysis.competenceAssessment" says in everyday words how well published sources can answer this and what may be hard to find, for example: "There is plenty of published material on this. Plans announced after this summer may not be online yet."
+- Never use these terms in those three fields: in-distribution, out-of-distribution, OOD, distribution, novelty, novel, retrieval, stack, corpus, pipeline, model, training data, epistemic, multi-layer, dimensions, query, tokens, agent, orchestration, intent.
+- Set "topicAnalysis.hardToResearch" to true when the subject is very recent, very specialised, or thinly covered by published sources, and false otherwise. That flag, not the wording, is how the difficulty is recorded.`;
 
 export const PLAN_LENGTH_FIT_INSTRUCTION = `Size estimatedLength to what the question needs. A single-fact question, such as a date, a name, a number, or a yes or no, gets a short answer, on the order of 60 to 150 words. A broad survey gets a full report of 1,500 to 5,000 words; never plan more than 5,000 words unless the request asks for a length. Do not use a fixed length for every question.`;
 

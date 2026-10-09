@@ -116,7 +116,7 @@ function mount(initialPath = `/app/run/${RUN_ID}`) {
 async function mountReady(over: Partial<ResearchRun> = {}) {
   getResearchRun.mockResolvedValue(runRow(over));
   const utils = mount();
-  await waitFor(() => expect(screen.getByText('RUN_STATUS')).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Run status' })).toBeTruthy());
   return utils;
 }
 
@@ -148,8 +148,16 @@ describe('LiveRunPanel — heading', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('falls back to the run reference rather than the prompt', async () => {
+  it('with no stored title, shows a short title made from the request, never the prompt as typed', async () => {
+    // RJ-018: "use the request when no plain title exists".
     await mountReady({ display_title: null });
+    const heading = screen.getByRole('heading', { level: 1 }).textContent ?? '';
+    expect(heading).toBe('Do a full site review of the content in Volume I');
+    expect(heading).not.toMatch(/[#*]|Research Objective|Evaluate/);
+  });
+
+  it('falls back to the run reference when there is neither a title nor a request', async () => {
+    await mountReady({ display_title: null, query: '' });
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(REF);
   });
 });
@@ -200,7 +208,7 @@ describe('LiveRunPanel — outcome', () => {
     // The old behaviour: setTimeout(() => navigate('/app/dossiers'), 1500).
     getResearchRun.mockResolvedValue(runRow({ status: 'completed' }));
     mount();
-    await waitFor(() => expect(screen.getByText('RUN_STATUS')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Run status' })).toBeTruthy());
 
     await act(async () => {
       emit('research:completed', { runId: RUN_ID, reportId: 'r-1' });
@@ -228,7 +236,7 @@ describe('LiveRunPanel — honesty of the status panel', () => {
     // displaying "Source corroboration tier: SUPPORTED", hardcoded in
     // mapApiRunToVaultRun.
     await mountReady({ status: 'queued', progress_percent: 0 });
-    const status = screen.getByText('RUN_STATUS').closest('.r1-panel') as HTMLElement;
+    const status = screen.getByRole('heading', { name: 'Run status' }).closest('.r1-panel') as HTMLElement;
     expect(within(status).queryByText(/corroboration/i)).toBeNull();
     expect(within(status).queryByText(/SUPPORTED/i)).toBeNull();
   });

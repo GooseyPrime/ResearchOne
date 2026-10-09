@@ -5,6 +5,7 @@ import ReportMarkdown from '../reports/ReportMarkdown';
 import { ReaderReportBody } from '../reports/reader/ReaderView';
 import api, { type Report } from '../../utils/api';
 import { plainReportStatus } from '../../utils/runStatusDisplay';
+import { reportDisplayTitle } from '../../utils/plainTitles';
 import { legacyNumbersFrom, stripReaderLabels, type ReaderEvidence } from '../reports/reader/readerModel';
 
 type Props = {
@@ -57,7 +58,7 @@ export default function DossierReportSection({ report, reportLoading, reportErro
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h3 className="text-lg font-semibold text-white leading-snug">{report.title ?? 'Report'}</h3>
+        <h3 className="text-lg font-semibold text-white leading-snug">{reportDisplayTitle(report.title, report.query) || 'Report'}</h3>
         <span className="text-xs text-slate-400">{plainReportStatus(report.status)}</span>
       </div>
 

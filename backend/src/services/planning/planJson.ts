@@ -287,6 +287,27 @@ export function parseResearchBriefJson(
   }
 }
 
+/**
+ * Words of the planning model's own vocabulary that a customer was shown on the
+ * plan screen ("In-distribution for investigative research … Novelty lies in
+ * future-facing assessment"). The prompt now asks for plain words; this is the
+ * check on what comes back (RJ-018).
+ */
+const PLANNING_JARGON =
+  /\b(?:in[-\s]distribution|out[-\s]of[-\s]distribution|o\.?o\.?d\.?|distribution(?:al)?\s+shift|novelty|web[-\s]retrieval|retrieval\s+(?:stack|pipeline|system)|research\s+stack|corpus|training\s+data|epistemic|multi[-\s]layer(?:ed)?|orchestration|llm|tokens?)\b/i;
+
+export function usesPlanningJargon(text: string): boolean {
+  return PLANNING_JARGON.test(text);
+}
+
+/** The phrases that used to mark a subject the system is unsure of. Read once, to set the flag. */
+const UNFAMILIAR_SUBJECT =
+  /\b(?:out[-\s]?of[-\s]?distribution|o\.?\s*o\.?\s*d\.?|not\s+in[-\s]distribution|highly\s+novel|novel\s+topic|unfamiliar\s+domain|outside\s+(?:the\s+)?(?:typical|usual)\s+scope)\b/i;
+
+export function signalsUnfamiliarSubject(text: string): boolean {
+  return UNFAMILIAR_SUBJECT.test(text);
+}
+
 function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback: number): PlanPayload {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const intentObj = o.intent && typeof o.intent === 'object' ? (o.intent as Record<string, unknown>) : {};
@@ -314,15 +335,23 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
   const out = o.outputShape && typeof o.outputShape === 'object' ? (o.outputShape as Record<string, unknown>) : {};
   const est = o.estimatedCost && typeof o.estimatedCost === 'object' ? (o.estimatedCost as Record<string, unknown>) : {};
 
+  const competenceWritten = typeof topic.competenceAssessment === 'string' ? topic.competenceAssessment : '';
   const topicAnalysis = {
     summary: typeof topic.summary === 'string' ? topic.summary : 'Topic analysis unavailable.',
     isMultiLayer: Boolean(topic.isMultiLayer),
     isActivelyContested: Boolean(topic.isActivelyContested),
-    competenceAssessment:
-      typeof topic.competenceAssessment === 'string'
-        ? topic.competenceAssessment
-        : 'Competence assessment unavailable.',
+    // A note written in the planning model's own vocabulary is not shown (RJ-018):
+    // the plan screen then prints nothing under "How well we can research this".
+    competenceAssessment: competenceWritten
+      ? usesPlanningJargon(competenceWritten)
+        ? ''
+        : competenceWritten
+      : 'Competence assessment unavailable.',
+    // What that vocabulary used to signal is kept as a flag, so a plan on an
+    // unfamiliar subject still waits for the person to confirm it.
+    hardToResearch: topic.hardToResearch === true || signalsUnfamiliarSubject(competenceWritten),
   };
+  const title = typeof o.title === 'string' && o.title.trim() ? o.title.replace(/\s+/g, ' ').trim().slice(0, 200) : undefined;
 
   const orchestrationProfile = {
     name: typeof orch.name === 'string' ? orch.name : 'canonical_profile',
@@ -378,6 +407,7 @@ function coercePlanPayload(raw: unknown, intentFallback: IntentId, confFallback:
     resolvedResearchObjective: typeof o.resolvedResearchObjective === 'string' ? o.resolvedResearchObjective : briefFromPayload?.resolvedResearchObjective,
     objectiveResolutionSource: typeof o.objectiveResolutionSource === 'string' ? o.objectiveResolutionSource : briefFromPayload?.objectiveResolutionSource,
     objectiveResolutionReason: typeof o.objectiveResolutionReason === 'string' ? o.objectiveResolutionReason : briefFromPayload?.objectiveResolutionReason,
+    ...(title ? { title } : {}),
     intent: { id, displayLabel, confidence, reasoning },
     topicAnalysis,
     orchestrationProfile,

@@ -9,18 +9,16 @@ import {
   Lightbulb, Search, FileSearch, Calculator, Brain,
   Shield, Scale, GitMerge, FileCheck } from
 'lucide-react';
-import { DOUBLE_CHECK } from '../../content/customerOptions';
+import { DOUBLE_CHECK, RUN_STEPS } from '../../content/customerOptions';
 
-const STAGES = [
-{ icon: Lightbulb, label: 'Planner' },
-{ icon: Search, label: 'Sleuth' },
-{ icon: FileSearch, label: 'Retriever' },
-{ icon: Calculator, label: 'Quant' },
-{ icon: Brain, label: 'Reasoner' },
-{ icon: Shield, label: DOUBLE_CHECK.name, isDoubleCheck: true },
-{ icon: Scale, label: 'Drafting' },
-{ icon: GitMerge, label: 'Verifier' },
-{ icon: FileCheck, label: 'Formatter' }];
+const STAGE_ICONS = [Lightbulb, Search, FileSearch, Calculator, Brain, Shield, Scale, GitMerge, FileCheck];
+
+/** The steps of a run, named from the registry of customer-facing names. */
+const STAGES = RUN_STEPS.map((step, index) => ({
+  icon: STAGE_ICONS[index],
+  label: step.name,
+  isDoubleCheck: step.id === DOUBLE_CHECK.id,
+}));
 
 const TIMINGS = [300, 250, 250, 300, 300, 900, 300, 250, 350];
 
