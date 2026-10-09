@@ -28,6 +28,7 @@ import { supplementalUrlCrawlPayload } from '@/utils/supplementalUrlCrawl';
 import { effectiveEntitlementTier, useBillingSubscriptionQuery } from '@/hooks/useBillingSubscription';
 import { useStore } from '@/store/useStore';
 import { liveResearchUrl } from '@/utils/researchRunRoutes';
+import { plainLabel } from '@/lib/researchone/plainWords';
 
 function extractSpinoffError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -381,7 +382,7 @@ export default function ReportSpinoffPage() {
                   <div className="space-y-2 rounded-lg border border-indigo-900/30 p-3">
                     {Object.keys(ensembleData.presets[researchObjective]).map((role) => (
                       <div key={role} className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                        <span className="text-slate-400 uppercase tracking-wide self-center">{role}</span>
+                        <span className="text-slate-400 uppercase tracking-wide self-center">{plainLabel(role)}</span>
                         <input
                           className="input text-xs"
                           placeholder="Primary model"

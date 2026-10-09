@@ -3,13 +3,15 @@ import { getResearchRun, type ResearchProgressEvent, type ResearchRun } from '..
 import { subscribeToJob } from '../utils/socket';
 import type { PlanGateSnapshot } from '../components/research/PlanConfirmationPanel';
 import type { RunSummaryData } from '../components/research/RunSummaryReport';
+import { plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 function normalizeProgressEvent(evt: ResearchProgressEvent): ResearchProgressEvent {
   return {
     ...evt,
     stage: evt.stage || 'planning',
     percent: Number.isFinite(evt.percent) ? evt.percent : 0,
-    message: evt.message || evt.stage || 'Update',
+    message: plainProgressText(evt.message) || readerStageLabel(evt.stage),
     timestamp: evt.timestamp || new Date().toISOString(),
   };
 }
@@ -21,7 +23,7 @@ function eventsFromRunRow(run: ResearchRun): ResearchProgressEvent[] {
       runId: run.id,
       stage: run.progress_stage || run.status || 'planning',
       percent: run.progress_percent ?? 0,
-      message: run.progress_message || 'Resuming run…',
+      message: plainProgressText(run.progress_message) || 'Resuming run…',
       timestamp: run.progress_updated_at || new Date().toISOString(),
     };
     return [fallback];

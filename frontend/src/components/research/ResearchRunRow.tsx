@@ -15,6 +15,7 @@ import { cancelResearchRun, deleteResearchRun, type ResearchRun } from '../../ut
 import { dossierReportUrlForRun, liveResearchUrl, failedRunReportUrl } from '../../utils/researchRunRoutes';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';
+import { plainProgressText } from '@/lib/researchone/plainWords';
 
 const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; label: string }> = {
   queued: { icon: Clock, color: 'text-slate-400', label: 'Queued' },
@@ -237,12 +238,12 @@ export default function ResearchRunRow({
             {showError ? 'Hide error' : 'Show error'}
           </button>
           {showError ? (
-            <p className="text-xs text-red-300/90 mt-1 whitespace-pre-wrap">{run.error_message}</p>
+            <p className="text-xs text-red-300/90 mt-1 whitespace-pre-wrap">{plainProgressText(run.error_message)}</p>
           ) : null}
         </div>
       )}
       {latestEvent?.message && isLive ? (
-        <p className="text-xs text-slate-500 truncate">{latestEvent.message}</p>
+        <p className="text-xs text-slate-500 truncate">{plainProgressText(latestEvent.message)}</p>
       ) : null}
     </div>
   );
