@@ -3,13 +3,24 @@ import { INTENT_DISPLAY_LABELS } from '../../constants/intentLabels';
 import { buildOrchestrationHeadline, parseJsonStringArray, profileDisplayNameFromStats } from '../../lib/dossierOrchestrationSummary';
 import SourceClassBadge from './SourceClassBadge';
 import { SOURCE_CLASS_IDS, sourceClassLabel } from './sourceClassIds';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 
 type Props = {
   stats: DossierStats;
   planIntent: string;
 };
 
-function Stat({ label, value }: { label: string; value: number | null | undefined }) {
+/** "4 min 12 s" from milliseconds. */
+function readableDuration(ms: number | null | undefined): string | null {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return null;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest > 0 ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+function Stat({ label, value }: { label: string; value: number | string | null | undefined }) {
   return (
     <li className="flex justify-between gap-4 border border-slate-800/60 rounded-md px-3 py-2">
       <span className="text-slate-500">{label}</span>
@@ -40,34 +51,39 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
   const skipped = parseJsonStringArray(stats.agentsSkipped);
   const ran = parseJsonStringArray(stats.agentsRan);
   const classRows = sourceClassEntries(stats.sourceClassBreakdown);
+  // How the run was carried out (the steps that ran, model token counts, counts
+  // from the check of the report) is the technical record. It is shown to
+  // administrators only; a customer sees how long the research took and how
+  // many sources it read and cited.
+  const isAdmin = useIsAdmin();
 
   return (
     <div className="space-y-4">
       <h2 className="text-white font-medium">Statistics</h2>
 
-      {headline ? (
+      {isAdmin && headline ? (
         <p className="rounded-md border border-accent/25 bg-accent/5 px-3 py-2 text-sm text-slate-100 leading-snug">
           {headline}
         </p>
       ) : null}
 
-      {(profile || skipped.length > 0) && (
+      {isAdmin && (profile || skipped.length > 0) && (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400">
           {profile ? (
             <div className="rounded-md border border-slate-800/60 px-3 py-2">
-              <dt className="text-slate-500 uppercase tracking-wide">Orchestration profile</dt>
+              <dt className="text-slate-500 uppercase tracking-wide">Report type</dt>
               <dd className="text-slate-200 mt-0.5">{profile}</dd>
             </div>
           ) : null}
           {skipped.length > 0 ? (
             <div className="rounded-md border border-slate-800/60 px-3 py-2">
-              <dt className="text-slate-500 uppercase tracking-wide">Stages skipped</dt>
+              <dt className="text-slate-500 uppercase tracking-wide">Steps skipped</dt>
               <dd className="text-slate-200 mt-0.5 font-mono">{skipped.length}</dd>
             </div>
           ) : null}
           {ran.length > 0 ? (
             <div className="rounded-md border border-slate-800/60 px-3 py-2 sm:col-span-2">
-              <dt className="text-slate-500 uppercase tracking-wide">Stages executed</dt>
+              <dt className="text-slate-500 uppercase tracking-wide">Steps that ran</dt>
               <dd className="text-slate-300 mt-0.5 break-words">{ran.join(', ')}</dd>
             </div>
           ) : null}
@@ -75,17 +91,21 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
       )}
 
       <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-        <Stat label="Duration (ms)" value={stats.totalDurationMs} />
-        <Stat label="Tokens in" value={stats.tokensInput} />
-        <Stat label="Tokens out" value={stats.tokensOutput} />
+        <Stat label="Time taken" value={readableDuration(stats.totalDurationMs)} />
         <Stat label="Sources cited" value={stats.sourcesCitedCount} />
-        <Stat label="Sources retrieved" value={stats.sourcesRetrievedCount} />
-        <Stat label="Double-check: findings restated" value={stats.strongestFormPassCount} />
-        <Stat label="Double-check notes" value={stats.doubleCheckAnnotationsCount} />
-        <Stat label="Contradictions" value={stats.contradictionsCount} />
+        <Stat label="Sources read" value={stats.sourcesRetrievedCount} />
+        {isAdmin ? (
+          <>
+            <Stat label="Words sent to the models (tokens)" value={stats.tokensInput} />
+            <Stat label="Words written by the models (tokens)" value={stats.tokensOutput} />
+            <Stat label="Passes that strengthened a point before checking it" value={stats.steelmanPassCount} />
+            <Stat label="Notes from the challenge pass" value={stats.skepticAnnotationsCount} />
+            <Stat label="Points where sources conflict" value={stats.contradictionsCount} />
+          </>
+        ) : null}
       </ul>
 
-      {classRows.length > 0 ? (
+      {isAdmin && classRows.length > 0 ? (
         <div className="rounded-md border border-slate-800/60 p-3 space-y-2">
           <h3 className="text-xs uppercase tracking-wide text-slate-500">Retrieved sources by class</h3>
           <p className="text-[11px] text-slate-500 leading-snug">
