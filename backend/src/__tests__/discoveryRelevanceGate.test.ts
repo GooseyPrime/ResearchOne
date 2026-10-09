@@ -26,6 +26,10 @@ const h = vi.hoisted(() => ({
   calls: [] as Array<{ provider: string; query: string }>,
   events: [] as Array<{ phase: string; provider: string; payload: Record<string, unknown> }>,
   queued: [] as string[],
+  /** Addresses the queue refuses. */
+  refused: new Set<string>(),
+  /** Every ingestion-job statement: the SQL and its values. */
+  jobSql: [] as Array<{ sql: string; params: unknown[] }>,
   /** Addresses an earlier run already stored. */
   stored: new Set<string>(),
   /** What the stand-in judge says about an address. Anything not listed is relevant. */
@@ -43,6 +47,7 @@ vi.mock('../db/pool', () => ({
     if (/INSERT INTO discovery_events/.test(sql)) {
       h.events.push({ phase: String(params[2]), provider: String(params[3]), payload: JSON.parse(String(params[7])) });
     }
+    if (/ingestion_jobs/.test(sql)) h.jobSql.push({ sql, params });
     return [];
   }),
   queryOne: vi.fn(async (sql: string, params: unknown[] = []) =>
@@ -52,7 +57,12 @@ vi.mock('../db/pool', () => ({
   adminQuery: vi.fn(async () => []),
 }));
 vi.mock('../queue/queues', () => ({
-  ingestionQueue: { add: vi.fn(async (_name: string, job: { url: string }) => { h.queued.push(job.url); }) },
+  ingestionQueue: {
+    add: vi.fn(async (_name: string, job: { url: string }) => {
+      if (h.refused.has(job.url)) throw new Error('queue unavailable');
+      h.queued.push(job.url);
+    }),
+  },
   embeddingQueue: { add: vi.fn() },
 }));
 vi.mock('axios', () => {
@@ -211,6 +221,8 @@ describe('the relevance check before ingest', () => {
     h.calls.length = 0;
     h.events.length = 0;
     h.queued.length = 0;
+    h.refused.clear();
+    h.jobSql.length = 0;
     h.stored.clear();
     h.verdictByUrl = Object.fromEntries([IOT, TRANSPARENCY, CAMERAS].map((found) => [found.url, 'off_topic'] as const));
     h.verdictByUrl[VENDOR.url] = 'vendor_sales';
@@ -264,6 +276,26 @@ describe('the relevance check before ingest', () => {
     expect(inSummary(VENDOR.url)).toMatchObject({ ingested: false, skipReason: 'vendor_sales', selectionRationale: NOT_USED_VENDOR_LABEL });
     expect(summary.sourcesIngested).toBe(ON_TOPIC.length);
     expect(reports[0]).toMatchObject({ judged: 7, relevant: 3, notUsed: 4, decidedWithoutModel: 0 });
+  });
+
+  it('closes the job row as failed when a relevant result cannot be queued', async () => {
+    h.results = { tavily: { '*': [...ON_TOPIC] } };
+    const refused = ON_TOPIC[0];
+    h.refused.add(refused.url);
+    const summary = await discover({ minUsableSources: 15 });
+
+    const inserted = h.jobSql.find((entry) => /INSERT INTO ingestion_jobs/.test(entry.sql) && entry.params[1] === refused.url);
+    expect(inserted).toBeTruthy();
+    const closed = h.jobSql.filter((entry) => /UPDATE ingestion_jobs SET status = 'failed'/.test(entry.sql));
+    // Only the refused one, by its own id, and only while it still says queued.
+    expect(closed).toHaveLength(1);
+    expect(closed[0].params[1]).toBe(inserted?.params[0]);
+    expect(closed[0].sql).toMatch(/AND status = 'queued'/);
+    expect(String(closed[0].params[0])).toContain('queue unavailable');
+
+    expect(h.queued).not.toContain(refused.url);
+    expect(summary.sources.find((source) => source.url === refused.url)).toMatchObject({ ingested: false, skipReason: 'queue_error' });
+    expect(summary.sourcesIngested).toBe(ON_TOPIC.length - 1);
   });
 
   it('keeps a vendor page when the judge finds the question is about that vendor', async () => {
