@@ -303,6 +303,13 @@ const BASE_ALLOWLIST = [
   // separately.
   'cognitivecomputations/dolphin-2.9.2-qwen2-72b',
 
+  // ── Cross-provider backups hosted on BOTH Hugging Face Inference and Together (RJ-019) ──
+  // The hub forms of the DeepSeek V3.x line already approved above as
+  // OpenRouter slugs. Reached only after a role's own model and backup were
+  // refused; the same id is sent to Hugging Face and then to Together.
+  'deepseek-ai/DeepSeek-V3.1',
+  'deepseek-ai/DeepSeek-V3',
+
   // V2 USER-OPT-IN FALLBACK ONLY — refusal head still attached (RLHF).
   // Kept on the allowlist so admins can manually wire it in via per-run
   // overrides if a primary is unreachable, but never wired into a V2 preset
@@ -338,6 +345,11 @@ const BASE_ALLOWLIST = [
  * `docs/V2_MODEL_SELECTION_CRITERIA.md`.
  */
 const CROSS_PROVIDER_BACKUPS: ReadonlyArray<{ model: string; family: 'openrouter' | 'hub' }> = [
+  // First: ids that Together serves under the same name as the hub does, so
+  // the Together key is a real second host for them and not only a retry of
+  // an id Together does not carry.
+  { model: 'deepseek-ai/DeepSeek-V3.1', family: 'hub' },
+  { model: 'deepseek-ai/DeepSeek-V3', family: 'hub' },
   { model: 'NousResearch/Hermes-3-Llama-3.1-70B', family: 'hub' },
   { model: 'huihui-ai/Llama-3.3-70B-Instruct-abliterated', family: 'hub' },
   { model: 'huihui-ai/Qwen2.5-72B-Instruct-abliterated', family: 'hub' },

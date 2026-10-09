@@ -127,9 +127,16 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
     ingest(eventsFromRunRow(run));
   }, [run, runId, ingest]);
 
+  // A run that has finished or stopped sends nothing more. The page stops
+  // listening for it, as it stops polling for it above; if the run is started
+  // again its status is in flight once more and the listener comes back.
+  // Unknown (the row has not loaded yet) counts as live, so no early event is
+  // missed.
+  const isLive = !run || isInFlightRunStatus(run.status);
+
   // Socket -> trace.
   useEffect(() => {
-    if (!runId) return;
+    if (!runId || !isLive) return;
     subscribeToJob(runId);
     const socket = getSocket();
 
@@ -151,7 +158,7 @@ export function useRunTraceStream(runId: string | undefined): RunTraceStream {
     return () => {
       socket.off('research:progress', onProgress);
     };
-  }, [runId, ingest, queryClient]);
+  }, [runId, ingest, isLive, queryClient]);
 
   const latest = useMemo(
     () => (traceEvents.length > 0 ? traceEvents[traceEvents.length - 1] : null),

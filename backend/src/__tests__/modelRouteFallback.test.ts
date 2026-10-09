@@ -159,6 +159,42 @@ describe('a model call that one provider refuses for credit', () => {
     expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together' });
   });
 
+  it('writes the report on Together when OpenRouter is out of credit and Hugging Face cannot answer', async () => {
+    // The production failure of 9 Oct 2026: the report writer got 402 from OpenRouter.
+    h.openrouter = () => 402;
+    h.hub = () => 'fail';
+
+    const result = await write();
+
+    expect(result.content).toContain('written by');
+    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together' });
+    const togetherCalls = h.calls.filter((call) => call.provider === 'together');
+    expect(togetherCalls).toHaveLength(1);
+    // The id sent to Together is one Together carries under that name.
+    expect(togetherCalls[0].model).toBe('deepseek-ai/DeepSeek-V3.1');
+  });
+
+  it('writes the report on Together when there is no Hugging Face token at all', async () => {
+    config.hfToken = '';
+    h.openrouter = () => 402;
+    h.hub = () => 'fail';
+
+    const result = await write();
+
+    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together' });
+  });
+
+  it('goes on to the next model when a host does not carry the one asked for', async () => {
+    h.openrouter = () => 402;
+    h.hub = () => 'fail';
+    // Together answers 404 for a model it does not carry.
+    h.together = (model) => (model === 'deepseek-ai/DeepSeek-V3.1' ? 404 : 'ok');
+
+    const result = await write();
+
+    expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together', model: 'deepseek-ai/DeepSeek-V3' });
+  });
+
   it('uses the role backup, and no other provider, when only the role model is refused', async () => {
     h.openrouter = (model) => (model === PRIMARY ? 402 : 'ok');
 
