@@ -3,6 +3,7 @@ import type { LegacyRef, Ref } from 'react';
 import clsx from 'clsx';
 import type { ResearchProgressEvent } from '../../utils/api';
 import { plainProgressText } from '@/lib/researchone/plainWords';
+import { tracePercents } from '../../utils/traceEventWindow';
 
 function formatShortTime(iso?: string): string {
   if (!iso) return '';
@@ -52,6 +53,8 @@ export default function LiveResearchTraceLog({
   scrollClassName,
   emptyMessage = 'Waiting for events…',
 }: LiveResearchTraceLogProps) {
+  // A row never shows less than the row above it (RJ-018).
+  const percents = tracePercents(traceEvents);
   return (
     <div className="lg:col-span-3 lg:flex lg:flex-col lg:min-h-0 space-y-2">
       <div className="flex items-center justify-between">
@@ -94,7 +97,7 @@ export default function LiveResearchTraceLog({
                 {readerStageLabel(evt.stage)}
               </span>
 
-              <span className="text-slate-600 flex-shrink-0 w-[5ch] tabular-nums text-right">{evt.percent}%</span>
+              <span className="text-slate-600 flex-shrink-0 w-[5ch] tabular-nums text-right">{percents[idx]}%</span>
 
               <span className="flex-1 min-w-0 text-slate-300 break-words">
                 {plainProgressText(evt.message)}

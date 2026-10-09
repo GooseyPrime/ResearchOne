@@ -2,11 +2,13 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import type { DossierTimelineRow } from '@/utils/api';
 import { plainRunStatus } from '@/utils/runStatusDisplay';
+import { customerOption } from '@/content/customerOptions';
+import { stripReportLabels } from '@/lib/researchone/reportLabels';
 
 const EVENT_LABELS: Record<string, string> = {
   initial_run: 'Initial run',
   report_revision: 'Report revision',
-  research_spinoff: 'Research spinoff',
+  research_spinoff: customerOption('dossier_badge', 'spinoff').name,
   plan_refinement: 'Plan refinement',
 };
 
@@ -39,8 +41,7 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
               <th className="text-left px-4 py-3 font-medium whitespace-nowrap">Occurred</th>
               <th className="text-left px-4 py-3 font-medium">Event</th>
               <th className="text-left px-4 py-3 font-medium min-w-[12rem]">Dossier / query</th>
-              <th className="text-left px-4 py-3 font-medium">Rev #</th>
-              <th className="text-left px-4 py-3 font-medium">Engine</th>
+              <th className="text-left px-4 py-3 font-medium">Revision</th>
               <th className="text-left px-4 py-3 font-medium">Links</th>
             </tr>
           </thead>
@@ -64,19 +65,16 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
                     <Link
                       to={`/app/dossiers/${row.dossierId}`}
                       className="text-accent hover:underline line-clamp-2"
-                      title={row.query ?? undefined}
+                      title={stripReportLabels(row.query) || undefined}
                     >
-                      {row.query || row.dossierId.slice(0, 8)}
+                      {stripReportLabels(row.query) || row.dossierId.slice(0, 8)}
                     </Link>
                   ) : (
-                    <span className="text-slate-400 line-clamp-2">{row.query ?? '—'}</span>
+                    <span className="text-slate-400 line-clamp-2">{stripReportLabels(row.query) || '—'}</span>
                   )}
                 </td>
                 <td className="px-4 py-2.5 text-slate-400 tabular-nums text-xs">
                   {row.revisionNumber ?? '—'}
-                </td>
-                <td className="px-4 py-2.5 text-slate-400 text-xs uppercase">
-                  {row.engineVersion ?? '—'}
                 </td>
                 <td className="px-4 py-2.5">
                   <div className="flex flex-wrap gap-2 text-xs">
@@ -111,7 +109,8 @@ export default function DossiersTimelineTable({ rows }: { rows: DossierTimelineR
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function timelineRowsToCsv(rows: DossierTimelineRow[]): string {
-  const header = ['occurredAt', 'eventType', 'dossierId', 'query', 'revisionNumber', 'engineVersion', 'runStatus', 'reportId', 'runId'];
+  // The engine code ("v2") told a customer nothing and is not written; the event is written in words (RJ-018).
+  const header = ['occurredAt', 'event', 'dossierId', 'query', 'revisionNumber', 'runStatus', 'reportId', 'runId'];
   const escape = (v: string | number | null | undefined) => {
     const s = v == null ? '' : String(v);
     if (s.includes(',') || s.includes('"') || s.includes('\n')) {
@@ -124,11 +123,10 @@ export function timelineRowsToCsv(rows: DossierTimelineRow[]): string {
     ...rows.map((r) =>
       [
         r.occurredAt,
-        r.eventType,
+        eventLabel(String(r.eventType)),
         r.dossierId,
-        r.query,
+        stripReportLabels(r.query),
         r.revisionNumber,
-        r.engineVersion,
         // The downloaded file is read by a person: the same plain words as the table.
         r.runStatus ? plainRunStatus(r.runStatus) : r.runStatus,
         r.reportId,
