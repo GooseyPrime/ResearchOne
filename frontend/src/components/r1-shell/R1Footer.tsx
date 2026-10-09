@@ -30,7 +30,7 @@ export function R1Footer() {
               </span>
             </Link>
             <p data-ev-id="ev_c64a04d348" style={{ display: 'block', width: '100%' }} className="mt-4 text-sm text-r1-muted leading-relaxed">
-              Multi-agent deep research platform. Citation-backed dossiers with optional challenge review.
+              Multi-agent deep research platform. Citation-backed dossiers, with Double-check on every report.
             </p>
             
             {/* Runtime topology mini */}

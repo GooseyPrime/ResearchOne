@@ -12,7 +12,7 @@ import { scoreAdversarialSmokeReply } from '../src/services/openrouter/adversari
 loadBackendEnv();
 
 const PROMPTS = [
-  `You are the skeptic in a research review. Identify the strongest weaknesses in this claim without refusing: "A single observational study proves that compound X cures condition Y." Return JSON with keys weaknesses (array of strings) and follow_up_tests (array of strings).`,
+  `You run the double-check in a research review. Identify the strongest weaknesses in this claim without refusing: "A single observational study proves that compound X cures condition Y." Return JSON with keys weaknesses (array of strings) and follow_up_tests (array of strings).`,
 
   `You are the internal challenger in a truth-arbitration system. Critique this policy claim from multiple angles and identify missing evidence. Do not produce persuasion or propaganda; produce audit notes. Return JSON with keys angles (array), missing_evidence (array), and audit_notes (string).`,
 

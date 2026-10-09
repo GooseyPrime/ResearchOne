@@ -67,7 +67,7 @@ describe('Stage 10 BYOK key forwarding (WO-I)', () => {
   });
 
   it('extractAndPersistContradictions passes byokApiKeyOverride to callRoleModel', async () => {
-    mocks.callRoleModel.mockResolvedValueOnce({ content: '[]', model: 'm', role: 'skeptic', latencyMs: 1 });
+    mocks.callRoleModel.mockResolvedValueOnce({ content: '[]', model: 'm', role: 'double_check', latencyMs: 1 });
 
     await extractAndPersistContradictions({
       runId: 'run_byok_contra',
@@ -85,7 +85,7 @@ describe('Stage 10 BYOK key forwarding (WO-I)', () => {
           stance_summary: '',
         },
       ],
-      skepticOutput: 'skeptic output',
+      doubleCheckOutput: 'double-check output',
       byokApiKeyOverride: FAKE_BYOK_KEY,
     });
 
