@@ -225,7 +225,10 @@ describe('LiveRunPanel — outcome', () => {
       error_message: 'Retrieval yielded no usable sources',
       progress_events: [evt(1, '2026-08-23T15:57:18.000Z')],
     });
-    expect(screen.getByText('Retrieval yielded no usable sources')).toBeTruthy();
+    // Only the server's own customer sentences are printed as they arrive;
+    // any other stored text gets the fixed sentence (RJ-019).
+    expect(screen.getByText(/This run could not be finished\./)).toBeTruthy();
+    expect(screen.queryByText('Retrieval yielded no usable sources')).toBeNull();
     await waitFor(() => expect(screen.getByText('Report section 1/25')).toBeTruthy());
   });
 });

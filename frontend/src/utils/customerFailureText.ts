@@ -41,14 +41,26 @@ export function looksLikeStoredError(text: string | null | undefined): boolean {
 }
 
 /**
+ * The sentences the server writes for a customer (`customerFailureMessage.ts`).
+ * Only these are printed as they arrive.
+ */
+const CUSTOMER_SENTENCES: ReadonlySet<string> = new Set([
+  'The report could not be written because our AI service is temporarily unavailable. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered.',
+  'This run stopped because our AI service is temporarily unavailable. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered.',
+  RUN_COULD_NOT_FINISH,
+]);
+
+/**
  * The failure sentence to print for a customer: the server's sentence when it
- * is one, the fixed sentence when what arrived is a stored error, and nothing
- * when nothing arrived.
+ * is one of the sentences above, the fixed sentence for anything else, and
+ * nothing when nothing arrived. Anything that is not a known sentence may be a
+ * stored error of a shape nobody listed, so it is never printed.
  */
 export function customerFailureText(text: string | null | undefined): string | null {
   const value = (text ?? '').trim();
   if (!value) return null;
-  return looksLikeStoredError(value) ? RUN_COULD_NOT_FINISH : plainProgressText(value);
+  const plain = plainProgressText(value);
+  return CUSTOMER_SENTENCES.has(plain) ? plain : RUN_COULD_NOT_FINISH;
 }
 
 /**

@@ -148,3 +148,24 @@ export function runRowForCustomer<T>(row: T): T {
   }
   return out as T;
 }
+
+/**
+ * Trace events as a customer is sent them, for any endpoint that returns a
+ * run's events outside the run row (the diagnostics page reads them this way).
+ */
+export function progressEventsForCustomer(
+  events: readonly unknown[],
+  args: { classification?: string | null; stage?: string | null } = {}
+): unknown[] {
+  const fallback = customerFailureMessage(args);
+  return events.map((event) => customerProgressEvent(event, fallback));
+}
+
+/**
+ * A progress event as it is sent over the socket. The socket reaches every
+ * signed-in browser, so it carries what a customer may read and nothing else.
+ * An administrator's page gets the full event from the run row instead.
+ */
+export function progressEventForBroadcast<T>(event: T): T {
+  return customerProgressEvent(event, customerFailureMessage({})) as T;
+}

@@ -1,3 +1,4 @@
+import { progressEventForBroadcast } from '../services/reasoning/customerFailureMessage';
 import { Worker, Job } from 'bullmq';
 import { Server as SocketIOServer } from 'socket.io';
 import { createRedisConnection } from './redis';
@@ -56,8 +57,11 @@ async function markInterruptedResearchRuns(): Promise<void> {
 export async function startWorkers(io: SocketIOServer): Promise<void> {
   await markInterruptedResearchRuns();
   const emit = (room: string, event: string, data: unknown) => {
-    io.to(room).emit(event, data);
-    io.emit(event, data); // also broadcast to all for dashboard updates
+    // A run's progress goes to every connected browser, so it is sent without
+    // the model id, token counts, internal detail or stored error text.
+    const sent = event === 'research:progress' ? progressEventForBroadcast(data) : data;
+    io.to(room).emit(event, sent);
+    io.emit(event, sent); // also broadcast to all for dashboard updates
   };
   /** Plan payloads are user-private — never broadcast globally (PR #128). */
   const emitJobPrivate = (runId: string, event: string, data: unknown) => {

@@ -6,6 +6,7 @@
  * aborted, its payload was dropped so it could not be run again, and the page
  * showed the stored error with the step, the model and the status code in it.
  */
+import { progressEventForBroadcast, progressEventsForCustomer } from '../services/reasoning/customerFailureMessage';
 import { runChargeDecision } from '../services/billing/runChargeDecision';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -254,6 +255,41 @@ describe('what a customer is told', () => {
     expect(looksLikeInternalDetail('no_sources_ingested')).toBe(true);
     expect(looksLikeInternalDetail('heat pump payback period')).toBe(false);
     expect(looksLikeInternalDetail('Does x=y hold for small firms?')).toBe(false);
+  });
+});
+
+describe('what leaves the server outside the run row', () => {
+  const stored = {
+    stage: 'synthesis',
+    percent: 80,
+    message: 'Writing the report',
+    model: 'deepseek/deepseek-v3.2',
+    tokenUsage: { prompt: 10, completion: 20 },
+    internalDetail: 'pending=6; failed=1; waited=3000ms',
+  };
+  const failed = {
+    stage: 'failed',
+    percent: 80,
+    eventType: 'run_failed',
+    message: 'Run aborted: role=section_drafter model=deepseek/deepseek-v3.2 status=402 classification=quota_exceeded',
+    failure: { errorMessage: 'status=402 add credits', retryable: true, failureMeta: { classification: 'quota_exceeded', model: 'deepseek/deepseek-v3.2' } },
+  };
+
+  it('sends progress over the socket without the model, the counts, the internal detail or the stored error', () => {
+    const sent = JSON.stringify([progressEventForBroadcast(stored), progressEventForBroadcast(failed)]);
+    expect(sent).toContain('Writing the report');
+    expect(sent).not.toContain('deepseek');
+    expect(sent).not.toContain('waited=');
+    expect(sent).not.toContain('402');
+    expect(sent).not.toContain('add credits');
+    expect(sent).not.toContain('section_drafter');
+  });
+
+  it('gives the diagnostics page of a customer the same plain trace', () => {
+    const sent = JSON.stringify(progressEventsForCustomer([stored, failed], { classification: 'quota_exceeded', stage: 'synthesis' }));
+    expect(sent).not.toContain('deepseek');
+    expect(sent).not.toContain('402');
+    expect(sent).toContain(CUSTOMER_FAILURE_MESSAGES.ai_service_unavailable_writing);
   });
 });
 
