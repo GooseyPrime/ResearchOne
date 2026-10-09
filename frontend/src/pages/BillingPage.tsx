@@ -12,6 +12,7 @@ import api, {
 } from '../utils/api';
 import PlanCheckoutOptions, { type SubscriptionOption } from '../components/billing/PlanCheckoutOptions';
 import PlanSwitchOptions, { type PendingPlanSwitch } from '../components/billing/PlanSwitchOptions';
+import type { ScheduledPlanChange } from '../lib/billing/planChange';
 import MonitorTokenPurchaseOptions, {
   type AddonEligibilityState,
 } from '../components/billing/MonitorTokenPurchaseOptions';
@@ -63,6 +64,8 @@ type ConfirmedBillingSubscription = BillingSubscription & {
   confirmedCheckout?: { kind: 'plan' | 'addon' | 'monitor_tokens' | 'topup'; tier: string | null };
 };
 
+const BILLING_PENDING_CHANGE_QUERY_KEY = ['billing-pending-plan-change'] as const;
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '';
   try {
@@ -103,7 +106,7 @@ export default function BillingPage() {
   /** The plan a subscriber has picked in the switch block and not yet confirmed. */
   const [pendingSwitch, setPendingSwitch] = useState<PendingPlanSwitch | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
-  const [switchedTo, setSwitchedTo] = useState<PendingPlanSwitch | null>(null);
+  const [keepError, setKeepError] = useState<string | null>(null);
   const { hash } = useLocation();
 
   const billingIntent = searchParams.get('intent');
@@ -223,6 +226,8 @@ export default function BillingPage() {
         { queryKey: BILLING_SUBSCRIPTION_QUERY_KEY },
         { cancelRefetch: false },
       );
+      // Cancelling drops a scheduled plan change with it.
+      void queryClient.invalidateQueries({ queryKey: BILLING_PENDING_CHANGE_QUERY_KEY }, { cancelRefetch: false });
       setCancelError(null);
     },
     onError: (err: unknown) => {
@@ -230,30 +235,40 @@ export default function BillingPage() {
     },
   });
 
-  // The server changes the subscription in Stripe and returns. The plan shown
-  // here changes when Stripe's event has been handled, usually within seconds,
-  // so the subscription is read again a few times rather than once.
+  // The server schedules the change for the end of the billing period and
+  // returns it. Nothing changes today, so there is nothing to wait for: the
+  // scheduled change is shown straight from the answer.
   const switchMutation = useMutation({
-    mutationFn: async (choice: PendingPlanSwitch) => {
-      await api.post<{ switched: boolean; tier: string }>('/billing/subscription/switch', {
-        priceId: choice.priceId,
-      });
-      return choice;
-    },
-    onSuccess: (choice) => {
+    mutationFn: async (choice: PendingPlanSwitch) =>
+      (
+        await api.post<{ scheduled: boolean; pendingChange: ScheduledPlanChange }>('/billing/subscription/switch', {
+          priceId: choice.priceId,
+        })
+      ).data,
+    onSuccess: (data) => {
       setSwitchError(null);
+      setKeepError(null);
       setPendingSwitch(null);
-      setSwitchedTo(choice);
-      // Keeps reading for the full minute the message below promises.
-      for (const delayMs of [0, 2000, 5000, 10000, 20000, 40000, 60000]) {
-        window.setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: BILLING_SUBSCRIPTION_QUERY_KEY }, { cancelRefetch: false });
-          void queryClient.invalidateQueries({ queryKey: BILLING_HISTORY_QUERY_KEY }, { cancelRefetch: false });
-        }, delayMs);
-      }
+      queryClient.setQueryData(BILLING_PENDING_CHANGE_QUERY_KEY, { pendingChange: data.pendingChange });
     },
     onError: (err: unknown) => {
       setSwitchError(extractApiError(err));
+      void queryClient.invalidateQueries({ queryKey: BILLING_PENDING_CHANGE_QUERY_KEY }, { cancelRefetch: false });
+    },
+  });
+
+  // "Keep my current plan": the scheduled change is dropped on the server.
+  const keepPlanMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete('/billing/subscription/pending-change');
+    },
+    onSuccess: () => {
+      setKeepError(null);
+      queryClient.setQueryData(BILLING_PENDING_CHANGE_QUERY_KEY, { pendingChange: null });
+    },
+    onError: (err: unknown) => {
+      setKeepError(extractApiError(err));
+      void queryClient.invalidateQueries({ queryKey: BILLING_PENDING_CHANGE_QUERY_KEY }, { cancelRefetch: false });
     },
   });
 
@@ -273,6 +288,17 @@ export default function BillingPage() {
     hasActiveSubscription && paidUp && !subRow?.cancelAtPeriodEnd && isSwitchablePlan(subRow?.tier)
       ? subRow.tier
       : null;
+
+  // A change already scheduled for the end of the billing period. Asked for
+  // only when there is a subscription that could have one.
+  const pendingChangeQuery = useQuery({
+    queryKey: BILLING_PENDING_CHANGE_QUERY_KEY,
+    queryFn: async () =>
+      (await api.get<{ pendingChange: ScheduledPlanChange | null }>('/billing/subscription/pending-change')).data,
+    enabled: Boolean(switchableTier),
+    retry: false,
+  });
+  const scheduledChange = switchableTier ? pendingChangeQuery.data?.pendingChange ?? null : null;
 
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
   const { hasProAccess, tierGateUnknown } = useHasProAccess();
@@ -373,24 +399,8 @@ export default function BillingPage() {
           <a href="#switch-plan" className="underline hover:text-white">
             Switch plan
           </a>{' '}
-          below. Your subscription is changed, not doubled.
+          below. Your subscription is changed, not doubled, and the change starts with your next billing period.
         </p>
-      ) : null}
-      {switchedTo ? (
-        <div className="mt-4 rounded-md border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
-          <p className="font-medium">
-            Your subscription is now {PLAN_LABEL[switchedTo.tier]}, {switchedTo.period} billing.
-          </p>
-          <p className="mt-1 text-emerald-100/80">
-            The plan shown on this page updates within a minute. Any difference in price is on your next bill, or
-            was billed today if you changed between monthly and annual billing.
-          </p>
-          {switchedTo.tier === 'byok' ? (
-            <Link to="/app/byok" className="mt-2 inline-block underline hover:text-white">
-              Add your model keys
-            </Link>
-          ) : null}
-        </div>
       ) : null}
       {intentNotice?.kind === 'switch_not_available' ? (
         <div className="mt-4 rounded-md border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
@@ -632,7 +642,6 @@ export default function BillingPage() {
             pending={pendingSwitch}
             onSelect={(choice) => {
               setSwitchError(null);
-              setSwitchedTo(null);
               setPendingSwitch(choice);
             }}
             onConfirm={() => {
@@ -644,6 +653,11 @@ export default function BillingPage() {
             }}
             isSwitching={switchMutation.isPending}
             switchError={switchError}
+            currentPeriodEnd={subRow?.currentPeriodEnd ?? null}
+            scheduled={scheduledChange}
+            onKeepCurrentPlan={() => keepPlanMutation.mutate()}
+            isKeeping={keepPlanMutation.isPending}
+            keepError={keepError}
           />
         ) : null}
 
