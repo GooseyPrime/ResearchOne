@@ -7,6 +7,7 @@ import {
   Shield,
 } from 'lucide-react';
 import type { FeatureCardProps } from '../components/landing/FeatureCard';
+import { customerOption } from './customerOptions';
 
 /** Six small cards (caps enforced in FeatureCard). */
 export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
@@ -46,6 +47,6 @@ export const LANDING_SIX_FEATURE_CARDS: readonly FeatureCardProps[] = [
     icon: KeyRound,
     headline: 'Bring your own keys',
     description: 'Run on your own model and search keys, billed by your own providers.',
-    metric: 'BYOK',
+    metric: customerOption('plan', 'byok').name,
   },
 ];

@@ -7,7 +7,7 @@ import {
 /**
  * WO-AH — the challenge pass runs on every report.
  *
- * The operator's instruction: "the skeptic ... should be run on everything. we
+ * The operator's instruction: "the double-check ... should be run on everything. we
  * need to verify that the research is correct no matter what type of request the
  * user has."
  *
@@ -30,7 +30,7 @@ describe('every orchestration profile verifies', () => {
   });
 
   it.each(profiles)('%s does not disable the challenge pass', (_intent, profile) => {
-    expect(profile.skepticMode).not.toBe('off');
+    expect(profile.doubleCheckMode).not.toBe('off');
   });
 
   it.each(profiles)('%s runs the challenge stage', (_intent, profile) => {
@@ -43,7 +43,7 @@ describe('every orchestration profile verifies', () => {
     // profile ended up on one mode, the intent taxonomy would have stopped
     // meaning anything here and this work order would have removed a capability
     // instead of raising a minimum.
-    const modes = new Set(profiles.map(([, p]) => p.skepticMode));
+    const modes = new Set(profiles.map(([, p]) => p.doubleCheckMode));
     expect(modes.has('annotate')).toBe(true);
     expect(modes.has('gate')).toBe(true);
   });
