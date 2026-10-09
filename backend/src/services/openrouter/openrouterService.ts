@@ -13,6 +13,7 @@ import {
 } from '../formatting/templates/intentOutputTemplates';
 import {
   CHALLENGE_PASS_SYSTEM_PREFIX,
+  crossProviderBackupModelsForRole,
   isHfRepoModel,
   type ModelCallPurpose,
   type ResearchObjective,
@@ -74,6 +75,29 @@ export interface ModelCallResult {
   usedFallback: boolean;
   primaryModel: string;
   errorClassification?: string;
+  /** Which model and provider answered. Internal diagnostics only; never shown to a customer. */
+  routeUsed?: ModelRouteUsed;
+  /** Every route tried for this call, in order, when the first one did not answer. */
+  routesTried?: ModelRouteAttempt[];
+}
+
+export type ModelRouteProvider = 'openrouter' | 'huggingface_inference' | 'together';
+
+/** Where a model sits in a role's order: its own model, its own backup, or a backup on another provider. */
+export type ModelRoutePosition = 'primary' | 'backup' | 'cross_provider';
+
+export interface ModelRouteUsed {
+  model: string;
+  provider: ModelRouteProvider;
+  position: ModelRoutePosition;
+}
+
+export interface ModelRouteAttempt extends ModelRouteUsed {
+  /** 1 for the first pass over the routes; 2 and up are passes made after waiting. */
+  round: number;
+  outcome: 'answered' | 'refused';
+  classification?: ModelErrorClassification;
+  status?: number;
 }
 
 export type ModelErrorClassification =
@@ -99,6 +123,8 @@ export interface NormalizedModelErrorShape {
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
+  /** Every route tried before giving up, in order. */
+  routesTried?: ModelRouteAttempt[];
 }
 
 export class NormalizedModelError extends Error implements NormalizedModelErrorShape {
@@ -113,6 +139,7 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
   model: string;
   fallbackTried: boolean;
   role: ModelRole;
+  routesTried?: ModelRouteAttempt[];
 
   constructor(payload: NormalizedModelErrorShape) {
     super(payload.providerMessage || `Model call failed (${payload.classification})`);
@@ -128,6 +155,7 @@ export class NormalizedModelError extends Error implements NormalizedModelErrorS
     this.model = payload.model;
     this.fallbackTried = payload.fallbackTried;
     this.role = payload.role;
+    this.routesTried = payload.routesTried;
   }
 }
 
@@ -623,9 +651,105 @@ export function resolveBaselineLayer(options: Pick<ModelCallOptions, 'baselineLa
   return options.baselineLayer === true && options.isAdjudicative !== true;
 }
 
+/** A refusal that says something about the provider, not about the request. Another provider may still answer. */
+const PROVIDER_SIDE_CLASSIFICATIONS: ReadonlySet<ModelErrorClassification> = new Set<ModelErrorClassification>([
+  'quota_exceeded',
+  'rate_limited',
+  'provider_unavailable',
+  'network_error',
+  'auth_error',
+]);
+
+/** A refusal that can clear by itself within seconds: requests in flight settle, a rate window passes. */
+const SETTLES_WITH_TIME: ReadonlySet<ModelErrorClassification> = new Set<ModelErrorClassification>([
+  'quota_exceeded',
+  'rate_limited',
+]);
+
 /**
- * Call a model by role with automatic fallback.
- * Logs all calls with token counts and duration.
+ * How long to wait before going over the routes again, when every route was
+ * refused and the role's own models were refused for credit or rate reasons.
+ * One entry per extra pass. Tests run with no waiting passes unless they set
+ * this themselves.
+ */
+export const modelRouteRetry: { delaysMs: number[] } = {
+  delaysMs: config.nodeEnv === 'test' ? [] : [4_000, 12_000],
+};
+
+function providerForBackend(backend: 'HF' | 'Together' | 'OpenRouter'): ModelRouteProvider {
+  if (backend === 'HF') return 'huggingface_inference';
+  if (backend === 'Together') return 'together';
+  return 'openrouter';
+}
+
+function nativeProviderForModel(model: string): ModelRouteProvider {
+  return isHfRepoModel(model) ? 'huggingface_inference' : 'openrouter';
+}
+
+/** One shape for whatever a provider call threw, so every route's refusal is recorded the same way. */
+function normalizeRouteError(
+  err: unknown,
+  model: string,
+  role: ModelRole,
+  fallbackTried: boolean
+): NormalizedModelError {
+  if (err instanceof NormalizedModelError) return err;
+  const axiosErr = err as AxiosError;
+  const isAxios = axios.isAxiosError(err);
+  return new NormalizedModelError({
+    classification: isAxios ? classifyModelError(axiosErr) : classifyHfError(err),
+    status: axiosErr.response?.status,
+    providerMessage: isAxios ? extractProviderMessage(axiosErr) : err instanceof Error ? err.message : String(err),
+    model,
+    upstream: isHfRepoModel(model) ? 'huggingface_inference' : 'openrouter',
+    endpoint: isHfRepoModel(model) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
+    providerFallbackAttempted: false,
+    providerFallbackBackend: null,
+    providerFallbackResult: null,
+    fallbackTried,
+    role,
+  });
+}
+
+/**
+ * The routes a call may take, in order: the role's own model, the role's own
+ * backup, then approved models on the other configured providers. The first
+ * two are exactly what the role had before; nothing here reorders or drops them.
+ */
+export function modelRoutesForCall(args: {
+  role: ModelRole;
+  primary: string;
+  fallback: string | undefined;
+  /** False when the caller supplied its own OpenRouter key and the server has none. */
+  openrouterConfigured: boolean;
+  hubConfigured: boolean;
+}): Array<{ model: string; position: ModelRoutePosition }> {
+  const routes: Array<{ model: string; position: ModelRoutePosition }> = [{ model: args.primary, position: 'primary' }];
+  if (args.fallback && args.fallback !== args.primary) routes.push({ model: args.fallback, position: 'backup' });
+  const seen = new Set(routes.map((route) => route.model));
+  const tried = new Set(routes.map((route) => nativeProviderForModel(route.model)));
+  const backups = crossProviderBackupModelsForRole(args.role, {
+    openrouter: args.openrouterConfigured,
+    hub: args.hubConfigured,
+  }).filter((model) => !seen.has(model));
+  // A provider the role has not used yet comes before one that already refused it.
+  const fresh = backups.filter((model) => !tried.has(nativeProviderForModel(model)));
+  const rest = backups.filter((model) => tried.has(nativeProviderForModel(model)));
+  for (const model of [...fresh, ...rest]) routes.push({ model, position: 'cross_provider' });
+  return routes;
+}
+
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Call a model by role.
+ *
+ * A role does not depend on one provider. The call goes to the role's own
+ * model, then its backup, and — when those were refused for a provider-side
+ * reason such as no credit, a rate limit, an outage or a rejected key — to
+ * approved models on the other configured providers. It fails only when every
+ * route has refused, after waiting and going over the routes again when the
+ * refusal was about credit or rate. Which route answered is on the result.
  */
 export async function callRoleModel(options: ModelCallOptions): Promise<ModelCallResult> {
   const prepared: ModelCallOptions = {
@@ -635,126 +759,154 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     // policy block and the challenge prefix from adjudicative and challenge calls.
     baselineLayer: resolveBaselineLayer(options),
   };
-  const { primary: primaryModel, fallback: resolvedFallback } = resolveModelsForCall(prepared);
-  const fallbackModel = resolvedFallback;
+  const { primary: primaryModel, fallback: fallbackModel } = resolveModelsForCall(prepared);
   const startedAtMs = Date.now();
   const telemetryInvocationId = randomUUID();
+  const routes = modelRoutesForCall({
+    role: options.role,
+    primary: primaryModel,
+    fallback: fallbackModel,
+    openrouterConfigured: Boolean((options.byokApiKeyOverride ?? config.openrouter.apiKey)?.trim()),
+    // A caller who brought their own OpenRouter key chose where their request
+    // goes and who pays. Their request is never moved onto the platform's
+    // Hugging Face or Together accounts.
+    hubConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.hfToken?.trim() || config.together.apiKey?.trim()),
+  });
+  const hasBackup = routes.some((route) => route.position === 'backup');
+  const attempts: ModelRouteAttempt[] = [];
+  /** The refusal of the role's own models: what a failure of this call is reported as. */
+  let ownModelsError: NormalizedModelError | null = null;
+  let firstClassification: ModelErrorClassification | undefined;
+  const totalRounds = 1 + modelRouteRetry.delaysMs.length;
 
-  try {
-    const { result, backend } = await callModel(primaryModel, prepared);
-    logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-    const augmented = { ...result, usedFallback: false, primaryModel };
-    emitCallTelemetry(augmented, {
-      role: options.role,
-      callPurpose: options.callPurpose,
-      startedAtMs,
-      telemetryInvocationId,
-    });
-    return augmented;
-  } catch (err) {
-    if (err instanceof NormalizedModelError) {
-      logger.warn(`Model primary failed for [${options.role}]`, {
-        role: options.role,
-        model: primaryModel,
-        status: err.status,
-        classification: err.classification,
-        fallbackAttempted: Boolean(fallbackModel),
-        providerBody: err.providerMessage,
-      });
-      throw err;
-    }
-    const axiosErr = err as AxiosError;
-    const status = axiosErr.response?.status;
-    const errorClassification = axios.isAxiosError(err)
-      ? classifyModelError(axiosErr)
-      : classifyHfError(err);
-    const providerBody = axiosErr.response?.data;
-
-    logger.warn(`Model primary failed for [${options.role}]`, {
-      role: options.role,
-      model: primaryModel,
-      status,
-      classification: errorClassification,
-      fallbackAttempted: Boolean(fallbackModel),
-      providerBody,
-    });
-
-    if (fallbackModel && fallbackModel !== primaryModel) {
-      logger.info(`Falling back to ${fallbackModel} for role [${options.role}]`);
+  for (let round = 1; round <= totalRounds; round += 1) {
+    /**
+     * Whether any refusal of the role's own models on this pass was about the
+     * provider. One such refusal is enough: a backup the provider no longer
+     * carries, or a second host that does not carry a hub model, does not
+     * cancel the outage or the empty account that came before it.
+     */
+    let ownProviderSideRefusal = false;
+    for (const route of routes) {
+      // Another provider is tried only when the role's own models were refused
+      // for a reason about the provider. A request the provider called
+      // malformed would be malformed there too. Once other providers are being
+      // tried, each one is tried: a host that does not carry one model says
+      // nothing about the next host or the next model.
+      if (route.position === 'cross_provider' && !ownProviderSideRefusal) {
+        break;
+      }
+      if (route.position !== 'primary') {
+        logger.info(`Falling back to ${route.model} for role [${options.role}]`, { position: route.position, round });
+      }
       try {
-        const { result, backend } = await callModel(fallbackModel, prepared);
-        logger.debug(`${backend} fallback [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
-        const augmentedFallback = { ...result, usedFallback: true, primaryModel, errorClassification };
-        emitCallTelemetry(augmentedFallback, {
+        const { result, backend } = await callModel(route.model, prepared);
+        const provider = providerForBackend(backend);
+        logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
+        // Together answers a hub model only after Hugging Face failed for it.
+        // That refusal is on the record too.
+        if (backend === 'Together') {
+          attempts.push({
+            model: route.model,
+            provider: 'huggingface_inference',
+            position: route.position,
+            round,
+            outcome: 'refused',
+            classification: 'provider_unavailable',
+          });
+        }
+        attempts.push({ model: route.model, provider, position: route.position, round, outcome: 'answered' });
+        const usedFallback = route.position !== 'primary';
+        const augmented: ModelCallResult = {
+          ...result,
+          usedFallback,
+          primaryModel,
+          ...(usedFallback && firstClassification ? { errorClassification: firstClassification } : {}),
+          routeUsed: { model: route.model, provider, position: route.position },
+          ...(attempts.length > 1 ? { routesTried: [...attempts] } : {}),
+        };
+        if (attempts.length > 1) {
+          logger.warn(`Model call for [${options.role}] answered on a later route`, {
+            role: options.role,
+            routeUsed: augmented.routeUsed,
+            refused: attempts.filter((attempt) => attempt.outcome === 'refused').length,
+          });
+        }
+        emitCallTelemetry(augmented, {
           role: options.role,
           callPurpose: options.callPurpose,
           startedAtMs,
           telemetryInvocationId,
         });
-        return augmentedFallback;
-      } catch (fallbackErr) {
-        if (fallbackErr instanceof NormalizedModelError) {
-          logger.error(`Model fallback also failed for [${options.role}]`, {
-            role: options.role,
-            model: fallbackModel,
-            status: fallbackErr.status,
-            classification: fallbackErr.classification,
-            fallbackAttempted: true,
-            providerBody: fallbackErr.providerMessage,
-          });
-          throw fallbackErr;
+        return augmented;
+      } catch (err) {
+        const normalized = normalizeRouteError(err, route.model, options.role, route.position !== 'primary');
+        // A hub model that reached Together did so because Hugging Face had
+        // already failed for it, which is a refusal about the provider.
+        const hubHostFailedFirst = normalized.upstream === 'together' && normalized.providerFallbackAttempted === true;
+        if (route.position !== 'cross_provider' && (PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification) || hubHostFailedFirst)) {
+          ownProviderSideRefusal = true;
         }
-        const fallbackAxiosErr = fallbackErr as AxiosError;
-        const fallbackClassification = axios.isAxiosError(fallbackErr)
-          ? classifyModelError(fallbackAxiosErr)
-          : classifyHfError(fallbackErr);
-        const fallbackBody = fallbackAxiosErr.response?.data;
-        logger.error(`Model fallback also failed for [${options.role}]`, {
-          role: options.role,
-          model: fallbackModel,
-          status: fallbackAxiosErr.response?.status,
-          classification: fallbackClassification,
-          fallbackAttempted: true,
-          providerBody: fallbackBody,
+        firstClassification ??= normalized.classification;
+        if (route.position !== 'cross_provider') ownModelsError = normalized;
+        // A hub model is tried on Hugging Face and then on Together. When the
+        // second one refused as well, both refusals are on the record.
+        if (normalized.upstream === 'together' && normalized.providerFallbackAttempted) {
+          attempts.push({
+            model: route.model,
+            provider: 'huggingface_inference',
+            position: route.position,
+            round,
+            outcome: 'refused',
+            classification: 'provider_unavailable',
+          });
+        }
+        attempts.push({
+          model: route.model,
+          provider: normalized.upstream === 'together' ? 'together' : nativeProviderForModel(route.model),
+          position: route.position,
+          round,
+          outcome: 'refused',
+          classification: normalized.classification,
+          status: normalized.status,
         });
-        throw new NormalizedModelError({
-          classification: fallbackClassification,
-          status: fallbackAxiosErr.response?.status,
-          providerMessage: axios.isAxiosError(fallbackErr)
-            ? extractProviderMessage(fallbackAxiosErr)
-            : fallbackErr instanceof Error
-              ? fallbackErr.message
-              : String(fallbackErr),
-          model: fallbackModel,
-          upstream: isHfRepoModel(fallbackModel) ? 'huggingface_inference' : 'openrouter',
-          endpoint: isHfRepoModel(fallbackModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
-          providerFallbackAttempted: false,
-          providerFallbackBackend: null,
-          providerFallbackResult: null,
-          fallbackTried: true,
+        const log = route.position === 'primary' ? logger.warn : logger.error;
+        log(`Model ${route.position} route failed for [${options.role}]`, {
           role: options.role,
+          model: route.model,
+          status: normalized.status,
+          classification: normalized.classification,
+          fallbackAttempted: route.position === 'primary' ? hasBackup : true,
+          providerBody: normalized.providerMessage,
+          round,
         });
       }
     }
 
-    throw new NormalizedModelError({
-      classification: errorClassification,
-      status,
-      providerMessage: axios.isAxiosError(err)
-        ? extractProviderMessage(axiosErr)
-        : err instanceof Error
-          ? err.message
-          : String(err),
+    const delayMs = modelRouteRetry.delaysMs[round - 1];
+    const worthWaiting = ownModelsError !== null && SETTLES_WITH_TIME.has(ownModelsError.classification);
+    if (delayMs === undefined || !worthWaiting) break;
+    // Calls made side by side are refused side by side; spread them out so they
+    // do not all come back at the same instant.
+    const spread = Math.round(delayMs * (0.5 + Math.random()));
+    logger.warn(`Every model route refused [${options.role}]; waiting ${spread}ms before trying the routes again`, {
+      role: options.role,
+      round,
+      classification: ownModelsError?.classification,
+    });
+    await wait(spread);
+  }
+
+  const failure: NormalizedModelError =
+    ownModelsError ??
+    new NormalizedModelError({
+      classification: 'unknown',
       model: primaryModel,
-      upstream: isHfRepoModel(primaryModel) ? 'huggingface_inference' : 'openrouter',
-      endpoint: isHfRepoModel(primaryModel) ? 'https://api-inference.huggingface.co' : `${config.openrouter.baseUrl}/chat/completions`,
-      providerFallbackAttempted: false,
-      providerFallbackBackend: null,
-      providerFallbackResult: null,
-      fallbackTried: false,
+      fallbackTried: hasBackup,
       role: options.role,
     });
-  }
+  failure.routesTried = attempts;
+  throw failure;
 }
 
 function classifyHfError(err: unknown): ModelErrorClassification {

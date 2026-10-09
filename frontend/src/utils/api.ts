@@ -131,6 +131,10 @@ export interface ResearchProgressEvent {
   percent: number;
   message: string;
   detail?: string;
+  /** Counts, timings and stop reasons for whoever diagnoses a run. Sent to admins only; never shown to a customer. */
+  internalDetail?: string;
+  /** Set by the page when it folds repeated updates of one wait into this line: how many updates it stands for. */
+  repeatCount?: number;
   substep?: string;
   timestamp?: string;
   model?: string;

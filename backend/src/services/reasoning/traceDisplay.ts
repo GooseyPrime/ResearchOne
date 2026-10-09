@@ -56,3 +56,28 @@ export function retrievalProgressLabel(args: {
 export function plainStepName(id: string): string {
   return (id ?? '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
+
+/** How often a wait that is not moving still writes a line, so the run is seen to be alive. */
+export const WAITING_TRACE_HEARTBEAT_MS = 60_000;
+
+/**
+ * Decides whether a repeated "still waiting" update is worth a trace line.
+ *
+ * A wait reports on a timer, so a wait that is not moving used to write the
+ * same line every few seconds: 40 identical lines for a two-minute wait. A
+ * line is written when what it says changes, and otherwise once per heartbeat.
+ */
+export function createWaitingTraceThrottle(heartbeatMs: number = WAITING_TRACE_HEARTBEAT_MS): {
+  shouldWrite: (state: string, nowMs: number) => boolean;
+} {
+  let lastState: string | null = null;
+  let lastWrittenAt = 0;
+  return {
+    shouldWrite(state, nowMs) {
+      if (state === lastState && nowMs - lastWrittenAt < heartbeatMs) return false;
+      lastState = state;
+      lastWrittenAt = nowMs;
+      return true;
+    },
+  };
+}

@@ -1,3 +1,4 @@
+import { progressEventForBroadcast } from '../services/reasoning/customerFailureMessage';
 import { Worker, Job } from 'bullmq';
 import { Server as SocketIOServer } from 'socket.io';
 import { createRedisConnection } from './redis';
@@ -60,7 +61,10 @@ export async function startWorkers(io: SocketIOServer): Promise<void> {
   // nothing is sent to all connected pages (see realtime/privateEmit.ts).
   const live = createPrivateEmitter(io);
   const emitRun = (runId: string, event: string, data: unknown): void => {
-    void live.toRun(runId, event, data);
+    // A run's progress is shown to the customer, so it is sent without the
+    // model id, token counts, internal detail or stored error text.
+    const sent = event === 'research:progress' ? progressEventForBroadcast(data) : data;
+    void live.toRun(runId, event, sent);
   };
   const emitIngestion = (jobId: string, event: string, data: unknown): void => {
     void live.toIngestionJob(jobId, event, data);

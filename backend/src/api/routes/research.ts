@@ -33,6 +33,7 @@ import {
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
+import { progressEventsForCustomer, runRowForCustomer } from '../../services/reasoning/customerFailureMessage';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
@@ -689,6 +690,8 @@ router.get('/', async (req, res, next) => {
       rejectUnscopedReadOnScopeError(scopeErr, 'GET /api/research');
     }
 
+    // A person is sent the plain sentence for a failed run, never the stored error.
+    if (!isAllowlistedAdminUserId(userId)) rows = rows.map((row) => runRowForCustomer(row));
     res.json(forReader(rows, { title: 'not-report' }));
   } catch (err) {
     next(err);
@@ -717,9 +720,12 @@ router.get('/:id', async (req, res, next) => {
     }
     // The stored discovery summary lists every search result, including the ones
     // set aside. A person is sent the sources the run went on to read.
+    // The stored error and trace name the step, the model and the provider's
+    // answer. A person is sent the plain sentence for the failure; the stored
+    // detail stays on the admin and diagnostics views.
     if (!isAllowlistedAdminUserId(userId)) {
       const run = rows[0] as Record<string, unknown>;
-      rows[0] = { ...run, discovery_summary: discoverySummaryForReader(run.discovery_summary) };
+      rows[0] = runRowForCustomer({ ...run, discovery_summary: discoverySummaryForReader(run.discovery_summary) });
     }
     res.json(forReader(rows[0], { title: 'not-report' }));
   } catch (err) {
@@ -815,6 +821,7 @@ router.get('/:id/artifacts', async (req, res, next) => {
     const sourcesTotal = usedSources.length;
     const claimsTotal = parseInt(totals[0]?.claims_total ?? '0', 10);
     const discoveryEvents = isAdmin ? discoveryEventRows : discoveryEventRows.map(discoveryEventForReader);
+    const allProgressEvents: unknown[] = Array.isArray(meta.progress_events) ? meta.progress_events : [];
 
     res.json({
       sources,
@@ -822,15 +829,18 @@ router.get('/:id/artifacts', async (req, res, next) => {
       checkpoints,
       sourcesTotal,
       claimsTotal,
-      progressEvents: Array.isArray(meta.progress_events) ? meta.progress_events : [],
+      // The diagnostics page is open to the run's owner. Anyone who is not an
+      // administrator is sent the same plain trace as on the run page, and no
+      // model log or model choices.
+      progressEvents: isAdmin ? allProgressEvents : progressEventsForCustomer(allProgressEvents),
       plan: meta.plan ?? null,
       discoverySummary: isAdmin ? meta.discovery_summary ?? null : discoverySummaryForReader(meta.discovery_summary),
       discoveryEvents,
       // Diagnostics only: what the run found and did not use, with the reason in plain words.
       ...(isAdmin ? { notUsedSources: notUsedByRun(runSources, discoveryEventRows) } : {}),
-      modelLog: Array.isArray(meta.model_log) ? meta.model_log : [],
-      modelOverrides: meta.model_overrides ?? null,
-      modelEnsemble: meta.model_ensemble ?? null,
+      modelLog: isAdmin && Array.isArray(meta.model_log) ? meta.model_log : [],
+      modelOverrides: isAdmin ? meta.model_overrides ?? null : null,
+      modelEnsemble: isAdmin ? meta.model_ensemble ?? null : null,
       reportId: meta.report_id ?? null,
     });
   } catch (err) {
@@ -951,6 +961,25 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
     }
 
     const payload = row.resume_job_payload as ResearchJobData;
+
+    // A failed run keeps its reserved payment so that running it again is not
+    // a second payment. A reservation left unused is given back after thirty
+    // minutes. Once it is gone, running this run again would deliver a report
+    // nobody paid for, so the person is asked to send the request again, which
+    // reserves payment afresh. They are still charged once at most.
+    const reservedHoldId = payload?.creditChargeContext?.holdId;
+    if (reservedHoldId) {
+      const holds = await query<{ status: string }>(`SELECT status FROM wallet_holds WHERE id = $1`, [reservedHoldId]).catch(
+        () => [] as Array<{ status: string }>
+      );
+      if (holds.length > 0 && holds[0].status !== 'active') {
+        res.status(409).json({
+          error: 'This run can no longer be run again from here. Send the same request as a new run; you have not been charged for this one.',
+          reason: 'reservation_no_longer_held',
+        });
+        return;
+      }
+    }
 
     // The retry_attempts column may not exist if migration 012 hasn't
     // applied yet on this deploy. Try the full UPDATE first, then fall

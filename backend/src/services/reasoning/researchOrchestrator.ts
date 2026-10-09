@@ -22,6 +22,7 @@ import { extractAndPersistContradictions } from './contradictionExtractor';
 import { mapAndPersistCitations } from './citationMapper';
 import { logger } from '../../utils/logger';
 import { saveRunCheckpoint } from './checkpointService';
+import { customerFailureMessage } from './customerFailureMessage';
 import { decideRunStateOnFailure } from './runStateMachine';
 import {
   ADJUDICATIVE_SECTION_INTENTS,
@@ -36,6 +37,7 @@ import {
 } from './reportGenerator';
 import { cleanReaderMetadata } from '../formatting/reportPresentation';
 import {
+  createWaitingTraceThrottle,
   TRACE_DETAIL_MAX_CHARS,
   TRACE_MESSAGE_MAX_CHARS,
   retrievalProgressLabel,
@@ -67,6 +69,7 @@ import { APPROVED_REASONING_MODEL_ALLOWLIST, type ResearchObjective, isHfRepoMod
 import { allowFallbackByRoleFromOverrides } from './v2FallbackResolution';
 import { mergeOrchestratorHintsIntoFailureMeta } from '../../utils/researchFailureHints';
 import { consumeHold, releaseHold } from '../billing/walletReservations';
+import { runChargeDecision } from '../billing/runChargeDecision';
 import { incrementReportCount } from '../tier/tierService';
 import { resolveSourceIngestBudget } from '../discovery/sourceBudget';
 import { RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
@@ -262,7 +265,7 @@ interface VerificationResult {
   overall: string;
 }
 
-interface ResearchFailureDetails {
+export interface ResearchFailureDetails {
   errorMessage: string;
   failureMeta: Record<string, unknown>;
   retryable: boolean;
@@ -1340,15 +1343,21 @@ async function runResearchJobInner(
     searchPasses.push(discoverySummary);
     logger.info(`[${runId}] Discovery: ingested=${discoverySummary.sourcesIngested}, skipped=${discoverySummary.sourcesSkipped}`);
 
+    const ingestWaitTrace = createWaitingTraceThrottle();
     const discoveryIngestBarrier = await waitForDiscoveryIngestReadiness({
       sources: Array.isArray(discoverySummary.sources) ? discoverySummary.sources : [],
       timeoutMs: config.discovery.queryableWaitTimeoutMs,
       // A silent multi-minute wait at the barrier is indistinguishable from a
       // hang. This is also where the timing data to tune the barrier comes from.
       onProgress: async (state) => {
+        // The barrier reports every few seconds whether or not anything moved.
+        // A line is written when the count changes, and otherwise once a
+        // minute so a long wait still shows the run is alive; the page folds
+        // the lines of one wait into a single updating line.
+        if (!ingestWaitTrace.shouldWrite(`${state.readyCount}/${state.totalTracked}`, Date.now())) return;
         await progress('discovery', 16, `Reading the sources found: ${state.readyCount}/${state.totalTracked} ready`, {
           substep: 'discovery_ingest_waiting',
-          detail: `pending=${state.pendingCount}; failed=${state.failedCount}; waited=${state.waitedMs}ms`,
+          internalDetail: `pending=${state.pendingCount}; failed=${state.failedCount}; waited=${state.waitedMs}ms`,
           sourceCount: state.readyCount,
         });
       },
@@ -1360,25 +1369,25 @@ async function runResearchJobInner(
       // `timeout` so a healthy early release is not read as a failure.
       await progress('discovery', 18, `Enough sources are ready (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}); continuing while ${discoveryIngestBarrier.pendingCount} finish`, {
         substep: 'discovery_ingest_ready',
-        detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}; pending=${discoveryIngestBarrier.pendingCount}; failed=${discoveryIngestBarrier.failedCount}; waited=${discoveryIngestBarrier.waitedMs}ms`,
+        internalDetail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}; pending=${discoveryIngestBarrier.pendingCount}; failed=${discoveryIngestBarrier.failedCount}; waited=${discoveryIngestBarrier.waitedMs}ms`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else if (discoveryIngestBarrier.status === 'ready') {
       await progress('discovery', 18, `Sources are ready to read (${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}).`, {
         substep: 'discovery_ingest_ready',
-        detail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}`,
+        internalDetail: `ready=${discoveryIngestBarrier.readyCount}/${discoveryIngestBarrier.totalTracked}`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else if (discoveryIngestBarrier.status === 'timeout') {
       await progress('discovery', 18, `Stopped waiting for slow sources; ${discoveryIngestBarrier.pendingCount} are not ready yet.`, {
         substep: 'discovery_ingest_ready',
-        detail: `ready=${discoveryIngestBarrier.readyCount}; pending=${discoveryIngestBarrier.pendingCount}`,
+        internalDetail: `ready=${discoveryIngestBarrier.readyCount}; pending=${discoveryIngestBarrier.pendingCount}`,
         sourceCount: discoveryIngestBarrier.readyCount,
       });
     } else {
       await progress('discovery', 18, 'The search added no new sources; continuing with the material already in your library.', {
         substep: 'discovery_ingest_ready',
-        detail: 'no_sources_ingested',
+        internalDetail: 'no_sources_ingested',
       });
     }
 
@@ -3185,7 +3194,7 @@ ${reportForGates(generatedReport.markdown)}`,
     });
 
     // Credit charge: consume hold on success, decrement subscription quota
-    if (creditCtx && runTerminalStatus === 'completed') {
+    if (creditCtx && runChargeDecision({ status: runTerminalStatus }) === 'charge') {
       try {
         if (creditCtx.holdId && creditCtx.userId) {
           await consumeHold(creditCtx.holdId, creditCtx.userId, runId);
@@ -3321,6 +3330,21 @@ ${reportForGates(generatedReport.markdown)}`,
       throw cancelledErrWithSummary;
     }
     const failureDetails = buildResearchFailureDetails(err, currentStage);
+    // The sentence a customer reads. A gate outcome has its own plain words on
+    // the page, keyed on `gate_status`, so it is left to those.
+    const failureMetaForCustomer = failureDetails.failureMeta as Record<string, unknown>;
+    const customerFailure =
+      typeof failureMetaForCustomer.gate_status === 'string'
+        ? null
+        : customerFailureMessage({
+            classification:
+              typeof failureMetaForCustomer.classification === 'string' ? failureMetaForCustomer.classification : null,
+            stage: currentStage,
+          });
+    if (customerFailure) {
+      failureMetaForCustomer.customerMessageId = customerFailure.id;
+      failureMetaForCustomer.customerMessage = customerFailure.text;
+    }
 
     // Look up retry-budget. If columns do not exist yet (migration 012 has
     // not applied), default to 0/3 — the state machine will treat this as
@@ -3443,14 +3467,21 @@ ${reportForGates(generatedReport.markdown)}`,
       runId,
       stage: finalStatus === 'aborted' ? 'aborted' : currentStage,
       percent: currentPercent,
-      message:
+      // The line a customer reads is the plain sentence. Why the run was
+      // stopped rather than left to be run again is for whoever diagnoses it.
+      message: customerFailure
+        ? customerFailure.text
+        : finalStatus === 'aborted'
+          ? `This run was stopped. ${currentMessage}`
+          : currentMessage,
+      internalDetail:
         finalStatus === 'aborted'
-          ? `Run aborted — ${
+          ? `aborted: ${
               failureMetaWithResume.abortReason === 'budget_exhausted'
                 ? `retry budget (${retryBudget}) exhausted`
                 : 'failure was non-recoverable'
-            }. ${currentMessage}`
-          : currentMessage,
+            }; last step: ${currentMessage}`
+          : `failed; can be run again; last step: ${currentMessage}`,
       timestamp: new Date().toISOString(),
       eventType: finalStatus === 'aborted' ? 'run_aborted' : 'run_failed',
       gateStatus: gateStatusFromFailureMeta ?? undefined,
@@ -3494,8 +3525,8 @@ ${reportForGates(generatedReport.markdown)}`,
     // For retryable failures, hold is kept for the retry attempt (it carries
     // forward via resumeJobPayload.creditChargeContext).
     if (creditCtx?.holdId && creditCtx.userId) {
-      const isTerminal = finalStatus === 'aborted' || !failureMetaWithResume.retryable;
-      if (isTerminal) {
+      const decision = runChargeDecision({ status: finalStatus, retryable: failureMetaWithResume.retryable === true });
+      if (decision === 'release_hold') {
         try {
           await releaseHold(creditCtx.holdId, creditCtx.userId);
         } catch (releaseErr) {
@@ -3570,11 +3601,14 @@ function buildRunSummary(args: {
       promptTokens: r.promptTokens ?? 0,
       completionTokens: r.completionTokens ?? 0,
       durationMs: r.durationMs ?? 0,
+      // Which provider answered, and whether it was the role's own model, its
+      // backup or a backup on another provider. Diagnostics only.
+      ...(r.routeUsed ? { provider: r.routeUsed.provider, routePosition: r.routeUsed.position } : {}),
     })),
   };
 }
 
-function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
+export function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailureDetails {
   const errWithMeta = err as Error & { failureMeta?: Record<string, unknown>; retryable?: boolean };
   if (errWithMeta.failureMeta && typeof errWithMeta.failureMeta === 'object') {
     const meta = { ...errWithMeta.failureMeta } as Record<string, unknown>;
@@ -3596,8 +3630,17 @@ function buildResearchFailureDetails(err: unknown, stage: string): ResearchFailu
           : `${config.openrouter.baseUrl}/chat/completions`);
     const providerMessage = err.providerMessage || 'No provider message returned';
     const status = err.status ?? 'unknown';
-    const retryable = err.classification === 'rate_limited' || err.classification === 'provider_unavailable';
+    // Out of credit is a state of the provider's account, not of the request:
+    // it clears when requests in flight settle or the account is topped up, and
+    // `callRoleModel` has already tried every other configured provider. It is
+    // recoverable, so the run keeps its payload and can be run again.
+    const retryable =
+      err.classification === 'rate_limited'
+      || err.classification === 'provider_unavailable'
+      || err.classification === 'quota_exceeded'
+      || err.classification === 'network_error';
     const failureMeta: Record<string, unknown> = {
+      ...(err.routesTried && err.routesTried.length > 0 ? { routesTried: err.routesTried } : {}),
       classification: err.classification,
       status: err.status,
       providerMessage,
@@ -3666,6 +3709,7 @@ function buildAxiosFailureDetails(err: AxiosError, stage: string): ResearchFailu
   const retryable =
     classification === 'rate_limited'
     || classification === 'provider_unavailable'
+    || classification === 'quota_exceeded'
     || classification === 'network_error';
 
   const openrouterBase = config.openrouter.baseUrl.replace(/\/+$/, '');
@@ -3708,6 +3752,7 @@ function classifyAxiosError(status?: number): string {
   if (!status) return 'network_error';
   if (status === 404) return 'endpoint_not_found';
   if (status === 429) return 'rate_limited';
+  if (status === 402) return 'quota_exceeded';
   if (status === 401 || status === 403) return 'auth_error';
   if (status === 400) return 'bad_request';
   if (status >= 500) return 'provider_unavailable';

@@ -91,6 +91,11 @@ export interface CanonicalFailureMeta {
   providerFallbackResult?: string | null;
   /** ISO timestamp of the most recent retry-from-failure click. */
   lastRetryAt?: string;
+  /** The sentence a customer reads for this failure, and which one it is. See `customerFailureMessage.ts`. */
+  customerMessageId?: string;
+  customerMessage?: string;
+  /** Every model route tried before the failing call gave up. Diagnostics only. */
+  routesTried?: unknown[];
 }
 
 export interface RunFailureInput {
@@ -199,6 +204,9 @@ export function decideRunStateOnFailure(input: RunFailureInput): FailureTransiti
         ? (raw.providerFallbackResult as string | null)
         : undefined,
     lastRetryAt: typeof raw.lastRetryAt === 'string' ? raw.lastRetryAt : undefined,
+    customerMessageId: typeof raw.customerMessageId === 'string' ? raw.customerMessageId : undefined,
+    customerMessage: typeof raw.customerMessage === 'string' ? raw.customerMessage : undefined,
+    routesTried: Array.isArray(raw.routesTried) ? raw.routesTried : undefined,
   };
 
   return {

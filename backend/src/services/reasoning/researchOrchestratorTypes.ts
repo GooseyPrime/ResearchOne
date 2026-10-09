@@ -61,6 +61,12 @@ export interface ResearchProgress {
   message: string;
   runId: string;
   detail?: string;
+  /**
+   * Detail for whoever diagnoses a run: counts, timings, the reason a run was
+   * stopped. Shown on admin and diagnostics views only, and left out of what a
+   * customer is sent.
+   */
+  internalDetail?: string;
   substep?: string;
   timestamp: string;
   model?: string;
@@ -111,7 +117,17 @@ export interface RunSummaryPayload {
   errorMessage?: string | null;
   failureMeta?: Record<string, unknown> | null;
   orchestratorHints?: string[];
-  modelUsage: Array<{ role: string; model: string; promptTokens: number; completionTokens: number; durationMs: number }>;
+  modelUsage: Array<{
+    role: string;
+    model: string;
+    promptTokens: number;
+    completionTokens: number;
+    durationMs: number;
+    /** The provider that answered this call. Diagnostics only. */
+    provider?: string;
+    /** `primary`, `backup` or `cross_provider`. Diagnostics only. */
+    routePosition?: string;
+  }>;
 }
 
 export type ProgressCallback = (update: ResearchProgress) => void;
