@@ -2286,9 +2286,9 @@ async function runResearchJobInner(
     } else {
       await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
     }
-    // Slice 7: a lookup profile goes through the report writer with routing and Layer 1 on.
-    const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());
-    if (synthesisRuns) {
+    // Every report is written by the section writer, the reference lookup
+    // included: there is no shorter path with fixed headings and unbound citations.
+    {
       await progress('synthesis', 80, 'Writing the report section by section...', { substep: 'outline_started' });
 
       const usedSources = allChunks.map((chunk) => ({
@@ -2411,52 +2411,6 @@ async function runResearchJobInner(
         );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
-      if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);
-    } else {
-      await progress('synthesis', 80, 'Writing a short report for this kind of request...', { substep: 'synthesis_light' });
-      const refSynth = await callRoleModel({
-        role: 'synthesizer',
-        ...v2,
-        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'synthesizer'),
-        messages: [
-          { role: 'system', content: getSystemPrompt('synthesizer', isAdjudicative) },
-          {
-            role: 'user',
-            content:
-              `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
-              `# Executive Summary\n(direct answer)\n` +
-              // "Evidence" is adjudication vocabulary. A reference lookup is not
-              // adjudicating a disputed claim, and a heading the writer sees
-              // becomes a heading the writer reasons in — which is how epistemic
-              // framing leaks into reports that never asked for it (Rule 37).
-              `# ${isAdjudicative ? 'Evidence' : 'Supporting Detail'}\n(short bullets tied to chunk IDs where possible)\n` +
-              `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
-              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
-              `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
-              // The minimal path is still a synthesis path: when retrieval and
-              // re-discovery came back empty it must receive the same
-              // uncertainty, non-fabrication, and modeled-claim rules as the
-              // iterative drafter (Codex P2 review, PR #202).
-              //
-              // Its verifier now enforces the claim-class burden, so the writer
-              // must be told the same rule or it emits unmarked named prices,
-              // products, and dates and then needlessly fails or repairs
-              // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
-              `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
-              `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
-              `Source material:\n${sourceContext.slice(0, 60000)}`,
-          },
-        ],
-      });
-      modelLog.push(refSynth);
-      generatedReport = { markdown: refSynth.content.trim() };
-      generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
-      await saveRunCheckpoint({
-        runId,
-        stage: 'synthesis',
-        checkpointKey: 'synthesis_light',
-        snapshot: { mode: 'reference_lookup' },
-      });
     }
 
     // ────────────────────────────────────────────────────────────────
