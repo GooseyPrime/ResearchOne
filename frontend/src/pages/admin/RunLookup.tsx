@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api, { extractApiError } from '../../utils/api';
 import { resolveRunDisplayState, RUN_TONE_CLASSES } from '../../utils/runStatusDisplay';
+import { plainProgressText } from '@/lib/researchone/plainWords';
+import { readerStageLabel } from '@/lib/researchone/stageLabels';
 
 /**
  * Look up a research run by the reference a user quotes.
@@ -134,9 +136,9 @@ export default function RunLookup() {
           {run.error_message && (
             <div className="rounded border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
               <span className="text-rose-300/80 text-xs block mb-1">
-                Failure{run.failed_stage ? ` at ${run.failed_stage}` : ''}
+                Failure{run.failed_stage ? ` while: ${readerStageLabel(run.failed_stage)}` : ''}
               </span>
-              {run.error_message}
+              {plainProgressText(run.error_message)}
             </div>
           )}
 

@@ -104,7 +104,7 @@ export function requirePrivateCorpus(): (
       if (!isAllowlistedAdminUserId(userId) && !tierHasCorpusAccess(entitlementTier)) {
         res.status(403).json({
           error:
-            'Private corpus ingest requires a Pro, Team, BYOK, or Sovereign subscription. Upgrade to maintain a separate corpus from the shared ResearchOne library.',
+            'Private corpus ingest requires a Pro or BYOK subscription. Upgrade to maintain a separate corpus from the shared ResearchOne library.',
           upgrade_path: '/pricing',
         });
         return;

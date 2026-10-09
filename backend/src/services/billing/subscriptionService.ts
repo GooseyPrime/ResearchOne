@@ -200,6 +200,20 @@ export async function cancelSubscriptionAtPeriodEnd(userId: string): Promise<{ s
 
   try {
     const stripe = getStripeClient();
+    // A plan change scheduled from the billing page is dropped first: the
+    // customer is leaving, so there is no next period to change, and Stripe
+    // does not let a subscription that a schedule manages be set to end
+    // directly. Only a schedule made by that feature is released; any other
+    // schedule is left as it is and the request is refused.
+    const { releasePlanSwitchScheduleFor } = await import('./planSwitch');
+    const schedule = await releasePlanSwitchScheduleFor(subscription.stripeSubscriptionId);
+    if (schedule.foreignSchedule) {
+      return {
+        success: false,
+        error: 'This subscription cannot be cancelled from this page. Write to hello@researchone.io.',
+      };
+    }
+
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });

@@ -313,7 +313,8 @@ NOMIC_AUTO_UPLOAD_ON_EXPORT=false
 # Optional InTellMe integration
 INTELLME_API_KEY=
 INTELLME_API_SECRET=
-INTELLME_API_URL=https://api.intellme.com/v1
+# Off unless INTELLME_API_URL is set; there is no default address.
+INTELLME_API_URL=
 
 # Model and fallback overrides are optional and omitted here for brevity.
 # See backend/src/config/index.ts for the full list of *_MODEL / *_FALLBACK keys.

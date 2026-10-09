@@ -5,7 +5,9 @@ import {
   getTopupAmountForPrice,
   getSubscriptionPriceOptions,
   getTierForSubscriptionPrice,
+  isRemovedPlanTier,
   isSelfServeSubscriptionTier,
+  REMOVED_PLAN_MESSAGE,
 } from '../../services/billing/stripeClient';
 import {
   buildMonitorTokenCheckoutSessionCreateParams,
@@ -43,6 +45,8 @@ import { getPurchaseAvailability } from '../../services/billing/purchaseAvailabi
 import {
   PLAN_SWITCH_REFUSAL_HTTP_STATUS,
   PLAN_SWITCH_REFUSAL_MESSAGE,
+  cancelPendingPlanChange,
+  getPendingPlanChange,
   switchSubscriptionPlan,
 } from '../../services/billing/planSwitch';
 import {
@@ -328,6 +332,13 @@ router.post('/checkout/subscription', async (req, res, next) => {
     }
 
     const catalogTier = getTierForSubscriptionPrice(priceId);
+    // Team and Sovereign are not sold. Refused by the plan named and by the
+    // plan the price belongs to, so neither a hand-made request nor a price
+    // id left in the settings can start a checkout for one.
+    if (isRemovedPlanTier(tier) || (catalogTier !== null && isRemovedPlanTier(catalogTier))) {
+      res.status(409).json({ error: REMOVED_PLAN_MESSAGE, code: 'PLAN_NOT_AVAILABLE' });
+      return;
+    }
     if (!catalogTier) {
       res.status(400).json({ error: 'Unknown subscription price' });
       return;
@@ -369,10 +380,11 @@ router.post('/checkout/subscription', async (req, res, next) => {
 });
 
 /**
- * A subscriber moves between Pro and BYOK (monthly or annual). Their existing
- * subscription is changed in place; no Checkout, no second subscription. The
- * body carries only the price to move to. Which subscription is changed is
- * decided from the signed-in user, never from the request.
+ * A subscriber moves between Pro and BYOK (monthly or annual). The change is
+ * scheduled for the end of the billing period they have paid for: nothing is
+ * charged or credited now, no Checkout, no second subscription. The body
+ * carries only the price to move to. Which subscription is changed is decided
+ * from the signed-in user, never from the request.
  */
 router.post('/subscription/switch', async (req, res, next) => {
   try {
@@ -397,7 +409,46 @@ router.post('/subscription/switch', async (req, res, next) => {
       return;
     }
 
-    res.json({ switched: true, tier: result.tier });
+    res.json({
+      scheduled: true,
+      pendingChange: { tier: result.tier, billingPeriod: result.billingPeriod, effectiveAt: result.effectiveAt },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** The signed-in user's scheduled plan change, or null. */
+router.get('/subscription/pending-change', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    res.json({ pendingChange: await getPendingPlanChange(userId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** "Keep my current plan": drops the signed-in user's scheduled plan change. */
+router.delete('/subscription/pending-change', async (req, res, next) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const result = await cancelPendingPlanChange(userId);
+    if (!result.ok) {
+      res.status(PLAN_SWITCH_REFUSAL_HTTP_STATUS[result.reason]).json({
+        error: PLAN_SWITCH_REFUSAL_MESSAGE[result.reason],
+        code: `PLAN_SWITCH_${result.reason.toUpperCase()}`,
+      });
+      return;
+    }
+    res.json({ cancelled: true });
   } catch (err) {
     next(err);
   }

@@ -93,7 +93,7 @@ export const BADGE_COPY: Record<
   },
   teamPin: {
     symbol: '📌',
-    verb: 'Team pin',
+    verb: 'Pinned',
     className: 'border-slate-400/50 bg-slate-500/15 text-slate-200',
   },
   contradiction: {

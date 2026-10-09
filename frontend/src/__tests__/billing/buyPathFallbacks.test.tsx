@@ -138,7 +138,7 @@ describe('MonitorTokenPurchaseOptions', () => {
   it('shows the plan requirement, not buttons, to a user without an eligible plan', () => {
     const html = tokens({ packages: PACKS, eligibility: 'ineligible' });
     expect(html).not.toContain('<button');
-    expect(html).toContain('require an active Pro, BYOK, Team, or Sovereign subscription');
+    expect(html).toContain('require an active Pro or BYOK subscription');
     expect(html).toContain('href="/app/billing?intent=pro"');
   });
 
@@ -177,7 +177,7 @@ describe('resolvePlanIntentNotice', () => {
     ).toEqual({ kind: 'switch_below', plan: 'byok', currentTier: 'pro' });
   });
 
-  it('still sends a Team subscriber to the mail address, since Team cannot be switched from the page', () => {
+  it('still sends an account on a plan that is no longer sold to the mail address, since it cannot be switched from the page', () => {
     expect(
       resolvePlanIntentNotice({ intent: 'byok', hasActiveSubscription: true, effectiveTier: 'team', subscriptionResolved: true }),
     ).toEqual({ kind: 'switch_not_available', plan: 'byok', currentTier: 'team' });

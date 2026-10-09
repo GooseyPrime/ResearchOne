@@ -26,11 +26,6 @@ export const MARKETING_FAQ_ITEMS = [
       'Living Reports create new discrete versions when sources meaningfully shift. You keep prior versions for audit, citation, or rollback; nothing silently rewrites the version your team already agreed on.',
   },
   {
-    question: "What's the difference between BYOK and the Sovereign tier?",
-    answer:
-      'BYOK runs ResearchOne on your own model and search keys with orchestration billed here. Sovereign adds single-tenant deployment, contract isolation, and retention controls for workloads that cannot leave your perimeter.',
-  },
-  {
     question: 'Can I export a report and cite it like a static PDF?',
     answer:
       'Yes. Exports carry the citation map and version metadata so a static snapshot remains defensible; Living mode is optional when you need ongoing monitoring.',
@@ -63,11 +58,6 @@ export const FAQ_PAGE_AUDIT_VERBATIM_ITEMS = [
     question: 'How do Living updates work — will my old report change under me?',
     answer:
       'Each update is a new version with a diff trail. You pin, compare, or roll back; prior agreed versions remain addressable.',
-  },
-  {
-    question: "What's the difference between BYOK and the Sovereign tier?",
-    answer:
-      'BYOK brings your keys into our orchestration plane. Sovereign runs the stack in your tenancy with contract isolation and custom retention.',
   },
   {
     question: 'Can I export a report and cite it like a static PDF?',

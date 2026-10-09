@@ -45,19 +45,19 @@ describe('trace display — flooding guard', () => {
 
   it('labels retrieval passes by counter instead of echoing the query', () => {
     const label = retrievalProgressLabel({ index: 3, total: 5, chunkCount: 14 });
-    expect(label).toBe('Retrieval 3/5 complete — 14 chunks so far');
+    expect(label).toBe('Search 3/5 of your library complete — 14 passages so far');
     expect(label).not.toContain('Research Objective');
     expect(label.length).toBeLessThan(TRACE_MESSAGE_MAX_CHARS);
   });
 
   it('singularises a one-chunk result', () => {
-    expect(retrievalProgressLabel({ index: 1, total: 1, chunkCount: 1 })).toContain('1 chunk so far');
+    expect(retrievalProgressLabel({ index: 1, total: 1, chunkCount: 1 })).toContain('1 passage so far');
   });
 
   it('marks the re-discovery pass distinctly', () => {
     expect(
       retrievalProgressLabel({ index: 2, total: 4, chunkCount: 0, pass: 'rediscovery' })
-    ).toContain('(re-discovery)');
+    ).toContain('(second search)');
   });
 });
 

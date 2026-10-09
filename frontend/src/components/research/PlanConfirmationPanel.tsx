@@ -69,21 +69,22 @@ function readEpistemicPosture(payload: Record<string, unknown>): {
          : null;
 
   const skepticMap: Record<string, string> = {
-    off: 'Off (no dedicated challenge pass)',
-    annotate: 'Annotate (sidebar challenges)',
-    gate: 'Gate (challenge before synthesis)',
+    off: 'Off (no separate Challenge pass)',
+    annotate: 'Challenge pass, with objections shown as notes beside the report',
+    gate: 'Challenge pass before the report is written',
   };
   const steelmanMap: Record<string, string> = {
     off: 'Off',
-    standard: 'Standard',
-    per_option: 'Per-option',
-    as_product: 'As product (position brief)',
-    symmetric: 'Symmetric (strongest case + counter)',
+    standard: 'Each finding restated in its strongest form before it is checked',
+    per_option: 'Each option restated in its strongest form before it is checked',
+    as_product: 'The strongest case for the position is the report (position brief)',
+    symmetric: 'The strongest case for each side, then the case against it',
   };
 
   return {
-    skepticLabel: skepticMap[effectiveSkepticRaw] ?? effectiveSkepticRaw,
-    steelmanLabel: steelmanMap[steelmanRaw] ?? steelmanRaw,
+    // A mode this page has no words for is not shown as its id.
+    skepticLabel: skepticMap[effectiveSkepticRaw] ?? 'Challenge pass',
+    steelmanLabel: steelmanMap[steelmanRaw] ?? 'On',
     profileName: displayName,
     skepticMode: effectiveSkepticRaw,
     steelmanMode: steelmanRaw,
@@ -448,10 +449,10 @@ export default function PlanConfirmationPanel({
           ) : null}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
             <span>
-              <span className="text-slate-500">Challenge:</span> {posture.skepticLabel}
+              <span className="text-slate-500">Challenge pass:</span> {posture.skepticLabel}
             </span>
             <span>
-              <span className="text-slate-500">Formulation enhancement:</span> {posture.steelmanLabel}
+              <span className="text-slate-500">Strongest-form restatement:</span> {posture.steelmanLabel}
             </span>
           </div>
           <p className="text-slate-500 text-[11px] leading-snug">

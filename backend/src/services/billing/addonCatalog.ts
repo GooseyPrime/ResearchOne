@@ -5,7 +5,7 @@ export type AddonBillingModel =
   | 'report_subscription'
   | 'token_pack'
   | 'per_run'
-  | 'enterprise_inquiry';
+  | 'inquiry';
 
 export type AddonCatalogEntry = {
   id: string;
@@ -21,7 +21,7 @@ export type AddonCatalogEntry = {
   managePath?: string;
   comingSoon: boolean;
   stripeConfigured: boolean;
-  enterpriseMailto?: string;
+  inquiryMailto?: string;
 };
 
 function buildCatalog(): AddonCatalogEntry[] {
@@ -109,12 +109,12 @@ function buildCatalog(): AddonCatalogEntry[] {
       description:
         'Immutable, timestamped audit trail of every source retrieved, reasoning step, and export — suitable for regulatory contexts.',
       priceLabel: '$29/mo',
-      billingModel: 'enterprise_inquiry',
+      billingModel: 'inquiry',
       category: 'platform',
       comingSoon: true,
       stripeConfigured: false,
-      enterpriseMailto:
-        'mailto:hello@researchone.io?subject=Provenance%20Ledger%20enterprise%20inquiry',
+      inquiryMailto:
+        'mailto:hello@researchone.io?subject=Provenance%20Ledger%20inquiry',
     },
     {
       id: 'score_api_pro',
@@ -122,11 +122,11 @@ function buildCatalog(): AddonCatalogEntry[] {
       description:
         'Programmatic access to ResearchOne compliance and policy scoring — REST API with webhooks and batch scoring.',
       priceLabel: '$99/mo',
-      billingModel: 'enterprise_inquiry',
+      billingModel: 'inquiry',
       category: 'platform',
       comingSoon: true,
       stripeConfigured: false,
-      enterpriseMailto: 'mailto:hello@researchone.io?subject=Score%20API%20Pro%20inquiry',
+      inquiryMailto: 'mailto:hello@researchone.io?subject=Score%20API%20Pro%20inquiry',
     },
     {
       id: 'patent_ip_diligence',
@@ -134,11 +134,11 @@ function buildCatalog(): AddonCatalogEntry[] {
       description:
         'Patent landscape, freedom-to-operate, and prior art analysis engagements with cited claim mappings.',
       priceLabel: 'From $2,500 per engagement',
-      billingModel: 'enterprise_inquiry',
+      billingModel: 'inquiry',
       category: 'platform',
       comingSoon: true,
       stripeConfigured: false,
-      enterpriseMailto: 'mailto:hello@researchone.io?subject=Patent%20%26%20IP%20diligence%20inquiry',
+      inquiryMailto: 'mailto:hello@researchone.io?subject=Patent%20%26%20IP%20diligence%20inquiry',
     },
   ];
 }

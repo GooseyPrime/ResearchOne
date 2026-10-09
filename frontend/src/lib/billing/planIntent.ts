@@ -6,7 +6,7 @@
  * because starting Checkout again would create a second subscription beside
  * the first. A Pro or BYOK subscriber is pointed at the switch block instead,
  * which changes the subscription they have. Subscribers on any other plan
- * (Team, for one) cannot switch from the page and are told who to write to.
+ * cannot switch from the page and are told who to write to.
  */
 export type PlanIntent = 'pro' | 'byok';
 
@@ -23,7 +23,7 @@ export function isPlanIntent(value: string | null): value is PlanIntent {
   return value === 'pro' || value === 'byok';
 }
 
-/** Plans a subscriber can move between from the billing page. Team and Sovereign are not among them. */
+/** Plans a subscriber can move between from the billing page. No other plan is among them. */
 export function isSwitchablePlan(tier: string | null | undefined): tier is PlanIntent {
   return tier === 'pro' || tier === 'byok';
 }

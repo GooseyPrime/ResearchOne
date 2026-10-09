@@ -35,7 +35,6 @@ export const footerNavSections = [
     title: 'Security',
     links: [
       { label: 'Security', href: '/security' },
-      { label: 'Sovereign', href: '/sovereign' },
       { label: 'BYOK', href: '/byok' },
     ],
   },

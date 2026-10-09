@@ -109,7 +109,7 @@ export const POSTURE_FAMILIES: readonly PostureFamily[] = [
   },
   {
     id: 'steelman',
-    label: 'Formulation enhancement',
+    label: 'Strongest case',
     shortDescription:
       'Position-brief posture. The pipeline constructs the strongest possible case for a stated position or builds symmetric best-case arguments for multiple options. Used for position briefs and comparative briefs.',
     badgeClass: 'text-violet-300 border-violet-700/50',
