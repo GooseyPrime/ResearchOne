@@ -4,7 +4,7 @@
  */
 
 import type { NavLink, PipelineStage, Capability, FeatureBlock, RuntimeNode, ResearchMode, EvidenceTier } from '@/lib/researchone/types';
-import { DOUBLE_CHECK, customerOption } from './customerOptions';
+import { DOUBLE_CHECK, RUN_STEPS, RUN_STEP_ORDER, customerOption, runStep } from './customerOptions';
 
 // ===== NAVIGATION =====
 
@@ -51,68 +51,24 @@ export const footerNavSections = [
 
 // ===== PIPELINE STAGES =====
 
-export const pipelineStages: PipelineStage[] = [
-  {
-    id: 'planner',
-    name: 'Planner',
-    description: 'Decomposes research objectives into structured investigation paths',
-  },
-  {
-    id: 'sleuth',
-    name: 'Sleuth',
-    description: 'Secondary discovery that expands query space and identifies adjacent domains',
-  },
-  {
-    id: 'retriever',
-    name: 'Retriever & Assessor',
-    description: 'Finds and ranks relevant sources with funding and bias checks',
-  },
-  {
-    id: 'quantitative',
-    name: 'Quantitative Extractor',
-    description: 'Pulls statistical tables and raw numerical data with precision',
-  },
-  {
-    id: 'reasoner',
-    name: 'Reasoner',
-    description: 'Builds cited findings with full source chains',
-  },
-  {
-    id: 'double_check',
-    name: DOUBLE_CHECK.name,
-    description: DOUBLE_CHECK.description,
-    isDoubleCheck: true,
-  },
-  {
-    id: 'synthesizer',
-    name: 'Drafting',
-    description: 'Integrates findings into the report while preserving contradictions',
-  },
-  {
-    id: 'verifier',
-    name: 'Verifier',
-    description: 'Final validation of citations and source integrity',
-  },
-  {
-    id: 'formatter',
-    name: 'Formatter',
-    description: 'Generates exportable research dossier in multiple formats',
-  },
-];
+/**
+ * The steps of a run. Names and descriptions are read from the registry of
+ * customer-facing names, so the run page, the methodology page and the
+ * pipeline diagram cannot name a step differently (RJ-018).
+ */
+export const pipelineStages: PipelineStage[] = RUN_STEP_ORDER.map((id) => {
+  const step = runStep(id);
+  return {
+    id,
+    name: step.name,
+    description: step.description,
+    ...(id === 'double_check' ? { isDoubleCheck: true } : {}),
+  };
+});
 
 // ===== PROTOCOL MARQUEE =====
 
-export const protocolLabels = [
-  'PLANNER',
-  'SLEUTH',
-  'RETRIEVER',
-  'QUANTITATIVE EXTRACTOR',
-  'REASONER',
-  'DOUBLE-CHECK',
-  'DRAFTING',
-  'VERIFIER',
-  'FORMATTER',
-];
+export const protocolLabels = RUN_STEPS.map((step) => step.name);
 
 export const operationalPhrases = [
   'FUNDING BIAS CHECK ACTIVE',
@@ -137,7 +93,7 @@ export const capabilities: Capability[] = [
   },
   {
     id: 'sleuthing',
-    title: 'The Sleuthing Pass',
+    title: 'A second round of searching',
     description: 'Secondary discovery phase that expands beyond initial queries to uncover adjacent domains and alternative framings.',
     icon: 'Search',
   },
@@ -202,7 +158,7 @@ export const featureBlocks: FeatureBlock[] = [
   },
   {
     number: '02',
-    title: 'The Sleuthing Pass',
+    title: 'A second round of searching',
     subtitle: 'DOMAIN_SCAN · QUERY_AUGMENT',
     description: 'Secondary discovery expands into comprehensive search space covering adjacent domains and alternative framings.',
   },
