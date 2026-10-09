@@ -27,8 +27,10 @@ import {
   extractApiError,
   refineRunPlanAtGate,
 } from '../../utils/api';
+import { PLAN_ALREADY_CONFIRMED_MESSAGE, PLAN_CONFIRM_IN_FLIGHT_MESSAGE, confirmPlanOnce } from '../../utils/planConfirm';
 import {
   PLAN_AUTO_CONFIRM_STREAK_FOR_UI_HINT,
+  plainPlanNote,
   readPlanIntentConfidence,
   readTopicCompetenceAssessment,
   shouldStartPlanAutoConfirmCountdown,
@@ -142,6 +144,9 @@ export default function PlanConfirmationPanel({
   const [intentOverrideBusy, setIntentOverrideBusy] = useState(false);
   const pauseRef = useRef(false);
   const firedRef = useRef(false);
+  /** One confirmation per plan, shared by the button and the countdown. */
+  const confirmSentRef = useRef(false);
+  const [confirming, setConfirming] = useState(false);
   const countdownCbRef = useRef({
     onBusy,
     onAfterConfirm,
@@ -161,6 +166,11 @@ export default function PlanConfirmationPanel({
     setRounds(snapshot.refinementRounds);
   }, [snapshot.planId, snapshot.refinementRounds, snapshot.planPayload]);
 
+  // A plan that was changed is a new plan: it has not been confirmed.
+  useEffect(() => {
+    confirmSentRef.current = false;
+  }, [localPlanId]);
+
   const intentKey = readIntentId(localPayload);
   // A report type the registry does not know is read as its words, never shown as its id.
   const intentLabel = INTENT_DISPLAY_LABELS[intentKey] ?? customerOptionName('report_type', intentKey);
@@ -168,7 +178,8 @@ export default function PlanConfirmationPanel({
   const intentExample = INTENT_EXAMPLES[intentKey] ?? '';
   const intentHelpText = INTENT_HELP_TEXT[intentKey] ?? '';
   const intentConfidence = readPlanIntentConfidence(localPayload);
-  const competenceText = readTopicCompetenceAssessment(localPayload);
+  // A note written in the planning model's own vocabulary is not printed (RJ-018).
+  const competenceText = plainPlanNote(readTopicCompetenceAssessment(localPayload));
   const posture = readEpistemicPosture(localPayload);
   const postureFamily = resolvePostureFamily({
     doubleCheckMode: posture.doubleCheckMode,
@@ -212,10 +223,12 @@ export default function PlanConfirmationPanel({
             void (async () => {
               c.onBusy(true);
               try {
-                await confirmRunPlanAtGate(c.runId, c.planId);
+                const result = await confirmPlanOnce(confirmSentRef, () => confirmRunPlanAtGate(c.runId, c.planId));
+                if (result.outcome === 'in_flight') return;
                 c.onInvalidatePlanPrefs?.();
                 c.onAfterConfirm();
-                c.onNotify('success', 'Plan auto-confirmed — resuming the research pipeline.');
+                if (result.outcome === 'already_confirmed') c.onNotify('info', result.message ?? PLAN_ALREADY_CONFIRMED_MESSAGE);
+                else c.onNotify('success', 'Plan confirmed automatically. The research is starting.');
               } catch (e) {
                 c.onNotify('error', extractApiError(e));
               } finally {
@@ -292,15 +305,27 @@ export default function PlanConfirmationPanel({
 
   const handleConfirm = async () => {
     firedRef.current = true;
+    // A second press before the first has been answered sends nothing.
+    if (confirmSentRef.current) {
+      onNotify('info', PLAN_CONFIRM_IN_FLIGHT_MESSAGE);
+      return;
+    }
+    setConfirming(true);
     onBusy(true);
     try {
-      await confirmRunPlanAtGate(snapshot.runId, localPlanId);
+      const result = await confirmPlanOnce(confirmSentRef, () => confirmRunPlanAtGate(snapshot.runId, localPlanId));
+      if (result.outcome === 'in_flight') {
+        onNotify('info', result.message ?? PLAN_CONFIRM_IN_FLIGHT_MESSAGE);
+        return;
+      }
       onInvalidatePlanPrefs?.();
       onAfterConfirm();
-      onNotify('success', 'Plan confirmed — resuming the research pipeline.');
+      if (result.outcome === 'already_confirmed') onNotify('info', result.message ?? PLAN_ALREADY_CONFIRMED_MESSAGE);
+      else onNotify('success', 'Plan confirmed. The research is starting.');
     } catch (e) {
       onNotify('error', extractApiError(e));
     } finally {
+      setConfirming(false);
       onBusy(false);
     }
   };
@@ -350,7 +375,7 @@ export default function PlanConfirmationPanel({
   };
 
   const topic = (localPayload.topicAnalysis as Record<string, unknown> | undefined)?.summary;
-  const topicStr = typeof topic === 'string' ? topic : '';
+  const topicStr = plainPlanNote(typeof topic === 'string' ? topic : '');
 
   const showStreakHint =
     planPrefs &&
@@ -640,10 +665,12 @@ export default function PlanConfirmationPanel({
           type="button"
           onClick={() => void handleConfirm()}
           disabled={busy}
-          className="btn-primary inline-flex items-center gap-2 text-xs"
+          aria-busy={confirming}
+          title={customerOptionHelp(FIELD.confirm)}
+          className="btn-primary inline-flex items-center gap-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
-          {FIELD.confirm.name}
+          {confirming ? 'Starting the research…' : FIELD.confirm.name}
         </button>
         <button
           type="button"
