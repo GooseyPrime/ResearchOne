@@ -1,6 +1,10 @@
 /**
- * the orchestration-profile pass — intent output template descriptors (section order + layout hints).
- * Consumed by dossier UI and echoed in report metadata; does not alter CSL export paths.
+ * the orchestration-profile pass — intent output template descriptors.
+ * A template carries guidance for the writer and the checks for its report
+ * type. It does not set a report's headings: every report is written to the
+ * reader plan (`readerSections` in `reasoning/baselineReport.ts`), whose
+ * subject headings come from the material. `sections` is kept as a label list
+ * for report metadata only.
  *
  * Phase B — each template now includes:
  * - `verifierRubric`: the per-intent verification criteria used by the verifier agent.
@@ -10,10 +14,10 @@ export interface IntentOutputTemplate {
   id: string;
   intentId: string;
   title: string;
-  /** Ordered section ids for dossier / report chrome. */
+  /** Section ids recorded in report metadata. Not an outline: no heading is made from them. */
   sections: readonly string[];
-  /** When true, UI shows double-check notes in a collapsible aside. */
-  sidebarDoubleCheckAnnotations: boolean;
+  /** When true, UI shows skeptical annotations in a collapsible aside. */
+  sidebarSkepticAnnotations: boolean;
   /** When false, omit plain-language footer block in dossier chrome. */
   showPlainLanguageFooter: boolean;
   /** Short guidance for synthesizer prompts (future use). */
@@ -85,7 +89,7 @@ export const INTENT_OUTPUT_TEMPLATES: Record<string, IntentOutputTemplate> = {
     itemLabel: 'Finding',
     title: 'Factual report',
     sections: ['who_what_when', 'mechanism', 'sources', 'limits'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Encyclopedic who/what/when/where/how/why; plain informational prose.',
     verifierRubric: `PASS criteria for a Factual Report:
@@ -109,16 +113,16 @@ FAIL if: statements are made without a source, uncertainty is papered over, the 
     itemLabel: 'Finding',
     title: 'Survey',
     sections: ['established', 'contested', 'hypothesized', 'lore', 'open_questions'],
-    sidebarDoubleCheckAnnotations: true,
+    sidebarSkepticAnnotations: true,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Layered exposition; sidebar holds double-check notes.',
+    narrativeHint: 'Layered exposition; sidebar holds skeptical cross-checks.',
     verifierRubric: `PASS criteria for a Survey:
 - Covers the established, contested, and hypothesized layers of the topic.
 - Each layer is clearly distinguished and labeled.
 - Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
 - Open questions are acknowledged rather than suppressed.
 - Citations support the information in all layers.
-FAIL if: all information is treated as equally certain, contested zones are not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
+FAIL if: all information is treated as equally certain, disagreement among researchers is not flagged, the survey collapses into a single-hypothesis report, or the report refuses to deliver the requested survey because sourcing is thin.`,
     requiredDeliverables: [
       'Established-knowledge layer with cited evidence',
       'Contested or debated questions layer',
@@ -129,27 +133,27 @@ FAIL if: all information is treated as equally certain, contested zones are not 
   intent_adjudication: {
     id: 'intent_adjudication',
     intentId: 'adjudication',
-    itemLabel: 'Claim',
+    itemLabel: 'Statement',
     title: 'Adjudication',
-    sections: ['claim', 'case_for', 'case_against', 'verdict', 'weaknesses'],
-    sidebarDoubleCheckAnnotations: false,
+    sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Verdict-first layout with strongest cases on both sides.',
-    verifierRubric: `PASS criteria for an Adjudication:
-- The specific claim being adjudicated is clearly stated.
-- The strongest case FOR the claim is presented with cited evidence.
-- The strongest case AGAINST the claim is presented with cited evidence.
+    narrativeHint: 'Answer first: say plainly what the sources support and what they do not, then give the detail under subject headings.',
+    verifierRubric: `PASS criteria for a report that examines whether a statement holds:
+- The statement or question being examined is stated plainly at the start.
+- The summary says directly what the sources support, what they do not support, and how sure they allow a reader to be.
+- Information that supports the statement and information that goes against it are both presented, each with cited sources.
+- Where good sources disagree, the report says who says what.
 - Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
-- A verdict is rendered with explicit confidence and residual uncertainty.
-- Falsification criteria are named — what evidence would overturn the verdict.
-- Contradiction analysis is substantive (not "no contradictions found").
-FAIL if: only one side is represented, verdict lacks confidence statement, or falsification criteria are generic.`,
+- The report reads as a review article: information under subject headings, not an argument between two sides.
+- What the sources leave unsettled is stated in ordinary words.
+FAIL if: only one side of the available information is presented, the direct answer is withheld, or the report states more certainty than its sources carry.`,
     requiredDeliverables: [
-      'Clear statement of the claim being adjudicated',
-      'Strongest supporting evidence for the claim',
-      'Strongest counter-evidence against the claim',
-      'Explicit verdict with confidence level',
-      'Falsification criteria',
+      'Plain statement of what is being examined',
+      'Information that supports it, with citations',
+      'Information that goes against it, with citations',
+      'A direct answer saying how well the sources support it',
+      'What the sources leave unsettled',
     ],
   },
   intent_investigation: {
@@ -157,25 +161,24 @@ FAIL if: only one side is represented, verdict lacks confidence statement, or fa
     intentId: 'investigation',
     itemLabel: 'Finding',
     title: 'Investigation',
-    sections: ['framing', 'primary_evidence', 'contested_zones', 'unresolved'],
-    sidebarDoubleCheckAnnotations: false,
+    sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Symmetric treatment of contested zones.',
+    narrativeHint: 'Answer first, then the detail under subject headings. Where sources disagree, give each side the same care.',
     verifierRubric: `PASS criteria for an Investigation:
-- The contested zones are treated symmetrically — no side receives disproportionate evidential weight without justification.
-- Primary evidence is cited.
+- What is being investigated is stated plainly at the start, and the summary answers it as far as the sources allow.
+- First-hand records and original documents are cited where the sources include them.
+- Where sources disagree, each side is given the same care, and the report says who says what.
 - Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
-- Contested zones are explicitly named and analyzed.
-- Contradiction analysis is substantive and identifies concrete points of tension.
-- Unresolved questions are acknowledged.
-- Falsification criteria are present for adjudicative sub-claims.
-- The investigation does not collapse prematurely into a one-sided conclusion.
-FAIL if: contested zones are glossed over, evidence is asymmetrically weighted without explanation, or unresolved questions are suppressed.`,
+- Points of disagreement are named specifically, not described in general terms.
+- What the sources leave open is stated in ordinary words.
+- The report does not settle early on a one-sided conclusion.
+FAIL if: disagreement between sources is passed over, one side is given more weight without a stated reason, or what remains open is left out.`,
     requiredDeliverables: [
-      'Clear framing of what is being investigated',
-      'Primary evidence with citations',
-      'Analysis of contested zones',
-      'Unresolved questions',
+      'Plain statement of what is being investigated',
+      'What first-hand records and original documents show, with citations',
+      'Where the sources disagree, and who says what',
+      'What the sources leave open',
     ],
   },
   intent_literature_review: {
@@ -184,7 +187,7 @@ FAIL if: contested zones are glossed over, evidence is asymmetrically weighted w
     itemLabel: 'Study',
     title: 'Literature review',
     sections: ['abstract', 'methods', 'findings', 'discussion', 'limitations', 'references'],
-    sidebarDoubleCheckAnnotations: true,
+    sidebarSkepticAnnotations: true,
     showPlainLanguageFooter: true,
     narrativeHint: 'PRISMA-style ordering; methodology notes in sidebar.',
     verifierRubric: `PASS criteria for a Literature Review:
@@ -210,7 +213,7 @@ FAIL if: sources are listed without synthesis, search scope is unstated, the rev
     itemLabel: 'Option',
     title: 'Comparative',
     sections: ['dimensions_table', 'per_option', 'recommendation_optional'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Matrix-first then deep per-option analysis.',
     verifierRubric: `PASS criteria for a Comparative:
@@ -233,7 +236,7 @@ FAIL if: options receive unequal treatment without justification, comparison dim
     itemLabel: 'Step',
     title: 'How-to',
     sections: ['prerequisites', 'steps', 'outcomes', 'troubleshooting'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Numbered procedural flow.',
     verifierRubric: `PASS criteria for a How-To:
@@ -256,7 +259,7 @@ FAIL if: steps are out of order, prerequisites are missing, steps are vague and 
     itemLabel: 'Recommendation',
     title: 'Recommendation',
     sections: ['constraints', 'options', 'recommendation', 'tradeoffs'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Decision-layer after comparative options.',
     verifierRubric: `PASS criteria for a Recommendation:
@@ -279,17 +282,17 @@ FAIL if: recommendation is asserted without reasoning, constraints are unstated,
     itemLabel: 'Direction',
     title: 'Exploratory',
     sections: ['editorial_intro', 'highlights', 'why_it_matters'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Curated highlights with editorial framing.',
+    narrativeHint: 'Curated highlights with an editorial introduction.',
     verifierRubric: `PASS criteria for an Exploratory report:
 - The report surfaces interesting or non-obvious findings.
-- Editorial framing is honest about uncertainty.
+- The editorial introduction is honest about uncertainty.
 - Information is anchored to source references or clearly described as tentative.
 - The report does not overstate conclusions — it explicitly marks open questions.
 FAIL if: the report asserts definitive conclusions where the findings are exploratory, uncertainty is hidden, or the report refuses to surface findings because sourcing is thin.`,
     requiredDeliverables: [
-      'Editorial framing of the exploration',
+      'Editorial introduction to the exploration',
       'Curated highlights with confidence tags',
       'Why-it-matters context',
       'Open questions or follow-up directions',
@@ -301,7 +304,7 @@ FAIL if: the report asserts definitive conclusions where the findings are explor
     itemLabel: 'Opportunity',
     title: 'Opportunity discovery',
     sections: ['overview', 'opportunities_list', 'ranking_and_analysis', 'recommendations', 'caveats'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint:
       'Ranked opportunity list. Use the confirmed plan as the contract: include exactly the fields the user requested or ResearchOne inferred at plan confirmation. Do not inject implementation guidance unless the user explicitly requested it.',
@@ -332,7 +335,7 @@ FAIL if: the requested opportunity count is not met; the report delivers a compa
     itemLabel: 'Factor',
     title: 'Feasibility analysis',
     sections: ['summary', 'dimensions', 'risks', 'viability_rating', 'recommendation'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Structured viability assessment with explicit go/no-go recommendation.',
     verifierRubric: `PASS criteria for a Feasibility Analysis:
@@ -355,7 +358,7 @@ FAIL if: a dimension is omitted without explanation, the recommendation is absen
     itemLabel: 'Phase',
     title: 'Implementation plan',
     sections: ['overview', 'prerequisites', 'plan_phases', 'detailed_steps', 'acceptance_criteria'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Ordered build plan with actionable steps and verification criteria.',
     verifierRubric: `PASS criteria for an Implementation Plan:
@@ -376,26 +379,27 @@ FAIL if: phases are vague, prerequisites are missing, steps are non-actionable, 
   intent_story_verification: {
     id: 'intent_story_verification',
     intentId: 'story_verification',
-    itemLabel: 'Claim',
+    itemLabel: 'Statement',
     title: 'Story verification',
-    sections: ['claim_summary', 'confirmed', 'unconfirmed', 'false_or_misleading', 'confidence', 'sources'],
-    sidebarDoubleCheckAnnotations: false,
+    sections: ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'],
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
-    narrativeHint: 'Source-matrix verification; confirmed / unconfirmed / false; per-claim confidence.',
+    narrativeHint: 'Answer first: which parts of the story the sources confirm, which they do not confirm, and which they show to be wrong. Then the detail under subject headings.',
     verifierRubric: `PASS criteria for a Story Verification:
-- Each claim in the story is categorized: confirmed, unconfirmed, or false/misleading.
-- Per-claim confidence levels are stated.
-- Evidence is cited for confirmed and falsified claims.
-- Sources are listed and their reliability assessed.
-- Uncertainty about unconfirmed claims is explicit.
-FAIL if: claims are not individually addressed, confidence is asserted without evidence, or the "unconfirmed" category is absent.`,
+- The story being checked is summarised plainly at the start.
+- Each main statement in the story is addressed: confirmed by the sources, not confirmed, or shown to be wrong or misleading.
+- For each, the report says in ordinary words how sure the sources allow a reader to be.
+- Sources are cited for what is confirmed and for what is shown to be wrong.
+- Written as plain, readable prose. No evidence-tier labels (such as established_fact, strong_evidence, testimony, inference, speculation) or internal step names appear anywhere in the text; strength of evidence is conveyed in ordinary words only where it matters to the reader.
+- What could not be confirmed is said plainly.
+FAIL if: the main statements of the story are not each addressed, certainty is stated without a source, or what could not be confirmed is left out.`,
     requiredDeliverables: [
-      'Summary of the story or narrative being verified',
-      'Confirmed claims with evidence',
-      'Unconfirmed or disputed claims',
-      'False or misleading claims with counter-evidence',
-      'Per-claim confidence rating',
-      'Source list',
+      'Summary of the story being checked',
+      'What the sources confirm, with citations',
+      'What the sources do not confirm',
+      'What the sources show to be wrong or misleading, with citations',
+      'How sure the sources allow a reader to be about each',
+      'Reference list',
     ],
   },
   intent_position_brief: {
@@ -404,7 +408,7 @@ FAIL if: claims are not individually addressed, confidence is asserted without e
     itemLabel: 'Argument',
     title: 'Position brief',
     sections: ['disclosure', 'thesis', 'support', 'counters', 'rebuttals'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Partisan disclosure header; rhetorical arc.',
     verifierRubric: `PASS criteria for a Position Brief:
@@ -428,7 +432,7 @@ FAIL if: the partisan stance is undisclosed, counterarguments are ignored, or ev
     itemLabel: 'Event',
     title: 'Timeline',
     sections: ['chronology', 'precision_notes', 'contested_dates'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Chronological with date-precision callouts.',
     verifierRubric: `PASS criteria for a Timeline:
@@ -452,7 +456,7 @@ FAIL if: events are out of order, date precision is overstated, contested dates 
     itemLabel: 'Entry',
     title: 'Reference lookup',
     sections: ['direct_answer', 'sources', 'confidence'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: false,
     narrativeHint: 'Minimal direct answer + sources + confidence.',
     verifierRubric: `PASS criteria for a Reference Lookup:
@@ -472,7 +476,7 @@ FAIL if: the direct answer is absent, sources are missing, the answer is padded 
     itemLabel: 'Item',
     title: 'Standard dossier',
     sections: ['executive_summary', 'evidence', 'analysis', 'conclusion'],
-    sidebarDoubleCheckAnnotations: false,
+    sidebarSkepticAnnotations: false,
     showPlainLanguageFooter: true,
     narrativeHint: 'Legacy runs without intent gate.',
     verifierRubric: `PASS criteria for a Standard Dossier (legacy):
