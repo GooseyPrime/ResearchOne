@@ -64,6 +64,56 @@ Output JSON with this exact schema:
   "notes": "string"
 }`;
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The stored claim a citation points at, or null.
+ *
+ * The mapper model is shown claims as "[CLAIM N] text" and no ids, so what it
+ * writes in `claim_id` is the claim's number, its label, its text, or an id it
+ * made up. Each of those used to be handed to a UUID column as it stood. One
+ * value that was not a stored claim's id failed its insert, and because the
+ * inserts share a transaction, every citation of the report was lost with it:
+ * the report was saved, and the reading page said it had no mapped citations.
+ * Only an id of a claim stored for this run is ever written.
+ */
+export function resolveClaimId(
+  raw: unknown,
+  claims: ReadonlyArray<{ claim_text: string }>,
+  claimIdByText: ReadonlyMap<string, string>,
+  knownClaimIds: ReadonlySet<string>
+): string | null {
+  if (raw === null || raw === undefined) return null;
+  const value = String(raw).trim();
+  if (!value || value.toLowerCase() === 'null') return null;
+  if (UUID_SHAPE.test(value)) return knownClaimIds.has(value) ? value : null;
+  const byText = claimIdByText.get(value);
+  if (byText) return byText;
+  // "3", "CLAIM 3", "[CLAIM 3]": the claim's place in the list the model was shown.
+  const numbered = /^\[?\s*(?:claim\s*)?(\d+)\s*\]?$/i.exec(value);
+  if (numbered) {
+    const text = claims[Number(numbered[1]) - 1]?.claim_text?.trim();
+    return (text && claimIdByText.get(text)) || null;
+  }
+  return null;
+}
+
+/** The stored source of each passage. A failed read costs the source link on the rows, not the rows. */
+async function storedSourceIds(runId: string, chunkIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(chunkIds.filter((id) => UUID_SHAPE.test(id)))];
+  if (ids.length === 0) return new Map();
+  try {
+    const rows = await query<{ id: string; source_id: string | null }>(
+      `SELECT id, source_id FROM chunks WHERE id = ANY($1::uuid[])`,
+      [ids]
+    );
+    return new Map((rows ?? []).filter((row) => typeof row.source_id === 'string' && row.source_id).map((row) => [row.id, row.source_id as string]));
+  } catch (err) {
+    logger.warn(`[citations:${runId}] could not read the sources of the cited passages; citations are saved by passage only`, { code: (err as { code?: string })?.code ?? 'unknown' });
+    return new Map();
+  }
+}
+
 export async function mapAndPersistCitations(args: {
   runId: string;
   reportId: string;
@@ -190,6 +240,7 @@ export async function mapAndPersistCitations(args: {
     [runId]
   );
   const claimIdByText = new Map<string, string>(claimRows.map(r => [r.claim_text.trim(), r.id]));
+  const knownClaimIds = new Set(claimRows.map((row) => row.id));
 
   // Look up report_section IDs
   const sectionRows = await query<{ id: string; section_type: string }>(
@@ -198,12 +249,15 @@ export async function mapAndPersistCitations(args: {
   );
   const sectionIdByType = new Map<string, string>(sectionRows.map(r => [r.section_type, r.id]));
 
+  // The source of each cited passage, read from storage. The model is never
+  // shown a source id, so whatever it writes in `source_id` is a guess.
+  const sourceIdByChunk = await storedSourceIds(runId, result.citations.map((citation) => citation.chunk_id));
+
+  let persisted = 0;
   await withTransaction(async (client) => {
     for (const citation of result.citations) {
       const sectionId = sectionIdByType.get(citation.section_type) ?? null;
-      const claimId = citation.claim_id
-        ? (claimIdByText.get(citation.claim_id) ?? citation.claim_id)
-        : null;
+      const claimId = resolveClaimId(citation.claim_id, claims, claimIdByText, knownClaimIds);
 
       const origin = discoverySummary
         ? { ...discoverySummary, section_type: citation.section_type }
@@ -214,7 +268,23 @@ export async function mapAndPersistCitations(args: {
         wave53Maps != null
           ? resolveSourceClassForChunk(citation.chunk_id, wave53Maps, srcUrl)
           : null;
+      const sourceId = sourceIdByChunk.get(citation.chunk_id) ?? null;
+      const base = [
+        reportId,
+        sectionId,
+        citation.chunk_id,
+        sourceId,
+        claimId,
+        citation.chunk_quote ?? null,
+        Number.isInteger(citation.citation_order) ? citation.citation_order : 0,
+        JSON.stringify(origin),
+      ];
 
+      // Each row is saved inside its own savepoint. A statement that fails
+      // inside a transaction poisons every statement after it, so without one a
+      // single bad row lost every citation of the report, and the retry below
+      // for a database without `source_class` could never succeed either.
+      await client.query('SAVEPOINT citation_row');
       try {
         await client.query(
           `INSERT INTO report_citations (
@@ -223,21 +293,19 @@ export async function mapAndPersistCitations(args: {
            )
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT DO NOTHING`,
-          [
-            reportId,
-            sectionId,
-            citation.chunk_id,
-            citation.source_id ?? null,
-            claimId,
-            citation.chunk_quote ?? null,
-            citation.citation_order ?? 0,
-            JSON.stringify(origin),
-            sourceClass,
-          ]
+          [...base, sourceClass]
         );
+        await client.query('RELEASE SAVEPOINT citation_row');
+        persisted += 1;
       } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT citation_row');
         const code = (err as { code?: string })?.code;
-        if (code === '42703') {
+        if (code !== '42703') {
+          // One citation that cannot be stored does not cost the report the rest.
+          logger.warn(`[citations:${runId}] a citation could not be saved and was left out`, { code: code ?? 'unknown', section: citation.section_type });
+          continue;
+        }
+        try {
           await client.query(
             `INSERT INTO report_citations (
                report_id, section_id, chunk_id, source_id, claim_id,
@@ -245,24 +313,21 @@ export async function mapAndPersistCitations(args: {
              )
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT DO NOTHING`,
-            [
-              reportId,
-              sectionId,
-              citation.chunk_id,
-              citation.source_id ?? null,
-              claimId,
-              citation.chunk_quote ?? null,
-              citation.citation_order ?? 0,
-              JSON.stringify(origin),
-            ]
+            base
           );
-        } else {
-          throw err;
+          await client.query('RELEASE SAVEPOINT citation_row');
+          persisted += 1;
+        } catch (retryErr) {
+          await client.query('ROLLBACK TO SAVEPOINT citation_row');
+          logger.warn(`[citations:${runId}] a citation could not be saved and was left out`, { code: (retryErr as { code?: string })?.code ?? 'unknown', section: citation.section_type });
         }
       }
     }
   });
 
-  logger.info(`[citations:${runId}] Persisted ${result.citations.length} citations, ${result.uncitedSections.length} uncited sections`);
+  if (persisted < result.citations.length) {
+    logger.error(`[citations:${runId}] ${result.citations.length - persisted} of ${result.citations.length} mapped citation(s) could not be saved`);
+  }
+  logger.info(`[citations:${runId}] Persisted ${persisted} citations, ${result.uncitedSections.length} uncited sections`);
   return result;
 }
