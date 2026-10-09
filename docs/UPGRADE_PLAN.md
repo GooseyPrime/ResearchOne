@@ -775,6 +775,38 @@ Left for the slices:
 
 Tests: `discoveryRelevanceGate.test.ts` (whole discovery passes), `retrievalRelevanceForRun.test.ts` (through `retrieveChunksWithAudit`), `runSourcesUsedOnly.test.ts` (through the two routes), `citationMapperSafeIds.test.ts`, `relevanceJudgeReply.test.ts`, `relevanceCheckWiring.test.ts`, and the frontend `RunSourceLists.test.tsx`.
 
+### Fix outside the slices, 9 Oct 2026. A provider that refuses must not end a run
+
+Ordered by Brandon on 9 Oct 2026 after run `R1-20261009-1316-KTDDV-9` finished planning, searching, reading, the specialist analyses and Double-check, then stopped at "Writing the report": the section writer's model answered 402 (out of credit), its backup was on the same provider and answered 402 too, and the run was marked aborted. Not a slice and not behind a slice switch.
+
+What was wrong:
+
+- `callRoleModel` tried a role's model and then its backup, and stopped. Both sit on OpenRouter for every role in `V2_MODE_PRESETS`, so one provider's account decided whether a run finished, while Hugging Face Inference and Together were configured and unused. A hub model whose two hosts both failed was not even given its backup.
+- `buildResearchFailureDetails` treated only a rate limit and an outage as recoverable. A 402 made the run `aborted`, which drops `resume_job_payload`, so it could not be run again.
+- The run page printed `error_message` as stored (the step key, the model id, `status=402`, `classification=quota_exceeded`, the provider's own words) and the trace printed "Aborted", the model id and token counts for everyone.
+- `waitForDiscoveryIngestReadiness` reports every three seconds whether or not anything changed, and each report became a stored trace line with `pending=…; failed=…; waited=…ms` as its detail.
+- "Run it again" on the run page opened a new request, which is a second run with a second reserved payment.
+
+What changed:
+
+- **Routes.** `modelRoutesForCall` in `openrouterService.ts`: the role's model, then its backup (unchanged, in that order), then the models in `CROSS_PROVIDER_BACKUPS` (`reasoningModelPolicy.ts`), a provider the role has not used yet first. Those models are already on the allowlist and are low-refusal lines only; nothing was added to the allowlist, to a preset or to the settings. A cross-provider route is tried only after a provider-side refusal (no credit, rate limit, outage, rejected key, network), never after a request the provider called malformed, and only on a provider that has a key. When every route refused and the role's own models were refused for credit or rate, the routes are gone over again after 4 s and after 12 s (`modelRouteRetry`), which is what the provider's 402 asks for. The call fails only then, reported as the refusal of the role's own models.
+- **Record.** A result carries `routeUsed` (model, provider, primary / backup / cross-provider) and, when the first route did not answer, `routesTried`. Both are in `model_log`; the run summary's model usage carries the provider and position; a failure carries `routesTried` in `failure_meta`.
+- **Run again.** Out of credit and a network failure are recoverable. The run ends `failed`, keeps its payload, and `POST /api/research/:id/retry-from-failure` accepts it, up to the existing retry budget. The run page's "Run it again" calls that endpoint when the run can be run again, so it is the same run and the same reserved payment.
+- **What a customer is told.** `reasoning/customerFailureMessage.ts` holds the sentences. `GET /api/research` and `GET /api/research/:id` send anyone who is not an administrator the sentence in place of `error_message`, a `failure_meta` reduced to what the page needs, and trace events without the model id, token counts, internal detail or stored error; `model_log` and `resume_job_payload` are not sent. The stored error is unchanged in the database and on the admin and diagnostics views. The page has its own guard (`utils/customerFailureText.ts`) because the two halves deploy separately.
+- **Trace.** A waiting step writes a line when its count changes and otherwise once a minute (`createWaitingTraceThrottle`). Counts and timings go in `internalDetail`, which only an administrator is sent or shown. The page folds repeated updates of one wait into one updating line, says "passages", and no longer prints "Aborted" or "Retryable".
+- **A run that has ended.** The run page stops listening for progress once the run is no longer in flight, as it already stopped polling.
+
+What a failed run charges: nothing. A wallet hold is consumed, and a subscription report counted, only when a run completes (`consumeHold` and `incrementReportCount` in the completion path). A run that stops for good has its hold released at once; a run that can be run again keeps its hold for that, and `reapExpiredHolds` returns it after 30 minutes if it is not.
+
+Not done, and what it needs:
+
+- **Running again starts the research over.** `research_run_checkpoints` is written at each stage and read by nothing except the restart sweep in `queue/workers.ts`, which uses it to name the stage a run was in. To resume at writing, a checkpoint would have to hold everything writing reads: the passages left after the link check and the relevance check (today only the ids from before those checks), the source-class map, the specialist findings and statuses, the restated findings, the material-sufficiency decision and the degraded-coverage reasons, besides the plan, the reasoner output and the Double-check output it already holds; and `runResearchJob` would have to load them and skip each finished stage. That is a change to the main pipeline function, which slices 8 to 10 are also changing, so it is left for one of them or for its own order. No customer sentence promises that finished work is reused.
+- **The cross-provider routes have not been called against the live providers** (no paid runs were allowed for this fix). The tests replace the HTTP client and the Hugging Face client. Whether each hub id is hosted, and under that exact id on Together, has to be confirmed with the model probe before relying on it.
+- **The two-minute freeze opening the run page was not reproduced.** Mounted with a stopped run and its 47 stored trace events, the page draws in under ten passes, asks for the run once and never again, and the whole signed-in frame makes one request per endpoint. The trace is now a fraction of the rows and the ended run has no listener, and a test holds both, but no loop or runaway work was found in the code, so the cause is not established. Next step: a performance recording in the browser that froze.
+- `workers.ts` sends every run's progress events to every connected browser (`io.emit`), not only to the run's own room. The page ignores events for other runs, but they are sent. Recorded for Brandon.
+
+Tests: `modelRouteFallback.test.ts`, `providerFailureCustomerPath.test.ts`, and the frontend `RunPageProviderFailure.test.tsx`.
+
 ### Slice 8. Challenge layer (not started)
 
 Flag `CHALLENGE_LEDGER_ENABLED`. This was slice 7. This is where PolicyOne does its work.
