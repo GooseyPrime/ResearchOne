@@ -162,15 +162,15 @@ describe('methodology resolution per intent', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PART C — Orchestration profiles: skeptic mode per intent
+// PART C — Orchestration profiles: double-check mode per intent
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * These assertions changed with WO-AH, on the operator's instruction: "the
- * skeptic ... should be run on everything. we need to verify that the research
+ * double-check ... should be run on everything. we need to verify that the research
  * is correct no matter what type of request the user has."
  *
- * Seven intents previously answered that with `skepticMode: 'off'` and skipped
+ * Seven intents previously answered that with `doubleCheckMode: 'off'` and skipped
  * the challenge stage. They are now `'annotate'` — the pass runs and its
  * challenges are recorded alongside the draft. `'gate'`, which blocks synthesis
  * until the challenge is satisfied, remains the planner's per-intent call and is
@@ -182,33 +182,33 @@ describe('methodology resolution per intent', () => {
  * now guards the new contract across the whole registry rather than intent by
  * intent, so the floor cannot be lowered again one literal at a time.
  */
-describe('orchestration profile skepticMode per intent', () => {
-  it('adjudication has skepticMode gate', () => {
-    expect(ORCHESTRATION_PROFILES['adjudication'].skepticMode).toBe('gate');
+describe('orchestration profile doubleCheckMode per intent', () => {
+  it('adjudication has doubleCheckMode gate', () => {
+    expect(ORCHESTRATION_PROFILES['adjudication'].doubleCheckMode).toBe('gate');
   });
 
-  it('investigation has skepticMode gate', () => {
-    expect(ORCHESTRATION_PROFILES['investigation'].skepticMode).toBe('gate');
+  it('investigation has doubleCheckMode gate', () => {
+    expect(ORCHESTRATION_PROFILES['investigation'].doubleCheckMode).toBe('gate');
   });
 
   it('opportunity_discovery runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['opportunity_discovery'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['opportunity_discovery'].doubleCheckMode).toBe('annotate');
   });
 
   it('feasibility runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['feasibility'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['feasibility'].doubleCheckMode).toBe('annotate');
   });
 
   it('implementation runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['implementation'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['implementation'].doubleCheckMode).toBe('annotate');
   });
 
   it('how_to runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['how_to'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['how_to'].doubleCheckMode).toBe('annotate');
   });
 
   it('reference_lookup runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['reference_lookup'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['reference_lookup'].doubleCheckMode).toBe('annotate');
   });
 });
 
@@ -301,8 +301,8 @@ describe('opportunity_discovery template: adaptive contract (no mega-schema)', (
     expect(rubric).toContain('fail');
   });
 
-  it('sidebarSkepticAnnotations is false (no adversarial sidebar)', () => {
-    expect(tpl!.sidebarSkepticAnnotations).toBe(false);
+  it('sidebarDoubleCheckAnnotations is false (no adversarial sidebar)', () => {
+    expect(tpl!.sidebarDoubleCheckAnnotations).toBe(false);
   });
 });
 
@@ -473,7 +473,7 @@ Deliver exactly 20 ranked opportunities. Recommend the top 10, top 5, and top 3 
   });
 
   it('opportunity_discovery runs the challenge pass in annotate mode', () => {
-    expect(ORCHESTRATION_PROFILES['opportunity_discovery'].skepticMode).toBe('annotate');
+    expect(ORCHESTRATION_PROFILES['opportunity_discovery'].doubleCheckMode).toBe('annotate');
   });
 
   it('opportunity_discovery output template does not require build prompts', () => {
