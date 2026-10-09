@@ -14,6 +14,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { distinctSourceCount } from '../services/reasoning/baselineReport';
+import { relevanceCheckCausedShortfall } from '../services/retrieval/runRelevanceFilter';
 
 const source = readFileSync(join(__dirname, '../services/reasoning/researchOrchestrator.ts'), 'utf8');
 
@@ -43,6 +45,18 @@ function callsTo(name: string): string[] {
 }
 
 describe('the research job and the relevance check', () => {
+  it('counts a source with no link, such as an uploaded file, when deciding the check left the run short', () => {
+    const call = /relevanceCheckCausedShortfall\(\{([\s\S]*?)\n {6}\}\)/.exec(source)?.[1] ?? '';
+    expect(call).toMatch(/usableSources: distinctSourceCount\(/);
+    expect(call).toMatch(/title: chunk\.source_title/);
+    expect(call).not.toMatch(/new Set\(/);
+    // What that count does with the case the old one dropped.
+    const web = Array.from({ length: 14 }, (_, i) => ({ title: `Page ${i}`, url: `https://example.org/${i}` }));
+    const upload = { title: 'county-audit.pdf', url: null };
+    expect(distinctSourceCount([...web, upload, upload])).toBe(15);
+    expect(relevanceCheckCausedShortfall({ usableSources: distinctSourceCount([...web, upload]), setAside: 1, minimum: 15 })).toBe(false);
+  });
+
   it('passes the run\'s question to every retrieval', () => {
     const calls = callsTo('retrieveChunksWithAudit');
     expect(calls.length).toBeGreaterThanOrEqual(4);
