@@ -30,7 +30,7 @@ const STAGE_MAP: Record<string, ResearchStage> = {
   retriever_analysis: 'retriever_analysis',
   retriever_assessor: 'retriever',
   reasoner: 'reasoner',
-  skeptic: 'skeptic',
+  double_check: 'double_check',
   synthesizer: 'synthesizer',
   verifier: 'verifier',
   report: 'formatter',
