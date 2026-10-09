@@ -22,7 +22,6 @@ import { saveRunCheckpoint } from './checkpointService';
 import { decideRunStateOnFailure } from './runStateMachine';
 import {
   ADJUDICATIVE_SECTION_INTENTS,
-  clampWordTarget,
   deriveGeneratedReportTitle,
   ensureGeneratedTitleHeading,
   generateIterativeReport,
@@ -31,10 +30,8 @@ import {
   stripPromptEchoFromReport,
   stripInternalLabelsFromReport,
   finalizeLockedReportForSave,
-  cleanLayer1WordingForSave,
 } from './reportGenerator';
 import { cleanReaderMetadata } from '../formatting/reportPresentation';
-import { CLAIM_CLASS_SOURCING_BURDEN } from '../formatting/templates/intentOutputTemplates';
 import {
   TRACE_DETAIL_MAX_CHARS,
   TRACE_MESSAGE_MAX_CHARS,
@@ -47,9 +44,10 @@ import {
   resolveTableExpectation,
 } from './tableContract';
 import { applyTargetedRepair, planTargetedRepair } from './targetedRepair';
+import { appendChallengePass, writeChallengePass } from './challengePass';
 import { SCOPED_RETRIEVAL_TOP_K } from './specialistRetrievalScopes';
 import { resolveRunTerminalOutcome } from './runStatusDisplay';
-import { config, baselineLayerEnabled, citationLockEnabled, discoveryIngestFloor, doiResolveEnabled, providerRoutingEnabled, runWithFlags } from '../../config';
+import { config, discoveryIngestFloor, doiResolveEnabled, runWithFlags } from '../../config';
 import { checkDois, doiOf, findUnstatedDois, type DoiCheck } from '../verification/doiResolve';
 import { resolveReferenceStyle, describeSourceKind } from '../formatting/referenceList';
 import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, finalizeLockedCitations, issuePassages, stripReaderNumbers, stripUnsupportedMarkers,
@@ -57,8 +55,8 @@ import { applyDoiChecks, assignOccurrencesToSections, countShortfallSetsStatus, 
   LOCKED_REPAIR_RULE, type CitationOccurrence, type LockedPassage } from './citationLock';
 import { recordDoiChecks, writeBoundCitations, type CitationWriter } from './citationBinding';
 import { digestRetrievedMaterial, gateFallbackStep, judgeRetrievedMaterial, logGateFallback, materialStep, readerInsufficientMessage } from './materialSufficiency';
-import { distinctSourceCount, isoDay, type UsedSource } from './baselineReport';
-import { boundedReportForAudit, closingNoteOf, searchScopeGateContext, searchScopeNoteFor, withClosingNoteRestored, type SearchPassSummary } from './searchScope';
+import { isoDay, type UsedSource } from './baselineReport';
+import { boundedReportForAudit, searchScopeGateContext, searchScopeNoteFor, type SearchPassSummary } from './searchScope';
 import { clearRunCancelled, isRunCancellationRequested, ResearchCancelledError } from '../researchCancellation';
 import { markReportFinalizedRetention, markRunTerminalRetention } from '../retention/retentionService';
 import type { PerRunModelOverrides } from '../runtimeModelStore';
@@ -109,7 +107,6 @@ import {
   PIPELINE_STAGES,
   type OrchestrationProfileDefinition,
   shouldRunPipelineStage,
-  writesThroughReportWriter,
 } from '../planning/orchestrationProfiles';
 import { classifyRetrievedSources } from '../planning/sourceClassClassifier';
 import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
@@ -300,11 +297,7 @@ const RETRIEVAL_PROGRESS_CAP = 34;
 interface ReaderFrontMatter {
   overall_summary: string;
   conclusions_nutshell: string;
-  /**
-   * Reader-facing metric cards. The frontend renders exactly these — it no
-   * longer hardcodes adjudicative cards like "Falsification target" onto every
-   * report (WO-AB). `value` is the headline figure; `narrative` explains it.
-   */
+  /** Kept in the stored shape; always empty. No report page shows cards. */
   metric_glosses: Array<{ label: string; value?: string; narrative: string }>;
 }
 
@@ -334,145 +327,20 @@ function snapshotModelEnsemble(overrides: PerRunModelOverrides): Record<string, 
   return out;
 }
 
-function buildReaderFrontMatter(args: {
-  intentId: string;
-  executiveSummary: string;
-  conclusion: string;
-  contradictionCount: number;
-  sourceCount: number;
-  chunkCount: number;
-  falsificationCriteria: string[] | null | undefined;
-  requestedOpportunityCount?: number;
-  deliveredOpportunityCount?: number;
-  fieldsCompleteCount?: number;
-  constraintsPassed?: number;
-  constraintsFailed?: number;
-  usableSourceCount?: number;
-  independentDomainCount?: number;
-  validationExperimentCount?: number;
-  contractStatus?: string;
-  baselineLayer?: boolean;
-}): ReaderFrontMatter {
+/**
+ * The short text kept beside a report for lists and previews: the opening of
+ * its summary, and of its conclusion when it has one. Both are the report's own
+ * words. Nothing is written here by code: the stand-in sentences that used to
+ * fill an empty summary, and the cards counting conflicts and passages, were
+ * removed on 8 Oct 2026. `metric_glosses` stays in the shape, always empty.
+ */
+export function buildReaderFrontMatter(args: { executiveSummary: string; conclusion: string }): ReaderFrontMatter {
   const summary = (args.executiveSummary ?? '').trim().replace(/\s+/g, ' ');
   const conclusion = (args.conclusion ?? '').trim().replace(/\s+/g, ' ');
-  const falsificationCriteria = Array.isArray(args.falsificationCriteria)
-    ? args.falsificationCriteria.filter((c) => typeof c === 'string')
-    : [];
-
-  const nonAdjudicativeIntent = !ADJUDICATIVE_SECTION_INTENTS.has(args.intentId);
-
-  // Reader-facing fallbacks must match the speech act. The adjudicative wording
-  // ("synthesizes evidence from N sources and N evidence chunks", "contradiction
-  // pairs") shipped on opportunity, comparison, and how-to reports and read as
-  // claim-adjudication boilerplate — including the degenerate
-  // "evidence from 0 sources and 0 evidence chunks" (Rule 37 R-M).
-  const fallbackSummary = args.baselineLayer
-    ? ''
-    : nonAdjudicativeIntent
-    ? 'This report presents the requested analysis, with confidence levels and assumptions stated alongside each finding.'
-    : `This report synthesizes evidence from ${args.sourceCount} sources and ${args.chunkCount} evidence chunks to evaluate the core research question.`;
-  const fallbackConclusion = nonAdjudicativeIntent
-    ? 'Findings are stated with their supporting rationale; treat figures marked as estimates as modeled rather than measured.'
-    : args.contradictionCount > 0
-      ? `The findings include ${args.contradictionCount} explicit contradiction points, meaning important claims conflict and require targeted follow-up validation.`
-      : 'The current evidence set does not surface explicit contradiction pairs, but conclusions remain conditional on corpus coverage.';
-  const metricGlosses = nonAdjudicativeIntent
-    ? [
-        {
-          label: 'Deliverable coverage',
-          value:
-            typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
-              ? `${args.deliveredOpportunityCount}/${args.requestedOpportunityCount}`
-              : 'Not tracked',
-          narrative:
-            typeof args.requestedOpportunityCount === 'number' && typeof args.deliveredOpportunityCount === 'number'
-              ? `Delivered ${args.deliveredOpportunityCount}/${args.requestedOpportunityCount} requested opportunities.`
-              : 'Requested deliverable count tracking unavailable.',
-        },
-        {
-          label: 'Field completeness',
-          value:
-            typeof args.fieldsCompleteCount === 'number' ? String(args.fieldsCompleteCount) : 'Not tracked',
-          narrative:
-            typeof args.fieldsCompleteCount === 'number'
-              ? `${args.fieldsCompleteCount} artifacts passed required-field completeness checks.`
-              : 'Required-field completeness not fully evaluated.',
-        },
-        {
-          label: 'Constraint status',
-          value:
-            typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
-              ? `${args.constraintsPassed} met / ${args.constraintsFailed} open`
-              : 'Not tracked',
-          narrative:
-            typeof args.constraintsPassed === 'number' && typeof args.constraintsFailed === 'number'
-              ? `${args.constraintsPassed} user constraints were provided; ${args.constraintsFailed} unresolved contract requirements remained at finalize time.`
-              : 'Constraint pass/fail tracking unavailable.',
-        },
-        {
-          label: 'Source coverage',
-          value:
-            typeof args.independentDomainCount === 'number'
-              ? `${args.usableSourceCount ?? args.sourceCount} sources / ${args.independentDomainCount} domains`
-              : `${args.sourceCount} sources`,
-          narrative:
-            (args.usableSourceCount ?? args.sourceCount) === 0
-              ? 'No independent sources cleared the corpus gate for this run, so findings rest on domain reasoning. Treat specific figures as modeled.'
-              : `${args.usableSourceCount ?? args.sourceCount} usable sources across ${args.independentDomainCount ?? '—'} independent domains. Broader coverage can still shift confidence.`,
-        },
-        {
-          label: 'Validation experiments',
-          value:
-            typeof args.validationExperimentCount === 'number'
-              ? String(args.validationExperimentCount)
-              : 'Not tracked',
-          narrative:
-            typeof args.validationExperimentCount === 'number'
-              ? `${args.validationExperimentCount} validation experiments were provided in the generated artifact.`
-              : 'Validation-experiment coverage unavailable.',
-        },
-        {
-          label: 'Contract status',
-          value: args.contractStatus ?? 'Unavailable',
-          narrative: args.contractStatus ?? 'Contract status unavailable.',
-        },
-      ]
-    : [
-        {
-          label: 'Contradictions',
-          value: String(args.contradictionCount),
-          narrative:
-            args.contradictionCount > 0
-              ? `${args.contradictionCount} claim conflicts were detected. Each conflict shows two evidence-backed statements that cannot both be true as currently framed.`
-              : 'No explicit claim conflicts were detected in this run; this does not prove harmony, only that no direct contradiction pairs were extracted.',
-        },
-        {
-          label: 'Counterevidence / Falsification',
-          value: falsificationCriteria.length > 0 ? 'Defined' : 'Pending',
-          narrative:
-            falsificationCriteria.length > 0
-              ? `This report's conclusions would be falsified by: ${falsificationCriteria.slice(0, 2).join('; ')}.`
-              : 'No specific falsification targets were extracted. Counterevidence would need to directly contradict the central mechanism or primary hypothesis stated in the report body.',
-        },
-        {
-          label: 'Evidence coverage',
-          value: `${args.chunkCount} chunks / ${args.sourceCount} sources`,
-          narrative: `${args.sourceCount} sources and ${args.chunkCount} chunks were reviewed; broader coverage can still change the confidence profile of conclusions.`,
-        },
-      ];
-
   return {
-    overall_summary: [
-      summary.slice(0, 260) || fallbackSummary,
-      conclusion.slice(0, 220) || fallbackConclusion,
-      args.baselineLayer ? `About this report: ${args.sourceCount} sources and ${args.chunkCount} passages were read.` : '',
-    ]
-      .filter(Boolean)
-      .join(' '),
-    conclusions_nutshell: conclusion.slice(0, 360) || fallbackConclusion,
-    metric_glosses: args.baselineLayer
-      ? metricGlosses.filter((gloss) => gloss.label !== 'Falsification targets')
-      : metricGlosses,
+    overall_summary: [summary.slice(0, 260), conclusion.slice(0, 220)].filter(Boolean).join(' '),
+    conclusions_nutshell: conclusion.slice(0, 360),
+    metric_glosses: [],
   };
 }
 
@@ -529,26 +397,10 @@ function buildExecutionResearchPlanFromConfirmedBrief(args: {
     retrieval_queries: retrievalQueries.length > 0 ? retrievalQueries : [args.query],
     ...(args.isAdjudicative && {
       hypothesis: args.query,
-      falsification_criteria: [
-        `Evidence directly contradicting the core claims or mechanism proposed in response to the query "${args.query.slice(0, 120)}" would disprove this report's conclusions.`,
-      ],
+      falsification_criteria: [],
     }),
     investigation_angles: investigationAngles.length > 0 ? investigationAngles : ['Main investigation'],
   };
-}
-
-function countIndependentDomains(chunks: RetrievedChunk[]): number {
-  const domains = new Set<string>();
-  for (const chunk of chunks) {
-    const raw = chunk.source_url ?? '';
-    if (!raw) continue;
-    try {
-      domains.add(new URL(raw).hostname.replace(/^www\./i, '').toLowerCase());
-    } catch {
-      // ignore malformed URLs
-    }
-  }
-  return domains.size;
 }
 
 function parseOpportunityTitleLine(line: string): string | null {
@@ -1371,9 +1223,12 @@ async function runResearchJobInner(
     // hypothesis and falsification_criteria are only required for adjudicative
     // intents — descriptive/discovery intents omit them intentionally.
     if (isAdjudicative) {
-      plan.falsification_criteria = Array.isArray(plan.falsification_criteria) && plan.falsification_criteria.length > 0
-        ? plan.falsification_criteria.map((c) => String(c))
-        : [`Evidence directly contradicting the core claims or mechanism proposed in response to the query "${researchQuery.slice(0, 120)}" would disprove this report's conclusions.`];
+      // What the planner itself wrote is kept for the challenge method. Nothing
+      // is made up when it wrote none: the old fallback was a template sentence
+      // quoting the request, and it reached the reader as if it were a finding.
+      plan.falsification_criteria = Array.isArray(plan.falsification_criteria)
+        ? plan.falsification_criteria.map((c) => String(c)).filter((c) => c.trim().length > 0)
+        : [];
       if (typeof plan.hypothesis !== 'string' || !plan.hypothesis.trim()) {
         plan.hypothesis = researchQuery;
       }
@@ -2069,26 +1924,26 @@ async function runResearchJobInner(
     // outside search adds is analysed by the same stages as the rest of the
     // material instead of reaching synthesis beside stale analysis.
     // ────────────────────────────────────────────────────────────────
-    const layer1Run = baselineLayerEnabled() && !isAdjudicative;
-    const lengthDecision = layer1Run
-      ? resolveReportWordTarget({
-          userTarget: targetWordCount,
-          estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
-        })
-      : { target: clampWordTarget(targetWordCount), source: 'user' as const };
+    // Every run writes the same plain report. What still differs by report type
+    // is the method: a request examined by the challenge method keeps its own
+    // evidence rules, so the material check and the source-count rule of grant I
+    // apply to the rest.
+    const baselineMethodRun = !isAdjudicative;
+    const lengthDecision = resolveReportWordTarget({
+      userTarget: targetWordCount,
+      estimatedLength: data.confirmedPlanPayload?.outputShape?.estimatedLength,
+    });
     if (lengthDecision.source === 'default') {
       logger.warn('report_length_defaulted', { runId, target: lengthDecision.target, reason: 'plan_missing_estimated_length' });
     }
-    if (layer1Run) {
-      await query(
-        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-        [JSON.stringify({ reportLength: lengthDecision }), runId]
-      );
-    }
+    await query(
+      `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+      [JSON.stringify({ reportLength: lengthDecision }), runId]
+    );
     const resolvedWordTarget = lengthDecision.target;
     /** True only when the Layer 1 judge read the material and found it sufficient. Not set by the fallback. */
     let materialJudgedSufficient = false;
-    if (layer1Run) {
+    if (baselineMethodRun) {
       const discoveryAvailable = config.discovery.enabled;
       const digestOf = () =>
         digestRetrievedMaterial(allChunks.map((chunk) => ({ label: chunk.source_title || chunk.source_url || 'Source', text: chunk.content })));
@@ -2408,16 +2263,12 @@ async function runResearchJobInner(
      */
     // A report type whose rules ask for a stated search scope gets that statement
     // from the run's record, in the closing note. Empty for every other run.
-    const searchScopeNote = searchScopeNoteFor({ layer1Run, intentId: orchProfile.intent, summaries: searchPasses });
+    const searchScopeNote = searchScopeNoteFor({ intentId: orchProfile.intent, summaries: searchPasses });
     const gateContext = searchScopeGateContext(searchScopeNote);
-    // Without the citation lock the closing note is already in the report the
-    // writer returns, and later rewrites are handed that whole report. The note
-    // as written is kept here and every later version is held to it.
-    let writtenClosingNote = '';
     const reportForGates = (markdown: string): string =>
       lockedPassages
         ? finalizeLockedCitations(stripInternalLabelsFromReport(stripPromptEchoFromReport(markdown, researchQuery)), lockedPassages, undefined, referenceStyle, searchScopeNote).markdown
-        : withClosingNoteRestored(markdown, writtenClosingNote);
+        : markdown;
     let lockedOccurrences: CitationOccurrence[] | null = null;
     if (adjudicativeEvidenceExhausted) {
       // Adjudication without evidence is the one case where refusing is correct.
@@ -2435,9 +2286,9 @@ async function runResearchJobInner(
     } else {
       await query(`UPDATE research_runs SET corpus_after = corpus_after - 'authorityTiers' WHERE id=$1 AND corpus_after ? 'authorityTiers'`, [runId]);
     }
-    // Slice 7: a lookup profile goes through the report writer with routing and Layer 1 on.
-    const synthesisRuns = writesThroughReportWriter(orchProfile, layer1Run, providerRoutingEnabled());
-    if (synthesisRuns) {
+    // Every report is written by the section writer, the reference lookup
+    // included: there is no shorter path with fixed headings and unbound citations.
+    {
       await progress('synthesis', 80, 'Generating iterative report sections...', { substep: 'outline_started' });
 
       const usedSources = allChunks.map((chunk) => ({
@@ -2449,7 +2300,7 @@ async function runResearchJobInner(
       // Citation lock: the writer cites by marker, and only passages it was shown.
       // The lock holds even when nothing was retrieved: the writer is told no
       // passages are available, and the model-based mapper stays off.
-      if (citationLockEnabled() && layer1Run) {
+      {
         // One reader number per stored source, so look the sources up by passage.
         const chunkIds = allChunks.map((chunk) => chunk.id);
         let sourceRows: LockedSourceRow[];
@@ -2500,14 +2351,6 @@ async function runResearchJobInner(
           `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
           [JSON.stringify({ citationLock: true, ...(doiCheckRecord ? { doiChecks: doiCheckRecord } : {}) }), runId]
         );
-      } else {
-        lockedPassages = null;
-        // A retry of the same run may have recorded the lock on an earlier attempt.
-        // Clear it, so the record always describes the attempt that wrote the report.
-        await query(
-          `UPDATE research_runs SET corpus_after = corpus_after - 'citationLock' WHERE id=$1 AND corpus_after ? 'citationLock'`,
-          [runId]
-        );
       }
       const iterativeReport = await generateIterativeReport({
         query: researchQuery,
@@ -2526,12 +2369,12 @@ async function runResearchJobInner(
         allowFallbackByRole: v2.allowFallbackByRole,
         byokApiKeyOverride,
         requestedFormats: confirmedResearchBrief?.requestedFormats ?? data.requestedFormats,
-        ...synthesisLengthArgs(layer1Run, targetWordCount, lengthDecision),
+        ...synthesisLengthArgs(lengthDecision),
         intentId: orchProfile.intent,
         outputTemplateId,
         isAdjudicative,
         usedSources,
-        lockedPassages: lockedPassages ?? undefined,
+        lockedPassages,
         ...(searchScopeNote ? { searchScopeNote } : {}),
         skipChallenger: !isAdjudicative,
         onSectionProgress: async ({ title, index, total }) => {
@@ -2568,52 +2411,6 @@ async function runResearchJobInner(
         );
       }
       generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
-      if (searchScopeNote && !lockedPassages) writtenClosingNote = closingNoteOf(generatedReport.markdown);
-    } else {
-      await progress('synthesis', 80, 'Minimal synthesis path (intent profile)...', { substep: 'synthesis_light' });
-      const refSynth = await callRoleModel({
-        role: 'synthesizer',
-        ...v2,
-        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'synthesizer'),
-        messages: [
-          { role: 'system', content: getSystemPrompt('synthesizer', isAdjudicative) },
-          {
-            role: 'user',
-            content:
-              `Produce a concise markdown dossier for a reference lookup. Use these headings in order:\n` +
-              `# Executive Summary\n(direct answer)\n` +
-              // "Evidence" is adjudication vocabulary. A reference lookup is not
-              // adjudicating a disputed claim, and a heading the writer sees
-              // becomes a heading the writer reasons in — which is how epistemic
-              // framing leaks into reports that never asked for it (Rule 37).
-              `# ${isAdjudicative ? 'Evidence' : 'Supporting Detail'}\n(short bullets tied to chunk IDs where possible)\n` +
-              `# Source\n(primary URL or title)\n# Confidence\n(qualitative)\n\n` +
-              `Research query:\n${researchQuery}\n\nRetriever analysis:\n${retrieverResult.content}\n\n` +
-              `${specialistFindingsBlock ? `Specialist findings:\n${specialistFindingsBlock}\n\n` : ''}` +
-              // The minimal path is still a synthesis path: when retrieval and
-              // re-discovery came back empty it must receive the same
-              // uncertainty, non-fabrication, and modeled-claim rules as the
-              // iterative drafter (Codex P2 review, PR #202).
-              //
-              // Its verifier now enforces the claim-class burden, so the writer
-              // must be told the same rule or it emits unmarked named prices,
-              // products, and dates and then needlessly fails or repairs
-              // (Codex P2 review, PR #203 — the Rule 42 R42-9 case again).
-              `${isAdjudicative ? '' : `${CLAIM_CLASS_SOURCING_BURDEN}\n\n`}` +
-              `${limitedSourcingDirective ? `${limitedSourcingDirective}\n\n` : ''}` +
-              `Source material:\n${sourceContext.slice(0, 60000)}`,
-          },
-        ],
-      });
-      modelLog.push(refSynth);
-      generatedReport = { markdown: refSynth.content.trim() };
-      generatedReport.markdown = ensureGeneratedTitleHeading(generatedReport.markdown, researchQuery, orchProfile.intent);
-      await saveRunCheckpoint({
-        runId,
-        stage: 'synthesis',
-        checkpointKey: 'synthesis_light',
-        snapshot: { mode: 'reference_lookup' },
-      });
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -2852,7 +2649,7 @@ ${reportForGates(generatedReport.markdown)}`,
         verifierFailed,
         evidenceShortfallDegrades: !materialJudgedSufficient && sourceShortfallDegradesStatus(sourceFailureReason),
         sourceCoverageShortfall,
-        countSetsStatus: countShortfallSetsStatus(layer1Run),
+        countSetsStatus: countShortfallSetsStatus(baselineMethodRun),
       });
       const nextStatus: ReportGateStatus = decided.status;
       if (decided.countShortfallApplied) {
@@ -2885,7 +2682,7 @@ ${reportForGates(generatedReport.markdown)}`,
       minimumUsableSources > 0 &&
       usableSourcesObserved < minimumUsableSources;
     let reportStatus: ReportGateStatus = recomputeReportStatus();
-    if (layer1Run && typeof minimumUsableSources === 'number' && Number.isFinite(minimumUsableSources) && minimumUsableSources > 0) {
+    if (baselineMethodRun && typeof minimumUsableSources === 'number' && Number.isFinite(minimumUsableSources) && minimumUsableSources > 0) {
       // Grant I: the count is kept for the record on every run, met or not, and does not decide the outcome.
       // Counted by stored source, the identity the reader numbers use. An uploaded
       // file has no link, so counting links would leave it out and record a
@@ -3065,22 +2862,6 @@ ${reportForGates(generatedReport.markdown)}`,
       }
     }
 
-    // A Layer 1 report without the lock gets the same last wording check: the
-    // repair pass above runs after the writer's own check and can put banned
-    // wording back. Nothing else about the text changes here.
-    if (!lockedPassages && layer1Run && typeof generatedReport?.markdown === 'string') {
-      const checked = cleanLayer1WordingForSave(generatedReport.markdown);
-      // A repair may have reworded the closing note; the statement of the search is put back as recorded.
-      generatedReport.markdown = withClosingNoteRestored(checked.markdown, writtenClosingNote);
-      if (checked.wordingAfter.length > 0) {
-        logger.warn(`[${runId}] Report saved with wording the reader standard does not allow`, { hits: checked.wordingAfter });
-        await query(
-          `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
-          [JSON.stringify({ presentationIssues: checked.wordingAfter }), runId]
-        );
-      }
-    }
-
     // ────────────────────────────────────────────────────────────────
     // STAGE 8b: PLAIN LANGUAGE — sister report for general audiences
     // ────────────────────────────────────────────────────────────────
@@ -3114,7 +2895,40 @@ ${reportForGates(generatedReport.markdown)}`,
       await progress('plain_language', 93, 'Plain-language pass skipped until primary report passes all gates', { substep: 'stage_skipped' });
     }
 
-        // ────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────
+    // CHALLENGE PASS — what the challenge found, as its own section
+    //
+    // Only for a request examined by the challenge method. The report above is
+    // the same plain report every request gets and is not changed here. What
+    // the challenge stage found is written once, in plain prose, as a last
+    // section named "Challenge pass"; the reading page shows it on its own tab
+    // and an export leaves it out. It is added after the citations are
+    // numbered and after the plain-language version, so neither includes it.
+    // A failure is contained: the report is saved without the section.
+    // ────────────────────────────────────────────────────────────────
+    if (isAdjudicative && skepticRuns && typeof generatedReport?.markdown === 'string' && generatedReport.markdown.trim()) {
+      const challengePass = await writeChallengePass({
+        query: researchQuery,
+        reportMarkdown: generatedReport.markdown,
+        challengeNotes: skepticResult.content,
+        engineVersion: v2.engineVersion,
+        researchObjective: v2.researchObjective,
+        allowFallbackByRole: v2.allowFallbackByRole,
+        byokApiKeyOverride,
+      });
+      modelLog.push(...challengePass.modelCalls);
+      if (challengePass.prose) {
+        generatedReport.markdown = appendChallengePass(generatedReport.markdown, challengePass.prose);
+      } else {
+        logger.warn(`[${runId}] Challenge pass section was not written; the report is saved without it`, { reason: challengePass.reason });
+      }
+      await query(
+        `UPDATE research_runs SET corpus_after = COALESCE(corpus_after, '{}'::jsonb) || $1::jsonb WHERE id=$2`,
+        [JSON.stringify({ challengePass: challengePass.prose ? 'written' : `not_written:${challengePass.reason}` }), runId]
+      );
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // STAGE 9: SAVE REPORT
     // ────────────────────────────────────────────────────────────────
     await progress('saving', 94, 'Saving report to corpus...');
@@ -3127,47 +2941,12 @@ ${reportForGates(generatedReport.markdown)}`,
 
     const reportMarkdown = typeof generatedReport?.markdown === 'string' ? generatedReport.markdown : '';
     const reportSections = parseReportSections(reportMarkdown);
-    const opportunityObjects = orchProfile.intent === 'opportunity_discovery'
-      ? extractOpportunityObjectsFromMarkdown(reportMarkdown)
-      : [];
-    const requestedOpportunityCount =
-      confirmedResearchBrief?.requestedArtifacts.find((artifact) => typeof artifact.exactCount === 'number')
-        ?.exactCount;
-    const deliveredOpportunityCount = opportunityObjects.length;
-    const fieldsCompleteCount =
-      orchProfile.intent === 'opportunity_discovery' && confirmedResearchBrief
-        ? adaptiveFieldCompletenessForOpportunities(opportunityObjects, confirmedResearchBrief).complete
-        : undefined;
-    const contractMissingRequirements =
-      (contractAuditResult as ContractAuditResult | null)?.missing_requirements ?? [];
-    const constraintsPassed = confirmedResearchBrief?.userConstraints.length ?? 0;
-    const constraintsFailed = reportStatus === 'completed' ? 0 : contractMissingRequirements.length;
-    const usableSourceCount = new Set(
-      allChunks
-        .map((chunk) => chunk.source_url?.trim())
-        .filter((value): value is string => Boolean(value))
-    ).size;
-    const independentDomainCount = countIndependentDomains(allChunks);
     const readerFrontMatter = buildReaderFrontMatter({
-      intentId: orchProfile.intent,
-      executiveSummary: reportSections.find((s) => s.type === 'executive_summary')?.content ?? '',
+      executiveSummary:
+        reportSections.find((s) => s.type === 'executive_summary')?.content ??
+        reportSections.find((s) => s.title.trim().toLowerCase() === 'summary')?.content ??
+        '',
       conclusion: reportSections.find((s) => s.type === 'conclusion')?.content ?? '',
-      contradictionCount: 0,
-      sourceCount: baselineLayerEnabled() && !isAdjudicative
-        ? distinctSourceCount(allChunks.map((chunk) => ({ title: chunk.source_title || '', url: chunk.source_url || null })))
-        : new Set(allChunks.map((c) => c.source_url)).size,
-      chunkCount: allChunks.length,
-      falsificationCriteria: plan.falsification_criteria,
-      requestedOpportunityCount,
-      deliveredOpportunityCount,
-      fieldsCompleteCount,
-      constraintsPassed,
-      constraintsFailed,
-      usableSourceCount,
-      independentDomainCount,
-      validationExperimentCount: opportunityObjects.filter((item) => /validation/i.test(item.body)).length,
-      contractStatus: reportStatus,
-      baselineLayer: baselineLayerEnabled() && !isAdjudicative,
     });
     const prov = await queryOne<{
       supplemental: string;
@@ -3318,7 +3097,7 @@ ${reportForGates(generatedReport.markdown)}`,
       _intentId: orchProfile.intent,
     };
     for (const s of PIPELINE_STAGES) {
-      stageDurationPayload[s] = (s === 'synthesis' ? synthesisRuns : shouldRunPipelineStage(orchProfile, s))
+      stageDurationPayload[s] = (s === 'synthesis' || shouldRunPipelineStage(orchProfile, s))
         ? Math.round(phaseDurations[s] ?? 0)
         : null;
     }
@@ -4114,6 +3893,9 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
     'evidence ledger': 'evidence_ledger',
     'reasoning': 'reasoning',
     'contradiction': 'contradiction_analysis',
+    // The section the reading page shows on its Challenge pass tab. Listed
+    // before the looser match below, which is for older reports.
+    'challenge pass': 'challenge',
     'challenge': 'challenges',
     'synthesis': 'synthesis',
     'conclusion': 'conclusion',
