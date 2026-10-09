@@ -32,9 +32,9 @@ describe('promptComposer', () => {
       expect(prompt).toContain('full-attack critique');
     });
 
-    it('ADVERSARIAL_TWIN synthesizer writes the Challenge pass only, under plain headings', () => {
+    it('ADVERSARIAL_TWIN synthesizer writes the Double-check section only, under plain headings', () => {
       const prompt = composePrompt('synthesizer', 'ADVERSARIAL_TWIN', 'v2_deep');
-      expect(prompt).toContain('You are writing the Challenge pass for an existing document, and nothing else.');
+      expect(prompt).toContain('You are writing the Double-check section for an existing document, and nothing else.');
       expect(prompt).toContain('Do not produce a full research report');
       expect(prompt).toContain('Where the document conflicts with itself or with its sources');
       expect(prompt).toContain('Statements with no support');
