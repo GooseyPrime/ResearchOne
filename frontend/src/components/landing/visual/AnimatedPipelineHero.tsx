@@ -177,7 +177,7 @@ export default function AnimatedPipelineHero({
           The ResearchOne pipeline has four phases. Phase one, Plan, includes the Planner
           and Discovery stages. Phase two, Retrieve and Read, includes the Retriever and
           Retriever Analysis stages. Phase three, Reason and Verify, includes the
-          Reasoner and Challenge stages when additional checking is needed.
+          Reasoner and Double-check stages when additional checking is needed.
           Phase four, Write and Cite, includes
           the Drafting, Verifier, Report, and Recordkeeping stages.
         </p>
@@ -194,18 +194,18 @@ export default function AnimatedPipelineHero({
             {[...PIPELINE_STAGES, ...SPECIALIST_PIPELINE_STAGES].map((stage) => {
               const leftPct = (stage.x / PIPELINE_VIEWBOX.width) * 100;
               const topPct = (stage.y / PIPELINE_VIEWBOX.height) * 100;
-              const isSkeptic = stage.id === 'skeptic';
+              const isDoubleCheck = stage.id === 'double_check';
               const isSpecialist = stage.conditional === true;
               const isSelectedSpecialist = isSpecialist && selectedAgents.has(stage.id);
               const specialistOpacity = resolveNodeOpacity(isSpecialist, agentsToRun, isSelectedSpecialist);
 
-              const ringColor = isSkeptic
-                ? palette.skepticRing
+              const ringColor = isDoubleCheck
+                ? palette.doubleCheckRing
                 : isSpecialist && isSelectedSpecialist
                   ? palette.nodeActiveRing
                   : palette.nodeIdleRing;
-              const ringWidth = isSkeptic ? 2 : 1;
-              const bgOpacity = isSkeptic ? 0.25 : isSpecialist && isSelectedSpecialist ? 0.16 : 0.05;
+              const ringWidth = isDoubleCheck ? 2 : 1;
+              const bgOpacity = isDoubleCheck ? 0.25 : isSpecialist && isSelectedSpecialist ? 0.16 : 0.05;
 
               return (
                 <motion.div
@@ -225,16 +225,16 @@ export default function AnimatedPipelineHero({
                 >
                   <span
                     data-stage-id={stage.id}
-                    data-emphasis={isSkeptic ? 'skeptic' : undefined}
+                    data-emphasis={isDoubleCheck ? 'double_check' : undefined}
                     data-conditional={isSpecialist ? 'true' : undefined}
                     className="rounded-full px-3 py-1.5 text-[11px] font-medium whitespace-nowrap"
                     style={{
                       border: `${ringWidth}px solid ${ringColor}`,
                       background: `rgba(255, 255, 255, ${bgOpacity})`,
                       color: '#E0E0E0',
-                      boxShadow: isSkeptic ? `0 0 12px ${palette.skepticRing}55` : 'none',
+                      boxShadow: isDoubleCheck ? `0 0 12px ${palette.doubleCheckRing}55` : 'none',
                     }}
-                    aria-label={isSkeptic ? 'Challenge pass' : stage.label}
+                    aria-label={stage.label}
                   >
                     {stage.label}
                   </span>
@@ -243,7 +243,7 @@ export default function AnimatedPipelineHero({
             })}
           </div>
 
-          {/* Contradiction bridge overlay — Möbius dual-stroke motif at the Reasoner→Skeptic turn.
+          {/* Contradiction bridge overlay — Möbius dual-stroke motif at the Reasoner→Double-check turn.
               Positioned near the right edge of the hero where the pipeline turns from top to bottom row.
               Two arcs (cyan + amber) cross at their midpoints, encoding "contradictions preserved, not collapsed". */}
           <div
@@ -255,7 +255,7 @@ export default function AnimatedPipelineHero({
               {/* Upper arc — consensus cluster (left-to-right then back) */}
               <path d="M4 16 Q20 4 36 16 Q20 28 4 40" stroke={palette.nodeActiveRing} strokeWidth="1.5" strokeLinecap="round" fill="none" />
               {/* Lower arc — anomaly bridge (crosses at midpoint, mirrors upper) */}
-              <path d="M4 40 Q20 52 36 64" stroke={palette.skepticRing} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+              <path d="M4 40 Q20 52 36 64" stroke={palette.doubleCheckRing} strokeWidth="1.5" strokeLinecap="round" fill="none" />
               <path d="M36 16 Q20 52 4 64" stroke={palette.nodeActiveRing} strokeWidth="1.2" strokeLinecap="round" strokeDasharray="3 3" fill="none" />
             </svg>
           </div>

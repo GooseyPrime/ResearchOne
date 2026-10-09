@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { exportErrorMessage } from '@/utils/exportErrorMessage';
 import { Download, AlertCircle, Loader2 } from 'lucide-react';
 import api from '../../utils/api';
+import { customerOption, customerOptionHelp, findCustomerOption } from '../../content/customerOptions';
 
 /**
  * Report export button — opens the format/style selector modal.
@@ -22,22 +23,23 @@ export type ExportStyle =
   | 'chicago-author-date' | 'chicago-note'
   | 'ieee' | 'harvard';
 
-const FORMAT_LABELS: Record<ExportFormat, string> = {
-  docx: 'Word (.docx)',
-  pdf:  'PDF (.pdf)',
-  md:   'Markdown (.md)',
-  html: 'HTML (.html)',
-};
+const EXPORT_FORMATS: readonly ExportFormat[] = ['docx', 'pdf', 'md', 'html'];
+const EXPORT_STYLES: readonly ExportStyle[] = ['numeric', 'mla', 'apa', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'];
 
-const STYLE_LABELS: Record<ExportStyle, string> = {
-  'numeric':              'Numbered references',
-  'mla':                  'MLA (9th ed.)',
-  'apa':                  'APA (7th ed.)',
-  'chicago-author-date':  'Chicago — Author/Date',
-  'chicago-note':         'Chicago — Notes & Bibliography',
-  'ieee':                 'IEEE',
-  'harvard':              'Harvard',
-};
+/** File types and citation styles, named from the registry of customer-facing names. */
+const FORMAT_LABELS = Object.fromEntries(
+  EXPORT_FORMATS.map((format) => [format, customerOption('export_format', format).name])
+) as Record<ExportFormat, string>;
+
+const STYLE_LABELS = Object.fromEntries(
+  EXPORT_STYLES.map((style) => [style, customerOption('citation_style', style).name])
+) as Record<ExportStyle, string>;
+
+/** What the chosen option does, with its example, from the registry of customer-facing names. */
+function OptionHelpLine({ group, id }: { group: 'export_format' | 'citation_style'; id: string }) {
+  const words = findCustomerOption(group, id);
+  return words ? <p className="mt-1 text-[11px] leading-snug text-slate-500">{customerOptionHelp(words)}</p> : null;
+}
 
 function coerceExportStyle(raw: string | null | undefined): ExportStyle | null {
   if (raw == null || raw === '') return null;
@@ -242,6 +244,7 @@ export default function ReportExportButton({ reportId, runCitationStyle }: Repor
                     <option key={k} value={k}>{v}</option>
                   ))}
                 </select>
+                <OptionHelpLine group="export_format" id={format} />
               </div>
               <div>
                 <label className="block text-xs text-slate-400 mb-1.5">Citation style</label>
@@ -255,6 +258,7 @@ export default function ReportExportButton({ reportId, runCitationStyle }: Repor
                     <option key={k} value={k}>{v}</option>
                   ))}
                 </select>
+                <OptionHelpLine group="citation_style" id={style} />
               </div>
             </div>
 
