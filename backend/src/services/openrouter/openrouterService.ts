@@ -777,11 +777,15 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   const totalRounds = 1 + modelRouteRetry.delaysMs.length;
 
   for (let round = 1; round <= totalRounds; round += 1) {
-    let lastClassification: ModelErrorClassification | undefined;
+    /** The refusal of the role's own models on this pass: decides whether other providers are tried at all. */
+    let ownClassification: ModelErrorClassification | undefined;
     for (const route of routes) {
-      // Another provider is tried only when the refusal was about the provider.
-      // A request the provider called malformed would be malformed there too.
-      if (route.position === 'cross_provider' && !(lastClassification && PROVIDER_SIDE_CLASSIFICATIONS.has(lastClassification))) {
+      // Another provider is tried only when the role's own models were refused
+      // for a reason about the provider. A request the provider called
+      // malformed would be malformed there too. Once other providers are being
+      // tried, each one is tried: a host that does not carry one model says
+      // nothing about the next host or the next model.
+      if (route.position === 'cross_provider' && !(ownClassification && PROVIDER_SIDE_CLASSIFICATIONS.has(ownClassification))) {
         break;
       }
       if (route.position !== 'primary') {
@@ -817,7 +821,7 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         return augmented;
       } catch (err) {
         const normalized = normalizeRouteError(err, route.model, options.role, route.position !== 'primary');
-        lastClassification = normalized.classification;
+        if (route.position !== 'cross_provider') ownClassification = normalized.classification;
         firstClassification ??= normalized.classification;
         if (route.position !== 'cross_provider') ownModelsError = normalized;
         // A hub model is tried on Hugging Face and then on Together. When the
