@@ -10,7 +10,14 @@ import { jobRoom, revisionRoom, userRoom } from './rooms';
 export interface SocketIdentity {
   userId: string;
   orgId: string | null;
+  /** When the session token stops being valid (ms since epoch), if it says. */
+  expiresAtMs?: number;
 }
+
+/** How long past its token's expiry a connection may stay open waiting for a fresh token. */
+export const SESSION_GRACE_MS = 60_000;
+/** Room checks one connection may start per minute. */
+export const SUBSCRIBE_LIMIT_PER_MINUTE = 60;
 
 /** Everything the access layer needs from the outside world (replaced in tests). */
 export interface SocketAccessDeps {
@@ -39,6 +46,7 @@ async function verifyClerkSessionToken(token: string): Promise<SocketIdentity | 
     return {
       userId: payload.sub,
       orgId: typeof payload.org_id === 'string' ? payload.org_id : null,
+      expiresAtMs: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
     };
   } catch {
     return null;
@@ -115,7 +123,10 @@ function identityOf(socket: Socket): SocketIdentity | null {
  *  - a connection is refused unless it presents a valid session token;
  *  - an accepted socket is placed in its own user's room and nowhere else;
  *  - `subscribe:job` / `subscribe:revision` join a room only after the server
- *    confirms the object belongs to that user (or the user is an admin).
+ *    confirms the object belongs to that user (or the user is an admin);
+ *  - a connection lasts only as long as its session: the page sends a fresh
+ *    token with `auth:refresh`, and a connection whose token has expired
+ *    without one is closed.
  */
 export function attachSocketAccessControl(
   io: SocketIOServer,
@@ -148,6 +159,55 @@ export function attachSocketAccessControl(
     }
     void socket.join(userRoom(identity.userId));
 
+    // ── Session lifetime ──────────────────────────────────────────────────
+    let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+    const armExpiry = (expiresAtMs: number | undefined): void => {
+      if (expiryTimer) clearTimeout(expiryTimer);
+      expiryTimer = null;
+      if (expiresAtMs === undefined) return;
+      const wait = Math.max(0, expiresAtMs + SESSION_GRACE_MS - Date.now());
+      expiryTimer = setTimeout(() => socket.disconnect(true), wait);
+      expiryTimer.unref?.();
+    };
+    armExpiry(identity.expiresAtMs);
+    socket.on('disconnect', () => {
+      if (expiryTimer) clearTimeout(expiryTimer);
+    });
+    socket.on('auth:refresh', (token: unknown, maybeAck?: unknown) => {
+      const ack = ackOf(maybeAck);
+      if (typeof token !== 'string' || !token.trim()) {
+        ack({ ok: false });
+        return;
+      }
+      deps
+        .verifySessionToken(token.trim())
+        .then((fresh) => {
+          // A different or signed-out user never inherits this connection.
+          if (!fresh || fresh.userId !== identity.userId) {
+            ack({ ok: false });
+            socket.disconnect(true);
+            return;
+          }
+          armExpiry(fresh.expiresAtMs);
+          ack({ ok: true });
+        })
+        .catch(() => ack({ ok: false }));
+    });
+
+    // ── Room checks ───────────────────────────────────────────────────────
+    let windowStartedAt = Date.now();
+    let checksInWindow = 0;
+    const inFlight = new Map<string, Promise<boolean>>();
+    const underLimit = (): boolean => {
+      const now = Date.now();
+      if (now - windowStartedAt >= 60_000) {
+        windowStartedAt = now;
+        checksInWindow = 0;
+      }
+      checksInWindow += 1;
+      return checksInWindow <= SUBSCRIBE_LIMIT_PER_MINUTE;
+    };
+
     const guardedJoin =
       (
         room: (id: string) => string,
@@ -159,10 +219,30 @@ export function attachSocketAccessControl(
           ack({ ok: false });
           return;
         }
-        const allowed = deps.isAdmin(identity.userId) ? Promise.resolve(true) : check(id, identity);
+        const target = room(id);
+        if (socket.rooms.has(target)) {
+          ack({ ok: true });
+          return;
+        }
+        // One lookup per room at a time, and a cap on how many a connection
+        // may start, so a flood of made-up ids cannot tie up the database.
+        let allowed = inFlight.get(target);
+        if (!allowed) {
+          if (!underLimit()) {
+            ack({ ok: false });
+            return;
+          }
+          allowed = deps.isAdmin(identity.userId) ? Promise.resolve(true) : check(id, identity);
+          inFlight.set(target, allowed);
+          const done = allowed;
+          void done.then(
+            () => inFlight.delete(target),
+            () => inFlight.delete(target),
+          );
+        }
         allowed
           .then(async (ok) => {
-            if (ok) await socket.join(room(id));
+            if (ok) await socket.join(target);
             ack({ ok });
           })
           .catch((err: unknown) => {

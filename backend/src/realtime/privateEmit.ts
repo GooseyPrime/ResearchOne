@@ -36,6 +36,8 @@ export const defaultOwnerLookups: OwnerLookups = {
 };
 
 const OWNER_CACHE_LIMIT = 2000;
+/** An owner is re-read after this long, so a reassigned object stops reaching its former owner. */
+const OWNER_CACHE_TTL_MS = 60_000;
 
 /**
  * The only way server code sends real-time events. Each method delivers to the
@@ -47,7 +49,11 @@ export interface PrivateEmitter {
   toRun(runId: string, event: string, data: unknown): Promise<void>;
   toIngestionJob(jobId: string, event: string, data: unknown): Promise<void>;
   toReport(reportId: string, event: string, data: unknown): Promise<void>;
-  /** Revision progress: the report's revision room, its job room and its owner. */
+  /**
+   * Revision progress and completion: the report's revision room and job room
+   * only. Pages act on these events (a workspace navigates on completion), so
+   * they go to the pages that asked for this report, not to every tab.
+   */
   toReportRevision(reportId: string, event: string, data: unknown): Promise<void>;
   /** A change notice (no object room) for whoever owns the run / report / job. */
   notifyRunOwner(runId: string, event: string, data: unknown): Promise<void>;
@@ -61,7 +67,7 @@ export function createPrivateEmitter(
   io: SocketIOServer | undefined,
   lookups: OwnerLookups = defaultOwnerLookups,
 ): PrivateEmitter {
-  const cache = new Map<string, string>();
+  const cache = new Map<string, { owner: string; at: number }>();
 
   const owner = async (
     kind: 'run' | 'ingestion' | 'report' | 'atlas',
@@ -70,12 +76,13 @@ export function createPrivateEmitter(
   ): Promise<string | null> => {
     const key = `${kind}:${id}`;
     const hit = cache.get(key);
-    if (hit) return hit;
+    if (hit && Date.now() - hit.at < OWNER_CACHE_TTL_MS) return hit.owner;
     try {
       const found = await lookup(id);
+      cache.delete(key);
       if (found) {
         if (cache.size >= OWNER_CACHE_LIMIT) cache.clear();
-        cache.set(key, found);
+        cache.set(key, { owner: found, at: Date.now() });
       }
       return found;
     } catch (err) {
@@ -94,12 +101,17 @@ export function createPrivateEmitter(
     io.to(rooms).emit(event, data);
   };
 
-  // Deliveries are queued so events leave in the order they were raised even
-  // though the owner lookup is asynchronous.
-  let tail: Promise<void> = Promise.resolve();
-  const inOrder = (work: () => Promise<void>): Promise<void> => {
-    tail = tail.then(work, work);
-    return tail;
+  // Events about one object leave in the order they were raised, even though
+  // the owner lookup is asynchronous. Each object has its own queue, so a slow
+  // lookup for one run never holds up another user's events.
+  const tails = new Map<string, Promise<void>>();
+  const inOrder = (key: string, work: () => Promise<void>): Promise<void> => {
+    const next = (tails.get(key) ?? Promise.resolve()).then(work, work);
+    tails.set(key, next);
+    void next.finally(() => {
+      if (tails.get(key) === next) tails.delete(key);
+    });
+    return next;
   };
 
   const withOwner = (rooms: string[], ownerId: string | null): string[] =>
@@ -108,15 +120,15 @@ export function createPrivateEmitter(
   return {
     toUser(userId, event, data) {
       if (!userId) return;
-      void inOrder(async () => send([userRoom(userId)], event, data));
+      void inOrder(`user:${userId}`, async () => send([userRoom(userId)], event, data));
     },
     toRun(runId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`run:${runId}`, async () => {
         send(withOwner([jobRoom(runId)], await owner('run', runId, lookups.runOwner)), event, data);
       });
     },
     toIngestionJob(jobId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`ingestion:${jobId}`, async () => {
         send(
           withOwner([jobRoom(jobId)], await owner('ingestion', jobId, lookups.ingestionJobOwner)),
           event,
@@ -125,7 +137,7 @@ export function createPrivateEmitter(
       });
     },
     toReport(reportId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`report:${reportId}`, async () => {
         send(
           withOwner([jobRoom(reportId)], await owner('report', reportId, lookups.reportOwner)),
           event,
@@ -134,29 +146,22 @@ export function createPrivateEmitter(
       });
     },
     toReportRevision(reportId, event, data) {
-      return inOrder(async () => {
-        send(
-          withOwner(
-            [revisionRoom(reportId), jobRoom(reportId)],
-            await owner('report', reportId, lookups.reportOwner),
-          ),
-          event,
-          data,
-        );
+      return inOrder(`report:${reportId}`, async () => {
+        send([revisionRoom(reportId), jobRoom(reportId)], event, data);
       });
     },
     notifyRunOwner(runId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`run:${runId}`, async () => {
         send(withOwner([], await owner('run', runId, lookups.runOwner)), event, data);
       });
     },
     notifyReportOwner(reportId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`report:${reportId}`, async () => {
         send(withOwner([], await owner('report', reportId, lookups.reportOwner)), event, data);
       });
     },
     notifyIngestionJobOwner(jobId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`ingestion:${jobId}`, async () => {
         send(
           withOwner([], await owner('ingestion', jobId, lookups.ingestionJobOwner)),
           event,
@@ -165,12 +170,12 @@ export function createPrivateEmitter(
       });
     },
     notifyAtlasExportOwner(exportId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`atlas:${exportId}`, async () => {
         send(withOwner([], await owner('atlas', exportId, lookups.atlasExportOwner)), event, data);
       });
     },
     notifySourceOwners(sourceId, event, data) {
-      return inOrder(async () => {
+      return inOrder(`source:${sourceId}`, async () => {
         let owners: string[] = [];
         try {
           owners = await lookups.sourceOwners(sourceId);

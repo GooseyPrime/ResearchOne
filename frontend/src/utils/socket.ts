@@ -9,6 +9,10 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 const wantedJobs = new Set<string>();
 const wantedRevisions = new Set<string>();
 
+/** How often an open connection proves its session is still valid. */
+const SESSION_REFRESH_MS = 30000;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
 const AUTH_RETRY_MS = 2000;
 const AUTH_RETRY_MAX_MS = 30000;
 let refusedAttempts = 0;
@@ -33,8 +37,9 @@ export function getSocket(): Socket {
       for (const id of wantedRevisions) created.emit('subscribe:revision', id);
     });
     // A refused handshake (not signed in yet, or the session is still
-    // loading) is not retried by the client on its own.
-    created.on('connect_error', () => {
+    // loading) and a connection the server closed (its session ran out) are
+    // not retried by the client on its own.
+    const retryLater = () => {
       if (created.active || retryTimer !== null) return;
       const wait = Math.min(AUTH_RETRY_MS * 2 ** refusedAttempts, AUTH_RETRY_MAX_MS);
       refusedAttempts += 1;
@@ -42,7 +47,21 @@ export function getSocket(): Socket {
         retryTimer = null;
         if (socket === created && !created.connected) created.connect();
       }, wait);
+    };
+    created.on('connect_error', retryLater);
+    created.on('disconnect', (reason: string) => {
+      if (reason === 'io server disconnect') retryLater();
     });
+    // The server keeps a connection only while its session is valid: send it
+    // the current session token on a timer so it can tell.
+    if (refreshTimer === null) {
+      refreshTimer = setInterval(() => {
+        if (!created.connected) return;
+        void getClerkJwtForApi().then((token) => {
+          if (token && created.connected) created.emit('auth:refresh', token);
+        });
+      }, SESSION_REFRESH_MS);
+    }
     socket = created;
     // Register the connection-state provider so polling hooks can back off
     // when live events are flowing (WO-AE-4 / getAdaptiveRefetchIntervalMs).

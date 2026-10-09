@@ -80,6 +80,36 @@ describe('live connection carries the signed-in session', () => {
     }
   });
 
+  it('reconnects after the server closes a connection whose session ran out', async () => {
+    vi.useFakeTimers();
+    try {
+      const { socket } = await load();
+      socket.getSocket();
+      fake.handlers.get('disconnect')?.('transport close');
+      vi.advanceTimersByTime(2000);
+      expect(fake.connect).not.toHaveBeenCalled();
+      fake.handlers.get('disconnect')?.('io server disconnect');
+      vi.advanceTimersByTime(2000);
+      expect(fake.connect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps proving its session to the server while connected', async () => {
+    vi.useFakeTimers();
+    try {
+      const { session, socket } = await load();
+      session.registerClerkTokenGetter(async () => 'fresh-token');
+      socket.getSocket();
+      fake.connected = true;
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(fake.emit).toHaveBeenCalledWith('auth:refresh', 'fresh-token');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('drops the old connection and its rooms when the signed-in user changes', async () => {
     const { socket } = await load();
     socket.subscribeToJob('run-of-previous-user');

@@ -70,7 +70,7 @@ describe('livingReportRevisionWorker', () => {
       webhookEventId: 'w1',
     });
     const completed = emits.find((e) => e.event === 'revision:completed');
-    expect(completed?.rooms).toEqual(['job:revision:r1', 'job:r1', 'user:user_owner']);
+    expect(completed?.rooms).toEqual(['job:revision:r1', 'job:r1']);
     expect(emits.find((e) => e.event === 'reports:updated')?.rooms).toEqual(['user:user_owner']);
     const living = emits.find((e) => e.event === 'living_report:revision_completed');
     expect(living?.rooms).toEqual(['user:user_owner']);
