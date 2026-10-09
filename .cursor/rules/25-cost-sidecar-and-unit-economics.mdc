@@ -109,6 +109,14 @@ changes are an admin UPDATE on that table, never a code change. The
 pricing catalog code reads pricing once per process start with a
 60-second TTL refresh — pricing changes do not require a redeploy.
 
+Calls answered by Anthropic or NVIDIA are priced by provider
+(`getCallPrice`): the `model_pricing` row keyed `anthropic:<model id>` or
+`nvidia:<model id>` when one exists, otherwise the published price carried on
+the call result (`listPrice`, from `openrouter/providerRoutes.ts`). The
+provider is part of the key because two providers can publish one model id
+at different prices. The answering provider is written to the row's
+`metadata.provider`.
+
 Models not present in `model_pricing` resolve to `(0, 0)` and the row
 is logged at `WARN` level with model id. Cost shows as `$0.00` but the
 row still exists with tokens — operators see "we used model X 14,200
