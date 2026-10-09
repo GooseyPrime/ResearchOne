@@ -99,7 +99,7 @@ describe('GET /api/runs/:runId/plan', () => {
         planPayload: {
           intent: { id: 'legacy' },
           topicAnalysis: { summary: 'summary' },
-          orchestrationProfile: { skepticMode: 'annotate' },
+          orchestrationProfile: { doubleCheckMode: 'annotate' },
         },
         planStatus: 'pending_confirmation',
         refinementRounds: 0,
@@ -118,7 +118,7 @@ describe('GET /api/runs/:runId/plan', () => {
     const res = await request(appForTest()).get(`/api/runs/${RUN_ID}/plan`);
 
     expect(res.status).toBe(200);
-    expect(res.body.plan.planPayload.orchestrationProfile.skepticMode).toBe('gate');
+    expect(res.body.plan.planPayload.orchestrationProfile.doubleCheckMode).toBe('gate');
   });
 });
 
