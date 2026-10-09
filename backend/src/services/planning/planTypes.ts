@@ -1,5 +1,5 @@
 import type { IntentId } from './intentTaxonomy';
-import type { SkepticMode, SteelmanMode } from './orchestrationProfiles';
+import type { DoubleCheckMode, StrongestFormMode } from './orchestrationProfiles';
 import type { ResearchBrief } from './researchBrief';
 import type { CanonicalExecutionPlan } from './executionPlan';
 
@@ -32,8 +32,8 @@ export interface PlanPayload {
     /** Canonical intent key (mirrors `intent.id`). */
     intentId?: IntentId;
     outputTemplateId?: string;
-    skepticMode?: SkepticMode;
-    steelmanMode?: SteelmanMode;
+    doubleCheckMode?: DoubleCheckMode;
+    strongestFormMode?: StrongestFormMode;
     /** Placeholder map until the source-class pass classifier. */
     sourceClassWeights?: Record<string, number>;
     expectedLengthRange?: { minWords: number; maxWords: number };
