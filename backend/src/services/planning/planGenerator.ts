@@ -4,10 +4,15 @@ import type { IntentId } from './intentTaxonomy';
 import { getIntentById } from './intentTaxonomy';
 import { ORCHESTRATION_PROFILES } from './orchestrationProfiles';
 import type { PlanPayload } from './planTypes';
-import { PLAN_GENERATOR_PROMPT, PLAN_LENGTH_FIT_INSTRUCTION } from './prompts';
+import { PLAN_GENERATOR_PROMPT, PLAN_LENGTH_FIT_INSTRUCTION, PLAN_PLAIN_WORDS_INSTRUCTION } from './prompts';
 import { parsePlanGeneratorJson } from './planJson';
 import type { ResearchBrief } from './researchBrief';
 import { formatBriefForPrompt } from './researchBrief';
+
+/** The whole instruction the planning step is given for a first plan. Read by the wording test. */
+export function planGeneratorSystemPrompt(): string {
+  return `${PLAN_GENERATOR_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION}\n${PLAN_PLAIN_WORDS_INSTRUCTION}`;
+}
 
 export async function generatePlan(input: {
   query: string;
@@ -61,7 +66,7 @@ export async function generatePlan(input: {
     runtimeOverrides: { primary: config.models.planning },
     byokApiKeyOverride: input.llmOpts.byokApiKeyOverride,
     messages: [
-      { role: 'system', content: `${PLAN_GENERATOR_PROMPT}\n${PLAN_LENGTH_FIT_INSTRUCTION}` },
+      { role: 'system', content: planGeneratorSystemPrompt() },
       { role: 'user', content: userBlock },
     ],
   });

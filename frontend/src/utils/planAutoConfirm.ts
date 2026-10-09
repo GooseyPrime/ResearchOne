@@ -41,6 +41,33 @@ export function readTopicCompetenceAssessment(planPayload: Record<string, unknow
   return typeof v === 'string' ? v : '';
 }
 
+/**
+ * RJ-018 — the plan now records difficulty as a flag (`hardToResearch`), because
+ * the note beside it is written in plain words and no longer carries the
+ * phrases `OOD_HINT_PATTERNS` reads.
+ */
+export function readPlanHardToResearch(planPayload: Record<string, unknown>): boolean {
+  const topic = planPayload.topicAnalysis as Record<string, unknown> | undefined;
+  return topic?.hardToResearch === true;
+}
+
+/**
+ * Words of the planning model's own vocabulary that the plan screen printed
+ * under "How well we can research this" ("In-distribution for investigative
+ * research … Novelty lies in future-facing assessment").
+ */
+const PLANNING_JARGON =
+  /\b(?:in[-\s]distribution|out[-\s]of[-\s]distribution|o\.?o\.?d\.?|distribution(?:al)?\s+shift|novelty|web[-\s]retrieval|retrieval\s+(?:stack|pipeline|system)|research\s+stack|corpus|training\s+data|epistemic|multi[-\s]layer(?:ed)?|orchestration|llm|tokens?)\b/i;
+/** Stand-ins the server stores when the planning step wrote nothing; they tell a customer nothing. */
+const PLACEHOLDER_NOTE = /^(?:competence assessment unavailable|topic analysis unavailable|unknown\b.*not parseable)\.?$/i;
+
+/** A plan note as the plan screen prints it: the note when it is in plain words, otherwise nothing. */
+export function plainPlanNote(note: string | null | undefined): string {
+  const text = typeof note === 'string' ? note.trim() : '';
+  if (!text || PLANNING_JARGON.test(text) || PLACEHOLDER_NOTE.test(text)) return '';
+  return text;
+}
+
 export interface PlanAutoConfirmPrefsSlice {
   autoConfirmEnabled: boolean;
   autoConfirmThreshold: number;
@@ -58,6 +85,7 @@ export function shouldStartPlanAutoConfirmCountdown(
   if (refinementRounds > 0) return false;
   const c = readPlanIntentConfidence(planPayload);
   if (c == null || c < prefs.autoConfirmThreshold) return false;
+  if (readPlanHardToResearch(planPayload)) return false;
   if (suppressPlanAutoConfirmFromCompetence(readTopicCompetenceAssessment(planPayload))) return false;
   return true;
 }

@@ -24,3 +24,25 @@ export function researchResumeJobId(runId: string): string {
 export function legacyResearchResumeJobId(runId: string): string {
   return `${runId}:resume_after_plan`;
 }
+
+/**
+ * The notice a worker sends when it picks a research job up (RJ-018).
+ *
+ * It is not a step of the run and carries no percentage: the run's own first
+ * step ("starting", 1%) is written by the pipeline a moment later. It carries
+ * the server's time so that the two copies a page receives (the run's own
+ * channel and the all-pages broadcast) are recognised as one notice. Without a
+ * time each copy was stamped by the browser on arrival, so a page showed the
+ * start twice, at 0%, and — where the browser's clock ran ahead of the
+ * server's — after steps that had happened later.
+ */
+export interface ResearchStartedNotice {
+  stage: 'started';
+  runId: string;
+  timestamp: string;
+  eventType: 'worker_notice';
+}
+
+export function researchStartedNotice(runId: string, now: Date = new Date()): ResearchStartedNotice {
+  return { stage: 'started', runId, timestamp: now.toISOString(), eventType: 'worker_notice' };
+}
