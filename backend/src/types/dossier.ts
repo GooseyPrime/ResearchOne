@@ -33,7 +33,7 @@ export interface DossierStats {
   sourcesRetrievedCount: number | null;
   sourcesCitedCount: number | null;
   citationDensity: number | null;
-  skepticAnnotationsCount: number | null;
+  doubleCheckAnnotationsCount: number | null;
   contradictionsCount: number | null;
   refinementRounds: number | null;
   agentsRan: unknown;
@@ -45,7 +45,7 @@ export interface DossierStats {
   reportEvidenceTierSummary: Record<string, unknown> | null;
   /** the source-class pass — counts of retrieved chunks by orthogonal source-class axis (JSON from DB). */
   sourceClassBreakdown: Record<string, unknown> | null;
-  steelmanPassCount: number | null;
+  strongestFormPassCount: number | null;
 }
 
 export interface Dossier {

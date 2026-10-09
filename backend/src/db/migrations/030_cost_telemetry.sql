@@ -61,8 +61,8 @@ BEGIN
       ('anthropic/claude-3.5-sonnet',         3.00, 15.00, 'High-reasoning fallback'),
       ('anthropic/claude-sonnet-4',           3.00, 15.00, 'Synthesizer/verifier alternate'),
       ('meta-llama/llama-3.3-70b-instruct',   0.59, 0.79,  'General default'),
-      -- Skeptic / adversarial models (V2).
-      ('cognitivecomputations/dolphin-mistral-24b-venice-edition', 0.18, 0.18,  'V2 uncensored skeptic'),
+      -- Double-check / adversarial models (V2).
+      ('cognitivecomputations/dolphin-mistral-24b-venice-edition', 0.18, 0.18,  'V2 uncensored double-check'),
       ('sao10k/l3.1-euryale-70b',             0.80, 0.80,  'V2 alternate adversarial'),
       -- Embeddings — counted separately when called.
       ('openai/text-embedding-3-small',       0.02, 0.02,  'Embeddings — symmetric pricing on OpenRouter');
@@ -190,7 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_executions_created_at
 CREATE INDEX IF NOT EXISTS idx_agent_executions_user_created
   ON agent_executions(user_id, created_at DESC) WHERE user_id IS NOT NULL;
 
--- Per-phase analytics: "what % of cost is the Skeptic eating"
+-- Per-phase analytics: "what % of cost is the Double-check eating"
 CREATE INDEX IF NOT EXISTS idx_agent_executions_phase_created
   ON agent_executions(phase, created_at DESC);
 

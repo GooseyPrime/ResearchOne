@@ -53,9 +53,9 @@ describe('costSidecar — rolePhaseFor', () => {
     expect(rolePhaseFor('retriever')).toBe('Retrieval');
     expect(rolePhaseFor('source_class_classifier')).toBe('Retrieval');
     expect(rolePhaseFor('reasoner')).toBe('Reasoning');
-    expect(rolePhaseFor('steelman')).toBe('Reasoning');
-    expect(rolePhaseFor('skeptic')).toBe('Skeptic');
-    expect(rolePhaseFor('internal_challenger')).toBe('Skeptic');
+    expect(rolePhaseFor('strongest_form')).toBe('Reasoning');
+    expect(rolePhaseFor('double_check')).toBe('Double-check');
+    expect(rolePhaseFor('internal_challenger')).toBe('Double-check');
     expect(rolePhaseFor('synthesizer')).toBe('Synthesis');
     expect(rolePhaseFor('verifier')).toBe('Verification');
     expect(rolePhaseFor('citation_integrity_checker')).toBe('Verification');
@@ -63,7 +63,7 @@ describe('costSidecar — rolePhaseFor', () => {
     expect(rolePhaseFor('change_planner')).toBe('Revision');
     expect(rolePhaseFor('citation_formatter')).toBe('Citation Mapping');
     // REVERT-CHECK: costSidecar.ts:rolePhaseFor — case 'citation_formatter'.
-    // REVERT-CHECK: costSidecar.ts:rolePhaseFor — source_class_classifier + steelman.
+    // REVERT-CHECK: costSidecar.ts:rolePhaseFor — source_class_classifier + strongest-form.
   });
 
   it('callPurpose overrides role mapping for contradiction extraction', () => {
@@ -72,7 +72,7 @@ describe('costSidecar — rolePhaseFor', () => {
     // surface as 'Contradiction Extraction' so the dashboard
     // attributes that token spend to the right bucket.
     expect(rolePhaseFor('reasoner', 'contradiction_extraction')).toBe('Contradiction Extraction');
-    expect(rolePhaseFor('planner', 'pipeline_skeptic')).toBe('Skeptic');
+    expect(rolePhaseFor('planner', 'pipeline_double_check')).toBe('Double-check');
     // REVERT-CHECK: costSidecar.ts:rolePhaseFor — the two if-statements at the top.
   });
 

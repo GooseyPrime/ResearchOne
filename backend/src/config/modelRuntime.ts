@@ -34,8 +34,8 @@ export function baseModelsFromConfig(): ResolvedModels {
         fallback: config.models.fallbacks.sourceClassClassifier,
       },
       reasoner: { primary: config.models.reasoner, fallback: config.models.fallbacks.reasoner },
-      steelman: { primary: config.models.steelman, fallback: config.models.fallbacks.steelman },
-      skeptic: { primary: config.models.skeptic, fallback: config.models.fallbacks.skeptic },
+      strongest_form: { primary: config.models.strongest_form, fallback: config.models.fallbacks.strongest_form },
+      double_check: { primary: config.models.double_check, fallback: config.models.fallbacks.double_check },
       synthesizer: { primary: config.models.synthesizer, fallback: config.models.fallbacks.synthesizer },
       verifier: { primary: config.models.verifier, fallback: config.models.fallbacks.verifier },
       plain_language_synthesizer: {

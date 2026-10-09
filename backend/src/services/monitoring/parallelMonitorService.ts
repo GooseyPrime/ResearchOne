@@ -71,7 +71,7 @@ async function queryMonitorRows<T extends MonitorRow>(
 export const MONITOR_REVISION_REQUEST = `Parallel Monitor detected a material change in monitored sources.
 Re-evaluate this published report under ResearchOne PolicyOne: preserve anomalies,
 apply reasoning-first discipline, and update sections where new evidence warrants revision.
-Do not bypass Skeptic / internal challenger stages — same pipeline as a user-initiated revision.`;
+Do not bypass the double-check / internal challenger stages — same pipeline as a user-initiated revision.`;
 
 export function verifyParallelWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined, secret: string): boolean {
   if (!signatureHeader?.trim() || !secret) return false;

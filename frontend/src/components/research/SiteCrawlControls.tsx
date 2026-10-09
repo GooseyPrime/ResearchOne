@@ -1,3 +1,8 @@
+import { customerOption, customerOptionHelp } from '../../content/customerOptions';
+
+const CRAWL = customerOption('request_field', 'crawl_site');
+const LAYERS = customerOption('request_field', 'crawl_layers');
+
 /** Where crawled pages are stored — run-scoped supplemental URLs vs private Ingest corpus. */
 export type SiteCrawlTarget = 'research_run' | 'private_corpus';
 
@@ -13,12 +18,12 @@ export interface SiteCrawlControlsProps {
   crawlTarget?: SiteCrawlTarget;
 }
 
-const DEFAULT_HINT =
-  'Follows same-origin links only (stays on the host you enter). Skips PDFs and media.';
+const DEFAULT_HINT = `${customerOptionHelp(CRAWL)} It stays on the website you entered and skips PDFs and media.`;
 
-const CRAWL_CHECKBOX_LABEL: Record<SiteCrawlTarget, string> = {
-  research_run: 'Crawl attached site(s) into this run',
-  private_corpus: 'Crawl attached site(s) into your private corpus',
+/** Where the pages go, said after the option's name. */
+const CRAWL_TARGET_WORDS: Record<SiteCrawlTarget, string> = {
+  research_run: 'for this run',
+  private_corpus: 'into your private library',
 };
 
 export default function SiteCrawlControls({
@@ -41,14 +46,14 @@ export default function SiteCrawlControls({
           className="mt-0.5 rounded border-indigo-800"
         />
         <span>
-          {CRAWL_CHECKBOX_LABEL[crawlTarget]}
+          {CRAWL.name} ({CRAWL_TARGET_WORDS[crawlTarget]})
           <span className="block text-xs text-slate-500 mt-0.5 font-normal">{hint}</span>
         </span>
       </label>
       {enabled && (
         <div className="flex flex-wrap items-center gap-2 pl-6">
           <label className="text-xs text-slate-400" htmlFor="supplemental-crawl-layers">
-            Layers to ingest
+            {LAYERS.name}
           </label>
           <input
             id="supplemental-crawl-layers"
@@ -63,10 +68,7 @@ export default function SiteCrawlControls({
             disabled={disabled}
             className="input w-20 text-sm py-1"
           />
-          <span className="text-xs text-slate-500">
-            Layer 1 = seed URL; each extra layer follows links found on the previous layer (max 50 pages per
-            seed).
-          </span>
+          <span className="text-xs text-slate-500">{customerOptionHelp(LAYERS)}</span>
         </div>
       )}
     </div>

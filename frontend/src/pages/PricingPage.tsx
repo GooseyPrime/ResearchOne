@@ -4,6 +4,7 @@ import LandingHeader from '../components/landing/LandingHeader';
 import PricingCard from '../components/landing/PricingCard';
 import SubscribeCTA from '../components/billing/SubscribeCTA';
 import NotYetAvailable from '../components/billing/NotYetAvailable';
+import { customerOption, customerOptionHelp, customerOptionsIn } from '../content/customerOptions';
 import {
   addonUnavailable,
   planUnavailable,
@@ -15,9 +16,11 @@ import {
 } from '../lib/billing/availability';
 
 type AddOn = {
-  name: string;
+  /** The add-on's id in the registry of customer-facing names, where its name, description and example are written. */
+  id: string;
   price: string;
-  description: string;
+  /** How it is priced and bought. What it does is in the registry. */
+  pricing?: string;
   comingSoon?: boolean;
   /**
    * Where a subscriber buys it. Both targets are inside the app: a signed-out
@@ -31,40 +34,40 @@ type AddOn = {
 
 const ADD_ONS: AddOn[] = [
   {
-    name: 'Living Reports',
+    id: 'living_report',
     price: 'From $10 / token',
-    description:
-      'Per-report monitor tokens (2 months active per token). Buy 1 for $10, 5 for $25, or 10 for $40 — apply tokens on finalized reports in the app.',
+    pricing:
+      'One token keeps one report up to date for two months. Buy 1 for $10, 5 for $25, or 10 for $40 — apply tokens on finalized reports in the app.',
     buy: { addon: 'living_report', label: 'Buy tokens', to: '/app/billing#monitor-tokens' },
   },
   {
-    name: 'Reverse-Citation Watch',
+    id: 'reverse_citation_watch',
     price: '$15/mo',
-    description: 'Get notified when papers, patents, or policy documents cite work that appears in your reports — so you know when your research enters the conversation.',
     buy: { addon: 'reverse_citation_watch', label: 'Add to a report', to: '/app/add-ons' },
   },
   {
-    name: 'Provenance Ledger',
+    id: 'provenance_ledger',
     price: '$29/mo',
-    description: 'Immutable, timestamped audit trail of every source retrieved, every reasoning step taken, and every export generated — suitable for regulatory and legal contexts.',
     comingSoon: true,
   },
   {
-    name: 'Score API Pro',
+    id: 'score_api_pro',
     price: '$99/mo',
-    description: "Programmatic access to ResearchOne's compliance and policy scoring engine. REST API with webhooks, batch scoring, and structured JSON responses.",
     inquiry: { label: 'Ask about Score API Pro →', href: 'mailto:hello@researchone.io?subject=Score%20API%20Pro%20inquiry' },
   },
   {
-    name: 'Patent & IP Diligence',
+    id: 'patent_ip_diligence',
     price: '$2,500 per engagement',
-    description: 'Base floor for patent landscape, freedom-to-operate, and prior art analysis. Delivered as a structured report with cited patent mappings.',
+    pricing: 'The price is the starting point for one engagement, delivered as a report with each patent cited.',
     inquiry: {
       label: 'Ask about an engagement →',
       href: 'mailto:hello@researchone.io?subject=Patent%20%26%20IP%20diligence%20inquiry',
     },
   },
 ];
+
+/** Plans, named and described from the registry of customer-facing names. */
+const PLAN = Object.fromEntries(customerOptionsIn('plan').map((option) => [option.id, option]));
 
 const PERIOD_LABEL: Record<BillingPeriod, string> = {
   monthly: 'Monthly billing',
@@ -94,10 +97,11 @@ export default function PricingPage() {
         <p className="mt-4 text-r1-text-muted">Start free. Pay per report. Subscribe when it makes sense.</p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <PricingCard title="Free Demo" details="$0 — 2 reports lifetime — General Research only — Watermarked" cta="Start free" to="/sign-up" />
+          <PricingCard title={PLAN.free_demo.name} about={customerOptionHelp(PLAN.free_demo)} details="$0 — 2 reports lifetime — General Research only — Watermarked" cta="Start free" to="/sign-up" />
           <div id="student" className="contents">
             <PricingCard
-              title="Student"
+              title={PLAN.student.name}
+              about={customerOptionHelp(PLAN.student)}
               badge="Coming soon"
               comingSoon
               details="$9/mo — 15 Standard + 4 Deep/mo — All 5 modes — Full exports"
@@ -105,7 +109,8 @@ export default function PricingPage() {
             />
           </div>
           <PricingCard
-            title="Pro"
+            title={PLAN.pro.name}
+            about={customerOptionHelp(PLAN.pro)}
             details="$29/mo or $290/yr — 25 reports/mo — All 5 modes — Private corpus (Ingest workspace) + Atlas"
             cta="Subscribe"
             featured
@@ -120,7 +125,8 @@ export default function PricingPage() {
             }
           />
           <PricingCard
-            title="BYOK"
+            title={PLAN.byok.name}
+            about={customerOptionHelp(PLAN.byok)}
             details="$29/mo — All 5 modes, unlimited runs — BYOK keys — Private corpus (Ingest)"
             cta="Subscribe"
             comingSoon={byokUnavailable}
@@ -147,10 +153,12 @@ export default function PricingPage() {
             Add-ons require an active Pro or BYOK subscription. Stack as many as you need.
           </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {ADD_ONS.map((addon) => (
-              <article key={addon.name} className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
+            {ADD_ONS.map((addon) => {
+              const words = customerOption('add_on', addon.id);
+              return (
+              <article key={addon.id} className="rounded-xl border border-white/10 bg-r1-bg-deep p-6">
                 <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="font-serif text-xl text-r1-text">{addon.name}</h3>
+                  <h3 className="font-serif text-xl text-r1-text">{words.name}</h3>
                   {addon.comingSoon ? (
                     <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-r1-text-muted">
                       Coming soon
@@ -159,7 +167,8 @@ export default function PricingPage() {
                     <span className="shrink-0 text-sm font-medium text-r1-accent">{addon.price}</span>
                   )}
                 </div>
-                <p className="mt-3 text-sm leading-7 text-r1-text-muted">{addon.description}</p>
+                <p className="mt-3 text-sm leading-7 text-r1-text-muted">{customerOptionHelp(words)}</p>
+                {addon.pricing ? <p className="mt-2 text-sm leading-7 text-r1-text-muted">{addon.pricing}</p> : null}
                 {addon.buy ? (
                   addonUnavailable(availability, addon.buy.addon) ? (
                     <NotYetAvailable tone="marketing" className="mt-4" />
@@ -185,12 +194,14 @@ export default function PricingPage() {
                   </div>
                 ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         <div className="mt-10 rounded-xl border border-white/10 bg-r1-bg-deep p-6">
-          <h2 className="font-serif text-2xl">Wallet credits</h2>
+          <h2 className="font-serif text-2xl">{PLAN.wallet.name}</h2>
+          <p className="mt-2 text-r1-text-muted">{customerOptionHelp(PLAN.wallet)}</p>
           <p className="mt-2 text-r1-text-muted">
             Don&apos;t want a subscription? Top up a wallet from $20 ($50 and $100 presets available) and pay $4 per Standard report or $10 per Deep report.
           </p>

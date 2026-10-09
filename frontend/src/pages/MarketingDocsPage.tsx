@@ -15,7 +15,7 @@ export default function MarketingDocsPage() {
         <ul className="mt-8 list-disc space-y-3 pl-5 text-r1-text-muted">
           <li>
             <Link to="/methodology" className="text-r1-accent hover:underline">
-              Methodology — the stages a report goes through, and how it is challenged
+              Methodology — the stages a report goes through, and how it is double-checked
             </Link>
           </li>
           <li>

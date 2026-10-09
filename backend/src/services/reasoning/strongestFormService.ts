@@ -1,20 +1,20 @@
 /**
- * the source-class pass — Steelman pass between reasoner output and skeptic challenge.
+ * the source-class pass — Strongest-form pass between reasoner output and the double-check.
  */
 import { callRoleModel, SYSTEM_PROMPTS, type ModelCallResult } from '../openrouter/openrouterService';
 import type { ResearchObjective } from './reasoningModelPolicy';
 import type { RetrievedChunk } from '../retrieval/retrievalService';
-import type { SteelmanMode } from '../planning/orchestrationProfiles';
+import type { StrongestFormMode } from '../planning/orchestrationProfiles';
 import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
 import { logger } from '../../utils/logger';
 
-export interface SteelmanPassResult {
-  steelmanByClaimKey: Map<string, string>;
+export interface StrongestFormPassResult {
+  strongestFormByClaimKey: Map<string, string>;
   passCount: number;
   modelResult: ModelCallResult | null;
 }
 
-export function normalizeClaimKeyForSteelman(text: string): string {
+export function normalizeClaimKeyForStrongestForm(text: string): string {
   return text.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
@@ -47,14 +47,14 @@ export function extractCandidateClaimsFromReasoner(reasonerMarkdown: string, max
   return [...new Set(claims.map((c) => c.trim()))].slice(0, maxClaims);
 }
 
-function parseSteelmanJson(raw: string): Record<string, string> {
+function parseStrongestFormJson(raw: string): Record<string, string> {
   try {
     const m = raw.match(/\{[\s\S]*\}/);
     if (!m) return {};
     const parsed = JSON.parse(m[0]) as {
-      steelman_by_claim_id?: Record<string, string>;
+      strongest_form_by_claim_id?: Record<string, string>;
     };
-    const bag = parsed.steelman_by_claim_id ?? {};
+    const bag = parsed.strongest_form_by_claim_id ?? {};
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(bag)) {
       if (typeof v === 'string' && v.trim()) out[k] = v.trim();
@@ -72,25 +72,25 @@ function evidenceSnippet(chunks: RetrievedChunk[]): string {
     .join('\n---\n');
 }
 
-export async function runSteelmanPass(args: {
+export async function runStrongestFormPass(args: {
   reasonerOutput: string;
   chunks: RetrievedChunk[];
-  steelmanMode: SteelmanMode;
+  strongestFormMode: StrongestFormMode;
   /** Reserved for future prompt shaping / telemetry — callers still thread corpus classification through for parity with orchestrator contracts. */
   sourceClassMap: SourceClassMap;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
-}): Promise<SteelmanPassResult> {
+}): Promise<StrongestFormPassResult> {
   void args.sourceClassMap;
-  if (args.steelmanMode === 'off') {
-    return { steelmanByClaimKey: new Map(), passCount: 0, modelResult: null };
+  if (args.strongestFormMode === 'off') {
+    return { strongestFormByClaimKey: new Map(), passCount: 0, modelResult: null };
   }
 
   const candidates = extractCandidateClaimsFromReasoner(args.reasonerOutput);
   if (candidates.length === 0) {
-    return { steelmanByClaimKey: new Map(), passCount: 0, modelResult: null };
+    return { strongestFormByClaimKey: new Map(), passCount: 0, modelResult: null };
   }
 
   const payload = candidates.map((text, i) => ({
@@ -99,67 +99,67 @@ export async function runSteelmanPass(args: {
   }));
 
   let modeHint = '';
-  if (args.steelmanMode === 'per_option') {
+  if (args.strongestFormMode === 'per_option') {
     modeHint =
-      'MODE per_option: Group claims that correspond to distinct competing options and steelman each option independently.';
-  } else if (args.steelmanMode === 'as_product') {
+      'MODE per_option: Group claims that correspond to distinct competing options and restate each option in its strongest form independently.';
+  } else if (args.strongestFormMode === 'as_product') {
     modeHint =
       'MODE as_product: Produce the strongest overall affirmative brief — prioritize clarity and completeness as if this were the flagship deliverable.';
-  } else if (args.steelmanMode === 'symmetric') {
+  } else if (args.strongestFormMode === 'symmetric') {
     modeHint =
       'MODE symmetric: For each claim_id, include BOTH the strongest charitable case for and the strongest charitable case against in one paragraph (label AFFIRM / DENY inline).';
   } else {
-    modeHint = 'MODE standard: One concise steelman paragraph per claim id.';
+    modeHint = 'MODE standard: One concise paragraph per claim id, restating it in its strongest form.';
   }
 
   const userBody =
     `${modeHint}\n\n` +
-    `Return strict JSON { "steelman_by_claim_id": { "<id>": "<paragraph>" } } using the ids provided.\n\n` +
+    `Return strict JSON { "strongest_form_by_claim_id": { "<id>": "<paragraph>" } } using the ids provided.\n\n` +
     `Claims:\n${JSON.stringify(payload, null, 2)}\n\n` +
     `Evidence snippets:\n${evidenceSnippet(args.chunks)}`;
 
   try {
     const modelResult = await callRoleModel({
-      role: 'steelman',
+      role: 'strongest_form',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
       allowFallbackByRole: args.allowFallbackByRole,
       byokApiKeyOverride: args.byokApiKeyOverride,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.steelman },
+        { role: 'system', content: SYSTEM_PROMPTS.strongest_form },
         { role: 'user', content: userBody },
       ],
       maxTokens: 8192,
     });
 
-    const parsed = parseSteelmanJson(modelResult.content);
-    const steelmanByClaimKey = new Map<string, string>();
+    const parsed = parseStrongestFormJson(modelResult.content);
+    const strongestFormByClaimKey = new Map<string, string>();
     for (let i = 0; i < candidates.length; i++) {
       const id = `c${i}`;
       const paragraph = parsed[id];
       if (paragraph) {
-        steelmanByClaimKey.set(normalizeClaimKeyForSteelman(candidates[i]!), paragraph);
+        strongestFormByClaimKey.set(normalizeClaimKeyForStrongestForm(candidates[i]!), paragraph);
       }
     }
 
-    const passCount = steelmanByClaimKey.size > 0 ? 1 : 0;
-    return { steelmanByClaimKey, passCount, modelResult };
+    const passCount = strongestFormByClaimKey.size > 0 ? 1 : 0;
+    return { strongestFormByClaimKey, passCount, modelResult };
   } catch (e) {
-    logger.warn('[steelman] pass failed', { error: e instanceof Error ? e.message : String(e) });
-    return { steelmanByClaimKey: new Map(), passCount: 0, modelResult: null };
+    logger.warn('[strongest_form] pass failed', { error: e instanceof Error ? e.message : String(e) });
+    return { strongestFormByClaimKey: new Map(), passCount: 0, modelResult: null };
   }
 }
 
-export function formatSteelmanBlockForSkeptic(steelmanByClaimKey: Map<string, string>): string {
-  if (steelmanByClaimKey.size === 0) return '';
+export function formatStrongestFormBlockForDoubleCheck(strongestFormByClaimKey: Map<string, string>): string {
+  if (strongestFormByClaimKey.size === 0) return '';
   const lines: string[] = [
     '',
-    'STEELMAN CONTEXT (attack these strengthened formulations, not a strawman):',
+    'STRONGEST-FORM CONTEXT (attack these strengthened formulations, not a weaker version):',
   ];
   let i = 1;
-  for (const [claim, steel] of steelmanByClaimKey.entries()) {
+  for (const [claim, strongest] of strongestFormByClaimKey.entries()) {
     lines.push(`${i}. Claim: ${claim}`);
-    lines.push(`   Steelman: ${steel}`);
+    lines.push(`   Strongest form: ${strongest}`);
     i++;
   }
   return lines.join('\n');

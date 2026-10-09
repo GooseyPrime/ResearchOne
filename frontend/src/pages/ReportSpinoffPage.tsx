@@ -29,6 +29,10 @@ import { effectiveEntitlementTier, useBillingSubscriptionQuery } from '@/hooks/u
 import { useStore } from '@/store/useStore';
 import { liveResearchUrl } from '@/utils/researchRunRoutes';
 import { plainLabel } from '@/lib/researchone/plainWords';
+import { customerOption, customerOptionHelp, customerOptionsIn } from '../content/customerOptions';
+
+/** The form's fields, named and described from the registry of customer-facing names. */
+const FIELD = Object.fromEntries(customerOptionsIn('request_field').map((option) => [option.id, option]));
 
 function extractSpinoffError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -252,7 +256,8 @@ export default function ReportSpinoffPage() {
         <div className="card-glow p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="section-title block mb-2">Research query</label>
+              <label className="section-title block mb-2">{FIELD.question.name}</label>
+              <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.question)}</p>
               <textarea
                 className="textarea min-h-28"
                 value={query}
@@ -263,7 +268,8 @@ export default function ReportSpinoffPage() {
             </div>
 
             <div>
-              <label className="section-title block mb-2">Supplemental context</label>
+              <label className="section-title block mb-2">{FIELD.extra_context.name}</label>
+              <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.extra_context)}</p>
               <textarea
                 className="textarea min-h-20"
                 value={supplemental}
@@ -288,11 +294,11 @@ export default function ReportSpinoffPage() {
                 setSupplementalCrawlLayers(crawlLayers);
               }}
               disabled={mutation.isPending}
-              label="Supplemental files and URLs"
+              label={FIELD.documents_and_links.name}
             />
 
             <div>
-              <label className="section-title block mb-2">Research objective</label>
+              <label className="section-title block mb-2">{FIELD.research_objective.name}</label>
               <select
                 className="input w-full md:max-w-md"
                 value={researchObjective}
@@ -307,10 +313,13 @@ export default function ReportSpinoffPage() {
                   ),
                 )}
               </select>
+              <p className="text-xs text-slate-500 mt-1">
+                {customerOptionHelp(customerOption('research_objective', researchObjective))}
+              </p>
             </div>
 
             <div>
-              <label className="section-title block mb-2">Report length</label>
+              <label className="section-title block mb-2">{FIELD.report_length.name}</label>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   className="input md:max-w-xs"
@@ -320,12 +329,11 @@ export default function ReportSpinoffPage() {
                   }
                   disabled={mutation.isPending}
                 >
-                  <option value="automatic">Automatic (fit the question)</option>
-                  <option value="short">Short (~1,200 words)</option>
-                  <option value="standard">Standard (~2,200 words)</option>
-                  <option value="long">Long (~4,000 words)</option>
-                  <option value="extra_long">Extra long (~7,000 words)</option>
-                  <option value="custom">Custom</option>
+                  {customerOptionsIn('report_length').map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
                 </select>
                 {reportLengthPreset === 'custom' ? (
                   <input
@@ -339,27 +347,34 @@ export default function ReportSpinoffPage() {
                   />
                 ) : null}
               </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {customerOptionHelp(customerOption('report_length', reportLengthPreset))}
+              </p>
             </div>
 
             <div>
-              <label className="section-title block mb-2">Citation style</label>
+              <label className="section-title block mb-2">{FIELD.citation_style.name}</label>
               <select
                 className="input md:max-w-xs"
                 value={citationStyle}
                 onChange={(e) => setCitationStyle(e.target.value as CitationStyleChoice)}
                 disabled={mutation.isPending}
               >
-                <option value="automatic">Report default</option>
+                <option value="automatic">{customerOption('citation_style', 'automatic').name}</option>
                 {CITATION_STYLE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-slate-500 mt-1">
+                {customerOptionHelp(customerOption('citation_style', citationStyle))}
+              </p>
             </div>
 
             <div>
-              <label className="section-title block mb-2">Corpus filter tags (optional)</label>
+              <label className="section-title block mb-2">{FIELD.library_tags.name}</label>
+              <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.library_tags)}</p>
               <input
                 className="input"
                 placeholder="tag-one, tag-two"

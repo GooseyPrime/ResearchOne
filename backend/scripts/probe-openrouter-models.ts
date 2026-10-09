@@ -170,7 +170,7 @@ async function main(): Promise<void> {
           ? {
               primary: 'nousresearch/hermes-4-70b',
               fallback: 'nousresearch/hermes-3-llama-3.1-70b',
-              note: 'Matches `V2_MODE_PRESETS` skeptic / internal_challenger defaults.',
+              note: 'Matches `V2_MODE_PRESETS` double-check / internal_challenger defaults.',
             }
           : {
               primary: null,

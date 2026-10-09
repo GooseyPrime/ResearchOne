@@ -93,8 +93,8 @@ export function StickyVaultCore() {
                     const x = 200 + 170 * Math.cos(angle);
                     const y = 200 + 170 * Math.sin(angle);
                     const isActive = i === activeIndex;
-                    const isSkeptic = i === 5;
-                    const color = isSkeptic ? '#EF4444' : i < 5 ? '#22D3EE' : '#FBBF24';
+                    const isDoubleCheck = i === 5;
+                    const color = isDoubleCheck ? '#EF4444' : i < 5 ? '#22D3EE' : '#FBBF24';
 
                     return (
                       <line data-ev-id="ev_2c2251db98"
@@ -114,15 +114,15 @@ export function StickyVaultCore() {
                     const y = 200 + 170 * Math.sin(angle);
                     const isActive = i === activeIndex;
                     const isPast = i < activeIndex;
-                    const isSkeptic = stage.isSkeptic;
-                    const color = isSkeptic ? '#EF4444' : i < 5 ? '#22D3EE' : '#FBBF24';
+                    const isDoubleCheck = stage.isDoubleCheck;
+                    const color = isDoubleCheck ? '#EF4444' : i < 5 ? '#22D3EE' : '#FBBF24';
 
                     return (
                       <g data-ev-id="ev_efe6483a2b" key={stage.id} filter={isActive ? 'url(#nodeGlow)' : undefined}>
                         {/* Outer ring */}
                         <circle data-ev-id="ev_e0b2a1810b"
                         cx={x} cy={y}
-                        r={isSkeptic ? 18 : 14}
+                        r={isDoubleCheck ? 18 : 14}
                         fill="none"
                         stroke={color}
                         strokeWidth={isActive ? 2 : 1}
@@ -131,7 +131,7 @@ export function StickyVaultCore() {
                           {isActive && !prefersReducedMotion &&
                           <animate data-ev-id="ev_362b207aea"
                           attributeName="r"
-                          values={isSkeptic ? '18;24;18' : '14;20;14'}
+                          values={isDoubleCheck ? '18;24;18' : '14;20;14'}
                           dur="1.5s"
                           repeatCount="indefinite" />
 
@@ -141,7 +141,7 @@ export function StickyVaultCore() {
                         {/* Inner fill */}
                         <circle data-ev-id="ev_ba4a94e540"
                         cx={x} cy={y}
-                        r={isSkeptic ? 10 : 7}
+                        r={isDoubleCheck ? 10 : 7}
                         fill={color}
                         opacity={isActive ? 1 : isPast ? 0.7 : 0.4} />
 
@@ -184,7 +184,7 @@ export function StickyVaultCore() {
                       ACTIVE_STAGE
                     </span>
                     <span data-ev-id="ev_2f09a7593c" className={`font-mono text-sm font-medium tracking-wider ${
-                    pipelineStages[activeIndex]?.isSkeptic ?
+                    pipelineStages[activeIndex]?.isDoubleCheck ?
                     'text-red-400' :
                     activeIndex < 5 ?
                     'text-cyan-400' :

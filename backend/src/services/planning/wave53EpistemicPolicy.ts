@@ -1,5 +1,5 @@
 /**
- * the source-class pass — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/skeptic
+ * the source-class pass — epistemic policy helpers (orthogonal to Rule 20 preamble; reasoner/double-check
  * operational constraints live alongside openrouter SYSTEM_PROMPTS).
  */
 import { getSystemPrompt, SYSTEM_PROMPTS } from '../openrouter/openrouterService';
@@ -17,7 +17,7 @@ export function buildReasonerSystemPrompt(isAdjudicative: boolean): string {
   return appendReasonerPolicyConstraint(getSystemPrompt('reasoner', isAdjudicative));
 }
 
-const SKEPTIC_OVERLAYS: Record<SourceClassId, string> = {
+const DOUBLE_CHECK_OVERLAYS: Record<SourceClassId, string> = {
   consensus_held:
     'SOURCE-CLASS OVERLAY (consensus_held): Challenge whether institutional framing adequately grounds each major claim; scrutinize mechanisms and measurement, not popularity.',
   actively_contested:
@@ -28,19 +28,19 @@ const SKEPTIC_OVERLAYS: Record<SourceClassId, string> = {
     'SOURCE-CLASS OVERLAY (consensus_collapsed): Flag how expert consensus shifted over time; evaluate present claims against current evidence, noting outdated "settled" framings.',
 };
 
-/** Static skeptic instructions shared across dossiers (editable in openrouterService). */
-export const SKEPTIC_SOURCE_CLASS_CONDITIONAL_SECTION = `
+/** Static double-check instructions shared across dossiers (editable in openrouterService). */
+export const DOUBLE_CHECK_SOURCE_CLASS_CONDITIONAL_SECTION = `
 SOURCE-CLASS CONDITIONAL BEHAVIOR (Wave 5.3):
 The orchestrator may append per-class overlays below. When multiple classes appear in the corpus, apply each relevant overlay — prioritizing contested/suppressed/collapsed classes over pure consensus-held material when they conflict.
 `.trim();
 
-export function buildSkepticSystemPrompt(dominantSourceClasses: readonly SourceClassId[]): string {
-  const base = SYSTEM_PROMPTS.skeptic.trim();
-  const section = SKEPTIC_SOURCE_CLASS_CONDITIONAL_SECTION;
+export function buildDoubleCheckSystemPrompt(dominantSourceClasses: readonly SourceClassId[]): string {
+  const base = SYSTEM_PROMPTS.double_check.trim();
+  const section = DOUBLE_CHECK_SOURCE_CLASS_CONDITIONAL_SECTION;
   if (dominantSourceClasses.length === 0) {
     return `${base}\n\n${section}\n(No dominant source-class overlays — treat corpus as unclassified for this dimension.)`;
   }
-  const overlays = dominantSourceClasses.map((c) => SKEPTIC_OVERLAYS[c] ?? '').filter(Boolean);
+  const overlays = dominantSourceClasses.map((c) => DOUBLE_CHECK_OVERLAYS[c] ?? '').filter(Boolean);
   return `${base}\n\n${section}\n${overlays.join('\n')}`;
 }
 
@@ -74,7 +74,7 @@ export function resolveSourceClassForChunk(
   return viaUrl ?? null;
 }
 
-/** Ordered dominant classes (non-zero counts) for skeptic overlays. */
+/** Ordered dominant classes (non-zero counts) for double-check overlays. */
 export function dominantSourceClassesFromBreakdown(
   breakdown: Record<string, number>,
   limit = 4,

@@ -38,7 +38,7 @@ function withReaderNumbers(markdown: string, legacyNumbers: ReadonlyMap<number, 
 export function isChallengeSection(section: { title: string; section_type?: string | null }): boolean {
   return (
     section.section_type === 'challenge' ||
-    /^(challenge\b|the challenge\b|adversarial (review|challenge)\b)/.test(norm(section.title)) ||
+    /^(double-check\b|challenge\b|the challenge\b|adversarial (review|challenge)\b)/.test(norm(section.title)) ||
     // An older report's challenge sections, under the names the removed layout gave them.
     isOlderChallengeHeading(section.title)
   );

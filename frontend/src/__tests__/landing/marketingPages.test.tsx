@@ -15,7 +15,7 @@ describe('marketing pages', () => {
     const html = inRouter(<MethodologyPage />);
     expect(html).toContain('How ResearchOne works');
     expect(html).toContain('A representative research flow');
-    expect(html).toContain('CHALLENGE_REVIEW');
+    expect(html).toContain('DOUBLE-CHECK');
   });
 
   it('BYOKPage — provider routing', () => {

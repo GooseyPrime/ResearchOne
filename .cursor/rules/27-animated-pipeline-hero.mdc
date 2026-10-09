@@ -25,7 +25,7 @@ in 3 seconds without copy.
 fixed-stage universal pipeline into an adaptive research operating
 system. The hero visualization must eventually reflect actual
 orchestration — a stable core path with conditional specialist nodes,
-optional skeptic/adversarial branches, and skipped stages shown as
+optional double-check/adversarial branches, and skipped stages shown as
 visibly bypassed. The invariants below govern the current (Stages A–B)
 and near-term (Stage C) implementation.
 
@@ -70,7 +70,7 @@ Label changes to the static visual must stay synchronized with
 The stage list displayed in marketing and the static hero:
 
 ```
-Planner, Discovery, Retriever, Retriever Analysis, Reasoner, Skeptic,
+Planner, Discovery, Retriever, Retriever Analysis, Reasoner, Double-check,
 Drafting, Verifier, Report, Recordkeeping
 ```
 
@@ -86,9 +86,9 @@ the hero visualization must reflect the actual agent roster for the run:
 
 - A **stable core path** (Planner → Retriever → Reasoner → Report) always visible.
 - **Conditional specialist nodes** render when the orchestration profile selects them.
-- **Skeptic / adversarial branch** renders only when the intent requires adversarial
-  review (adjudicative, causal_test, story_verification). It must not appear on
-  informational, exploratory, or recommendation runs.
+- **Double-check** renders on every run: it runs on every report (the
+  orchestration profiles cannot switch it off). What varies with the intent is
+  how thorough it is, not whether it is there.
 - **Skipped stages** are visibly bypassed or dimmed — not hidden entirely — so the
   user can see that a stage was considered and skipped, not absent from the system.
 - When live orchestration metadata is available (e.g. `agentsToRun` from the run
@@ -98,24 +98,21 @@ Until Stage C ships, the static 10-node diagram remains the canonical hero.
 Do not ship a partial adaptive view that shows fewer nodes than today without
 also exposing the "stage was skipped intentionally" affordance.
 
-### I-4. Skeptic node is visually distinguished — conditional on intent
+### I-4. Double-check node is visually distinguished — on every run
 
-The existing static visual marks Skeptic with `animate-glow` and a
-brighter ring per the strategic doc's "Skeptic is the differentiator"
-positioning. When Skeptic runs (adjudicative and adversarial intents),
-the animated version must preserve this: Skeptic node gets a brighter
-background, larger ring, and beam handoffs in/out of Skeptic get extra
+The existing static visual marks Double-check with `animate-glow` and a
+brighter ring per the strategic doc's "Double-check is the differentiator"
+positioning. Double-check runs on every report, and
+the animated version must preserve this: Double-check node gets a brighter
+background, larger ring, and beam handoffs in/out of Double-check get extra
 emphasis (longer dwell, brighter beam head).
 
-**Adaptive behavior:** When Skeptic is not selected by the orchestrator
-(informational, exploratory, opportunity-discovery intents), the node
-should render as a dimmed/bypassed stage — not removed. Removing it
-entirely would suggest the system lacks adversarial capability; dimming
-it communicates that this run did not require it. Until adaptive
-rendering ships (Stage C+), the static Skeptic is always shown
-prominently as a marketing differentiator.
+**Adaptive behavior:** Double-check is never dimmed, bypassed or removed,
+because no run skips it. An adaptive view may show how thorough it is for the
+run (notes beside the report, or findings tested before the report is written),
+and the static Double-check is always shown prominently.
 
-If you de-emphasize Skeptic universally (not per-run), you've broken the
+If you de-emphasize Double-check universally (not per-run), you've broken the
 marketing visual. Don't.
 
 ### I-5. Beam color palette is read from persona, not hardcoded

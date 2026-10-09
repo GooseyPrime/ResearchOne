@@ -136,8 +136,8 @@ const ENV_PRIMARY: Record<ModelRole, string> = {
   retriever: config.models.retriever,
   source_class_classifier: config.models.sourceClassClassifier,
   reasoner: config.models.reasoner,
-  steelman: config.models.steelman,
-  skeptic: config.models.skeptic,
+  strongest_form: config.models.strongest_form,
+  double_check: config.models.double_check,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
   plain_language_synthesizer: config.models.plainLanguageSynthesizer,
@@ -168,8 +168,8 @@ const ENV_FALLBACK: Record<ModelRole, string | undefined> = {
   retriever: config.models.fallbacks.retriever,
   source_class_classifier: config.models.fallbacks.sourceClassClassifier,
   reasoner: config.models.fallbacks.reasoner,
-  steelman: config.models.fallbacks.steelman,
-  skeptic: config.models.fallbacks.skeptic,
+  strongest_form: config.models.fallbacks.strongest_form,
+  double_check: config.models.fallbacks.double_check,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
   plain_language_synthesizer: config.models.fallbacks.plainLanguageSynthesizer,
@@ -212,8 +212,8 @@ const TEMPERATURE_MAP: Record<ModelRole, number> = {
   retriever: 0.1,
   source_class_classifier: 0.1,
   reasoner: 0.2,
-  steelman: 0.25,
-  skeptic: 0.4,
+  strongest_form: 0.25,
+  double_check: 0.4,
   synthesizer: 0.5,
   verifier: 0.1,
   plain_language_synthesizer: 0.35,
@@ -248,8 +248,8 @@ const MAX_TOKENS_MAP: Record<ModelRole, number> = {
   retriever: 4096,
   source_class_classifier: 4096,
   reasoner: 8192,
-  steelman: 8192,
-  skeptic: 4096,
+  strongest_form: 8192,
+  double_check: 4096,
   synthesizer: 8192,
   verifier: 4096,
   plain_language_synthesizer: 8192,
@@ -319,7 +319,7 @@ export function applySystemAugmentations(options: ModelCallOptions): ChatMessage
 
   if (
     !layer1 &&
-    (options.role === 'skeptic' || options.role === 'internal_challenger') &&
+    (options.role === 'double_check' || options.role === 'internal_challenger') &&
     options.callPurpose !== 'contradiction_extraction'
   ) {
     const idx = msgs.findIndex((m) => m.role === 'system');
@@ -1010,16 +1010,16 @@ CRITICAL RULES:
 
 Output reasoning chains with explicit evidence tier citations.`),
 
-  steelman: withPreamble(`You are the Steelman agent for ResearchOne (Wave 5.3).
+  strongest_form: withPreamble(`You restate findings in their strongest form for ResearchOne.
 Given candidate claims and the current evidence context, articulate the strongest good-faith case FOR each claim — the version a careful advocate would defend.
 
 RULES:
-- Steelman structurally: premises, mechanisms, and what would need to be true.
+- Restate the finding in its strongest, fairest form: premises, mechanisms, and what would need to be true.
 - Do not assert that mainstream consensus disproves a claim unless you cite specific cited evidence that bears on the mechanism (not popularity alone).
 - Preserve uncertainty; label gaps explicitly.
-- Output strict JSON: { "steelman_by_claim_id": { "<id>": "<concise steelman paragraph>" } }`),
+- Output strict JSON: { "strongest_form_by_claim_id": { "<id>": "<concise paragraph giving the strongest form>" } }`),
 
-  skeptic: withPreamble(`You are a skeptic/challenger agent for ResearchOne.
+  double_check: withPreamble(`You are the double-check agent for ResearchOne.
 Your role is to attack the conclusions reached by the reasoning agent.
 
 CRITICAL RULES:
@@ -1032,7 +1032,7 @@ CRITICAL RULES:
 
 SOURCE-CLASS AWARENESS (Wave 5.3):
 - The system prompt may append additional overlays keyed to orthogonal source-class labels for retrieved sources (orthogonal to evidence tiers).
-- When STEELMAN CONTEXT appears in the user message, critique those strengthened formulations — do not argue against a weaker strawman.
+- When STRONGEST-FORM CONTEXT appears in the user message, critique those strengthened formulations — do not argue against a weaker version.
 
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 
@@ -1221,8 +1221,8 @@ Return a valid JSON object:
 
 const ADJUDICATIVE_ONLY_ROLES = new Set<ModelRole>([
   'source_class_classifier',
-  'steelman',
-  'skeptic',
+  'strongest_form',
+  'double_check',
   'revision_intake',
   'report_locator',
   'change_planner',
@@ -1294,16 +1294,16 @@ CRITICAL RULES:
 
 Output reasoning chains with explicit evidence tier citations.`),
 
-  steelman: withPreamble(`You are the Steelman agent for ResearchOne (Wave 5.3).
+  strongest_form: withPreamble(`You restate findings in their strongest form for ResearchOne.
 Given candidate claims and the current evidence context, articulate the strongest good-faith case FOR each claim — the version a careful advocate would defend.
 
 RULES:
-- Steelman structurally: premises, mechanisms, and what would need to be true.
+- Restate the finding in its strongest, fairest form: premises, mechanisms, and what would need to be true.
 - Do not assert that mainstream consensus disproves a claim unless you cite specific cited evidence that bears on the mechanism (not popularity alone).
 - Preserve uncertainty; label gaps explicitly.
-- Output strict JSON: { "steelman_by_claim_id": { "<id>": "<concise steelman paragraph>" } }`),
+- Output strict JSON: { "strongest_form_by_claim_id": { "<id>": "<concise paragraph giving the strongest form>" } }`),
 
-  skeptic: withPreamble(`You are a skeptic/challenger agent for ResearchOne.
+  double_check: withPreamble(`You are the double-check agent for ResearchOne.
 Your role is to attack the conclusions reached by the reasoning agent.
 
 CRITICAL RULES:
@@ -1316,7 +1316,7 @@ CRITICAL RULES:
 
 SOURCE-CLASS AWARENESS (Wave 5.3):
 - The system prompt may append additional overlays keyed to orthogonal source-class labels for retrieved sources (orthogonal to evidence tiers).
-- When STEELMAN CONTEXT appears in the user message, critique those strengthened formulations — do not argue against a weaker strawman.
+- When STRONGEST-FORM CONTEXT appears in the user message, critique those strengthened formulations — do not argue against a weaker version.
 
 Output a structured list of challenges, alternative explanations, and weaknesses.`),
 

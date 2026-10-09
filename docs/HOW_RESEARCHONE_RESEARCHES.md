@@ -30,7 +30,7 @@ User-facing progress labels map to:
 | Discovery | Topic framing and source strategy |
 | Retrieval | Source search and ranking |
 | Reasoning | Draft findings grounded in sources |
-| Challenge | Optional skeptic / challenge pass (when posture warrants it) |
+| Double-check | Restates each main finding in its strongest form, then tests it against other sources and the original records |
 | Synthesis | Integrate findings into the report structure |
 | Verification | Citation binding and final checks |
 
@@ -55,7 +55,7 @@ Posture is selected from the **orchestration profile** tied to the detected (or 
 ResearchOne classifies each query into one of 16+ intents (see backend `intentTaxonomy.ts` and frontend intent labels). The intent selects:
 
 - which agents run or skip
-- skepticMode / steelmanMode
+- doubleCheckMode / strongestFormMode
 - document shape and deliverable expectations
 
 Users can correct a misclassification at the plan gate via **“I meant a different research goal”** without removing the confirmation gate.

@@ -13,7 +13,7 @@ describe('ModeMatrix', () => {
     expect(html).toContain('Convergence Analysis');
   });
 
-  it('includes skeptic intensity column', () => {
-    expect(html).toContain('Challenge depth');
+  it('includes double-check intensity column', () => {
+    expect(html).toContain('Double-check depth');
   });
 });

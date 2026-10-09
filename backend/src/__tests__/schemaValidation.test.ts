@@ -4,7 +4,7 @@ import { validateAgentOutput, AGENT_OUTPUT_SCHEMAS } from '../schemas/agentOutpu
 describe('agent output schema validation', () => {
   it('has schemas for all 8 core agents', () => {
     const expected = [
-      'planner', 'retriever', 'reasoner', 'skeptic',
+      'planner', 'retriever', 'reasoner', 'double_check',
       'synthesizer', 'verifier', 'plain_language_synthesizer', 'outline_architect',
     ];
     for (const role of expected) {
@@ -57,9 +57,9 @@ describe('agent output schema validation', () => {
     });
   });
 
-  describe('skeptic schema', () => {
+  describe('double-check schema', () => {
     it('accepts output with structural comparisons', () => {
-      const result = validateAgentOutput('skeptic', {
+      const result = validateAgentOutput('double_check', {
         challenges: 'The claim about X is unsupported...',
         structural_comparisons: [{
           source_claim: 'X causes Y',

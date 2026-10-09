@@ -10,7 +10,7 @@ export function FeatureVaultList() {
   return (
     <div data-ev-id="ev_6db60ab02c" className="flex flex-col gap-6">
       {featureBlocks.map((feature, index) => {
-        const isSkeptic = feature.isSkeptic || feature.number === '06';
+        const isDoubleCheck = feature.isDoubleCheck || feature.number === '06';
 
         return (
           <motion.div
@@ -24,7 +24,7 @@ export function FeatureVaultList() {
               ease: [0.25, 1, 0.5, 1]
             }}
             className={`relative p-6 rounded-lg border transition-colors duration-250 ${
-            isSkeptic ?
+            isDoubleCheck ?
             'bg-r1-red-margin border-r1-challenge/30 hover:border-r1-challenge/50' :
             'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
             }>
@@ -32,7 +32,7 @@ export function FeatureVaultList() {
             {/* Number badge */}
             <div data-ev-id="ev_1683730318" className="flex items-start gap-4">
               <span data-ev-id="ev_9f68888c48" className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg font-mono text-lg font-semibold ${
-              isSkeptic ?
+              isDoubleCheck ?
               'bg-r1-red/20 text-r1-challenge' :
               index < 5 ?
               'bg-r1-cyan/10 text-r1-cyan' :
@@ -45,13 +45,13 @@ export function FeatureVaultList() {
                 {/* Title row */}
                 <div data-ev-id="ev_fa77225fcd" className="flex items-center gap-3 flex-wrap mb-1">
                   <h3 data-ev-id="ev_ac1257d3b7" className={`text-lg font-semibold ${
-                  isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
+                  isDoubleCheck ? 'text-r1-challenge' : 'text-r1-heading'}`
                   }>
                     {feature.title}
                   </h3>
-                  {isSkeptic &&
+                  {isDoubleCheck &&
                   <span data-ev-id="ev_5530b71ead" className="r1-tag text-[9px] border-r1-challenge/50 text-r1-challenge">
-                      CHALLENGE
+                      DOUBLE-CHECK
                     </span>
                   }
                 </div>

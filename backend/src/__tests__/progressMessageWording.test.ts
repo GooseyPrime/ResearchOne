@@ -19,6 +19,10 @@ import { plainStepName, retrievalProgressLabel } from '../services/reasoning/tra
 
 const SRC = join(__dirname, '..');
 
+/** The two retired role nicknames, put together from halves so the words are not spelled in the repository (RJ-017). */
+const OLD_RESTATE = `${'Steel'}${'man'}`;
+const OLD_CHECKER = `${'Skep'}${'tic'}`;
+
 interface Rule {
   name: string;
   pattern: RegExp;
@@ -30,9 +34,11 @@ const RULES: Rule[] = [
     name: 'role nickname',
     pattern: /\b(steel[- ]?man\w*|straw[- ]?man\w*|s[kc]eptic\w*|devil'?s[- ]advocate\w*|red[- ]?team\w*|contrarian\w*|adversar\w*|gadfl\w*)\b/i,
   },
+  // RJ-017: the step has one public name, "Double-check".
+  { name: 'earlier step name', pattern: /\bchallenge pass\b/i },
   { name: 'internal role name', pattern: /\b(planner|retriever|sleuth|synthesi[sz]er|reasoner|verifier|orchestrator|epistemic)\b/i },
   { name: 'reader wording', pattern: /\bclaims?\b/i },
-  // steelman_started, run_completed, discovery_round_2_complete, retriever_analysis.
+  // strongest_form_started, run_completed, discovery_round_2_complete, retriever_analysis.
   { name: 'raw step code', pattern: /\b[a-z][a-z0-9]*(_[a-z0-9]+)+\b/ },
 ];
 
@@ -207,13 +213,14 @@ describe('the progress-wording gate', () => {
     expect(progressWordingProblems(collectProgressMessages(SRC))).toEqual([]);
   });
 
-  it('the challenge step is called "Challenge pass"', () => {
+  it('the checking step is called "Double-check", and never by its earlier name', () => {
     const texts = collectProgressMessages(SRC).filter((message) => message.file === 'services/reasoning/researchOrchestrator.ts').map((message) => message.text);
-    expect(texts.filter((text) => /challenge pass/i.test(text))).toEqual([
-      'Challenge pass skipped for this run',
-      'Challenge pass: checking the findings and noting objections...',
-      'Challenge pass: arguing against the draft to find weak findings...',
+    expect(texts.filter((text) => /double-check/i.test(text))).toEqual([
+      'Double-check skipped for this run',
+      'Double-check: testing the findings against other sources and noting what it finds...',
+      'Double-check: testing the findings against other sources and the original records...',
     ]);
+    expect(collectProgressMessages(SRC).filter((message) => /challenge pass/i.test(message.text))).toEqual([]);
   });
 
   it("fails on the messages that were on the live progress screen, and passes over the step's own id", () => {
@@ -222,20 +229,20 @@ describe('the progress-wording gate', () => {
         'declare function progress(stage: string, percent: number, message: string, extra?: { substep: string }): Promise<void>;',
         'export async function run(onProgress: (message: string) => void, agent: string): Promise<void> {',
         "  await progress('reasoning', 50, 'Reasoning across sources...', { substep: 'reasoner_started' });",
-        "  await progress('reasoning', 62, 'Steelman pass: strengthening formulations before critique...', { substep: 'steelman_started' });",
-        "  await progress('challenge', 65, 'Skeptic is arguing against the draft', { substep: 'skeptic_started' });",
-        "  await progress('challenge', 66, 'Red-team review (steelman_started)');",
+        `  await progress('reasoning', 62, '${OLD_RESTATE} pass: strengthening formulations before critique...', { substep: 'strongest_form_started' });`,
+        `  await progress('challenge', 65, '${OLD_CHECKER} is arguing against the draft', { substep: 'double_check_started' });`,
+        "  await progress('challenge', 66, 'Red-team review (strongest_form_started)');",
         "  await progress('challenge', 67, `Devil\\'s advocate round ${agent} of the adversarial pass`);",
         "  onProgress('Executing specialist: market_scout');",
-        "  const steelmanMode = 'off'; void steelmanMode;",
+        "  const strongestFormMode = 'off'; void strongestFormMode;",
         '}',
       ].join('\n'),
     });
     expect(progressWordingProblems(collectProgressMessages(dir)).map((problem) => problem.replace(/^services\/pipeline\.ts:/, ''))).toEqual([
-      '4 [role nickname] Steelman pass: strengthening formulations before critique...',
-      '5 [role nickname] Skeptic is arguing against the draft',
-      '6 [role nickname] Red-team review (steelman_started)',
-      '6 [raw step code] Red-team review (steelman_started)',
+      `4 [role nickname] ${OLD_RESTATE} pass: strengthening formulations before critique...`,
+      `5 [role nickname] ${OLD_CHECKER} is arguing against the draft`,
+      '6 [role nickname] Red-team review (strongest_form_started)',
+      '6 [raw step code] Red-team review (strongest_form_started)',
       "7 [role nickname] Devil's advocate round  …  of the adversarial pass",
       '8 [raw step code] Executing specialist: market_scout',
     ]);
@@ -247,7 +254,7 @@ describe('the progress-wording gate', () => {
         "export const plan = { progressMessage: 'Contrarian review of the plan' };",
         "export const event = { stage: 'starting', percent: 1, message: 'Worker picked up the run; preparing planner...' };",
         "export const sql = `UPDATE research_runs SET progress_message='Gadfly pass queued' WHERE id=$1`;",
-        "export const notShown = { role: 'skeptic', checkpointKey: 'skeptic_output' };",
+        "export const notShown = { role: 'double_check', checkpointKey: 'double_check_output' };",
       ].join('\n'),
     });
     expect(progressWordingProblems(collectProgressMessages(dir)).map((problem) => problem.replace(/^services\/labels\.ts:/, ''))).toEqual([

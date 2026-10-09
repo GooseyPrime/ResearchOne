@@ -41,7 +41,7 @@ export const ReasonerOutputSchema = z.object({
   unresolved_tensions: z.array(z.string()).optional(),
 });
 
-export const SkepticOutputSchema = z.object({
+export const DoubleCheckOutputSchema = z.object({
   challenges: z.string().min(1),
   structural_comparisons: z.array(z.object({
     source_claim: z.string(),
@@ -92,7 +92,7 @@ export const AGENT_OUTPUT_SCHEMAS: Record<string, z.ZodType> = {
   planner: PlannerOutputSchema,
   retriever: RetrieverOutputSchema,
   reasoner: ReasonerOutputSchema,
-  skeptic: SkepticOutputSchema,
+  double_check: DoubleCheckOutputSchema,
   synthesizer: SynthesizerOutputSchema,
   verifier: VerifierOutputSchema,
   plain_language_synthesizer: PlainLanguageSynthesizerOutputSchema,

@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import NotYetAvailable from './NotYetAvailable';
 import type { SubscriptionOption } from './PlanCheckoutOptions';
 
-import type { PlanIntent } from '../../lib/billing/planIntent';
+import { PLAN_LABEL, type PlanIntent } from '../../lib/billing/planIntent';
+import { customerOption, customerOptionHelp } from '../../content/customerOptions';
 import {
   formatPlanChangeDate,
   planChangeLabel,
@@ -21,8 +22,8 @@ export type PendingPlanSwitch = {
 };
 
 const SWITCHABLE_PLANS: ReadonlyArray<{ tier: SwitchablePlan; label: string; summary: string }> = [
-  { tier: 'pro', label: 'Pro', summary: '25 reports a month, all 5 modes, private corpus.' },
-  { tier: 'byok', label: 'BYOK', summary: 'Bring your own model keys.' },
+  { tier: 'pro', label: PLAN_LABEL.pro, summary: '25 reports a month, all 5 modes, private corpus.' },
+  { tier: 'byok', label: PLAN_LABEL.byok, summary: 'Bring your own model keys.' },
 ];
 
 const PERIOD_LABEL: Record<SwitchPeriod, string> = { monthly: 'monthly', annual: 'annual' };
@@ -164,10 +165,13 @@ export default function PlanSwitchOptions({
               className={`rounded-lg border bg-slate-800/50 p-4 ${isCurrent ? 'border-indigo-500/60' : 'border-white/10'}`}
             >
               <h3 className="font-medium">
-                {option?.label ?? plan.label}
+                {plan.label}
                 {isCurrent ? <span className="ml-2 text-xs font-normal text-indigo-300">Your current plan</span> : null}
               </h3>
               <p className="mt-1 text-xs text-slate-500">{plan.summary}</p>
+              <p className="mt-1 text-xs text-slate-500" data-plan-help={plan.tier}>
+                {customerOptionHelp(customerOption('plan', plan.tier))}
+              </p>
               {anyPrice ? (
                 <>
                   <div className="mt-3 flex flex-wrap gap-2">

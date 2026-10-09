@@ -162,7 +162,7 @@ describe('GET /admin/cost/breakdown', () => {
   it('returns phase breakdown by default', async () => {
     mockedAdminQuery.mockResolvedValueOnce([
       { bucket: 'Reasoning', total_cost_usd: '4.50', total_tokens: '900000', call_count: '30' },
-      { bucket: 'Skeptic', total_cost_usd: '3.20', total_tokens: '600000', call_count: '24' },
+      { bucket: 'Double-check', total_cost_usd: '3.20', total_tokens: '600000', call_count: '24' },
       { bucket: 'Synthesis', total_cost_usd: '2.80', total_tokens: '500000', call_count: '14' },
     ]);
 
@@ -214,7 +214,7 @@ describe('GET /admin/cost/reports', () => {
         call_count: '8', total_tokens: '14200', total_duration_ms: '45200',
         total_cost_usd: '0.42', fallback_calls: '1',
         first_call_at: '2026-05-10T10:00:00Z', last_call_at: '2026-05-10T10:00:45Z',
-        top_phase: 'Skeptic',
+        top_phase: 'Double-check',
       },
     ]);
 
@@ -223,7 +223,7 @@ describe('GET /admin/cost/reports', () => {
     expect(res.status).toBe(200);
     expect(res.body.rows).toHaveLength(1);
     expect(res.body.rows[0].runId).toBe('r1');
-    expect(res.body.rows[0].topPhase).toBe('Skeptic');
+    expect(res.body.rows[0].topPhase).toBe('Double-check');
     expect(res.body.rows[0].totalCostUsd).toBeCloseTo(0.42);
   });
 
@@ -240,10 +240,10 @@ describe('GET /admin/cost/reports', () => {
   it('filters by phase', async () => {
     mockedAdminQuery.mockResolvedValueOnce([]);
 
-    await request(testApp).get('/api/admin/cost/reports?days=30&phase=Skeptic').set(adminHeaders());
+    await request(testApp).get('/api/admin/cost/reports?days=30&phase=Double-check').set(adminHeaders());
 
     const [, params] = mockedAdminQuery.mock.calls[0];
-    expect((params as unknown[]).includes('Skeptic')).toBe(true);
+    expect((params as unknown[]).includes('Double-check')).toBe(true);
   });
 
   it('paginates with limit/offset, clamped', async () => {

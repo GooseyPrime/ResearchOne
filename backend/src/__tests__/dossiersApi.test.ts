@@ -157,7 +157,7 @@ describe('GET /api/dossiers/:id', () => {
         sourcesRetrievedCount: null,
         sourcesCitedCount: null,
         citationDensity: null,
-        skepticAnnotationsCount: null,
+        doubleCheckAnnotationsCount: null,
         contradictionsCount: null,
         refinementRounds: null,
         agentsRan: null,

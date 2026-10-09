@@ -13,7 +13,7 @@ export type ResearchStage =
   | 'retriever_analysis'
   | 'quantitative'
   | 'reasoner'
-  | 'skeptic'
+  | 'double_check'
   | 'synthesizer'
   | 'verifier'
   | 'formatter'
@@ -192,7 +192,7 @@ export interface PipelineStage {
   id: ResearchStage;
   name: string;
   description: string;
-  isSkeptic?: boolean;
+  isDoubleCheck?: boolean;
 }
 
 export interface Capability {
@@ -207,7 +207,7 @@ export interface FeatureBlock {
   title: string;
   subtitle: string;
   description: string;
-  isSkeptic?: boolean;
+  isDoubleCheck?: boolean;
 }
 
 export interface RuntimeNode {

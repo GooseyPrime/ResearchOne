@@ -50,6 +50,10 @@ import { buildClarifyingQuestions } from '../../utils/clarifyingQuestions';
 import { liveResearchUrl } from '../../utils/researchRunRoutes';
 import { useStore } from '../../store/useStore';
 import { plainLabel } from '@/lib/researchone/plainWords';
+import { customerOptionHelp, customerOptionsIn } from '@/content/customerOptions';
+
+/** The form's own fields, named and described from the registry of customer-facing names. */
+const FIELD = Object.fromEntries(customerOptionsIn('request_field').map((option) => [option.id, option]));
 
 type ModelRow = { primary?: string; fallback?: string; fallbackEnabled?: boolean };
 type ObjectiveChoice = 'AUTO' | ResearchObjective;
@@ -61,12 +65,15 @@ function Disclosure({
   open,
   onToggle,
   label,
+  hint,
   testId,
   children,
 }: {
   open: boolean;
   onToggle: () => void;
   label: string;
+  /** What the section is for, shown under its name whether it is open or not. */
+  hint: string;
   testId: string;
   children: React.ReactNode;
 }) {
@@ -79,9 +86,12 @@ function Disclosure({
         className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-slate-300 hover:bg-surface-100/40 transition-colors"
         onClick={onToggle}
       >
-        <span className="flex items-center gap-1.5">
-          <Settings2 size={13} />
-          {label}
+        <span className="flex items-start gap-1.5 text-left">
+          <Settings2 size={13} className="mt-0.5 flex-shrink-0" />
+          <span>
+            {label}
+            <span className="block text-[11px] text-slate-500">{hint}</span>
+          </span>
         </span>
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
       </button>
@@ -97,7 +107,7 @@ function Disclosure({
  * Research Lab in Deep mode — behind two toggles, and which one you were
  * looking at decided things a research request has no business deciding:
  * whether the objective-specific model line-up applied at all, how hard the
- * challenge pass argued, and which of your allowances the report came out of.
+ * findings were checked, and which of your allowances the report came out of.
  * Free-tier users could not reach the Deep form, so their reports came from a
  * materially weaker pipeline than the screenshots they had been shown.
  *
@@ -350,8 +360,9 @@ export default function ResearchRequestForm() {
 
         <div>
           <label className="section-title block mb-2" htmlFor="research-query">
-            Your research question or task
+            {FIELD.question.name}
           </label>
+          <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.question)}</p>
           <textarea
             id="research-query"
             className="textarea min-h-28 text-base w-full"
@@ -364,8 +375,9 @@ export default function ResearchRequestForm() {
 
         <div>
           <label className="section-title block mb-2" htmlFor="research-supplemental">
-            Extra context (optional)
+            {FIELD.extra_context.name}
           </label>
+          <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.extra_context)}</p>
           <textarea
             id="research-supplemental"
             className="textarea min-h-20 w-full text-sm"
@@ -384,8 +396,8 @@ export default function ResearchRequestForm() {
             setUrls(nextUrls);
           }}
           disabled={busy}
-          label="Documents and links (optional)"
-          description="Anything here is read alongside the sources we find, not instead of them."
+          label={FIELD.documents_and_links.name}
+          description={customerOptionHelp(FIELD.documents_and_links)}
           mode="research"
           siteCrawlEnabled={siteCrawlEnabled}
           crawlLayers={crawlLayers}
@@ -398,7 +410,8 @@ export default function ResearchRequestForm() {
         <Disclosure
           open={outputOpen}
           onToggle={() => setOutputOpen((v) => !v)}
-          label="What the report should look like"
+          label={FIELD.output_preferences.name}
+          hint={customerOptionHelp(FIELD.output_preferences)}
           testId="request-output-prefs-toggle"
         >
           <ResearchOutputControls
@@ -421,7 +434,8 @@ export default function ResearchRequestForm() {
         <Disclosure
           open={sourcesOpen}
           onToggle={() => setSourcesOpen((v) => !v)}
-          label="Sources and challenge"
+          label={FIELD.sources_and_check.name}
+          hint={customerOptionHelp(FIELD.sources_and_check)}
           testId="request-sources-toggle"
         >
           <ChallengePerspectiveSelector
@@ -432,8 +446,9 @@ export default function ResearchRequestForm() {
 
           <div>
             <label className="section-title block mb-2" htmlFor="research-filter-tags">
-              Limit your own library to these tags (optional)
+              {FIELD.library_tags.name}
             </label>
+            <p className="text-xs text-slate-500 mb-2">{customerOptionHelp(FIELD.library_tags)}</p>
             <input
               id="research-filter-tags"
               type="text"
@@ -448,7 +463,7 @@ export default function ResearchRequestForm() {
           {tierResolved && tierAllowsSavedProfiles ? (
             <div>
               <label className="section-title block mb-2" htmlFor="saved-orch-profile">
-                Saved run settings (optional)
+                {FIELD.saved_run_settings.name}
               </label>
               <select
                 id="saved-orch-profile"
@@ -465,10 +480,7 @@ export default function ResearchRequestForm() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-slate-500 mt-1">
-                Starts the plan from settings you saved earlier. You still see the plan before
-                anything runs.
-              </p>
+              <p className="text-xs text-slate-500 mt-1">{customerOptionHelp(FIELD.saved_run_settings)}</p>
             </div>
           ) : null}
         </Disclosure>
@@ -477,7 +489,8 @@ export default function ResearchRequestForm() {
           <Disclosure
             open={modelsOpen}
             onToggle={() => setModelsOpen((v) => !v)}
-            label="Which models do the work"
+            label={FIELD.models.name}
+            hint={customerOptionHelp(FIELD.models)}
             testId="request-models-toggle"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -571,8 +584,8 @@ export default function ResearchRequestForm() {
                     />
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
-                      Backup
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5" title={customerOptionHelp(FIELD.backup_model)}>
+                      {FIELD.backup_model.name}
                     </div>
                     <div className="flex items-start gap-2">
                       <input

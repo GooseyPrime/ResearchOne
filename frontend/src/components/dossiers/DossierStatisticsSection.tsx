@@ -4,6 +4,7 @@ import { buildOrchestrationHeadline, parseJsonStringArray, profileDisplayNameFro
 import SourceClassBadge from './SourceClassBadge';
 import { SOURCE_CLASS_IDS, sourceClassLabel } from './sourceClassIds';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
+import { customerOption } from '../../content/customerOptions';
 
 type Props = {
   stats: DossierStats;
@@ -71,7 +72,7 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400">
           {profile ? (
             <div className="rounded-md border border-slate-800/60 px-3 py-2">
-              <dt className="text-slate-500 uppercase tracking-wide">Report type</dt>
+              <dt className="text-slate-500 uppercase tracking-wide">{customerOption('plan_field', 'report_type').name}</dt>
               <dd className="text-slate-200 mt-0.5">{profile}</dd>
             </div>
           ) : null}
@@ -98,8 +99,8 @@ export default function DossierStatisticsSection({ stats, planIntent }: Props) {
           <>
             <Stat label="Words sent to the models (tokens)" value={stats.tokensInput} />
             <Stat label="Words written by the models (tokens)" value={stats.tokensOutput} />
-            <Stat label="Passes that strengthened a point before checking it" value={stats.steelmanPassCount} />
-            <Stat label="Notes from the challenge pass" value={stats.skepticAnnotationsCount} />
+            <Stat label="Double-check passes that restated findings" value={stats.strongestFormPassCount} />
+            <Stat label="Notes from Double-check" value={stats.doubleCheckAnnotationsCount} />
             <Stat label="Points where sources conflict" value={stats.contradictionsCount} />
           </>
         ) : null}

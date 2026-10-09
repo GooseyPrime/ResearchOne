@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 
 type PricingCardProps = {
   title: string;
+  /** What the plan is for, with an example, from the registry of customer-facing names. */
+  about?: string;
   details: string;
   cta: string;
   to?: string;
@@ -18,6 +20,7 @@ function isExternal(to: string): boolean {
 
 export default function PricingCard({
   title,
+  about,
   details,
   cta,
   to,
@@ -42,6 +45,7 @@ export default function PricingCard({
           </span>
         ) : null}
       </div>
+      {about ? <p className="mt-3 text-sm leading-6 text-r1-text">{about}</p> : null}
       <p className="mt-3 text-sm leading-7 text-r1-text-muted">{details}</p>
       {!comingSoon && (ctaSlot ??
         (to &&

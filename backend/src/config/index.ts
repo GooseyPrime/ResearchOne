@@ -182,8 +182,8 @@ const config = {
     sourceClassClassifier:
       process.env.SOURCE_CLASS_CLASSIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.sourceClassClassifier,
     reasoner: process.env.REASONER_MODEL || CODE_DEFAULT_REASONING_MODELS.reasoner,
-    steelman: process.env.STEELMAN_MODEL || CODE_DEFAULT_REASONING_MODELS.steelman,
-    skeptic: process.env.SKEPTIC_MODEL || CODE_DEFAULT_REASONING_MODELS.skeptic,
+    strongest_form: process.env.STRONGEST_FORM_MODEL || CODE_DEFAULT_REASONING_MODELS.strongest_form,
+    double_check: process.env.DOUBLE_CHECK_MODEL || CODE_DEFAULT_REASONING_MODELS.double_check,
     synthesizer: process.env.SYNTHESIZER_MODEL || CODE_DEFAULT_REASONING_MODELS.synthesizer,
     verifier: process.env.VERIFIER_MODEL || CODE_DEFAULT_REASONING_MODELS.verifier,
     plainLanguageSynthesizer:
@@ -226,8 +226,8 @@ const config = {
       sourceClassClassifier:
         process.env.SOURCE_CLASS_CLASSIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.sourceClassClassifier,
       reasoner: process.env.REASONER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.reasoner,
-      steelman: process.env.STEELMAN_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.steelman,
-      skeptic: process.env.SKEPTIC_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.skeptic,
+      strongest_form: process.env.STRONGEST_FORM_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.strongest_form,
+      double_check: process.env.DOUBLE_CHECK_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.double_check,
       synthesizer: process.env.SYNTHESIZER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.synthesizer,
       verifier: process.env.VERIFIER_FALLBACK || CODE_DEFAULT_REASONING_FALLBACKS.verifier,
       plainLanguageSynthesizer:
@@ -499,8 +499,8 @@ const reasoningModelsForPolicy = {
   retriever: config.models.retriever,
   source_class_classifier: config.models.sourceClassClassifier,
   reasoner: config.models.reasoner,
-  steelman: config.models.steelman,
-  skeptic: config.models.skeptic,
+  strongest_form: config.models.strongest_form,
+  double_check: config.models.double_check,
   synthesizer: config.models.synthesizer,
   verifier: config.models.verifier,
   plain_language_synthesizer: config.models.plainLanguageSynthesizer,
@@ -531,8 +531,8 @@ const reasoningFallbacksForPolicy = {
   retriever: config.models.fallbacks.retriever,
   source_class_classifier: config.models.fallbacks.sourceClassClassifier,
   reasoner: config.models.fallbacks.reasoner,
-  steelman: config.models.fallbacks.steelman,
-  skeptic: config.models.fallbacks.skeptic,
+  strongest_form: config.models.fallbacks.strongest_form,
+  double_check: config.models.fallbacks.double_check,
   synthesizer: config.models.fallbacks.synthesizer,
   verifier: config.models.fallbacks.verifier,
   plain_language_synthesizer: config.models.fallbacks.plainLanguageSynthesizer,

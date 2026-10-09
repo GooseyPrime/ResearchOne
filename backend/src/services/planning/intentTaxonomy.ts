@@ -46,7 +46,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'survey',
-    displayLabel: 'Survey',
+    displayLabel: 'Topic overview',
     shortDescription: 'Layered exposition for multi-layer topics.',
     documentShape: 'Thematic layers with cross-links and open questions.',
     defaultOrchestrationProfile: 'survey',
@@ -55,7 +55,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'adjudication',
-    displayLabel: 'Adjudication',
+    displayLabel: 'Fact-check',
     shortDescription: 'Fact-check / verify a specific proposition.',
     documentShape: 'Claim, evidence matrix, verdict, residual uncertainty.',
     defaultOrchestrationProfile: 'adjudication',
@@ -102,7 +102,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'opportunity_discovery',
-    displayLabel: 'Opportunity discovery',
+    displayLabel: 'Opportunity search',
     shortDescription: 'Surface market or domain opportunities.',
     documentShape: 'Landscape overview, opportunity gaps, sizing signals, recommended moves.',
     defaultOrchestrationProfile: 'opportunity_discovery',
@@ -126,7 +126,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'feasibility',
-    displayLabel: 'Feasibility',
+    displayLabel: 'Feasibility check',
     shortDescription: 'Assess whether a plan or idea is viable.',
     documentShape: 'Viability criteria, enabling factors, blockers, risk register, recommendation.',
     defaultOrchestrationProfile: 'feasibility',
@@ -141,7 +141,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'implementation',
-    displayLabel: 'Implementation',
+    displayLabel: 'Implementation plan',
     shortDescription: 'Step-by-step plan for executing a goal.',
     documentShape: 'Prerequisites, phased plan, dependencies, milestones, risks.',
     defaultOrchestrationProfile: 'implementation',
@@ -159,7 +159,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'comparative',
-    displayLabel: 'Comparative',
+    displayLabel: 'Comparison',
     shortDescription: 'Structured comparison along consistent dimensions.',
     documentShape: 'Dimension matrix, trade-offs, scenario fit.',
     defaultOrchestrationProfile: 'comparative',
@@ -168,7 +168,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'how_to',
-    displayLabel: 'How-to',
+    displayLabel: 'How-to guide',
     shortDescription: 'Procedural / step-by-step.',
     documentShape: 'Prerequisites, numbered steps, pitfalls, verification.',
     defaultOrchestrationProfile: 'how_to',
@@ -191,7 +191,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'exploratory',
-    displayLabel: 'Exploratory',
+    displayLabel: 'Open exploration',
     shortDescription: 'Discovery / serendipity.',
     documentShape: 'Branching map, surprising leads, open-ended synthesis.',
     defaultOrchestrationProfile: 'exploratory',
@@ -200,7 +200,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'position_brief',
-    displayLabel: 'Position brief',
+    displayLabel: 'Case for a position',
     shortDescription: 'Strongest case for a stated position (rhetorical aid).',
     documentShape: 'Position statement, strongest arguments, counter-responses.',
     defaultOrchestrationProfile: 'position_brief',
@@ -227,7 +227,7 @@ const TAX: IntentDefinition[] = [
   },
   {
     id: 'legacy',
-    displayLabel: 'Legacy',
+    displayLabel: 'Earlier report',
     shortDescription: 'Pre–Wave 5.1 runs without intent classification.',
     documentShape: 'Standard ResearchOne dossier.',
     defaultOrchestrationProfile: 'legacy',

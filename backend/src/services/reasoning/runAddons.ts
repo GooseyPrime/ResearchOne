@@ -41,7 +41,7 @@ export function buildRunAddonPipelineEffects(addons: readonly RunAddonKey[]): Ru
 }
 
 /*
- * `applyAdversarialTwinToSkepticMode` was removed in WO-AH along with the
+ * `applyAdversarialTwinToDoubleCheckMode` was removed in WO-AH along with the
  * add-on it existed for. It un-skipped the challenge stage and forced the
  * strongest challenge mode; every run now runs the challenge pass, and how
  * strong it is is decided by the planner from the request rather than bought.
@@ -74,10 +74,10 @@ export function paidForLegacyChallengeUpgrade(raw: unknown): boolean {
 }
 
 /** Force the strongest challenge pass on a profile, leaving everything else. */
-export function applyLegacyPaidChallengeUpgrade<T extends { skepticMode: 'gate' | 'annotate' }>(
+export function applyLegacyPaidChallengeUpgrade<T extends { doubleCheckMode: 'gate' | 'annotate' }>(
   profile: T
 ): T {
-  return profile.skepticMode === 'gate' ? profile : { ...profile, skepticMode: 'gate' as const };
+  return profile.doubleCheckMode === 'gate' ? profile : { ...profile, doubleCheckMode: 'gate' as const };
 }
 
 /** Raw persisted add-ons for a run, unfiltered. Deploy-skew safe. */

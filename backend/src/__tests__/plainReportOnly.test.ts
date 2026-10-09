@@ -228,7 +228,7 @@ describe('(c) with every old switch set to "false", the plain layout is still wh
 });
 
 describe('a report saved in the removed layout is sent under reader headings', () => {
-  it('maps each old heading, prints it once, and marks old challenge sections for the Challenge pass tab', () => {
+  it('maps each old heading, prints it once, and marks old challenge sections for the Double-check tab', () => {
     const present = (title: string, content = `## ${title}\n\nText.`) => presentSectionForReader({ title, content, section_type: 'body' });
     expect(present('Framing')).toEqual({ title: 'Background', content: 'Text.', section_type: 'body' });
     expect(present('Primary Evidence').title).toBe('What the sources show');
@@ -259,7 +259,7 @@ describe('a report saved in the removed layout is sent under reader headings', (
   });
 });
 
-describe('challenge material is one plain section named "Challenge pass"', () => {
+describe('challenge material is one plain section named "Double-check"', () => {
   const PROSE = 'Two of the three findings rest on a single award notice. A published evaluation sheet would change the account of the award.';
 
   it('is written from the notes of the challenge stage, by a call that is not part of the challenge method', async () => {
@@ -274,18 +274,19 @@ describe('challenge material is one plain section named "Challenge pass"', () =>
     expect(call.messages[0].content).toBe(CHALLENGE_PASS_WRITER_PROMPT);
     const report = appendChallengePass('# T\n\n## Summary\nText [1].\n\n## About this report\n1 source was read.', PROSE);
     expect(report.endsWith(`## ${CHALLENGE_PASS_TITLE}\n\n${PROSE}\n`)).toBe(true);
-    expect(CHALLENGE_PASS_TITLE).toBe('Challenge pass');
+    expect(CHALLENGE_PASS_TITLE).toBe('Double-check');
   });
 
   it('never reaches a reader as an argument between sides: banned wording is reworded or the section is not shown', async () => {
     expect(cleanChallengePass('The verdict was falsified by a later audit.')).toBe('The finding was disproved by a later audit.');
     expect(cleanChallengePass('### Weak points\nOne source [P3].')).toBe('**Weak points**\nOne source.');
     expect(cleanChallengePass('These claims rest on one notice.')).toBe('These statements rest on one notice.');
-    for (const text of ['The skeptic notes one source.', 'A red-team review found gaps.', 'The steelman version holds.', 'An adversarial reading differs.', '']) {
+    // The two retired nicknames are put together from halves (RJ-017).
+    for (const text of [`The ${'skep'}${'tic'} notes one source.`, 'A red-team review found gaps.', `The ${'steel'}${'man'} version holds.`, 'An adversarial reading differs.', '']) {
       expect(cleanChallengePass(text), text).toBeNull();
     }
     callRoleModelMock.mockReset();
-    callRoleModelMock.mockResolvedValue({ content: 'The skeptic says the claims fail.' });
+    callRoleModelMock.mockResolvedValue({ content: `The ${'skep'}${'tic'} says the claims fail.` });
     const refused = await writeChallengePass({ query: 'q', reportMarkdown: 'r', challengeNotes: 'notes' });
     expect(refused).toMatchObject({ prose: null, reason: 'wording' });
     expect(callRoleModelMock).toHaveBeenCalledTimes(2);

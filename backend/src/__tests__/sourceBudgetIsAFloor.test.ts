@@ -62,11 +62,11 @@ describe('an in-flight run keeps the challenge upgrade it paid for', () => {
   });
 
   it('forces the strongest challenge pass for such a run', () => {
-    expect(applyLegacyPaidChallengeUpgrade({ skepticMode: 'annotate' as const }).skepticMode).toBe('gate');
+    expect(applyLegacyPaidChallengeUpgrade({ doubleCheckMode: 'annotate' as const }).doubleCheckMode).toBe('gate');
   });
 
   it('leaves a profile that already gates alone', () => {
-    const profile = { skepticMode: 'gate' as const, other: 1 };
+    const profile = { doubleCheckMode: 'gate' as const, other: 1 };
     expect(applyLegacyPaidChallengeUpgrade(profile)).toBe(profile);
   });
 });

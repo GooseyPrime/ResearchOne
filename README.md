@@ -66,7 +66,7 @@ To use this mode: do not set `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, or `VITE_EX
 4. **Reason backward from anomalies.** If an outlier were true, what structure would have to exist?
 5. **Preserve epistemic distinctions.** Every claim tagged: `established_fact | strong_evidence | testimony | inference | speculation`
 6. **Contradiction is a first-class data type.** Never suppressed.
-7. **Reports must attack themselves.** Discovery → Skeptic → Synthesizer → Verifier pipeline.
+7. **Reports must attack themselves.** Discovery → Double-check → Synthesizer → Verifier pipeline.
 8. **Atlas is an investigation map, not an oracle.**
 
 ## Research Pipeline (10 stages)
@@ -78,7 +78,7 @@ To use this mode: do not set `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, or `VITE_EX
 | 3 | Retriever | Gathers sources from enriched corpus via hybrid vector+FTS search |
 | 4 | Retriever Analysis | Evaluates source-corroboration tiers, flags outliers and bridges |
 | 5 | Reasoner | Builds structured argument chains, tags all claims by source-corroboration tier |
-| 6 | Skeptic | Attacks conclusions, finds alternatives, prevents confirmation bias |
+| 6 | Double-check | Attacks conclusions, finds alternatives, prevents confirmation bias |
 | 7 | Synthesizer | Writes the complete long-form research report |
 | 8 | Verifier | Epistemic quality gate — ensures citation, contradiction, and tier standards are met |
 | 9 | Report save | Stores report, sections, and verification metadata |
@@ -612,7 +612,7 @@ verifier) — must have ≥ 2 live OpenRouter upstreams. Verified 2026-04-28-PM:
 - `qwen/qwen3-235b-a22b-thinking-2507` — 4 providers (Alibaba, DeepInfra, AtlasCloud, Novita). Reasoner / change_planner fallback.
 - `moonshotai/kimi-k2-thinking` — 3 providers (Novita, Google, AtlasCloud). Planner fallback / novel-application primary.
 
-**Adversarial roles** (skeptic / internal_challenger) — low-refusal Hermes line on OpenRouter, chosen after Venice Dolphin + Euryale slugs failed runtime `/chat/completions` under typical provider policy despite appearing in the catalog (2026-05-10). **Listing on `GET /api/v1/models` is not sufficient** — defaults must pass the same smoke probe as startup preflight (`openrouterPreflight.ts`). Operators can verify slugs with `npm run probe:openrouter-models` (backend dir).
+**Adversarial roles** (double-check / internal_challenger) — low-refusal Hermes line on OpenRouter, chosen after Venice Dolphin + Euryale slugs failed runtime `/chat/completions` under typical provider policy despite appearing in the catalog (2026-05-10). **Listing on `GET /api/v1/models` is not sufficient** — defaults must pass the same smoke probe as startup preflight (`openrouterPreflight.ts`). Operators can verify slugs with `npm run probe:openrouter-models` (backend dir).
 
 - `nousresearch/hermes-4-70b` — default adversarial primary.
 - `nousresearch/hermes-3-llama-3.1-70b` — default adversarial preset fallback.

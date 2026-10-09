@@ -37,7 +37,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'living_report',
       name: 'Living Reports',
       description:
-        'Keep a finalized report current with monitor tokens — each token covers one report for two months of Living Report monitoring (same revision pipeline as manual requests).',
+        'Keeps a finished report up to date: when new sources change the picture, the report is revised for you.',
       priceLabel: '1 token / 2 months per report',
       billingModel: 'token_pack',
       category: 'report_monitor',
@@ -50,7 +50,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'reverse_citation_watch',
       name: 'Reverse-Citation Watch',
       description:
-        'Get notified when papers, patents, or policy documents cite work that appears in your reports.',
+        'Tells you when a paper, patent or policy document cites work that appears in your report.',
       priceLabel: '$15/mo per report',
       billingModel: 'report_subscription',
       category: 'report_monitor',
@@ -73,7 +73,8 @@ function buildCatalog(): AddonCatalogEntry[] {
     {
       id: 'parallel_search',
       name: 'Parallel Search',
-      description: 'Expanded parallel discovery pass during a research run.',
+      description:
+        'Lets one research run read more newly found sources than usual before it writes.',
       priceLabel: '+$1.00 per run (wallet)',
       billingModel: 'per_run',
       category: 'research_run',
@@ -84,7 +85,8 @@ function buildCatalog(): AddonCatalogEntry[] {
     {
       id: 'parallel_extract',
       name: 'Parallel Extract',
-      description: 'Parallel content extraction for high-volume source sets on a run.',
+      description:
+        'Gathers more passages from the sources on one run, so the report draws on more of what was read.',
       priceLabel: '+$1.00 per run (wallet)',
       billingModel: 'per_run',
       category: 'research_run',
@@ -95,7 +97,8 @@ function buildCatalog(): AddonCatalogEntry[] {
     {
       id: 'smart_citations',
       name: 'Smart Citations',
-      description: 'Enhanced citation-and-source chain formatting on a research run.',
+      description:
+        'Matches each citation against twice as many passages on one run, so citations point to the right source more often.',
       priceLabel: '+$0.50 per run (wallet)',
       billingModel: 'per_run',
       category: 'research_run',
@@ -107,7 +110,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'provenance_ledger',
       name: 'Provenance Ledger',
       description:
-        'Immutable, timestamped audit trail of every source retrieved, reasoning step, and export — suitable for regulatory contexts.',
+        'Keeps a dated record of every source read, every step taken and every export made, which cannot be edited afterwards.',
       priceLabel: '$29/mo',
       billingModel: 'inquiry',
       category: 'platform',
@@ -120,7 +123,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'score_api_pro',
       name: 'Score API Pro',
       description:
-        'Programmatic access to ResearchOne compliance and policy scoring — REST API with webhooks and batch scoring.',
+        'Lets your own software send documents to ResearchOne for compliance and policy scoring.',
       priceLabel: '$99/mo',
       billingModel: 'inquiry',
       category: 'platform',
@@ -132,7 +135,7 @@ function buildCatalog(): AddonCatalogEntry[] {
       id: 'patent_ip_diligence',
       name: 'Patent & IP Diligence',
       description:
-        'Patent landscape, freedom-to-operate, and prior art analysis engagements with cited claim mappings.',
+        'A commissioned study of the patents around your product: what exists, what you may use, and earlier inventions.',
       priceLabel: 'From $2,500 per engagement',
       billingModel: 'inquiry',
       category: 'platform',

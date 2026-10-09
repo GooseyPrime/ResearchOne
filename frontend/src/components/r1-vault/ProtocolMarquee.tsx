@@ -46,11 +46,11 @@ export function ProtocolMarquee() {
         {marqueeContent.map((label, i) => {
           const pos = i % allLabels.length;
           const isOperational = pos >= protocolLabels.length;
-          // The marquee's emphasised stage. This compared against 'SKEPTIC'
+          // The marquee's emphasised stage. This compared against 'DOUBLE_CHECK'
           // until the label itself was renamed, at which point the comparison
           // stopped matching anything and the emphasis silently disappeared —
           // a label rename that took a behaviour with it.
-          const isChallenge = label === 'CHALLENGE';
+          const isChallenge = label === 'DOUBLE-CHECK';
 
           return (
             <span data-ev-id="ev_88411fd3ca"

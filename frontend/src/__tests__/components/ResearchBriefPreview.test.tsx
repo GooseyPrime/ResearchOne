@@ -29,7 +29,7 @@ describe('ResearchBriefPreview', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Comparative')).toBeTruthy();
+    expect(screen.getByText('Comparison')).toBeTruthy();
     expect(screen.getByText('Top 5 differences')).toBeTruthy();
     expect(screen.getByDisplayValue('Only post-2022 sources')).toBeTruthy();
 
@@ -58,12 +58,12 @@ describe('ResearchBriefPreview', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Agent team')).toBeTruthy();
+    expect(screen.getByText('Who does the work')).toBeTruthy();
     expect(screen.getByText('Market Scout')).toBeTruthy();
     expect(screen.getByText('Scans for whitespace opportunities and unserved demand.')).toBeTruthy();
     expect(screen.getByText('Research Planner')).toBeTruthy();
     expect(screen.getAllByText('Specialist').length).toBeGreaterThan(0);
-    // REVERT-CHECK: ResearchBriefPreview.tsx — if the Agent team section stops
+    // REVERT-CHECK: ResearchBriefPreview.tsx — if the "Who does the work" section stops
     // reading orchestrationProfile.agentsWillRun, these labels and descriptions disappear.
   });
 });

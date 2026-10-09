@@ -2,8 +2,13 @@
  * What a run is doing, in words a reader understands (upgrade plan, slice 5
  * item 8). The pipeline names its stages for itself ("retriever_analysis",
  * "epistemic_persistence"); the live progress view shows these words instead.
- * An unknown stage is "Working", never the raw id.
+ * An unknown stage is "Working", never the raw id. The checking step's name is
+ * read from the registry of customer-facing names.
  */
+import { DOUBLE_CHECK } from '../../content/customerOptions';
+
+const DOUBLE_CHECK_NAME = DOUBLE_CHECK.name;
+
 const STAGE_WORDS: Record<string, string> = {
   queued: 'Waiting to start',
   started: 'Starting',
@@ -21,8 +26,8 @@ const STAGE_WORDS: Record<string, string> = {
   quantitative: 'Checking the figures',
   reasoner: 'Working through the evidence',
   reasoning: 'Working through the evidence',
-  skeptic: 'Challenge pass',
-  challenge: 'Challenge pass',
+  double_check: DOUBLE_CHECK_NAME,
+  challenge: DOUBLE_CHECK_NAME,
   synthesizer: 'Writing the report',
   synthesis: 'Writing the report',
   verifier: 'Checking the report',

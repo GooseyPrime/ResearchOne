@@ -16,7 +16,7 @@ globs:
 
 ## Why this rule exists
 
-ResearchOne's current UI exposes all advanced controls (skeptic persona,
+ResearchOne's current UI exposes all advanced controls (double-check persona,
 research objective, report length, citation style, saved orchestration
 profile, model ensemble, add-ons, crawl depth, supplemental files) as
 the default entry point. These are valuable for expert users (Research
@@ -28,7 +28,7 @@ The redesign plan prescribed a two-layer interface:
    intent, deliverables, depth, agents, and output format. Most
    controls disappear for the end user.
 2. **Research Lab** — preserves ALL current advanced controls for
-   expert users, including model selection, custom skeptic personas,
+   expert users, including model selection, custom double-check personas,
    saved orchestration profiles, objective selection, crawl depth,
    add-ons, and source filters.
 

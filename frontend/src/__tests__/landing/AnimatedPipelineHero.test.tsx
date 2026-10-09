@@ -131,19 +131,19 @@ describe('AnimatedPipelineHero — animated render (Rule 27 I-1 negative case)',
   });
 });
 
-describe('AnimatedPipelineHero — Skeptic emphasis (Rule 27 I-4)', () => {
-  it('Skeptic stage carries data-emphasis="skeptic"', () => {
+describe('AnimatedPipelineHero — Double-check emphasis (Rule 27 I-4)', () => {
+  it('Double-check stage carries data-emphasis="double_check"', () => {
     const { container } = render(
       <AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate />
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    expect(skepticNode).toBeInTheDocument();
-    expect(skepticNode?.getAttribute('data-emphasis')).toBe('skeptic');
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    expect(doubleCheckNode).toBeInTheDocument();
+    expect(doubleCheckNode?.getAttribute('data-emphasis')).toBe('double_check');
     // REVERT-CHECK: AnimatedPipelineHero.tsx — the `data-emphasis` attribute
-    // on the Skeptic node. Removing it breaks the marketing emphasis contract.
+    // on the Double-check node. Removing it breaks the marketing emphasis contract.
   });
 
-  it('Skeptic node uses the palette skepticRing color, not nodeIdleRing', () => {
+  it('Double-check node uses the palette doubleCheckRing color, not nodeIdleRing', () => {
     const { container } = render(
       <AnimatedPipelineHero
         forceReducedMotion={false}
@@ -151,11 +151,11 @@ describe('AnimatedPipelineHero — Skeptic emphasis (Rule 27 I-4)', () => {
         forcePersona="default"
       />
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    expect(skepticNode).toBeInTheDocument();
-    const style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    // The Skeptic ring should use the brighter skepticRing color.
-    expect(style).toContain(BEAM_PALETTES.default.skepticRing);
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    expect(doubleCheckNode).toBeInTheDocument();
+    const style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    // The Double-check ring should use the brighter doubleCheckRing color.
+    expect(style).toContain(BEAM_PALETTES.default.doubleCheckRing);
     // And NOT the idle ring (which would mean the emphasis logic broke).
     // We can't simply check for absence because rgba substrings might overlap;
     // we assert the brighter color is present.
@@ -163,7 +163,7 @@ describe('AnimatedPipelineHero — Skeptic emphasis (Rule 27 I-4)', () => {
 });
 
 describe('AnimatedPipelineHero — persona palette (Rule 27 I-5)', () => {
-  it('forcePersona="uap" applies UAP palette to Skeptic ring', () => {
+  it('forcePersona="uap" applies UAP palette to Double-check ring', () => {
     const { container } = render(
       <AnimatedPipelineHero
         forceReducedMotion={false}
@@ -171,9 +171,9 @@ describe('AnimatedPipelineHero — persona palette (Rule 27 I-5)', () => {
         forcePersona="uap"
       />
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    const style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.uap.skepticRing);
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    const style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.uap.doubleCheckRing);
     // REVERT-CHECK: AnimatedPipelineHero.tsx — the persona palette lookup
     // via `getBeamPalette(forcePersona)`. Revert to a hardcoded palette
     // and this test fails.
@@ -187,9 +187,9 @@ describe('AnimatedPipelineHero — persona palette (Rule 27 I-5)', () => {
         forcePersona="osint"
       />
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    const style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.osint.skepticRing);
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    const style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.osint.doubleCheckRing);
   });
 
   it('unknown persona falls back to default palette', () => {
@@ -200,9 +200,9 @@ describe('AnimatedPipelineHero — persona palette (Rule 27 I-5)', () => {
         forcePersona="definitely-not-a-real-persona"
       />
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    const style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.default.skepticRing);
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    const style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.default.doubleCheckRing);
     // REVERT-CHECK: personaBeamPalettes.ts:getBeamPalette — the
     // `?? BEAM_PALETTES.default` fallback. Without it, lookup returns
     // undefined and the test crashes instead of rendering default colors.
@@ -274,16 +274,16 @@ describe('AnimatedPipelineHero — resolvedPersona prop (PR #112)', () => {
         resolvedPersona="default"
       />
     );
-    let skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    let style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.default.skepticRing);
+    let doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    let style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.default.doubleCheckRing);
 
     rerender(
       <AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate resolvedPersona="uap" />
     );
-    skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.uap.skepticRing);
+    doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.uap.doubleCheckRing);
     // REVERT-CHECK: AnimatedPipelineHero.tsx — `resolvedPersona` in the
     // palette `useEffect` dependency list. Without it, UAP beams stay
     // on default after PersonaAwareHero resolves post-mount.
@@ -297,9 +297,9 @@ describe('AnimatedPipelineHero — persona detection via ancestor data-persona',
         <AnimatedPipelineHero forceReducedMotion={false} alwaysAnimate />
       </section>
     );
-    const skepticNode = container.querySelector('[data-stage-id="skeptic"]');
-    const style = (skepticNode as HTMLElement).getAttribute('style') ?? '';
-    expect(style).toContain(BEAM_PALETTES.patent.skepticRing);
+    const doubleCheckNode = container.querySelector('[data-stage-id="double_check"]');
+    const style = (doubleCheckNode as HTMLElement).getAttribute('style') ?? '';
+    expect(style).toContain(BEAM_PALETTES.patent.doubleCheckRing);
     // REVERT-CHECK: AnimatedPipelineHero.tsx — the
     // `containerRef.current.closest('[data-persona]')` lookup. This is
     // the WO-V → WO-W composition contract per Rule 27 I-5.

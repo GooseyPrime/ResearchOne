@@ -1,4 +1,5 @@
 import type { ResearchObjective } from '@/utils/api';
+import { customerOption } from '@/content/customerOptions';
 
 export type EntitlementTierKey =
   | 'free_demo'
@@ -14,36 +15,26 @@ export type ResearchObjectiveOption = {
   value: ResearchObjective;
   label: string;
   description: string;
+  example: string;
 };
 
-/** Canonical V2 research objectives (matches backend `modeOverlays` + marketing ModeMatrix). */
-export const RESEARCH_OBJECTIVE_OPTIONS: ResearchObjectiveOption[] = [
-  {
-    value: 'GENERAL_EPISTEMIC_RESEARCH',
-    label: 'General Research',
-    description: 'Balanced reasoning across competing hypotheses and source corroboration tiers.',
-  },
-  {
-    value: 'INVESTIGATIVE_SYNTHESIS',
-    label: 'Investigative Research',
-    description: 'Trace incentives, networks, and cross-domain connections.',
-  },
-  {
-    value: 'NOVEL_APPLICATION_DISCOVERY',
-    label: 'Application Discovery',
-    description: 'Map mechanisms to underexplored implementation paths.',
-  },
-  {
-    value: 'PATENT_GAP_ANALYSIS',
-    label: 'Patent Research and Whitespace Mapping',
-    description: 'Prior-art landscape, the scope of existing patents, and novelty gaps.',
-  },
-  {
-    value: 'ANOMALY_CORRELATION',
-    label: 'Convergence Analysis',
-    description: 'Test whether disparate signals share a structural mechanism.',
-  },
+/** The objectives a request can name, in the order the form lists them. */
+const RESEARCH_OBJECTIVE_VALUES: readonly ResearchObjective[] = [
+  'GENERAL_EPISTEMIC_RESEARCH',
+  'INVESTIGATIVE_SYNTHESIS',
+  'NOVEL_APPLICATION_DISCOVERY',
+  'PATENT_GAP_ANALYSIS',
+  'ANOMALY_CORRELATION',
 ];
+
+/**
+ * The research objectives, with the name, description and example each one has
+ * in the registry of customer-facing names (`content/customerOptions.ts`).
+ */
+export const RESEARCH_OBJECTIVE_OPTIONS: ResearchObjectiveOption[] = RESEARCH_OBJECTIVE_VALUES.map((value) => {
+  const words = customerOption('research_objective', value);
+  return { value, label: words.name, description: words.description, example: words.example };
+});
 
 export const TIER_ALLOWED_OBJECTIVES: Record<EntitlementTierKey, readonly ResearchObjective[]> = {
   free_demo: ['GENERAL_EPISTEMIC_RESEARCH'],

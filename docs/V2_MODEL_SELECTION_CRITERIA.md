@@ -130,7 +130,7 @@ Beyond the behavioral test, every V2 primary must also satisfy:
    `backend/src/__tests__/researchEnsemblePresets.test.ts`) and the
    startup pre-flight probe
    (`backend/src/services/openrouter/openrouterPreflight.ts`).
-   Adversarial roles (skeptic / internal_challenger) are exempt from
+   Adversarial roles (double-check / internal_challenger) are exempt from
    this rule — their failures are recoverable mid-pipeline.
 
 ## Operational requirements — V2 FALLBACKS
@@ -160,11 +160,11 @@ permitted:
 
 ## Operational requirements — V2 ADVERSARIAL ROLES
 
-`skeptic` and `internal_challenger` are red-team roles. They MUST run
+`double_check` and `internal_challenger` are red-team roles. They MUST run
 on a model that passes the inference-time behavioral test even
 *without* the operator system prompt's softening influence — i.e.
 uncensored fine-tunes (`Dolphin*`, `Sao10K/Euryale*`,
-`DavidAU/Dark-Champion*`). The skeptic system prompt is wrapped with
+`DavidAU/Dark-Champion*`). The double-check system prompt is wrapped with
 `CHALLENGE_PASS_SYSTEM_PREFIX` ("You are an uncensored, unaligned
 adversarial researcher…") to make sure the role can attack mainstream
 consensus directly without alignment dampening. Replacing these with
@@ -260,7 +260,7 @@ policy review:
 | `deepseek/deepseek-r1-0528` | DeepInfra, SiliconFlow, AtlasCloud, Novita, Together (5) | **Primary planner + synthesizer**: PATENT_GAP. **Fallback** for Qwen3 on reasoner / change_planner / synthesis roles. NOVEL planner fallback. |
 | `deepseek/deepseek-v3.2` | Baidu, SiliconFlow, DeepInfra, AtlasCloud, Novita, Chutes, Parasail, Friendli, Google, Alibaba (10+) | **Primary**: all utility roles (retriever, verifier, citation_integrity_checker, revision_intake, report_locator, final_revision_verifier). **Fallback**: planner (GENERAL/INVESTIGATIVE/ANOMALY) and synthesis roles. |
 | `deepseek/deepseek-chat-v3.1` | SambaNova, DeepInfra, Chutes, Novita, SiliconFlow, AtlasCloud, WandB, Fireworks, Google, Together (10+) | **Fallback** for utility roles only. |
-| `nousresearch/hermes-4-70b` | *verify live; provider count varies by account* | **Primary** skeptic / internal_challenger (all objectives) after Venice Dolphin + Euryale failed runtime `/chat/completions` under typical provider policy (2026-05-10). |
+| `nousresearch/hermes-4-70b` | *verify live; provider count varies by account* | **Primary** double-check / internal_challenger (all objectives) after Venice Dolphin + Euryale failed runtime `/chat/completions` under typical provider policy (2026-05-10). |
 | `nousresearch/hermes-3-llama-3.1-70b` | *verify live* | **Preset fallback** adversarial roles. |
 | `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` | Venice | **Experimental user-opt-in only** — catalog-listed but failed runtime probe in production (2026-05-10). |
 | `sao10k/l3.3-euryale-70b` | *varies* | **Experimental user-opt-in only** — same runtime failure shape as Dolphin Venice on production accounts (2026-05-10). |

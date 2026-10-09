@@ -1,4 +1,6 @@
 import NotYetAvailable from './NotYetAvailable';
+import { PLAN_LABEL } from '../../lib/billing/planIntent';
+import { customerOption, customerOptionHelp } from '../../content/customerOptions';
 
 export type SubscriptionOption = {
   tier: string;
@@ -19,14 +21,14 @@ const SELF_SERVE_PLANS: ReadonlyArray<{
 }> = [
   {
     tier: 'pro',
-    label: 'Pro',
+    label: PLAN_LABEL.pro,
     monthlyAmountCents: 2900,
     annualAmountCents: 29000,
     summary: '25 reports a month, all 5 modes, private corpus.',
   },
   {
     tier: 'byok',
-    label: 'BYOK',
+    label: PLAN_LABEL.byok,
     monthlyAmountCents: 2900,
     annualAmountCents: 29000,
     summary: 'Bring your own model keys. You add them right after checkout.',
@@ -104,12 +106,15 @@ export default function PlanCheckoutOptions({
                 plan.tier === highlightTier ? 'border-indigo-500/60' : 'border-white/10'
               }`}
             >
-              <h3 className="font-medium">{option?.label ?? plan.label}</h3>
+              <h3 className="font-medium">{plan.label}</h3>
               <p className="text-sm text-slate-400 mt-1">
                 {dollars(option?.monthlyAmountCents ?? plan.monthlyAmountCents)}/mo or{' '}
                 {dollars(option?.annualAmountCents ?? plan.annualAmountCents)}/yr
               </p>
               <p className="mt-1 text-xs text-slate-500">{plan.summary}</p>
+              <p className="mt-1 text-xs text-slate-500" data-plan-help={plan.tier}>
+                {customerOptionHelp(customerOption('plan', plan.tier))}
+              </p>
               {purchasable ? (
                 <>
                   <div className="mt-3 flex gap-2">

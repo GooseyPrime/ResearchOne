@@ -259,11 +259,11 @@ describe('the other tabs', () => {
     expect(items[1].textContent).toContain('news article');
   });
 
-  it('How this was researched holds what the page passes it; Challenge pass holds the challenge section', () => {
+  it('How this was researched holds what the page passes it; Double-check holds the challenge section', () => {
     render(<ReaderView report={report} evidence={evidence} method={<p>What was asked, and the run reference</p>} />);
     fireEvent.click(screen.getByRole('tab', { name: 'How this was researched' }));
     expect(screen.getByRole('tabpanel').textContent).toContain('What was asked, and the run reference');
-    fireEvent.click(screen.getByRole('tab', { name: 'Challenge pass' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Double-check' }));
     expect(screen.getByRole('tabpanel').textContent).toContain('strongest objection');
     expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: /Citation 2/ })).toBeTruthy();
   });

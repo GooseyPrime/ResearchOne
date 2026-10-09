@@ -1,28 +1,18 @@
 /**
- * Thin frontend mirror of the plan-confirmation pass+ intent taxonomy (see backend `intentTaxonomy.ts`).
- * Badge labels live in `constants/intentLabels.ts`; descriptions are duplicated here for gate UI.
+ * Report types as the plan screen shows them. The names and descriptions are
+ * read from the registry of customer-facing names (`content/customerOptions.ts`).
  */
 import { INTENT_DISPLAY_LABELS } from '../constants/intentLabels';
+import { customerOptionsIn } from '../content/customerOptions';
 
 export { INTENT_DISPLAY_LABELS };
 
-/** Short descriptions for the plan confirmation gate (aligned with backend taxonomy). */
-export const INTENT_SHORT_DESCRIPTIONS: Record<string, string> = {
-  factual_report: 'Encyclopedic answer for closed-record topics.',
-  survey: 'Layered exposition for multi-layer topics.',
-  adjudication: 'Fact-check / verify a specific proposition.',
-  investigation: 'Symmetric deep-dive on contested topics.',
-  story_verification: 'Verify a specific narrative or reported account.',
-  opportunity_discovery: 'Surface market or domain opportunities.',
-  feasibility: 'Assess whether a plan or idea is viable.',
-  implementation: 'Step-by-step plan for executing a goal.',
-  literature_review: 'Academic-register review of peer-reviewed sources.',
-  comparative: 'Structured comparison along consistent dimensions.',
-  how_to: 'Procedural / step-by-step.',
-  recommendation: 'Decision support with elicited constraints.',
-  exploratory: 'Discovery / serendipity.',
-  position_brief: 'Strongest case for a stated position (rhetorical aid).',
-  timeline: 'Chronological ordering of events.',
-  reference_lookup: 'Single-fact retrieval (lightest pipeline).',
-  legacy: 'Pre-taxonomy run; intent inferred conservatively.',
-};
+/** What each report type does, in one sentence. */
+export const INTENT_SHORT_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  customerOptionsIn('report_type').map((option) => [option.id, option.description])
+);
+
+/** One example request for each report type. */
+export const INTENT_EXAMPLES: Record<string, string> = Object.fromEntries(
+  customerOptionsIn('report_type').map((option) => [option.id, option.example])
+);

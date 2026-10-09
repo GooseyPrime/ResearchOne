@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom';
 import MonitorManagementList from '../components/monitors/MonitorManagementList';
+import { customerOption, customerOptionHelp } from '../content/customerOptions';
+
+const LIVING_REPORTS = customerOption('add_on', 'living_report');
 
 export default function LivingReportsPage() {
   return (
@@ -10,7 +13,8 @@ export default function LivingReportsPage() {
             ← All add-ons
           </Link>
         </p>
-        <h1 className="text-2xl font-bold text-white mt-2">Living Reports</h1>
+        <h1 className="text-2xl font-bold text-white mt-2">{LIVING_REPORTS.name}</h1>
+        <p className="text-sm text-slate-400 mt-1">{customerOptionHelp(LIVING_REPORTS)}</p>
         <p className="text-sm text-slate-500 mt-1">
           Manage Living Report subscriptions attached to finalized reports. Subscribe to new reports from the{' '}
           <Link to="/app/add-ons" className="text-accent hover:underline">

@@ -48,7 +48,7 @@ One run per intent, from the request form, with everything else left alone:
    exactly that many, each with the fields that were asked for.
 5. **Sources.** Every source is plausibly about the request. No source is
    titled with its own URL. The count is proportionate to the report's length.
-6. **Vocabulary.** No screen and no heading says "skeptic". A how-to guide does
+6. **Vocabulary.** Every screen and heading names the checking step "Double-check", with its description; no role nickname is shown. A how-to guide does
    not contain a falsification section.
 7. **Verdicts.** Adjudication and story verification either reach a conclusion
    backed by sources the user did not supply, or fail loudly. Neither ships a

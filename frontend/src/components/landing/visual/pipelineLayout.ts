@@ -1,3 +1,4 @@
+import { DOUBLE_CHECK } from '../../../content/customerOptions';
 /**
  * Pipeline layout — canonical 10-stage node and edge geometry.
  *
@@ -10,15 +11,15 @@
  *
  *   Plan        →  Retrieve & Read
  *      ↓                  ↓
- *   Reason & Challenge ←
+ *   Reason & Double-check ←
  *      ↓
  *   Write & Cite (4 nodes)  →  →  →
  *
  * Actually a simpler 2-row layout reads better in a hero panel.
  * Row 1: Planner → Discovery → Retriever → Retriever Analysis → Reasoner
  * Row 2 (reversed for snake flow):
- *        ... ← Skeptic ← Drafting ← Verifier ← Report ← Recordkeeping
- * Connector: Reasoner (end of row 1) drops down to Skeptic (end of row 2).
+ *        ... ← Double-check ← Drafting ← Verifier ← Report ← Recordkeeping
+ * Connector: Reasoner (end of row 1) drops down to Double-check (end of row 2).
  *
  * The layout is intentionally laid out so beams trace an S-curve
  * across the hero — reads as "flow" without forcing the user's eye
@@ -36,7 +37,7 @@ export interface PipelineStage {
   label: string;
   /** Pipeline phase grouping for color-coding (matches WO-U cost analytics phases). */
   phase: 'plan' | 'retrieve' | 'reason' | 'synthesize';
-  /** True for the Skeptic stage — rendered with extra emphasis per Rule 27 I-4. */
+  /** True for the Double-check stage — rendered with extra emphasis per Rule 27 I-4. */
   emphasis?: boolean;
   /** True when the node is conditional on the selected agent roster. */
   conditional?: boolean;
@@ -71,7 +72,7 @@ export const PIPELINE_STAGES: readonly PipelineStage[] = [
   { id: 'retriever_analysis',  label: 'Retriever Analysis',   phase: 'retrieve',   x: 600, y: 90 },
   { id: 'reasoner',            label: 'Reasoner',             phase: 'reason',     x: 790, y: 90 },
   // Bottom row, right to left (snake reversal).
-  { id: 'skeptic',             label: 'Challenge',              phase: 'reason',     x: 920, y: 270, emphasis: true },
+  { id: 'double_check',             label: DOUBLE_CHECK.name,        phase: 'reason',     x: 920, y: 270, emphasis: true },
   { id: 'synthesizer',         label: 'Drafting',             phase: 'synthesize', x: 740, y: 270 },
   { id: 'verifier',            label: 'Verifier',             phase: 'synthesize', x: 560, y: 270 },
   { id: 'report',              label: 'Report',               phase: 'synthesize', x: 380, y: 270 },
@@ -89,7 +90,7 @@ export const SPECIALIST_PIPELINE_STAGES: readonly PipelineStage[] = [
 /* ────────────────────────────────────────────────────────────────
  * Edges — the directed beams between stages.
  * Most edges are straight horizontal lines (same y). The turn
- * connection (reasoner → skeptic) is a smooth quadratic curve so the
+ * connection (reasoner → double-check) is a smooth quadratic curve so the
  * beam doesn't make a sharp angle.
  * ──────────────────────────────────────────────────────────────── */
 
@@ -121,12 +122,12 @@ export const PIPELINE_EDGES: readonly PipelineEdge[] = [
     d: straight(byId('retriever'),          byId('retriever_analysis')) },
   { id: 'e4', fromId: 'retriever_analysis', toId: 'reasoner',           seq: 3,
     d: straight(byId('retriever_analysis'), byId('reasoner')) },
-  // Turn: reasoner (top right) → skeptic (bottom right), via curve.
-  { id: 'e5', fromId: 'reasoner',           toId: 'skeptic',            seq: 4,
-    d: curve(byId('reasoner'),              byId('skeptic')) },
+  // Turn: reasoner (top right) → double-check (bottom right), via curve.
+  { id: 'e5', fromId: 'reasoner',           toId: 'double_check',            seq: 4,
+    d: curve(byId('reasoner'),              byId('double_check')) },
   // Bottom row chain, right to left.
-  { id: 'e6', fromId: 'skeptic',            toId: 'synthesizer',        seq: 5,
-    d: straight(byId('skeptic'),            byId('synthesizer')) },
+  { id: 'e6', fromId: 'double_check',            toId: 'synthesizer',        seq: 5,
+    d: straight(byId('double_check'),            byId('synthesizer')) },
   { id: 'e7', fromId: 'synthesizer',        toId: 'verifier',           seq: 6,
     d: straight(byId('synthesizer'),        byId('verifier')) },
   { id: 'e8', fromId: 'verifier',           toId: 'report',             seq: 7,

@@ -544,6 +544,8 @@ const normHeading = (text: string): string => text.replace(/[\s#*_]+/g, ' ').tri
  * whichever side maps it.)
  */
 const OLDER_HEADINGS: ReadonlyArray<{ was: RegExp; now: string; challenge?: true }> = [
+  // The section's public name until RJ-017; a stored report still carries it.
+  { was: /^challenge pass$/, now: 'Double-check', challenge: true },
   { was: /^executive summary$/, now: 'Summary' },
   { was: new RegExp(`^${'fram' + 'ing'}$`), now: 'Background' },
   { was: /^research question( and scope)?$/, now: 'What was asked' },

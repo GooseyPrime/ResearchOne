@@ -12,11 +12,11 @@ export interface DossierOrchestrationStatsInput {
   agentsRan: readonly string[];
   agentsSkipped: readonly string[];
   stageDurations: Record<string, number | string | null>;
-  skepticAnnotationsCount?: number | null;
+  doubleCheckAnnotationsCount?: number | null;
   /** Per-source-class chunk counts (the source-class pass). */
   sourceClassBreakdown?: Record<string, number> | null;
-  /** Completed steelman passes this run (0/1 today — reserved if modes batched later). */
-  steelmanPassCount?: number | null;
+  /** Completed strongest-form passes this run (0/1 today — reserved if modes batched later). */
+  strongestFormPassCount?: number | null;
 }
 
 export async function aggregateAndPersistDossierStatistics(
@@ -109,15 +109,15 @@ export async function aggregateAndPersistDossierStatistics(
     const agentsRanJson = orchestration ? JSON.stringify([...orchestration.agentsRan]) : null;
     const agentsSkippedJson = orchestration ? JSON.stringify([...orchestration.agentsSkipped]) : null;
     const stageDurationsJson = orchestration ? JSON.stringify(orchestration.stageDurations) : null;
-    const skepticAnnotationsCount =
-      orchestration?.skepticAnnotationsCount != null ? orchestration.skepticAnnotationsCount : null;
+    const doubleCheckAnnotationsCount =
+      orchestration?.doubleCheckAnnotationsCount != null ? orchestration.doubleCheckAnnotationsCount : null;
 
     const sourceClassBreakdownJson =
       orchestration?.sourceClassBreakdown != null && typeof orchestration.sourceClassBreakdown === 'object'
         ? JSON.stringify(orchestration.sourceClassBreakdown)
         : null;
-    const steelmanPassCount =
-      orchestration?.steelmanPassCount != null ? orchestration.steelmanPassCount : null;
+    const strongestFormPassCount =
+      orchestration?.strongestFormPassCount != null ? orchestration.strongestFormPassCount : null;
 
     try {
       await query(
@@ -125,8 +125,8 @@ export async function aggregateAndPersistDossierStatistics(
            run_id, total_duration_ms, tokens_input, tokens_output,
            sources_retrieved_count, sources_cited_count, citation_density,
            contradictions_count, refinement_rounds,
-           agents_ran, agents_skipped, stage_durations, skeptic_annotations_count,
-           source_class_breakdown, steelman_pass_count,
+           agents_ran, agents_skipped, stage_durations, double_check_annotations_count,
+           source_class_breakdown, strongest_form_pass_count,
            computed_at
          ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14::jsonb, $15, NOW())
          ON CONFLICT (run_id) DO UPDATE SET
@@ -141,9 +141,9 @@ export async function aggregateAndPersistDossierStatistics(
            agents_ran = COALESCE(EXCLUDED.agents_ran, dossier_statistics.agents_ran),
            agents_skipped = COALESCE(EXCLUDED.agents_skipped, dossier_statistics.agents_skipped),
            stage_durations = COALESCE(EXCLUDED.stage_durations, dossier_statistics.stage_durations),
-           skeptic_annotations_count = COALESCE(EXCLUDED.skeptic_annotations_count, dossier_statistics.skeptic_annotations_count),
+           double_check_annotations_count = COALESCE(EXCLUDED.double_check_annotations_count, dossier_statistics.double_check_annotations_count),
            source_class_breakdown = COALESCE(EXCLUDED.source_class_breakdown, dossier_statistics.source_class_breakdown),
-           steelman_pass_count = COALESCE(EXCLUDED.steelman_pass_count, dossier_statistics.steelman_pass_count),
+           strongest_form_pass_count = COALESCE(EXCLUDED.strongest_form_pass_count, dossier_statistics.strongest_form_pass_count),
            computed_at = NOW()`,
         [
           runId,
@@ -158,22 +158,25 @@ export async function aggregateAndPersistDossierStatistics(
           agentsRanJson,
           agentsSkippedJson,
           stageDurationsJson,
-          skepticAnnotationsCount,
+          doubleCheckAnnotationsCount,
           sourceClassBreakdownJson,
-          steelmanPassCount,
+          strongestFormPassCount,
         ],
       );
     } catch (wideErr) {
       const code = (wideErr as { code?: string })?.code;
       if (code === '42703') {
+        // A column is missing: the database is behind this code. The retry names no
+        // column that a later migration added or renamed (036 and 061), so the
+        // rest of the row is still saved.
         await query(
           `INSERT INTO dossier_statistics (
              run_id, total_duration_ms, tokens_input, tokens_output,
              sources_retrieved_count, sources_cited_count, citation_density,
              contradictions_count, refinement_rounds,
-             agents_ran, agents_skipped, stage_durations, skeptic_annotations_count,
+             agents_ran, agents_skipped, stage_durations,
              computed_at
-           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
+           ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, NOW())
            ON CONFLICT (run_id) DO UPDATE SET
              total_duration_ms = COALESCE(EXCLUDED.total_duration_ms, dossier_statistics.total_duration_ms),
              tokens_input = COALESCE(EXCLUDED.tokens_input, dossier_statistics.tokens_input),
@@ -186,7 +189,6 @@ export async function aggregateAndPersistDossierStatistics(
              agents_ran = COALESCE(EXCLUDED.agents_ran, dossier_statistics.agents_ran),
              agents_skipped = COALESCE(EXCLUDED.agents_skipped, dossier_statistics.agents_skipped),
              stage_durations = COALESCE(EXCLUDED.stage_durations, dossier_statistics.stage_durations),
-             skeptic_annotations_count = COALESCE(EXCLUDED.skeptic_annotations_count, dossier_statistics.skeptic_annotations_count),
              computed_at = NOW()`,
           [
             runId,
@@ -201,7 +203,6 @@ export async function aggregateAndPersistDossierStatistics(
             agentsRanJson,
             agentsSkippedJson,
             stageDurationsJson,
-            skepticAnnotationsCount,
           ],
         );
       } else {

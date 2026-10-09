@@ -14,7 +14,7 @@
  *
  * Per Master Brief: the four persona variants below were selected
  * because they are the four buyer tribes where ResearchOne wins on
- * structural differentiators no incumbent can match (the challenge pass,
+ * structural differentiators no incumbent can match (Double-check,
  * uncensored open-weight reasoning, contradiction-as-data,
  * post-publication revision).
  */
@@ -55,14 +55,14 @@ export const PERSONA_CONTENT: Record<PersonaId, HeroContent> = {
 
   // ──────────────────────────────────────────────────────────────
   // OSINT / Investigative journalism.
-  // Anti-fluff, technical, emphasizes the challenge pass and FOIA/
+  // Anti-fluff, technical, emphasizes Double-check and FOIA/
   // Wayback source discovery per the strategic doc.
   // ──────────────────────────────────────────────────────────────
   osint: {
     eyebrow: 'For investigative work',
     headline: 'Built to challenge stories that don’t survive consensus.',
     subhead:
-      'A dedicated challenge pass. Contradictions preserved as data, not flattened to a single answer. ' +
+      'A dedicated Double-check step. Contradictions preserved as data, not flattened to a single answer. ' +
       'Audit-trail citations you can hand to your editor or your lawyer.',
     ctas: [
       { label: 'See the Investigative mode', to: '/sample-report?topic=investigative', variant: 'primary' },

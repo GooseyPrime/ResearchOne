@@ -8,7 +8,7 @@
  *    names, the old cards, a stored status value, or a trace of the run, for a
  *    report of any age;
  *  - nothing the backend sends, and no setting, selects another layout;
- *  - challenge material is on the "Challenge pass" tab and nowhere else;
+ *  - challenge material is on the "Double-check" tab and nowhere else;
  *  - a run's status is in plain words wherever a customer reads it.
  *
  * The fixture is a report as the old layout stored it: its section names, the
@@ -60,8 +60,8 @@ const OLD_REPORT: Report = {
         { label: 'Evidence coverage', value: '26 chunks / 7 sources', narrative: '7 sources and 26 chunks were reviewed; broader coverage can still change the confidence profile of conclusions.' },
       ],
     },
-    skeptic_mode: 'gate',
-    skeptic_annotations: [{ claim: 'The award was proper', critique: 'A single ministry press notice supports it.' }],
+    double_check_mode: 'gate',
+    double_check_annotations: [{ claim: 'The award was proper', critique: 'A single ministry press notice supports it.' }],
     output_template_id: 'intent_investigation',
   },
   sections: [
@@ -226,12 +226,12 @@ describe('the customer report page', () => {
     }
   });
 
-  it('puts challenge material on the Challenge pass tab only, in the report\'s own prose', async () => {
+  it('puts challenge material on the Double-check tab only, in the report\'s own prose', async () => {
     await openReportPage();
-    expect(TAB_LABELS.challenge).toBe('Challenge pass');
+    expect(TAB_LABELS.challenge).toBe('Double-check');
     const reportPanel = screen.getByRole('tabpanel');
     expect(reportPanel.textContent).not.toContain('evaluation sheet');
-    fireEvent.click(screen.getByRole('tab', { name: 'Challenge pass' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Double-check' }));
     const panel = screen.getByRole('tabpanel');
     expect(panel.textContent).toContain('A published evaluation sheet scoring a second bidder higher would change the account above.');
     expect(within(panel).getByRole('heading', { level: 2 }).textContent).toBe('What would change these findings');
@@ -239,7 +239,7 @@ describe('the customer report page', () => {
     expect(document.body.textContent).not.toContain('Investigate whether the 2019 port tender was awarded properly and what the reco" would');
   });
 
-  it('a report with no challenge material has no Challenge pass tab', async () => {
+  it('a report with no challenge material has no Double-check tab', async () => {
     state.report = { ...OLD_REPORT, sections: OLD_REPORT.sections!.slice(0, 4) };
     await openReportPage();
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Report', 'Evidence', 'Sources', 'How this was researched']);
@@ -326,10 +326,10 @@ describe('statuses a customer reads', () => {
       tokensOutput: 9021,
       sourcesCitedCount: 5,
       sourcesRetrievedCount: 7,
-      steelmanPassCount: 2,
-      skepticAnnotationsCount: 4,
+      strongestFormPassCount: 2,
+      doubleCheckAnnotationsCount: 4,
       contradictionsCount: 0,
-      agentsRan: JSON.stringify(['planner', 'retriever', 'skeptic', 'section_drafter']),
+      agentsRan: JSON.stringify(['planner', 'retriever', 'double_check', 'section_drafter']),
       agentsSkipped: JSON.stringify(['market_scout']),
       sourceClassBreakdown: { consensus_held: 5 },
       stageDurations: { _profileDisplayName: 'Investigation' },
@@ -339,7 +339,7 @@ describe('statuses a customer reads', () => {
     expect(screen.getByText('4 min 12 s')).toBeTruthy();
     expect(screen.getByText('Sources read')).toBeTruthy();
     const text = document.body.textContent ?? '';
-    for (const technical of ['tokens', '81234', 'planner', 'section_drafter', 'skeptic', 'market_scout', 'Steps that ran', 'Contradictions', 'consensus']) {
+    for (const technical of ['tokens', '81234', 'planner', 'section_drafter', 'double_check', 'market_scout', 'Steps that ran', 'Contradictions', 'consensus']) {
       expect(text.toLowerCase(), technical).not.toContain(technical.toLowerCase());
     }
     cleanup();

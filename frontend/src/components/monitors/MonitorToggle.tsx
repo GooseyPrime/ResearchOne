@@ -17,6 +17,7 @@ import {
   type ReportMonitorRow,
 } from '../../utils/api';
 import { useStore } from '../../store/useStore';
+import { customerOption, customerOptionHelp } from '../../content/customerOptions';
 
 type MonitorKind = 'living_report' | 'reverse_citation_watch';
 
@@ -24,18 +25,17 @@ const KIND_META: Record<
   MonitorKind,
   { title: string; price: string; description: string; icon: typeof Radar }
 > = {
+  // Names, descriptions and examples come from the registry of customer-facing names.
   living_report: {
-    title: 'Living Report',
+    title: customerOption('add_on', 'living_report').name,
     price: '1 token / 2 months per report',
-    description:
-      'Continuous monitoring of new sources. When Parallel Monitor signals a material change, we run the same revision pipeline as a manual request — full verification workflow, no shortcut prompts.',
+    description: customerOptionHelp(customerOption('add_on', 'living_report')),
     icon: Radar,
   },
   reverse_citation_watch: {
-    title: 'Reverse-Citation Watch',
+    title: customerOption('add_on', 'reverse_citation_watch').name,
     price: '$15/mo',
-    description:
-      'Get notified when this report or its sources are cited or referenced elsewhere. Useful for tracking whether your research is influencing downstream work.',
+    description: customerOptionHelp(customerOption('add_on', 'reverse_citation_watch')),
     icon: Quote,
   },
 };

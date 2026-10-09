@@ -8,8 +8,8 @@ export const REASONING_MODEL_ROLES = [
   'retriever',
   'source_class_classifier',
   'reasoner',
-  'steelman',
-  'skeptic',
+  'strongest_form',
+  'double_check',
   'synthesizer',
   'verifier',
   'plain_language_synthesizer',
@@ -67,7 +67,7 @@ export const MODEL_FAST_EXTRACTOR_V2 = 'openai/o4-mini';
  *
  * This used to apply only when `engineVersion === 'v2'`, which meant a Standard
  * run got a materially softer adversarial pass than a Deep one — while the Deep
- * card sold "a skeptic step that argues against the draft to catch weak claims"
+ * card sold "a double-check step that argues against the draft to catch weak claims"
  * as the differentiator. The difference was a paywall, not a judgement about the
  * request. WO-AH removes it: every report is challenged with the same
  * instruction, and what varies is the pass's STRENGTH (annotate vs gate), which
@@ -88,7 +88,7 @@ export function appendReasonerPolicyConstraint(baseReasonerPrompt: string): stri
 }
 
 export type ModelCallPurpose =
-  | 'pipeline_skeptic'
+  | 'pipeline_double_check'
   | 'contradiction_extraction'
   | 'wave5_intent_classification'
   | 'wave5_plan_generation'
@@ -266,7 +266,7 @@ const BASE_ALLOWLIST = [
   'qwen/qwen3-235b-a22b-thinking-2507',
 
   // ── V2 / OpenRouter adversarial-role defaults (Hermes; runtime-probed) ────
-  // Default V2 skeptic / internal_challenger presets (2026-05-10). Chosen after
+  // Default V2 double-check / internal_challenger presets (2026-05-10). Chosen after
   // `cognitivecomputations/dolphin-mistral-24b-venice-edition:free` and
   // `sao10k/l3.3-euryale-70b` failed `/chat/completions` under typical OpenRouter
   // provider policy despite appearing in the model catalog.

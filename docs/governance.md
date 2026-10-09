@@ -33,7 +33,7 @@ The authoritative rule **text** remains in the `.cursor/rules/*.mdc` files above
 
 - **Scope:** the dossier data model (`034_dossier_data_model.sql`), `/api/dossiers`, in-app `/app/dossiers` routes, Vercel redirects from `/app/reports` (list) to `/app/dossiers`, new **Rule 32** (always-apply).
 - **Migration numbering note:** Dossier DDL ships as **`034_*`** because **`033_research_run_citation_style.sql`** already occupied 033. Later dossier-pass migrations shift by one (e.g. plan gate migration is **`035_*`**, not `034_*`).
-- **the source-class pass founder checkpoint (prompt fence):** Any change to skeptic/reasoner **system** text in `backend/src/constants/prompts.ts` remains **Rule 20**–fenced and requires an explicit founder authorization recorded here before merge. Default implementation path for the source-class pass is **`backend/src/services/planning/prompts.ts`** (and policy surfaces) unless governance is amended.
+- **the source-class pass founder checkpoint (prompt fence):** Any change to double-check/reasoner **system** text in `backend/src/constants/prompts.ts` remains **Rule 20**–fenced and requires an explicit founder authorization recorded here before merge. Default implementation path for the source-class pass is **`backend/src/services/planning/prompts.ts`** (and policy surfaces) unless governance is amended.
 
 ### 2026-05-15 — the evidence-vocabulary pass vocabulary + Rule 31 + Rule 26 layout (enumerated)
 

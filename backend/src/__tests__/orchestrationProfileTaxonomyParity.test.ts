@@ -17,10 +17,10 @@ describe('orchestration profile taxonomy parity', () => {
     }
   });
 
-  it('profiles expose concrete skeptic and steelman modes', () => {
+  it('profiles expose concrete double-check and strongest-form modes', () => {
     for (const [id, profile] of Object.entries(ORCHESTRATION_PROFILES)) {
-      expect(['off', 'annotate', 'gate']).toContain(profile.skepticMode);
-      expect(['off', 'standard', 'per_option', 'as_product', 'symmetric']).toContain(profile.steelmanMode);
+      expect(['off', 'annotate', 'gate']).toContain(profile.doubleCheckMode);
+      expect(['off', 'standard', 'per_option', 'as_product', 'symmetric']).toContain(profile.strongestFormMode);
       expect(profile.displayName.length).toBeGreaterThan(0);
       expect(profile.outputTemplateId).toContain(id === 'legacy' ? 'legacy' : id.replace(/_/g, '_'));
     }

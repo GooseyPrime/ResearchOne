@@ -116,10 +116,10 @@ import type { SourceClassMap } from '../planning/wave53EpistemicPolicy';
 import {
   aggregateSourceClassBreakdown,
   buildReasonerSystemPrompt,
-  buildSkepticSystemPrompt,
+  buildDoubleCheckSystemPrompt,
   dominantSourceClassesFromBreakdown,
 } from '../planning/wave53EpistemicPolicy';
-import { formatSteelmanBlockForSkeptic, runSteelmanPass } from './steelmanService';
+import { formatStrongestFormBlockForDoubleCheck, runStrongestFormPass } from './strongestFormService';
 import type { PlanPayload } from '../planning/planTypes';
 import { runSpecialistExecution, MAX_SOURCE_CONTEXT_CHARS } from './specialistExecutionService';
 import {
@@ -227,7 +227,7 @@ function stubReasoningFromRetriever(retrieverMarkdown: string): string {
   return `Reasoning stage skipped by orchestration profile. Retriever analysis follows.\n\n${retrieverMarkdown}`;
 }
 
-function parseSkepticSidebarJson(raw: string): Array<Record<string, unknown>> {
+function parseDoubleCheckSidebarJson(raw: string): Array<Record<string, unknown>> {
   try {
     const m = raw.match(/\[[\s\S]*\]/);
     if (!m) return [];
@@ -982,8 +982,8 @@ async function runResearchJobInner(
 
   let wave53SourceClassMap: SourceClassMap = { byChunkId: new Map(), bySourceUrl: new Map() };
   let wave53SourceClassBreakdown: Record<string, number> = {};
-  let wave53SteelmanPassCount = 0;
-  let wave53SteelmanByClaimKey = new Map<string, string>();
+  let wave53StrongestFormPassCount = 0;
+  let wave53StrongestFormByClaimKey = new Map<string, string>();
   let specialistFindingsBlock = '';
   let specialistStatuses: Partial<Record<SpecialistAgentId, SpecialistExecutionStatus>> = canonicalExecutionPlan.statuses ?? {};
   let specialistSkipped: string[] = [];
@@ -2193,31 +2193,31 @@ async function runResearchJobInner(
 
     const specialistFindings: SpecialistFinding[] = [];
 
-    // the source-class pass — steelman pass (feeds skeptic user message + claim persistence)
-    if (orchProfile.steelmanMode !== 'off') {
+    // the source-class pass — strongest-form pass (feeds double-check user message + claim persistence)
+    if (orchProfile.strongestFormMode !== 'off') {
       await progress('reasoning', 62, 'Restating each finding in its strongest form before checking it...', {
-        substep: 'steelman_started',
+        substep: 'strongest_form_started',
       });
-      const steel = await runSteelmanPass({
+      const strongest = await runStrongestFormPass({
         reasonerOutput: reasonerResult.content,
         chunks: allChunks,
-        steelmanMode: orchProfile.steelmanMode,
+        strongestFormMode: orchProfile.strongestFormMode,
         sourceClassMap: wave53SourceClassMap,
         ...v2,
       });
-      wave53SteelmanByClaimKey = steel.steelmanByClaimKey;
-      wave53SteelmanPassCount = steel.passCount;
-      if (steel.modelResult) modelLog.push(steel.modelResult);
+      wave53StrongestFormByClaimKey = strongest.strongestFormByClaimKey;
+      wave53StrongestFormPassCount = strongest.passCount;
+      if (strongest.modelResult) modelLog.push(strongest.modelResult);
     }
 
     const wave53DominantSourceClasses = dominantSourceClassesFromBreakdown(wave53SourceClassBreakdown);
-    const skepticSystemPrompt = buildSkepticSystemPrompt(wave53DominantSourceClasses);
-    const wave53SteelmanUserBlock = formatSteelmanBlockForSkeptic(wave53SteelmanByClaimKey);
+    const doubleCheckSystemPrompt = buildDoubleCheckSystemPrompt(wave53DominantSourceClasses);
+    const wave53StrongestFormUserBlock = formatStrongestFormBlockForDoubleCheck(wave53StrongestFormByClaimKey);
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 6: CHALLENGE PASS — pressure-test the conclusions (annotate | gate)
     //
-    // Runs on every report (WO-AH). The `&& orchProfile.skepticMode !== 'off'`
+    // Runs on every report (WO-AH). The `&& orchProfile.doubleCheckMode !== 'off'`
     // that used to gate this is gone: no profile can express 'off' any more, so
     // the comparison was dead code and TypeScript said so.
     //
@@ -2230,22 +2230,22 @@ async function runResearchJobInner(
     // is currently always true is cheaper than one that is missing when it stops
     // being true.
     // ────────────────────────────────────────────────────────────────
-    let skepticResult: ModelCallResult;
-    const skepticAnnotations: Array<Record<string, unknown>> = [];
-    const skepticRuns = shouldRunPipelineStage(orchProfile, 'challenge');
+    let doubleCheckResult: ModelCallResult;
+    const doubleCheckAnnotations: Array<Record<string, unknown>> = [];
+    const doubleCheckRuns = shouldRunPipelineStage(orchProfile, 'challenge');
 
-    if (!skepticRuns) {
-      await progress('challenge', 65, 'Challenge pass skipped for this run', { substep: 'stage_skipped' });
-      skepticResult = orchestrationStubModelResult('skeptic', '');
-    } else if (orchProfile.skepticMode === 'annotate') {
-      await progress('challenge', 65, 'Challenge pass: checking the findings and noting objections...', { substep: 'skeptic_annotate' });
-      skepticResult = await callRoleModel({
-        role: 'skeptic',
+    if (!doubleCheckRuns) {
+      await progress('challenge', 65, 'Double-check skipped for this run', { substep: 'stage_skipped' });
+      doubleCheckResult = orchestrationStubModelResult('double_check', '');
+    } else if (orchProfile.doubleCheckMode === 'annotate') {
+      await progress('challenge', 65, 'Double-check: testing the findings against other sources and noting what it finds...', { substep: 'double_check_annotate' });
+      doubleCheckResult = await callRoleModel({
+        role: 'double_check',
         ...v2,
-        callPurpose: 'pipeline_skeptic',
-        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
+        callPurpose: 'pipeline_double_check',
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'double_check'),
         messages: [
-          { role: 'system', content: skepticSystemPrompt },
+          { role: 'system', content: doubleCheckSystemPrompt },
           {
             role: 'user',
             content:
@@ -2253,49 +2253,49 @@ async function runResearchJobInner(
               `"topic", "critique", "suggested_checks". Each object is one sidebar note for reviewers. ` +
               `Base them on the reasoning below; do not duplicate the main report narrative.\n\n` +
               `Research Query: ${researchQuery}\n\nReasoning:\n${reasonerResult.content}` +
-              wave53SteelmanUserBlock,
+              wave53StrongestFormUserBlock,
           },
         ],
       });
-      modelLog.push(skepticResult);
-      skepticAnnotations.push(...parseSkepticSidebarJson(skepticResult.content));
+      modelLog.push(doubleCheckResult);
+      doubleCheckAnnotations.push(...parseDoubleCheckSidebarJson(doubleCheckResult.content));
       await saveRunCheckpoint({
         runId,
         stage: 'challenge',
-        checkpointKey: 'skeptic_output',
-        snapshot: { output: skepticResult.content, annotate: true },
+        checkpointKey: 'double_check_output',
+        snapshot: { output: doubleCheckResult.content, annotate: true },
       });
     } else {
-      await progress('challenge', 65, 'Challenge pass: arguing against the draft to find weak findings...', { substep: 'skeptic_started' });
+      await progress('challenge', 65, 'Double-check: testing the findings against other sources and the original records...', { substep: 'double_check_started' });
 
-      skepticResult = await callRoleModel({
-        role: 'skeptic',
+      doubleCheckResult = await callRoleModel({
+        role: 'double_check',
         ...v2,
-        callPurpose: 'pipeline_skeptic',
-        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'skeptic'),
+        callPurpose: 'pipeline_double_check',
+        runtimeOverrides: runtimeOverrideForRole(runModelOverrides, 'double_check'),
         messages: [
-          { role: 'system', content: skepticSystemPrompt },
+          { role: 'system', content: doubleCheckSystemPrompt },
           {
             role: 'user',
             content:
               `Research Query: ${researchQuery}\n\nReasoning Produced:\n${reasonerResult.content}` +
-              `${wave53SteelmanUserBlock}\n\nChallenge these conclusions (attack the steelman where provided; do not argue against a weaker strawman). Find weaknesses, alternatives, and counterevidence.`,
+              `${wave53StrongestFormUserBlock}\n\nChallenge these conclusions (attack the strongest form where provided; do not argue against a weaker version). Find weaknesses, alternatives, and counterevidence.`,
           },
         ],
       });
-      modelLog.push(skepticResult);
+      modelLog.push(doubleCheckResult);
       await saveRunCheckpoint({
         runId,
         stage: 'challenge',
-        checkpointKey: 'skeptic_output',
-        snapshot: { output: skepticResult.content },
+        checkpointKey: 'double_check_output',
+        snapshot: { output: doubleCheckResult.content },
       });
     }
 
     const challengesForSynthesis =
-      orchProfile.skepticMode === 'annotate'
+      orchProfile.doubleCheckMode === 'annotate'
         ? 'Challenge notes were captured as structured sidebar annotations and are not inlined in this narrative.'
-        : skepticResult.content;
+        : doubleCheckResult.content;
 
     // ────────────────────────────────────────────────────────────────
     // STAGE 7: SYNTHESIZER — write the full report
@@ -2964,11 +2964,11 @@ ${reportForGates(generatedReport.markdown)}`,
     // numbered and after the plain-language version, so neither includes it.
     // A failure is contained: the report is saved without the section.
     // ────────────────────────────────────────────────────────────────
-    if (isAdjudicative && skepticRuns && typeof generatedReport?.markdown === 'string' && generatedReport.markdown.trim()) {
+    if (isAdjudicative && doubleCheckRuns && typeof generatedReport?.markdown === 'string' && generatedReport.markdown.trim()) {
       const challengePass = await writeChallengePass({
         query: researchQuery,
         reportMarkdown: generatedReport.markdown,
-        challengeNotes: skepticResult.content,
+        challengeNotes: doubleCheckResult.content,
         engineVersion: v2.engineVersion,
         researchObjective: v2.researchObjective,
         allowFallbackByRole: v2.allowFallbackByRole,
@@ -3033,7 +3033,7 @@ ${reportForGates(generatedReport.markdown)}`,
       wave52Metadata: {
         output_template_id: outputTemplateId,
         orchestration_intent: orchProfile.intent,
-        skeptic_mode: orchProfile.skepticMode,
+        double_check_mode: orchProfile.doubleCheckMode,
         agents_planned: agentExecutionTelemetry.planned,
         agents_ran: agentExecutionTelemetry.ran,
         agents_skipped: agentExecutionTelemetry.skipped,
@@ -3041,7 +3041,7 @@ ${reportForGates(generatedReport.markdown)}`,
           statuses: specialistStatuses,
           degraded_coverage_reasons: degradedCoverageReasons,
         },
-        ...(skepticAnnotations.length ? { skeptic_annotations: skepticAnnotations } : {}),
+        ...(doubleCheckAnnotations.length ? { double_check_annotations: doubleCheckAnnotations } : {}),
         specialist_findings: specialistFindings.map((finding) => ({
           role: finding.role,
           failed: finding.failed,
@@ -3083,7 +3083,7 @@ ${reportForGates(generatedReport.markdown)}`,
           synthesizerOutput: reportMarkdown,
           wave53: {
             sourceClassByChunkId: wave53SourceClassMap,
-            steelmanByClaimText: wave53SteelmanByClaimKey,
+            strongestFormByClaimText: wave53StrongestFormByClaimKey,
           },
           ...v2,
         });
@@ -3094,7 +3094,7 @@ ${reportForGates(generatedReport.markdown)}`,
           reportId,
           chunks: allChunks,
           claims,
-          skepticOutput: skepticResult.content,
+          doubleCheckOutput: doubleCheckResult.content,
           ...v2,
         });
       } catch (epistemicErr) {
@@ -3176,12 +3176,12 @@ ${reportForGates(generatedReport.markdown)}`,
       agentsRan: agentExecutionTelemetry.ran,
       agentsSkipped: agentExecutionTelemetry.skipped,
       stageDurations: stageDurationPayload,
-      skepticAnnotationsCount: skepticAnnotations.length > 0 ? skepticAnnotations.length : null,
+      doubleCheckAnnotationsCount: doubleCheckAnnotations.length > 0 ? doubleCheckAnnotations.length : null,
       sourceClassBreakdown:
         shouldRunPipelineStage(orchProfile, 'retriever_analysis') && allChunks.length > 0
           ? wave53SourceClassBreakdown
           : null,
-      steelmanPassCount: wave53SteelmanPassCount,
+      strongestFormPassCount: wave53StrongestFormPassCount,
     });
 
     // Credit charge: consume hold on success, decrement subscription quota
@@ -3964,6 +3964,7 @@ function parseReportSections(content: string | undefined | null): Array<{ type: 
     'contradiction': 'contradiction_analysis',
     // The section the reading page shows on its Challenge pass tab. Listed
     // before the looser match below, which is for older reports.
+    'double-check': 'challenge',
     'challenge pass': 'challenge',
     'challenge': 'challenges',
     'synthesis': 'synthesis',

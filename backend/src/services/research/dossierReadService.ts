@@ -213,8 +213,8 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
     sourcesRetrievedCount: row.sources_retrieved_count != null ? Number(row.sources_retrieved_count) : null,
     sourcesCitedCount: row.sources_cited_count != null ? Number(row.sources_cited_count) : null,
     citationDensity: row.citation_density != null ? Number(row.citation_density) : null,
-    skepticAnnotationsCount:
-      row.skeptic_annotations_count != null ? Number(row.skeptic_annotations_count) : null,
+    doubleCheckAnnotationsCount:
+      row.double_check_annotations_count != null ? Number(row.double_check_annotations_count) : null,
     contradictionsCount: row.contradictions_count != null ? Number(row.contradictions_count) : null,
     refinementRounds: row.stats_refinement_rounds != null ? Number(row.stats_refinement_rounds) : null,
     agentsRan: row.agents_ran ?? null,
@@ -225,7 +225,7 @@ function mapRowToDossier(row: Record<string, unknown>): Dossier {
     actualCostCents: row.actual_cost_cents != null ? Number(row.actual_cost_cents) : null,
     reportEvidenceTierSummary,
     sourceClassBreakdown: parseSourceClassBreakdown(row.source_class_breakdown),
-    steelmanPassCount: row.steelman_pass_count != null ? Number(row.steelman_pass_count) : null,
+    strongestFormPassCount: row.strongest_form_pass_count != null ? Number(row.strongest_form_pass_count) : null,
   };
 
   return {

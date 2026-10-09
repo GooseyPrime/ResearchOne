@@ -150,7 +150,7 @@ describe('ResearchRequestForm — the request itself', () => {
     expect(screen.getByTestId('attachment-dropzone')).toBeInTheDocument();
     // The detail lives behind disclosures, closed.
     expect(screen.queryByText('Report Format')).not.toBeInTheDocument();
-    expect(screen.queryByText('Challenge perspective (optional)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Double-check viewpoint (optional)')).not.toBeInTheDocument();
   });
 
   it('offers no choice of engine, depth or mode', () => {
@@ -272,10 +272,10 @@ describe('ResearchRequestForm — the Lab controls survived the merge', () => {
     expect(call.filterTags).toEqual(['biology', 'oncology']);
   });
 
-  it('keeps the challenge perspective and sends it as context', async () => {
+  it('keeps the Double-check viewpoint and sends it as context', async () => {
     renderForm();
     fireEvent.click(screen.getByTestId('request-sources-toggle'));
-    fireEvent.click(screen.getByRole('button', { name: /No particular perspective/ }));
+    fireEvent.click(screen.getByRole('button', { name: /No particular viewpoint/ }));
     fireEvent.click(screen.getByRole('option', { name: /Hostile Peer Reviewer/ }));
     const call = await submitWith('Compare two suppliers');
     expect(String(call.supplemental)).toContain('Hostile Peer Reviewer');

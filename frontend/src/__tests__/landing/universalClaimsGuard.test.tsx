@@ -20,7 +20,7 @@ function extractText(html: string): string {
 
 const FORBIDDEN_UNIVERSAL_PATTERNS: readonly RegExp[] = [
   /(every|all)\s+reports?\s+require\s+falsification/i,
-  /skeptic(\s+agent)?\s+(on|for)\s+every\s+(claim|conclusion)/i,
+  /double-check(\s+agent)?\s+(on|for)\s+every\s+(claim|conclusion)/i,
   /every\s+objective\s+passes\s+through\s+the\s+same\s+pipeline/i,
   /each\s+mode\s+runs\s+the\s+full\s+ten-?stage\s+pipeline/i,
   /write\s+a\s+specific,?\s*testable\s+query\.?/i,

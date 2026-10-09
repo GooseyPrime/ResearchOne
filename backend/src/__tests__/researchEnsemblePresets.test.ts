@@ -80,7 +80,7 @@ const V2_FORBIDDEN_DEFAULT_MODELS = new Set([
   'nousresearch/hermes-3-llama-3.1-405b:free',
 ]);
 
-/** Slugs that must never appear as V2 default skeptic / internal_challenger. */
+/** Slugs that must never appear as V2 default double-check / internal_challenger. */
 const V2_FORBIDDEN_ADVERSARIAL_DEFAULT_MODELS = new Set([
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   'sao10k/l3.3-euryale-70b',
@@ -130,7 +130,7 @@ describe('researchEnsemblePresets', () => {
 
   it('V2_MODE_PRESETS never wires a refusal-aligned slug as a default primary or fallback', () => {
     const violations: string[] = [];
-    const adversarialRoles = new Set<ReasoningModelRole>(['skeptic', 'internal_challenger']);
+    const adversarialRoles = new Set<ReasoningModelRole>(['double_check', 'internal_challenger']);
     for (const obj of RESEARCH_OBJECTIVES) {
       const preset = V2_MODE_PRESETS[obj];
       for (const role of REASONING_MODEL_ROLES) {

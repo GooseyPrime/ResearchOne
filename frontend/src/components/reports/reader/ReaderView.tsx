@@ -22,6 +22,7 @@ import {
   type ReaderSource,
   type ReaderTab,
 } from './readerModel';
+import { DOUBLE_CHECK, customerOptionsIn } from '../../../content/customerOptions';
 
 /** Before the page's data arrives: the report text alone, and no status claimed. */
 const EMPTY: ReaderEvidence = { status: { word: '', reason: null }, sources: [], citations: [], findings: [] };
@@ -284,7 +285,20 @@ export default function ReaderView({ report, evidence = EMPTY, legacyNumbers, me
 
         {active === 'challenge' && (
           <section className="space-y-6">
-            <p className="text-sm text-slate-400">A second look at this report: where its findings could be wrong, and what would change them.</p>
+            <p className="text-sm text-slate-400" data-testid="double-check-tab-description">
+              {DOUBLE_CHECK.description} Example: {DOUBLE_CHECK.example}
+            </p>
+            <details className="text-sm text-slate-400" data-testid="double-check-results-help">
+              <summary className="cursor-pointer text-slate-300">What the results mean</summary>
+              <dl className="mt-2 space-y-1">
+                {customerOptionsIn('verdict').map((verdict) => (
+                  <div key={verdict.id} title={verdict.example}>
+                    <dt className="inline font-medium text-slate-200">{verdict.name}: </dt>
+                    <dd className="inline">{verdict.description}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
             {sections.map((section, index) =>
               role(index) === 'challenge' ? (
                 <section key={section.id} className="space-y-2">

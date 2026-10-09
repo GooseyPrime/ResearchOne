@@ -1,8 +1,8 @@
--- Migration 036: Wave 5.3 — source_class on claims + report_citations, steelman_summary,
+-- Migration 036: Wave 5.3 — source_class on claims + report_citations, strongest_form_summary,
 -- dossier_statistics epistemic rollups, v_dossier refresh.
 -- Idempotent. Follows 035_plan_intent_taxonomy_and_gate.sql.
 
--- claims.source_class + steelman_summary
+-- claims.source_class + strongest_form_summary
 ALTER TABLE claims
   ADD COLUMN IF NOT EXISTS source_class TEXT NULL
     CHECK (
@@ -15,7 +15,7 @@ ALTER TABLE claims
     );
 
 ALTER TABLE claims
-  ADD COLUMN IF NOT EXISTS steelman_summary TEXT NULL;
+  ADD COLUMN IF NOT EXISTS strongest_form_summary TEXT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_claims_source_class ON claims(source_class)
   WHERE source_class IS NOT NULL;
@@ -40,7 +40,7 @@ ALTER TABLE dossier_statistics
   ADD COLUMN IF NOT EXISTS source_class_breakdown JSONB NULL;
 
 ALTER TABLE dossier_statistics
-  ADD COLUMN IF NOT EXISTS steelman_pass_count INTEGER NULL;
+  ADD COLUMN IF NOT EXISTS strongest_form_pass_count INTEGER NULL;
 
 -- Refresh v_dossier: Wave 5.3 stats + restore 035 single-plan LATERAL + orchestration_profile.
 -- WITH (security_invoker = true): RLS on underlying tables runs as querying role (PG15+; dev/prod pg16).
@@ -76,14 +76,14 @@ SELECT
   ds.sources_retrieved_count,
   ds.sources_cited_count,
   ds.citation_density,
-  ds.skeptic_annotations_count,
+  ds.double_check_annotations_count,
   ds.contradictions_count,
   ds.refinement_rounds     AS stats_refinement_rounds,
   ds.agents_ran,
   ds.agents_skipped,
   ds.stage_durations,
   ds.source_class_breakdown,
-  ds.steelman_pass_count,
+  ds.strongest_form_pass_count,
   ds.models_used,
   ds.estimated_cost_cents,
   ds.actual_cost_cents

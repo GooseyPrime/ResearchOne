@@ -69,7 +69,7 @@ loop over its section list — not a hard-coded `SECTION_PLAN`. The
 
 | Intent family | hypothesis required | falsification required | adversarial review |
 |---|---|---|---|
-| `adjudicative`, `causal_test`, `story_verification` | ✅ Yes | ✅ Yes | ✅ Full skeptic |
+| `adjudicative`, `causal_test`, `story_verification` | ✅ Yes | ✅ Yes | ✅ Full double-check |
 | `factual`, `survey`, `explain`, `reference_lookup`, `literature_review`, `timeline` | ❌ No | ❌ No | ⚪ Optional |
 | `exploratory`, `opportunity_discovery`, `market_research`, `feasibility` | ❌ No | ❌ No | ⚪ Optional |
 | `recommendation`, `implementation`, `how_to`, `comparison` | ❌ No | ❌ No | ⚪ Optional |
@@ -119,9 +119,9 @@ reaches the user, checking:
 - Report headings are controlled by the template, not the model's
   initiative.
 
-The contract auditor differs from the skeptic: the skeptic challenges
+The contract auditor differs from the double-check: the double-check challenges
 conclusions; the auditor ensures delivery. The attached failure prompt
-would pass an epistemic skeptic but fail a contract auditor instantly.
+would pass an epistemic double-check but fail a contract auditor instantly.
 
 ### R-8. Regression fixture
 

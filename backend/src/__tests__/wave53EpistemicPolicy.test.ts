@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   aggregateSourceClassBreakdown,
   buildReasonerSystemPrompt,
-  buildSkepticSystemPrompt,
+  buildDoubleCheckSystemPrompt,
   resolveSourceClassForChunk,
   type SourceClassMap,
 } from '../services/planning/wave53EpistemicPolicy';
@@ -17,17 +17,17 @@ describe('wave53EpistemicPolicy', () => {
     expect(prompt).toMatch(/Wave\s+5\.3|EPISTEMIC\s+CONSTRAINT/i);
   });
 
-  it('buildSkepticSystemPrompt differs by dominant source class overlays', () => {
-    const held = buildSkepticSystemPrompt(['consensus_held']);
-    const contested = buildSkepticSystemPrompt(['actively_contested']);
+  it('buildDoubleCheckSystemPrompt differs by dominant source class overlays', () => {
+    const held = buildDoubleCheckSystemPrompt(['consensus_held']);
+    const contested = buildDoubleCheckSystemPrompt(['actively_contested']);
     expect(held).toContain('SOURCE-CLASS OVERLAY (consensus_held)');
     expect(contested).toContain('SOURCE-CLASS OVERLAY (actively_contested)');
     expect(held).not.toContain('SOURCE-CLASS OVERLAY (actively_contested)');
     expect(contested).not.toContain('SOURCE-CLASS OVERLAY (consensus_held)');
   });
 
-  it('buildSkepticSystemPrompt stacks overlays when multiple classes are dominant', () => {
-    const both = buildSkepticSystemPrompt(['suppressed_and_recovered', 'consensus_collapsed']);
+  it('buildDoubleCheckSystemPrompt stacks overlays when multiple classes are dominant', () => {
+    const both = buildDoubleCheckSystemPrompt(['suppressed_and_recovered', 'consensus_collapsed']);
     expect(both).toContain('SOURCE-CLASS OVERLAY (suppressed_and_recovered)');
     expect(both).toContain('SOURCE-CLASS OVERLAY (consensus_collapsed)');
   });

@@ -42,7 +42,7 @@ describe('baseline writing messages', () => {
 
   it('keeps both on an adjudication challenge pass', () => {
     const sent = applySystemAugmentations({
-      role: 'skeptic',
+      role: 'double_check',
       isAdjudicative: true,
       messages: [{ role: 'system', content: 'Check the finding.' }],
     });

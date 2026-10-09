@@ -29,6 +29,7 @@ import {
 } from '../hooks/useBillingSubscription';
 import { useHasProAccess } from '../hooks/useHasProAccess';
 import { BILLING_HISTORY_QUERY_KEY, useBillingHistory } from '../hooks/useBillingHistory';
+import { customerOption } from '../content/customerOptions';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
   living_report: 'Living Report — token (2 mo / report)',
@@ -36,8 +37,8 @@ const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
 };
 
 const ADDON_KIND_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
-  living_report: 'Living Report',
-  reverse_citation_watch: 'Reverse-Citation Watch',
+  living_report: customerOption('add_on', 'living_report').name,
+  reverse_citation_watch: customerOption('add_on', 'reverse_citation_watch').name,
 };
 
 type WalletResponse = {
