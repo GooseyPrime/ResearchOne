@@ -26,7 +26,8 @@ export default function DossierSourcesPanel({ dossierId }: { dossierId: string }
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        Corpus sources tied to this dossier&apos;s research run — fetch/ingest status and citation linkage.
+        The sources this research run used, and whether the report cites each one. A source that was found
+        and not used is not listed.
       </p>
       <div className="overflow-x-auto rounded-lg border border-slate-800/80">
         <table className="min-w-full text-xs">

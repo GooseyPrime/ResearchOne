@@ -3,7 +3,7 @@
  * If query rewriting is added, wrap LLM system prompts with withPreamble from constants/prompts.ts.
  */
 
-import { config } from '../../config';
+import { config, relevanceGateEnabled } from '../../config';
 import { isCitableAsIndependent } from './sourceIndependence';
 import { query } from '../../db/pool';
 import { generateEmbeddings } from '../openrouter/openrouterService';
@@ -17,6 +17,7 @@ import {
   type CorpusSourceRecord,
 } from './corpusCompetenceGate';
 import type { IntentId } from '../planning/intentTaxonomy';
+import { keepRelevantForRun, type RunRelevanceScope } from './runRelevanceFilter';
 import {
   authorityTiersEnabled,
   orderByRelevanceThenAuthority,
@@ -40,6 +41,8 @@ export interface RetrievedChunk {
   source_origin?: 'external_discovery' | 'user_upload' | 'researchone_generated' | 'user_supplied_url' | null;
   /** Slice 6. The source's authority tier; set only when AUTHORITY_TIERS_ENABLED is on. */
   authority_tier?: AuthorityTier | null;
+  /** The run whose discovery or attachments stored this source. Read by the relevance check to tell this run's own attachments apart. */
+  source_discovered_by_run_id?: string | null;
 }
 
 export interface RetrievalOptions {
@@ -54,6 +57,12 @@ export interface RetrievalOptions {
   userId?: string;
   /** Current research run id — sources discovered for this run are always citable. */
   runId?: string;
+  /**
+   * The run's research question, for the relevance check that keeps another
+   * run's unrelated documents out of this one (`runRelevanceFilter.ts`). When
+   * absent no check runs: a revision's own supplemental scope, for example.
+   */
+  relevance?: RunRelevanceScope;
 }
 
 export interface RetrievalAuditResult {
@@ -152,6 +161,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
     // them as independent corroboration.
     userId,
     runId,
+    relevance,
   } = options;
 
   const results: Map<string, RetrievedChunk> = new Map();
@@ -252,7 +262,9 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
       }
 
       vectorSql += ` ORDER BY e.vector <=> $1::vector LIMIT $${params.length + 1}`;
-      params.push(topK);
+      // With the relevance check on, half as many again are read, so that
+      // passages it leaves out can be replaced by the next in line.
+      params.push(relevance && relevanceGateEnabled() ? topK + Math.ceil(topK / 2) : topK);
 
       const vectorResults = await query<{
         id: string;
@@ -285,6 +297,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
           tags: row.tags ?? [],
           owner_user_id: row.discovered_by_run_id === runId ? null : row.owner_user_id,
           source_origin: deriveSourceOrigin(row.metadata_source_origin, row.imported_via),
+          source_discovered_by_run_id: row.discovered_by_run_id ?? null,
         });
       }
     }
@@ -381,6 +394,7 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
             tags: row.tags ?? [],
             owner_user_id: ownerUserId,
             source_origin: deriveSourceOrigin(row.metadata_source_origin, row.imported_via),
+            source_discovered_by_run_id: row.discovered_by_run_id ?? null,
           });
         } else {
           // Boost existing entry; also correct owner if we now know it's a current-run source
@@ -401,9 +415,16 @@ export async function retrieveChunksWithAudit(options: RetrievalOptions): Promis
   // order also weighs tier, so the filter runs first and the K citable passages
   // are taken after it: a passage that would be set aside cannot take the place
   // of an equally relevant one that is citable.
-  const ordered = tiersOn
+  const rankedCandidates = tiersOn
     ? orderByRelevanceThenAuthority(await withAuthorityTiers(candidates))
-    : candidates.sort((a, b) => b.similarity - a.similarity).slice(0, topK);
+    : candidates.sort((a, b) => b.similarity - a.similarity);
+  // The corpus is shared across runs. Before any passage is handed back, the
+  // documents this run has not judged are checked against its question, and
+  // passages of a document that is about something else are left out.
+  // The check runs before the top K are taken, so a document that is left out
+  // does not cost the run the next relevant passage in line.
+  const relevantCandidates = relevance ? await keepRelevantForRun(relevance, rankedCandidates) : rankedCandidates;
+  const ordered = tiersOn ? relevantCandidates : relevantCandidates.slice(0, topK);
 
   const requiresIndependentSources = intentNeedsIndependentExternalEvidence(intentId);
   const citableChunks: RetrievedChunk[] = [];

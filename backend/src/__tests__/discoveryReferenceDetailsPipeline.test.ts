@@ -51,6 +51,13 @@ vi.mock('axios', () => {
 
 vi.mock('../services/openrouter/openrouterService', () => ({
   callRoleModel: vi.fn(async (options: { messages: Array<{ content: string }> }) => {
+    // The relevance check asks a model about every candidate before it is queued.
+    // These fixtures are about the question asked, and the stand-in judge says so.
+    const toJudge = /Items to judge \((\d+)\)/.exec(options.messages.map((message) => message.content).join('\n'));
+    if (toJudge) {
+      const verdicts = Array.from({ length: Number(toJudge[1]) }, (_, at) => ({ n: at + 1, verdict: 'relevant', why: 'about the question' }));
+      return { content: JSON.stringify({ verdicts }), model: 'test', role: 'planner', promptTokens: 1, completionTokens: 1, durationMs: 1, usedFallback: false, primaryModel: 'test' };
+    }
     const followUp = options.messages.some((message) => message.content.includes('Round 1 candidates'));
     const content = followUp
       ? '{"rationale":"covered","follow_up_queries":[],"exclusion_patterns":[]}'

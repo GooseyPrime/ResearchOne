@@ -124,6 +124,32 @@ export function selectProviders(brief: RoutingBrief, env: RoutingEnvironment): P
   return { routes, providers, notConfigured, extraQueries };
 }
 
+/**
+ * Which of a run's providers may be searched for this request.
+ *
+ * A scholarly-only service (arXiv, PubMed Central, ClinicalTrials.gov, USPTO)
+ * is held back unless one of the request's own routes lists it. The same
+ * routing decision `selectProviders` makes with PROVIDER_ROUTING_ENABLED on is
+ * applied here to the specialist mapping used with it off, so a question about
+ * an election is not sent to arXiv because the plan scheduled a specialist that
+ * the mapping ties to it.
+ */
+export function providersForRequest(
+  keys: readonly ProviderKey[],
+  brief: Pick<RoutingBrief, 'researchQuery' | 'intent' | 'researchObjective'>
+): { allowed: ProviderKey[]; heldBack: ProviderKey[]; routes: DiscoveryRoute[] } {
+  const routes = routesFor(brief);
+  const allowed: ProviderKey[] = [];
+  const heldBack: ProviderKey[] = [];
+  for (const key of keys) {
+    const entry = PROVIDER_REGISTRY[key] as { scholarlyOnly?: boolean; routes: Partial<Record<DiscoveryRoute, number>> };
+    const onRoute = routes.some((route) => entry.routes[route] !== undefined);
+    if (entry.scholarlyOnly && !onRoute) heldBack.push(key);
+    else allowed.push(key);
+  }
+  return { allowed, heldBack, routes };
+}
+
 /** What each kind of source covers, from the registry, for the gap-filling planner. */
 export function sourceDescriptionsFor(keys: readonly ProviderKey[]): string {
   return keys.map((key) => `${PROVIDER_REGISTRY[key].title}: ${PROVIDER_REGISTRY[key].covers}`).join('\n');
