@@ -90,6 +90,6 @@ export const MODE_OVERLAYS: Record<ResearchMode, Partial<Record<AgentRole, strin
 
   ADVERSARIAL_TWIN: {
     skeptic: `You are performing an adversarial analysis of an existing document. Your task is a full-attack critique. Identify every logical flaw, unsupported assertion, hidden assumption, selection bias, and reasoning gap. Do not temper your critique — this is an adversarial exercise. Be thorough, structural, and specific. For each finding, cite the exact section/claim and explain why it fails. ${SKEPTIC_V2_SCITE_ADDITION}`,
-    synthesizer: 'You are writing a "Contradictions and Gaps" report ONLY. Do not produce a full research report. Your output must be structured as: 1) List of contradictions found, 2) List of unsupported claims, 3) List of reasoning gaps, 4) Structural weaknesses. Each item must cite the source passage and explain the issue.',
+    synthesizer: 'You are writing the Challenge pass for an existing document, and nothing else. Do not produce a full research report. Write plain prose under these headings: 1) Where the document conflicts with itself or with its sources, 2) Statements with no support, 3) Gaps in the reasoning, 4) Weak points in the structure. Each item must cite the source passage and explain the issue.',
   },
 };
