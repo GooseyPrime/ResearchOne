@@ -100,7 +100,7 @@ const ORDINAL_LABELS = [
  */
 const LEADING_ORDINAL = new RegExp(
   `^\\s*(?:#+\\s*)?(?:(?:${ORDINAL_LABELS.join('|')})\\s+)?` +
-    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):\u2013\u2014-]\\s+)`,
+    `(?:\\d+(?:\\.\\d+)+\\s+|\\d+(?:\\.\\d+)*\\s*[.):–—-]\\s+)`,
   'i'
 );
 
@@ -963,10 +963,10 @@ export function withoutSourceRankOutsideCodeAndQuotes(content: string): string {
   const code: string[] = [];
   const held = mapOutsideCode(content, (part) => part, (segment) => {
     code.push(segment);
-    return `\uE010${code.length - 1}\uE011`;
+    return `${code.length - 1}`;
   });
   const cleaned = mapOutsideQuotes(held, withoutSourceRank);
-  return cleaned.replace(/\uE010(\d+)\uE011/g, (_token, index: string) => code[Number(index)] ?? '');
+  return cleaned.replace(/(\d+)/g, (_token, index: string) => code[Number(index)] ?? '');
 }
 
 export function removeBannedWording(content: string): string {
@@ -1598,7 +1598,7 @@ Research query: ${args.query}
 Plan: ${JSON.stringify(args.plan)}
 Retriever analysis: ${args.retrieverAnalysis}
 Reasoning output: ${args.reasoningChains}
-Skeptic output: ${args.challenges}
+Double-check output: ${args.challenges}
 Specialist findings: ${args.specialistFindings ?? 'none'}
 Template narrative guidance: ${templateNarrativeHint || 'none'}
 ${args.isAdjudicative ? '' : `\n${CLAIM_CLASS_SOURCING_BURDEN}\n`}${
