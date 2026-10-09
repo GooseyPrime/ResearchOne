@@ -13,6 +13,11 @@ import { CODE_DEFAULT_REASONING_FALLBACKS, CODE_DEFAULT_REASONING_MODELS } from 
 import { resolveCorsOrigins } from './corsOrigins';
 import { resolveRetrievalMinSimilarity } from './retrievalSimilarityFloor';
 import { resolveStripeCheckoutRedirect } from './stripeCheckoutUrls';
+import {
+  ANTHROPIC_DEFAULT_MODELS,
+  NVIDIA_DEFAULT_MODELS,
+  parseModelProviderOrder,
+} from '../services/openrouter/providerRoutes';
 
 loadEnv();
 
@@ -69,6 +74,8 @@ function validateOpenRouterBaseUrl(baseUrl: string): void {
     );
   }
 }
+
+const parsedProviderOrder = parseModelProviderOrder(process.env.MODEL_PROVIDER_ORDER);
 
 const config = {
   port: parseInt(process.env.PORT || '3001', 10),
@@ -171,6 +178,41 @@ const config = {
     apiKey: process.env.TOGETHER_API_KEY || '',
     baseUrl: process.env.TOGETHER_BASE_URL || 'https://api.together.xyz/v1',
   },
+
+  /**
+   * Anthropic, called directly (RJ-021). With no key the provider is left out
+   * of every role's routes. The two model settings are optional; the defaults
+   * are in `providerRoutes.ts`.
+   */
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    baseUrl: 'https://api.anthropic.com/v1',
+    models: {
+      fast: process.env.ANTHROPIC_MODEL_FAST?.trim() || ANTHROPIC_DEFAULT_MODELS.fast,
+      strong: process.env.ANTHROPIC_MODEL_STRONG?.trim() || ANTHROPIC_DEFAULT_MODELS.strong,
+    },
+  },
+
+  /**
+   * NVIDIA NIM, an OpenAI-compatible API (RJ-021). With no key the provider is
+   * left out of every role's routes.
+   */
+  nvidia: {
+    apiKey: process.env.NVIDIA_API_KEY || '',
+    baseUrl: process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1',
+    models: {
+      fast: process.env.NVIDIA_MODEL_FAST?.trim() || NVIDIA_DEFAULT_MODELS.fast,
+      strong: process.env.NVIDIA_MODEL_STRONG?.trim() || NVIDIA_DEFAULT_MODELS.strong,
+    },
+  },
+
+  /** The order providers are tried in. See `providerRoutes.ts`. */
+  modelProviderOrder: parsedProviderOrder.order,
+  /**
+   * True when `MODEL_PROVIDER_ORDER` is set. Only then may the order place a
+   * provider ahead of a role's own model; unset, the role's own model is first.
+   */
+  modelProviderOrderSet: Boolean(process.env.MODEL_PROVIDER_ORDER?.trim()),
 
   /** Hugging Face Inference API token (Research One 2 red-team models). Optional unless V2 HF routes run. */
   hfToken: process.env.HF_TOKEN || '',
@@ -388,6 +430,13 @@ const config = {
 };
 
 validateOpenRouterBaseUrl(config.openrouter.baseUrl);
+assertHttpUrl(config.nvidia.baseUrl, 'NVIDIA_BASE_URL');
+if (parsedProviderOrder.unknown.length > 0) {
+  // The logger imports this module, so this one line goes to the console.
+  console.warn(
+    `MODEL_PROVIDER_ORDER: ignored ${parsedProviderOrder.unknown.length} name(s) that are not a provider. Allowed: openrouter, anthropic, together, nvidia.`
+  );
+}
 
 if (config.nodeEnv === 'production' && !config.openrouter.apiKey.trim()) {
   throw new Error('OPENROUTER_API_KEY must be set in production environment');
