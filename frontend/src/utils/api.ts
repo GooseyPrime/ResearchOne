@@ -1,6 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { applyApiRateLimitInterceptor } from './apiRateLimit';
 import { getClerkJwtForApi } from './clerkSession';
+import { customerOption } from '../content/customerOptions';
 
 const API_PREFIX = '/api';
 
@@ -62,7 +63,7 @@ export function extractApiError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface CorpusStats {
   source_count: number;
@@ -116,14 +117,13 @@ export function citationStyleToSend(choice: CitationStyleChoice): CitationStyleS
   return choice === 'automatic' ? undefined : choice;
 }
 
-export const CITATION_STYLE_OPTIONS: { value: CitationStyleSlug; label: string }[] = [
-  { value: 'mla', label: 'MLA (9th ed.)' },
-  { value: 'apa', label: 'APA (7th ed.)' },
-  { value: 'chicago-author-date', label: 'Chicago — Author/Date' },
-  { value: 'chicago-note', label: 'Chicago — Notes & Bibliography' },
-  { value: 'ieee', label: 'IEEE' },
-  { value: 'harvard', label: 'Harvard' },
-];
+const CITATION_STYLE_SLUGS: readonly CitationStyleSlug[] = ['mla', 'apa', 'chicago-author-date', 'chicago-note', 'ieee', 'harvard'];
+
+/** The citation styles a form offers, named from the registry of customer-facing names. */
+export const CITATION_STYLE_OPTIONS: { value: CitationStyleSlug; label: string }[] = CITATION_STYLE_SLUGS.map((value) => ({
+  value,
+  label: customerOption('citation_style', value).name,
+}));
 
 export interface ResearchProgressEvent {
   runId?: string;
@@ -298,8 +298,8 @@ export interface Report {
     /** the orchestration-profile pass — intent output template id */
     output_template_id?: string;
     orchestration_intent?: string;
-    skeptic_mode?: string;
-    skeptic_annotations?: unknown[];
+    double_check_mode?: string;
+    double_check_annotations?: unknown[];
     research_request?: {
       query?: string;
       supplemental?: string;
@@ -341,7 +341,7 @@ export interface DossierStats {
   sourcesRetrievedCount: number | null;
   sourcesCitedCount: number | null;
   citationDensity: number | null;
-  skepticAnnotationsCount: number | null;
+  doubleCheckAnnotationsCount: number | null;
   contradictionsCount: number | null;
   refinementRounds: number | null;
   agentsRan: unknown;
@@ -353,7 +353,7 @@ export interface DossierStats {
   reportEvidenceTierSummary: Record<string, unknown> | null;
   /** the source-class pass — source-class counts for retrieved chunks (orthogonal to tiers). */
   sourceClassBreakdown: Record<string, unknown> | null;
-  steelmanPassCount: number | null;
+  strongestFormPassCount: number | null;
 }
 
 export interface Dossier {
@@ -599,7 +599,7 @@ export interface UserSubscription {
   currentPeriodEnd: string | null;
 }
 
-// ─── API Functions ────────────────────────────────────────────────────────────
+// ─── API Functions ────────────────────────────────────────────────────────────────────────────────────
 
 export const getStats = () => api.get<CorpusStats>('/corpus/stats').then(r => r.data);
 
@@ -1251,7 +1251,7 @@ export const getWalletSummary = () =>
 export const getSubscription = () =>
   api.get<UserSubscription>('/billing/subscription').then((r) => r.data);
 
-// ─── Living Reports / Parallel Monitor (WO T) ─────────────────────────────────
+// ─── Living Reports / Parallel Monitor (WO T) ─────────────────────────────────────────────────────────────────
 
 export type ReportMonitorKind = 'living_report' | 'reverse_citation_watch';
 
