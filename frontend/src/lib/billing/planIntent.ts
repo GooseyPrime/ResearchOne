@@ -8,6 +8,8 @@
  * which changes the subscription they have. Subscribers on any other plan
  * cannot switch from the page and are told who to write to.
  */
+import { customerOption } from '../../content/customerOptions';
+
 export type PlanIntent = 'pro' | 'byok';
 
 export type PlanIntentNotice =
@@ -17,7 +19,11 @@ export type PlanIntentNotice =
   | { kind: 'switch_not_available'; plan: PlanIntent; currentTier: string }
   | null;
 
-export const PLAN_LABEL: Record<PlanIntent, string> = { pro: 'Pro', byok: 'BYOK' };
+/** Plan names, from the registry of customer-facing names. */
+export const PLAN_LABEL: Record<PlanIntent, string> = {
+  pro: customerOption('plan', 'pro').name,
+  byok: customerOption('plan', 'byok').name,
+};
 
 export function isPlanIntent(value: string | null): value is PlanIntent {
   return value === 'pro' || value === 'byok';

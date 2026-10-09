@@ -1,3 +1,5 @@
+import { DOUBLE_CHECK } from '../content/customerOptions';
+
 export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; description: string }> = {
   market_scout: { name: 'Market Scout', description: 'Scans for whitespace opportunities and unserved demand.' },
   competitor_mapper: { name: 'Competitor Mapper', description: 'Maps alternatives, positioning, and feature gaps.' },
@@ -13,7 +15,7 @@ export const AGENT_DISPLAY_DESCRIPTIONS: Record<string, { name: string; descript
   synthesizer: { name: 'Report Writer', description: 'Drafts your deliverables from the confirmed plan.' },
   verifier: { name: 'Citation Verifier', description: 'Confirms every finding is supported by an accessible source.' },
   contract_auditor: { name: 'Contract Auditor', description: 'Checks that every requested deliverable was actually delivered.' },
-  skeptic: { name: 'Challenge pass', description: 'Argues against the draft to catch weak or unsupported findings.' },
+  double_check: { name: DOUBLE_CHECK.name, description: DOUBLE_CHECK.description },
 };
 
 /**

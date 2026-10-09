@@ -1,23 +1,26 @@
 /**
- * The optional perspective the challenge pass argues from.
+ * The optional viewpoint Double-check asks its questions from.
  *
- * Every report is challenged before it concludes; this only steers *whose*
- * objections get raised. It travels as supplemental context on the run rather
+ * Every report is double-checked before it concludes; this only steers *whose*
+ * questions get asked. It travels as supplemental context on the run rather
  * than as its own API field, which is why the split/merge helpers exist: the
  * run row stores one supplemental string and the form has to be able to take
  * it apart again when restoring a cancelled request.
  *
- * Renamed from `skepticPersonaSupplemental` in WO-AH — the operator's
- * instruction is that "skeptic" is not a word the product says.
+ * The names, descriptions and examples are written once, in the registry of
+ * customer-facing names (`content/customerOptions.ts`).
  */
-export const CHALLENGE_PERSPECTIVE_OPTIONS = [
-  { id: 'fda', label: 'FDA Compliance Officer', description: 'Regulatory scrutiny focus' },
-  { id: 'peer', label: 'Hostile Peer Reviewer', description: 'Academic rigor challenge' },
-  { id: 'defense', label: 'Defense Attorney', description: 'Cross-examination of every finding' },
-  { id: 'investor', label: 'Due-diligence Investor', description: 'Due diligence perspective' },
-  { id: 'journalist', label: 'Investigative Journalist', description: 'Source verification focus' },
-  { id: 'custom', label: 'Custom perspective', description: 'Describe your own' },
-] as const;
+import { customerOption, customerOptionsIn } from '../content/customerOptions';
+
+const VIEWPOINT_IDS = ['fda', 'peer', 'defense', 'investor', 'journalist', 'custom'] as const;
+
+export const CHALLENGE_PERSPECTIVE_OPTIONS = VIEWPOINT_IDS.map((id) => {
+  const words = customerOption('check_viewpoint', id);
+  return { id, label: words.name, description: words.description, example: words.example };
+});
+
+/** What the control shows when no viewpoint is chosen. */
+export const NO_VIEWPOINT = customerOptionsIn('check_viewpoint').find((option) => option.id === 'none')!;
 
 const PRESET_LABELS: Set<string> = new Set(
   CHALLENGE_PERSPECTIVE_OPTIONS.filter((p) => p.id !== 'custom').map((p) => p.label)
