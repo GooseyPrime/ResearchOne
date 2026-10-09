@@ -229,19 +229,118 @@ function pendingChangeIn(schedule: StripeSchedule | null): PendingPlanChange | n
   };
 }
 
-/** A discount as a phase holds it, in the form a phase is written with. */
-function carriedDiscounts(phase: SchedulePhase): Array<{ coupon?: string; discount?: string; promotion_code?: string }> {
-  const carried: Array<{ coupon?: string; discount?: string; promotion_code?: string }> = [];
-  for (const entry of phase.discounts ?? []) {
-    const coupon = idOf(entry.coupon);
-    // Not expanded here, so Stripe sends the id.
-    const discount = typeof entry.discount === 'string' ? entry.discount : null;
-    const promotionCode = idOf(entry.promotion_code);
+type CarriedDiscount = { coupon?: string; discount?: string; promotion_code?: string };
+
+/** Discounts as Stripe returns them (on a phase or on an item), in the form they are written with. */
+function carriedDiscounts(
+  held: ReadonlyArray<{ coupon: unknown; discount: unknown; promotion_code: unknown }> | null | undefined,
+): CarriedDiscount[] {
+  const carried: CarriedDiscount[] = [];
+  for (const entry of held ?? []) {
+    // Not expanded here, so Stripe sends ids; an expanded object is read by its id.
+    const discount = idOf(entry.discount as string | { id?: string | null } | null);
+    const promotionCode = idOf(entry.promotion_code as string | { id?: string | null } | null);
+    const coupon = idOf(entry.coupon as string | { id?: string | null } | null);
     if (discount) carried.push({ discount });
     else if (promotionCode) carried.push({ promotion_code: promotionCode });
     else if (coupon) carried.push({ coupon });
   }
   return carried;
+}
+
+/**
+ * Writing a schedule's phases replaces them, and Stripe unsets whatever a
+ * phase is written without. So everything the current phase holds about how
+ * the subscription is taxed, collected and invoiced is read here and written
+ * back, on the current phase and on the next one. Only the price differs
+ * between the two.
+ */
+function carriedPhaseSettings(phase: SchedulePhase) {
+  const discounts = carriedDiscounts(phase.discounts);
+  const defaultTaxRates = (phase.default_tax_rates ?? []).map((rate) => rate.id);
+  const defaultPaymentMethod = idOf(phase.default_payment_method);
+  const onBehalfOf = idOf(phase.on_behalf_of);
+  const accountTaxIds = (phase.invoice_settings?.account_tax_ids ?? [])
+    .map((entry) => idOf(entry))
+    .filter((id): id is string => Boolean(id));
+  const daysUntilDue = phase.invoice_settings?.days_until_due;
+  return {
+    ...(phase.automatic_tax ? { automatic_tax: { enabled: phase.automatic_tax.enabled } } : {}),
+    ...(phase.billing_thresholds
+      ? {
+          billing_thresholds: {
+            ...(phase.billing_thresholds.amount_gte != null ? { amount_gte: phase.billing_thresholds.amount_gte } : {}),
+            ...(phase.billing_thresholds.reset_billing_cycle_anchor != null
+              ? { reset_billing_cycle_anchor: phase.billing_thresholds.reset_billing_cycle_anchor }
+              : {}),
+          },
+        }
+      : {}),
+    ...(phase.collection_method ? { collection_method: phase.collection_method } : {}),
+    ...(defaultPaymentMethod ? { default_payment_method: defaultPaymentMethod } : {}),
+    ...(defaultTaxRates.length > 0 ? { default_tax_rates: defaultTaxRates } : {}),
+    ...(phase.description ? { description: phase.description } : {}),
+    ...(accountTaxIds.length > 0 || daysUntilDue != null
+      ? {
+          invoice_settings: {
+            ...(accountTaxIds.length > 0 ? { account_tax_ids: accountTaxIds } : {}),
+            ...(daysUntilDue != null ? { days_until_due: daysUntilDue } : {}),
+          },
+        }
+      : {}),
+    ...(onBehalfOf ? { on_behalf_of: onBehalfOf } : {}),
+    ...(discounts.length > 0 ? { discounts } : {}),
+  };
+}
+
+/** What the current phase holds about its one item, apart from the price. */
+function carriedItemSettings(item: SchedulePhase['items'][number] | undefined) {
+  if (!item) return {};
+  const taxRates = (item.tax_rates ?? []).map((rate) => rate.id);
+  const discounts = carriedDiscounts(item.discounts);
+  const itemMetadata = item.metadata ?? {};
+  return {
+    ...(taxRates.length > 0 ? { tax_rates: taxRates } : {}),
+    ...(item.billing_thresholds?.usage_gte != null
+      ? { billing_thresholds: { usage_gte: item.billing_thresholds.usage_gte } }
+      : {}),
+    ...(Object.keys(itemMetadata).length > 0 ? { metadata: itemMetadata } : {}),
+    ...(discounts.length > 0 ? { discounts } : {}),
+  };
+}
+
+/** How long one billing period of a plan price is, as a schedule phase is told it. */
+function onePeriodOf(priceId: string): { interval: 'month' | 'year'; interval_count: number } | null {
+  const period = getBillingPeriodForSubscriptionPrice(priceId);
+  if (!period) return null;
+  return { interval: period === 'annual' ? 'year' : 'month', interval_count: 1 };
+}
+
+/**
+ * A schedule made here whose new phase has already started has done its job:
+ * the subscription is on the new price. It is released so it does not stand
+ * in the way of the customer's next change. Releasing leaves the subscription
+ * exactly as it is.
+ */
+function isFinishedPlanSwitchSchedule(schedule: StripeSchedule): boolean {
+  return scheduleIsLive(schedule) && schedule.metadata?.source === SCHEDULE_SOURCE && upcomingPhase(schedule) === null;
+}
+
+/**
+ * Before a subscription is set to end: drops a plan change scheduled here.
+ * A schedule that was not made here is left untouched and reported, so the
+ * caller can refuse instead of destroying someone else's arrangement.
+ */
+export async function releasePlanSwitchScheduleFor(
+  subscriptionId: string,
+): Promise<{ released: boolean; foreignSchedule: boolean }> {
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['schedule'] });
+  const schedule = await scheduleOf(stripe, subscription);
+  if (!schedule || !scheduleIsLive(schedule)) return { released: false, foreignSchedule: false };
+  if (schedule.metadata?.source !== SCHEDULE_SOURCE) return { released: false, foreignSchedule: true };
+  await stripe.subscriptionSchedules.release(schedule.id);
+  return { released: true, foreignSchedule: false };
 }
 
 /**
@@ -280,7 +379,12 @@ async function scheduleChange(args: { userId: string; priceId: string }): Promis
   // ours to rewrite either.
   const existing = await scheduleOf(stripe, subscription);
   if (existing && scheduleIsLive(existing)) {
-    return { ok: false, reason: pendingChangeIn(existing) ? 'change_already_pending' : 'unsupported_subscription' };
+    if (!isFinishedPlanSwitchSchedule(existing)) {
+      return { ok: false, reason: pendingChangeIn(existing) ? 'change_already_pending' : 'unsupported_subscription' };
+    }
+    // An earlier change made here has already taken effect; its schedule is
+    // released so this one can be scheduled.
+    await stripe.subscriptionSchedules.release(existing.id);
   }
 
   const currentPriceId = priceIdOf(item.price);
@@ -303,7 +407,9 @@ async function scheduleChange(args: { userId: string; priceId: string }): Promis
   }
 
   const quantity = item.quantity ?? 1;
-  const discounts = carriedDiscounts(current);
+  const phaseSettings = carriedPhaseSettings(current);
+  const itemSettings = carriedItemSettings(current.items[0]);
+  const nextPeriod = onePeriodOf(priceId);
 
   // Step 2: keep the current period as it is and add the next one on the new
   // price. If this fails the schedule from step 1 is released, so a failed
@@ -316,21 +422,24 @@ async function scheduleChange(args: { userId: string; priceId: string }): Promis
       metadata: { source: SCHEDULE_SOURCE, user_id: userId, from_tier: currentTier, to_tier: targetTier },
       phases: [
         {
-          items: [{ price: currentPriceId, quantity }],
+          ...phaseSettings,
+          items: [{ ...itemSettings, price: currentPriceId, quantity }],
           start_date: current.start_date,
           end_date: current.end_date,
           proration_behavior: 'none',
           ...(current.trial_end ? { trial_end: current.trial_end } : {}),
-          ...(discounts.length > 0 ? { discounts } : {}),
         },
         {
-          items: [{ price: priceId, quantity }],
+          ...phaseSettings,
+          items: [{ ...itemSettings, price: priceId, quantity }],
           proration_behavior: 'none',
+          // One billing period on the new price, after which the schedule
+          // releases the subscription and it renews by itself.
+          ...(nextPeriod ? { duration: nextPeriod } : {}),
           // Applied to the subscription when this phase starts. The webhook
           // reads the plan from the price first and from this value last, so
           // it must not keep naming the plan the customer has left.
           metadata: { tier: targetTier },
-          ...(discounts.length > 0 ? { discounts } : {}),
         },
       ],
     });

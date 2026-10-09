@@ -42,6 +42,8 @@ describe('sovereign deployment routing', () => {
     it('B2C build imports the real client (does not throw stub error)', async () => {
       delete process.env.DEPLOYMENT_MODE;
       delete process.env.EXCLUDE_INTELLME_CLIENT;
+      // Without an address the real client is off; removed here so the test never calls out.
+      delete process.env.INTELLME_API_URL;
       const { intellmeClient } = await import('../services/ingestion/index');
       try {
         await intellmeClient.query({ userId: 'u1', query: 'test' });
