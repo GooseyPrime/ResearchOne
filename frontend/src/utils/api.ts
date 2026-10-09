@@ -62,7 +62,7 @@ export function extractApiError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CorpusStats {
   source_count: number;
@@ -599,7 +599,7 @@ export interface UserSubscription {
   currentPeriodEnd: string | null;
 }
 
-// ─── API Functions ───────────────────────────────────────────────────────────────
+// ─── API Functions ────────────────────────────────────────────────────────────
 
 export const getStats = () => api.get<CorpusStats>('/corpus/stats').then(r => r.data);
 
@@ -1262,7 +1262,7 @@ export const getWalletSummary = () =>
 export const getSubscription = () =>
   api.get<UserSubscription>('/billing/subscription').then((r) => r.data);
 
-// ─── Living Reports / Parallel Monitor (WO T) ────────────────────────────────────
+// ─── Living Reports / Parallel Monitor (WO T) ─────────────────────────────────
 
 export type ReportMonitorKind = 'living_report' | 'reverse_citation_watch';
 
