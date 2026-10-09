@@ -26,6 +26,8 @@ export const BANNED: Array<{ name: string; pattern: RegExp }> = [
   { name: 'grade label', pattern: /\b(established[_ ]fact|strong[_ ]evidence|testimony[- ]tier)\b/gi },
   // RJ-013: no nickname for a pipeline role or pass. The step is "Double-check" (RJ-017).
   { name: 'role nickname', pattern: /\b(steel[- ]?man\w*|straw[- ]?m[ae]n\w*|s[kc]eptic\w*|devil['’]?s[- ]advocate\w*|red[- ]?team\w*|contrarian\w*|adversar\w*|gadfl\w*)\b/gi },
+  // RJ-018: the searching step was shown under a slang nickname on the run page. It is "Search".
+  { name: 'slang step name', pattern: /\bsleuth\w*\b/gi },
   // RJ-017: the checking step has one public name, "Double-check". Its earlier name is not shown.
   { name: 'earlier step name', pattern: /\bchallenge pass\b/gi },
   // RJ-013: an internal step code ("strongest_form_started", "stage_skipped", "query_done") is never text.
