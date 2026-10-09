@@ -22,7 +22,7 @@ interface SentRequest {
 }
 
 /** What a provider answers: 'ok', an HTTP status to refuse with, or a refusal with its own message. */
-type Answer = 'ok' | number | { status: number; message: string } | { stopReason: string; text?: string };
+type Answer = 'ok' | number | { status: number; message: string } | { stopReason: string; text?: string; inputTokens?: number };
 
 const h = vi.hoisted(() => ({
   sent: [] as SentRequest[],
@@ -71,7 +71,7 @@ vi.mock('axios', () => {
             { type: 'text', text },
           ],
           stop_reason: stopReason,
-          usage: { input_tokens: 1200, output_tokens: 300 },
+          usage: { input_tokens: typeof answer === 'object' ? (answer.inputTokens ?? 1200) : 1200, output_tokens: 300 },
         },
       };
     }
@@ -374,6 +374,28 @@ describe('a refusal from one of the added providers', () => {
     expect(result.routeUsed?.provider).toBe('anthropic');
   });
 
+  it('costs each request of a continued answer at its own price step, not all of them at the highest', async () => {
+    h.openrouter = () => 402;
+    let nth = 0;
+    h.anthropic = () => {
+      nth += 1;
+      return nth === 1
+        ? { stopReason: 'max_tokens', text: 'first half, ', inputTokens: 95_000 }
+        : { stopReason: 'end_turn', text: 'second half', inputTokens: 105_000 };
+    };
+
+    const result = await call('planner');
+
+    expect(result.content).toBe('first half, second half');
+    expect(result.promptTokens).toBe(200_000);
+    expect(result.completionTokens).toBe(600);
+    // 95,000 tokens at 0.10 and 105,000 at 0.50 per million; 300 output tokens at 0.50 and 300 at 2.50.
+    const inputCost = (result.promptTokens / 1_000_000) * (result.listPrice?.inputPricePer1mUsd ?? 0);
+    const outputCost = (result.completionTokens / 1_000_000) * (result.listPrice?.outputPricePer1mUsd ?? 0);
+    expect(inputCost).toBeCloseTo(0.0095 + 0.0525, 9);
+    expect(outputCost).toBeCloseTo(0.00015 + 0.00075, 9);
+  });
+
   it('fails only when every provider refused, and reports the refusal of the role models with all routes listed', async () => {
     h.openrouter = () => 402;
     h.anthropic = () => ({ status: 400, message: ANTHROPIC_OUT_OF_CREDIT });
@@ -492,6 +514,22 @@ describe('the order providers are tried in', () => {
   it('changes which provider is tried after the role models', () => {
     const routes = modelRoutesForCall({ ...everything, providerOrder: ['openrouter', 'nvidia', 'together', 'anthropic'] });
     expect(slots(routes)).toEqual(['openrouter', 'nvidia', 'together', 'anthropic', 'openrouter']);
+  });
+
+  it('measures the order against the provider the role model is on, when the backup is on another provider', () => {
+    const hubBackup = 'NousResearch/Hermes-3-Llama-3.1-70B';
+    const routes = modelRoutesForCall({
+      ...everything,
+      fallback: hubBackup,
+      providerOrder: ['together', 'anthropic', 'openrouter', 'nvidia'],
+      providerOrderSet: true,
+    });
+    // Hub models and Anthropic are ahead of OpenRouter in this order, so they come before the role model.
+    const primaryAt = routes.findIndex((route) => route.position === 'primary');
+    expect(routes.slice(0, primaryAt).every((route) => route.position === 'preferred')).toBe(true);
+    expect(slots(routes.slice(0, primaryAt))).toEqual(['together', 'anthropic']);
+    expect(routes[primaryAt + 1]).toEqual({ model: hubBackup, position: 'backup' });
+    expect(new Set(routes.map((route) => `${route.via ?? ''}:${route.model}`)).size).toBe(routes.length);
   });
 
   it('keeps the role model first while the setting is unset, whatever the default order says', () => {
