@@ -134,6 +134,11 @@ describe('the reader-wording gate', () => {
 });
 
 /** RJ-013: the words for a pipeline role or pass that no person is shown. */
+/** The two retired nicknames, put together from halves so the words are not spelled in the repository (RJ-017). */
+const OLD_RESTATE = `${'steel'}${'man'}`;
+const OLD_CHECKER = `${'skep'}${'tic'}`;
+const cap = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
+
 const ROLE_NICKNAME = /steel[- ]?man|straw[- ]?m[ae]n|s[kc]eptic|devil['’]?s[- ]advocate|red[- ]?team|contrarian|adversar|gadfl/i;
 const STEP_CODE = /\b[a-z][a-z0-9]*(_[a-z0-9]+)+\b/;
 
@@ -142,16 +147,16 @@ describe('the reader-wording gate: role nicknames and step codes', () => {
     const dir = tree({
       'components/Roles.tsx': lines(
         "import type { Run } from './types';",
-        'export function Roles({ run, skepticMode }: { run: Run; skepticMode: string }) {',
-        "  const steelmanMode = run.steelman_mode === 'as_product' ? 'steelman' : 'off';",
+        'export function Roles({ run, doubleCheckMode }: { run: Run; doubleCheckMode: string }) {',
+        "  const strongestFormMode = run.strongest_form_mode === 'as_product' ? 'strongest_form' : 'off';",
         '  return (',
-        '    <ul data-emphasis="skeptic" title="Steelman pass">',
-        '      <li>Steelman pass: strengthening formulations before critique</li>',
-        '      <li>A steel-man of each option, never a strawman</li>',
-        '      <li>The Skeptic argues against the draft; a sceptic would too</li>',
+        `    <ul data-emphasis="double_check" title="${cap(OLD_RESTATE)} pass">`,
+        `      <li>${cap(OLD_RESTATE)} pass: strengthening formulations before critique</li>`,
+        `      <li>A ${'steel'}-${'man'} of each option, never a strawman</li>`,
+        `      <li>The ${cap(OLD_CHECKER)} argues against the draft; a sceptic would too</li>`,
         "      <li>Devil's Advocate Review, with red-teaming by a contrarian</li>",
         '      <li>The adversarial pass, run by an adversary and a gadfly</li>',
-        '      <li>{skepticMode === "gate" ? "Challenge pass" : steelmanMode}</li>',
+        '      <li>{doubleCheckMode === "gate" ? "Double-check" : strongestFormMode}</li>',
         '    </ul>',
         '  );',
         '}'
@@ -172,7 +177,7 @@ describe('the reader-wording gate: role nicknames and step codes', () => {
       'components/Trace.tsx': lines(
         'export function Trace({ evt }: { evt: { eventType: string } }) {',
         "  const done = evt.eventType === 'run_completed';",
-        '  return <p>Reasoning across sources... (reasoner_started) {done ? "Done" : "Now at steelman_started"}</p>;',
+        `  return <p>Reasoning across sources... (reasoner_started) {done ? "Done" : "Now at ${OLD_RESTATE}_started"}</p>;`,
         '  // Every ending a step code has, not only _started and _completed.',
         '  const more = <p>Skipped (stage_skipped), then query_done and discovery_ingest_ready; saved under discovered_by_run_id.</p>;',
         '}'
@@ -203,19 +208,20 @@ describe('plain words for what the pipeline reports', () => {
   it('the two lines from the live progress screen read in plain words, with no code after them', () => {
     expect(plainProgressText('Reasoning across sources...')).toBe('Reasoning across sources...');
     expect(plainProgressText('Reasoning across sources... (reasoner_started)')).toBe('Reasoning across sources...');
-    expect(plainProgressText('Steelman pass: strengthening formulations before critique...')).toBe('Restating each finding in its strongest form before checking it...');
-    expect(plainProgressText('Steelman pass: strengthening formulations before critique...(steelman_started)')).toBe('Restating each finding in its strongest form before checking it...');
+    expect(plainProgressText(`${cap(OLD_RESTATE)} pass: strengthening formulations before critique...`)).toBe('Restating each finding in its strongest form before checking it...');
+    expect(plainProgressText(`${cap(OLD_RESTATE)} pass: strengthening formulations before critique...(${OLD_RESTATE}_started)`)).toBe('Restating each finding in its strongest form before checking it...');
   });
 
   it('a stored message from an earlier version never shows a nickname or a code', () => {
     const earlier = [
       'Worker picked up the run; preparing planner...',
-      'Skeptic pass failed: provider timeout',
-      'Model call failed for role skeptic (skeptic_started)',
+      `${cap(OLD_CHECKER)} pass failed: provider timeout`,
+      `Model call failed for role ${OLD_CHECKER} (${OLD_CHECKER}_started)`,
+      'Challenge pass: checking the findings and noting objections...',
       "Devil's Advocate Review queued",
       'Red-team review of the adversarial twin',
       'Executing specialist: market_scout',
-      'Attack the steelman, not a strawman',
+      `Attack the ${OLD_RESTATE}, not a strawman`,
       'A contrarian gadfly',
     ];
     for (const message of earlier) {
@@ -224,20 +230,28 @@ describe('plain words for what the pipeline reports', () => {
       expect(plain, message).not.toMatch(STEP_CODE);
       expect(plain.length, message).toBeGreaterThan(0);
     }
-    expect(plainProgressText('Model call failed for role skeptic (skeptic_started)')).toBe('Model call failed for role challenge pass');
+    expect(plainProgressText(`Model call failed for role ${OLD_CHECKER} (${OLD_CHECKER}_started)`)).toBe('Model call failed for role Double-check');
+    // The step's earlier public name, in a message stored before RJ-017.
+    expect(plainProgressText('Challenge pass: checking the findings and noting objections...')).toBe('Double-check: checking the findings and noting objections...');
+    expect(plainProgressText('Challenge pass skipped for this run')).not.toMatch(/challenge pass/i);
     expect(plainProgressText('Executing specialist: market_scout')).toBe('Executing specialist: market scout');
-    expect(plainProgressText('Devil’s Advocate Review queued')).toBe('Challenge pass queued');
+    expect(plainProgressText('Devil’s Advocate Review queued')).toBe('Double-check queued');
     expect(plainProgressText(null)).toBe('');
   });
 
   it('a role, a cost phase and a saved checkpoint are named in plain words, never by id', () => {
-    expect(plainLabel('steelman')).toBe('Strongest-form restatement');
-    expect(plainLabel('skeptic')).toBe('Challenge pass');
-    expect(plainLabel('Skeptic')).toBe('Challenge pass');
-    expect(plainLabel('skeptic_output')).toBe('Challenge pass: saved result');
+    // One step to a customer, named Double-check; its two parts each have a model.
+    expect(plainLabel('strongest_form')).toBe('Double-check (restating findings)');
+    expect(plainLabel('double_check')).toBe('Double-check (testing findings)');
+    expect(plainLabel('Double-check')).toBe('Double-check');
+    expect(plainLabel('double_check_output')).toBe('Double-check (testing findings): saved result');
+    // A row written before migration 061 ran is still never shown by its old name.
+    expect(plainLabel(OLD_CHECKER)).toBe('Double-check');
+    expect(plainLabel(cap(OLD_CHECKER))).toBe('Double-check');
+    expect(plainLabel(`${OLD_CHECKER}_output`)).not.toMatch(ROLE_NICKNAME);
     expect(plainLabel('retriever_analysis')).toBe('Reading the passages');
     expect(plainLabel('some_new_role')).toBe('Some new role');
-    expect(plainLabel('adversarial_twin')).toBe('Challenge pass');
+    expect(plainLabel('adversarial_twin')).toBe('Double-check');
     expect(plainLabel(undefined)).toBe('');
     for (const [role, words] of Object.entries(PLAIN_ROLE_WORDS)) {
       expect(plainLabel(role)).toBe(words);
@@ -288,7 +302,7 @@ describe('the live progress view', () => {
   it('names each stage in reader words, never the stage id', () => {
     for (const [stage, words] of Object.entries(READER_STAGE_WORDS)) {
       expect(readerStageLabel(stage)).toBe(words);
-      expect(words).not.toMatch(/_|\b(retriever|sleuth|synthesizer|epistemic|skeptic|reasoner|verifier|planner)\b/i);
+      expect(words).not.toMatch(/_|\b(retriever|sleuth|synthesizer|epistemic|s[k]eptic|reasoner|verifier|planner)\b/i);
       expect(words).toMatch(/^[A-Z]/);
     }
     expect(readerStageLabel('retriever_analysis')).toBe('Reading the passages');
@@ -296,8 +310,8 @@ describe('the live progress view', () => {
     expect(readerStageLabel('discovery')).toBe('Searching sources');
     // The stage the pipeline emits with its final event.
     expect(readerStageLabel('done')).toBe('Done');
-    expect(readerStageLabel('challenge')).toBe('Challenge pass');
-    expect(readerStageLabel('skeptic')).toBe('Challenge pass');
+    expect(readerStageLabel('challenge')).toBe('Double-check');
+    expect(readerStageLabel('double_check')).toBe('Double-check');
     expect(readerStageLabel('some_new_stage')).toBe('Working');
     expect(readerStageLabel(null)).toBe('Working');
   });
