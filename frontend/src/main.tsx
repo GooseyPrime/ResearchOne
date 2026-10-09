@@ -7,8 +7,11 @@ import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 import { assertSplitDeploymentEnv } from './config/splitDeployment';
 import ClerkApiSessionBridge from './components/auth/ClerkApiSessionBridge';
+import { startLongFrameLog } from './lib/longFrameLog';
 
 assertSplitDeploymentEnv();
+// Keeps, in this browser, which script was running whenever a page is held still (RJ-022B).
+startLongFrameLog();
 
 const queryClient = new QueryClient({
   defaultOptions: {
