@@ -6,7 +6,8 @@
 --
 --   1. three columns are renamed;
 --   2. `v_dossier` is recreated so it projects the new column names;
---   3. stored role names, mode keys, step codes and the cost phase are rewritten.
+--   3. stored role names, mode keys, step codes and the cost phase are rewritten
+--      (named keys, role fields and role lists only; text a person wrote is not).
 --
 -- The older migration files were edited in the same change, so a database built
 -- from nothing already has the new names and every statement here finds nothing
@@ -25,8 +26,39 @@ DECLARE
   cap_b  text := initcap('skep' || 'tic');
   either text;
   rec    record;
+  expr   text;
+  pair   text[];
+  names  text[];
+  -- Fields whose value is a role, a step code, a call purpose or a cost phase.
+  value_fields constant text := 'role|agent_role|agentRole|substep|call_purpose|callPurpose|phase|checkpoint_key|checkpointKey';
+  -- Fields whose value is a list of roles.
+  list_fields  constant text := 'agentsWillRun|agentsToRun|agentsToSkip|agentsRan|agentsSkipped|agents_ran|agents_skipped|coreAgentRoles|specialistAgents|skippedAgents';
 BEGIN
   either := '(' || old_a || '|' || old_b || '|' || cap_a || '|' || cap_b || ')';
+
+  -- Every stored name that carries one of the two words, and the name it has now.
+  names := ARRAY[
+    [old_a,                              'strongest_form'],
+    [old_b,                              'double_check'],
+    [old_a || 'Mode',                    'strongestFormMode'],
+    [old_b || 'Mode',                    'doubleCheckMode'],
+    [old_a || '_mode',                   'strongest_form_mode'],
+    [old_b || '_mode',                   'double_check_mode'],
+    [old_a || '_summary',                'strongest_form_summary'],
+    [old_a || '_pass_count',             'strongest_form_pass_count'],
+    [old_a || 'PassCount',               'strongestFormPassCount'],
+    [old_a || '_started',                'strongest_form_started'],
+    [old_b || '_annotations',            'double_check_annotations'],
+    [old_b || '_annotations_count',      'double_check_annotations_count'],
+    [old_b || 'AnnotationsCount',        'doubleCheckAnnotationsCount'],
+    ['sidebar' || cap_b || 'Annotations', 'sidebarDoubleCheckAnnotations'],
+    [old_b || '_output',                 'double_check_output'],
+    [old_b || '_started',                'double_check_started'],
+    [old_b || '_annotate',               'double_check_annotate'],
+    ['pipeline_' || old_b,               'pipeline_double_check'],
+    [cap_a,                              'Strongest-form'],
+    [cap_b,                              'Double-check']
+  ];
 
   -- The view reads the columns by name, so it goes first and is rebuilt below.
   DROP VIEW IF EXISTS v_dossier;
@@ -50,9 +82,15 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 2. Stored JSON. Only a quoted name made of letters, digits and underscores is
-  --    rewritten (a key, a role, a step code). Sentences a person wrote, such as
-  --    a research question that uses one of the words, are left exactly as they are.
+  -- 2. Stored JSON. Three things are rewritten, each an exact name from the list
+  --    in `names`, and nothing else:
+  --      a key                      "<name>": ...
+  --      the value of a field that holds a role, a step code or a phase
+  --                                 "role": "<name>", "substep": "<name>", ...
+  --      an entry of a list of roles
+  --                                 "agentsWillRun": [..., "<name>", ...]
+  --    A sentence, a tag or any other value a person wrote is left exactly as it
+  --    is, even when it is one of the two words on its own.
   FOR rec IN
     SELECT c.table_name AS tbl, c.column_name AS col
       FROM information_schema.columns c
@@ -81,28 +119,24 @@ BEGIN
          ('agent_executions', 'metadata')
        )
   LOOP
-    EXECUTE format(
-      'UPDATE %1$I SET %2$I = (
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-         regexp_replace(
-           %2$I::text,
-           $r$"([A-Za-z0-9_]*)%3$s([A-Z][A-Za-z0-9_]*)"$r$, $r$"\1strongestForm\2"$r$, ''g''),
-           $r$"([A-Za-z0-9_]*)%4$s([A-Z][A-Za-z0-9_]*)"$r$, $r$"\1doubleCheck\2"$r$, ''g''),
-           $r$"([A-Za-z0-9_]*[a-z0-9])%5$s([A-Za-z0-9_]*)"$r$, $r$"\1StrongestForm\2"$r$, ''g''),
-           $r$"([A-Za-z0-9_]*[a-z0-9])%6$s([A-Za-z0-9_]*)"$r$, $r$"\1DoubleCheck\2"$r$, ''g''),
-           $r$"([A-Za-z0-9_]*)%3$s([a-z0-9_]*)"$r$, $r$"\1strongest_form\2"$r$, ''g''),
-           $r$"([A-Za-z0-9_]*)%4$s([a-z0-9_]*)"$r$, $r$"\1double_check\2"$r$, ''g''),
-           $r$"%5$s"$r$, $r$"Strongest-form"$r$, ''g''),
-           $r$"%6$s"$r$, $r$"Double-check"$r$, ''g'')
-       )::jsonb
-       WHERE %2$I::text ~ %7$L',
-      rec.tbl, rec.col, old_a, old_b, cap_a, cap_b, either);
+    expr := format('%I::text', rec.col);
+    FOREACH pair SLICE 1 IN ARRAY names LOOP
+      -- a key
+      expr := format('regexp_replace(%s, %L, %L, ''g'')', expr,
+        '"' || pair[1] || '"(\s*:)', '"' || pair[2] || '"\1');
+      -- the value of a role, step-code or phase field
+      expr := format('regexp_replace(%s, %L, %L, ''g'')', expr,
+        '("(?:' || value_fields || ')"\s*:\s*)"' || pair[1] || '"', '\1"' || pair[2] || '"');
+      -- an entry of a list of roles held under a key
+      expr := format('regexp_replace(%s, %L, %L, ''g'')', expr,
+        '("(?:' || list_fields || ')"\s*:\s*\[[^\]]*)"' || pair[1] || '"', '\1"' || pair[2] || '"');
+      -- two columns are themselves a list of roles
+      IF rec.tbl = 'dossier_statistics' AND rec.col IN ('agents_ran', 'agents_skipped') THEN
+        expr := format('regexp_replace(%s, %L, %L, ''g'')', expr,
+          '([\[,]\s*)"' || pair[1] || '"(\s*[,\]])', '\1"' || pair[2] || '"\2');
+      END IF;
+    END LOOP;
+    EXECUTE format('UPDATE %1$I SET %2$I = (%3$s)::jsonb WHERE %2$I::text ~ %4$L', rec.tbl, rec.col, expr, either);
   END LOOP;
 
   -- 3. Stored text: the role, purpose and phase of each recorded model call, and
