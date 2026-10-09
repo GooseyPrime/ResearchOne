@@ -94,7 +94,7 @@ SELECT
   ds.sources_retrieved_count,
   ds.sources_cited_count,
   ds.citation_density,
-  ds.skeptic_annotations_count,
+  ds.double_check_annotations_count,
   ds.contradictions_count,
   ds.refinement_rounds     AS stats_refinement_rounds,
   ds.agents_ran,

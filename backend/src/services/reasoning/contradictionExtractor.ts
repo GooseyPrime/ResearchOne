@@ -53,13 +53,13 @@ export async function extractAndPersistContradictions(args: {
   reportId: string;
   chunks: RetrievedChunk[];
   claims: ExtractedClaim[];
-  skepticOutput: string;
+  doubleCheckOutput: string;
   engineVersion?: string;
   researchObjective?: ResearchObjective;
   allowFallbackByRole?: Record<string, boolean>;
   byokApiKeyOverride?: string;
 }): Promise<ExtractedContradiction[]> {
-  const { runId, reportId, chunks, claims, skepticOutput } = args;
+  const { runId, reportId, chunks, claims, doubleCheckOutput } = args;
 
   logger.info(`[contradictions:${runId}] Extracting contradictions`);
 
@@ -82,7 +82,7 @@ export async function extractAndPersistContradictions(args: {
 
   try {
     const result = await callRoleModel({
-      role: 'skeptic',
+      role: 'double_check',
       engineVersion: args.engineVersion,
       researchObjective: args.researchObjective,
       allowFallbackByRole: args.allowFallbackByRole,
@@ -92,7 +92,7 @@ export async function extractAndPersistContradictions(args: {
         { role: 'system', content: withPreamble(CONTRADICTION_EXTRACTOR_PROMPT) },
         {
           role: 'user',
-          content: `Claims:\n${claimsContext}\n\nSkeptic Analysis:\n${skepticOutput.slice(0, 2000)}\n\nEvidence Chunks:\n${chunkContext}\n\nIdentify all contradictions. Output JSON array only.`,
+          content: `Claims:\n${claimsContext}\n\nDoubleCheck Analysis:\n${doubleCheckOutput.slice(0, 2000)}\n\nEvidence Chunks:\n${chunkContext}\n\nIdentify all contradictions. Output JSON array only.`,
         },
       ],
       maxTokens: 4096,
