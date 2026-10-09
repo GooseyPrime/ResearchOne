@@ -98,6 +98,73 @@ export async function getModelPrice(model: string): Promise<ModelPrice> {
 }
 
 /**
+ * The active price row for a key, or `null` when the table has none (or cannot
+ * be read). Unlike `getModelPrice`, a missing row is not logged: the caller
+ * has a published price to use instead.
+ */
+async function findActivePrice(key: string): Promise<ModelPrice | null> {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.loadedAt < TTL_MS) {
+    return cached.price === ZERO_PRICE ? null : cached.price;
+  }
+  try {
+    const rows = await adminQuery<{
+      input_price_per_1m_usd: string;
+      output_price_per_1m_usd: string;
+    }>(
+      `SELECT input_price_per_1m_usd, output_price_per_1m_usd
+         FROM model_pricing
+        WHERE model = $1 AND effective_until IS NULL
+        ORDER BY effective_from DESC
+        LIMIT 1`,
+      [key]
+    );
+    if (rows.length === 0) {
+      cache.set(key, { price: ZERO_PRICE, loadedAt: Date.now() });
+      return null;
+    }
+    const price: ModelPrice = Object.freeze({
+      inputPricePer1mUsd: Number(rows[0].input_price_per_1m_usd),
+      outputPricePer1mUsd: Number(rows[0].output_price_per_1m_usd),
+    });
+    cache.set(key, { price, loadedAt: Date.now() });
+    return price;
+  } catch (err) {
+    logger.debug('cost-sidecar: provider pricing lookup failed', { key, err });
+    cache.set(key, { price: ZERO_PRICE, loadedAt: Date.now() });
+    return null;
+  }
+}
+
+/**
+ * The price of one model call, by the provider that answered it (RJ-021).
+ *
+ * OpenRouter, Hugging Face and Together calls are priced as before, from the
+ * `model_pricing` row for the model id.
+ *
+ * Anthropic and NVIDIA calls are priced, in order, from:
+ *   1. the `model_pricing` row keyed `<provider>:<model id>`, when an operator
+ *      has added one (a price change then needs no deploy);
+ *   2. the provider's published price carried on the call result;
+ *   3. the row for the bare model id, as for any other model.
+ * The provider is part of the key because two providers can publish the same
+ * model id at different prices, and a free NVIDIA call must not be costed at
+ * a paid provider's price for a model of the same name.
+ */
+export async function getCallPrice(args: {
+  model: string;
+  provider?: string | null;
+  listPrice?: ModelPrice | null;
+}): Promise<ModelPrice> {
+  if (args.provider === 'anthropic' || args.provider === 'nvidia') {
+    const row = await findActivePrice(`${args.provider}:${args.model}`);
+    if (row) return row;
+    if (args.listPrice) return args.listPrice;
+  }
+  return getModelPrice(args.model);
+}
+
+/**
  * Compute cost for a given usage tuple. Pure function — no side effects.
  *
  * cost = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice
