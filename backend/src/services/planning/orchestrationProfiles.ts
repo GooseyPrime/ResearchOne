@@ -1,5 +1,5 @@
 /**
- * the orchestration-profile pass — canonical per-intent orchestration profiles (agents, skeptic mode, templates).
+ * the orchestration-profile pass — canonical per-intent orchestration profiles (agents, double-check mode, templates).
  * Stage keys align with `researchOrchestrator` progress_stage values + internal gates.
  */
 import type { IntentId } from './intentTaxonomy';
@@ -21,7 +21,7 @@ export const PIPELINE_STAGES = [
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
-export type SkepticMode = 'off' | 'gate' | 'annotate';
+export type DoubleCheckMode = 'off' | 'gate' | 'annotate';
 
 /**
  * What a PROFILE may choose. `'off'` is deliberately excluded (WO-AH).
@@ -37,23 +37,23 @@ export type SkepticMode = 'off' | 'gate' | 'annotate';
  * and can block it. `gate` is the "additional adversarial pass" the planner
  * still decides per intent.
  *
- * `SkepticMode` keeps `'off'` because plan payloads persisted before this change
+ * `DoubleCheckMode` keeps `'off'` because plan payloads persisted before this change
  * contain it and must still read back without throwing. It is only new profile
  * definitions that cannot express it — a compile error rather than a lint note,
  * so the eighteenth profile cannot reintroduce the gap.
  */
-export type ProfileSkepticMode = Exclude<SkepticMode, 'off'>;
+export type ProfileDoubleCheckMode = Exclude<DoubleCheckMode, 'off'>;
 
-/** Steelman intensity; applied by runSteelmanPass in researchOrchestrator when mode !== off. */
-export type SteelmanMode = 'off' | 'standard' | 'per_option' | 'as_product' | 'symmetric';
+/** Strongest-form intensity; applied by runStrongestFormPass in researchOrchestrator when mode !== off. */
+export type StrongestFormMode = 'off' | 'standard' | 'per_option' | 'as_product' | 'symmetric';
 
 export interface OrchestrationProfileDefinition {
   intent: IntentId;
   displayName: string;
   agentsToRun: readonly PipelineStage[];
   agentsToSkip: readonly PipelineStage[];
-  skepticMode: ProfileSkepticMode;
-  steelmanMode: SteelmanMode;
+  doubleCheckMode: ProfileDoubleCheckMode;
+  strongestFormMode: StrongestFormMode;
   /** Stable id for report layout / dossier UI (the orchestration-profile pass templates). */
   outputTemplateId: string;
   expectedLengthRange: { minWords: number; maxWords: number };
@@ -72,7 +72,7 @@ function P(p: Omit<OrchestrationProfileDefinition, 'intent'> & { intent: IntentI
     throw new Error(`orchestrationProfiles: duplicate or extra stages for intent ${p.intent}`);
   }
   // The challenge pass is the floor, not a per-intent option (WO-AH). The type
-  // stops a profile setting `skepticMode: 'off'`; this stops one skipping the
+  // stops a profile setting `doubleCheckMode: 'off'`; this stops one skipping the
   // stage instead, which is the same gap by another route — all seven profiles
   // that disabled the pass did BOTH.
   if (skip.includes('challenge')) {
@@ -104,28 +104,28 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Factual report',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_factual_report',
     expectedLengthRange: { minWords: 1200, maxWords: 6000 },
   }),
   survey: P({
     intent: 'survey',
-    displayName: 'Survey',
+    displayName: 'Topic overview',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_survey',
     expectedLengthRange: { minWords: 2500, maxWords: 12000 },
   }),
   adjudication: P({
     intent: 'adjudication',
-    displayName: 'Adjudication',
+    displayName: 'Fact-check',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_adjudication',
     expectedLengthRange: { minWords: 2000, maxWords: 9000 },
   }),
@@ -134,8 +134,8 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Investigation',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'symmetric',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'symmetric',
     outputTemplateId: 'intent_investigation',
     expectedLengthRange: { minWords: 3500, maxWords: 14000 },
   }),
@@ -144,38 +144,38 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Story verification',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_story_verification',
     expectedLengthRange: { minWords: 2000, maxWords: 8000 },
   }),
   opportunity_discovery: P({
     intent: 'opportunity_discovery',
-    displayName: 'Opportunity discovery',
+    displayName: 'Opportunity search',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_opportunity_discovery',
     expectedLengthRange: { minWords: 2000, maxWords: 10000 },
   }),
   feasibility: P({
     intent: 'feasibility',
-    displayName: 'Feasibility',
+    displayName: 'Feasibility check',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_feasibility',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
   implementation: P({
     intent: 'implementation',
-    displayName: 'Implementation',
+    displayName: 'Implementation plan',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_implementation',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
@@ -185,28 +185,28 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     agentsToRun: FULL,
     agentsToSkip: [],
     /** Methodology-style cross-checks live in sidebar (the orchestration-profile pass). */
-    skepticMode: 'annotate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_literature_review',
     expectedLengthRange: { minWords: 4000, maxWords: 16000 },
   }),
   comparative: P({
     intent: 'comparative',
-    displayName: 'Comparative',
+    displayName: 'Comparison',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'per_option',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'per_option',
     outputTemplateId: 'intent_comparative',
     expectedLengthRange: { minWords: 3000, maxWords: 12000 },
   }),
   how_to: P({
     intent: 'how_to',
-    displayName: 'How-to',
+    displayName: 'How-to guide',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_how_to',
     expectedLengthRange: { minWords: 1500, maxWords: 8000 },
   }),
@@ -215,28 +215,28 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Recommendation',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_recommendation',
     expectedLengthRange: { minWords: 2500, maxWords: 10000 },
   }),
   exploratory: P({
     intent: 'exploratory',
-    displayName: 'Exploratory',
+    displayName: 'Open exploration',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_exploratory',
     expectedLengthRange: { minWords: 1200, maxWords: 7000 },
   }),
   position_brief: P({
     intent: 'position_brief',
-    displayName: 'Position brief',
+    displayName: 'Case for a position',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'as_product',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'as_product',
     outputTemplateId: 'intent_position_brief',
     expectedLengthRange: { minWords: 2000, maxWords: 9000 },
   }),
@@ -245,8 +245,8 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
     displayName: 'Timeline',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'standard',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'standard',
     outputTemplateId: 'intent_timeline',
     expectedLengthRange: { minWords: 2000, maxWords: 10000 },
   }),
@@ -260,18 +260,18 @@ export const ORCHESTRATION_PROFILES: Record<IntentId, OrchestrationProfileDefini
       'plain_language',
       'epistemic_persistence',
     ),
-    skepticMode: 'annotate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'annotate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_reference_lookup',
     expectedLengthRange: { minWords: 400, maxWords: 2500 },
   }),
   legacy: P({
     intent: 'legacy',
-    displayName: 'Legacy',
+    displayName: 'Earlier report',
     agentsToRun: FULL,
     agentsToSkip: [],
-    skepticMode: 'gate',
-    steelmanMode: 'off',
+    doubleCheckMode: 'gate',
+    strongestFormMode: 'off',
     outputTemplateId: 'intent_legacy',
     expectedLengthRange: { minWords: 2000, maxWords: 12000 },
   }),
