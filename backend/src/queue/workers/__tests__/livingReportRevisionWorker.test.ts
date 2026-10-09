@@ -30,17 +30,25 @@ describe('livingReportRevisionWorker', () => {
     const { recordLivingRevisionOutcome } = await import('../../../services/monitoring/parallelMonitorService');
     const { createReportRevision } = await import('../../../services/reasoning/reportRevisionService');
 
-    const emits: Array<{ room: string; event: string }> = [];
+    // Events are addressed to rooms; nothing may be sent to every socket.
+    const emits: Array<{ rooms: string[]; event: string; payload: unknown }> = [];
     const mockIo = {
-      to(room: string) {
+      to(rooms: string | string[]) {
         return {
-          emit: (event: string, _payload?: unknown) => {
-            emits.push({ room, event });
+          emit: (event: string, payload?: unknown) => {
+            emits.push({ rooms: Array.isArray(rooms) ? rooms : [rooms], event, payload });
           },
         };
       },
       emit: vi.fn(),
     } as unknown as SocketIOServer;
+    const ownerLookups = {
+      runOwner: async () => null,
+      ingestionJobOwner: async () => null,
+      reportOwner: async (id: string) => (id === 'r1' ? 'user_owner' : null),
+      atlasExportOwner: async () => null,
+      sourceOwners: async () => [],
+    };
 
     const job = {
       data: {
@@ -52,7 +60,7 @@ describe('livingReportRevisionWorker', () => {
       },
     } as Job<import('../livingReportRevisionWorker').LivingReportRevisionJobData>;
 
-    const out = await processLivingReportRevisionJob(job, mockIo);
+    const out = await processLivingReportRevisionJob(job, mockIo, ownerLookups);
 
     expect(out.revisionId).toBe('rev-x');
     expect(createReportRevision).toHaveBeenCalled();
@@ -61,11 +69,14 @@ describe('livingReportRevisionWorker', () => {
       revisionId: 'rev-x',
       webhookEventId: 'w1',
     });
-    expect(emits.some((e) => e.room === 'job:r1' && e.event === 'revision:completed')).toBe(true);
-    expect(emits.some((e) => e.room === 'reports' && e.event === 'reports:updated')).toBe(true);
-    expect(mockIo.emit).toHaveBeenCalledWith(
-      'living_report:revision_completed',
+    const completed = emits.find((e) => e.event === 'revision:completed');
+    expect(completed?.rooms).toEqual(['job:revision:r1', 'job:r1', 'user:user_owner']);
+    expect(emits.find((e) => e.event === 'reports:updated')?.rooms).toEqual(['user:user_owner']);
+    const living = emits.find((e) => e.event === 'living_report:revision_completed');
+    expect(living?.rooms).toEqual(['user:user_owner']);
+    expect(living?.payload).toEqual(
       expect.objectContaining({ reportId: 'r1', revisionId: 'rev-x', monitorId: 'm1' })
     );
+    expect(mockIo.emit).not.toHaveBeenCalled();
   });
 });
