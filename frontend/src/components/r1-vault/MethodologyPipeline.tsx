@@ -1,6 +1,6 @@
 /**
  * MethodologyPipeline - Visual pipeline stages for methodology page
- * Shows all 9 stages with emphasis on Skeptic
+ * Shows all 9 stages with emphasis on Double-check
  */
 
 import { motion } from 'framer-motion';
@@ -17,7 +17,7 @@ const stageIcons: Record<string, typeof BrainCircuit> = {
   retriever: FileSearch,
   quantitative: Calculator,
   reasoner: Lightbulb,
-  skeptic: ShieldAlert,
+  double_check: ShieldAlert,
   synthesizer: Combine,
   verifier: CheckCircle,
   formatter: FileText
@@ -37,7 +37,7 @@ export function MethodologyPipeline() {
           </h2>
           <p data-ev-id="ev_65f9d76f57" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '16px auto 0' }} className="text-lg text-r1-muted leading-relaxed text-center">
             ResearchOne adapts specialist routing to the objective. This view shows a common deep-research
-            path and where challenge review can be applied.
+            path and where Double-check is applied.
           </p>
         </div>
 
@@ -45,7 +45,7 @@ export function MethodologyPipeline() {
         <div data-ev-id="ev_6b185c04be" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
           {pipelineStages.map((stage, index) => {
             const Icon = stageIcons[stage.id];
-            const isSkeptic = stage.isSkeptic;
+            const isDoubleCheck = stage.isDoubleCheck;
             const stageNumber = String(index + 1).padStart(2, '0');
 
             return (
@@ -60,7 +60,7 @@ export function MethodologyPipeline() {
                   ease: [0.25, 1, 0.5, 1]
                 }}
                 className={`relative p-4 lg:p-5 rounded-lg border transition-all duration-250 ${
-                isSkeptic ?
+                isDoubleCheck ?
                 'bg-r1-red-margin border-r1-challenge/40 hover:border-r1-challenge/60 ring-1 ring-r1-challenge/20 col-span-1 sm:col-span-2 lg:col-span-1' :
                 'bg-r1-panel border-r1-border hover:border-r1-border-strong'}`
                 }>
@@ -68,19 +68,19 @@ export function MethodologyPipeline() {
                 {/* Stage number and icon */}
                 <div data-ev-id="ev_250f535ade" className="flex items-center gap-3 mb-3">
                   <span data-ev-id="ev_656687c9b3" className={`font-mono text-xs font-medium ${
-                  isSkeptic ? 'text-r1-challenge' : 'text-r1-muted'}`
+                  isDoubleCheck ? 'text-r1-challenge' : 'text-r1-muted'}`
                   }>
                     {stageNumber}
                   </span>
                   <div data-ev-id="ev_6934fe4c12" className={`p-2 rounded-lg ${
-                  isSkeptic ?
+                  isDoubleCheck ?
                   'bg-r1-red/20' :
                   index < 5 ?
                   'bg-r1-cyan/10' :
                   'bg-r1-amber/10'}`
                   }>
                     <Icon className={`w-4 h-4 ${
-                    isSkeptic ?
+                    isDoubleCheck ?
                     'text-r1-challenge' :
                     index < 5 ?
                     'text-r1-cyan' :
@@ -91,7 +91,7 @@ export function MethodologyPipeline() {
                 
                 {/* Stage name */}
                 <h3 data-ev-id="ev_76a40884b7" className={`text-sm font-semibold mb-1.5 ${
-                isSkeptic ? 'text-r1-challenge' : 'text-r1-heading'}`
+                isDoubleCheck ? 'text-r1-challenge' : 'text-r1-heading'}`
                 }>
                   {stage.name}
                 </h3>
@@ -101,11 +101,11 @@ export function MethodologyPipeline() {
                   {stage.description}
                 </p>
                 
-                {/* Skeptic badge */}
-                {isSkeptic &&
+                {/* Double-check badge */}
+                {isDoubleCheck &&
                 <div data-ev-id="ev_23492da6c8" className="absolute -top-2 -right-2">
                     <span data-ev-id="ev_2a83cdc987" className="r1-tag text-[8px] border-r1-challenge/50 text-r1-challenge bg-r1-canvas">
-                      CHALLENGE
+                      DOUBLE-CHECK
                     </span>
                   </div>
                 }
@@ -117,7 +117,7 @@ export function MethodologyPipeline() {
         {/* Disclaimer */}
         <div data-ev-id="ev_cd72f40668" className="mt-16 w-full">
           <p data-ev-id="ev_c086f371fd" style={{ display: 'block', width: '100%', maxWidth: '800px', margin: '0 auto' }} className="text-sm text-r1-muted border border-r1-border rounded-lg p-4 bg-r1-panel text-center">
-            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not promise absolute truth. It structures data, keeps source disagreements visible, and runs challenge review when needed to strengthen the final report.
+            <strong data-ev-id="ev_76b2f3327f" className="text-r1-amber">Note:</strong> ResearchOne does not promise absolute truth. It structures data, keeps source disagreements visible, and runs Double-check on the findings before the final report.
           </p>
         </div>
       </div>

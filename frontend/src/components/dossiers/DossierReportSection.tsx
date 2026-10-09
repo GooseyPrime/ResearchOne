@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ReportMarkdown from '../reports/ReportMarkdown';
 import type { DossierPlan, Report } from '../../utils/api';
 import { getIntentOutputTemplate } from '../../lib/intentOutputTemplates';
-import SkepticAnnotationsAside from './SkepticAnnotationsAside';
+import DoubleCheckNotesAside from './DoubleCheckNotesAside';
 
 /** User-facing flow labels; the evidence-vocabulary pass — avoid generic "evidence" for retrieved corpora. */
 const SECTION_FLOW_LABELS: Record<string, string> = {
@@ -31,16 +31,16 @@ function resolveOutputTemplateId(plan: DossierPlan, report: Report | undefined):
   return null;
 }
 
-function parseSkepticAnnotations(meta: Record<string, unknown> | undefined): unknown[] {
+function parseDoubleCheckAnnotations(meta: Record<string, unknown> | undefined): unknown[] {
   if (!meta) return [];
-  const raw = meta.skeptic_annotations;
+  const raw = meta.double_check_annotations;
   if (!Array.isArray(raw)) return [];
   return raw;
 }
 
-function resolveSkepticMode(report: Report | undefined): string | null {
-  const m = report?.metadata as { skeptic_mode?: string } | undefined;
-  return m && typeof m.skeptic_mode === 'string' ? m.skeptic_mode : null;
+function resolveDoubleCheckMode(report: Report | undefined): string | null {
+  const m = report?.metadata as { double_check_mode?: string } | undefined;
+  return m && typeof m.double_check_mode === 'string' ? m.double_check_mode : null;
 }
 
 type Props = {
@@ -61,10 +61,10 @@ export default function DossierReportSection({
   const templateId = resolveOutputTemplateId(plan, report);
   const template = getIntentOutputTemplate(templateId);
   const meta = report?.metadata as Record<string, unknown> | undefined;
-  const annotations = parseSkepticAnnotations(meta);
-  const skepticMode = resolveSkepticMode(report);
+  const annotations = parseDoubleCheckAnnotations(meta);
+  const doubleCheckMode = resolveDoubleCheckMode(report);
   const showAside =
-    annotations.length > 0 && (template.sidebarSkepticAnnotations || skepticMode === 'annotate');
+    annotations.length > 0 && (template.sidebarDoubleCheckAnnotations || doubleCheckMode === 'annotate');
   const plainMd =
     meta && typeof meta.plain_language_markdown === 'string' ? meta.plain_language_markdown.trim() : '';
   const showPlain = template.showPlainLanguageFooter && plainMd.length > 0;
@@ -125,7 +125,7 @@ export default function DossierReportSection({
             </section>
           ) : null}
         </div>
-        {showAside ? <SkepticAnnotationsAside annotations={annotations} className="lg:sticky lg:top-4 self-start" /> : null}
+        {showAside ? <DoubleCheckNotesAside annotations={annotations} className="lg:sticky lg:top-4 self-start" /> : null}
       </div>
 
       <Link to={fullReportHref} className="inline-flex items-center gap-2 text-accent hover:underline text-sm">
