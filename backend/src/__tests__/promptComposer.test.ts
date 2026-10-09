@@ -32,10 +32,14 @@ describe('promptComposer', () => {
       expect(prompt).toContain('full-attack critique');
     });
 
-    it('ADVERSARIAL_TWIN synthesizer writes contradictions only', () => {
+    it('ADVERSARIAL_TWIN synthesizer writes the Challenge pass only, under plain headings', () => {
       const prompt = composePrompt('synthesizer', 'ADVERSARIAL_TWIN', 'v2_deep');
-      expect(prompt).toContain('Contradictions and Gaps');
+      expect(prompt).toContain('You are writing the Challenge pass for an existing document, and nothing else.');
       expect(prompt).toContain('Do not produce a full research report');
+      expect(prompt).toContain('Where the document conflicts with itself or with its sources');
+      expect(prompt).toContain('Statements with no support');
+      expect(prompt).toContain('Each item must cite the source passage');
+      expect(MODE_OVERLAYS.ADVERSARIAL_TWIN.synthesizer).not.toMatch(/Contradictions and Gaps|unsupported claims|falsif|verdict/i);
     });
 
     it('REASONING_FIRST_PREAMBLE_V2 is identical to REASONING_FIRST_PREAMBLE (immutable)', () => {
