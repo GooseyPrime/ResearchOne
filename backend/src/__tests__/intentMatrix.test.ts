@@ -372,26 +372,48 @@ describe('every non-legacy intent has an output template', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PART I — Adjudicative templates DO include falsification requirements
+// PART I — The templates that examine a statement are plain-report guidance
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('adjudicative templates include appropriate falsification/verdict content', () => {
-  it('intent_adjudication requiredDeliverables includes falsification criteria', () => {
+describe('adjudicative templates are plain-report guidance with no falsification/verdict content', () => {
+  const READER_PLAN_LABELS = ['summary', 'key_findings', 'subject_sections', 'where_sources_disagree', 'limits'];
+  const COURTROOM = /falsif|\bverdict|case (for|against)|adjudicat|\brefut|\bdisprov|contradiction analysis|unresolved questions|evidence ledger|contested zones|\bclaims?\b/i;
+  const ids = ['intent_adjudication', 'intent_investigation', 'intent_story_verification'] as const;
+
+  it('intent_adjudication requiredDeliverables has no falsification criteria and asks for both sides with citations', () => {
     const tpl = INTENT_OUTPUT_TEMPLATES['intent_adjudication'];
     const combined = tpl!.requiredDeliverables.join(' ').toLowerCase();
-    expect(combined).toContain('falsification');
+    expect(combined).not.toContain('falsification');
+    expect(combined).not.toMatch(COURTROOM);
+    expect(combined).toContain('information that supports it, with citations');
+    expect(combined).toContain('information that goes against it, with citations');
+    expect(combined).toContain('a direct answer');
   });
 
-  it('intent_adjudication verifierRubric requires falsification criteria', () => {
+  it('intent_adjudication verifierRubric does not require falsification criteria or a verdict', () => {
     const tpl = INTENT_OUTPUT_TEMPLATES['intent_adjudication'];
-    expect(tpl!.verifierRubric.toLowerCase()).toContain('falsification');
+    const rubric = tpl!.verifierRubric.toLowerCase();
+    expect(rubric).not.toContain('falsification');
+    expect(rubric).not.toMatch(COURTROOM);
+    expect(rubric).toContain('fail if: only one side of the available information is presented');
   });
 
-  it('intent_investigation requiredDeliverables includes competing perspectives', () => {
+  it('intent_investigation requiredDeliverables includes where the sources disagree', () => {
     const tpl = INTENT_OUTPUT_TEMPLATES['intent_investigation'];
     const combined = tpl!.requiredDeliverables.join(' ').toLowerCase();
-    // investigation should have some form of contested/disputed content
-    expect(combined.includes('contested') || combined.includes('counter') || combined.includes('competing') || combined.includes('challenge')).toBe(true);
+    expect(combined).toContain('where the sources disagree, and who says what');
+    expect(combined).not.toMatch(COURTROOM);
+  });
+
+  it('every such template records the reader plan as its sections and uses plain wording throughout', () => {
+    for (const id of ids) {
+      const tpl = INTENT_OUTPUT_TEMPLATES[id]!;
+      expect(tpl.sections).toEqual(READER_PLAN_LABELS);
+      const text = [tpl.narrativeHint, tpl.verifierRubric, ...tpl.requiredDeliverables, ...tpl.sections].join(' | ');
+      expect(text).not.toMatch(COURTROOM);
+    }
+    expect(INTENT_OUTPUT_TEMPLATES['intent_adjudication']!.itemLabel).toBe('Statement');
+    expect(INTENT_OUTPUT_TEMPLATES['intent_story_verification']!.itemLabel).toBe('Statement');
   });
 });
 
