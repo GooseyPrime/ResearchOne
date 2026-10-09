@@ -3,6 +3,7 @@
  * and how a bracketed number in the text finds the passage behind it.
  */
 import type { ReportSection } from '../../../utils/api';
+import { DOUBLE_CHECK } from '../../../content/customerOptions';
 
 export interface ReaderSource {
   id: string;
@@ -50,6 +51,10 @@ const norm = (text: string): string => text.replace(/[\s#*_]+/g, ' ').trim().toL
  * `challenge` marks the ones whose text belongs on the Challenge pass tab.
  */
 const OLDER_HEADINGS: ReadonlyArray<{ was: RegExp; now: string; challenge?: true }> = [
+  // The section's public name until RJ-017; a stored report still carries it.
+  { was: /^challenge pass$/, now: DOUBLE_CHECK.name, challenge: true },
+  // The section's public name until RJ-017; a stored report still carries it.
+  { was: /^challenge pass$/, now: DOUBLE_CHECK.name, challenge: true },
   { was: /^executive summary$/, now: 'Summary' },
   { was: /^framing$/, now: 'Background' },
   { was: /^research question( and scope)?$/, now: 'What was asked' },
@@ -68,8 +73,8 @@ export function readerHeading(title: string): string {
   return olderHeading(title)?.now ?? title.replace(/\s+/g, ' ').trim();
 }
 
-/** The public name of the challenge material. Never shown under another name. */
-export const CHALLENGE_PASS = 'Challenge pass';
+/** The public name of the checking material, from the registry of customer-facing names. Never shown under another name. */
+export const CHALLENGE_PASS = DOUBLE_CHECK.name;
 
 /** Where a stored section is shown. The Challenge pass has its own tab; the rest is the report. */
 export function sectionRole(section: ReportSection, reportTitle: string): SectionRole {
@@ -77,7 +82,7 @@ export function sectionRole(section: ReportSection, reportTitle: string): Sectio
   if (!section.content.trim() && title === norm(reportTitle)) return 'title';
   if (/^(references|sources|bibliography|works cited)$/.test(title)) return 'references';
   if (/^about this report$/.test(title)) return 'about';
-  if (/^challenge\b|^the challenge\b|^adversarial (review|challenge)\b/.test(title) || section.section_type === 'challenge') return 'challenge';
+  if (/^double-check\b|^challenge\b|^the challenge\b|^adversarial (review|challenge)\b/.test(title) || section.section_type === 'challenge') return 'challenge';
   if (olderHeading(section.title)?.challenge) return 'challenge';
   return 'report';
 }
