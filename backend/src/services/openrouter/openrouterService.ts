@@ -767,7 +767,10 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
     primary: primaryModel,
     fallback: fallbackModel,
     openrouterConfigured: Boolean((options.byokApiKeyOverride ?? config.openrouter.apiKey)?.trim()),
-    hubConfigured: Boolean(config.hfToken?.trim() || config.together.apiKey?.trim()),
+    // A caller who brought their own OpenRouter key chose where their request
+    // goes and who pays. Their request is never moved onto the platform's
+    // Hugging Face or Together accounts.
+    hubConfigured: !options.byokApiKeyOverride?.trim() && Boolean(config.hfToken?.trim() || config.together.apiKey?.trim()),
   });
   const hasBackup = routes.some((route) => route.position === 'backup');
   const attempts: ModelRouteAttempt[] = [];
@@ -777,15 +780,20 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
   const totalRounds = 1 + modelRouteRetry.delaysMs.length;
 
   for (let round = 1; round <= totalRounds; round += 1) {
-    /** The refusal of the role's own models on this pass: decides whether other providers are tried at all. */
-    let ownClassification: ModelErrorClassification | undefined;
+    /**
+     * Whether any refusal of the role's own models on this pass was about the
+     * provider. One such refusal is enough: a backup the provider no longer
+     * carries, or a second host that does not carry a hub model, does not
+     * cancel the outage or the empty account that came before it.
+     */
+    let ownProviderSideRefusal = false;
     for (const route of routes) {
       // Another provider is tried only when the role's own models were refused
       // for a reason about the provider. A request the provider called
       // malformed would be malformed there too. Once other providers are being
       // tried, each one is tried: a host that does not carry one model says
       // nothing about the next host or the next model.
-      if (route.position === 'cross_provider' && !(ownClassification && PROVIDER_SIDE_CLASSIFICATIONS.has(ownClassification))) {
+      if (route.position === 'cross_provider' && !ownProviderSideRefusal) {
         break;
       }
       if (route.position !== 'primary') {
@@ -795,6 +803,18 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         const { result, backend } = await callModel(route.model, prepared);
         const provider = providerForBackend(backend);
         logger.debug(`${backend} [${options.role}] ${result.model}: ${result.promptTokens}p + ${result.completionTokens}c tokens in ${result.durationMs}ms`);
+        // Together answers a hub model only after Hugging Face failed for it.
+        // That refusal is on the record too.
+        if (backend === 'Together') {
+          attempts.push({
+            model: route.model,
+            provider: 'huggingface_inference',
+            position: route.position,
+            round,
+            outcome: 'refused',
+            classification: 'provider_unavailable',
+          });
+        }
         attempts.push({ model: route.model, provider, position: route.position, round, outcome: 'answered' });
         const usedFallback = route.position !== 'primary';
         const augmented: ModelCallResult = {
@@ -821,7 +841,12 @@ export async function callRoleModel(options: ModelCallOptions): Promise<ModelCal
         return augmented;
       } catch (err) {
         const normalized = normalizeRouteError(err, route.model, options.role, route.position !== 'primary');
-        if (route.position !== 'cross_provider') ownClassification = normalized.classification;
+        // A hub model that reached Together did so because Hugging Face had
+        // already failed for it, which is a refusal about the provider.
+        const hubHostFailedFirst = normalized.upstream === 'together' && normalized.providerFallbackAttempted === true;
+        if (route.position !== 'cross_provider' && (PROVIDER_SIDE_CLASSIFICATIONS.has(normalized.classification) || hubHostFailedFirst)) {
+          ownProviderSideRefusal = true;
+        }
         firstClassification ??= normalized.classification;
         if (route.position !== 'cross_provider') ownModelsError = normalized;
         // A hub model is tried on Hugging Face and then on Together. When the

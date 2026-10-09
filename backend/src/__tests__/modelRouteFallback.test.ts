@@ -195,6 +195,54 @@ describe('a model call that one provider refuses for credit', () => {
     expect(result.routeUsed).toMatchObject({ position: 'cross_provider', provider: 'together', model: 'deepseek-ai/DeepSeek-V3' });
   });
 
+  it('records the Hugging Face refusal as well when Together is the one that answers', async () => {
+    h.openrouter = () => 402;
+    h.hub = () => 'fail';
+
+    const result = await write();
+
+    expect(result.routesTried?.slice(-2).map((attempt) => [attempt.provider, attempt.outcome])).toEqual([
+      ['huggingface_inference', 'refused'],
+      ['together', 'answered'],
+    ]);
+  });
+
+  it('still tries other providers when the role model is out of credit and its backup is no longer carried', async () => {
+    h.openrouter = (model) => (model === PRIMARY ? 402 : model === BACKUP ? 404 : 'ok');
+
+    const result = await write();
+
+    expect(result.routeUsed?.position).toBe('cross_provider');
+  });
+
+  it('still tries other providers when a hub role model is down and Together does not carry it', async () => {
+    h.hub = (model) => (model === 'NousResearch/Hermes-3-Llama-3.1-70B' ? 'fail' : 'ok');
+    h.together = () => 404;
+
+    const result = await callRoleModel({
+      role: 'section_drafter',
+      runtimeOverrides: { primary: 'NousResearch/Hermes-3-Llama-3.1-70B', fallback: 'NousResearch/Hermes-3-Llama-3.1-70B' },
+      messages: [{ role: 'user', content: 'Section 3.' }],
+    });
+
+    expect(result.routeUsed?.position).toBe('cross_provider');
+  });
+
+  it('never moves a request made with the customer\'s own key onto the platform\'s other providers', async () => {
+    h.openrouter = () => 402;
+
+    await expect(
+      callRoleModel({
+        role: 'section_drafter',
+        runtimeOverrides: { primary: PRIMARY, fallback: BACKUP },
+        byokApiKeyOverride: 'customer-key',
+        messages: [{ role: 'user', content: 'Section 3.' }],
+      })
+    ).rejects.toMatchObject({ classification: 'quota_exceeded' });
+
+    expect(h.calls.every((call) => call.provider === 'openrouter')).toBe(true);
+  });
+
   it('uses the role backup, and no other provider, when only the role model is refused', async () => {
     h.openrouter = (model) => (model === PRIMARY ? 402 : 'ok');
 
