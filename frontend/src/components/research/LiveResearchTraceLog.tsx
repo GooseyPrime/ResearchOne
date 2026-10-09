@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import type { ResearchProgressEvent } from '../../utils/api';
 import { plainProgressText } from '@/lib/researchone/plainWords';
 import { collapseRepeatedUpdates, tracePercents } from '../../utils/traceEventWindow';
-import { customerFailureText, looksLikeInternalDetail } from '../../utils/customerFailureText';
+import { customerFailureText, looksLikeInternalDetail, sentenceForRunThatCannotRunAgain } from '../../utils/customerFailureText';
 
 function formatShortTime(iso?: string): string {
   if (!iso) return '';
@@ -57,6 +57,12 @@ export interface LiveResearchTraceLogProps {
    * only; a customer's view leaves all of it out. Off unless asked for.
    */
   showInternals?: boolean;
+  /**
+   * Whether the run these events belong to can be run again, when the page
+   * knows (a run that has stopped). The stopped line then names the same
+   * button as the page's own sentence. Left out, each event says for itself.
+   */
+  runCanRunAgain?: boolean;
 }
 
 const DEFAULT_SCROLL =
@@ -66,7 +72,7 @@ const DEFAULT_SCROLL =
  * One line of the trace. Memoised: a run in flight adds a line every few
  * seconds, and a new line must not re-render every line above it.
  */
-const TraceRow = memo(function TraceRow({ evt, percent, showInternals }: { evt: ResearchProgressEvent; percent: number; showInternals: boolean }) {
+const TraceRow = memo(function TraceRow({ evt, percent, showInternals, runCanRunAgain }: { evt: ResearchProgressEvent; percent: number; showInternals: boolean; runCanRunAgain?: boolean }) {
   const isError =
     evt.eventType === 'run_failed' || evt.eventType === 'run_aborted' || evt.stage === 'failed' || evt.stage === 'aborted';
   const isDone = evt.eventType === 'run_completed' || evt.stage === 'done';
@@ -78,8 +84,13 @@ const TraceRow = memo(function TraceRow({ evt, percent, showInternals }: { evt: 
   // A stopped run's line is the plain sentence. The stored error is the
   // server's record of what went wrong and is printed for administrators only.
   const storedError = evt.failure?.errorMessage;
+  const stoppedSentence = customerFailureText(evt.message) ?? customerFailureText(storedError);
+  // If the run cannot be run again, the sentence names "Send it as a new
+  // request", as the server's does. The run says whether it can; an event on
+  // its own says it for itself.
+  const canRunAgain = runCanRunAgain ?? evt.failure?.retryable === true;
   const message = isError
-    ? customerFailureText(evt.message) ?? customerFailureText(storedError) ?? readerStageLabel(evt.stage)
+    ? (stoppedSentence && !canRunAgain ? sentenceForRunThatCannotRunAgain(stoppedSentence) : stoppedSentence) ?? readerStageLabel(evt.stage)
     : plainProgressText(evt.message);
   const detail = evt.detail && (showInternals || !looksLikeInternalDetail(evt.detail)) ? evt.detail : null;
 
@@ -150,6 +161,7 @@ export default function LiveResearchTraceLog({
   scrollClassName,
   emptyMessage = 'Waiting for events…',
   showInternals = false,
+  runCanRunAgain,
 }: LiveResearchTraceLogProps) {
   // Repeated updates of one wait are one line that updates, not forty lines.
   const lines = useMemo(() => collapseRepeatedUpdates(traceEvents), [traceEvents]);
@@ -166,7 +178,7 @@ export default function LiveResearchTraceLog({
       <div ref={traceScrollRef as LegacyRef<HTMLDivElement> | undefined} className={clsx(DEFAULT_SCROLL, scrollClassName)}>
         {lines.length === 0 && <p className="text-slate-500 px-3 py-3">{emptyMessage}</p>}
         {lines.map((evt, idx) => (
-          <TraceRow key={`${idx}-${evt.stage}-${evt.substep ?? ''}`} evt={evt} percent={percents[idx] ?? 0} showInternals={showInternals} />
+          <TraceRow key={`${idx}-${evt.stage}-${evt.substep ?? ''}`} evt={evt} percent={percents[idx] ?? 0} showInternals={showInternals} runCanRunAgain={runCanRunAgain} />
         ))}
       </div>
     </div>
