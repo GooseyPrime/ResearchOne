@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { DollarSign, Zap, RotateCw, FileText, AlertCircle } from 'lucide-react';
 import api from '../../utils/api';
+import { DOUBLE_CHECK } from '../../content/customerOptions';
 
 // Phase color palette — stable across the page so the pie/bar/breakdown
 // chart agrees with the table's `topPhase` badge. Matches the canonical
@@ -18,7 +19,7 @@ const PHASE_COLORS: Record<string, string> = {
   'Discovery': '#a78bfa',                 // violet-400
   'Retrieval': '#34d399',                 // emerald-400
   'Reasoning': '#fbbf24',                 // amber-400
-  'Skeptic': '#f87171',                   // red-400
+  'Double-check': '#f87171',                   // red-400
   'Synthesis': '#22d3ee',                 // cyan-400
   'Verification': '#10b981',              // emerald-500
   'Plain Language': '#fb923c',            // orange-400
@@ -32,14 +33,12 @@ const PHASE_COLORS: Record<string, string> = {
 const FALLBACK_COLOR = '#64748b';
 
 /**
- * Stored phase value -> what a person reads.
- *
- * `agent_executions.phase` holds 'Skeptic' on every row ever written, so the
- * value itself cannot be renamed without either a migration or two buckets for
- * one thing. The word is not shown; the stored key is translated at the edge.
+ * Stored phase value -> what a person reads. Migration 061 renamed the stored
+ * value for the checking step; its public name comes from the registry of
+ * customer-facing names.
  */
 const PHASE_DISPLAY_LABELS: Record<string, string> = {
-  Skeptic: 'Challenge pass',
+  'Double-check': DOUBLE_CHECK.name,
 };
 
 function phaseLabel(bucket: string): string {
