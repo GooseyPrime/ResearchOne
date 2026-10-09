@@ -1965,35 +1965,37 @@ async function runResearchJobInner(
     // The relevance check after retrieval can take away documents the run was
     // counting on: stored by an earlier run, returned for this one, and about
     // something else. When that alone leaves the run short of the sources its
-    // plan asked for, it searches once more before a shortfall is recorded.
-    const relevanceLeftRunShort =
+    // plan asked for, it searches once more before a shortfall is recorded,
+    // through the same targeted search the evidence check below can ask for.
+    if (
+      sourceAssessment.action !== 'rediscover' &&
       shouldRunPipelineStage(orchProfile, 'discovery') &&
       config.discovery.enabled &&
       relevanceCheckCausedShortfall({
         usableSources: new Set(allChunks.map((chunk) => chunk.source_url?.trim()).filter(Boolean)).size,
         setAside: documentsSetAsideAtRetrieval(runId),
         minimum: data.confirmedPlanPayload?.sourceStrategy?.expectedSourceCount?.min,
+      })
+    ) {
+      await progress('reasoning', 48, 'Some stored documents were set aside as not relevant to this question; searching for more sources.', {
+        substep: 'relevance_gap_search_started',
       });
-    const rediscoveryGaps =
-      relevanceLeftRunShort && sourceAssessment.action !== 'rediscover'
-        ? [...sourceAssessment.gaps, 'More sources about the subject of the question itself; several stored documents were about other subjects and were set aside.']
-        : sourceAssessment.gaps;
-    if (sourceAssessment.action === 'rediscover' || relevanceLeftRunShort) {
-      await progress(
-        'reasoning',
-        48,
-        sourceAssessment.action === 'rediscover'
-          ? 'Specialists found insufficient evidence; launching targeted re-discovery.'
-          : 'Some stored documents were set aside as not relevant to this question; searching for more sources.',
-        {
-          substep: sourceAssessment.action === 'rediscover' ? 'rediscovery_started' : 'relevance_gap_search_started',
-          detail: rediscoveryGaps.join(' | ').slice(0, 500),
-        }
-      );
+      sourceAssessment = {
+        ...sourceAssessment,
+        action: 'rediscover',
+        gaps: [...sourceAssessment.gaps, 'More sources about the subject of the question itself; several stored documents were about other subjects and were set aside.'],
+      };
+    }
+
+    if (sourceAssessment.action === 'rediscover') {
+      await progress('reasoning', 48, 'Specialists found insufficient evidence; launching targeted re-discovery.', {
+        substep: 'rediscovery_started',
+        detail: sourceAssessment.gaps.join(' | ').slice(0, 500),
+      });
 
       const rediscoverySummary = await runDiscoveryOrchestrator({
         runId,
-        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${rediscoveryGaps.map((gap) => `- ${gap}`).join('\n')}`,
+        researchQuery: `${researchQuery}\n\nEvidence gaps to close:\n${sourceAssessment.gaps.map((gap) => `- ${gap}`).join('\n')}`,
         plan: plan as unknown as Record<string, unknown>,
         filterTags,
         engineVersion,
