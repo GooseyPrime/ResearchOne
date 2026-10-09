@@ -27,6 +27,38 @@ const NOT_CHARGED = 'You have not been charged.';
 const RUN_AGAIN =
   'Press Run it again to try again; you are only charged once, when a report is delivered.';
 
+/**
+ * The way on for a run that cannot be run again: the same words as a new
+ * request. The run page's link has this name.
+ */
+const SEND_AS_NEW =
+  'Press Send it as a new request to start it fresh; you are only charged once, when a report is delivered.';
+
+/**
+ * What a person is told when they ask for a run to be run again and it cannot
+ * be (RJ-022B). The reason it cannot is kept for administrators.
+ */
+export const RETRY_REFUSED_MESSAGE =
+  "This request can't be run again. Press Send it as a new request to start it fresh; you have not been charged.";
+
+/** The same refusal for a run that has not stopped: there is nothing to run again yet. */
+export const RETRY_NOT_STOPPED_MESSAGE =
+  'This request has not stopped, so there is nothing to run again. Reload the page to see where it has got to.';
+
+/**
+ * A customer sentence for a run that cannot be run again: "Press Run it again"
+ * would name a button the page does not offer, so it names the one it does.
+ * Text that does not end with that instruction is returned as it is.
+ */
+export function sentenceForRunThatCannotRunAgain(text: string): string {
+  return text.endsWith(RUN_AGAIN) ? `${text.slice(0, -RUN_AGAIN.length)}${SEND_AS_NEW}` : text;
+}
+
+/** Whether stored `failure_meta` says the run may be run again. The same test the retry route applies. */
+function canRunAgain(meta: Record<string, unknown> | null): boolean {
+  return meta?.retryable === true || meta?.resumeAvailable === true;
+}
+
 export const CUSTOMER_FAILURE_MESSAGES: Readonly<Record<CustomerFailureMessageId, string>> = {
   ai_service_unavailable_writing: `The report could not be written because our AI service is temporarily unavailable. ${NOT_CHARGED} ${RUN_AGAIN}`,
   ai_service_unavailable: `This run stopped because our AI service is temporarily unavailable. ${NOT_CHARGED} ${RUN_AGAIN}`,
@@ -90,7 +122,7 @@ function customerFailureMeta(meta: unknown): Record<string, unknown> | null {
 }
 
 /** A trace event as a customer is sent it: no model id, no token counts, no internal detail, no stored error text. */
-function customerProgressEvent(event: unknown, fallback: CustomerFailureMessage): unknown {
+function customerProgressEvent(event: unknown, fallback: CustomerFailureMessage, runCanRunAgain?: boolean): unknown {
   if (!isRecord(event)) return event;
   const { model: _model, tokenUsage: _tokenUsage, internalDetail: _internalDetail, failureMeta: _failureMeta, failure, ...rest } = event;
   void _model;
@@ -102,8 +134,13 @@ function customerProgressEvent(event: unknown, fallback: CustomerFailureMessage)
   if (typeof out.detail === 'string' && looksLikeInternalDetail(out.detail)) delete out.detail;
   if (isRecord(failure)) {
     const meta = customerFailureMeta(failure.failureMeta);
-    const text =
+    const sentence =
       typeof meta?.customerMessage === 'string' && meta.customerMessage.trim() ? meta.customerMessage : fallback.text;
+    // Whether the run can be run again is the run's to say, so the trace and
+    // the sentence above it name the same button. An event sent on its own
+    // (over the socket, when the run stops) says it for itself.
+    const runAgain = runCanRunAgain ?? failure.retryable === true;
+    const text = runAgain ? sentence : sentenceForRunThatCannotRunAgain(sentence);
     out.failure = { errorMessage: text, retryable: failure.retryable === true, ...(meta ? { failureMeta: meta } : {}) };
     // The line written for a stopped run used to repeat the stored error.
     if (out.eventType === 'run_failed' || out.eventType === 'run_aborted') out.message = text;
@@ -140,11 +177,21 @@ export function runRowForCustomer<T>(row: T): T {
   if (failed || row.error_message != null) {
     const stored = typeof meta?.customerMessage === 'string' && meta.customerMessage.trim() ? meta.customerMessage : null;
     const hasGate = typeof meta?.gate_status === 'string' && meta.gate_status.trim() !== '';
-    out.error_message = hasGate && !stored ? null : stored ?? fallback.text;
+    const sentence = stored ?? fallback.text;
+    // A run that cannot be run again is not told to press "Run it again".
+    out.error_message = hasGate && !stored ? null : canRunAgain(meta) ? sentence : sentenceForRunThatCannotRunAgain(sentence);
   }
-  if (meta) out.failure_meta = customerFailureMeta(meta);
+  if (meta) {
+    const forCustomer = customerFailureMeta(meta);
+    if (forCustomer && typeof forCustomer.customerMessage === 'string' && !canRunAgain(meta)) {
+      forCustomer.customerMessage = sentenceForRunThatCannotRunAgain(forCustomer.customerMessage);
+    }
+    out.failure_meta = forCustomer;
+  }
   if (Array.isArray(row.progress_events)) {
-    out.progress_events = row.progress_events.map((event) => customerProgressEvent(event, fallback));
+    // Only a run that has stopped has an answer; a run in flight leaves each event to say.
+    const runAgain = failed ? canRunAgain(meta) : undefined;
+    out.progress_events = row.progress_events.map((event) => customerProgressEvent(event, fallback, runAgain));
   }
   return out as T;
 }
@@ -155,10 +202,13 @@ export function runRowForCustomer<T>(row: T): T {
  */
 export function progressEventsForCustomer(
   events: readonly unknown[],
-  args: { classification?: string | null; stage?: string | null } = {}
+  args: { classification?: string | null; stage?: string | null; failureMeta?: unknown; status?: string | null } = {}
 ): unknown[] {
   const fallback = customerFailureMessage(args);
-  return events.map((event) => customerProgressEvent(event, fallback));
+  // With the run's status and stored failure record, the run says whether it can be run again; without them each event does.
+  const stopped = args.status === 'failed' || args.status === 'aborted';
+  const runAgain = stopped ? canRunAgain(isRecord(args.failureMeta) ? args.failureMeta : null) : undefined;
+  return events.map((event) => customerProgressEvent(event, fallback, runAgain));
 }
 
 /**
