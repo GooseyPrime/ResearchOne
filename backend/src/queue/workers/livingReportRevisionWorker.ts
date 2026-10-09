@@ -3,6 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createRedisConnection } from '../redis';
 import { QUEUE_NAMES } from '../queues';
 import { logger } from '../../utils/logger';
+import { createPrivateEmitter, type OwnerLookups } from '../../realtime/privateEmit';
 import { createReportRevision, type RevisionTriggerSource } from '../../services/reasoning/reportRevisionService';
 import {
   MONITOR_REVISION_REQUEST,
@@ -21,14 +22,14 @@ export interface LivingReportRevisionJobData {
 /** Exported for tests — runs the same PolicyOne revision pipeline as user-initiated revisions. */
 export async function processLivingReportRevisionJob(
   job: Job<LivingReportRevisionJobData>,
-  io: SocketIOServer
+  io: SocketIOServer,
+  ownerLookups?: OwnerLookups
 ): Promise<{ revisionId: string; revisedReportId: string }> {
   const { reportId, revisionRequestId, webhookEventId, monitorId, triggeredBy } = job.data;
 
+  const live = createPrivateEmitter(io, ownerLookups);
   const emitProgress = (payload: unknown) => {
-    io.to(`job:revision:${reportId}`).emit('revision:progress', payload);
-    io.to(`job:${reportId}`).emit('revision:progress', payload);
-    io.to('reports').emit('revision:progress', payload);
+    void live.toReportRevision(reportId, 'revision:progress', payload);
   };
 
   const result = await createReportRevision({
@@ -48,10 +49,9 @@ export async function processLivingReportRevisionJob(
     webhookEventId,
   });
 
-  io.to(`job:revision:${reportId}`).emit('revision:completed', result);
-  io.to(`job:${reportId}`).emit('revision:completed', result);
-  io.to('reports').emit('reports:updated', {});
-  io.emit('living_report:revision_completed', {
+  await live.toReportRevision(reportId, 'revision:completed', result);
+  await live.notifyReportOwner(reportId, 'reports:updated', {});
+  await live.notifyReportOwner(reportId, 'living_report:revision_completed', {
     reportId,
     revisionId: result.revisionId,
     monitorId,

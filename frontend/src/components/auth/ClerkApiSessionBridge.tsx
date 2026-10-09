@@ -2,6 +2,7 @@ import { useAuth } from '@clerk/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { registerClerkTokenGetter } from '../../utils/clerkSession';
 import { syncLocalUserFromClerk } from '../../utils/api';
+import { reconnectSocketForSessionChange } from '../../utils/socket';
 
 const MAX_SYNC_RETRIES = 4;
 const SYNC_RETRY_BASE_DELAY_MS = 2000;
@@ -15,6 +16,17 @@ export default function ClerkApiSessionBridge({ children }: { children: ReactNod
   const syncedUserIdRef = useRef<string | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncRetry, setSyncRetry] = useState(0);
+  const socketUserIdRef = useRef<string | null | undefined>(undefined);
+
+  // The live connection is tied to one signed-in user. When the user changes
+  // (sign-out, account switch) reconnect so it carries the new session only.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const current = isSignedIn && userId ? userId : null;
+    const previous = socketUserIdRef.current;
+    socketUserIdRef.current = current;
+    if (previous !== undefined && previous !== current) reconnectSocketForSessionChange();
+  }, [isLoaded, isSignedIn, userId]);
 
   useEffect(() => {
     if (!isLoaded) return;

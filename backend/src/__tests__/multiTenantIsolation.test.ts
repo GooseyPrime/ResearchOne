@@ -114,13 +114,17 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       'utf8'
     );
 
-    it('joins research_runs and ingestion_jobs to resolve source owner', () => {
-      expect(src).toContain('LEFT JOIN research_runs r ON r.id = s.discovered_by_run_id');
-      expect(src).toContain('LEFT JOIN ingestion_jobs ij ON ij.source_id = s.id');
+    it('decides ownership with the shared library rule (jobs, recorded ingests, runs)', () => {
+      expect(src).toContain("ownSourceSql('s', 2)");
     });
 
-    it('compares resolved owner_user_id against request userId', () => {
-      expect(src).toContain("row?.owner_user_id === userId");
+    it('deletes only when the caller is an owner', () => {
+      expect(src).toContain('ownership.is_own !== true');
+    });
+
+    it('a source another user also added is unlinked, not deleted', () => {
+      expect(src).toContain('other_owners');
+      expect(src).toContain('UPDATE ingestion_jobs SET source_id = NULL WHERE source_id = $1 AND user_id = $2');
     });
 
     it('returns 403 when the user is not the owner', () => {
@@ -128,8 +132,8 @@ describe('Multi-tenant isolation — route-level user_id predicates', () => {
       expect(src).toContain('You can only delete sources you ingested');
     });
 
-    it('admin bypass skips ownership check via admin userId list', () => {
-      expect(src).toContain('config.admin.userIds.includes(userId)');
+    it('admin bypass uses the existing admin configuration', () => {
+      expect(src).toContain('viewer.isAdmin');
     });
 
     it('deploy-skew fallback (42703) also returns 403 rather than 500', () => {
