@@ -299,6 +299,11 @@ export default function BillingPage() {
     retry: false,
   });
   const scheduledChange = switchableTier ? pendingChangeQuery.data?.pendingChange ?? null : null;
+  // "No change is pending" is only known once the server has answered. Until
+  // then, and if the question failed, the plan buttons are not offered: a
+  // second change would be refused, and the way to take the first one back
+  // would not be on the page.
+  const pendingChangeKnown = pendingChangeQuery.isSuccess;
 
   const effectiveTier = effectiveEntitlementTier(subQuery.data);
   const { hasProAccess, tierGateUnknown } = useHasProAccess();
@@ -636,9 +641,18 @@ export default function BillingPage() {
           <PlanSwitchOptions
             currentTier={switchableTier}
             options={subscriptionOptionsQuery.data?.options ?? []}
-            isLoading={subscriptionOptionsQuery.isLoading}
-            errorMessage={subscriptionOptionsQuery.isError ? extractApiError(subscriptionOptionsQuery.error) : null}
-            onRetry={() => void subscriptionOptionsQuery.refetch()}
+            isLoading={subscriptionOptionsQuery.isLoading || (!pendingChangeKnown && !pendingChangeQuery.isError)}
+            errorMessage={
+              subscriptionOptionsQuery.isError
+                ? extractApiError(subscriptionOptionsQuery.error)
+                : pendingChangeQuery.isError
+                  ? extractApiError(pendingChangeQuery.error)
+                  : null
+            }
+            onRetry={() => {
+              if (subscriptionOptionsQuery.isError) void subscriptionOptionsQuery.refetch();
+              if (pendingChangeQuery.isError) void pendingChangeQuery.refetch();
+            }}
             pending={pendingSwitch}
             onSelect={(choice) => {
               setSwitchError(null);
