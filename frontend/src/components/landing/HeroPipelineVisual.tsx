@@ -1,4 +1,5 @@
 import { HERO_PIPELINE_IMG_ARIA_LABEL } from './heroPipelineAria';
+import { DOUBLE_CHECK } from '../../content/customerOptions';
 
 const PHASES = [
   {
@@ -11,7 +12,7 @@ const PHASES = [
   },
   {
     label: 'REASON & VERIFY',
-    stages: ['Reasoner', 'Challenge'],
+    stages: ['Reasoner', DOUBLE_CHECK.name],
   },
   {
     label: 'WRITE & CITE',
@@ -29,7 +30,7 @@ export default function HeroPipelineVisual() {
       <p className="sr-only">
         This example ResearchOne flow has four phases. Phase one, Plan, includes the Planner and Discovery stages.
         Phase two, Retrieve and Read, includes the Retriever and Retriever Analysis stages.
-        Phase three, Reason and Verify, includes the Reasoner and Challenge stages when additional checking
+        Phase three, Reason and Verify, includes the Reasoner and Double-check stages when additional checking
         is needed.
         Phase four, Write and Cite, includes the Drafting, Verifier, Report, and Recordkeeping stages.
       </p>
@@ -51,11 +52,11 @@ export default function HeroPipelineVisual() {
                 <span
                   key={stage}
                   className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                    stage === 'Challenge'
+                    stage === DOUBLE_CHECK.name
                       ? 'animate-glow border-r1-accent bg-r1-accent/20 text-r1-text'
                       : 'border-r1-accent/30 bg-r1-accent/5 text-r1-text'
                   }`}
-                  aria-label={stage === 'Challenge' ? 'Challenge pass' : undefined}
+                  aria-label={stage === DOUBLE_CHECK.name ? DOUBLE_CHECK.name : undefined}
                 >
                   {stage}
                 </span>
@@ -77,11 +78,11 @@ export default function HeroPipelineVisual() {
                 <span
                   key={stage}
                   className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                    stage === 'Challenge'
+                    stage === DOUBLE_CHECK.name
                       ? 'animate-glow border-r1-accent bg-r1-accent/20 text-r1-text'
                       : 'border-r1-accent/30 bg-r1-accent/5 text-r1-text'
                   }`}
-                  aria-label={stage === 'Challenge' ? 'Challenge pass' : undefined}
+                  aria-label={stage === DOUBLE_CHECK.name ? DOUBLE_CHECK.name : undefined}
                 >
                   {stage}
                 </span>
