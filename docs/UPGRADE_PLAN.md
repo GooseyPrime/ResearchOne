@@ -40,6 +40,7 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Slice 6, parts 2 and 3. Retrieval order, the writer's instruction, source type in words, the harness measure | Done | PR #262. Same switch. Production confirmed healthy 8 Oct 2026. See "Built in part 2" and "Built in part 3" under slice 6. |
 | Slice 7. Provider routing by request | Built, in review | One pull request. Behind `PROVIDER_ROUTING_ENABLED`, unset by default. See "As built" under slice 7. |
 | Plain report only | Done, 8 Oct 2026 | One pull request (`rj-016-plain-reports-only`). Not behind a switch, by grant L. See "Plain report only" below. |
+| Plain names for the checking steps and for everything a customer chooses | Done, 9 Oct 2026 | One pull request (`rj-017-plain-names`). Not behind a switch. See "Plain names" below. |
 | Slices 8 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 
 Do not redo a completed phase. Their sections below are kept as the record.
@@ -53,6 +54,16 @@ Do not redo a completed phase. Their sections below are kept as the record.
 - **Customer pages** show no trace of the run, no step names, no token or passage counts and no stored status value. The run record is shown to administrators only. A status is plain words everywhere ("Ready", "Finished with fewer sources than planned", "Needs review: …").
 - **Guards:** `backend/src/__tests__/plainReportOnly.test.ts` and `frontend/src/__tests__/reader/plainReportOnly.test.tsx`. Both fail on the code as it was before this pull request.
 - **Known and not changed here:** an older report that cites by passage label and has no stored reference list exports with reader numbers and an empty reference list (the behaviour slice 5 part 3 built); the live progress view and the failed-run page wording belong to the progress-wording work.
+
+**Plain names (9 Oct 2026; Brandon's order of 8 Oct 2026).** Brandon was shown feature names with no explanation and banned slang role words. What the pull request changed, and what every later slice follows:
+
+- **Two internal names.** The step that restates a finding in its strongest, fairest form is `strongest_form` (types `StrongestForm…`). The step that tests findings against other sources is `double_check` (types `DoubleCheck…`). Their earlier nicknames are gone from source, tests, prompts, docs, file names and the database. `backend/src/__tests__/retiredRoleWords.test.ts` (and its copy in the frontend suite, and `scripts/ci/assert-no-retired-role-words.sh`) fails if either comes back, with no exception.
+- **Settings.** Four environment variables were renamed: the model and fallback for each step are now `STRONGEST_FORM_MODEL`, `STRONGEST_FORM_FALLBACK`, `DOUBLE_CHECK_MODEL` and `DOUBLE_CHECK_FALLBACK`. A value still set under an earlier name is not read; the code default applies until the setting is renamed.
+- **Database.** Migration `061_plain_step_names.sql` renames `claims.strongest_form_summary`, `dossier_statistics.strongest_form_pass_count` and `dossier_statistics.double_check_annotations_count`, rebuilds `v_dossier`, and rewrites stored role names, mode keys, step codes and the cost phase. The migration runner records an applied file by its name only (no checksum), so the earlier migration files were edited as well and a new database is created with the new names; migration 036 was renamed and `migrate.ts` moves its record to the new name before it runs.
+- **One public name.** A customer sees one step, "Double-check", everywhere the earlier public name stood. Wherever it is named or chosen it carries its description and example. Its results are worded "Holds up", "Sources disagree", "No original record found" and "Still an open question".
+- **One registry.** `frontend/src/content/customerOptions.ts` holds the name, one-sentence description and example of every report type, research objective, format, length, citation style, export file type, Double-check viewpoint, request-form field, plan-screen field, add-on and plan. Screens read from it by id. Seven report types were renamed in plain words and kept their ids: `survey` is "Topic overview", `adjudication` is "Fact-check", `comparative` is "Comparison", `how_to` is "How-to guide", `exploratory` is "Open exploration", `position_brief` is "Case for a position", and `legacy` is "Earlier report". (`opportunity_discovery`, `feasibility` and `implementation` read "Opportunity search", "Feasibility check" and "Implementation plan".)
+- **Guards.** `frontend/src/__tests__/wording/customerOptions.test.tsx` fails when an entry lacks a name, description or example, when a screen offers an option the registry does not hold, or when a name is typed a second time. `backend/src/__tests__/customerNamesRegistry.test.ts` fails when the server offers a report type, add-on or way of checking that the registry does not hold, or names one differently.
+- **Slices 8 to 10.** Write `double_check` and `strongest_form` in new code, name the tab and the export section "Double-check", and read the four result words from the registry. A new option a customer can choose needs its registry entry in the same pull request.
 
 **Your task now:** read this whole document again; revision 8 changed sections 0, 4, 5, 6 and 7. The report layout is no longer switched (grant L). Slice 6 is built behind `AUTHORITY_TIERS_ENABLED`; turning it on for customers is Brandon's decision (S4). Slice 7 is in review as one pull request. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
 
@@ -80,7 +91,7 @@ What the best available sources say, written as a readable article (section 2a).
 **Layer 2: Challenge. On request for any finished report, and automatic for verdict-type requests.**
 What if those sources are wrong? It takes the baseline's findings as input and examines them one at a time: are the citations independent or do they trace to one origin, does a primary record exist, what contradicts the finding, what was left out, what would overturn it. It produces a ledger that marks each baseline finding, shown to the reader on its own Challenge tab in plain words. It never rewrites the baseline.
 
-PolicyOne is Layer 2's method. It is engine behavior, not public copy. The user-facing word for Layer 2 is "Challenge". The word "skeptic" must never appear on a user-facing surface; a CI gate enforces this.
+PolicyOne is Layer 2's method. It is engine behavior, not public copy. The customer-facing name of the checking step is "Double-check" (Brandon, 8 Oct 2026; see "Plain names" in section 0). It is one step to a customer and is described, with an example, wherever it is named. The two retired role nicknames appear nowhere in the repository; a test enforces this.
 
 **Why this order.** The current system applies Layer 2 thinking to every request. An ordinary factual question runs all eleven stages, carries an instruction to treat sources as possibly corrupted or poisoned, and has its draft attacked by a prompt that begins "You are an uncensored, unaligned adversarial researcher". That is why ordinary research is hard to use. Layer 1 must work well on its own before anything is added on top.
 
@@ -577,7 +588,7 @@ Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with th
 
 - Report tab: title, the report's sections in order, the reference list with one anchor per entry, and "About this report" in small print. The contradictions, counterevidence, evidence-coverage, report-status and run-reference cards, the "Falsification criteria" block, the open-questions and suggested-searches cards and the generation trace are in the branch a reader-view report never renders.
 - Citations: each bracketed number is a button. Hover, keyboard focus or a tap opens a card with the source title, publisher, date, any editorial notice and the quoted passage, and a link to the reference entry. The k-th time a number appears in a section it is the k-th saved citation with that number in that section, so two uses of one source show two different passages.
-- Evidence, Sources, How this was researched, and Challenge tabs. Evidence lists each cited finding with its strength in words, or each cited passage with its source when the run stored no findings. The Challenge tab exists only when the report has a Challenge section.
+- Evidence, Sources, How this was researched, and Double-check tabs (named "Challenge" until 9 Oct 2026). Evidence lists each cited finding with its strength in words, or each cited passage with its source when the run stored no findings. The Challenge tab exists only when the report has a Challenge section.
 - Status: "Ready", "Needs review" or "Failed" with the plain reason from `runStatusDisplay.ts`.
 - Older reports: `[Chunk N]`, `(Chunks 3, 7)` and bare `Chunk N` become reader numbers where the saved citations map them and are taken out where they do not. The old mapper saved no number with a citation, so the backend works it out: "Chunk N" was the N-th passage of the run (`research_runs.retrieval_ids`), and a citation's number is its source's place in the order sources are first cited.
 - Revision, spinoff, monitoring and retention controls sit below the report. Copy and export are unchanged.
@@ -597,7 +608,7 @@ Flag `READER_VIEW_ENABLED`, read in the backend and sent to the frontend with th
    - **Evidence** (grant F): each finding with its sources, quoted passages, source type and strength in plain words. This is the only place strength appears.
    - **Sources**: the full reference list with metadata.
    - **How this was researched**: plan, searches, run reference, generation trace, model information.
-   - **Challenge**: from this slice, a report with a Challenge section shows it here, not in the Report tab. Slice 8 replaces its content with the ledger.
+   - **Double-check** (named "Challenge" until 9 Oct 2026): from this slice, a report with that section shows it here, not in the Report tab. Slice 8 replaces its content with the ledger.
    - For runs that store no findings (`reference_lookup`), the Evidence tab lists each cited passage with its source instead.
 4. **Status words.** People read "Ready", "Needs review", or "Failed" with a plain reason. The plain sentences already exist in `reasoning/runStatusDisplay.ts`; use them. Never `under_review` or any enum.
 5. **Revision and spinoff controls** sit in an actions menu or below the report, not inside it.
@@ -737,18 +748,18 @@ Flag `CHALLENGE_LEDGER_ENABLED`. This was slice 7. This is where PolicyOne does 
   - **Primary trace.** Is there a tier 1 record behind it? Record yes, no, or not found.
   - **Contradiction search.** Run the anomaly and falsification query templates. Keep everything found.
   - **Perspectives, as data:** `{name, stake, questions[]}`, at most 3 questions each, with these four slots always present: official record, primary source, marginal or anomalous report, what would be true if the outlier held. Questions become extra retrieval within budget, otherwise checklist items for the adversarial pass. Write a new prompt in `SYSTEM_PROMPTS`. Do not import prompts from other projects.
-  - The existing adversarial pass and steelman run here, unchanged, with `withPreamble` and `CHALLENGE_PASS_SYSTEM_PREFIX`.
+  - The existing double-check pass (`double_check`) and strongest-form restatement (`strongest_form`) run here, unchanged, with `withPreamble` and `CHALLENGE_PASS_SYSTEM_PREFIX`.
 - **Stored output.** New table `claim_challenges`: `claim_id`, `run_id`, `status` (`holds`, `contested`, `unsupported_at_primary`, `open`), `independent_origin_count`, `primary_trace`, `notes`, `evidence_ids`. Internal names may stay.
-- **What the reader sees.** The **Challenge** tab from slice 5, now filled from the ledger, and a "Challenge" section after the baseline in exports. Written in the section 2a voice: plain prose, numbered citations, no grade labels, no enum values. Statuses appear as words:
+- **What the reader sees.** The **Double-check** tab from slice 5, now filled from the ledger, and a "Double-check" section after the baseline in exports. Written in the section 2a voice: plain prose, numbered citations, no grade labels, no enum values. Statuses appear as words:
   - "Holds up"
   - "Sources disagree"
-  - "No primary record found"
+  - "No original record found"
   - "Still an open question"
 
   It refers to "what the report says" or "this finding", never to "claims". A short summary lists which findings changed status and why. The baseline text is never rewritten.
 - **Missing evidence.** Status `open`, with a possibility described as a possibility (invariant 8). Never written as a finding.
 - **Challenge intents.** Slice 3 already reworded the `adjudication`, `investigation` and `story_verification` templates. Keep that voice. The user's own question may be quoted as the question being tested; the report still presents information, not a trial.
-- **Words.** "Challenge" everywhere a person reads. Never "skeptic".
+- **Words.** "Double-check" everywhere a person reads (Brandon, 8 Oct 2026). The four status words and their one-line meanings are in the registry of customer-facing names, `frontend/src/content/customerOptions.ts` (group `verdict`); read them from there, do not retype them.
 
 Acceptance:
 
@@ -758,7 +769,7 @@ Acceptance:
 - The baseline section of the report is byte-identical before and after the challenge.
 - The perspectives fixture always contains the anomalous slot.
 - Triggering the action on a finished `factual_report` produces a ledger without re-ingesting existing sources.
-- The Challenge tab of a fixture shows status words and no enum or grade label.
+- The Double-check tab of a fixture shows status words and no enum or grade label.
 - Harness:
   - `contradiction_retention` and `anomaly_retained` at 1.0;
   - `presentation_clean` 1.0 on challenge tasks;
