@@ -43,6 +43,7 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Plain names for the checking steps and for everything a customer chooses | Done, 9 Oct 2026 | One pull request (`rj-017-plain-names`). Not behind a switch. See "Plain names" below. |
 | Live check fixes: old titles and labels, the run page, the plan, confirming once | In review, 9 Oct 2026 | One pull request (`rj-018-live-check-fixes`). Not behind a switch. See "Live check fixes" below. |
 | A provider that refuses must not end a run: other providers, a plain failure sentence, no charge | In review, 9 Oct 2026 | One pull request (`rj-019-provider-fallback`). Not behind a switch. See "Fix outside the slices, 9 Oct 2026" below. |
+| Two more AI providers for every role (Anthropic direct, NVIDIA NIM) and a setting for the order | In review, 9 Oct 2026 | One pull request (`rj-021-more-providers`). Not behind a switch; a provider with no key is left out. See "Fix outside the slices, 9 Oct 2026. Two more providers" below. |
 | Slices 8 to 10 | Not started | Do not begin any of them until the slice before it is merged and production is confirmed healthy (S6). |
 | Fix outside the slices. Sources must be about the question | In review | One pull request, 8 Oct 2026, ordered by Brandon. On by default; `DISCOVERY_RELEVANCE_GATE_ENABLED=false` turns it off in an emergency. See "Fix outside the slices, 8 Oct 2026" after slice 7, and grant M. |
 
@@ -824,6 +825,54 @@ Not done, and what it needs:
 - `workers.ts` sends every run's progress events to every connected browser (`io.emit`), not only to the run's own room. The page ignores events for other runs, but they are sent. Recorded for Brandon.
 
 Tests: `modelRouteFallback.test.ts`, `providerFailureCustomerPath.test.ts`, and the frontend `RunPageProviderFailure.test.tsx`.
+
+### Fix outside the slices, 9 Oct 2026. Two more providers for every role
+
+Ordered by Brandon on 9 Oct 2026 (RJ-021). The OpenRouter account was empty, so no report could be written; the fix before this one moved a refused call to Hugging Face Inference and Together, and this one adds two providers that have credit today. His rule: more than one provider, always, with a call moving from one to the next. Not a slice and not behind a slice switch.
+
+Settings (names only; the values are set on the server by Brandon):
+
+| Setting | Needed | What it does |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | To use Anthropic | Claude models, called directly through the Messages API. |
+| `NVIDIA_API_KEY` | To use NVIDIA | Models hosted on NVIDIA NIM (OpenAI-compatible). |
+| `NVIDIA_BASE_URL` | Optional | Default `https://integrate.api.nvidia.com/v1`. |
+| `MODEL_PROVIDER_ORDER` | Optional | Default `openrouter,anthropic,together,nvidia`. |
+| `ANTHROPIC_MODEL_FAST`, `ANTHROPIC_MODEL_STRONG` | Optional | Replace the two Claude model ids below. |
+| `NVIDIA_MODEL_FAST`, `NVIDIA_MODEL_STRONG` | Optional | Replace the two NIM model ids below. |
+
+A provider with no key is left out of every role's routes. `OPENROUTER_API_KEY`, `HF_TOKEN`, `TOGETHER_API_KEY` and `TOGETHER_BASE_URL` are unchanged.
+
+What changed:
+
+- **Two providers.** `openrouter/providerRoutes.ts` holds the provider names, the order, and the model each role uses on Anthropic and on NVIDIA. `openrouterService.ts` has the two calls: `callAnthropicChat` (Messages API: its own key header, the system prompt as its own field, turns that start with the user) and `callNvidiaChat` (chat completions). Both go through `callRoleModel`, so every role has them and cost tracking sees every call.
+- **Models.** Each role is `fast` or `strong` (`ROUTE_MODEL_CLASS_BY_ROLE`, typed by role, so a new role without an entry does not compile).
+
+  | Roles | Anthropic | NVIDIA NIM |
+  | --- | --- | --- |
+  | `fast`: `planner` (also the discovery planner), `retriever`, `source_class_classifier`, `plain_language_synthesizer`, `revision_intake`, `report_locator`, `change_planner`, `citation_integrity_checker`, `citation_formatter`, `contract_auditor`, and the eight specialists (`market_scout`, `competitor_mapper`, `demand_signal_analyst`, `feasibility_architect`, `story_verifier`, `timeline_reconstructor`, `data_analysis_specialist`, `quantitative_quality_auditor`) | `claude-haiku-5-5` | `deepseek-ai/deepseek-v4.1-flash` |
+  | `strong`: `reasoner`, `strongest_form`, `double_check`, `internal_challenger`, `outline_architect`, `section_drafter`, `synthesizer`, `coherence_refiner`, `verifier`, `section_rewriter`, `final_revision_verifier` | `claude-sonnet-5-5` | `moonshotai/kimi-k3` |
+
+  The Claude ids and prices were read from Anthropic's models and pricing pages on 9 Oct 2026; the NIM ids from the public model list at `integrate.api.nvidia.com/v1/models` the same day. OpenRouter and Together keep the models they had: the role's own model and backup, then the list in `CROSS_PROVIDER_BACKUPS`.
+- **Order.** `modelRoutesForCall`: the role's own model, its backup, then the other providers that have a key, in the order `MODEL_PROVIDER_ORDER` gives. A provider the role's own models did not use comes before more models on the provider that just refused. With the default order and a role whose models are on OpenRouter that is: OpenRouter (own model, backup), Anthropic, the hub models (each on Hugging Face Inference, then Together), NVIDIA, then the remaining OpenRouter backups. The rule from the fix before this one is unchanged: a call moves on after a refusal about the provider (no credit, quota, rate limit, outage, rejected key, network), never after a request the provider called malformed. Anthropic reports an empty account as a 400 about the credit balance; that is read as no credit.
+- **Changing the order.** `MODEL_PROVIDER_ORDER` takes the four names in any order, separated by commas, spaces or arrows. A name that is not a provider is ignored and logged at start; a provider left out keeps its default place, so a typing mistake cannot remove one. When the setting is set and puts a provider ahead of the one a role's own model is on, that provider is tried first for the role and the role's own model follows. With the setting unset the role's own model is always first.
+- **A declined answer is not a report.** When Claude ends a response with `stop_reason: refusal`, the route counts as refused and the next provider is asked.
+- **A customer's own key.** A request made with a customer's OpenRouter key is not moved onto the server's Anthropic or NVIDIA account, the same as for Hugging Face and Together.
+- **Record.** `routeUsed` and `routesTried` now name `anthropic` and `nvidia`, and a provider placed first by the setting has the position `preferred`. They are in `model_log`, the run summary and `failure_meta` as before. The cost row's `metadata` now carries `provider`, `route_position` and `routes_refused`.
+- **Cost.** `getCallPrice` (`telemetry/pricingCatalog.ts`) prices a call by the provider that answered. OpenRouter, Hugging Face and Together calls are priced as before, from the `model_pricing` row for the model id. An Anthropic or NVIDIA call uses the `model_pricing` row keyed `anthropic:<model id>` or `nvidia:<model id>` when one exists (a price change needs no deploy), and otherwise the published price kept in `providerRoutes.ts`: Haiku 5.5 at 0.10 / 0.50 USD per million tokens (0.50 / 2.50 for a prompt over 100,000 tokens), Sonnet 5.5 at 2 / 10, NVIDIA at nothing. What a customer pays does not depend on the provider: `runChargeDecision` is unchanged, a completed run is charged once and a failed run is not charged.
+
+Decisions a reader should know about:
+
+- **The challenge roles can now reach a closed-provider model.** `docs/V2_MODEL_SELECTION_CRITERIA.md` keeps closed-provider models out of the presets, and the backup list of the fix before this one holds low-refusal lines only. Brandon's order names every role, Double-check and the strongest-form restating included, so Anthropic is a route for them too. It is never a role's default while `MODEL_PROVIDER_ORDER` is unset: it is reached only after the role's own model and backup were refused, and only when the key is set. No preset, allowlist entry or forbidden-defaults test was changed.
+- **No embedding model was added.** Embeddings still go to OpenRouter (`generateEmbeddings`). Anthropic has no embedding model, and NVIDIA's have a different vector size from the stored vectors, so mixing them would break retrieval over everything already stored. With no OpenRouter credit, a step that embeds new text is still refused. This needs OpenRouter credit or its own order.
+- **NVIDIA's free endpoints are for development and testing** and are rate limited. A 429 there moves the call on like any other.
+
+Not verified:
+
+- No request was sent to Anthropic or NVIDIA (no keys in the work session and no paid runs allowed). The tests replace the HTTP client. The request shapes follow the published API references. Whether a free NVIDIA key may call the two listed models, and at what rate, has to be confirmed with the first real call.
+- Whether the two Claude models accept a temperature was not confirmed; the call sends one and, if the answer is a 400 naming it, sends the request once more without it.
+
+Tests: `modelProviderRoutes.test.ts` (OpenRouter 402 answered by Anthropic; no Anthropic key answered by Together or NVIDIA; every role on each provider; the order setting; refusals from the added providers; a customer's own key; what a customer is told and charged when every provider refused) and `providerCallPricing.test.ts` (the price by provider and the cost row).
 
 ### Slice 8. Challenge layer (not started)
 
