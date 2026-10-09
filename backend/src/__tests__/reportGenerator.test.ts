@@ -135,7 +135,7 @@ describe('iterative report generator', () => {
     }
     const drafter = calls.find((call) => call.role === 'section_drafter');
     expect(drafter?.messages[1]?.content).toContain('Notes from the check of the reasoning: challenges');
-    expect(drafter?.messages[1]?.content).not.toContain('Skeptic output:');
+    expect(drafter?.messages[1]?.content).not.toContain('Double-check output:');
     const refiner = calls.find((call) => call.role === 'coherence_refiner');
     expect(refiner?.messages[1]?.content.startsWith('Refine the report text. Keep every fact and every citation as it is.')).toBe(true);
     expect(refiner?.messages[1]?.content).toContain('Never lengthen a section and never add material');
