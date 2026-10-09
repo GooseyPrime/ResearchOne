@@ -89,13 +89,13 @@ function withEffectiveLegacyChallengeMode(
   if (!orchestrationProfile || typeof orchestrationProfile !== 'object' || Array.isArray(orchestrationProfile)) {
     return planPayload;
   }
-  const skepticMode = (orchestrationProfile as Record<string, unknown>).skepticMode;
-  if (skepticMode === 'gate') return planPayload;
+  const doubleCheckMode = (orchestrationProfile as Record<string, unknown>).doubleCheckMode;
+  if (doubleCheckMode === 'gate') return planPayload;
   return {
     ...planPayload,
     orchestrationProfile: {
       ...(orchestrationProfile as Record<string, unknown>),
-      skepticMode: 'gate',
+      doubleCheckMode: 'gate',
     },
   };
 }
