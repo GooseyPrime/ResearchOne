@@ -54,7 +54,7 @@ const OLDER_SECTION_NAMES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bFalsification Criteria\b/g, 'What would change these findings'],
 ];
 
-const REMOVED = '';
+const REMOVED = '';
 
 /** Old report text without its grade, passage and working-note labels. Everything else is returned as written. */
 export function stripReportLabels(text: string | null | undefined): string {
@@ -64,11 +64,11 @@ export function stripReportLabels(text: string | null | undefined): string {
   return (
     out
       // A removal right before punctuation leaves no space: "2023 (x)." -> "2023."
-      .replace(/[ \t]*+[ \t]*(?=[.,;:!?)\]])/g, '')
+      .replace(/[ \t]*+[ \t]*(?=[.,;:!?)\]])/g, '')
       // A removal between words leaves one space.
-      .replace(/(?<=\S)[ \t]*+[ \t]*(?=\S)/g, ' ')
+      .replace(/(?<=\S)[ \t]*+[ \t]*(?=\S)/g, ' ')
       // A removal at the start or end of a line leaves nothing.
-      .replace(/[ \t]*+[ \t]*/g, '')
+      .replace(/[ \t]*+[ \t]*/g, '')
   );
 }
 
