@@ -315,6 +315,50 @@ const BASE_ALLOWLIST = [
   'Qwen/QwQ-32B-Preview',
 ] as const;
 
+/**
+ * Approved models to try on ANOTHER provider when a role's own model and its
+ * backup have both been refused for a provider-side reason (no credit, rate
+ * limit, outage, a rejected key). Every id here is already on the allowlist
+ * above; nothing is added to it.
+ *
+ * `openrouter` ids go through the OpenRouter gateway. `hub` ids are Hugging
+ * Face repository ids: they go to Hugging Face Inference and, when that fails
+ * and a Together key is set, to Together with the same id.
+ *
+ * These are a last resort, in order. They are never a role's default: a role
+ * keeps its own primary and backup, and reaches this list only after both
+ * failed.
+ *
+ * Only low-refusal lines are listed (abliterated weights, Hermes, DeepSeek
+ * V3.x), so the list is safe for every role, the challenge roles included. The
+ * refusal-aligned instruct bases that are allowlisted for a person to opt into
+ * (`meta-llama/Llama-3.3-70B-Instruct`, `Qwen/Qwen2.5-*-Instruct`) are left
+ * out on purpose: reaching one automatically would put a refused or softened
+ * answer into a report without anyone having chosen it. See
+ * `docs/V2_MODEL_SELECTION_CRITERIA.md`.
+ */
+const CROSS_PROVIDER_BACKUPS: ReadonlyArray<{ model: string; family: 'openrouter' | 'hub' }> = [
+  { model: 'NousResearch/Hermes-3-Llama-3.1-70B', family: 'hub' },
+  { model: 'huihui-ai/Llama-3.3-70B-Instruct-abliterated', family: 'hub' },
+  { model: 'huihui-ai/Qwen2.5-72B-Instruct-abliterated', family: 'hub' },
+  { model: 'deepseek/deepseek-v3.2', family: 'openrouter' },
+  { model: 'nousresearch/hermes-4-70b', family: 'openrouter' },
+];
+
+/**
+ * The cross-provider backups a role may use, in order, limited to the provider
+ * families that are configured on this server. The role is part of the
+ * signature so a role-specific rule has one place to go; today every listed
+ * model suits every role.
+ */
+export function crossProviderBackupModelsForRole(
+  role: ReasoningModelRole,
+  configured: { openrouter: boolean; hub: boolean }
+): string[] {
+  void role;
+  return CROSS_PROVIDER_BACKUPS.filter((entry) => configured[entry.family]).map((entry) => entry.model);
+}
+
 export const APPROVED_REASONING_MODEL_ALLOWLIST = Object.fromEntries(
   REASONING_MODEL_ROLES.map((role) => [role, BASE_ALLOWLIST as readonly string[]])
 ) as Record<ReasoningModelRole, readonly string[]>;

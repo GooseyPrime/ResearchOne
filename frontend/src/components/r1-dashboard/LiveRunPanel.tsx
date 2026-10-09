@@ -42,7 +42,9 @@ import LiveResearchTraceLog from '@/components/research/LiveResearchTraceLog';
 import RunRequestDisclosure from '@/components/research/RunRequestDisclosure';
 import RunPlanGate from '@/components/research/RunPlanGate';
 import { useRunTraceStream } from '@/hooks/useRunTraceStream';
-import { cancelResearchRun, getResearchRuns, type ResearchRun } from '@/utils/api';
+import { cancelResearchRun, getResearchRuns, retryResearchRunFromFailure, type ResearchRun } from '@/utils/api';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { RUN_COULD_NOT_FINISH, customerFailureText } from '@/utils/customerFailureText';
 import { getSocket } from '@/utils/socket';
 import { mapApiRunStage } from '@/lib/researchone/runMappers';
 import { isReferenceTitle, runDisplayTitle } from '@/utils/runDisplayTitle';
@@ -85,6 +87,9 @@ export function LiveRunPanel() {
   const queryClient = useQueryClient();
 
   const { run, traceEvents, latest, isLoading, isError } = useRunTraceStream(runId);
+  // The model that answered, token counts and the stored error are for
+  // administrators. A customer's trace and outcome panel leave them out.
+  const isAdmin = useIsAdmin();
 
   // Other runs in flight, for the rail. The same query key Layout already
   // polls, so this shares its cache rather than adding a second poll.
@@ -265,6 +270,7 @@ export function LiveRunPanel() {
             <div className="r1-panel p-4">
               <LiveResearchTraceLog
                 traceEvents={traceEvents}
+                showInternals={isAdmin}
                 scrollClassName="max-h-[32rem]"
                 emptyMessage={
                   run.status === 'queued'
@@ -292,7 +298,7 @@ export function LiveRunPanel() {
               </dl>
             </div>
 
-            <RunOutcomePanel run={run} />
+            <RunOutcomePanel run={run} isAdmin={isAdmin} />
 
             {!isTerminal && <CancelRunControl run={run} />}
           </div>
@@ -429,7 +435,19 @@ function CancelRunControl({ run }: { run: ResearchRun }) {
 }
 
 /** What to do next, per terminal state. Never a bare spinner, never a redirect. */
-function RunOutcomePanel({ run }: { run: ResearchRun }) {
+function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?: boolean }) {
+  const queryClient = useQueryClient();
+  // Running a failed run again keeps its place and its reserved payment, so it
+  // cannot be charged twice. A new request from the same words is the other
+  // way to do it, and the only way once a run can no longer be run again.
+  const runAgain = useMutation({
+    mutationFn: () => retryResearchRunFromFailure(run.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['research-run', run.id] });
+      void queryClient.invalidateQueries({ queryKey: ['research-runs'] });
+    },
+  });
+
   if (run.status === 'completed') {
     return (
       <div className="r1-panel border-emerald-500/30 p-4">
@@ -454,10 +472,15 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
     const meta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
     const gateStatus = typeof meta.gate_status === 'string' ? meta.gate_status : null;
     const retryable = meta.retryable === true;
+    // One plain sentence. The server sends it; if what arrived is the stored
+    // error instead (the two halves deploy separately), it is not printed.
     const reason =
-      run.error_message ||
       (gateStatus ? GATE_FAILURE_COPY[gateStatus] : null) ||
-      'This run did not finish.';
+      customerFailureText(typeof meta.customerMessage === 'string' ? meta.customerMessage : null) ||
+      customerFailureText(run.error_message) ||
+      RUN_COULD_NOT_FINISH;
+    // What went wrong, as stored, for whoever has to fix it.
+    const storedError = isAdmin && run.error_message && run.error_message !== reason ? run.error_message : null;
 
     return (
       <div className="r1-panel border-r1-challenge/30 p-4">
@@ -472,18 +495,34 @@ function RunOutcomePanel({ run }: { run: ResearchRun }) {
             )}
           </div>
         </div>
-        {retryable && (
-          <p className="mt-2 text-xs text-amber-300">
-            This failure is retryable — the same request can be run again.
+        {storedError && (
+          <p className="r1-mono-label mt-2 break-words text-[10px] text-r1-dim" data-testid="stored-error">
+            {storedError}
           </p>
         )}
-        <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        {runAgain.isError && (
+          <p className="mt-2 text-xs text-r1-challenge">
+            This run could not be started again from here. Use the link below to send the same request as a new run.
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           <Link to={failedRunReportUrl(run.id)} className="text-r1-cyan hover:underline">
             Open diagnostics
           </Link>
-          <Link to={requestPrefillUrl(run.id)} className="text-r1-cyan hover:underline">
-            Run it again
-          </Link>
+          {retryable && !runAgain.isError ? (
+            <button
+              type="button"
+              disabled={runAgain.isPending || runAgain.isSuccess}
+              onClick={() => runAgain.mutate()}
+              className="r1-focus-ring text-r1-cyan hover:underline disabled:opacity-60"
+            >
+              {runAgain.isPending || runAgain.isSuccess ? 'Starting again…' : 'Run it again'}
+            </button>
+          ) : (
+            <Link to={requestPrefillUrl(run.id)} className="text-r1-cyan hover:underline">
+              {retryable ? 'Send it as a new request' : 'Run it again'}
+            </Link>
+          )}
         </div>
       </div>
     );

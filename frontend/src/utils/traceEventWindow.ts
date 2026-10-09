@@ -154,3 +154,48 @@ export function eventsFromRunRow(run: ResearchRun): ResearchProgressEvent[] {
     }),
   ];
 }
+
+/** Events that mark a run starting, stopping or finishing. They are never folded into a neighbour. */
+function isMilestone(evt: ResearchProgressEvent): boolean {
+  return Boolean(evt.failure) || (evt.eventType != null && evt.eventType !== 'progress');
+}
+
+/**
+ * Whether two consecutive events are the same line said again: updates of one
+ * wait (the step reports "18/25 ready", then "19/25 ready"), or the very same
+ * message twice.
+ */
+function isSameLineAgain(prev: ResearchProgressEvent, next: ResearchProgressEvent): boolean {
+  if (isMilestone(prev) || isMilestone(next)) return false;
+  if (prev.stage !== next.stage) return false;
+  const sameWait = Boolean(prev.substep) && prev.substep === next.substep && /waiting/i.test(prev.substep ?? '');
+  return sameWait || prev.message === next.message;
+}
+
+/**
+ * Fold repeated updates into one updating line.
+ *
+ * A step that waits reports on a timer. Production run
+ * R1-20261009-1316-KTDDV-9 showed "Reading the sources found: 18/25 ready"
+ * more than forty times in a row, one line every three seconds. The reader
+ * needs the latest state of that wait, once. The line kept is the newest, so
+ * its words and its time are current, and `repeatCount` says how many updates
+ * it stands for.
+ *
+ * This is for display only. The buffer the hook keeps, and what the server
+ * stored, are untouched.
+ */
+export function collapseRepeatedUpdates(
+  events: readonly ResearchProgressEvent[]
+): ResearchProgressEvent[] {
+  const out: ResearchProgressEvent[] = [];
+  for (const evt of events) {
+    const prev = out[out.length - 1];
+    if (prev && isSameLineAgain(prev, evt)) {
+      out[out.length - 1] = { ...evt, repeatCount: (prev.repeatCount ?? 1) + 1 };
+    } else {
+      out.push(evt);
+    }
+  }
+  return out;
+}
