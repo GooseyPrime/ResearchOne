@@ -230,6 +230,8 @@ import { config } from '../../config';
 
 const originalWebhookSecret = config.stripe.webhookSecret;
 const originalSecretKey = config.stripe.secretKey;
+const planPriceIds = config.stripe.priceIds as Record<string, string>;
+const originalPlanPriceIds = { ...planPriceIds };
 
 beforeEach(() => {
   world.stripeSubscription = {
@@ -258,7 +260,15 @@ beforeEach(() => {
   world.nextEvent = null;
   config.stripe.webhookSecret = 'whsec_test';
   config.stripe.secretKey = 'sk_test_x';
+  // The webhook only acts on prices this deployment sells.
+  Object.assign(planPriceIds, {
+    proMonthly: 'price_pro_m',
+    proAnnual: 'price_pro_y',
+    byokMonthly: 'price_byok_m',
+    byokAnnual: 'price_byok_y',
+  });
   return () => {
+    Object.assign(planPriceIds, originalPlanPriceIds);
     config.stripe.webhookSecret = originalWebhookSecret;
     config.stripe.secretKey = originalSecretKey;
   };
@@ -308,7 +318,7 @@ describe('a scheduled plan change, from the switch route to the account plan', (
   it('asking changes nothing yet: same price in Stripe, same plan in the app', async () => {
     const asked = await switchTo('price_byok_m');
     expect(asked.status).toBe(200);
-    expect(asked.body.pendingChange).toEqual({ tier: 'byok', billingPeriod: null, effectiveAt: PERIOD_END_ISO });
+    expect(asked.body.pendingChange).toEqual({ tier: 'byok', billingPeriod: 'monthly', effectiveAt: PERIOD_END_ISO });
 
     // Stripe still bills the old price on the same single item.
     expect(stripeSub().items.data).toEqual([{ id: 'si_plan', quantity: 1, price: { id: 'price_pro_m', lookup_key: null } }]);
