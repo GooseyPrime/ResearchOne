@@ -16,7 +16,7 @@
  * before this change as well. Those bounds are here to keep that true; they
  * are not evidence of a fix.
  *
- * What does fail on the code before this change (11 of the 15 tests):
+ * What does fail on the code before this change (every test but those four):
  *
  *   1. The diagnostics page drew every result as soon as a section was opened:
  *      the whole stored search record as 390 KB of JSON, and all 292 results
@@ -34,6 +34,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ResearchRun } from '../../utils/api';
+import { RETRY_NOT_CONFIRMED } from '../../utils/customerFailureText';
 import { RJ022_REQUEST, RJ022_RUN_ID, RJ022_STORED_ERROR, rj022Dossier, rj022DossierListRow, rj022FailedRun } from '../rj022/failedRunFixture';
 import {
   RJ022B_ADMIN_SENTENCE,
@@ -266,7 +268,7 @@ describe('RJ-022B: the diagnostics page draws a long list a part at a time', () 
 
     const summary = await screen.findByTestId('discovery-summary');
     expect(performance.now() - started).toBeLessThan(OPEN_WITHIN_MS);
-    expect(summary.textContent).toContain('5 searches · 317 results found · 25 read · 292 not read');
+    expect(summary.textContent).toContain('5 searches · 317 results found · 25 chosen to read · 292 not chosen');
     const list = screen.getByTestId('discovery-sources');
     expect(list.querySelectorAll('a[href^="https://"]')).toHaveLength(25);
     expect(within(list).getByRole('button', { name: 'Show all 317' })).toBeTruthy();
@@ -291,7 +293,7 @@ describe('RJ-022B: the diagnostics page draws a long list a part at a time', () 
     expect(list.querySelectorAll(':scope > div')).toHaveLength(292);
   });
 
-  it('a customer is shown the sources read by name, and none of the stored record', async () => {
+  it('a customer is shown the sources chosen by name, and none of the stored record', async () => {
     const forCustomer = rj022bArtifacts();
     const read = (forCustomer.discoverySummary!.sources as Array<{ ingested: boolean }>).filter((s) => s.ingested);
     getRunArtifacts.mockResolvedValue({
@@ -309,7 +311,7 @@ describe('RJ-022B: the diagnostics page draws a long list a part at a time', () 
     expect(screen.queryByRole('button', { name: /Not used/ })).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /^Discovery \(/ }));
     const summary = await screen.findByTestId('discovery-summary');
-    expect(summary.textContent).toContain('Sources read (25)');
+    expect(summary.textContent).toContain('Sources chosen to read (25)');
     expect(summary.textContent).not.toMatch(/selectionRationale|sourceQuery|ingestionJobId|planDecision|score=|rank=|Stored record/);
     // The page's own sentence and way on.
     expect(screen.getByText(RJ022B_CUSTOMER_SENTENCE)).toBeTruthy();
@@ -320,10 +322,11 @@ describe('RJ-022B: the diagnostics page draws a long list a part at a time', () 
 
 describe('RJ-022B: when the server refuses to run a run again', () => {
   /** A failed run the page believes can be run again; the server then says otherwise. */
-  const believedRetryable = () =>
+  const believedRetryable = (over: Partial<ResearchRun> = {}) =>
     rj022bFailedRunForCustomer({
       error_message: 'This run could not be finished. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered.',
       failure_meta: { retryable: true, terminal: false },
+      ...over,
     });
 
   it('a customer reads one plain sentence and is offered "Send it as a new request"', async () => {
@@ -354,15 +357,78 @@ describe('RJ-022B: when the server refuses to run a run again', () => {
     expect(screen.getByRole('link', { name: 'Send it as a new request' })).toBeTruthy();
   });
 
-  it('a request that failed for another reason (no answer from the server) gets the same sentence and link', async () => {
+  it.each([
+    ['no answer from the server', () => new Error('Network Error')],
+    ['a server error', () => refusal(500, { error: 'Internal Server Error' })],
+    ['a request that timed out', () => new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED')],
+  ])('%s is not a refusal: the button stays, no new request is offered, and the run is looked at again', async (_name, failure) => {
+    // The run may have been queued before the answer was lost. Sending the
+    // person to a new request here could be a second run and a second charge.
     getResearchRun.mockResolvedValue(believedRetryable());
+    retryResearchRunFromFailure.mockRejectedValue(failure());
+    mount(`/app/run/${RJ022_RUN_ID}`, RUN_ROUTE);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Run it again' }));
+
+    expect((await screen.findByTestId('retry-not-confirmed')).textContent).toBe(RETRY_NOT_CONFIRMED);
+    expect(screen.queryByTestId('retry-refused')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Run it again' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Send it as a new request' })).toBeNull();
+    await waitFor(() => expect(getResearchRun).toHaveBeenCalledTimes(2));
+  });
+
+  it('when the lost answer was a yes, the page finds the run started again', async () => {
+    getResearchRun.mockResolvedValueOnce(believedRetryable()).mockResolvedValue(
+      believedRetryable({ status: 'queued', error_message: undefined, failure_meta: undefined, progress_events: [] })
+    );
     retryResearchRunFromFailure.mockRejectedValue(new Error('Network Error'));
     mount(`/app/run/${RJ022_RUN_ID}`, RUN_ROUTE);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Run it again' }));
 
-    expect((await screen.findByTestId('retry-refused')).textContent).toBe(RJ022B_PLAIN_REFUSAL);
-    expect(screen.getByRole('link', { name: 'Send it as a new request' })).toBeTruthy();
+    expect(await screen.findByText('Request accepted.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Send it as a new request' })).toBeNull();
+  });
+
+  it('diagnostics page: an answer that is not a refusal keeps "Run it again" and offers no new request', async () => {
+    getResearchRun.mockResolvedValue(believedRetryable());
+    retryResearchRunFromFailure.mockRejectedValue(refusal(502, {}));
+    mount(`/app/reports/run/${RJ022_RUN_ID}`, DIAGNOSTICS_ROUTE);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Run it again' }));
+
+    expect((await screen.findByTestId('retry-not-confirmed')).textContent).toBe(RETRY_NOT_CONFIRMED);
+    expect(screen.getByRole('button', { name: 'Run it again' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Send it as a new request' })).toBeNull();
+    await waitFor(() => expect(getResearchRun).toHaveBeenCalledTimes(2));
+  });
+
+  it('a run stopped for good is not offered "Run it again", whatever an old flag on it says', async () => {
+    // An old row keeps `resumeAvailable: true` after the run is stopped for good; the server refuses it.
+    const legacy = { status: 'aborted' as const, failure_meta: { resumeAvailable: true } };
+    getResearchRun.mockResolvedValue(believedRetryable(legacy));
+    mount(`/app/run/${RJ022_RUN_ID}`, RUN_ROUTE);
+    expect(await screen.findByRole('link', { name: 'Send it as a new request' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Run it again' })).toBeNull();
+    expect(document.body.textContent).not.toContain('Press Run it again');
+    cleanup();
+
+    mount(`/app/reports/run/${RJ022_RUN_ID}`, DIAGNOSTICS_ROUTE);
+    expect(await screen.findByRole('link', { name: 'Send it as a new request' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Run it again' })).toBeNull();
+  });
+
+  it('nor is a failed run marked terminal, or one with no attempts left', async () => {
+    for (const over of [
+      { failure_meta: { retryable: true, terminal: true } },
+      { failure_meta: { retryable: true }, retry_attempts: 2, retry_budget: 2 },
+    ]) {
+      getResearchRun.mockResolvedValue(believedRetryable(over));
+      mount(`/app/run/${RJ022_RUN_ID}`, RUN_ROUTE);
+      expect(await screen.findByRole('link', { name: 'Send it as a new request' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Run it again' })).toBeNull();
+      cleanup();
+    }
   });
 
   it('an administrator reads the same sentence, and the reason the server gave', async () => {

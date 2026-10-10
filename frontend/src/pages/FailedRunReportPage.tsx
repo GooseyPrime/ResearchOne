@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useId, useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import NotUsedSources from '../components/research/NotUsedSources';
 import DiscoverySummaryView from '../components/research/DiscoverySummaryView';
 import ShowAllList from '../components/ui/ShowAllList';
@@ -11,7 +11,14 @@ import {
   retryResearchRunFromFailure,
   extractApiError,
 } from '../utils/api';
-import { SEND_AS_NEW_REQUEST, retryRefusalFromError, retryRefusedText, sentenceForRunThatCannotRunAgain } from '../utils/customerFailureText';
+import {
+  RETRY_NOT_CONFIRMED,
+  SEND_AS_NEW_REQUEST,
+  retryRefusalFromError,
+  retryRefusedText,
+  runCanBeRunAgain,
+  sentenceForRunThatCannotRunAgain,
+} from '../utils/customerFailureText';
 import { requestPrefillUrl } from '../utils/researchRunRoutes';
 import { readLongFrames } from '../lib/longFrameLog';
 import RunSummaryReport, { type RunSummaryData } from '../components/research/RunSummaryReport';
@@ -62,6 +69,9 @@ export default function FailedRunReportPage() {
   const navigate = useNavigate();
   // The server refused to run this run again: its sentence, and (administrators only) why.
   const [retryRefused, setRetryRefused] = useState<{ sentence: string | null; adminReason: string | null } | null>(null);
+  // The request to run it again got no answer that says what happened. Not a refusal: the run may have been queued.
+  const [retryNotConfirmed, setRetryNotConfirmed] = useState(false);
+  const queryClient = useQueryClient();
   const isAdmin = useIsAdmin();
   // Times this browser was held still on any page, with the script that was running (RJ-022B).
   const longFrames = useMemo(() => readLongFrames(), []);
@@ -88,7 +98,17 @@ export default function FailedRunReportPage() {
   const retryMutation = useMutation({
     mutationFn: () => retryResearchRunFromFailure(runId!),
     onSuccess: () => navigate('/app/research'),
-    onError: (err) => setRetryRefused(retryRefusalFromError(err)),
+    onError: (err) => {
+      const refusal = retryRefusalFromError(err);
+      if (refusal) {
+        setRetryRefused(refusal);
+        return;
+      }
+      // No answer, or a server error. The run is looked at again rather than
+      // called refused: sending the person to a new request could be a second run.
+      setRetryNotConfirmed(true);
+      void queryClient.invalidateQueries({ queryKey: ['research-run', runId] });
+    },
   });
 
   // Build a RunSummaryData payload from the persisted run row + artifacts so
@@ -171,8 +191,7 @@ export default function FailedRunReportPage() {
   const isAborted = run.status === 'aborted';
   const fmeta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
   // The test the server applies before it runs a run again.
-  const retryable = fmeta.retryable === true || fmeta.resumeAvailable === true;
-  const canRunAgain = retryable && !retryRefused;
+  const canRunAgain = runCanBeRunAgain(run) && !retryRefused;
   const sourceCount = artifacts?.sources.length ?? 0;
   const claimCount = artifacts?.claims.length ?? 0;
   const sourcesTotal = artifacts?.sourcesTotal ?? sourceCount;
@@ -213,7 +232,7 @@ export default function FailedRunReportPage() {
               <button
                 type="button"
                 className="btn-ghost text-xs flex items-center gap-1.5 text-accent border border-accent/30 px-3 py-1.5 rounded-lg"
-                onClick={() => retryMutation.mutate()}
+                onClick={() => { setRetryNotConfirmed(false); retryMutation.mutate(); }}
                 disabled={retryMutation.isPending}
               >
                 <RefreshCw size={12} className={retryMutation.isPending ? 'animate-spin' : ''} />
@@ -232,6 +251,11 @@ export default function FailedRunReportPage() {
             {retryRefused && (
               <p className="text-[10px] text-red-400 max-w-56 text-right leading-snug" role="alert" data-testid="retry-refused">
                 {retryRefusedText(retryRefused.sentence)}
+              </p>
+            )}
+            {retryNotConfirmed && !retryRefused && (
+              <p className="text-[10px] text-red-400 max-w-56 text-right leading-snug" role="alert" data-testid="retry-not-confirmed">
+                {RETRY_NOT_CONFIRMED}
               </p>
             )}
             {isAdmin && retryRefused?.adminReason && (
