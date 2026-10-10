@@ -33,6 +33,7 @@ import {
   toSubscriptionLike,
   type StripeSubscriptionInput,
 } from '../../services/billing/syncStripeSubscription';
+import { readSubscriptionPeriodEnd } from '../../services/billing/stripeEventShape';
 import { creditWalletFromCheckoutSession } from '../../services/billing/checkoutWalletTopup';
 import { creditMonitorTokensFromCheckoutSession } from '../../services/billing/checkoutMonitorTokens';
 import { getBillingHistory } from '../../services/billing/billingEventsService';
@@ -529,9 +530,9 @@ router.post('/checkout/confirm', async (req, res, next) => {
         typeof subscriptionRef === 'string'
           ? await stripe.subscriptions.retrieve(subscriptionRef)
           : subscriptionRef;
-      const periodEnd =
-        (sub as { current_period_end?: number }).current_period_end ??
-        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+      const periodEnd = readSubscriptionPeriodEnd(
+        sub as unknown as Parameters<typeof readSubscriptionPeriodEnd>[0]
+      );
       const subscriptionLike: StripeSubscriptionInput = {
         id: sub.id,
         customer: sub.customer as StripeSubscriptionInput['customer'],
@@ -542,6 +543,8 @@ router.post('/checkout/confirm', async (req, res, next) => {
         items: {
           data: sub.items.data.map((item) => ({
             id: item.id,
+            current_period_end:
+              (item as { current_period_end?: number | null }).current_period_end ?? null,
             price: item.price,
           })),
         },
