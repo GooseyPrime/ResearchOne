@@ -46,11 +46,11 @@ export default function LiveRevisionTraceLog({
 
       <div className="rounded-lg border border-surface-100 bg-[#0b0d14] font-mono text-[11px] leading-5 max-h-[32rem] overflow-y-auto p-3">
         <div className="flex items-center justify-between mb-2 text-[10px] text-slate-500">
-          <span className="uppercase tracking-wide">Revision pipeline trace</span>
+          <span className="uppercase tracking-wide">Revision progress</span>
           <span>{traceEvents.length} events</span>
         </div>
         {traceEvents.length === 0 ? (
-          <p className="text-slate-500">Waiting for revision pipeline events…</p>
+          <p className="text-slate-500">Waiting for the revision to start…</p>
         ) : (
           <ul className="space-y-1.5">
             {traceEvents.map((evt, idx) => (
