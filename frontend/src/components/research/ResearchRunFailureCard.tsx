@@ -62,7 +62,7 @@ export default function ResearchRunFailureCard({
       );
     } else if (abortReason === 'invalid_request') {
       guidance.push(
-        'The orchestrator classified this request as malformed. Inspect the query / supplemental files and start a new run.'
+        'This request could not be read. Check your question and any attached files, then start a new run.'
       );
     } else if (abortReason === 'budget_exhausted') {
       guidance.push(
@@ -70,7 +70,7 @@ export default function ResearchRunFailureCard({
       );
     } else {
       guidance.push(
-        'The orchestrator marked this failure non-recoverable. Start a new run with the same query if you want to try again.'
+        'This run cannot be continued. Start a new run with the same question if you want to try again.'
       );
     }
   } else if (showResume) {

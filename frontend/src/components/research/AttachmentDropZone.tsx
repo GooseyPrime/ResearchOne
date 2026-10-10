@@ -53,7 +53,7 @@ const DESCRIPTION_BY_MODE: Record<AttachmentDropZoneMode, string> = {
   research:
     'PDF, TXT, or Markdown. Drag-and-drop or click to browse. URLs are queued for async ingest alongside files.',
   revision:
-    'For in-place revision, URLs are fetched synchronously when you submit (best for one or two pages). Files are extracted immediately for the revision pipeline. For many URLs or large corpora, use New follow-up research instead.',
+    'For in-place revision, URLs are fetched synchronously when you submit (best for one or two pages). Files are read immediately for the revision. For many URLs or large corpora, use New follow-up research instead.',
 };
 
 export interface AttachmentDropZoneProps {

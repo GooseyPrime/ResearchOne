@@ -166,7 +166,7 @@ export default function ReportRevisionWorkspacePage() {
   useEffect(() => {
     if (!baseReportId || !requestState || startedRef.current) return;
     startedRef.current = true;
-    setLatestProgress({ stage: 'queued', percent: 0, message: 'Starting revision pipeline…' });
+    setLatestProgress({ stage: 'queued', percent: 0, message: 'Starting the revision…' });
     revisionMutation.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when workspace opens with valid state
   }, [baseReportId, requestState]);
