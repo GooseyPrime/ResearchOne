@@ -1,5 +1,15 @@
 /**
- * RJ-024. Together backups that run, and refusals that are about settings.
+ * RJ-024, changed by RJ-025. Refusals that are about settings.
+ *
+ * RJ-025 removed Together's own list of backup models (they were different
+ * models from the ones the roles chose), so the cases that asserted that list
+ * and each role's old order were replaced by `rj025SameModelFailover.test.ts`.
+ * What RJ-024 fixed about refusals is unchanged and still tested here: a 400
+ * that is about how a route is set up moves the call on and tells an
+ * administrator once, and the Anthropic workspace header.
+ *
+ * Together serves none of the roles' models today, so the Together cases add
+ * a Together id to a row of the provider table for the length of one test.
  *
  * Measured on production on 10 Oct 2026:
  *   - Together answered 400 "Unable to access non-serverless model
@@ -108,22 +118,43 @@ import {
   type ModelRole,
 } from '../services/openrouter/openrouterService';
 import {
-  ANTHROPIC_DEFAULT_MODELS,
-  NVIDIA_DEFAULT_MODELS,
-  ROUTE_MODEL_CLASS_BY_ROLE,
-  TOGETHER_BACKUP_MODELS,
+  SAME_MODEL_PROVIDER_TABLE,
   routeConfigurationReason,
-  togetherModelsForRole,
+  type SameModelEntry,
 } from '../services/openrouter/providerRoutes';
-import { REASONING_MODEL_ROLES, crossProviderBackupModelsForRole } from '../services/reasoning/reasoningModelPolicy';
+import { REASONING_MODEL_ROLES } from '../services/reasoning/reasoningModelPolicy';
 import { customerFailureMessage } from '../services/reasoning/customerFailureMessage';
 
-const PRIMARY = 'deepseek/deepseek-v3.2';
+/** A Claude model: its other route is the same model on Anthropic. */
+const CLAUDE = 'anthropic/claude-sonnet-4.5';
+const CLAUDE_DIRECT = 'claude-sonnet-4-5-20250929';
+/** A model that is not Claude: its other route is the same model on Hugging Face Inference. */
+const OPEN = 'deepseek/deepseek-v3.2';
+const OPEN_ON_HUB = 'deepseek-ai/DeepSeek-V3.2';
 const BACKUP = 'moonshotai/kimi-k2-thinking';
+/** For the Together cases: a model that, for one test, Together and NVIDIA serve too. */
+const SERVED_WIDELY = 'vendor/test-model';
+const WIDELY_ROW: SameModelEntry = {
+  name: 'Test Model',
+  claude: false,
+  servedBy: {
+    openrouter: SERVED_WIDELY,
+    together: 'vendor/Test-Model-Together',
+    huggingface_inference: 'NousResearch/Test-Model-Hub',
+    nvidia: 'vendor/test-model-nim',
+  },
+};
 const NON_SERVERLESS = (model: string): string =>
   `Unable to access non-serverless model ${model}. Please visit https://api.together.ai/models/${model} to create and start a new dedicated endpoint for the model.`;
 const NEEDS_WORKSPACE =
   'This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use.';
+
+const table = SAME_MODEL_PROVIDER_TABLE as SameModelEntry[];
+let rowAdded = false;
+function togetherServesTheModel(): void {
+  table.push(WIDELY_ROW);
+  rowAdded = true;
+}
 
 const was = {
   openrouterKey: config.openrouter.apiKey,
@@ -137,10 +168,10 @@ const was = {
   delays: [...modelRouteRetry.delaysMs],
 };
 
-function call(role: ModelRole = 'section_drafter'): Promise<ModelCallResult> {
+function call(role: ModelRole = 'section_drafter', primary: string = CLAUDE): Promise<ModelCallResult> {
   return callRoleModel({
     role,
-    runtimeOverrides: { primary: PRIMARY, fallback: BACKUP },
+    runtimeOverrides: { primary, fallback: BACKUP },
     messages: [
       { role: 'system', content: 'Write the section.' },
       { role: 'user', content: 'Section 3.' },
@@ -171,6 +202,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (rowAdded) table.splice(table.indexOf(WIDELY_ROW), 1);
+  rowAdded = false;
   config.openrouter.apiKey = was.openrouterKey;
   config.anthropic.apiKey = was.anthropicKey;
   config.anthropic.workspaceId = was.workspaceId;
@@ -182,108 +215,43 @@ afterEach(() => {
   modelRouteRetry.delaysMs = [...was.delays];
 });
 
-describe('the Together backup list', () => {
-  it('is the five serverless models, cheapest capable first', () => {
-    expect([...TOGETHER_BACKUP_MODELS]).toEqual([
-      'deepseek-ai/DeepSeek-V4.1-Flash',
-      'zai-org/GLM-5.3-Flash',
-      'Qwen/Qwen3.8-Flash',
-      'openai/gpt-oss-120b',
-      'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+describe('Together and a role call (RJ-025)', () => {
+  it.each(REASONING_MODEL_ROLES.map((role) => [role]))('gives %s no Together route: Together serves no model a role chose', (role) => {
+    const routes = modelRoutesForCall({ role, primary: OPEN, openrouterConfigured: true, hubConfigured: true, togetherConfigured: true, anthropicConfigured: true, nvidiaConfigured: true });
+    expect(routes).toEqual([
+      { model: OPEN, position: 'primary' },
+      { model: OPEN_ON_HUB, via: 'huggingface_inference', position: 'cross_provider' },
     ]);
   });
 
-  it('no longer holds the two ids Together refuses as non-serverless, on either list', () => {
-    const hubAndGateway = crossProviderBackupModelsForRole('section_drafter', { openrouter: true, hub: true });
-    for (const refused of ['deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3']) {
-      expect(TOGETHER_BACKUP_MODELS).not.toContain(refused);
-      expect(hubAndGateway).not.toContain(refused);
-    }
-  });
-
-  it.each(REASONING_MODEL_ROLES.map((role) => [role]))('gives %s the whole list, in order, as Together routes', (role) => {
-    expect(togetherModelsForRole(role)).toEqual([...TOGETHER_BACKUP_MODELS]);
-    const routes = modelRoutesForCall({ role, primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: false, togetherConfigured: true });
-    expect(routes.slice(2, 2 + TOGETHER_BACKUP_MODELS.length)).toEqual(
-      TOGETHER_BACKUP_MODELS.map((model) => ({ model, via: 'together', position: 'cross_provider' }))
-    );
-  });
-
-  it('is left out when there is no Together key, and a Hugging Face token alone does not bring it back', () => {
-    const routes = modelRoutesForCall({ role: 'planner', primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, togetherConfigured: false });
-    expect(routes.some((route) => route.via === 'together')).toBe(false);
-    expect(routes.some((route) => route.model.startsWith('NousResearch/'))).toBe(true);
-  });
-
-  it('leaves out the hub models when there is a Together key and no Hugging Face token', () => {
-    const routes = modelRoutesForCall({ role: 'planner', primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: false, togetherConfigured: true });
-    expect(routes.filter((route) => !route.via).every((route) => !/^(NousResearch|huihui-ai)\//.test(route.model))).toBe(true);
-  });
-
-  it('gives each role this full order with every provider configured', () => {
-    for (const role of REASONING_MODEL_ROLES) {
-      const size = ROUTE_MODEL_CLASS_BY_ROLE[role];
-      const routes = modelRoutesForCall({
-        role,
-        primary: PRIMARY,
-        fallback: BACKUP,
-        openrouterConfigured: true,
-        hubConfigured: true,
-        togetherConfigured: true,
-        anthropicConfigured: true,
-        nvidiaConfigured: true,
-        providerOrder: ['openrouter', 'anthropic', 'together', 'nvidia'],
-        providerOrderSet: false,
-      });
-      expect(routes.map((route) => `${route.via ?? 'own-or-list'}:${route.model}`), role).toEqual([
-        `own-or-list:${PRIMARY}`,
-        `own-or-list:${BACKUP}`,
-        `anthropic:${ANTHROPIC_DEFAULT_MODELS[size]}`,
-        ...TOGETHER_BACKUP_MODELS.map((model) => `together:${model}`),
-        'own-or-list:NousResearch/Hermes-3-Llama-3.1-70B',
-        'own-or-list:huihui-ai/Llama-3.3-70B-Instruct-abliterated',
-        'own-or-list:huihui-ai/Qwen2.5-72B-Instruct-abliterated',
-        `nvidia:${NVIDIA_DEFAULT_MODELS[size]}`,
-        'own-or-list:nousresearch/hermes-4-70b',
-      ]);
-    }
-  });
-
-  it('does not change which roles may reach Anthropic: every role has exactly one Anthropic route, as before', () => {
-    for (const role of REASONING_MODEL_ROLES) {
-      const routes = modelRoutesForCall({ role, primary: PRIMARY, fallback: BACKUP, openrouterConfigured: true, hubConfigured: true, togetherConfigured: true, anthropicConfigured: true, nvidiaConfigured: true });
-      expect(routes.filter((route) => route.via === 'anthropic'), role).toHaveLength(1);
-    }
-  });
-});
-
-describe('a call that reaches Together', () => {
-  it('is answered by the first serverless model, with Together\'s published price on the result', async () => {
+  it('never sends Together one of the five models its backup list used to hold', async () => {
     h.answers.openrouter = () => 402;
-    config.anthropic.apiKey = '';
+    h.hub = () => 'fail';
 
-    const result = await call();
+    await call('section_drafter', OPEN).catch(() => null);
 
-    expect(result.routeUsed).toEqual({ model: 'deepseek-ai/DeepSeek-V4.1-Flash', provider: 'together', position: 'cross_provider' });
-    expect(result.listPrice).toEqual({ inputPricePer1mUsd: 0.3, outputPricePer1mUsd: 1.2 });
+    expect(h.sent.some((sent) => sent.provider === 'together')).toBe(false);
+    for (const old of ['deepseek-ai/DeepSeek-V4.1-Flash', 'zai-org/GLM-5.3-Flash', 'Qwen/Qwen3.8-Flash', 'openai/gpt-oss-120b', 'meta-llama/Llama-3.3-70B-Instruct-Turbo']) {
+      expect(h.sent.some((sent) => sent.model === old)).toBe(false);
+    }
+  });
+
+  it('is asked for a model once the table says it serves that model, with its own key and Together\'s id for it', async () => {
+    togetherServesTheModel();
+    h.answers.openrouter = () => 402;
+
+    const result = await call('section_drafter', SERVED_WIDELY);
+
+    expect(result.routeUsed).toEqual({ model: 'vendor/Test-Model-Together', provider: 'together', position: 'cross_provider' });
     const request = h.sent.find((sent) => sent.provider === 'together');
     expect(request?.headers.Authorization).toBe('Bearer test-together');
   });
 
-  it('goes down the list in order when Together refuses a model', async () => {
-    h.answers.openrouter = () => 402;
-    config.anthropic.apiKey = '';
-    h.answers.together = (model) => (model === 'openai/gpt-oss-120b' ? 'ok' : 503);
-
-    const result = await call();
-
-    expect(h.sent.filter((sent) => sent.provider === 'together').map((sent) => sent.model)).toEqual([
-      'deepseek-ai/DeepSeek-V4.1-Flash',
-      'zai-org/GLM-5.3-Flash',
-      'Qwen/Qwen3.8-Flash',
-      'openai/gpt-oss-120b',
-    ]);
-    expect(result.routeUsed?.model).toBe('openai/gpt-oss-120b');
+  it('is left out when there is no Together key, and a Hugging Face token alone does not bring it back', () => {
+    togetherServesTheModel();
+    const routes = modelRoutesForCall({ role: 'planner', primary: SERVED_WIDELY, openrouterConfigured: true, hubConfigured: true, togetherConfigured: false });
+    expect(routes.some((route) => route.via === 'together')).toBe(false);
+    expect(routes.some((route) => route.via === 'huggingface_inference')).toBe(true);
   });
 });
 
@@ -296,28 +264,36 @@ describe('a 400 that is about how the route is set up', () => {
     expect(routeConfigurationReason(undefined)).toBeNull();
   });
 
-  it('moves on to the next route when Together says a model needs a dedicated endpoint', async () => {
+  it('moves on to the next provider when Together says a model needs a dedicated endpoint', async () => {
+    togetherServesTheModel();
     h.answers.openrouter = () => 402;
-    config.anthropic.apiKey = '';
-    h.answers.together = (model) => (model === 'deepseek-ai/DeepSeek-V4.1-Flash' ? { status: 400, message: NON_SERVERLESS(model) } : 'ok');
+    h.answers.together = (model) => ({ status: 400, message: NON_SERVERLESS(model) });
 
-    const result = await call();
+    const result = await call('section_drafter', SERVED_WIDELY);
 
-    expect(result.routeUsed).toMatchObject({ provider: 'together', model: 'zai-org/GLM-5.3-Flash' });
+    expect(result.routeUsed).toMatchObject({ provider: 'huggingface_inference', model: 'NousResearch/Test-Model-Hub' });
     expect(result.routesTried?.find((attempt) => attempt.provider === 'together' && attempt.outcome === 'refused')).toMatchObject({
       classification: 'route_config_error',
       status: 400,
     });
   });
 
-  it('moves on to the next provider when Anthropic says the key needs a workspace header', async () => {
+  it('records the refusal and has nowhere else to go when Anthropic says the key needs a workspace header', async () => {
     h.answers.openrouter = () => 402;
     h.answers.anthropic = () => ({ status: 400, message: NEEDS_WORKSPACE });
 
-    const result = await call();
+    const failure = (await call().then(
+      () => null,
+      (err: unknown) => err
+    )) as NormalizedModelError;
 
-    expect(result.routeUsed?.provider).toBe('together');
-    expect(result.routesTried?.find((attempt) => attempt.provider === 'anthropic')).toMatchObject({
+    expect(failure).toBeInstanceOf(NormalizedModelError);
+    // Sonnet 4.5 is served by OpenRouter and Anthropic only. No other model is asked in its place.
+    expect(h.sent.map((sent) => [sent.provider, sent.model])).toEqual([
+      ['openrouter', CLAUDE],
+      ['anthropic', CLAUDE_DIRECT],
+    ]);
+    expect(failure.routesTried?.find((attempt) => attempt.provider === 'anthropic')).toMatchObject({
       outcome: 'refused',
       classification: 'route_config_error',
       status: 400,
@@ -328,21 +304,21 @@ describe('a 400 that is about how the route is set up', () => {
     h.answers.openrouter = (model) => ({ status: 400, message: NON_SERVERLESS(model) });
 
     const moved = await call();
-    expect(moved.routeUsed?.provider).toBe('anthropic');
+    expect(moved.routeUsed).toEqual({ model: CLAUDE_DIRECT, provider: 'anthropic', position: 'cross_provider' });
 
     h.sent.length = 0;
     h.answers.openrouter = () => ({ status: 400, message: 'messages: at least one message is required' });
     await expect(call()).rejects.toMatchObject({ classification: 'bad_request' });
-    expect(h.sent.map((sent) => sent.provider)).toEqual(['openrouter', 'openrouter']);
+    expect(h.sent.map((sent) => sent.provider)).toEqual(['openrouter']);
   });
 
   it('logs one admin-only warning per process that names the provider and the reason, however many calls are refused', async () => {
     h.answers.openrouter = () => 402;
     h.answers.anthropic = () => ({ status: 400, message: NEEDS_WORKSPACE });
 
-    await call('planner');
-    await call('section_drafter');
-    await call('verifier');
+    await call('planner').catch(() => null);
+    await call('section_drafter').catch(() => null);
+    await call('verifier').catch(() => null);
 
     const warnings = adminWarnings();
     expect(warnings).toHaveLength(1);
@@ -353,16 +329,15 @@ describe('a 400 that is about how the route is set up', () => {
   });
 
   it('logs the dedicated-endpoint warning once per model, naming Together and the model', async () => {
+    togetherServesTheModel();
     h.answers.openrouter = () => 402;
-    config.anthropic.apiKey = '';
-    h.answers.together = (model) =>
-      model === 'deepseek-ai/DeepSeek-V4.1-Flash' || model === 'zai-org/GLM-5.3-Flash' ? { status: 400, message: NON_SERVERLESS(model) } : 'ok';
+    h.answers.together = (model) => ({ status: 400, message: NON_SERVERLESS(model) });
 
-    await call();
-    await call();
+    await call('section_drafter', SERVED_WIDELY);
+    await call('section_drafter', SERVED_WIDELY);
 
     const warnings = adminWarnings();
-    expect(warnings.map((entry) => entry.meta.model)).toEqual(['deepseek-ai/DeepSeek-V4.1-Flash', 'zai-org/GLM-5.3-Flash']);
+    expect(warnings.map((entry) => entry.meta.model)).toEqual(['vendor/Test-Model-Together']);
     for (const warning of warnings) {
       expect(warning.message).toContain('together');
       expect(warning.message).toContain('model_needs_dedicated_endpoint');
@@ -374,7 +349,7 @@ describe('a 400 that is about how the route is set up', () => {
     h.answers.openrouter = () => 402;
     h.answers.anthropic = () => 429;
 
-    await call();
+    await call().catch(() => null);
 
     expect(adminWarnings()).toEqual([]);
   });
@@ -382,9 +357,6 @@ describe('a 400 that is about how the route is set up', () => {
   it('never puts the warning or the reason in what a customer reads', async () => {
     h.answers.openrouter = (model) => ({ status: 400, message: NON_SERVERLESS(model) });
     h.answers.anthropic = () => ({ status: 400, message: NEEDS_WORKSPACE });
-    h.answers.together = () => 503;
-    h.answers.nvidia = () => 503;
-    h.hub = () => 'fail';
 
     const failure = await call().then(
       () => null,
@@ -426,12 +398,13 @@ describe('ANTHROPIC_WORKSPACE_ID', () => {
 
   it('is never sent to another provider', async () => {
     h.answers.openrouter = () => 402;
-    h.answers.anthropic = () => 529;
     config.anthropic.workspaceId = 'wrkspc_test_0001';
 
     await call();
 
-    for (const sent of h.sent.filter((entry) => entry.provider !== 'anthropic')) {
+    const others = h.sent.filter((entry) => entry.provider !== 'anthropic');
+    expect(others.length).toBeGreaterThan(0);
+    for (const sent of others) {
       expect('anthropic-workspace-id' in sent.headers).toBe(false);
     }
   });
