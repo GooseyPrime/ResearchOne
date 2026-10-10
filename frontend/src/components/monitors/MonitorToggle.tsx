@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { addOnItem, trackBeginCheckout } from '../../lib/analyticsEvents';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Radar, Quote } from 'lucide-react';
@@ -383,8 +384,10 @@ function ReverseCitationWatchCard({
     mutationFn: () => createMonitorCheckoutSession(reportId, 'reverse_citation_watch'),
     onSuccess: (session) => {
       const url = session.checkoutUrl;
-      if (url) window.location.href = url;
-      else addNotification('error', 'Checkout URL missing — verify Stripe price IDs on the server.');
+      if (url) {
+        trackBeginCheckout(addOnItem('reverse_citation_watch'));
+        window.location.href = url;
+      } else addNotification('error', 'Checkout URL missing — verify Stripe price IDs on the server.');
     },
     onError: (e) => addNotification('error', extractApiError(e)),
   });
