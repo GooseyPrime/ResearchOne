@@ -42,11 +42,30 @@ import {
 
 const router = Router();
 
+/** The subscription a subscription, invoice or checkout event is about, if it names one. */
+function subscriptionIdOfEvent(eventType: string, object: Record<string, unknown>): string | null {
+  if (eventType.startsWith('customer.subscription.')) {
+    return typeof object.id === 'string' && object.id ? object.id : null;
+  }
+  if (eventType.startsWith('invoice.')) {
+    return readInvoiceSubscriptionId(object as StripeInvoiceLike);
+  }
+  if (eventType.startsWith('checkout.session.')) {
+    return typeof object.subscription === 'string' && object.subscription ? object.subscription : null;
+  }
+  return null;
+}
+
 /**
- * True when the event is about another product's sale. A subscription
- * checkout that carries none of our metadata is checked against its
- * subscription before it is set aside; if Stripe cannot be asked, the event
- * is treated as not ours and acknowledged, never failed.
+ * True when the event is about another product's sale.
+ *
+ * Price and metadata are looked at first. An event they do not identify is
+ * still ours when we already hold its subscription (a plan or a report
+ * monitor bought on a price that has since been retired), so the stored
+ * subscription ids are read before it is set aside. A subscription checkout
+ * is also checked against its subscription in Stripe. Only reads happen here;
+ * if a lookup cannot be made the event is treated as not ours and
+ * acknowledged, never failed.
  */
 async function isForeignStripeEvent(
   eventId: string,
@@ -54,6 +73,11 @@ async function isForeignStripeEvent(
   object: Record<string, unknown>
 ): Promise<boolean> {
   if (!stripeEventIsForeign(eventType, object)) return false;
+
+  const knownSubscriptionId = subscriptionIdOfEvent(eventType, object);
+  if (knownSubscriptionId && (await resolveUserIdFromStripeSubscription(knownSubscriptionId))) {
+    return false;
+  }
   if (!eventType.startsWith('checkout.session.')) return true;
 
   const session = object as { mode?: string; subscription?: unknown };
