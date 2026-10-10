@@ -45,7 +45,16 @@ import RunPlanGate from '@/components/research/RunPlanGate';
 import { useRunTraceStream } from '@/hooks/useRunTraceStream';
 import { cancelResearchRun, getResearchRuns, retryResearchRunFromFailure, type ResearchRun } from '@/utils/api';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
-import { RUN_COULD_NOT_FINISH, customerFailureText } from '@/utils/customerFailureText';
+import {
+  RETRY_NOT_CONFIRMED,
+  RUN_COULD_NOT_FINISH,
+  SEND_AS_NEW_REQUEST,
+  customerFailureText,
+  retryRefusalFromError,
+  retryRefusedText,
+  runCanBeRunAgain,
+  sentenceForRunThatCannotRunAgain,
+} from '@/utils/customerFailureText';
 import { getSocket } from '@/utils/socket';
 import { mapApiRunStage } from '@/lib/researchone/runMappers';
 import { isReferenceTitle, runDisplayTitle } from '@/utils/runDisplayTitle';
@@ -327,6 +336,7 @@ export function LiveRunPanel() {
               <LiveResearchTraceLog
                 traceEvents={traceEvents}
                 showInternals={isAdmin}
+                runCanRunAgain={isTerminal ? runCanBeRunAgain(run) : undefined}
                 scrollClassName="max-h-[32rem]"
                 emptyMessage={
                   run.status === 'queued'
@@ -500,7 +510,10 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
   // way to do it, and the only way once a run can no longer be run again.
   const runAgain = useMutation({
     mutationFn: () => retryResearchRunFromFailure(run.id),
-    onSuccess: () => {
+    // Whatever the answer, the run is looked at again. When the request got no
+    // answer the run may have been queued all the same, and this is how the
+    // page finds out.
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['research-run', run.id] });
       void queryClient.invalidateQueries({ queryKey: ['research-runs'] });
     },
@@ -529,14 +542,24 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
     // no_evidence — and dropped the persisted retryability with it (Copilot).
     const meta = (run.failure_meta as Record<string, unknown> | undefined) ?? {};
     const gateStatus = typeof meta.gate_status === 'string' ? meta.gate_status : null;
-    const retryable = meta.retryable === true;
+    const retryable = runCanBeRunAgain(run);
+    // The server refused to run this run again (it answers 400 or 409 with a sentence).
+    const refused = runAgain.isError ? retryRefusalFromError(runAgain.error) : null;
+    // The request failed some other way (no answer, a server error). That is
+    // not a refusal: the run may have been queued, so the button stays and the
+    // person is not sent to a new request, which would be a second run.
+    const notConfirmed = runAgain.isError && !refused;
+    const canRunAgain = retryable && !refused;
     // One plain sentence. The server sends it; if what arrived is the stored
     // error instead (the two halves deploy separately), it is not printed.
-    const reason =
+    const sentence =
       (gateStatus ? GATE_FAILURE_COPY[gateStatus] : null) ||
       customerFailureText(typeof meta.customerMessage === 'string' ? meta.customerMessage : null) ||
       customerFailureText(run.error_message) ||
       RUN_COULD_NOT_FINISH;
+    // A run that cannot be run again is not told to press "Run it again": the
+    // sentence names the link that is offered below instead (RJ-022B).
+    const reason = canRunAgain ? sentence : sentenceForRunThatCannotRunAgain(sentence);
     // What went wrong, as stored, for whoever has to fix it.
     const storedError = isAdmin && run.error_message && run.error_message !== reason ? run.error_message : null;
 
@@ -552,16 +575,27 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
             {storedError}
           </p>
         )}
-        {runAgain.isError && (
-          <p className="mt-2 text-xs text-r1-challenge">
-            This run could not be started again from here. Use the link below to send the same request as a new run.
+        {refused && (
+          <p className="mt-2 text-xs text-r1-challenge" role="alert" data-testid="retry-refused">
+            {retryRefusedText(refused.sentence)}
+          </p>
+        )}
+        {notConfirmed && (
+          <p className="mt-2 text-xs text-r1-challenge" role="alert" data-testid="retry-not-confirmed">
+            {RETRY_NOT_CONFIRMED}
+          </p>
+        )}
+        {/* Why the server refused, in its own words. It sends this to administrators only. */}
+        {isAdmin && refused?.adminReason && (
+          <p className="r1-mono-label mt-2 break-words text-[10px] text-r1-dim" data-testid="retry-refused-reason">
+            {refused.adminReason}
           </p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           <Link to={failedRunReportUrl(run.id)} className="text-r1-cyan hover:underline">
             Open diagnostics
           </Link>
-          {retryable && !runAgain.isError ? (
+          {canRunAgain ? (
             <button
               type="button"
               disabled={runAgain.isPending || runAgain.isSuccess}
@@ -571,8 +605,11 @@ function RunOutcomePanel({ run, isAdmin = false }: { run: ResearchRun; isAdmin?:
               {runAgain.isPending || runAgain.isSuccess ? 'Starting again…' : 'Run it again'}
             </button>
           ) : (
+            // Whenever this run cannot be run again (it was stored that way, or
+            // the server has just refused), the way on is the same request,
+            // sent as a new one.
             <Link to={requestPrefillUrl(run.id)} className="text-r1-cyan hover:underline">
-              {retryable ? 'Send it as a new request' : 'Run it again'}
+              {SEND_AS_NEW_REQUEST}
             </Link>
           )}
         </div>

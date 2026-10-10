@@ -48,13 +48,16 @@ vi.mock('../../hooks/useIsAdmin', () => ({ useIsAdmin: () => admin.value }));
 vi.mock('../../components/research/RunPlanGate', () => ({ default: () => null }));
 
 import { LiveRunPanel } from '../../components/r1-dashboard/LiveRunPanel';
-import { RUN_COULD_NOT_FINISH } from '../../utils/customerFailureText';
+import { RUN_COULD_NOT_FINISH, sentenceForRunThatCannotRunAgain } from '../../utils/customerFailureText';
 
 const RUN_ID = '6622a18a-03f0-4317-a839-ddf2b73132cd';
 const STORED_ERROR =
   'Model provider request failed at synthesis (role=section_drafter, model=deepseek/deepseek-v3.2, status=402, classification=quota_exceeded): This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.';
 const PLAIN =
   'The report could not be written because our AI service is temporarily unavailable. You have not been charged. Press Run it again to try again; you are only charged once, when a report is delivered.';
+
+/** The fixed sentence as a run that cannot be run again is given it: it names the link the page offers (RJ-022B). */
+const COULD_NOT_FINISH_SEND_AS_NEW = sentenceForRunThatCannotRunAgain(RUN_COULD_NOT_FINISH);
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 9, 9, 13, 16, 0) + seconds * 1000).toISOString();
 
@@ -182,7 +185,10 @@ describe('run page — a run stopped because the AI provider refused', () => {
 
     const page = document.body.textContent ?? '';
     for (const pattern of NOT_FOR_CUSTOMERS) expect(page).not.toMatch(pattern);
-    expect(screen.getAllByText(RUN_COULD_NOT_FINISH).length).toBeGreaterThan(0);
+    // This run was stored as one that cannot be run again, so the sentence does not say "Press Run it again".
+    expect(COULD_NOT_FINISH_SEND_AS_NEW).toContain('Press Send it as a new request');
+    expect(screen.getAllByText(COULD_NOT_FINISH_SEND_AS_NEW).length).toBeGreaterThan(0);
+    expect(page).not.toContain('Press Run it again');
   });
 
   it('shows the sentence the server chose for this failure', async () => {
@@ -205,7 +211,7 @@ describe('run page — a run stopped because the AI provider refused', () => {
     expect(page).toContain('[deepseek/deepseek-v3.2]');
     expect(page).toContain('pending=6; failed=1; waited=126000ms');
     // The plain sentence is still what the panel leads with.
-    expect(screen.getAllByText(RUN_COULD_NOT_FINISH).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(COULD_NOT_FINISH_SEND_AS_NEW).length).toBeGreaterThan(0);
   });
 
   it('folds a wait reported forty-two times into one line, and calls passages passages', async () => {
@@ -230,7 +236,8 @@ describe('run page — a run stopped because the AI provider refused', () => {
   it('offers a new request when the run can no longer be run again', async () => {
     await mountReady(stoppedRun());
     expect(screen.queryByRole('button', { name: 'Run it again' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Run it again' }).getAttribute('href')).toContain('/app/research');
+    expect(screen.queryByRole('link', { name: 'Run it again' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Send it as a new request' }).getAttribute('href')).toContain('/app/research');
     expect(retryResearchRunFromFailure).not.toHaveBeenCalled();
   });
 });

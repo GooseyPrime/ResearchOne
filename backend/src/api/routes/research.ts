@@ -29,11 +29,12 @@ import { enqueueResearchRetryJobWithCleanup } from '../../utils/researchRetryQue
 import {
   decideRunStateOnRetryRequest,
   rejectionToHttpBody,
+  retryRefusalForCustomer,
 } from '../../services/reasoning/runStateMachine';
 import { checkTierAccess } from '../../services/tier/tierService';
 import { RESEARCH_ENGINE_VERSION, RUN_CONSUMES_DEEP_QUOTA } from '../../config/researchEngine';
 import { releaseHoldForCancelledRun } from '../../services/billing/releaseRunHold';
-import { progressEventsForCustomer, runRowForCustomer } from '../../services/reasoning/customerFailureMessage';
+import { RETRY_REFUSED_MESSAGE, progressEventsForCustomer, runRowForCustomer } from '../../services/reasoning/customerFailureMessage';
 import { releaseHold } from '../../services/billing/walletReservations';
 import { getWalletSummary } from '../../services/billing/walletService';
 import {
@@ -749,11 +750,15 @@ router.get('/:id/artifacts', async (req, res, next) => {
       model_overrides: unknown;
       model_ensemble: unknown;
       report_id: string | null;
+      status: string | null;
+      failed_stage: string | null;
+      failure_meta: unknown;
     };
     let runMeta: RunMetaRow[] = [];
     try {
       runMeta = await query<RunMetaRow>(
-        `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id
+        `SELECT id, progress_events, plan, discovery_summary, model_log, model_overrides, model_ensemble, report_id,
+                status, failed_stage, failure_meta
            FROM research_runs WHERE id=$1 AND ${buildOwnershipSql('', 2, 3)}`,
         [runId, userId, orgId]
       );
@@ -832,7 +837,17 @@ router.get('/:id/artifacts', async (req, res, next) => {
       // The diagnostics page is open to the run's owner. Anyone who is not an
       // administrator is sent the same plain trace as on the run page, and no
       // model log or model choices.
-      progressEvents: isAdmin ? allProgressEvents : progressEventsForCustomer(allProgressEvents),
+      progressEvents: isAdmin
+        ? allProgressEvents
+        : progressEventsForCustomer(allProgressEvents, {
+            classification:
+              meta.failure_meta && typeof meta.failure_meta === 'object' && typeof (meta.failure_meta as { classification?: unknown }).classification === 'string'
+                ? ((meta.failure_meta as { classification: string }).classification)
+                : null,
+            stage: meta.failed_stage,
+            status: meta.status,
+            failureMeta: meta.failure_meta,
+          }),
       plan: meta.plan ?? null,
       discoverySummary: isAdmin ? meta.discovery_summary ?? null : discoverySummaryForReader(meta.discovery_summary),
       discoveryEvents,
@@ -956,7 +971,10 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
           }
         }
       }
-      res.status(400).json(rejectionToHttpBody(decision));
+      // A person is told, in one plain sentence, that the run cannot be run
+      // again and what to press instead. Why it cannot is for administrators.
+      const refusal = rejectionToHttpBody(decision);
+      res.status(400).json(isAllowlistedAdminUserId(req.auth?.userId ?? null) ? refusal : retryRefusalForCustomer(refusal));
       return;
     }
 
@@ -974,8 +992,12 @@ router.post('/:id/retry-from-failure', async (req, res, next) => {
       );
       if (holds.length > 0 && holds[0].status !== 'active') {
         res.status(409).json({
-          error: 'This run can no longer be run again from here. Send the same request as a new run; you have not been charged for this one.',
-          reason: 'reservation_no_longer_held',
+          error: RETRY_REFUSED_MESSAGE,
+          code: 'reservation_no_longer_held',
+          retryable: false,
+          ...(isAllowlistedAdminUserId(req.auth?.userId ?? null)
+            ? { reason: `The payment reserved for this run (hold ${reservedHoldId}) is ${holds[0].status}, not active: an unused reservation is released after thirty minutes. Running it again would deliver a report nobody paid for.` }
+            : {}),
         });
         return;
       }

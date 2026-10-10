@@ -32,6 +32,8 @@
  * one canonical shape and cannot disagree.
  */
 
+import { RETRY_NOT_STOPPED_MESSAGE, RETRY_REFUSED_MESSAGE } from './customerFailureMessage';
+
 export type CanonicalRunStatus =
   | 'queued'
   | 'running'
@@ -327,23 +329,34 @@ export function decideRunStateOnRetryRequest(input: {
 }
 
 /**
- * Map a retry-request rejection to a structured 400 body with explicit copy.
- * The route handler returns this as JSON so the frontend FailureCard can
- * surface the reason directly.
+ * The body of the 400 a refused `retry-from-failure` request is answered with.
+ *
+ * `error` is the sentence a person reads (RJ-022B). It used to be a label
+ * ("This failure is not retryable") followed by `reason`, which was written
+ * for whoever fixes the pipeline ("The orchestrator classified this error as
+ * non-recoverable (auth / malformed request)…") and reached customers on the
+ * run page. `reason` still says why, in those words, and the route sends it to
+ * administrators only (`retryRefusalForCustomer` takes it off for everyone
+ * else). `code` names the refusal for the page's own logic and is not text.
  */
-export function rejectionToHttpBody(rej: RetryRequestRejection): {
+export interface RetryRefusalBody {
   error: string;
-  reason: string;
+  code: RetryRequestRejection['reason'];
+  /** Why, for whoever diagnoses the run. Administrators only. */
+  reason?: string;
   status: string;
   retryable: boolean;
   terminal?: boolean;
   retryAttempts?: number;
   retryBudget?: number;
-} {
+}
+
+export function rejectionToHttpBody(rej: RetryRequestRejection): RetryRefusalBody {
   switch (rej.reason) {
     case 'aborted':
       return {
-        error: 'Run has been aborted',
+        error: RETRY_REFUSED_MESSAGE,
+        code: rej.reason,
         reason:
           'No retry attempts remain or this failure was non-recoverable. The run has been moved to status=aborted; start a new run instead.',
         status: 'aborted',
@@ -352,23 +365,25 @@ export function rejectionToHttpBody(rej: RetryRequestRejection): {
       };
     case 'not_failed':
       return {
-        error: `Cannot retry while status=${rej.currentStatus}`,
-        reason:
-          'A worker may already be processing this run, or the run is queued / completed / cancelled. Wait for it to settle before retrying.',
+        error: RETRY_NOT_STOPPED_MESSAGE,
+        code: rej.reason,
+        reason: `Cannot retry while status=${rej.currentStatus}. A worker may already be processing this run, or the run is queued / completed / cancelled. Wait for it to settle before retrying.`,
         status: rej.currentStatus,
         retryable: false,
       };
     case 'not_retryable':
       return {
-        error: 'This failure is not retryable',
+        error: RETRY_REFUSED_MESSAGE,
+        code: rej.reason,
         reason:
-          'The orchestrator classified this error as non-recoverable (auth / malformed request). Inspect the failure details and start a new run.',
+          'The stored failure_meta has neither retryable nor resumeAvailable set: the failure was classified as non-recoverable when it was written (auth / malformed request, or a classification that was not recoverable at the time). Inspect the failure details and start a new run.',
         status: rej.currentStatus,
         retryable: false,
       };
     case 'budget_exhausted':
       return {
-        error: 'Retry budget exhausted',
+        error: RETRY_REFUSED_MESSAGE,
+        code: rej.reason,
         reason: `This run has used all ${rej.retryBudget} retry attempts. The run is moved to status=aborted; start a new run instead.`,
         status: 'aborted',
         retryable: false,
@@ -378,17 +393,26 @@ export function rejectionToHttpBody(rej: RetryRequestRejection): {
       };
     case 'no_resume_payload':
       return {
-        error: 'No resume payload found',
+        error: RETRY_REFUSED_MESSAGE,
+        code: rej.reason,
         reason: 'resume_job_payload is missing — this run cannot be resumed; start a new run instead.',
         status: rej.currentStatus,
         retryable: false,
       };
     case 'invalid_payload':
       return {
-        error: 'Invalid resume payload',
+        error: RETRY_REFUSED_MESSAGE,
+        code: rej.reason,
         reason: 'payload.runId mismatch — start a new run instead.',
         status: rej.currentStatus,
         retryable: false,
       };
   }
+}
+
+/** A refusal as anyone who is not an administrator is sent it: the sentence, and nothing about why. */
+export function retryRefusalForCustomer(body: RetryRefusalBody): Omit<RetryRefusalBody, 'reason'> {
+  const { reason: _reason, ...rest } = body;
+  void _reason;
+  return rest;
 }
