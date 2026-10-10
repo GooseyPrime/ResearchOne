@@ -65,7 +65,7 @@ describe('stripe webhook customer.subscription.created', () => {
           cancel_at_period_end: false,
           metadata: { user_id: userId },
           items: {
-            data: [{ price: { lookup_key: 'student_monthly' } }],
+            data: [{ price: { id: 'price_student_monthly', lookup_key: 'student_monthly' } }],
           },
         },
       },
@@ -122,7 +122,7 @@ describe('stripe webhook customer.subscription.created', () => {
           cancel_at_period_end: false,
           metadata: { user_id: userId },
           items: {
-            data: [{ price: { lookup_key: 'pro_monthly' } }],
+            data: [{ price: { id: 'price_pro_monthly', lookup_key: 'pro_monthly' } }],
           },
         },
       },
@@ -174,7 +174,7 @@ describe('stripe webhook customer.subscription.created', () => {
           cancel_at_period_end: true,
           metadata: { user_id: userId },
           items: {
-            data: [{ price: { lookup_key: 'team_monthly' } }],
+            data: [{ price: { id: 'price_team_monthly', lookup_key: 'team_monthly' } }],
           },
         },
       },
@@ -225,7 +225,7 @@ describe('stripe webhook customer.subscription.created', () => {
           cancel_at_period_end: false,
           metadata: { user_id: 'user_deleted_123' },
           items: {
-            data: [{ price: { lookup_key: 'pro_monthly' } }],
+            data: [{ price: { id: 'price_pro_monthly', lookup_key: 'pro_monthly' } }],
           },
         },
       },
@@ -275,7 +275,7 @@ describe('stripe webhook customer.subscription.created', () => {
           cancel_at_period_end: false,
           metadata: {},
           items: {
-            data: [{ price: { lookup_key: 'pro_monthly' } }],
+            data: [{ price: { id: 'price_pro_monthly', lookup_key: 'pro_monthly' } }],
           },
         },
       },
