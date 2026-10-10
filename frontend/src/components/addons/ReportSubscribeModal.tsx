@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { addOnItem, trackBeginCheckout } from '../../lib/analyticsEvents';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -54,8 +55,10 @@ export default function ReportSubscribeModal({
     mutationFn: (reportId: string) => createMonitorCheckoutSession(reportId, monitorKind),
     onSuccess: (session) => {
       const url = session.checkoutUrl;
-      if (url) window.location.href = url;
-      else addNotification('error', 'Checkout URL missing — verify Stripe price IDs on the server.');
+      if (url) {
+        trackBeginCheckout(addOnItem(monitorKind));
+        window.location.href = url;
+      } else addNotification('error', 'Checkout URL missing — verify Stripe price IDs on the server.');
     },
     onError: (e) => addNotification('error', extractApiError(e)),
   });

@@ -1,9 +1,10 @@
 import { useUser } from '@clerk/react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { parseSignupTierFromSearch, signupTierLabel, type SignupInitialTier } from '../utils/signupTier';
 import api from '../utils/api';
 import { ONBOARDING_HOW_IT_THINKS_TEASER } from '../content/howResearchOneThinks';
+import { trackSignUpForNewAccount } from '../lib/analyticsEvents';
 
 type PipelineChoice = 'yes' | 'no' | null;
 
@@ -21,6 +22,19 @@ export default function OnboardingPage() {
   const [pipelineChoice, setPipelineChoice] = useState<PipelineChoice>(null);
 
   const canContinue = pipelineChoice !== null && !saving;
+
+  // A new account lands here straight from sign-up. Counted once per account;
+  // nothing about the person is sent, only how they signed up and the plan chosen.
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    trackSignUpForNewAccount({
+      accountId: user.id,
+      createdAt: user.createdAt,
+      onboardingComplete: user.unsafeMetadata?.onboardingComplete === true,
+      method: user.externalAccounts?.[0]?.provider ?? 'email',
+      plan: initialTier,
+    });
+  }, [isLoaded, user, initialTier]);
 
   const complete = async () => {
     setError(null);
