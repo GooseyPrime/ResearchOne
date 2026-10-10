@@ -1,4 +1,5 @@
 import api, { extractApiError } from '../../utils/api';
+import { trackBeginCheckout, type CheckoutItem } from '../analyticsEvents';
 
 const STRIPE_CHECKOUT_SESSION_PLACEHOLDER = '{CHECKOUT_SESSION_ID}';
 
@@ -20,7 +21,7 @@ export function parseStripeCheckoutReturnSessionId(raw: string | null): string |
   return decoded;
 }
 
-export async function startMonitorTokenCheckoutRedirect(packageId: string): Promise<void> {
+export async function startMonitorTokenCheckoutRedirect(packageId: string, item?: CheckoutItem): Promise<void> {
   try {
     const { data } = await api.post<{ checkoutUrl?: string; error?: string }>(
       '/billing/monitor-tokens/checkout',
@@ -28,6 +29,7 @@ export async function startMonitorTokenCheckoutRedirect(packageId: string): Prom
     );
     if (data?.checkoutUrl) {
       const url = new URL(data.checkoutUrl);
+      if (item) trackBeginCheckout(item);
       window.location.assign(url.toString());
       return;
     }
@@ -39,11 +41,14 @@ export async function startMonitorTokenCheckoutRedirect(packageId: string): Prom
 
 export async function startCheckoutRedirect(
   endpoint: '/billing/checkout/topup' | '/billing/checkout/subscription',
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  /** What is being bought, for the checkout-started count. Never a person or a request. */
+  item?: CheckoutItem,
 ): Promise<void> {
   try {
     const { data } = await api.post<{ checkoutUrl?: string; error?: string }>(endpoint, body);
     if (data?.checkoutUrl) {
+      if (item) trackBeginCheckout(item);
       window.location.assign(data.checkoutUrl);
       return;
     }

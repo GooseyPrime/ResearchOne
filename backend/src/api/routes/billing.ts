@@ -14,6 +14,7 @@ import {
   buildPlanSubscriptionCheckoutSessionCreateParams,
   buildWalletTopupCheckoutSessionCreateParams,
   checkoutSessionPaymentSettled,
+  confirmedPurchaseSummary,
 } from '../../services/billing/stripeCheckoutSessionParams';
 import {
   getMonitorTokenBalance,
@@ -577,7 +578,12 @@ router.post('/checkout/confirm', async (req, res, next) => {
 
     const view = await getBillingSubscriptionView(userId);
     const tokenBalance = await getMonitorTokenBalance(userId);
-    res.json({ ...view, monitorTokens: tokenBalance, confirmedCheckout });
+    res.json({
+      ...view,
+      monitorTokens: tokenBalance,
+      confirmedCheckout,
+      confirmedPurchase: confirmedPurchaseSummary(session),
+    });
   } catch (err) {
     next(err);
   }

@@ -80,7 +80,7 @@ export const LIVE_STATUS_COPY: Record<
     label: 'Queued — waiting for a research worker to pick this up.',
     tone: 'idle',
   },
-  running: { label: 'Running — pipeline is active.', tone: 'info' },
+  running: { label: 'Running — your research is in progress.', tone: 'info' },
   plan_pending_confirmation: {
     label:
       'Plan review — a draft research plan is ready. Confirm it to start retrieval and reasoning, refine it in natural language, or cancel.',

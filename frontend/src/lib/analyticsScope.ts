@@ -15,6 +15,11 @@
  * signed-in areas and cleared for the public ones, on first load
  * (`index.html`, before the tag is configured) and on every route change
  * (`MarketingDocumentEffect`).
+ *
+ * RJ-023: the signed-in steps between a new account and a payment are counted
+ * too. They are named one by one below (an allow-list). Every other signed-in
+ * address stays off, so a research page added later is private without anyone
+ * having to remember this file. `index.html` holds the same two patterns.
  */
 export const GA_MEASUREMENT_ID = 'G-C9CW32EES7';
 
@@ -25,8 +30,21 @@ export function isSignedInAreaPath(pathname: string): boolean {
   return SIGNED_IN_AREAS.some((area) => pathname === area || pathname.startsWith(`${area}/`));
 }
 
-/** Switch the analytics tag off on signed-in pages and on again on public ones. */
+/**
+ * The signed-in addresses the tag may count: onboarding, and the billing page
+ * (plans, checkout start, wallet top-up, plan change, and where Stripe sends
+ * the customer back after paying or cancelling). None of them prints a
+ * request, a report or a run.
+ */
+export const TRACKED_SIGNED_IN_PATTERN = /^\/(onboarding(\/.*)?|app\/billing\/?)$/;
+
+/** True where the tag may run: every public page, and the allow-listed signed-in ones. */
+export function isAnalyticsTrackedPath(pathname: string): boolean {
+  return !isSignedInAreaPath(pathname) || TRACKED_SIGNED_IN_PATTERN.test(pathname);
+}
+
+/** Switch the analytics tag off on private pages and on again on the ones it may count. */
 export function applyAnalyticsScope(pathname: string): void {
   if (typeof window === 'undefined') return;
-  (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`] = isSignedInAreaPath(pathname);
+  (window as unknown as Record<string, unknown>)[`ga-disable-${GA_MEASUREMENT_ID}`] = !isAnalyticsTrackedPath(pathname);
 }

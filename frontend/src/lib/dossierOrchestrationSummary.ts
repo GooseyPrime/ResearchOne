@@ -59,7 +59,7 @@ export function profileDisplayNameFromStats(stats: DossierStats): string | null 
 }
 
 /**
- * Prominent one-line summary, e.g. "Reference lookup ran 8 of 11 pipeline stages, completing in about 12 seconds."
+ * Prominent one-line summary, e.g. "Reference lookup ran 8 of 11 steps, completing in about 12 seconds."
  */
 export function buildOrchestrationHeadline(stats: DossierStats, intentLabel?: string | null): string | null {
   const total = totalStagesFromAgentsLists(stats.agentsRan, stats.agentsSkipped);
@@ -74,5 +74,5 @@ export function buildOrchestrationHeadline(stats: DossierStats, intentLabel?: st
   const ms = stats.totalDurationMs;
   const sec = ms != null && ms > 0 ? Math.max(1, Math.round(ms / 1000)) : null;
   const timing = sec != null ? `, completing in about ${sec} second${sec === 1 ? '' : 's'}` : '';
-  return `${profile} ran ${ran} of ${total} pipeline stages${timing}.`;
+  return `${profile} ran ${ran} of ${total} steps${timing}.`;
 }

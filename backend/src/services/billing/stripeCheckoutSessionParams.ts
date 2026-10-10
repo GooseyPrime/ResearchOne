@@ -132,3 +132,42 @@ export function buildMonitorSubscriptionCheckoutSessionCreateParams(args: {
     },
   };
 }
+
+/**
+ * What a confirmed Checkout session bought and for how much, for the page's
+ * purchase count (RJ-023). The item is named the way the frontend names it
+ * when checkout starts (`frontend/src/lib/analyticsEvents.ts`). It holds no
+ * person, no report and no Stripe price id.
+ */
+export function confirmedPurchaseSummary(session: {
+  mode?: string | null;
+  amount_total?: number | null;
+  currency?: string | null;
+  metadata?: Record<string, string> | null;
+  subscription?: unknown;
+}): { itemId: string; valueCents: number; currency: string } {
+  const meta = session.metadata ?? {};
+  let itemId: string;
+  if (session.mode === 'subscription') {
+    if (meta.monitor_kind) {
+      itemId = `addon_${meta.monitor_kind}`;
+    } else {
+      const sub = session.subscription as
+        | { items?: { data?: Array<{ price?: { recurring?: { interval?: string } | null } | null }> } }
+        | string
+        | null
+        | undefined;
+      const interval = sub && typeof sub === 'object' ? sub.items?.data?.[0]?.price?.recurring?.interval : undefined;
+      itemId = `plan_${meta.tier ?? 'unknown'}_${interval === 'year' ? 'annual' : 'monthly'}`;
+    }
+  } else if (meta.purchase_type === 'monitor_tokens' || meta.checkout_kind === 'monitor_tokens') {
+    itemId = `living_report_tokens_${meta.package_id ?? 'unknown'}`;
+  } else {
+    itemId = `wallet_topup_${meta.topup_amount_cents ?? meta.topupAmountCents ?? 'unknown'}`;
+  }
+  return {
+    itemId,
+    valueCents: typeof session.amount_total === 'number' ? session.amount_total : 0,
+    currency: (session.currency ?? 'usd').toUpperCase(),
+  };
+}
