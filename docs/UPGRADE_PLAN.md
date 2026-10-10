@@ -14,7 +14,7 @@ Version: 10 Oct 2026, revision 9. Supersedes every earlier copy of this document
 
 **What changed in revision 5.** A report must read like a well-written encyclopedia entry or review article, as good as or better than the strongest deep-research products. Section 2a defines that standard and every slice serves it. Slices 3 to 10 were rewritten around it and section 8 gained reader-quality scores.
 Repo: `GooseyPrime/ResearchOne` (public, MIT). Default branch `main`.
-Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 2026, the rows marked (rev 5) against `40dd588`, and the rows marked (rev 6) against the merge of PR #245. If you find one that is no longer true, stop and report it before building on it.
+Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 2026, the rows marked (rev 5) against `40dd588`, and the rows marked (rev 6) against the merge of PR #245. If you find one that is no longer true, stop and report it before building on it. (Rev 9: that sentence covers the facts of revisions 5 and 6. The pull request numbers and merge dates added to section 0 in revision 9 were read from the repository's pull request list on 10 Oct 2026. The measurement facts in sections 0 and 8 are as the coordinator reported them and were not checked against the database for this revision.)
 
 ---
 
@@ -49,15 +49,15 @@ Every repository fact below was checked against `main` at `76d5d6f` on 1 Oct 202
 | Fix outside the slices. Sources must be about the question | Done | PR #271 (RJ-015), merged 9 Oct 2026, ordered by Brandon. On by default; `DISCOVERY_RELEVANCE_GATE_ENABLED=false` turns it off in an emergency. See "Fix outside the slices, 8 Oct 2026" after slice 7, and grant M. |
 | Pricing page: every listed price has a way to buy it or says "Not yet available" | Done | PR #266, merged 8 Oct 2026. |
 | Subscribers switch between Pro and BYOK in place (RJ-011) | Done | PR #267, merged 8 Oct 2026. |
-| Progress and status text in plain words (RJ-013) | Done | PR #268, merged 9 Oct 2026. No role nicknames or step codes on any screen. |
+| Progress and status text in plain words (RJ-013) | Done | PR #268, merged 9 Oct 2026. Covers the progress and status text of the app. The marketing pages still print code-style subtitles under the step cards; see "Seen and not changed here" under "Live check fixes" below. |
 | Team, Sovereign, Enterprise and seat offers removed; a plan switch starts with the next billing cycle (RJ-012) | Done | PR #269, merged 9 Oct 2026. |
 | Every user's information and activity is private: sockets, routes, library (RJ-020) | Done | PR #275, merged 9 Oct 2026. |
-| A failed run opens without freezing the page, also with many sources (RJ-022, RJ-022B) | Done | PRs #277 (merged 9 Oct 2026) and #278 (merged 10 Oct 2026). |
+| The failed-run page does less work when it opens, also with many sources (RJ-022, RJ-022B) | Merged; cause of the freeze not confirmed | PRs #277 (merged 9 Oct 2026) and #278 (merged 10 Oct 2026). Both pull requests say the reported freeze was not reproduced, so neither is a statement that it is fixed. |
 | Analytics on sign-up, onboarding and purchase; plain plan banner (RJ-023) | Done | PR #279, merged 10 Oct 2026. |
 | Together backups that run, the Anthropic workspace header, an admin provider health check (RJ-024) | Done | PR #280, merged 10 Oct 2026. Record in `docs/RJ-024-together-anthropic-health.md`. See "Fix outside the slices, 10 Oct 2026. Together, the Anthropic header, a health check" before slice 8. |
 | A backup is the same model on another provider; no different-model backups (RJ-025) | In progress, 10 Oct 2026 | PR #281 (`rj-025-same-model-failover`), open, not merged. Brandon's rule is invariant 16. Until it merges, `main` still moves a refused call to different models. See "Fix outside the slices, 10 Oct 2026. A backup is the same model" before slice 8. |
 | Measurement | Full harness never run | `eval_results` holds three single-task sample rows (2 Oct, 8 Oct and 9 Oct 2026). The 30-task harness has never been run. No reference reports exist and `EVAL_REFERENCE_DIR` is not set, so `pairwise_vs_reference` has never been scored. See "Where measurement stands" in section 8. |
-| Slices 8 to 10 (Challenge layer; research tree and outline operations; calculated numbers) | Not started | Next step: a full harness run on current `main`, which needs Brandon's yes to the cost first (section 8). Slice 8 does not start before that run is reported (section 3, S6). |
+| Slices 8 to 10 (Challenge layer; research tree and outline operations; calculated numbers) | Not started | Next step: a full harness run on current `main`, which needs Brandon's yes to the cost first (section 8). Slice 8 does not start before that run is reported (section 3, S6). If RJ-025 merges first, the run is made on `main` after it; a run made before it merges is made again afterwards, because RJ-025 changes which model answers when a provider refuses. |
 
 Do not redo a completed phase. Their sections below are kept as the record.
 
@@ -97,7 +97,7 @@ Do not redo a completed phase. Their sections below are kept as the record.
 - **Seen and not changed here.** Run progress is sent to the run's own channel and also to every connected page (`emit` in `queue/workers.ts`); pages keep only their own run's events, and narrowing the broadcast needs a check of what the dashboard listens for. The marketing pages still print code-style subtitles under the step cards ("QUERY_PARSE · OBJECTIVE_MAP"). Both are for a later pull request.
 - **Slices 8 to 10.** A new step a customer can see needs a `run_step` entry in the same pull request. Report text sent to a reader goes through `presentForReader`; text quoted anywhere else goes through `stripReportLabels`. A progress event carries the server's time and a percentage, or it is a notice and is not shown as a step.
 
-**Your task now:** read this whole document again; revision 9 changed sections 0, 6, 8 and 9. Slices 1 to 7 are merged. Slices 8 (Challenge layer), 9 (research tree and outline operations) and 10 (calculated numbers) are not started. Do not start slice 8 yet. The next step is a full harness run on current `main` (section 8): the 30-task harness has never been run, so there are no scores to compare a slice against. A full run costs real money, so give Brandon the estimated cost and wait for his yes. Report the scores to him, then start slice 8 only if S6 allows it. RJ-025 (pull request #281) is open and changes which backups a model call may use; until it merges, read `providerRoutes.ts` on `main` before relying on any backup order written in this document, and write no new backup that is a different model (invariant 16). The report layout is not switched (grant L). Slice 6 is behind `AUTHORITY_TIERS_ENABLED` and slice 7 behind `PROVIDER_ROUTING_ENABLED`; turning either on for customers is Brandon's decision (S4). From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
+**Your task now:** read this whole document again; revision 9 changed sections 0, 6, 8 and 9. Slices 1 to 7 are merged. Slices 8 (Challenge layer), 9 (research tree and outline operations) and 10 (calculated numbers) are not started. Do not start slice 8 yet. The next step is a full harness run on current `main` (section 8): the 30-task harness has never been run, so there are no scores to compare a slice against. A full run costs real money, so give Brandon the estimated cost and wait for his yes. If RJ-025 (pull request #281) is still open, ask Brandon whether to wait for it: it changes which model answers when a provider refuses, so scores taken before it merges have to be taken again after. Report the scores to him, then start slice 8 only if S6 allows it. RJ-025 (pull request #281) is open and changes which backups a model call may use; until it merges, read `providerRoutes.ts` on `main` before relying on any backup order written in this document, and write no new backup that is a different model (invariant 16). The report layout is not switched (grant L). Slice 6 is behind `AUTHORITY_TIERS_ENABLED` and slice 7 behind `PROVIDER_ROUTING_ENABLED`; turning either on for customers is Brandon's decision (S4). From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move.
 
 Earlier wording of this paragraph, kept as the record (revision 8, 8 Oct 2026): "read this whole document again; revision 8 changed sections 0, 4, 5, 6 and 7. The report layout is no longer switched (grant L). Slice 6 is built behind `AUTHORITY_TIERS_ENABLED`; turning it on for customers is Brandon's decision (S4). Slice 7 is in review as one pull request. From slice 7 on, each slice is one pull request (Brandon, 8 Oct 2026: the parts were too thin). S6 governs each move."
 
@@ -376,7 +376,7 @@ Rules:
 - The full 30-task harness has never been run, on any commit. There is no recorded starting point for `main`, so no slice so far has been compared with one, and the rule "run the harness after every slice" has not been met for slices 3 to 7.
 - No reference reports exist. `EVAL_REFERENCE_DIR` is not set on any machine that runs the harness, so `pairwise_vs_reference` has never been scored for any task. Its target (">= 0.5 at slice 5, then rising") is untested.
 - Three sample rows are not evidence that any target in the tables above is met. Do not write that one is.
-- Next: a full harness run on current `main`, after Brandon agrees the estimated cost. `pairwise_vs_reference` stays `null` until Brandon saves reference reports and the directory is set.
+- Next: a full harness run on current `main`, after Brandon agrees the estimated cost. The scores slice 8 is compared with must come from `main` as it stands when slice 8 starts, so a run made before RJ-025 merges is made again after it. `pairwise_vs_reference` stays `null` until Brandon saves reference reports and the directory is set.
 
 ## 9. Slices
 
@@ -918,7 +918,7 @@ RJ-024. The full record is `docs/RJ-024-together-anthropic-health.md`; this is t
 
 ### Fix outside the slices, 10 Oct 2026. A backup is the same model
 
-RJ-025. **In progress: pull request #281 is open and not merged.** Nothing below is on `main` yet. The full record is `docs/RJ-025-same-model-failover.md` on that branch.
+RJ-025. **In progress: pull request #281 is open and not merged.** Nothing below is on `main` yet. The full record is a file in that pull request, `docs/RJ-025-same-model-failover.md`; it is not in the repository on `main` until the pull request merges, and its name may change before then.
 
 Brandon's rule, 10 Oct 2026: no backups that are trained differently because of a provider difference. It is invariant 16.
 
