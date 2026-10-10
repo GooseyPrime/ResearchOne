@@ -30,6 +30,7 @@ import {
 import { useHasProAccess } from '../hooks/useHasProAccess';
 import { BILLING_HISTORY_QUERY_KEY, useBillingHistory } from '../hooks/useBillingHistory';
 import { customerOption } from '../content/customerOptions';
+import { planItem, tokenPackItem, trackPurchase, walletTopupItem } from '../lib/analyticsEvents';
 
 const ADDON_PRICE_LABEL: Record<ReportMonitorRow['monitor_kind'], string> = {
   living_report: 'Living Report — token (2 mo / report)',
@@ -63,6 +64,8 @@ type TopupOption = {
 /** `/billing/checkout/confirm` adds what the confirmed session bought. */
 type ConfirmedBillingSubscription = BillingSubscription & {
   confirmedCheckout?: { kind: 'plan' | 'addon' | 'monitor_tokens' | 'topup'; tier: string | null };
+  /** What was bought and for how much, for the purchase count. No person, no request. */
+  confirmedPurchase?: { itemId: string; valueCents: number; currency: string };
 };
 
 const BILLING_PENDING_CHANGE_QUERY_KEY = ['billing-pending-plan-change'] as const;
@@ -145,6 +148,15 @@ export default function BillingPage() {
       setConfirming('in_progress');
       try {
         const { data } = await api.post<ConfirmedBillingSubscription>('/billing/checkout/confirm', { sessionId });
+        // Counted once per Stripe session, however often the page is opened with it.
+        if (data.confirmedPurchase) {
+          trackPurchase({
+            transactionId: sessionId,
+            itemId: data.confirmedPurchase.itemId,
+            valueCents: data.confirmedPurchase.valueCents,
+            currency: data.confirmedPurchase.currency,
+          });
+        }
         await applyCheckoutConfirmSuccess(data);
       } catch (e) {
         setConfirming('error');
@@ -503,9 +515,11 @@ export default function BillingPage() {
                 className="rounded bg-indigo-600 px-3 py-2 text-sm hover:bg-indigo-500 transition-colors"
                 onClick={() => {
                   setCheckoutError(null);
-                  void startCheckoutRedirect('/billing/checkout/topup', {
-                    priceId: option.priceId,
-                  }).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
+                  void startCheckoutRedirect(
+                    '/billing/checkout/topup',
+                    { priceId: option.priceId },
+                    walletTopupItem(option.amountCents),
+                  ).catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'));
                 }}
               >
                 {option.label}
@@ -685,7 +699,8 @@ export default function BillingPage() {
             highlightTier={billingIntent}
             onCheckout={(priceId, tier) => {
               setCheckoutError(null);
-              void startCheckoutRedirect('/billing/checkout/subscription', { priceId, tier }).catch((e) =>
+              const item = planItem(tier, priceId, subscriptionOptionsQuery.data?.options ?? []);
+              void startCheckoutRedirect('/billing/checkout/subscription', { priceId, tier }, item).catch((e) =>
                 setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
               );
             }}
@@ -724,7 +739,8 @@ export default function BillingPage() {
             onRetryEligibility={() => void subQuery.refetch()}
             onBuy={(packageId) => {
               setCheckoutError(null);
-              void startMonitorTokenCheckoutRedirect(packageId).catch((e) =>
+              const pack = (monitorPackagesQuery.data?.packages ?? []).find((p) => p.id === packageId);
+              void startMonitorTokenCheckoutRedirect(packageId, tokenPackItem(packageId, pack?.priceCents)).catch((e) =>
                 setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'),
               );
             }}

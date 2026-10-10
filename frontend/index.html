@@ -8,13 +8,19 @@
       function gtag() {
         dataLayer.push(arguments);
       }
-      // The tag is for the public pages. On signed-in pages it is switched off
-      // (Google's per-id switch), so it neither sends nor reads anything there
-      // (RJ-022). The switch follows the address: it is set here before the tag
-      // is configured, and again each time the address changes, before the tag
-      // sees the change. src/lib/analyticsScope.ts holds the same rule.
+      // The tag is for the public pages and for the signed-in steps between a
+      // new account and a payment: onboarding and the billing page (RJ-023).
+      // On every other signed-in page it is switched off (Google's per-id
+      // switch), so it neither sends nor reads anything there (RJ-022). Only
+      // the addresses named in the second pattern are let through, so a new
+      // signed-in page is off until it is added. The switch follows the
+      // address: it is set here before the tag is configured, and again each
+      // time the address changes, before the tag sees the change.
+      // src/lib/analyticsScope.ts holds the same rule.
       function r1AnalyticsScope() {
-        window['ga-disable-G-C9CW32EES7'] = /^\/(app|account|onboarding)(\/|$)/.test(window.location.pathname);
+        var path = window.location.pathname;
+        window['ga-disable-G-C9CW32EES7'] =
+          /^\/(app|account|onboarding)(\/|$)/.test(path) && !/^\/(onboarding(\/.*)?|app\/billing\/?)$/.test(path);
       }
       r1AnalyticsScope();
       ['pushState', 'replaceState'].forEach(function (name) {

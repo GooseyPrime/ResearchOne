@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../utils/api';
 import { startCheckoutRedirect } from '../../lib/billing/checkout';
+import { planItem } from '../../lib/analyticsEvents';
 import StudentVerificationPanel from './StudentVerificationPanel';
 import NotYetAvailable from './NotYetAvailable';
 
@@ -14,6 +15,8 @@ type SubscriptionOption = {
   label: string;
   monthlyPriceId: string;
   annualPriceId: string;
+  monthlyAmountCents?: number;
+  annualAmountCents?: number;
 };
 
 type SubscribeCTAProps = {
@@ -107,10 +110,11 @@ function SubscribeCTAAuthenticated({
           if (!option || !priceId || !studentVerified) return;
           setCheckoutError(null);
           setBusy(true);
-          void startCheckoutRedirect('/billing/checkout/subscription', {
-            priceId,
-            tier: option.tier,
-          })
+          void startCheckoutRedirect(
+            '/billing/checkout/subscription',
+            { priceId, tier: option.tier },
+            planItem(option.tier, priceId, [option]),
+          )
             .catch((e) => setCheckoutError(e instanceof Error ? e.message : 'Checkout failed'))
             .finally(() => setBusy(false));
         }}
