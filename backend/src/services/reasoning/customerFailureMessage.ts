@@ -54,8 +54,16 @@ export function sentenceForRunThatCannotRunAgain(text: string): string {
   return text.endsWith(RUN_AGAIN) ? `${text.slice(0, -RUN_AGAIN.length)}${SEND_AS_NEW}` : text;
 }
 
-/** Whether stored `failure_meta` says the run may be run again. The same test the retry route applies. */
-function canRunAgain(meta: Record<string, unknown> | null): boolean {
+/**
+ * Whether a run may be run again: the test the retry route applies, in its
+ * order (`decideRunStateOnRetryRequest`). The run has failed, not been stopped
+ * for good, and its stored record says it may be run again. The status is read
+ * first: an old row can still say `resumeAvailable: true` after the run was
+ * stopped for good, and the route refuses such a run whatever the record says.
+ */
+function canRunAgain(status: string | null | undefined, meta: Record<string, unknown> | null): boolean {
+  if (status !== 'failed') return false;
+  if (meta?.terminal === true) return false;
   return meta?.retryable === true || meta?.resumeAvailable === true;
 }
 
@@ -179,18 +187,18 @@ export function runRowForCustomer<T>(row: T): T {
     const hasGate = typeof meta?.gate_status === 'string' && meta.gate_status.trim() !== '';
     const sentence = stored ?? fallback.text;
     // A run that cannot be run again is not told to press "Run it again".
-    out.error_message = hasGate && !stored ? null : canRunAgain(meta) ? sentence : sentenceForRunThatCannotRunAgain(sentence);
+    out.error_message = hasGate && !stored ? null : canRunAgain(status, meta) ? sentence : sentenceForRunThatCannotRunAgain(sentence);
   }
   if (meta) {
     const forCustomer = customerFailureMeta(meta);
-    if (forCustomer && typeof forCustomer.customerMessage === 'string' && !canRunAgain(meta)) {
+    if (forCustomer && typeof forCustomer.customerMessage === 'string' && !canRunAgain(status, meta)) {
       forCustomer.customerMessage = sentenceForRunThatCannotRunAgain(forCustomer.customerMessage);
     }
     out.failure_meta = forCustomer;
   }
   if (Array.isArray(row.progress_events)) {
     // Only a run that has stopped has an answer; a run in flight leaves each event to say.
-    const runAgain = failed ? canRunAgain(meta) : undefined;
+    const runAgain = failed ? canRunAgain(status, meta) : undefined;
     out.progress_events = row.progress_events.map((event) => customerProgressEvent(event, fallback, runAgain));
   }
   return out as T;
@@ -207,7 +215,7 @@ export function progressEventsForCustomer(
   const fallback = customerFailureMessage(args);
   // With the run's status and stored failure record, the run says whether it can be run again; without them each event does.
   const stopped = args.status === 'failed' || args.status === 'aborted';
-  const runAgain = stopped ? canRunAgain(isRecord(args.failureMeta) ? args.failureMeta : null) : undefined;
+  const runAgain = stopped ? canRunAgain(args.status, isRecord(args.failureMeta) ? args.failureMeta : null) : undefined;
   return events.map((event) => customerProgressEvent(event, fallback, runAgain));
 }
 

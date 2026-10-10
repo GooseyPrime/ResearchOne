@@ -110,17 +110,58 @@ export function retryRefusedText(serverSentence: string | null | undefined): str
 }
 
 /**
- * What the server said when it refused to run a run again: its sentence for a
- * person (`error`), and, for an administrator only, why (`reason`). Both are
- * null when the request failed some other way (no answer, a server error).
+ * What a person is told when asking for a run to be run again got no answer
+ * that says what happened (no reply, or a server error). The request may have
+ * arrived, so the page does not call it refused and does not send the person
+ * to a new request, which would be a second run: it looks at the run again
+ * and leaves "Run it again" in place.
  */
-export function retryRefusalFromError(err: unknown): { sentence: string | null; adminReason: string | null } {
-  if (!axios.isAxiosError(err)) return { sentence: null, adminReason: null };
+export const RETRY_NOT_CONFIRMED =
+  'We could not confirm that this request started again. This page is checking now; if it still says it did not finish, press Run it again.';
+
+/**
+ * What the server said when it refused to run a run again: its sentence for a
+ * person (`error`), and, for an administrator only, why (`reason`).
+ *
+ * Null when the request failed some other way. The route refuses with 400 (the
+ * run cannot be run again) or 409 (its reserved payment is gone) and nothing
+ * else; no answer at all, or a server error, is not a refusal, because the
+ * run may have been queued before the answer was lost.
+ */
+export function retryRefusalFromError(err: unknown): { sentence: string | null; adminReason: string | null } | null {
+  if (!axios.isAxiosError(err)) return null;
+  const status = err.response?.status;
+  if (status !== 400 && status !== 409) return null;
   const data = err.response?.data as { error?: unknown; reason?: unknown } | undefined;
   return {
     sentence: typeof data?.error === 'string' && data.error.trim() ? data.error : null,
     adminReason: typeof data?.reason === 'string' && data.reason.trim() ? data.reason : null,
   };
+}
+
+/**
+ * Whether a run may be run again, by the test the server applies before it
+ * does, in the server's order (`decideRunStateOnRetryRequest`): the run has
+ * failed (not been stopped for good), its stored record says it may be run
+ * again (`resumeAvailable` is the flag's older name), and attempts remain.
+ * An old row can still say `resumeAvailable: true` after the run was stopped
+ * for good; the status is read first so the page does not offer a button the
+ * server will refuse.
+ */
+export function runCanBeRunAgain(run: {
+  status: string;
+  failure_meta?: Record<string, unknown> | null;
+  retry_attempts?: number | null;
+  retry_budget?: number | null;
+}): boolean {
+  if (run.status !== 'failed') return false;
+  const meta = run.failure_meta ?? {};
+  if (meta.terminal === true) return false;
+  if (meta.retryable !== true && meta.resumeAvailable !== true) return false;
+  const attempts = run.retry_attempts;
+  const budget = run.retry_budget;
+  if (typeof attempts === 'number' && typeof budget === 'number' && attempts >= budget) return false;
+  return true;
 }
 
 /**
